@@ -18,7 +18,8 @@ defmodule TswIo.Serial.Connection.DeviceConnectionTest do
       assert conn.port == port
       assert conn.status == :connecting
       assert conn.pid == pid
-      assert conn.device == nil
+      assert conn.device_config_id == nil
+      assert conn.device_version == nil
       assert conn.failed_at == nil
     end
   end
@@ -49,29 +50,28 @@ defmodule TswIo.Serial.Connection.DeviceConnectionTest do
   end
 
   describe "mark_connected/2" do
-    test "transitions from :discovering to :connected with device" do
+    test "transitions from :discovering to :connected with identity response" do
       # Arrange
       conn = SerialTestHelpers.build_discovering_connection()
-      device = SerialTestHelpers.build_device(id: 42, version: 200)
+      identity_response = SerialTestHelpers.build_identity_response(version: 200, config_id: 42)
 
       # Act
-      updated_conn = DeviceConnection.mark_connected(conn, device)
+      updated_conn = DeviceConnection.mark_connected(conn, identity_response)
 
       # Assert
       assert updated_conn.status == :connected
-      assert updated_conn.device == device
-      assert updated_conn.device.id == 42
-      assert updated_conn.device.version == 200
+      assert updated_conn.device_version == 200
+      assert updated_conn.device_config_id == 42
     end
 
     test "raises FunctionClauseError when not in :discovering state" do
       # Arrange
       conn = SerialTestHelpers.build_connected_connection()
-      device = SerialTestHelpers.build_device()
+      identity_response = SerialTestHelpers.build_identity_response()
 
       # Act & Assert
       assert_raise FunctionClauseError, fn ->
-        DeviceConnection.mark_connected(conn, device)
+        DeviceConnection.mark_connected(conn, identity_response)
       end
     end
   end
@@ -208,7 +208,7 @@ defmodule TswIo.Serial.Connection.DeviceConnectionTest do
       assert result == false
     end
 
-    test "returns false when failed exactly at backoff boundary" do
+    test "returns true when failed exactly at backoff boundary" do
       # Arrange
       backoff_ms = 1000
       failed_at = System.monotonic_time(:millisecond) - backoff_ms

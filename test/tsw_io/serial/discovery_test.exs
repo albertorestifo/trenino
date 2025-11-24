@@ -1,7 +1,6 @@
 defmodule TswIo.Serial.DiscoveryTest do
   use ExUnit.Case, async: true
 
-  alias TswIo.Device
   alias TswIo.Serial.Protocol
 
   # Mock UART process that responds to messages
@@ -52,7 +51,7 @@ defmodule TswIo.Serial.DiscoveryTest do
   end
 
   describe "discover/1 - success path" do
-    test "returns device when valid identity response is received" do
+    test "returns identity response when valid response is received" do
       # Arrange
       device_id = 42
       version = 100
@@ -79,13 +78,13 @@ defmodule TswIo.Serial.DiscoveryTest do
       result = discover_with_mock(uart_pid)
 
       # Assert
-      assert {:ok, %Device{} = device} = result
-      assert device.id == device_id
-      assert device.version == version
-      assert device.config_id == config_id
+      assert {:ok, %Protocol.IdentityResponse{} = response} = result
+      assert response.device_id == device_id
+      assert response.version == version
+      assert response.config_id == config_id
     end
 
-    test "creates device with config_id when provided" do
+    test "returns identity response with config_id when provided" do
       # Arrange
       identity_response = %Protocol.IdentityResponse{
         request_id: 123,
@@ -102,8 +101,8 @@ defmodule TswIo.Serial.DiscoveryTest do
       result = discover_with_mock(uart_pid)
 
       # Assert
-      assert {:ok, %Device{} = device} = result
-      assert device.config_id == 0
+      assert {:ok, %Protocol.IdentityResponse{} = response} = result
+      assert response.config_id == 0
     end
   end
 
@@ -136,7 +135,7 @@ defmodule TswIo.Serial.DiscoveryTest do
       result = discover_with_mock(uart_pid)
 
       # Assert
-      assert {:ok, %Device{}} = result
+      assert {:ok, %Protocol.IdentityResponse{}} = result
     end
 
     test "returns error after 3 failed attempts with unexpected messages" do
@@ -275,7 +274,8 @@ defmodule TswIo.Serial.DiscoveryTest do
       result = discover_with_mock(uart_pid)
 
       # Assert
-      assert {:ok, %Device{id: 99, version: 231, config_id: 888}} = result
+      assert {:ok,
+              %Protocol.IdentityResponse{device_id: 99, version: 231, config_id: 888}} = result
     end
   end
 
@@ -303,12 +303,7 @@ defmodule TswIo.Serial.DiscoveryTest do
   defp read_response_with_mock(uart_pid, attempt) do
     with {:ok, data} <- MockUART.read(uart_pid, 1_000),
          {:ok, %Protocol.IdentityResponse{} = response} <- Protocol.Message.decode(data) do
-      {:ok,
-       %Device{
-         id: response.device_id,
-         version: response.version,
-         config_id: response.config_id
-       }}
+      {:ok, response}
     else
       {:ok, _other} -> read_response_with_mock(uart_pid, attempt + 1)
       {:error, reason} -> {:error, reason}

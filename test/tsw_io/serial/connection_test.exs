@@ -1,6 +1,7 @@
 defmodule TswIo.Serial.ConnectionTest do
   use ExUnit.Case, async: true
 
+  alias TswIo.Serial.Connection.DeviceConnection
   alias TswIo.Serial.Connection.State
   alias TswIo.SerialTestHelpers
 
@@ -150,25 +151,25 @@ defmodule TswIo.Serial.ConnectionTest do
     test "simulates connecting -> discovering -> connected flow" do
       # Arrange
       port = "/dev/tty.test"
-      device = SerialTestHelpers.build_device(id: 42)
+      identity_response = SerialTestHelpers.build_identity_response(device_id: 42, config_id: 100)
       state = %State{}
 
-      # Act - simulate the full connection flow
+      # Act - simulate the full connection flow using proper state transitions
       conn1 = SerialTestHelpers.build_connecting_connection(port: port)
       state1 = State.put(state, conn1)
 
       conn2 = State.get(state1, port)
-      conn2_discovering = %{conn2 | status: :discovering}
+      conn2_discovering = DeviceConnection.mark_discovering(conn2)
       state2 = State.put(state1, conn2_discovering)
 
       conn3 = State.get(state2, port)
-      conn3_connected = %{conn3 | status: :connected, device: device}
+      conn3_connected = DeviceConnection.mark_connected(conn3, identity_response)
       state3 = State.put(state2, conn3_connected)
 
       # Assert
       final_conn = State.get(state3, port)
       assert final_conn.status == :connected
-      assert final_conn.device.id == 42
+      assert final_conn.device_config_id == 100
       assert length(State.connected_devices(state3)) == 1
     end
 

@@ -3,9 +3,9 @@ defmodule TswIo.SerialTestHelpers do
   Test helpers and builders for serial connection testing.
   """
 
-  alias TswIo.Device
   alias TswIo.Serial.Connection.DeviceConnection
   alias TswIo.Serial.Connection.State
+  alias TswIo.Serial.Protocol.IdentityResponse
 
   @doc """
   Creates a DeviceConnection in :connecting state.
@@ -39,14 +39,14 @@ defmodule TswIo.SerialTestHelpers do
   ## Options
   - `:port` - Port name (default: "/dev/tty.test")
   - `:pid` - Process ID (default: self())
-  - `:device` - Device struct (default: build_device())
+  - `:identity_response` - IdentityResponse struct (default: build_identity_response())
   """
   def build_connected_connection(opts \\ []) do
-    device = Keyword.get(opts, :device, build_device())
+    identity_response = Keyword.get(opts, :identity_response, build_identity_response())
 
     opts
     |> build_discovering_connection()
-    |> DeviceConnection.mark_connected(device)
+    |> DeviceConnection.mark_connected(identity_response)
   end
 
   @doc """
@@ -90,18 +90,20 @@ defmodule TswIo.SerialTestHelpers do
   end
 
   @doc """
-  Creates a Device struct.
+  Creates an IdentityResponse struct.
 
   ## Options
-  - `:id` - Device ID (default: 1)
+  - `:request_id` - Request ID (default: 123)
+  - `:device_id` - Device ID (default: 1)
   - `:version` - Firmware version (default: 100)
-  - `:config_id` - Configuration ID (default: nil)
+  - `:config_id` - Configuration ID (default: 0)
   """
-  def build_device(opts \\ []) do
-    %Device{
-      id: Keyword.get(opts, :id, 1),
+  def build_identity_response(opts \\ []) do
+    %IdentityResponse{
+      request_id: Keyword.get(opts, :request_id, 123),
+      device_id: Keyword.get(opts, :device_id, 1),
       version: Keyword.get(opts, :version, 100),
-      config_id: Keyword.get(opts, :config_id)
+      config_id: Keyword.get(opts, :config_id, 0)
     }
   end
 

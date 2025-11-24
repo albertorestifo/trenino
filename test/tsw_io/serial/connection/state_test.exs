@@ -306,14 +306,14 @@ defmodule TswIo.Serial.Connection.StateTest do
 
     test "returns multiple connected devices" do
       # Arrange
-      device1 = SerialTestHelpers.build_device(id: 1)
-      device2 = SerialTestHelpers.build_device(id: 2)
+      identity1 = SerialTestHelpers.build_identity_response(device_id: 1)
+      identity2 = SerialTestHelpers.build_identity_response(device_id: 2)
 
       port1 = "/dev/tty.test1"
-      conn1 = SerialTestHelpers.build_connected_connection(port: port1, device: device1)
+      conn1 = SerialTestHelpers.build_connected_connection(port: port1, identity_response: identity1)
 
       port2 = "/dev/tty.test2"
-      conn2 = SerialTestHelpers.build_connected_connection(port: port2, device: device2)
+      conn2 = SerialTestHelpers.build_connected_connection(port: port2, identity_response: identity2)
 
       state = SerialTestHelpers.build_state([{port1, conn1}, {port2, conn2}])
 
