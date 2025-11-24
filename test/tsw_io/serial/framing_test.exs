@@ -1,5 +1,6 @@
 defmodule TswIo.Serial.FramingTest do
   use ExUnit.Case, async: true
+
   alias TswIo.Serial.Framing
 
   test "COBS encoding examples from Wikipedia" do
