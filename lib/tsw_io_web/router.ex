@@ -17,7 +17,7 @@ defmodule TswIoWeb.Router do
   scope "/", TswIoWeb do
     pipe_through :browser
 
-    get "/", PageController, :home
+    live "/", DeviceLive
   end
 
   # Other scopes may use custom stacks.

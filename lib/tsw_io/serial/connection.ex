@@ -21,12 +21,18 @@ defmodule TswIo.Serial.Connection do
   @failed_port_backoff_ms 30_000
   # Run discovery every second
   @discovery_interval_ms 1_000
+  # Timeout for cleanup operations (failsafe if task crashes)
+  @cleanup_timeout_ms 5_000
+  # Timeout for discovery operations
+  @discovery_timeout_ms 5_000
   # Port name patterns to ignore (Bluetooth, debug consoles, etc.)
   @ignored_port_patterns [
     ~r/Bluetooth/i,
     ~r/debug/i,
     ~r/TONE/i
   ]
+
+  @pubsub_topic "device_updates"
 
   def start_link(_opts) do
     GenServer.start_link(__MODULE__, %State{}, name: __MODULE__)
@@ -36,6 +42,30 @@ defmodule TswIo.Serial.Connection do
   @spec connected_devices() :: [DeviceConnection.t()]
   def connected_devices do
     GenServer.call(__MODULE__, :connected_devices)
+  end
+
+  @doc "Get all tracked devices (any status)"
+  @spec list_devices() :: [DeviceConnection.t()]
+  def list_devices do
+    GenServer.call(__MODULE__, :list_devices)
+  end
+
+  @doc "Trigger an immediate device scan"
+  @spec scan() :: :ok
+  def scan do
+    GenServer.cast(__MODULE__, :scan)
+  end
+
+  @doc "Disconnect a specific device by port"
+  @spec disconnect(String.t()) :: :ok
+  def disconnect(port) do
+    GenServer.cast(__MODULE__, {:disconnect, port})
+  end
+
+  @doc "Subscribe to device update events"
+  @spec subscribe() :: :ok | {:error, term()}
+  def subscribe do
+    Phoenix.PubSub.subscribe(TswIo.PubSub, @pubsub_topic)
   end
 
   # Server callbacks
@@ -52,50 +82,14 @@ defmodule TswIo.Serial.Connection do
   end
 
   @impl true
-  def handle_info(:discover, %State{} = state) do
+  def handle_call(:list_devices, _from, %State{ports: ports} = state) do
+    {:reply, Map.values(ports), state}
+  end
+
+  @impl true
+  def handle_cast(:scan, state) do
     discover_new_ports(state)
-    schedule_discovery()
     {:noreply, state}
-  end
-
-  @impl true
-  def handle_info({:circuits_uart, port, {:error, reason}}, state) do
-    Logger.error("Error on port #{port}: #{inspect(reason)}")
-    GenServer.cast(self(), {:disconnect, port})
-    {:noreply, state}
-  end
-
-  @impl true
-  def handle_info({:circuits_uart, port, data}, state) do
-    case Message.decode(data) do
-      {:ok, message} ->
-        Logger.debug("Received message from port #{port}: #{inspect(message)}")
-
-      {:error, reason} ->
-        Logger.warning("Failed to decode message from port #{port}: #{inspect(reason)}")
-    end
-
-    {:noreply, state}
-  end
-
-  @impl true
-  def handle_info({:DOWN, _ref, :process, pid, reason}, state) do
-    case find_port_by_pid(state, pid) do
-      nil ->
-        {:noreply, state}
-
-      port ->
-        Logger.warning("UART process for port #{port} died: #{inspect(reason)}")
-        # Mark as failed directly since the process is already dead
-        updated_state =
-          State.update(state, port, fn conn ->
-            conn
-            |> DeviceConnection.mark_disconnecting()
-            |> DeviceConnection.mark_failed()
-          end)
-
-        {:noreply, updated_state}
-    end
   end
 
   @impl true
@@ -142,18 +136,105 @@ defmodule TswIo.Serial.Connection do
       end)
 
     Logger.debug("Cleanup complete for port #{port}")
+    broadcast_update(updated_state)
     {:noreply, updated_state}
+  end
+
+  @impl true
+  def handle_info(:discover, %State{} = state) do
+    discover_new_ports(state)
+    schedule_discovery()
+    {:noreply, state}
+  end
+
+  @impl true
+  def handle_info({:circuits_uart, port, {:error, reason}}, state) do
+    Logger.error("Error on port #{port}: #{inspect(reason)}")
+    GenServer.cast(self(), {:disconnect, port})
+    {:noreply, state}
+  end
+
+  @impl true
+  def handle_info({:circuits_uart, port, data}, state) do
+    case Message.decode(data) do
+      {:ok, message} ->
+        Logger.debug("Received message from port #{port}: #{inspect(message)}")
+
+      {:error, reason} ->
+        Logger.warning("Failed to decode message from port #{port}: #{inspect(reason)}")
+    end
+
+    {:noreply, state}
+  end
+
+  @impl true
+  def handle_info({:DOWN, _ref, :process, pid, reason}, state) do
+    case find_port_by_pid(state, pid) do
+      nil ->
+        {:noreply, state}
+
+      port ->
+        Logger.warning("UART process for port #{port} died: #{inspect(reason)}")
+        # Mark as failed directly since the process is already dead
+        updated_state =
+          State.update(state, port, fn conn ->
+            conn
+            |> DeviceConnection.mark_disconnecting()
+            |> DeviceConnection.mark_failed()
+          end)
+
+        broadcast_update(updated_state)
+        {:noreply, updated_state}
+    end
+  end
+
+  @impl true
+  def handle_info({:cleanup_timeout, port}, state) do
+    case State.get(state, port) do
+      %DeviceConnection{status: :disconnecting} = conn ->
+        Logger.warning("Cleanup timeout for port #{port}, forcing to failed state")
+        updated_state = State.put(state, DeviceConnection.mark_failed(conn))
+        broadcast_update(updated_state)
+        {:noreply, updated_state}
+
+      _ ->
+        # Already completed or no longer tracked
+        {:noreply, state}
+    end
+  end
+
+  @impl true
+  def handle_info({:discovery_timeout, port}, state) do
+    case State.get(state, port) do
+      %DeviceConnection{status: :discovering} ->
+        Logger.warning("Discovery timeout for port #{port}")
+        GenServer.cast(self(), {:disconnect, port})
+        {:noreply, state}
+
+      _ ->
+        # Already progressed past discovering
+        {:noreply, state}
+    end
   end
 
   defp schedule_discovery do
     Process.send_after(self(), :discover, @discovery_interval_ms)
   end
 
+  defp broadcast_update(state) do
+    devices = Map.values(state.ports)
+    Phoenix.PubSub.broadcast(TswIo.PubSub, @pubsub_topic, {:devices_updated, devices})
+  end
+
   defp discover_new_ports(state) do
-    UART.enumerate()
-    |> Map.keys()
-    |> Enum.filter(&should_connect?(&1, state))
-    |> Enum.each(&GenServer.cast(__MODULE__, {:connect, &1}))
+    all_ports = Map.keys(UART.enumerate())
+    eligible_ports = Enum.filter(all_ports, &should_connect?(&1, state))
+
+    Logger.debug(
+      "Discovery: found #{length(all_ports)} ports, #{length(eligible_ports)} eligible"
+    )
+
+    Enum.each(eligible_ports, &GenServer.cast(__MODULE__, {:connect, &1}))
   end
 
   defp should_connect?(port, state) do
@@ -178,9 +259,18 @@ defmodule TswIo.Serial.Connection do
   end
 
   defp do_connect(port, state) do
-    {:ok, pid} = UART.start_link()
-    Process.monitor(pid)
+    case UART.start_link() do
+      {:ok, pid} ->
+        Process.monitor(pid)
+        do_open_port(port, pid, state)
 
+      {:error, reason} ->
+        Logger.error("Failed to start UART process for port #{port}: #{inspect(reason)}")
+        {:noreply, state}
+    end
+  end
+
+  defp do_open_port(port, pid, state) do
     # Track immediately in :connecting state
     conn = DeviceConnection.new(port, pid)
     state_with_conn = State.put(state, conn)
@@ -194,6 +284,8 @@ defmodule TswIo.Serial.Connection do
       :ok ->
         Logger.info("Connected to device on port #{port}")
         updated_state = State.update(state_with_conn, port, &DeviceConnection.mark_discovering/1)
+        # Schedule discovery timeout failsafe
+        Process.send_after(self(), {:discovery_timeout, port}, @discovery_timeout_ms)
         GenServer.cast(self(), {:check_device, port})
         {:noreply, updated_state}
 
@@ -209,10 +301,11 @@ defmodule TswIo.Serial.Connection do
   end
 
   defp do_discover(%DeviceConnection{port: port} = conn, pid, state) do
-    with {:ok, device} <- Discovery.discover(pid),
+    with {:ok, identity} <- Discovery.discover(pid),
          :ok <- UART.configure(pid, active: true) do
-      Logger.info("Discovered device #{inspect(device)} on port #{port}")
-      updated_state = State.put(state, DeviceConnection.mark_connected(conn, device))
+      Logger.info("Discovered device #{inspect(identity)} on port #{port}")
+      updated_state = State.put(state, DeviceConnection.mark_connected(conn, identity))
+      broadcast_update(updated_state)
       {:noreply, updated_state}
     else
       {:error, reason} ->
@@ -223,6 +316,9 @@ defmodule TswIo.Serial.Connection do
   end
 
   defp start_async_cleanup(port, pid) do
+    # Schedule a failsafe timeout in case the task crashes
+    Process.send_after(self(), {:cleanup_timeout, port}, @cleanup_timeout_ms)
+
     Task.start(fn ->
       try do
         safe_stop_uart(pid)
