@@ -1,13 +1,21 @@
 defmodule TswIo.Device do
-  @moduledoc """
-  Represents a TWS device that has been identified.
-  """
+  use Ecto.Schema
+  import Ecto.Changeset
 
-  @type t :: %__MODULE__{
-          id: integer(),
-          version: integer(),
-          config_id: integer() | nil
-        }
+  alias TswIo.Device.Input
 
-  defstruct [:id, :version, :config_id]
+  schema "devices" do
+    field :name, :string
+
+    has_many :inputs, Input
+
+    timestamps(type: :utc_datetime)
+  end
+
+  @doc false
+  def changeset(config, attrs) do
+    config
+    |> cast(attrs, [:name])
+    |> validate_required([:name])
+  end
 end

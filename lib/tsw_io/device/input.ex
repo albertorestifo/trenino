@@ -1,0 +1,27 @@
+defmodule TswIo.Device.Input do
+  use Ecto.Schema
+  import Ecto.Changeset
+
+  alias TswIo.Device
+  alias TswIo.Device.Input.Calibration
+
+  schema "device_inputs" do
+    field :pin, :integer
+    field :input_type, Ecto.Enum, values: [:analog]
+    field :sensitivity, :integer
+    field :config_id, :id
+
+    belongs_to :device, Device
+    has_one :calibration, Calibration
+
+    timestamps(type: :utc_datetime)
+  end
+
+  @doc false
+  def changeset(input, attrs) do
+    input
+    |> cast(attrs, [:pin, :input_type, :sensitivity])
+    |> validate_required([:pin, :input_type, :sensitivity])
+    |> validate_number(:sensitivity, greater_than: 0, less_than_or_equal_to: 10)
+  end
+end

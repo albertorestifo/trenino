@@ -17,7 +17,7 @@ defmodule TswIo.Serial.Connection.DeviceConnection do
   - `:failed` - Cleanup complete, port will be retried after backoff
   """
 
-  alias TswIo.Device
+  alias TswIo.Serial.Protocol.IdentityResponse
 
   @type status :: :connecting | :discovering | :connected | :disconnecting | :failed
 
@@ -25,12 +25,13 @@ defmodule TswIo.Serial.Connection.DeviceConnection do
           port: String.t(),
           status: status(),
           pid: pid() | nil,
-          device: Device.t() | nil,
-          failed_at: integer() | nil
+          failed_at: integer() | nil,
+          device_config_id: integer() | nil,
+          device_version: integer() | nil
         }
 
   @enforce_keys [:port, :status]
-  defstruct [:port, :status, :pid, :device, :failed_at]
+  defstruct [:port, :status, :pid, :device_config_id, :device_version, :failed_at]
 
   @doc "Create a new connection in :connecting state"
   @spec new(String.t(), pid()) :: t()
@@ -45,9 +46,12 @@ defmodule TswIo.Serial.Connection.DeviceConnection do
   end
 
   @doc "Transition to :connected state with discovered device"
-  @spec mark_connected(t(), Device.t()) :: t()
-  def mark_connected(%__MODULE__{status: :discovering} = conn, device) do
-    %__MODULE__{conn | status: :connected, device: device}
+  @spec mark_connected(t(), IdentityResponse.t()) :: t()
+  def mark_connected(%__MODULE__{status: :discovering} = conn, %IdentityResponse{
+        config_id: config_id,
+        version: version
+      }) do
+    %__MODULE__{conn | status: :connected, device_config_id: config_id, device_version: version}
   end
 
   @doc """

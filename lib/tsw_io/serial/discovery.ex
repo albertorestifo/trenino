@@ -10,10 +10,9 @@ defmodule TswIo.Serial.Discovery do
   """
 
   alias Circuits.UART
-  alias TswIo.Device
   alias TswIo.Serial.Protocol
 
-  @spec discover(pid()) :: {:ok, Device.t()} | {:error, term()}
+  @spec discover(pid()) :: {:ok, Protocol.IdentityResponse.t()} | {:error, term()}
   def discover(uart_pid) do
     identity_request = %Protocol.IdentityRequest{request_id: :erlang.unique_integer([:positive])}
 
@@ -24,7 +23,8 @@ defmodule TswIo.Serial.Discovery do
     end
   end
 
-  @spec read_response(pid(), non_neg_integer()) :: {:ok, Device.t()} | {:error, term()}
+  @spec read_response(pid(), non_neg_integer()) ::
+          {:ok, Protocol.IdentityResponse.t()} | {:error, term()}
   defp read_response(uart_pid, attempt \\ 0)
 
   defp read_response(_pid, 3), do: {:error, :no_valid_response}
@@ -32,8 +32,7 @@ defmodule TswIo.Serial.Discovery do
   defp read_response(uart_pid, attempt) do
     with {:ok, data} <- UART.read(uart_pid, 1_000),
          {:ok, %Protocol.IdentityResponse{} = response} <- Protocol.Message.decode(data) do
-      {:ok,
-       %Device{id: response.device_id, version: response.version, config_id: response.config_id}}
+      {:ok, response}
     else
       {:ok, _other} -> read_response(uart_pid, attempt + 1)
       {:error, reason} -> {:error, reason}
