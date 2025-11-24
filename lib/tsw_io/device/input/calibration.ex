@@ -19,13 +19,14 @@ defmodule TswIo.Device.Input.Calibration do
   @doc false
   def changeset(calibration, attrs) do
     calibration
-    |> cast(attrs, [:max_hardware_value, :min_value, :max_value, :has_rollover, :is_inverted])
+    |> cast(attrs, [:max_hardware_value, :min_value, :max_value, :has_rollover, :is_inverted, :input_id])
     |> validate_required([
       :max_hardware_value,
       :min_value,
       :max_value,
       :has_rollover,
-      :is_inverted
+      :is_inverted,
+      :input_id
     ])
   end
 end

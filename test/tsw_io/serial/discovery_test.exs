@@ -274,8 +274,8 @@ defmodule TswIo.Serial.DiscoveryTest do
       result = discover_with_mock(uart_pid)
 
       # Assert
-      assert {:ok,
-              %Protocol.IdentityResponse{device_id: 99, version: 231, config_id: 888}} = result
+      assert {:ok, %Protocol.IdentityResponse{device_id: 99, version: 231, config_id: 888}} =
+               result
     end
   end
 

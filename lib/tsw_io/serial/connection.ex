@@ -145,8 +145,6 @@ defmodule TswIo.Serial.Connection do
     {:noreply, updated_state}
   end
 
-  # Private functions
-
   defp schedule_discovery do
     Process.send_after(self(), :discover, @discovery_interval_ms)
   end

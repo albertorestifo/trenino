@@ -310,10 +310,14 @@ defmodule TswIo.Serial.Connection.StateTest do
       identity2 = SerialTestHelpers.build_identity_response(device_id: 2)
 
       port1 = "/dev/tty.test1"
-      conn1 = SerialTestHelpers.build_connected_connection(port: port1, identity_response: identity1)
+
+      conn1 =
+        SerialTestHelpers.build_connected_connection(port: port1, identity_response: identity1)
 
       port2 = "/dev/tty.test2"
-      conn2 = SerialTestHelpers.build_connected_connection(port: port2, identity_response: identity2)
+
+      conn2 =
+        SerialTestHelpers.build_connected_connection(port: port2, identity_response: identity2)
 
       state = SerialTestHelpers.build_state([{port1, conn1}, {port2, conn2}])
 

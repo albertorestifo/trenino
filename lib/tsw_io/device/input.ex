@@ -9,7 +9,6 @@ defmodule TswIo.Device.Input do
     field :pin, :integer
     field :input_type, Ecto.Enum, values: [:analog]
     field :sensitivity, :integer
-    field :config_id, :id
 
     belongs_to :device, Device
     has_one :calibration, Calibration
@@ -20,8 +19,8 @@ defmodule TswIo.Device.Input do
   @doc false
   def changeset(input, attrs) do
     input
-    |> cast(attrs, [:pin, :input_type, :sensitivity])
-    |> validate_required([:pin, :input_type, :sensitivity])
+    |> cast(attrs, [:pin, :input_type, :sensitivity, :device_id])
+    |> validate_required([:pin, :input_type, :sensitivity, :device_id])
     |> validate_number(:sensitivity, greater_than: 0, less_than_or_equal_to: 10)
   end
 end
