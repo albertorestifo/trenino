@@ -114,6 +114,7 @@ defmodule TswIo.Hardware do
       Input
       |> where([i], i.device_id == ^device_id)
       |> order_by([i], i.pin)
+      |> preload(:calibration)
       |> Repo.all()
 
     {:ok, inputs}

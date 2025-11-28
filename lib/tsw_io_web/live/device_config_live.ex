@@ -398,7 +398,8 @@ defmodule TswIoWeb.DeviceConfigLive do
             <th class="text-center">Pin</th>
             <th>Type</th>
             <th>Sensitivity</th>
-            <th>Value</th>
+            <th>Raw</th>
+            <th>Calibrated</th>
             <th class="w-24"></th>
           </tr>
         </thead>
@@ -410,8 +411,15 @@ defmodule TswIoWeb.DeviceConfigLive do
             </td>
             <td class="font-mono text-sm">{input.sensitivity}</td>
             <td>
-              <.input_value
+              <.raw_value
                 value={Map.get(@input_values, input.pin)}
+                draft_mode={@draft_mode}
+              />
+            </td>
+            <td>
+              <.calibrated_value
+                raw_value={Map.get(@input_values, input.pin)}
+                calibration={input.calibration}
                 draft_mode={@draft_mode}
               />
             </td>
@@ -443,7 +451,7 @@ defmodule TswIoWeb.DeviceConfigLive do
   attr :value, :integer, default: nil
   attr :draft_mode, :boolean, required: true
 
-  defp input_value(assigns) do
+  defp raw_value(assigns) do
     ~H"""
     <span :if={@draft_mode} class="text-base-content/50 italic text-sm">
       <.icon name="hero-lock-closed" class="w-3 h-3 inline mr-1" /> N/A
@@ -456,6 +464,46 @@ defmodule TswIoWeb.DeviceConfigLive do
     </span>
     """
   end
+
+  attr :raw_value, :integer, default: nil
+  attr :calibration, :map, default: nil
+  attr :draft_mode, :boolean, required: true
+
+  defp calibrated_value(assigns) do
+    calibration = loaded_calibration(assigns.calibration)
+
+    calibrated =
+      if assigns.raw_value && calibration do
+        Hardware.normalize_value(assigns.raw_value, calibration)
+      else
+        nil
+      end
+
+    assigns =
+      assigns
+      |> assign(:calibration, calibration)
+      |> assign(:calibrated, calibrated)
+
+    ~H"""
+    <span :if={@draft_mode} class="text-base-content/50 italic text-sm">
+      N/A
+    </span>
+    <span :if={!@draft_mode && is_nil(@calibration)} class="text-base-content/50 text-sm">
+      Not calibrated
+    </span>
+    <span :if={!@draft_mode && @calibration && is_nil(@raw_value)} class="text-base-content/50">
+      &mdash;
+    </span>
+    <span :if={!@draft_mode && @calibration && !is_nil(@calibrated)} class="font-mono">
+      {@calibrated}%
+    </span>
+    """
+  end
+
+  # Returns nil if calibration is not loaded or nil, otherwise returns the calibration
+  defp loaded_calibration(%Ecto.Association.NotLoaded{}), do: nil
+  defp loaded_calibration(nil), do: nil
+  defp loaded_calibration(calibration), do: calibration
 
   defp outputs_section(assigns) do
     ~H"""

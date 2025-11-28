@@ -76,6 +76,8 @@ defmodule TswIo.Hardware.ConfigurationManager do
   @doc "Subscribe to input value updates for a specific port"
   @spec subscribe_input_values(String.t()) :: :ok | {:error, term()}
   def subscribe_input_values(port) do
+    # Ensure ConfigurationManager is listening to serial messages for this port
+    GenServer.cast(__MODULE__, {:ensure_port_subscription, port})
     Phoenix.PubSub.subscribe(TswIo.PubSub, "#{@input_values_topic}:#{port}")
   end
 
@@ -112,6 +114,11 @@ defmodule TswIo.Hardware.ConfigurationManager do
   def handle_call({:get_input_values, port}, _from, %State{} = state) do
     values = Map.get(state.input_values, port, %{})
     {:reply, values, state}
+  end
+
+  @impl true
+  def handle_cast({:ensure_port_subscription, port}, %State{} = state) do
+    {:noreply, maybe_subscribe_to_port(state, port)}
   end
 
   @impl true
@@ -209,6 +216,7 @@ defmodule TswIo.Hardware.ConfigurationManager do
     if MapSet.member?(state.subscribed_ports, port) do
       state
     else
+      Logger.debug("ConfigurationManager subscribing to serial messages for port: #{port}")
       Connection.subscribe_messages(port)
       %{state | subscribed_ports: MapSet.put(state.subscribed_ports, port)}
     end
