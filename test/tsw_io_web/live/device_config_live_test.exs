@@ -254,9 +254,10 @@ defmodule TswIoWeb.DeviceConfigLiveTest do
         has_rollover: false
       }
 
-      assert Hardware.normalize_value(10, calibration) == 0
-      assert Hardware.normalize_value(80, calibration) == 70
-      assert Hardware.normalize_value(150, calibration) == 140
+      # Normalized values are now 0.0 to 1.0 floats
+      assert Hardware.normalize_value(10, calibration) == 0.0
+      assert Hardware.normalize_value(80, calibration) == 0.5
+      assert Hardware.normalize_value(150, calibration) == 1.0
     end
 
     test "total_travel delegates to Calculator" do

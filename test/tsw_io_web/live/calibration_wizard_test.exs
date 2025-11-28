@@ -413,7 +413,8 @@ defmodule TswIoWeb.CalibrationWizardTest do
       # Should receive calibration result
       assert_receive {:calibration_result, {:ok, calibration}}, 1000
       assert calibration.input_id == input.id
-      assert calibration.min_value == 11
+      # min_value uses min(samples) for conservative boundary: min([10, 11, 12, ...]) = 10
+      assert calibration.min_value == 10
       assert calibration.is_inverted == false
       assert calibration.has_rollover == false
     end

@@ -11,7 +11,8 @@
       "Bash(mise current:*)",
       "Bash(mix ecto.gen.migration:*)",
       "Bash(mix ecto.migrate:*)",
-      "Bash(mix precommit:*)"
+      "Bash(mix precommit:*)",
+      "Bash(mix run:*)"
     ],
     "deny": [],
     "ask": []
