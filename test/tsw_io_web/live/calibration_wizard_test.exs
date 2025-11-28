@@ -36,14 +36,14 @@ defmodule TswIoWeb.CalibrationWizardTest do
       # Test the public state has expected fields
       assert state.input_id == input.id
       assert state.pin == input.pin
-      assert state.current_step == :collecting_min
+      assert state.current_step == :ready
       assert state.min_sample_count == 0
-      assert state.can_advance == false
+      assert state.can_advance == true
 
       Session.cancel(pid)
     end
 
-    test "initial step is collecting_min", %{input: input} do
+    test "initial step is ready", %{input: input} do
       {:ok, pid} =
         Session.start_link(
           input_id: input.id,
@@ -52,7 +52,7 @@ defmodule TswIoWeb.CalibrationWizardTest do
         )
 
       state = Session.get_public_state(pid)
-      assert state.current_step == :collecting_min
+      assert state.current_step == :ready
 
       Session.cancel(pid)
     end
@@ -61,7 +61,7 @@ defmodule TswIoWeb.CalibrationWizardTest do
   describe "CalibrationWizard step progression" do
     setup [:create_device_with_input]
 
-    test "cannot advance without sufficient samples", %{input: input} do
+    test "can advance from ready step without samples", %{input: input} do
       {:ok, pid} =
         Session.start_link(
           input_id: input.id,
@@ -69,7 +69,11 @@ defmodule TswIoWeb.CalibrationWizardTest do
           pin: input.pin
         )
 
-      # Try to advance without samples
+      # Can advance from ready to collecting_min
+      assert :ok = Session.advance_step(pid)
+      assert Session.get_public_state(pid).current_step == :collecting_min
+
+      # But cannot advance from collecting_min without samples
       assert {:error, :insufficient_samples} = Session.advance_step(pid)
 
       Session.cancel(pid)
@@ -82,6 +86,10 @@ defmodule TswIoWeb.CalibrationWizardTest do
           port: "/dev/test",
           pin: input.pin
         )
+
+      # Start from ready step
+      assert :ok = Session.advance_step(pid)
+      assert Session.get_public_state(pid).current_step == :collecting_min
 
       # Simulate collecting samples by sending messages
       # Need at least 10 samples with 3 unique values
@@ -116,6 +124,10 @@ defmodule TswIoWeb.CalibrationWizardTest do
 
       # Allow the session process to access the database for saving calibration
       allow_session_db_access(pid)
+
+      # Step 0: Start from ready
+      assert :ok = Session.advance_step(pid)
+      assert Session.get_public_state(pid).current_step == :collecting_min
 
       # Step 1: Collect min samples
       for value <- [10, 11, 12, 10, 11, 12, 10, 11, 12, 10] do
@@ -183,7 +195,10 @@ defmodule TswIoWeb.CalibrationWizardTest do
           pin: input.pin
         )
 
-      # Initial state
+      # Start from ready step - advance to collecting_min first
+      assert :ok = Session.advance_step(pid)
+
+      # Initial state after advancing to collecting_min
       state = Session.get_public_state(pid)
       assert state.min_sample_count == 0
       assert state.min_unique_count == 0
@@ -209,6 +224,9 @@ defmodule TswIoWeb.CalibrationWizardTest do
           pin: input.pin
         )
 
+      # Advance to collecting_min first
+      assert :ok = Session.advance_step(pid)
+
       # Send sample for different pin
       send(pid, {:input_value_updated, "/dev/test", input.pin + 1, 100})
       :timer.sleep(10)
@@ -227,8 +245,15 @@ defmodule TswIoWeb.CalibrationWizardTest do
           pin: input.pin
         )
 
-      # Not enough samples
+      # Ready step can always advance
       state = Session.get_public_state(pid)
+      assert state.current_step == :ready
+      assert state.can_advance == true
+
+      # Advance to collecting_min
+      assert :ok = Session.advance_step(pid)
+      state = Session.get_public_state(pid)
+      assert state.current_step == :collecting_min
       assert state.can_advance == false
 
       # Add samples but not enough unique
@@ -272,7 +297,7 @@ defmodule TswIoWeb.CalibrationWizardTest do
 
       assert_receive {:session_started, state}
       assert state.input_id == input.id
-      assert state.current_step == :collecting_min
+      assert state.current_step == :ready
 
       Session.cancel(pid)
     end
@@ -290,6 +315,11 @@ defmodule TswIoWeb.CalibrationWizardTest do
       # Clear the session_started message
       assert_receive {:session_started, _}
 
+      # Advance from ready to collecting_min
+      Session.advance_step(pid)
+      assert_receive {:step_changed, state}
+      assert state.current_step == :collecting_min
+
       # Collect enough samples
       for value <- [10, 11, 12, 10, 11, 12, 10, 11, 12, 10] do
         send(pid, {:input_value_updated, "/dev/test", input.pin, value})
@@ -300,7 +330,7 @@ defmodule TswIoWeb.CalibrationWizardTest do
       # Clear sample_collected messages
       flush_mailbox()
 
-      # Advance
+      # Advance to sweeping
       Session.advance_step(pid)
 
       assert_receive {:step_changed, state}
@@ -321,6 +351,10 @@ defmodule TswIoWeb.CalibrationWizardTest do
 
       # Clear session_started
       assert_receive {:session_started, _}
+
+      # Advance to collecting_min first
+      Session.advance_step(pid)
+      assert_receive {:step_changed, _}
 
       send(pid, {:input_value_updated, "/dev/test", input.pin, 100})
       assert_receive {:sample_collected, state}
@@ -343,6 +377,10 @@ defmodule TswIoWeb.CalibrationWizardTest do
       allow_session_db_access(pid)
 
       # Clear initial messages
+      flush_mailbox()
+
+      # Start from ready step
+      Session.advance_step(pid)
       flush_mailbox()
 
       # Complete all steps
@@ -415,7 +453,13 @@ defmodule TswIoWeb.CalibrationWizardTest do
 
       # Receive the initial state (like handle_info in DeviceConfigLive)
       assert_receive {:session_started, initial_state}
+      assert initial_state.current_step == :ready
       assert initial_state.min_sample_count == 0
+
+      # Advance to collecting_min so samples are collected
+      Session.advance_step(pid)
+      assert_receive {:step_changed, state}
+      assert state.current_step == :collecting_min
 
       # Simulate input value arriving
       send(pid, {:input_value_updated, "/dev/test", input.pin, 100})
@@ -448,9 +492,15 @@ defmodule TswIoWeb.CalibrationWizardTest do
           pin: input.pin
         )
 
-      # Collect samples and verify each broadcast contains updated counts
+      # Initial state is :ready
       assert_receive {:session_started, state}
+      assert state.current_step == :ready
       assert state.min_sample_count == 0
+
+      # Advance to collecting_min
+      Session.advance_step(pid)
+      assert_receive {:step_changed, state}
+      assert state.current_step == :collecting_min
 
       send(pid, {:input_value_updated, "/dev/test", input.pin, 10})
       assert_receive {:sample_collected, state}

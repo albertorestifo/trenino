@@ -151,8 +151,15 @@ defmodule TswIoWeb.CalibrationWizard do
   attr :current_step, :atom, required: true
 
   defp step_indicator(assigns) do
+    # Don't show step indicator during :ready step (it's a pre-step)
+    # Show 4 steps: min, sweep, max, analyzing
     steps = [:collecting_min, :sweeping, :collecting_max, :analyzing]
-    current_index = Enum.find_index(steps, &(&1 == assigns.current_step)) || 0
+
+    current_index =
+      case assigns.current_step do
+        :ready -> -1
+        step -> Enum.find_index(steps, &(&1 == step)) || 0
+      end
 
     assigns =
       assigns
@@ -199,6 +206,7 @@ defmodule TswIoWeb.CalibrationWizard do
   defp step_content(assigns) do
     ~H"""
     <div class="space-y-6">
+      <.ready_step :if={@session_state.current_step == :ready} />
       <.collecting_min_step
         :if={@session_state.current_step == :collecting_min}
         state={@session_state}
@@ -216,6 +224,22 @@ defmodule TswIoWeb.CalibrationWizard do
         session_state={@session_state}
         myself={@myself}
       />
+    </div>
+    """
+  end
+
+  defp ready_step(assigns) do
+    ~H"""
+    <div class="text-center">
+      <div class="w-16 h-16 mx-auto mb-4 rounded-full bg-primary/10 flex items-center justify-center">
+        <.icon name="hero-play" class="w-8 h-8 text-primary" />
+      </div>
+      <h3 class="text-lg font-semibold mb-2">Ready to Calibrate</h3>
+      <p class="text-base-content/70 mb-4">
+        Move the input to its <strong>minimum</strong>
+        position, then press <strong>Start</strong>
+        to begin collecting samples.
+      </p>
     </div>
     """
   end
@@ -390,6 +414,7 @@ defmodule TswIoWeb.CalibrationWizard do
     """
   end
 
+  defp advance_button_text(:ready), do: "Start"
   defp advance_button_text(:collecting_min), do: "Next: Sweep"
   defp advance_button_text(:sweeping), do: "Next: Set Max"
   defp advance_button_text(:collecting_max), do: "Finish"

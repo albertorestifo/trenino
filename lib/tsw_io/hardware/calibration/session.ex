@@ -40,7 +40,7 @@ defmodule TswIo.Hardware.Calibration.Session do
   defmodule State do
     @moduledoc false
 
-    @type step :: :collecting_min | :sweeping | :collecting_max | :analyzing | :complete
+    @type step :: :ready | :collecting_min | :sweeping | :collecting_max | :analyzing | :complete
 
     @type t :: %__MODULE__{
             input_id: integer(),
@@ -59,7 +59,7 @@ defmodule TswIo.Hardware.Calibration.Session do
       :port,
       :pin,
       :max_hardware_value,
-      current_step: :collecting_min,
+      current_step: :ready,
       min_samples: [],
       sweep_samples: [],
       max_samples: [],
@@ -136,6 +136,8 @@ defmodule TswIo.Hardware.Calibration.Session do
     pin = Keyword.fetch!(opts, :pin)
     max_hardware_value = Keyword.get(opts, :max_hardware_value, 1023)
 
+    Logger.debug("Calibration session starting for input #{input_id}, port #{port}, pin #{pin}")
+
     # Subscribe to input values for this port
     Hardware.subscribe_input_values(port)
 
@@ -188,7 +190,13 @@ defmodule TswIo.Hardware.Calibration.Session do
   @impl true
   def handle_info({:input_value_updated, _port, pin, value}, %State{pin: pin} = state) do
     new_state = collect_sample(state, value)
-    broadcast_event(new_state, :sample_collected)
+
+    # Only broadcast if we actually collected a sample (not in :ready step)
+    if new_state != state do
+      Logger.debug("Calibration sample collected: #{value} (step: #{state.current_step})")
+      broadcast_event(new_state, :sample_collected)
+    end
+
     {:noreply, new_state}
   end
 
@@ -228,6 +236,11 @@ defmodule TswIo.Hardware.Calibration.Session do
   end
 
   defp collect_sample(%State{} = state, _value), do: state
+
+  defp validate_and_advance(%State{current_step: :ready} = state) do
+    Logger.debug("Advancing from :ready to :collecting_min")
+    {:ok, %{state | current_step: :collecting_min}}
+  end
 
   defp validate_and_advance(%State{current_step: :collecting_min} = state) do
     if valid_samples?(state.min_samples) do
@@ -316,6 +329,8 @@ defmodule TswIo.Hardware.Calibration.Session do
       result: state.result
     }
   end
+
+  defp can_advance?(%State{current_step: :ready}), do: true
 
   defp can_advance?(%State{current_step: :collecting_min, min_samples: samples}) do
     valid_samples?(samples)
