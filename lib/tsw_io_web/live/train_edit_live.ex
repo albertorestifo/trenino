@@ -9,6 +9,7 @@ defmodule TswIoWeb.TrainEditLive do
   use TswIoWeb, :live_view
 
   import TswIoWeb.NavComponents
+  import TswIoWeb.SharedComponents
 
   alias TswIo.Train, as: TrainContext
   alias TswIo.Train.{Train, Element}
@@ -308,13 +309,29 @@ defmodule TswIoWeb.TrainEditLive do
             <.elements_section elements={@elements} is_active={@is_active} />
           </div>
 
-          <.danger_zone :if={not @new_mode} is_active={@is_active} />
+          <.danger_zone
+            :if={not @new_mode}
+            action_label="Delete Train"
+            action_description="Permanently remove this train and all associated elements and calibration data"
+            on_action="show_delete_modal"
+            disabled={@is_active}
+            disabled_reason="Cannot delete while train is currently active"
+          />
         </div>
       </main>
 
       <.add_element_modal :if={@modal_open} form={@element_form} />
 
-      <.delete_modal :if={@show_delete_modal} train={@train} is_active={@is_active} />
+      <.confirmation_modal
+        :if={@show_delete_modal}
+        on_close="close_delete_modal"
+        on_confirm="confirm_delete"
+        title="Delete Train"
+        item_name={@train.name}
+        description="This will permanently delete the train configuration and all its elements and calibration data."
+        is_active={@is_active}
+        active_warning="This train is currently active in the simulator."
+      />
     </div>
     """
   end
@@ -394,11 +411,11 @@ defmodule TswIoWeb.TrainEditLive do
 
   defp empty_elements_state(assigns) do
     ~H"""
-    <div class="bg-base-100 rounded-lg p-8 text-center">
-      <.icon name="hero-adjustments-horizontal" class="w-10 h-10 mx-auto text-base-content/30" />
-      <p class="mt-2 text-sm text-base-content/70">No elements configured</p>
-      <p class="text-xs text-base-content/50">Add elements to control train functions</p>
-    </div>
+    <.empty_collection_state
+      icon="hero-adjustments-horizontal"
+      message="No elements configured"
+      submessage="Add elements to control train functions"
+    />
     """
   end
 
@@ -516,76 +533,6 @@ defmodule TswIoWeb.TrainEditLive do
             </button>
           </div>
         </.form>
-      </div>
-    </div>
-    """
-  end
-
-  attr :is_active, :boolean, required: true
-
-  defp danger_zone(assigns) do
-    ~H"""
-    <div class="mt-12 pt-8 border-t border-base-300">
-      <h3 class="text-sm font-semibold text-error mb-4">Danger Zone</h3>
-      <div class="p-4 rounded-lg border border-error/30 bg-error/5">
-        <div class="flex items-center justify-between gap-4">
-          <div>
-            <p class="font-medium text-sm">Delete Train</p>
-            <p class="text-xs text-base-content/70 mt-1">
-              Permanently remove this train and all associated elements and calibration data
-            </p>
-          </div>
-          <button
-            type="button"
-            phx-click="show_delete_modal"
-            disabled={@is_active}
-            class="btn btn-error btn-sm"
-          >
-            <.icon name="hero-trash" class="w-4 h-4" /> Delete
-          </button>
-        </div>
-        <p :if={@is_active} class="text-xs text-warning mt-3">
-          <.icon name="hero-exclamation-triangle" class="w-4 h-4 inline" />
-          Cannot delete while train is currently active
-        </p>
-      </div>
-    </div>
-    """
-  end
-
-  attr :train, :map, required: true
-  attr :is_active, :boolean, required: true
-
-  defp delete_modal(assigns) do
-    ~H"""
-    <div class="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div class="fixed inset-0 bg-black/50" phx-click="close_delete_modal" />
-      <div class="relative bg-base-100 rounded-xl shadow-xl max-w-md w-full p-6">
-        <h3 class="text-lg font-semibold mb-4 text-error">Delete Train</h3>
-
-        <div :if={@is_active} class="alert alert-warning mb-4">
-          <.icon name="hero-exclamation-triangle" class="w-5 h-5" />
-          <span class="text-sm">This train is currently active in the simulator.</span>
-        </div>
-
-        <p class="text-sm text-base-content/70 mb-6">
-          Are you sure you want to delete "<span class="font-medium">{@train.name}</span>"?
-          This will permanently delete the train configuration and all its elements and calibration data.
-        </p>
-
-        <div class="flex justify-end gap-2">
-          <button type="button" phx-click="close_delete_modal" class="btn btn-ghost">
-            Cancel
-          </button>
-          <button
-            :if={not @is_active}
-            type="button"
-            phx-click="confirm_delete"
-            class="btn btn-error"
-          >
-            <.icon name="hero-trash" class="w-4 h-4" /> Delete
-          </button>
-        </div>
       </div>
     </div>
     """

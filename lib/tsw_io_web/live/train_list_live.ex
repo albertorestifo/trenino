@@ -9,6 +9,7 @@ defmodule TswIoWeb.TrainListLive do
   use TswIoWeb, :live_view
 
   import TswIoWeb.NavComponents
+  import TswIoWeb.SharedComponents
 
   alias TswIo.Train, as: TrainContext
   alias TswIo.Serial.Connection
@@ -99,31 +100,35 @@ defmodule TswIoWeb.TrainListLive do
 
       <main class="flex-1 p-4 sm:p-8">
         <div class="max-w-2xl mx-auto">
-          <header class="mb-8 flex items-center justify-between">
-            <div>
-              <h1 class="text-2xl font-semibold">Trains</h1>
-              <p class="text-sm text-base-content/70 mt-1">
-                Manage train configurations
-              </p>
-            </div>
-            <.link navigate={~p"/trains/new"} class="btn btn-primary">
-              <.icon name="hero-plus" class="w-4 h-4" /> New Train
-            </.link>
-          </header>
+          <.page_header
+            title="Trains"
+            subtitle="Manage train configurations"
+            action_path={~p"/trains/new"}
+            action_text="New Train"
+          />
 
           <.unconfigured_banner
             :if={@current_identifier && @active_train == nil}
             identifier={@current_identifier}
           />
 
-          <.empty_state :if={Enum.empty?(@trains) && @active_train != nil} />
-          <.empty_state :if={Enum.empty?(@trains) && @current_identifier == nil} />
+          <.empty_state
+            :if={Enum.empty?(@trains)}
+            icon="hero-truck"
+            heading="No Train Configurations"
+            description="Create a train configuration to set up controls for your simulator trains."
+            action_path={~p"/trains/new"}
+            action_text="Create Train Configuration"
+          />
 
           <div :if={not Enum.empty?(@trains)} class="space-y-4">
-            <.train_card
+            <.list_card
               :for={train <- @trains}
-              train={train}
               active={train.id == @active_train_id}
+              navigate_to={~p"/trains/#{train.id}"}
+              title={train.name}
+              description={train.description}
+              metadata={[train.identifier, element_count_text(length(train.elements))]}
             />
           </div>
         </div>
@@ -147,67 +152,6 @@ defmodule TswIoWeb.TrainListLive do
       <.link navigate={~p"/trains/new?identifier=#{@identifier}"} class="btn btn-sm btn-primary">
         Configure
       </.link>
-    </div>
-    """
-  end
-
-  defp empty_state(assigns) do
-    ~H"""
-    <div class="flex flex-col items-center justify-center py-20 text-center">
-      <.icon name="hero-truck" class="w-16 h-16 text-base-content/20" />
-      <h2 class="mt-6 text-xl font-semibold">No Train Configurations</h2>
-      <p class="mt-2 text-base-content/70 max-w-sm">
-        Create a train configuration to set up controls for your simulator trains.
-      </p>
-      <.link navigate={~p"/trains/new"} class="btn btn-primary mt-6">
-        <.icon name="hero-plus" class="w-4 h-4" /> Create Train Configuration
-      </.link>
-    </div>
-    """
-  end
-
-  attr :train, :map, required: true
-  attr :active, :boolean, required: true
-
-  defp train_card(assigns) do
-    element_count = length(assigns.train.elements)
-    assigns = assign(assigns, :element_count, element_count)
-
-    ~H"""
-    <div class={[
-      "rounded-xl transition-colors group",
-      if(@active,
-        do: "border-2 border-success bg-success/5",
-        else: "border border-base-300 bg-base-200/50 hover:bg-base-200"
-      )
-    ]}>
-      <div class="flex items-start justify-between gap-4 p-5">
-        <.link navigate={~p"/trains/#{@train.id}"} class="flex-1 cursor-pointer">
-          <div class="flex items-center gap-2">
-            <h3 class="font-medium truncate group-hover:text-primary transition-colors">
-              {@train.name}
-            </h3>
-            <span
-              :if={@active}
-              class="badge badge-success badge-sm flex items-center gap-1"
-            >
-              <span class="w-1.5 h-1.5 rounded-full bg-success-content animate-pulse" /> Active
-            </span>
-          </div>
-          <p :if={@train.description} class="text-sm text-base-content/70 mt-1 line-clamp-2">
-            {@train.description}
-          </p>
-          <div class="mt-2 flex items-center gap-4 text-xs text-base-content/60">
-            <span class="font-mono">{@train.identifier}</span>
-            <span>{element_count_text(@element_count)}</span>
-          </div>
-        </.link>
-
-        <.icon
-          name="hero-chevron-right"
-          class="w-5 h-5 text-base-content/30 group-hover:text-base-content/50 transition-colors flex-shrink-0"
-        />
-      </div>
     </div>
     """
   end

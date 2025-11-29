@@ -38,7 +38,10 @@ defmodule TswIo.Train.Identifier do
 
   # Private functions
 
-  defp get_object_classes(%Client{} = client, length) when length > 0 do
+  defp get_object_classes(_client, 0), do: {:error, :empty_formation}
+  defp get_object_classes(_client, 1), do: {:error, :single_car_formation}
+
+  defp get_object_classes(%Client{} = client, length) when length > 1 do
     # Fetch all object classes in parallel using async tasks
     tasks =
       0..(length - 1)
@@ -62,9 +65,6 @@ defmodule TswIo.Train.Identifier do
       {:error, :insufficient_formation_data}
     end
   end
-
-  defp get_object_classes(_client, 0), do: {:error, :empty_formation}
-  defp get_object_classes(_client, 1), do: {:error, :single_car_formation}
 
   defp find_common_prefix(s1, s2) do
     s1_chars = String.graphemes(s1)

@@ -225,6 +225,191 @@ defmodule TswIo.Simulator.ClientTest do
     end
   end
 
+  describe "get_int/2" do
+    test "extracts integer value from response" do
+      client = Client.new(@base_url, @api_key)
+
+      expect(Req, :request, fn _req, _opts ->
+        {:ok,
+         %Req.Response{
+           status: 200,
+           body: %{"Result" => "Success", "Values" => %{"FormationLength" => 5}}
+         }}
+      end)
+
+      assert {:ok, 5} = Client.get_int(client, "CurrentFormation.FormationLength")
+    end
+
+    test "truncates float to integer" do
+      client = Client.new(@base_url, @api_key)
+
+      expect(Req, :request, fn _req, _opts ->
+        {:ok,
+         %Req.Response{
+           status: 200,
+           body: %{"Result" => "Success", "Values" => %{"Value" => 5.7}}
+         }}
+      end)
+
+      assert {:ok, 5} = Client.get_int(client, "SomePath")
+    end
+
+    test "parses string to integer" do
+      client = Client.new(@base_url, @api_key)
+
+      expect(Req, :request, fn _req, _opts ->
+        {:ok,
+         %Req.Response{
+           status: 200,
+           body: %{"Result" => "Success", "Values" => %{"Value" => "42"}}
+         }}
+      end)
+
+      assert {:ok, 42} = Client.get_int(client, "SomePath")
+    end
+
+    test "returns error for empty values map" do
+      client = Client.new(@base_url, @api_key)
+
+      expect(Req, :request, fn _req, _opts ->
+        {:ok,
+         %Req.Response{
+           status: 200,
+           body: %{"Result" => "Success", "Values" => %{}}
+         }}
+      end)
+
+      assert {:error, :invalid_value} = Client.get_int(client, "SomePath")
+    end
+
+    test "returns error for non-numeric string" do
+      client = Client.new(@base_url, @api_key)
+
+      expect(Req, :request, fn _req, _opts ->
+        {:ok,
+         %Req.Response{
+           status: 200,
+           body: %{"Result" => "Success", "Values" => %{"Value" => "not a number"}}
+         }}
+      end)
+
+      assert {:error, :invalid_value} = Client.get_int(client, "SomePath")
+    end
+
+    test "propagates HTTP errors" do
+      client = Client.new(@base_url, @api_key)
+
+      expect(Req, :request, fn _req, _opts ->
+        {:ok, %Req.Response{status: 500, body: %{"error" => "Internal error"}}}
+      end)
+
+      assert {:error, {:http_error, 500, _}} = Client.get_int(client, "SomePath")
+    end
+  end
+
+  describe "get_float/2" do
+    test "extracts float value from response" do
+      client = Client.new(@base_url, @api_key)
+
+      expect(Req, :request, fn _req, _opts ->
+        {:ok,
+         %Req.Response{
+           status: 200,
+           body: %{"Result" => "Success", "Values" => %{"Speed (ms)" => 4.54}}
+         }}
+      end)
+
+      assert {:ok, 4.54} = Client.get_float(client, "CurrentDrivableActor.Function.HUD_GetSpeed")
+    end
+
+    test "converts integer to float" do
+      client = Client.new(@base_url, @api_key)
+
+      expect(Req, :request, fn _req, _opts ->
+        {:ok,
+         %Req.Response{
+           status: 200,
+           body: %{"Result" => "Success", "Values" => %{"Value" => 5}}
+         }}
+      end)
+
+      assert {:ok, 5.0} = Client.get_float(client, "SomePath")
+    end
+
+    test "parses string to float" do
+      client = Client.new(@base_url, @api_key)
+
+      expect(Req, :request, fn _req, _opts ->
+        {:ok,
+         %Req.Response{
+           status: 200,
+           body: %{"Result" => "Success", "Values" => %{"Value" => "3.14"}}
+         }}
+      end)
+
+      assert {:ok, 3.14} = Client.get_float(client, "SomePath")
+    end
+
+    test "returns error for empty values map" do
+      client = Client.new(@base_url, @api_key)
+
+      expect(Req, :request, fn _req, _opts ->
+        {:ok,
+         %Req.Response{
+           status: 200,
+           body: %{"Result" => "Success", "Values" => %{}}
+         }}
+      end)
+
+      assert {:error, :invalid_value} = Client.get_float(client, "SomePath")
+    end
+  end
+
+  describe "get_string/2" do
+    test "extracts string value from response" do
+      client = Client.new(@base_url, @api_key)
+
+      expect(Req, :request, fn _req, _opts ->
+        {:ok,
+         %Req.Response{
+           status: 200,
+           body: %{"Result" => "Success", "Values" => %{"ObjectClass" => "BR_Class_66_DB"}}
+         }}
+      end)
+
+      assert {:ok, "BR_Class_66_DB"} =
+               Client.get_string(client, "CurrentFormation/0.ObjectClass")
+    end
+
+    test "converts numeric value to string" do
+      client = Client.new(@base_url, @api_key)
+
+      expect(Req, :request, fn _req, _opts ->
+        {:ok,
+         %Req.Response{
+           status: 200,
+           body: %{"Result" => "Success", "Values" => %{"Value" => 123}}
+         }}
+      end)
+
+      assert {:ok, "123"} = Client.get_string(client, "SomePath")
+    end
+
+    test "returns error for empty values map" do
+      client = Client.new(@base_url, @api_key)
+
+      expect(Req, :request, fn _req, _opts ->
+        {:ok,
+         %Req.Response{
+           status: 200,
+           body: %{"Result" => "Success", "Values" => %{}}
+         }}
+      end)
+
+      assert {:error, :invalid_value} = Client.get_string(client, "SomePath")
+    end
+  end
+
   describe "error handling" do
     test "returns {:error, {:invalid_key, body}} on 403 response" do
       client = Client.new(@base_url, @api_key)
