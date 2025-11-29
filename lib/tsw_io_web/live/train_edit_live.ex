@@ -60,7 +60,9 @@ defmodule TswIoWeb.TrainEditLive do
      |> assign(:mapping_notches_element, nil)
      |> assign(:notch_forms, [])
      |> assign(:auto_detecting, false)
-     |> assign(:calibration_progress, nil)}
+     |> assign(:calibration_progress, nil)
+     |> assign(:show_api_explorer, false)
+     |> assign(:api_explorer_field, nil)}
   end
 
   defp mount_existing(socket, train_id) do
@@ -87,7 +89,9 @@ defmodule TswIoWeb.TrainEditLive do
          |> assign(:mapping_notches_element, nil)
          |> assign(:notch_forms, [])
          |> assign(:auto_detecting, false)
-         |> assign(:calibration_progress, nil)}
+         |> assign(:calibration_progress, nil)
+         |> assign(:show_api_explorer, false)
+         |> assign(:api_explorer_field, nil)}
 
       {:error, :not_found} ->
         {:ok,
@@ -428,6 +432,21 @@ defmodule TswIoWeb.TrainEditLive do
     end
   end
 
+  # API Explorer events
+  @impl true
+  def handle_event("open_api_explorer", %{"field" => field}, socket) do
+    simulator_status = socket.assigns.nav_simulator_status
+
+    if simulator_status.status == :connected and simulator_status.client != nil do
+      {:noreply,
+       socket
+       |> assign(:show_api_explorer, true)
+       |> assign(:api_explorer_field, String.to_existing_atom(field))}
+    else
+      {:noreply, put_flash(socket, :error, "Simulator not connected")}
+    end
+  end
+
   # PubSub events
   @impl true
   def handle_info({:devices_updated, devices}, socket) do
@@ -487,6 +506,32 @@ defmodule TswIoWeb.TrainEditLive do
      |> assign(:auto_detecting, false)
      |> assign(:calibration_progress, nil)
      |> put_flash(:error, "Calibration failed: #{inspect(reason)}")}
+  end
+
+  # API Explorer component events
+  @impl true
+  def handle_info({:api_explorer_select, field, path}, socket) do
+    # Update the lever config form with the selected path
+    current_form = socket.assigns.lever_config_form
+    current_params = current_form.params || %{}
+    updated_params = Map.put(current_params, Atom.to_string(field), path)
+
+    lever_config = socket.assigns.configuring_element.lever_config || %LeverConfig{}
+    changeset = LeverConfig.changeset(lever_config, updated_params)
+
+    {:noreply,
+     socket
+     |> assign(:lever_config_form, to_form(changeset))
+     |> assign(:show_api_explorer, false)
+     |> assign(:api_explorer_field, nil)}
+  end
+
+  @impl true
+  def handle_info({:api_explorer_close}, socket) do
+    {:noreply,
+     socket
+     |> assign(:show_api_explorer, false)
+     |> assign(:api_explorer_field, nil)}
   end
 
   # Private functions
@@ -594,6 +639,7 @@ defmodule TswIoWeb.TrainEditLive do
         :if={@configuring_element}
         element={@configuring_element}
         form={@lever_config_form}
+        simulator_connected={@nav_simulator_status.status == :connected}
       />
 
       <.notch_mapping_modal
@@ -602,6 +648,14 @@ defmodule TswIoWeb.TrainEditLive do
         notch_forms={@notch_forms}
         auto_detecting={@auto_detecting}
         simulator_connected={@nav_simulator_status.status == :connected}
+      />
+
+      <.live_component
+        :if={@show_api_explorer}
+        module={TswIoWeb.ApiExplorerComponent}
+        id="api-explorer"
+        field={@api_explorer_field}
+        client={@nav_simulator_status.client}
       />
     </div>
     """
@@ -821,6 +875,7 @@ defmodule TswIoWeb.TrainEditLive do
 
   attr :element, :map, required: true
   attr :form, :map, required: true
+  attr :simulator_connected, :boolean, required: true
 
   defp lever_config_modal(assigns) do
     has_existing_config = assigns.element.lever_config != nil
@@ -829,7 +884,7 @@ defmodule TswIoWeb.TrainEditLive do
     ~H"""
     <div class="fixed inset-0 z-50 flex items-center justify-center">
       <div class="absolute inset-0 bg-black/50" phx-click="close_lever_config_modal" />
-      <div class="relative bg-base-100 rounded-xl shadow-xl w-full max-w-lg mx-4 p-6">
+      <div class="relative bg-base-100 rounded-xl shadow-xl w-full max-w-lg mx-4 p-6 max-h-[90vh] overflow-y-auto">
         <h2 class="text-xl font-semibold mb-1">Configure {@element.name}</h2>
         <p class="text-sm text-base-content/60 mb-4">
           Set the simulator API endpoints for this lever control.
@@ -840,39 +895,27 @@ defmodule TswIoWeb.TrainEditLive do
             <div class="bg-base-200/50 rounded-lg p-4">
               <h3 class="text-sm font-semibold mb-3">Required Endpoints</h3>
               <div class="space-y-3">
-                <div>
-                  <label class="label py-1">
-                    <span class="label-text text-xs">Minimum Value Endpoint</span>
-                  </label>
-                  <.input
-                    field={@form[:min_endpoint]}
-                    type="text"
-                    placeholder="e.g., CurrentDrivableActor/Throttle(Lever).MinInput"
-                    class="input input-bordered input-sm w-full font-mono text-xs"
-                  />
-                </div>
-                <div>
-                  <label class="label py-1">
-                    <span class="label-text text-xs">Maximum Value Endpoint</span>
-                  </label>
-                  <.input
-                    field={@form[:max_endpoint]}
-                    type="text"
-                    placeholder="e.g., CurrentDrivableActor/Throttle(Lever).MaxInput"
-                    class="input input-bordered input-sm w-full font-mono text-xs"
-                  />
-                </div>
-                <div>
-                  <label class="label py-1">
-                    <span class="label-text text-xs">Current Value Endpoint</span>
-                  </label>
-                  <.input
-                    field={@form[:value_endpoint]}
-                    type="text"
-                    placeholder="e.g., CurrentDrivableActor/Throttle(Lever).InputValue"
-                    class="input input-bordered input-sm w-full font-mono text-xs"
-                  />
-                </div>
+                <.endpoint_input
+                  form={@form}
+                  field={:min_endpoint}
+                  label="Minimum Value Endpoint"
+                  placeholder="e.g., CurrentDrivableActor/Throttle(Lever).MinInput"
+                  simulator_connected={@simulator_connected}
+                />
+                <.endpoint_input
+                  form={@form}
+                  field={:max_endpoint}
+                  label="Maximum Value Endpoint"
+                  placeholder="e.g., CurrentDrivableActor/Throttle(Lever).MaxInput"
+                  simulator_connected={@simulator_connected}
+                />
+                <.endpoint_input
+                  form={@form}
+                  field={:value_endpoint}
+                  label="Current Value Endpoint"
+                  placeholder="e.g., CurrentDrivableActor/Throttle(Lever).InputValue"
+                  simulator_connected={@simulator_connected}
+                />
               </div>
             </div>
 
@@ -882,28 +925,20 @@ defmodule TswIoWeb.TrainEditLive do
                 If the lever has discrete notch positions, provide these endpoints.
               </p>
               <div class="space-y-3">
-                <div>
-                  <label class="label py-1">
-                    <span class="label-text text-xs">Notch Count Endpoint</span>
-                  </label>
-                  <.input
-                    field={@form[:notch_count_endpoint]}
-                    type="text"
-                    placeholder="e.g., CurrentDrivableActor/Throttle(Lever).NotchCount"
-                    class="input input-bordered input-sm w-full font-mono text-xs"
-                  />
-                </div>
-                <div>
-                  <label class="label py-1">
-                    <span class="label-text text-xs">Current Notch Index Endpoint</span>
-                  </label>
-                  <.input
-                    field={@form[:notch_index_endpoint]}
-                    type="text"
-                    placeholder="e.g., CurrentDrivableActor/Throttle(Lever).CurrentNotch"
-                    class="input input-bordered input-sm w-full font-mono text-xs"
-                  />
-                </div>
+                <.endpoint_input
+                  form={@form}
+                  field={:notch_count_endpoint}
+                  label="Notch Count Endpoint"
+                  placeholder="e.g., CurrentDrivableActor/Throttle(Lever).NotchCount"
+                  simulator_connected={@simulator_connected}
+                />
+                <.endpoint_input
+                  form={@form}
+                  field={:notch_index_endpoint}
+                  label="Current Notch Index Endpoint"
+                  placeholder="e.g., CurrentDrivableActor/Throttle(Lever).CurrentNotch"
+                  simulator_connected={@simulator_connected}
+                />
               </div>
             </div>
           </div>
@@ -917,6 +952,40 @@ defmodule TswIoWeb.TrainEditLive do
             </button>
           </div>
         </.form>
+      </div>
+    </div>
+    """
+  end
+
+  attr :form, :map, required: true
+  attr :field, :atom, required: true
+  attr :label, :string, required: true
+  attr :placeholder, :string, required: true
+  attr :simulator_connected, :boolean, required: true
+
+  defp endpoint_input(assigns) do
+    ~H"""
+    <div>
+      <label class="label py-1">
+        <span class="label-text text-xs">{@label}</span>
+      </label>
+      <div class="flex gap-2">
+        <.input
+          field={@form[@field]}
+          type="text"
+          placeholder={@placeholder}
+          class="input input-bordered input-sm flex-1 font-mono text-xs"
+        />
+        <button
+          type="button"
+          phx-click="open_api_explorer"
+          phx-value-field={@field}
+          class="btn btn-ghost btn-sm"
+          title={if @simulator_connected, do: "Browse API", else: "Connect simulator to browse API"}
+          disabled={not @simulator_connected}
+        >
+          <.icon name="hero-folder-open" class="w-4 h-4" />
+        </button>
       </div>
     </div>
     """
