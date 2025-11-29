@@ -283,10 +283,8 @@ defmodule TswIo.Hardware.Calibration.Session do
 
     {:ok, analysis} = Analyzer.analyze_sweep(sweep_samples, state.max_hardware_value)
 
-    min_value = Analyzer.calculate_min(min_samples, analysis, state.max_hardware_value)
-
-    max_value =
-      Analyzer.calculate_max(max_samples, min_samples, analysis, state.max_hardware_value)
+    min_value = Analyzer.calculate_min(min_samples, analysis)
+    max_value = Analyzer.calculate_max(max_samples, analysis)
 
     attrs = %{
       min_value: min_value,

@@ -4,132 +4,124 @@ defmodule TswIo.Hardware.Calibration.Calculator do
 
   The normalized value ranges from 0 (at min) to total_travel (at max).
   Handles inversion and rollover automatically.
+
+  ## How calibration data is stored
+
+  The Calibration struct stores raw values as they appear at physical positions:
+  - `min_value`: raw value at physical minimum position
+  - `max_value`: raw value at physical maximum position
+  - `is_inverted`: true if raw decreases as physical position increases
+  - `has_rollover`: true if the range crosses the 0/max_hardware_value boundary
+
+  ## Normalization cases
+
+  1. **Simple (not inverted, no rollover)**: raw increases, normalized = raw - min
+  2. **Inverted (no rollover)**: raw decreases, normalized = min - raw
+  3. **Rollover (not inverted)**: raw increases and wraps 1023→0
+  4. **Inverted with rollover**: raw decreases and wraps 0→1023
   """
 
   alias TswIo.Hardware.Input.Calibration
-  require Logger
 
   @doc """
   Converts a raw input value to a normalized value.
 
-  The normalized value ranges from 0 (at min) to total_travel (at max).
-  Handles inversion and rollover automatically.
-
-  ## Examples
-
-      iex> calibration = %Calibration{min_value: 10, max_value: 150, is_inverted: false, has_rollover: false, max_hardware_value: 1023}
-      iex> normalize(10, calibration)
-      0
-
-      iex> normalize(80, calibration)
-      70
-
-      iex> normalize(150, calibration)
-      140
+  Returns an integer from 0 to total_travel.
   """
   @spec normalize(integer(), Calibration.t()) :: integer()
-  def normalize(raw_value, %Calibration{} = calibration) do
-    adjusted_value =
-      raw_value
-      |> adjust_for_inversion(calibration)
-      |> adjust_for_rollover(raw_value, calibration)
-
-    # For inverted rollover, the effective max extends through the rollover zone
-    # up to just before reaching min from the other side
-    effective_max = effective_max_value(calibration)
-    clamped = clamp(adjusted_value, calibration.min_value, effective_max)
-
-    res = clamped - calibration.min_value
-
-    Logger.debug(
-      "Normalized value: #{res} for raw value: #{raw_value} with calibration: #{inspect(calibration)}"
-    )
-
-    res
+  def normalize(raw, %Calibration{} = cal) do
+    raw
+    |> distance_from_min(cal)
+    |> clamp(0, total_travel(cal))
   end
 
   @doc """
   Returns the total travel range for a calibration.
   """
   @spec total_travel(Calibration.t()) :: integer()
-  def total_travel(%Calibration{} = calibration) do
-    effective_max_value(calibration) - calibration.min_value
+  def total_travel(%Calibration{is_inverted: false, has_rollover: false} = cal) do
+    cal.max_value - cal.min_value
   end
 
-  # For inverted rollover, the entire dead zone clamps to max.
-  # The effective max is one step before min_value (on the rollover side).
-  defp effective_max_value(%Calibration{has_rollover: true, is_inverted: true} = calibration) do
-    # The furthest point from min via rollover is min_value - 1 + max_hardware_value + 1
-    calibration.min_value + calibration.max_hardware_value
+  def total_travel(%Calibration{is_inverted: true, has_rollover: false} = cal) do
+    cal.min_value - cal.max_value
   end
 
-  defp effective_max_value(%Calibration{} = calibration) do
-    calibration.max_value
+  def total_travel(%Calibration{is_inverted: false, has_rollover: true} = cal) do
+    # e.g., min=900, max=100: (1023 - 900 + 1) + 100 = 224
+    cal.max_hardware_value - cal.min_value + 1 + cal.max_value
   end
 
-  # Private functions
-
-  # For inverted inputs, the Analyzer stores min_value and max_value as the
-  # already-inverted values (1023 - raw). So Calculator doesn't need to do
-  # any inversion - just use the values as-is, but apply the same inversion
-  # to the incoming raw value.
-  defp adjust_for_inversion(value, %Calibration{is_inverted: false}), do: value
-
-  defp adjust_for_inversion(value, %Calibration{is_inverted: true} = calibration) do
-    calibration.max_hardware_value - value
+  def total_travel(%Calibration{is_inverted: true, has_rollover: true} = cal) do
+    # e.g., min=550, max=735: 550 + (1023 - 735 + 1) = 839
+    cal.min_value + (cal.max_hardware_value - cal.max_value + 1)
   end
 
-  defp adjust_for_rollover(value, _raw_value, %Calibration{has_rollover: false}), do: value
+  # Simple case: raw increases with position
+  defp distance_from_min(raw, %Calibration{is_inverted: false, has_rollover: false} = cal) do
+    raw - cal.min_value
+  end
 
-  # For inverted rollover: when the inverted value is below min_value,
-  # we need to determine if we're in the rollover zone (past max) or
-  # just past min going the other direction.
-  #
-  # For inverted inputs, the dead zone above raw_at_min spans from
-  # raw_at_min+1 to max_hardware_value. We split this at the midpoint:
-  # - Lower half (near min): past min backwards → clamp to 0
-  # - Upper half (near max_hw): rollover from max → extend range
-  defp adjust_for_rollover(
-         value,
-         raw_value,
-         %Calibration{
-           has_rollover: true,
-           is_inverted: true
-         } = calibration
-       ) do
-    if value < calibration.min_value do
-      raw_at_min = calibration.max_hardware_value - calibration.min_value
+  # Inverted: raw decreases with position
+  defp distance_from_min(raw, %Calibration{is_inverted: true, has_rollover: false} = cal) do
+    cal.min_value - raw
+  end
 
-      if raw_value <= raw_at_min do
-        # In normal rollover zone (raw 0 to raw_at_min) - extend the range
-        value + calibration.max_hardware_value + 1
-      else
-        # Raw is above raw_at_min - need to check if it's:
-        # - Near min (clamp to 0)
-        # - Near max_hw (rollover zone, extend range)
-        dead_zone_above_min = calibration.max_hardware_value - raw_at_min
-        boundary = raw_at_min + div(dead_zone_above_min, 2)
+  # Rollover (not inverted): raw increases, wraps from max_hw to 0
+  # Travel direction: min → max_hw → 0 → max
+  # Valid zones: [min, max_hw] and [0, max]
+  # Dead zone: (max, min) - values that are between max and min
+  defp distance_from_min(raw, %Calibration{is_inverted: false, has_rollover: true} = cal) do
+    cond do
+      raw >= cal.min_value ->
+        # Before rollover (min to max_hw)
+        raw - cal.min_value
 
-        if raw_value <= boundary do
-          # Near min - clamp to min
-          calibration.min_value
+      raw <= cal.max_value ->
+        # After rollover (0 to max)
+        cal.max_hardware_value - cal.min_value + 1 + raw
+
+      true ->
+        # Dead zone - clamp to nearest boundary
+        # Values in dead zone closer to max clamp to max, closer to min clamp to 0
+        midpoint = div(cal.max_value + cal.min_value, 2)
+
+        if raw < midpoint do
+          # Closer to max, clamp to total_travel
+          total_travel(cal)
         else
-          # Near max_hw (rollover zone) - extend range
-          value + calibration.max_hardware_value + 1
+          # Closer to min, clamp to 0
+          0
         end
-      end
-    else
-      value
     end
   end
 
-  defp adjust_for_rollover(value, _raw_value, %Calibration{has_rollover: true} = calibration) do
-    # Standard rollover case for non-inverted: Analyzer extended the range past hardware max
-    if calibration.max_value > calibration.max_hardware_value and
-         value < calibration.min_value do
-      value + calibration.max_hardware_value + 1
-    else
-      value
+  # Inverted with rollover: raw decreases, wraps from 0 to max_hw
+  # Travel direction: min → 0 → max_hw → max
+  # Valid zones: [0, min] and [max, max_hw]
+  # Dead zone: (min, max) - values between min and max
+  defp distance_from_min(raw, %Calibration{is_inverted: true, has_rollover: true} = cal) do
+    cond do
+      raw <= cal.min_value ->
+        # Before rollover (min down to 0)
+        cal.min_value - raw
+
+      raw >= cal.max_value ->
+        # After rollover (max_hw down to max)
+        cal.min_value + (cal.max_hardware_value - raw + 1)
+
+      true ->
+        # Dead zone - clamp to nearest boundary
+        # Values in dead zone closer to min clamp to 0, closer to max clamp to total_travel
+        midpoint = div(cal.min_value + cal.max_value, 2)
+
+        if raw < midpoint do
+          # Closer to min, clamp to 0
+          0
+        else
+          # Closer to max, clamp to total_travel
+          total_travel(cal)
+        end
     end
   end
 

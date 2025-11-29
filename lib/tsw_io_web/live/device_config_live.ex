@@ -495,7 +495,7 @@ defmodule TswIoWeb.DeviceConfigLive do
       &mdash;
     </span>
     <span :if={!@draft_mode && @calibration && !is_nil(@calibrated)} class="font-mono">
-      {@calibrated}%
+      {@calibrated}
     </span>
     """
   end

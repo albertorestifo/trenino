@@ -43,62 +43,19 @@ defmodule TswIo.Hardware.Calibration.Analyzer do
 
   @doc """
   Calculates the logical minimum value from samples.
-
-  For inverted inputs, returns the inverted value (max_hardware - min_raw)
-  so that Calculator can apply the same inversion to raw values.
-
-  We use min/max instead of median to ensure the calibrated range is
-  conservative (inside actual travel):
-  - Normal: min of samples (lowest value at min position)
-  - Inverted: max_hardware - max(samples) = lowest inverted value at min position
   """
-  @spec calculate_min([integer()], Analysis.t(), integer()) :: integer()
-  def calculate_min(min_samples, analysis, max_hardware_value \\ 1023)
+  @spec calculate_min([integer()], Analysis.t()) :: integer()
+  def calculate_min(min_samples, analysis)
 
-  def calculate_min(min_samples, %Analysis{inverted: true}, max_hardware_value) do
-    # For inverted: raw is HIGH at min position, so we take max(raw) to get
-    # the conservative boundary, then invert it to get lowest inverted value
-    max_hardware_value - Enum.max(min_samples)
-  end
-
-  def calculate_min(min_samples, %Analysis{inverted: false}, _max_hardware_value) do
-    # For normal: take min(raw) to get conservative lowest value
-    Enum.min(min_samples)
-  end
+  def calculate_min(min_samples, %Analysis{inverted: true}), do: Enum.max(min_samples)
+  def calculate_min(min_samples, %Analysis{inverted: false}), do: Enum.min(min_samples)
 
   @doc """
   Calculates the logical maximum value from samples.
-
-  For inverted inputs, returns the inverted value.
-  For rollover inputs, accounts for the wrap-around by extending max_value
-  past max_hardware_value.
-
-  We use min/max instead of median to ensure the calibrated range is
-  conservative (inside actual travel):
-  - Normal: max of samples (highest value at max position)
-  - Inverted: max_hardware - min(samples) = highest inverted value at max position
   """
-  @spec calculate_max([integer()], [integer()], Analysis.t(), integer()) :: integer()
-  def calculate_max(max_samples, _min_samples, %Analysis{} = analysis, max_hardware_value) do
-    effective_max =
-      if analysis.inverted do
-        # For inverted: raw is LOW at max position
-        # Take min(max_samples) to get conservative boundary, then invert
-        max_hardware_value - Enum.min(max_samples)
-      else
-        # For normal: take max(max_samples) for conservative range
-        Enum.max(max_samples)
-      end
-
-    if analysis.rollover do
-      # For rollover, the range wraps around. Extend by adding (max_hardware + 1)
-      # so that max_value > max_hardware_value, signaling to the Calculator
-      # that values below min_value might need adjustment.
-      effective_max + max_hardware_value + 1
-    else
-      effective_max
-    end
-  end
+  @spec calculate_max([integer()], Analysis.t()) :: integer()
+  def calculate_max(max_samples, %Analysis{inverted: true}), do: Enum.min(max_samples)
+  def calculate_max(max_samples, %Analysis{inverted: false}), do: Enum.max(max_samples)
 
   # Private functions
 

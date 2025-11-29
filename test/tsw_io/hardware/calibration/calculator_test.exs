@@ -4,243 +4,267 @@ defmodule TswIo.Hardware.Calibration.CalculatorTest do
   alias TswIo.Hardware.Calibration.Calculator
   alias TswIo.Hardware.Input.Calibration
 
-  describe "normalize/2" do
-    test "normalizes normal input at minimum" do
+  describe "normalize/2 - simple case (not inverted, no rollover)" do
+    # Scenario: Linear potentiometer, raw values increase as physical position increases
+    # min_value = 100 (raw value at physical minimum)
+    # max_value = 900 (raw value at physical maximum)
+    # total_travel = 800
+    setup do
       calibration = %Calibration{
-        min_value: 10,
-        max_value: 150,
+        min_value: 100,
+        max_value: 900,
         is_inverted: false,
         has_rollover: false,
         max_hardware_value: 1023
       }
 
-      assert Calculator.normalize(10, calibration) == 0.0
+      {:ok, calibration: calibration}
     end
 
-    test "normalizes normal input at maximum" do
-      calibration = %Calibration{
-        min_value: 10,
-        max_value: 150,
-        is_inverted: false,
-        has_rollover: false,
-        max_hardware_value: 1023
-      }
-
-      assert Calculator.normalize(150, calibration) == 1.0
+    test "at minimum returns 0", %{calibration: calibration} do
+      assert Calculator.normalize(100, calibration) == 0
     end
 
-    test "normalizes normal input in middle" do
-      calibration = %Calibration{
-        min_value: 10,
-        max_value: 150,
-        is_inverted: false,
-        has_rollover: false,
-        max_hardware_value: 1023
-      }
-
-      # 80 is 70 units from min (10), total travel is 140
-      # 70/140 = 0.5
-      assert Calculator.normalize(80, calibration) == 0.5
+    test "at maximum returns total_travel", %{calibration: calibration} do
+      assert Calculator.normalize(900, calibration) == 800
     end
 
-    test "clamps values below minimum" do
-      calibration = %Calibration{
-        min_value: 10,
-        max_value: 150,
-        is_inverted: false,
-        has_rollover: false,
-        max_hardware_value: 1023
-      }
-
-      assert Calculator.normalize(5, calibration) == 0.0
+    test "in middle returns proportional value", %{calibration: calibration} do
+      # raw 500 is 400 steps from min (100)
+      assert Calculator.normalize(500, calibration) == 400
     end
 
-    test "clamps values above maximum" do
-      calibration = %Calibration{
-        min_value: 10,
-        max_value: 150,
-        is_inverted: false,
-        has_rollover: false,
-        max_hardware_value: 1023
-      }
-
-      assert Calculator.normalize(200, calibration) == 1.0
+    test "below minimum clamps to 0", %{calibration: calibration} do
+      assert Calculator.normalize(50, calibration) == 0
+      assert Calculator.normalize(99, calibration) == 0
     end
 
-    test "normalizes inverted input" do
-      # For an inverted potentiometer:
-      # - Physical minimum position reads raw HIGH value (e.g., 900)
-      # - Physical maximum position reads raw LOW value (e.g., 100)
-      #
-      # Analyzer stores INVERTED values:
-      # - min_value = 1023 - 900 = 123 (inverted value at physical min)
-      # - max_value = 1023 - 100 = 923 (inverted value at physical max)
-      # - is_inverted = true
-      # - total_travel = 923 - 123 = 800
+    test "above maximum clamps to total_travel", %{calibration: calibration} do
+      assert Calculator.normalize(901, calibration) == 800
+      assert Calculator.normalize(1023, calibration) == 800
+    end
+  end
+
+  describe "normalize/2 - inverted (no rollover)" do
+    # Scenario: Inverted potentiometer, raw values DECREASE as physical position increases
+    # At physical min: raw = 900 (high)
+    # At physical max: raw = 100 (low)
+    # min_value = 900, max_value = 100
+    # total_travel = 800
+    setup do
       calibration = %Calibration{
-        min_value: 123,
-        max_value: 923,
+        min_value: 900,
+        max_value: 100,
         is_inverted: true,
         has_rollover: false,
         max_hardware_value: 1023
       }
 
-      # At physical min (raw 900): inverted = 123 = min_value → 0.0
-      assert Calculator.normalize(900, calibration) == 0.0
-
-      # At physical max (raw 100): inverted = 923 = max_value → 1.0
-      assert Calculator.normalize(100, calibration) == 1.0
-
-      # In the middle (raw 500): inverted = 523, (523-123)/800 = 0.5
-      assert Calculator.normalize(500, calibration) == 0.5
+      {:ok, calibration: calibration}
     end
 
-    test "normalizes with rollover (non-inverted)" do
-      # Potentiometer where the calibrated range crosses 0/1023 boundary.
-      # Physical sweep: 1010 → 1015 → 1020 → 1023 → 0 → 5 → 10
-      #
-      # Analyzer stores:
-      # - min_value = 1010
-      # - max_value = 10 + 1024 = 1034 (extended past hardware max)
-      # - total_travel = 1034 - 1010 = 24
+    test "at minimum (high raw) returns 0", %{calibration: calibration} do
+      assert Calculator.normalize(900, calibration) == 0
+    end
+
+    test "at maximum (low raw) returns total_travel", %{calibration: calibration} do
+      assert Calculator.normalize(100, calibration) == 800
+    end
+
+    test "in middle returns proportional value", %{calibration: calibration} do
+      # raw 500 is 400 steps from min (900) going toward max (100)
+      assert Calculator.normalize(500, calibration) == 400
+    end
+
+    test "above minimum (before min in inverted direction) clamps to 0", %{
+      calibration: calibration
+    } do
+      assert Calculator.normalize(901, calibration) == 0
+      assert Calculator.normalize(1023, calibration) == 0
+    end
+
+    test "below maximum (past max in inverted direction) clamps to total_travel", %{
+      calibration: calibration
+    } do
+      assert Calculator.normalize(99, calibration) == 800
+      assert Calculator.normalize(0, calibration) == 800
+    end
+  end
+
+  describe "normalize/2 - rollover (not inverted)" do
+    # Scenario: Potentiometer where calibrated range crosses 0/1023 boundary
+    # Physical sweep: 900 → 950 → 1000 → 1023 → 0 → 50 → 100
+    # min_value = 900, max_value = 100
+    # total_travel = (1023 - 900 + 1) + 100 = 124 + 100 = 224
+    setup do
       calibration = %Calibration{
-        min_value: 1010,
-        max_value: 1034,
+        min_value: 900,
+        max_value: 100,
         is_inverted: false,
         has_rollover: true,
         max_hardware_value: 1023
       }
 
-      assert Calculator.total_travel(calibration) == 24
-
-      # At min (raw 1010): normalized = 0.0
-      assert Calculator.normalize(1010, calibration) == 0.0
-
-      # Before rollover (raw 1020): (1020-1010)/24 = 10/24 ≈ 0.42
-      assert Calculator.normalize(1020, calibration) == 0.42
-
-      # At hardware max (raw 1023): (1023-1010)/24 = 13/24 ≈ 0.54
-      assert Calculator.normalize(1023, calibration) == 0.54
-
-      # After rollover (raw 5): 5 < 1010, so adjusted = 5 + 1024 = 1029
-      # (1029-1010)/24 = 19/24 ≈ 0.79
-      assert Calculator.normalize(5, calibration) == 0.79
-
-      # At max (raw 10): adjusted = 10 + 1024 = 1034 = max_value → 1.0
-      assert Calculator.normalize(10, calibration) == 1.0
+      {:ok, calibration: calibration}
     end
 
-    test "normalizes inverted input without rollover" do
-      # Inverted potentiometer where calibrated range does NOT cross 0/1023.
-      # Raw values DECREASE as physical position increases.
-      #
-      # Physical sweep: raw 541 → 400 → 300 → 197
-      # Inverted values: 482 → 623 → 723 → 826
-      #
-      # Analyzer stores:
-      # - min_value = 482
-      # - max_value = 826
-      # - total_travel = 344
-      calibration = %Calibration{
-        min_value: 482,
-        max_value: 826,
-        is_inverted: true,
-        has_rollover: false,
-        max_hardware_value: 1023
-      }
-
-      assert Calculator.total_travel(calibration) == 344
-
-      # At physical min (raw 541): inverted = 482 = min_value → 0.0
-      assert Calculator.normalize(541, calibration) == 0.0
-
-      # Middle of range (raw 369): inverted = 654, (654-482)/344 = 0.5
-      assert Calculator.normalize(369, calibration) == 0.5
-
-      # At physical max (raw 197): inverted = 826 = max_value → 1.0
-      assert Calculator.normalize(197, calibration) == 1.0
-
-      # Past physical min (raw 542): inverted = 481 < min_value → clamps to 0.0
-      assert Calculator.normalize(542, calibration) == 0.0
-
-      # Past physical max (raw 100): inverted = 923 > max_value → clamps to 1.0
-      assert Calculator.normalize(100, calibration) == 1.0
+    test "at minimum returns 0", %{calibration: calibration} do
+      assert Calculator.normalize(900, calibration) == 0
     end
 
-    test "normalizes inverted input with rollover" do
-      # Inverted potentiometer where calibrated range CROSSES 0/1023 boundary.
-      # Raw values DECREASE as physical position increases, wrapping 0→1023.
-      #
-      # Physical sweep: raw 100 → 50 → 0 → (wrap) → 1023 → 950 → 900
-      # Inverted values: 923 → 973 → 1023 → (wrap) → 0 → 73 → 123
-      #
-      # The inverted values wrap from 1023 to 0, so Analyzer extends max_value:
-      # - min_value = 923 (inverted value at physical min)
-      # - max_value = 123 + 1024 = 1147 (extended inverted value at physical max)
-      # - total_travel = 1147 - 923 = 224
+    test "approaching rollover boundary", %{calibration: calibration} do
+      # raw 1000: 100 steps from min
+      assert Calculator.normalize(1000, calibration) == 100
+      # raw 1023: 123 steps from min
+      assert Calculator.normalize(1023, calibration) == 123
+    end
+
+    test "after rollover (raw wrapped to 0)", %{calibration: calibration} do
+      # raw 0: 124 steps from min (crossed the boundary)
+      assert Calculator.normalize(0, calibration) == 124
+    end
+
+    test "at maximum (after rollover)", %{calibration: calibration} do
+      # raw 100: total travel = 224
+      assert Calculator.normalize(100, calibration) == 224
+    end
+
+    test "below minimum clamps to 0", %{calibration: calibration} do
+      assert Calculator.normalize(899, calibration) == 0
+    end
+
+    test "above maximum clamps to total_travel", %{calibration: calibration} do
+      assert Calculator.normalize(101, calibration) == 224
+    end
+  end
+
+  describe "normalize/2 - inverted with rollover (your example)" do
+    # Scenario from user:
+    # inverted: true, rollover: true
+    # min: 550, max: 735
+    # max_hardware_value: 1023
+    #
+    # Physical sweep direction: raw decreases (inverted), then wraps 0→1023
+    # At physical min: raw = 550
+    # Sweep: 550 → 540 → ... → 0 → (wrap) → 1023 → ... → 735
+    #
+    # Expected mappings:
+    # 555 -> 0 (clamped, above min in raw terms)
+    # 550 -> 0 (at min)
+    # 540 -> 10
+    # 30 -> 520
+    # 0 -> 550
+    # 1023 -> 551 (rollover happened)
+    # 1022 -> 552
+    # 1000 -> 574
+    # 735 -> 838 (at max: min + (max_hw - max + 1) = 550 + 288 = 838)
+    # 730 -> 838 (clamped, past max)
+    #
+    # Total travel = 550 + (1023 - 735 + 1) = 550 + 289 = 839
+    setup do
       calibration = %Calibration{
-        min_value: 923,
-        max_value: 1147,
+        min_value: 550,
+        max_value: 735,
         is_inverted: true,
         has_rollover: true,
         max_hardware_value: 1023
       }
 
-      assert Calculator.total_travel(calibration) == 224
+      {:ok, calibration: calibration}
+    end
 
-      # At physical min (raw 100): inverted = 923 = min_value → 0.0
-      assert Calculator.normalize(100, calibration) == 0.0
+    test "at minimum returns 0", %{calibration: calibration} do
+      assert Calculator.normalize(550, calibration) == 0
+    end
 
-      # Moving toward rollover (raw 50): inverted = 973, (973-923)/224 ≈ 0.22
-      assert Calculator.normalize(50, calibration) == 0.22
+    test "above minimum (in raw terms) clamps to 0", %{calibration: calibration} do
+      assert Calculator.normalize(555, calibration) == 0
+      assert Calculator.normalize(560, calibration) == 0
+    end
 
-      # At inverted max before wrap (raw 0): inverted = 1023, (1023-923)/224 ≈ 0.45
-      assert Calculator.normalize(0, calibration) == 0.45
+    test "below minimum (moving toward 0)", %{calibration: calibration} do
+      assert Calculator.normalize(540, calibration) == 10
+      assert Calculator.normalize(500, calibration) == 50
+      assert Calculator.normalize(30, calibration) == 520
+    end
 
-      # Just after wrap (raw 1023): inverted = 0, adjusted = 0 + 1024 = 1024
-      # (1024-923)/224 ≈ 0.45
-      assert Calculator.normalize(1023, calibration) == 0.45
+    test "at raw 0 (just before rollover)", %{calibration: calibration} do
+      assert Calculator.normalize(0, calibration) == 550
+    end
 
-      # Continuing after wrap (raw 950): inverted = 73, adjusted = 73 + 1024 = 1097
-      # (1097-923)/224 ≈ 0.78
-      assert Calculator.normalize(950, calibration) == 0.78
+    test "at raw 1023 (just after rollover)", %{calibration: calibration} do
+      assert Calculator.normalize(1023, calibration) == 551
+    end
 
-      # At physical max (raw 900): inverted = 123, adjusted = 123 + 1024 = 1147 → 1.0
-      assert Calculator.normalize(900, calibration) == 1.0
+    test "after rollover continuing toward max", %{calibration: calibration} do
+      assert Calculator.normalize(1022, calibration) == 552
+      assert Calculator.normalize(1000, calibration) == 574
+      # 550 + (1023 - 800 + 1) = 550 + 224 = 774
+      assert Calculator.normalize(800, calibration) == 774
+    end
 
-      # Past physical max (raw 850): inverted = 173, in dead zone → clamps to 0.0
-      # Dead zone values clamp to min_value (0.0) since we can't know which
-      # direction the user came from
-      assert Calculator.normalize(850, calibration) == 0.0
+    test "at maximum returns total_travel", %{calibration: calibration} do
+      # At max (735): 550 + (1023 - 735 + 1) = 550 + 289 = 839
+      assert Calculator.normalize(735, calibration) == 839
+    end
 
-      # Past physical min (raw 150): inverted = 873, in dead zone → clamps to 0.0
-      assert Calculator.normalize(150, calibration) == 0.0
+    test "past maximum (below max in raw terms) clamps to total_travel", %{
+      calibration: calibration
+    } do
+      assert Calculator.normalize(730, calibration) == 839
+      assert Calculator.normalize(700, calibration) == 839
     end
   end
 
   describe "total_travel/1" do
-    test "returns difference between max and min" do
+    test "simple case" do
       calibration = %Calibration{
-        min_value: 10,
-        max_value: 150,
+        min_value: 100,
+        max_value: 900,
         is_inverted: false,
         has_rollover: false,
         max_hardware_value: 1023
       }
 
-      assert Calculator.total_travel(calibration) == 140
+      assert Calculator.total_travel(calibration) == 800
     end
 
-    test "works with rollover values" do
+    test "inverted case" do
       calibration = %Calibration{
-        min_value: 1010,
-        max_value: 1034,
+        min_value: 900,
+        max_value: 100,
+        is_inverted: true,
+        has_rollover: false,
+        max_hardware_value: 1023
+      }
+
+      assert Calculator.total_travel(calibration) == 800
+    end
+
+    test "rollover case" do
+      calibration = %Calibration{
+        min_value: 900,
+        max_value: 100,
         is_inverted: false,
         has_rollover: true,
         max_hardware_value: 1023
       }
 
-      assert Calculator.total_travel(calibration) == 24
+      # (1023 - 900 + 1) + 100 = 124 + 100 = 224
+      assert Calculator.total_travel(calibration) == 224
+    end
+
+    test "inverted rollover case" do
+      calibration = %Calibration{
+        min_value: 550,
+        max_value: 735,
+        is_inverted: true,
+        has_rollover: true,
+        max_hardware_value: 1023
+      }
+
+      # 550 + (1023 - 735 + 1) = 550 + 289 = 839
+      assert Calculator.total_travel(calibration) == 839
     end
   end
 end
