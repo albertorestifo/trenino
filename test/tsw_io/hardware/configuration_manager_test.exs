@@ -56,8 +56,8 @@ defmodule TswIo.Hardware.ConfigurationManagerTest do
       # Simulate receiving an InputValue message
       send(ConfigurationManager, {:serial_message, port, %InputValue{pin: 5, value: 512}})
 
-      # Wait for async processing
-      :timer.sleep(10)
+      # Sync with GenServer to ensure message is processed
+      :sys.get_state(ConfigurationManager)
 
       # Check stored value
       assert %{5 => 512} = ConfigurationManager.get_input_values(port)
@@ -68,10 +68,10 @@ defmodule TswIo.Hardware.ConfigurationManagerTest do
 
     test "updates existing values", %{port: port} do
       send(ConfigurationManager, {:serial_message, port, %InputValue{pin: 5, value: 100}})
-      :timer.sleep(10)
+      :sys.get_state(ConfigurationManager)
 
       send(ConfigurationManager, {:serial_message, port, %InputValue{pin: 5, value: 200}})
-      :timer.sleep(10)
+      :sys.get_state(ConfigurationManager)
 
       assert %{5 => 200} = ConfigurationManager.get_input_values(port)
     end
@@ -79,7 +79,7 @@ defmodule TswIo.Hardware.ConfigurationManagerTest do
     test "stores multiple pins independently", %{port: port} do
       send(ConfigurationManager, {:serial_message, port, %InputValue{pin: 5, value: 100}})
       send(ConfigurationManager, {:serial_message, port, %InputValue{pin: 10, value: 200}})
-      :timer.sleep(10)
+      :sys.get_state(ConfigurationManager)
 
       values = ConfigurationManager.get_input_values(port)
       assert %{5 => 100, 10 => 200} = values
@@ -87,7 +87,7 @@ defmodule TswIo.Hardware.ConfigurationManagerTest do
 
     test "handles negative values", %{port: port} do
       send(ConfigurationManager, {:serial_message, port, %InputValue{pin: 5, value: -100}})
-      :timer.sleep(10)
+      :sys.get_state(ConfigurationManager)
 
       assert %{5 => -100} = ConfigurationManager.get_input_values(port)
     end
@@ -112,7 +112,7 @@ defmodule TswIo.Hardware.ConfigurationManagerTest do
         {:serial_message, port, %ConfigurationStored{config_id: 999_999}}
       )
 
-      :timer.sleep(10)
+      :sys.get_state(ConfigurationManager)
 
       # Should not receive any broadcast
       refute_receive {:configuration_applied, _, _, _}
@@ -134,7 +134,7 @@ defmodule TswIo.Hardware.ConfigurationManagerTest do
         {:serial_message, port, %ConfigurationError{config_id: 999_999}}
       )
 
-      :timer.sleep(10)
+      :sys.get_state(ConfigurationManager)
 
       refute_receive {:configuration_failed, _, _, _}
     end
@@ -149,12 +149,12 @@ defmodule TswIo.Hardware.ConfigurationManagerTest do
     test "clears input values for disconnected ports", %{port: port} do
       # Add some input values
       send(ConfigurationManager, {:serial_message, port, %InputValue{pin: 5, value: 100}})
-      :timer.sleep(10)
+      :sys.get_state(ConfigurationManager)
       assert %{5 => 100} = ConfigurationManager.get_input_values(port)
 
       # Simulate device disconnect (no devices connected)
       send(ConfigurationManager, {:devices_updated, []})
-      :timer.sleep(10)
+      :sys.get_state(ConfigurationManager)
 
       # Values should be cleared
       assert %{} = ConfigurationManager.get_input_values(port)
@@ -163,11 +163,11 @@ defmodule TswIo.Hardware.ConfigurationManagerTest do
     test "preserves input values for connected ports", %{port: port} do
       # Add some input values
       send(ConfigurationManager, {:serial_message, port, %InputValue{pin: 5, value: 100}})
-      :timer.sleep(10)
+      :sys.get_state(ConfigurationManager)
 
       # Simulate device update with our port still connected
       send(ConfigurationManager, {:devices_updated, [%{port: port}]})
-      :timer.sleep(10)
+      :sys.get_state(ConfigurationManager)
 
       # Values should be preserved
       assert %{5 => 100} = ConfigurationManager.get_input_values(port)

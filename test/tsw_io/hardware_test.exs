@@ -1,5 +1,6 @@
 defmodule TswIo.HardwareTest do
-  use TswIo.DataCase, async: true
+  # async: false due to SQLite write lock contention with other tests
+  use TswIo.DataCase, async: false
 
   alias TswIo.Hardware
   alias TswIo.Hardware.Device

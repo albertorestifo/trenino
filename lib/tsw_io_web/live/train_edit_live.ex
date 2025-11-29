@@ -12,7 +12,7 @@ defmodule TswIoWeb.TrainEditLive do
   import TswIoWeb.SharedComponents
 
   alias TswIo.Train, as: TrainContext
-  alias TswIo.Train.{Train, Element, LeverConfig}
+  alias TswIo.Train.{Train, Element, LeverConfig, Notch}
   alias TswIo.Serial.Connection
 
   @impl true
@@ -56,7 +56,11 @@ defmodule TswIoWeb.TrainEditLive do
      |> assign(:element_form, to_form(Element.changeset(%Element{}, %{type: :lever})))
      |> assign(:show_delete_modal, false)
      |> assign(:configuring_element, nil)
-     |> assign(:lever_config_form, nil)}
+     |> assign(:lever_config_form, nil)
+     |> assign(:mapping_notches_element, nil)
+     |> assign(:notch_forms, [])
+     |> assign(:auto_detecting, false)
+     |> assign(:calibration_progress, nil)}
   end
 
   defp mount_existing(socket, train_id) do
@@ -79,7 +83,11 @@ defmodule TswIoWeb.TrainEditLive do
          |> assign(:element_form, to_form(Element.changeset(%Element{}, %{type: :lever})))
          |> assign(:show_delete_modal, false)
          |> assign(:configuring_element, nil)
-         |> assign(:lever_config_form, nil)}
+         |> assign(:lever_config_form, nil)
+         |> assign(:mapping_notches_element, nil)
+         |> assign(:notch_forms, [])
+         |> assign(:auto_detecting, false)
+         |> assign(:calibration_progress, nil)}
 
       {:error, :not_found} ->
         {:ok,
@@ -254,6 +262,141 @@ defmodule TswIoWeb.TrainEditLive do
     end
   end
 
+  # Notch mapping
+  @impl true
+  def handle_event("open_notch_mapping", %{"id" => id}, socket) do
+    element_id = String.to_integer(id)
+
+    case TrainContext.get_element(element_id, preload: [lever_config: :notches]) do
+      {:ok, element} ->
+        if element.lever_config do
+          notch_forms = build_notch_forms(element.lever_config.notches)
+
+          {:noreply,
+           socket
+           |> assign(:mapping_notches_element, element)
+           |> assign(:notch_forms, notch_forms)
+           |> assign(:auto_detecting, false)}
+        else
+          {:noreply, put_flash(socket, :error, "Please configure lever endpoints first")}
+        end
+
+      {:error, :not_found} ->
+        {:noreply, put_flash(socket, :error, "Element not found")}
+    end
+  end
+
+  @impl true
+  def handle_event("close_notch_mapping", _params, socket) do
+    {:noreply,
+     socket
+     |> assign(:mapping_notches_element, nil)
+     |> assign(:notch_forms, [])
+     |> assign(:auto_detecting, false)}
+  end
+
+  @impl true
+  def handle_event("auto_detect_notches", _params, socket) do
+    element = socket.assigns.mapping_notches_element
+    simulator_status = socket.assigns.nav_simulator_status
+
+    cond do
+      simulator_status.status != :connected ->
+        {:noreply, put_flash(socket, :error, "Simulator not connected")}
+
+      simulator_status.client == nil ->
+        {:noreply, put_flash(socket, :error, "No simulator client available")}
+
+      element.lever_config.notch_count_endpoint == nil ->
+        {:noreply,
+         put_flash(
+           socket,
+           :error,
+           "Notch count endpoint not configured. Configure notch endpoints first."
+         )}
+
+      true ->
+        # Subscribe to calibration events
+        TrainContext.subscribe_calibration(element.lever_config.id)
+
+        # Start the calibration session
+        case TrainContext.start_calibration(simulator_status.client, element.lever_config) do
+          {:ok, _pid} ->
+            {:noreply,
+             socket
+             |> assign(:auto_detecting, true)
+             |> assign(:calibration_progress, 0.0)}
+
+          {:error, :already_running} ->
+            {:noreply, put_flash(socket, :error, "Calibration already in progress")}
+
+          {:error, reason} ->
+            {:noreply, put_flash(socket, :error, "Failed to start calibration: #{inspect(reason)}")}
+        end
+    end
+  end
+
+  @impl true
+  def handle_event("add_notch", _params, socket) do
+    new_notch_form =
+      Notch.changeset(%Notch{}, %{type: :gate, value: 0.0})
+      |> to_form()
+
+    notch_forms = socket.assigns.notch_forms ++ [new_notch_form]
+    {:noreply, assign(socket, :notch_forms, notch_forms)}
+  end
+
+  @impl true
+  def handle_event("remove_notch", %{"index" => index_str}, socket) do
+    index = String.to_integer(index_str)
+    notch_forms = List.delete_at(socket.assigns.notch_forms, index)
+    {:noreply, assign(socket, :notch_forms, notch_forms)}
+  end
+
+  @impl true
+  def handle_event("validate_notch", %{"index" => index_str, "notch" => params}, socket) do
+    index = String.to_integer(index_str)
+    notch_forms = socket.assigns.notch_forms
+
+    updated_form =
+      %Notch{}
+      |> Notch.changeset(params)
+      |> Map.put(:action, :validate)
+      |> to_form()
+
+    notch_forms = List.replace_at(notch_forms, index, updated_form)
+    {:noreply, assign(socket, :notch_forms, notch_forms)}
+  end
+
+  @impl true
+  def handle_event("save_notches", _params, socket) do
+    element = socket.assigns.mapping_notches_element
+    notch_forms = socket.assigns.notch_forms
+
+    # Extract params from all forms
+    notch_params =
+      Enum.map(notch_forms, fn form ->
+        form.params
+      end)
+
+    case TrainContext.save_notches(element.lever_config, notch_params) do
+      {:ok, _updated_config} ->
+        {:ok, elements} = TrainContext.list_elements(socket.assigns.train.id)
+
+        {:noreply,
+         socket
+         |> assign(:elements, elements)
+         |> assign(:mapping_notches_element, nil)
+         |> assign(:notch_forms, [])
+         |> put_flash(:info, "Notches saved successfully")}
+
+      {:error, reason} ->
+        {:noreply,
+         socket
+         |> put_flash(:error, "Failed to save notches: #{inspect(reason)}")}
+    end
+  end
+
   # Delete train
   @impl true
   def handle_event("show_delete_modal", _params, socket) do
@@ -310,7 +453,46 @@ defmodule TswIoWeb.TrainEditLive do
     {:noreply, socket}
   end
 
+  # Calibration events
+  @impl true
+  def handle_info({:calibration_progress, progress_state}, socket) do
+    {:noreply, assign(socket, :calibration_progress, progress_state.progress)}
+  end
+
+  @impl true
+  def handle_info({:calibration_result, {:ok, updated_config}}, socket) do
+    # Reload the element to get fresh notches
+    element = socket.assigns.mapping_notches_element
+    config_with_notches = TswIo.Repo.preload(updated_config, :notches)
+
+    notch_forms = build_notch_forms(config_with_notches.notches)
+
+    {:noreply,
+     socket
+     |> assign(:notch_forms, notch_forms)
+     |> assign(:auto_detecting, false)
+     |> assign(:calibration_progress, nil)
+     |> assign(:mapping_notches_element, %{element | lever_config: config_with_notches})
+     |> put_flash(:info, "Calibration complete! Detected #{length(config_with_notches.notches)} notches")}
+  end
+
+  @impl true
+  def handle_info({:calibration_result, {:error, reason}}, socket) do
+    {:noreply,
+     socket
+     |> assign(:auto_detecting, false)
+     |> assign(:calibration_progress, nil)
+     |> put_flash(:error, "Calibration failed: #{inspect(reason)}")}
+  end
+
   # Private functions
+
+  defp build_notch_forms(notches) when is_list(notches) do
+    Enum.map(notches, fn notch ->
+      Notch.changeset(notch, %{})
+      |> to_form()
+    end)
+  end
 
   defp save_train(%{assigns: %{new_mode: true}} = socket, params) do
     case TrainContext.create_train(params) do
@@ -408,6 +590,14 @@ defmodule TswIoWeb.TrainEditLive do
         :if={@configuring_element}
         element={@configuring_element}
         form={@lever_config_form}
+      />
+
+      <.notch_mapping_modal
+        :if={@mapping_notches_element}
+        element={@mapping_notches_element}
+        notch_forms={@notch_forms}
+        auto_detecting={@auto_detecting}
+        simulator_connected={@nav_simulator_status.status == :connected}
       />
     </div>
     """
@@ -534,6 +724,15 @@ defmodule TswIoWeb.TrainEditLive do
         </div>
 
         <div class="flex items-center gap-2">
+          <button
+            :if={@lever_config}
+            phx-click="open_notch_mapping"
+            phx-value-id={@element.id}
+            class="btn btn-ghost btn-xs text-primary"
+            title="Map Notches"
+          >
+            <.icon name="hero-queue-list" class="w-4 h-4" />
+          </button>
           <button
             phx-click="configure_lever"
             phx-value-id={@element.id}
@@ -714,6 +913,211 @@ defmodule TswIoWeb.TrainEditLive do
             </button>
           </div>
         </.form>
+      </div>
+    </div>
+    """
+  end
+
+  attr :element, :map, required: true
+  attr :notch_forms, :list, required: true
+  attr :auto_detecting, :boolean, required: true
+  attr :simulator_connected, :boolean, required: true
+
+  defp notch_mapping_modal(assigns) do
+    has_notch_endpoints = assigns.element.lever_config.notch_count_endpoint != nil
+    assigns = assign(assigns, :has_notch_endpoints, has_notch_endpoints)
+
+    ~H"""
+    <div class="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div class="absolute inset-0 bg-black/50" phx-click="close_notch_mapping" />
+      <div class="relative bg-base-100 rounded-xl shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col">
+        <div class="p-6 border-b border-base-300">
+          <h2 class="text-xl font-semibold">Map Notches - {@element.name}</h2>
+          <p class="text-sm text-base-content/60 mt-1">
+            Define discrete notch positions and their simulator API values.
+          </p>
+        </div>
+
+        <div class="flex-1 overflow-y-auto p-6">
+          <div :if={@simulator_connected and @has_notch_endpoints} class="mb-6">
+            <div class="bg-primary/10 border border-primary/30 rounded-lg p-4">
+              <div class="flex items-start justify-between gap-4">
+                <div class="flex-1">
+                  <h3 class="text-sm font-semibold flex items-center gap-2">
+                    <.icon name="hero-sparkles" class="w-4 h-4" /> Auto-Detection Available
+                  </h3>
+                  <p class="text-xs text-base-content/70 mt-1">
+                    The simulator is connected and notch endpoints are configured.
+                    Click to automatically detect notch positions.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  phx-click="auto_detect_notches"
+                  disabled={@auto_detecting}
+                  class="btn btn-primary btn-sm"
+                >
+                  <.icon :if={not @auto_detecting} name="hero-sparkles" class="w-4 h-4" />
+                  <span :if={@auto_detecting} class="loading loading-spinner loading-xs" />
+                  {if @auto_detecting, do: "Detecting...", else: "Auto-Detect"}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div :if={not @has_notch_endpoints} class="mb-6">
+            <div class="alert alert-info">
+              <.icon name="hero-information-circle" class="w-5 h-5" />
+              <div class="text-sm">
+                <p class="font-medium">Optional: Configure notch endpoints for auto-detection</p>
+                <p class="text-base-content/70">
+                  To use auto-detection, add notch count and index endpoints in the lever configuration.
+                  Or add notches manually below.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div class="space-y-4">
+            <div class="flex items-center justify-between">
+              <h3 class="text-sm font-semibold">
+                Notches ({length(@notch_forms)})
+              </h3>
+              <button
+                type="button"
+                phx-click="add_notch"
+                class="btn btn-ghost btn-xs text-primary"
+              >
+                <.icon name="hero-plus" class="w-4 h-4" /> Add Notch
+              </button>
+            </div>
+
+            <div :if={Enum.empty?(@notch_forms)} class="text-center py-8 text-base-content/50">
+              <.icon name="hero-queue-list" class="w-12 h-12 mx-auto mb-2 opacity-30" />
+              <p class="text-sm">No notches defined yet</p>
+              <p class="text-xs">Click "Add Notch" or use auto-detection to get started</p>
+            </div>
+
+            <div :if={not Enum.empty?(@notch_forms)} class="space-y-3">
+              <div
+                :for={{form, index} <- Enum.with_index(@notch_forms)}
+                class="bg-base-200/50 rounded-lg p-4"
+              >
+                <.form
+                  :let={f}
+                  for={form}
+                  phx-change="validate_notch"
+                  phx-value-index={index}
+                  id={"notch-form-#{index}"}
+                >
+                  <div class="flex items-start gap-3">
+                    <div class="flex-none w-12 pt-6 text-center">
+                      <span class="text-sm font-semibold text-base-content/50">#{index}</span>
+                    </div>
+
+                    <div class="flex-1 space-y-3">
+                      <div class="grid grid-cols-2 gap-3">
+                        <div>
+                          <label class="label py-1">
+                            <span class="label-text text-xs">Type</span>
+                          </label>
+                          <.input
+                            field={f[:type]}
+                            type="select"
+                            options={[{"Gate (Fixed)", :gate}, {"Linear (Range)", :linear}]}
+                            class="select select-bordered select-sm w-full"
+                          />
+                        </div>
+                        <div>
+                          <label class="label py-1">
+                            <span class="label-text text-xs">Description</span>
+                          </label>
+                          <.input
+                            field={f[:description]}
+                            type="text"
+                            placeholder="e.g., Idle, Notch 1, Full Power"
+                            class="input input-bordered input-sm w-full"
+                          />
+                        </div>
+                      </div>
+
+                      <div
+                        :if={f[:type].value == "gate" or f[:type].value == :gate}
+                        class="grid grid-cols-1"
+                      >
+                        <div>
+                          <label class="label py-1">
+                            <span class="label-text text-xs">Value</span>
+                          </label>
+                          <.input
+                            field={f[:value]}
+                            type="number"
+                            step="0.001"
+                            class="input input-bordered input-sm w-full font-mono"
+                          />
+                        </div>
+                      </div>
+
+                      <div
+                        :if={f[:type].value == "linear" or f[:type].value == :linear}
+                        class="grid grid-cols-2 gap-3"
+                      >
+                        <div>
+                          <label class="label py-1">
+                            <span class="label-text text-xs">Min Value</span>
+                          </label>
+                          <.input
+                            field={f[:min_value]}
+                            type="number"
+                            step="0.001"
+                            class="input input-bordered input-sm w-full font-mono"
+                          />
+                        </div>
+                        <div>
+                          <label class="label py-1">
+                            <span class="label-text text-xs">Max Value</span>
+                          </label>
+                          <.input
+                            field={f[:max_value]}
+                            type="number"
+                            step="0.001"
+                            class="input input-bordered input-sm w-full font-mono"
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    <div class="flex-none pt-6">
+                      <button
+                        type="button"
+                        phx-click="remove_notch"
+                        phx-value-index={index}
+                        class="btn btn-ghost btn-xs btn-circle text-error"
+                        title="Remove notch"
+                      >
+                        <.icon name="hero-x-mark" class="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
+                </.form>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="p-6 border-t border-base-300 flex justify-end gap-2">
+          <button type="button" phx-click="close_notch_mapping" class="btn btn-ghost">
+            Cancel
+          </button>
+          <button
+            type="button"
+            phx-click="save_notches"
+            class="btn btn-primary"
+            disabled={Enum.empty?(@notch_forms)}
+          >
+            <.icon name="hero-check" class="w-4 h-4" /> Save Notches
+          </button>
+        </div>
       </div>
     </div>
     """

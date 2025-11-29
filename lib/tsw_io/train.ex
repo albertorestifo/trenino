@@ -10,6 +10,7 @@ defmodule TswIo.Train do
 
   alias TswIo.Repo
   alias TswIo.Train.{Train, Element, LeverConfig, Notch, Identifier}
+  alias TswIo.Train.Calibration.{SessionSupervisor, LeverSession}
   alias TswIo.Simulator.Client
 
   # Detection delegation
@@ -242,6 +243,26 @@ defmodule TswIo.Train do
   # ===================
 
   @doc """
+  Create a notch for a lever config.
+  """
+  @spec create_notch(integer(), map()) :: {:ok, Notch.t()} | {:error, Ecto.Changeset.t()}
+  def create_notch(lever_config_id, attrs) do
+    %Notch{lever_config_id: lever_config_id}
+    |> Notch.changeset(attrs)
+    |> Repo.insert()
+  end
+
+  @doc """
+  Update a notch.
+  """
+  @spec update_notch(Notch.t(), map()) :: {:ok, Notch.t()} | {:error, Ecto.Changeset.t()}
+  def update_notch(%Notch{} = notch, attrs) do
+    notch
+    |> Notch.changeset(attrs)
+    |> Repo.update()
+  end
+
+  @doc """
   Update a notch description.
   """
   @spec update_notch_description(Notch.t(), String.t() | nil) ::
@@ -250,6 +271,54 @@ defmodule TswIo.Train do
     notch
     |> Notch.changeset(%{description: description})
     |> Repo.update()
+  end
+
+  @doc """
+  Delete a notch.
+  """
+  @spec delete_notch(Notch.t()) :: {:ok, Notch.t()} | {:error, Ecto.Changeset.t()}
+  def delete_notch(%Notch{} = notch) do
+    Repo.delete(notch)
+  end
+
+  @doc """
+  Save notches for a lever config, replacing any existing notches.
+
+  This is similar to save_calibration but doesn't set the calibrated_at timestamp.
+  Used when manually mapping notches rather than calibrating hardware.
+  """
+  @spec save_notches(LeverConfig.t(), [map()]) ::
+          {:ok, LeverConfig.t()} | {:error, term()}
+  def save_notches(%LeverConfig{} = lever_config, notches) when is_list(notches) do
+    Repo.transaction(fn ->
+      # Delete existing notches
+      Notch
+      |> where([n], n.lever_config_id == ^lever_config.id)
+      |> Repo.delete_all()
+
+      # Create new notches
+      notch_results =
+        notches
+        |> Enum.with_index()
+        |> Enum.map(fn {notch_attrs, index} ->
+          %Notch{lever_config_id: lever_config.id}
+          |> Notch.changeset(Map.put(notch_attrs, :index, index))
+          |> Repo.insert()
+        end)
+
+      # Check for errors
+      errors = Enum.filter(notch_results, &match?({:error, _}, &1))
+
+      if errors != [] do
+        Repo.rollback({:notch_errors, errors})
+      else
+        # Reload the config with notches
+        case get_lever_config(lever_config.element_id) do
+          {:ok, reloaded} -> reloaded
+          {:error, reason} -> Repo.rollback(reason)
+        end
+      end
+    end)
   end
 
   # ===================
@@ -263,4 +332,50 @@ defmodule TswIo.Train do
   """
   @spec derive_identifier(Client.t()) :: {:ok, String.t()} | {:error, term()}
   defdelegate derive_identifier(client), to: Identifier, as: :derive_from_formation
+
+  # ===================
+  # Calibration Operations
+  # ===================
+
+  @doc """
+  Start a calibration session for a lever.
+
+  The calibration process runs asynchronously, stepping through the lever's
+  full range and detecting notch types. Subscribe to calibration events
+  to receive progress updates and the final result.
+
+  Returns `{:ok, pid}` if the session starts successfully,
+  `{:error, :already_running}` if a session for this lever is already active.
+  """
+  @spec start_calibration(Client.t(), LeverConfig.t()) ::
+          {:ok, pid()} | {:error, :already_running} | {:error, term()}
+  defdelegate start_calibration(client, lever_config), to: SessionSupervisor
+
+  @doc """
+  Stop a running calibration session.
+  """
+  @spec stop_calibration(integer()) :: :ok | {:error, :not_found}
+  defdelegate stop_calibration(lever_config_id), to: SessionSupervisor
+
+  @doc """
+  Check if a calibration session is running for a lever config.
+  """
+  @spec calibration_running?(integer()) :: boolean()
+  defdelegate calibration_running?(lever_config_id), to: SessionSupervisor, as: :session_running?
+
+  @doc """
+  Get the current state of a calibration session.
+  """
+  @spec get_calibration_state(integer()) :: LeverSession.State.t() | nil
+  defdelegate get_calibration_state(lever_config_id), to: LeverSession, as: :get_state
+
+  @doc """
+  Subscribe to calibration events for a lever config.
+
+  Events sent on topic `"train:calibration:{lever_config_id}"`:
+  - `{:calibration_progress, state}` - Progress updates during calibration
+  - `{:calibration_result, {:ok, LeverConfig.t()} | {:error, reason}}` - Final result
+  """
+  @spec subscribe_calibration(integer()) :: :ok
+  defdelegate subscribe_calibration(lever_config_id), to: LeverSession, as: :subscribe
 end

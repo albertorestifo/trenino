@@ -26,3 +26,8 @@ config :phoenix, :plug_init_mode, :runtime
 # Enable helpful, but potentially expensive runtime checks
 config :phoenix_live_view,
   enable_expensive_runtime_checks: true
+
+# Disable Simulator.Connection GenServer in tests to avoid database conflicts
+# with Ecto.Adapters.SQL.Sandbox. Tests that need this GenServer can start it
+# manually with proper sandbox access.
+config :tsw_io, :start_simulator_connection, false

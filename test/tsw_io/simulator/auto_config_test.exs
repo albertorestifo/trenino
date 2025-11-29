@@ -1,15 +1,8 @@
 defmodule TswIo.Simulator.AutoConfigTest do
-  # Non-async because the Simulator.Connection GenServer needs database access
-  use TswIo.DataCase, async: false
+  use TswIo.DataCase, async: true
 
   alias TswIo.Simulator.AutoConfig
   alias TswIo.Simulator.Config
-
-  # Allow the Connection GenServer to access the database sandbox
-  setup do
-    Ecto.Adapters.SQL.Sandbox.mode(TswIo.Repo, {:shared, self()})
-    :ok
-  end
 
   describe "default_url/0" do
     test "returns the default TSW API URL" do

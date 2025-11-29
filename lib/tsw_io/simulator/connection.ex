@@ -27,10 +27,17 @@ defmodule TswIo.Simulator.Connection do
 
   @doc """
   Get the current connection status.
+
+  Returns a default disconnected state if the GenServer is not running
+  (e.g., in test environment where it's disabled).
   """
   @spec get_status() :: ConnectionState.t()
   def get_status do
-    GenServer.call(__MODULE__, :get_status)
+    if Process.whereis(__MODULE__) do
+      GenServer.call(__MODULE__, :get_status)
+    else
+      ConnectionState.new()
+    end
   end
 
   @doc """
@@ -45,28 +52,45 @@ defmodule TswIo.Simulator.Connection do
 
   @doc """
   Manually trigger a connection retry.
+
+  No-op if the GenServer is not running (e.g., in test environment).
   """
   @spec retry_connection() :: :ok
   def retry_connection do
-    GenServer.cast(__MODULE__, :connect)
+    if Process.whereis(__MODULE__) do
+      GenServer.cast(__MODULE__, :connect)
+    end
+
+    :ok
   end
 
   @doc """
   Reconfigure the connection with updated settings.
 
   Called automatically when configuration changes.
+  No-op if the GenServer is not running (e.g., in test environment).
   """
   @spec reconfigure() :: :ok
   def reconfigure do
-    GenServer.cast(__MODULE__, :reconfigure)
+    if Process.whereis(__MODULE__) do
+      GenServer.cast(__MODULE__, :reconfigure)
+    end
+
+    :ok
   end
 
   @doc """
   Disconnect from the simulator.
+
+  No-op if the GenServer is not running (e.g., in test environment).
   """
   @spec disconnect() :: :ok
   def disconnect do
-    GenServer.cast(__MODULE__, :disconnect)
+    if Process.whereis(__MODULE__) do
+      GenServer.cast(__MODULE__, :disconnect)
+    end
+
+    :ok
   end
 
   # Server callbacks

@@ -126,7 +126,7 @@ defmodule TswIo.Train.Detection do
 
   @impl true
   def handle_info(:check_connection, %State{} = state) do
-    case SimulatorConnection.get_status() do
+    case get_simulator_status() do
       %ConnectionState{status: :connected} ->
         schedule_poll()
         {:noreply, %{state | polling_enabled: true}}
@@ -172,7 +172,7 @@ defmodule TswIo.Train.Detection do
   # Private Functions
 
   defp detect_train(%State{} = state) do
-    case SimulatorConnection.get_status() do
+    case get_simulator_status() do
       %ConnectionState{status: :connected, client: %Client{} = client} ->
         do_detect_train(state, client)
 
@@ -223,5 +223,15 @@ defmodule TswIo.Train.Detection do
 
   defp broadcast(message) do
     Phoenix.PubSub.broadcast(TswIo.PubSub, @pubsub_topic, message)
+  end
+
+  # Safely get simulator status, handling the case where SimulatorConnection
+  # is not running (e.g., in test environment)
+  defp get_simulator_status do
+    if Process.whereis(SimulatorConnection) do
+      SimulatorConnection.get_status()
+    else
+      %ConnectionState{status: :disconnected}
+    end
   end
 end

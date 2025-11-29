@@ -7,21 +7,23 @@ defmodule TswIo.Application do
 
   @impl true
   def start(_type, _args) do
-    children = [
-      TswIoWeb.Telemetry,
-      TswIo.Repo,
-      {Ecto.Migrator,
-       repos: Application.fetch_env!(:tsw_io, :ecto_repos), skip: skip_migrations?()},
-      {DNSCluster, query: Application.get_env(:tsw_io, :dns_cluster_query) || :ignore},
-      {Phoenix.PubSub, name: TswIo.PubSub},
-      TswIo.Serial.Connection,
-      TswIo.Hardware.ConfigurationManager,
-      TswIo.Hardware.Calibration.SessionSupervisor,
-      TswIo.Simulator.Connection,
-      TswIo.Train.Detection,
-      # Start to serve requests, typically the last entry
-      TswIoWeb.Endpoint
-    ]
+    children =
+      [
+        TswIoWeb.Telemetry,
+        TswIo.Repo,
+        {Ecto.Migrator,
+         repos: Application.fetch_env!(:tsw_io, :ecto_repos), skip: skip_migrations?()},
+        {DNSCluster, query: Application.get_env(:tsw_io, :dns_cluster_query) || :ignore},
+        {Phoenix.PubSub, name: TswIo.PubSub},
+        {Registry, keys: :unique, name: TswIo.Registry},
+        TswIo.Serial.Connection,
+        TswIo.Hardware.ConfigurationManager,
+        TswIo.Hardware.Calibration.SessionSupervisor,
+        TswIo.Train.Detection,
+        TswIo.Train.Calibration.SessionSupervisor,
+        # Start to serve requests, typically the last entry
+        TswIoWeb.Endpoint
+      ] ++ simulator_connection_child()
 
     # See https://hexdocs.pm/elixir/Supervisor.html
     # for other strategies and supported options
@@ -40,5 +42,16 @@ defmodule TswIo.Application do
   defp skip_migrations?() do
     # By default, sqlite migrations are run when using a release
     System.get_env("RELEASE_NAME") == nil
+  end
+
+  # Returns the Simulator.Connection child spec only in non-test environments.
+  # In test, this GenServer would interfere with the Ecto Sandbox since it
+  # queries the database during initialization via AutoConfig.ensure_config/0.
+  defp simulator_connection_child do
+    if Application.get_env(:tsw_io, :start_simulator_connection, true) do
+      [TswIo.Simulator.Connection]
+    else
+      []
+    end
   end
 end
