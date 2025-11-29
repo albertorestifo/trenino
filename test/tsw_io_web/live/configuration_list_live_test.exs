@@ -1,9 +1,10 @@
-defmodule TswIoWeb.DeviceLiveTest do
+defmodule TswIoWeb.ConfigurationListLiveTest do
   # Non-async because the Simulator.Connection GenServer needs database access
   use TswIoWeb.ConnCase, async: false
 
   import Phoenix.LiveViewTest
 
+  alias TswIo.Hardware
   alias TswIo.Simulator.ConnectionState
 
   # Allow the Connection GenServer to access the database sandbox
@@ -13,16 +14,28 @@ defmodule TswIoWeb.DeviceLiveTest do
   end
 
   describe "basic rendering" do
-    test "GET / renders device live", %{conn: conn} do
+    test "GET / renders configuration list", %{conn: conn} do
       conn = get(conn, ~p"/")
       html = html_response(conn, 200)
 
       # Always present regardless of device state
       assert html =~ "TWS IO"
+      assert html =~ "Configurations"
+    end
 
-      # Either shows "No Devices Connected" or shows device count
-      # (depends on whether physical devices are connected during test)
-      assert html =~ "No Devices Connected" or html =~ "Device"
+    test "shows empty state when no configurations exist", %{conn: conn} do
+      {:ok, _view, html} = live(conn, ~p"/")
+
+      assert html =~ "No Configurations"
+      assert html =~ "Create Configuration"
+    end
+
+    test "shows configuration cards when configurations exist", %{conn: conn} do
+      {:ok, _device} = Hardware.create_device(%{name: "Test Config"})
+
+      {:ok, _view, html} = live(conn, ~p"/")
+
+      assert html =~ "Test Config"
     end
   end
 

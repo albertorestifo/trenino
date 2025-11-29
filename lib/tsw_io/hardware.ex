@@ -6,7 +6,7 @@ defmodule TswIo.Hardware do
   import Ecto.Query
 
   alias TswIo.Repo
-  alias TswIo.Hardware.{Device, Input}
+  alias TswIo.Hardware.{ConfigId, Device, Input}
   alias TswIo.Hardware.Input.Calibration
   alias TswIo.Hardware.Calibration.{Calculator, SessionSupervisor}
 
@@ -15,6 +15,28 @@ defmodule TswIo.Hardware do
   defdelegate subscribe_configuration(), to: TswIo.Hardware.ConfigurationManager
   defdelegate subscribe_input_values(port), to: TswIo.Hardware.ConfigurationManager
   defdelegate get_input_values(port), to: TswIo.Hardware.ConfigurationManager
+
+  # Configuration operations
+
+  @doc """
+  List all configurations.
+
+  Returns configurations ordered by name.
+
+  ## Options
+
+    * `:preload` - List of associations to preload (default: [])
+
+  """
+  @spec list_configurations(keyword()) :: [Device.t()]
+  def list_configurations(opts \\ []) do
+    preloads = Keyword.get(opts, :preload, [])
+
+    Device
+    |> order_by([d], d.name)
+    |> Repo.all()
+    |> Repo.preload(preloads)
+  end
 
   # Device operations
 
@@ -94,14 +116,13 @@ defmodule TswIo.Hardware do
   end
 
   @doc """
-  Generate a unique configuration ID.
+  Generate a unique random configuration ID.
 
-  Uses :erlang.unique_integer to generate a unique, monotonically increasing ID.
+  Generates a random ID within the i32 range that doesn't conflict
+  with existing IDs in the database.
   """
   @spec generate_config_id() :: {:ok, integer()}
-  def generate_config_id do
-    {:ok, :erlang.unique_integer([:positive, :monotonic])}
-  end
+  defdelegate generate_config_id(), to: ConfigId, as: :generate
 
   # Input operations
 

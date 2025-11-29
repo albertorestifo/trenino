@@ -1,4 +1,4 @@
-defmodule TswIoWeb.DeviceConfigLiveTest do
+defmodule TswIoWeb.ConfigurationEditLiveTest do
   use TswIoWeb.ConnCase
 
   import Phoenix.LiveViewTest
@@ -6,16 +6,19 @@ defmodule TswIoWeb.DeviceConfigLiveTest do
   alias TswIo.Hardware
   alias TswIo.Hardware.Input
 
-  describe "mount/3" do
-    test "redirects when device not connected", %{conn: conn} do
-      # Try to access config for a non-existent device
-      port = "/dev/tty.nonexistent"
-      encoded_port = URI.encode_www_form(port)
-
+  describe "mount/3 with invalid config_id" do
+    test "redirects when configuration not found", %{conn: conn} do
       {:error, {:redirect, %{to: "/", flash: flash}}} =
-        live(conn, "/devices/#{encoded_port}/config")
+        live(conn, "/configurations/999999999")
 
-      assert flash["error"] == "Device not found"
+      assert flash["error"] == "Configuration not found"
+    end
+
+    test "redirects with invalid config_id format", %{conn: conn} do
+      {:error, {:redirect, %{to: "/", flash: flash}}} =
+        live(conn, "/configurations/invalid")
+
+      assert flash["error"] == "Invalid configuration ID"
     end
   end
 

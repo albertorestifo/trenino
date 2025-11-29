@@ -6,12 +6,13 @@ defmodule TswIo.HardwareTest do
   alias TswIo.Hardware.Input
 
   describe "create_device/1" do
-    test "creates a device with valid attributes" do
+    test "creates a device with valid attributes and auto-generated config_id" do
       attrs = %{name: "Test Device"}
 
       assert {:ok, %Device{} = device} = Hardware.create_device(attrs)
       assert device.name == "Test Device"
-      assert is_nil(device.config_id)
+      assert is_integer(device.config_id)
+      assert device.config_id > 0
     end
 
     test "returns error changeset with missing name" do

@@ -1,44 +1,90 @@
-defmodule TswIoWeb.DeviceConfigLive do
+defmodule TswIoWeb.ConfigurationEditLive do
+  @moduledoc """
+  LiveView for editing a configuration.
+
+  Supports both creating new configurations and editing existing ones.
+  Configurations can be applied to any connected device.
+  """
+
   use TswIoWeb, :live_view
 
   import TswIoWeb.NavComponents
 
   alias TswIo.Hardware
-  alias TswIo.Hardware.Input
+  alias TswIo.Hardware.{ConfigId, Device, Input}
   alias TswIo.Hardware.Calibration.Session
   alias TswIo.Serial.Connection
 
   @impl true
-  def mount(%{"port" => encoded_port}, _session, socket) do
-    port = URI.decode(encoded_port)
+  def mount(%{"config_id" => "new"}, _session, socket) do
+    mount_new(socket)
+  end
 
+  @impl true
+  def mount(%{"config_id" => config_id_str}, _session, socket) do
+    case ConfigId.parse(config_id_str) do
+      {:ok, config_id} ->
+        mount_existing(socket, config_id)
+
+      {:error, :invalid} ->
+        {:ok,
+         socket
+         |> put_flash(:error, "Invalid configuration ID")
+         |> redirect(to: ~p"/")}
+    end
+  end
+
+  defp mount_new(socket) do
     if connected?(socket) do
       Hardware.subscribe_configuration()
-      Hardware.subscribe_input_values(port)
-
-      # NavHook subscribes to Connection and Simulator, but we need device updates for disconnect detection
     end
 
-    case find_connection(port) do
-      nil ->
-        {:ok,
-         socket
-         |> put_flash(:error, "Device not found")
-         |> redirect(to: ~p"/")}
+    {:ok, device} = Hardware.create_device(%{name: "New Configuration"})
+    changeset = Device.changeset(device, %{})
 
-      connection ->
-        {device, draft_mode} = load_or_create_device(connection)
+    {:ok,
+     socket
+     |> assign(:device, device)
+     |> assign(:device_form, to_form(changeset))
+     |> assign(:inputs, [])
+     |> assign(:input_values, %{})
+     |> assign(:new_mode, true)
+     |> assign(:active_port, nil)
+     |> assign(:modal_open, false)
+     |> assign(:form, to_form(Input.changeset(%Input{}, %{input_type: :analog, sensitivity: 5})))
+     |> assign(:applying, false)
+     |> assign(:calibrating_input, nil)
+     |> assign(:calibration_session_state, nil)
+     |> assign(:show_apply_modal, false)}
+  end
+
+  defp mount_existing(socket, config_id) do
+    case Hardware.get_device_by_config_id(config_id) do
+      {:ok, device} ->
+        if connected?(socket) do
+          Hardware.subscribe_configuration()
+
+          # Subscribe to input values for active port
+          active_port = find_active_port(config_id)
+
+          if active_port do
+            Hardware.subscribe_input_values(active_port)
+          end
+        end
+
         {:ok, inputs} = Hardware.list_inputs(device.id)
-        input_values = Hardware.get_input_values(port)
+        active_port = find_active_port(config_id)
+        input_values = if active_port, do: Hardware.get_input_values(active_port), else: %{}
+        changeset = Device.changeset(device, %{})
 
         {:ok,
          socket
-         |> assign(:port, port)
          |> assign(:device, device)
-         |> assign(:connection, connection)
+         |> assign(:device_form, to_form(changeset))
          |> assign(:inputs, inputs)
          |> assign(:input_values, input_values)
-         |> assign(:draft_mode, draft_mode)
+         |> assign(:new_mode, false)
+         |> assign(:active_port, active_port)
          |> assign(:modal_open, false)
          |> assign(
            :form,
@@ -46,33 +92,24 @@ defmodule TswIoWeb.DeviceConfigLive do
          )
          |> assign(:applying, false)
          |> assign(:calibrating_input, nil)
-         |> assign(:calibration_session_state, nil)}
+         |> assign(:calibration_session_state, nil)
+         |> assign(:show_apply_modal, false)}
+
+      {:error, :not_found} ->
+        {:ok,
+         socket
+         |> put_flash(:error, "Configuration not found")
+         |> redirect(to: ~p"/")}
     end
   end
 
-  defp find_connection(port) do
+  defp find_active_port(config_id) do
     Connection.list_devices()
-    |> Enum.find(&(&1.port == port && &1.status == :connected))
-  end
-
-  defp load_or_create_device(connection) do
-    case connection.device_config_id do
-      nil ->
-        # No config on device, create a new device in draft mode
-        {:ok, device} = Hardware.create_device(%{name: "Device #{connection.port}"})
-        {device, true}
-
-      config_id ->
-        case Hardware.get_device_by_config_id(config_id) do
-          {:ok, device} ->
-            {device, false}
-
-          {:error, :not_found} ->
-            # Device has config_id but we don't have it in DB (device was configured elsewhere)
-            {:ok, device} = Hardware.create_device(%{name: "Device #{connection.port}"})
-            {device, true}
-        end
-    end
+    |> Enum.find(&(&1.device_config_id == config_id && &1.status == :connected))
+    |> then(fn
+      nil -> nil
+      device -> device.port
+    end)
   end
 
   # Nav component events
@@ -98,8 +135,35 @@ defmodule TswIoWeb.DeviceConfigLive do
     {:noreply, socket}
   end
 
-  # Page-specific Event Handlers
+  # Device name/description editing
+  @impl true
+  def handle_event("validate_device", %{"device" => params}, socket) do
+    changeset =
+      socket.assigns.device
+      |> Device.changeset(params)
+      |> Map.put(:action, :validate)
 
+    {:noreply, assign(socket, :device_form, to_form(changeset))}
+  end
+
+  @impl true
+  def handle_event("save_device", %{"device" => params}, socket) do
+    case Hardware.update_device(socket.assigns.device, params) do
+      {:ok, device} ->
+        changeset = Device.changeset(device, %{})
+
+        {:noreply,
+         socket
+         |> assign(:device, device)
+         |> assign(:device_form, to_form(changeset))
+         |> put_flash(:info, "Configuration saved")}
+
+      {:error, changeset} ->
+        {:noreply, assign(socket, :device_form, to_form(changeset))}
+    end
+  end
+
+  # Input management
   @impl true
   def handle_event("open_add_input_modal", _params, socket) do
     {:noreply, assign(socket, :modal_open, true)}
@@ -155,11 +219,25 @@ defmodule TswIoWeb.DeviceConfigLive do
     end
   end
 
+  # Apply configuration
   @impl true
-  def handle_event("apply_configuration", _params, socket) do
-    socket = assign(socket, :applying, true)
+  def handle_event("show_apply_modal", _params, socket) do
+    {:noreply, assign(socket, :show_apply_modal, true)}
+  end
 
-    case Hardware.apply_configuration(socket.assigns.port, socket.assigns.device.id) do
+  @impl true
+  def handle_event("close_apply_modal", _params, socket) do
+    {:noreply, assign(socket, :show_apply_modal, false)}
+  end
+
+  @impl true
+  def handle_event("apply_to_device", %{"port" => port}, socket) do
+    socket =
+      socket
+      |> assign(:applying, true)
+      |> assign(:show_apply_modal, false)
+
+    case Hardware.apply_configuration(port, socket.assigns.device.id) do
       {:ok, _config_id} ->
         {:noreply, socket}
 
@@ -173,19 +251,20 @@ defmodule TswIoWeb.DeviceConfigLive do
         {:noreply,
          socket
          |> assign(:applying, false)
-         |> put_flash(:error, "Failed to start configuration: #{inspect(reason)}")}
+         |> put_flash(:error, "Failed to apply: #{inspect(reason)}")}
     end
   end
 
+  # Calibration
   @impl true
   def handle_event("start_calibration", %{"id" => id}, socket) do
     input = Enum.find(socket.assigns.inputs, &(&1.id == String.to_integer(id)))
 
-    if input && !socket.assigns.draft_mode do
+    if input && socket.assigns.active_port do
       Session.subscribe(input.id)
       {:noreply, assign(socket, :calibrating_input, input)}
     else
-      {:noreply, socket}
+      {:noreply, put_flash(socket, :error, "Apply configuration to a device before calibrating")}
     end
   end
 
@@ -226,16 +305,19 @@ defmodule TswIoWeb.DeviceConfigLive do
   @impl true
   def handle_info({event, state}, socket)
       when event in [:session_started, :step_changed, :sample_collected] do
-    # Forward session state to the CalibrationWizard component
     {:noreply, assign(socket, :calibration_session_state, state)}
   end
 
   @impl true
-  def handle_info({:configuration_applied, _port, device, _config_id}, socket) do
+  def handle_info({:configuration_applied, port, device, _config_id}, socket) do
+    # Subscribe to input values for the new active port
+    Hardware.subscribe_input_values(port)
+
     {:noreply,
      socket
      |> assign(:device, device)
-     |> assign(:draft_mode, false)
+     |> assign(:new_mode, false)
+     |> assign(:active_port, port)
      |> assign(:applying, false)
      |> put_flash(:info, "Configuration applied successfully")}
   end
@@ -269,26 +351,48 @@ defmodule TswIoWeb.DeviceConfigLive do
 
   @impl true
   def handle_info({:devices_updated, devices}, socket) do
-    # Update nav state
     socket = assign(socket, :nav_devices, devices)
 
-    # Check if our device is still connected
-    connection = Enum.find(devices, &(&1.port == socket.assigns.port && &1.status == :connected))
+    # Update active port if configuration is applied to a device
+    config_id = socket.assigns.device.config_id
+    active_port = find_active_port_in_list(devices, config_id)
 
-    if connection do
-      {:noreply, assign(socket, :connection, connection)}
-    else
-      {:noreply,
-       socket
-       |> put_flash(:error, "Device disconnected")
-       |> redirect(to: ~p"/")}
-    end
+    socket =
+      if active_port != socket.assigns.active_port do
+        if active_port do
+          Hardware.subscribe_input_values(active_port)
+          assign(socket, :active_port, active_port)
+        else
+          socket
+          |> assign(:active_port, nil)
+          |> assign(:input_values, %{})
+        end
+      else
+        socket
+      end
+
+    {:noreply, socket}
+  end
+
+  defp find_active_port_in_list(devices, config_id) do
+    devices
+    |> Enum.find(&(&1.device_config_id == config_id && &1.status == :connected))
+    |> then(fn
+      nil -> nil
+      device -> device.port
+    end)
   end
 
   # Render
 
   @impl true
   def render(assigns) do
+    connected_devices =
+      assigns.nav_devices
+      |> Enum.filter(&(&1.status == :connected))
+
+    assigns = assign(assigns, :connected_devices, connected_devices)
+
     ~H"""
     <div class="min-h-screen flex flex-col">
       <.nav_header
@@ -299,45 +403,53 @@ defmodule TswIoWeb.DeviceConfigLive do
       />
 
       <.breadcrumb items={[
-        %{label: "Home", path: ~p"/"},
-        %{label: @port, path: ~p"/devices/#{URI.encode_www_form(@port)}/config"},
-        %{label: "Configuration"}
+        %{label: "Configurations", path: ~p"/"},
+        %{label: @device.name || "New Configuration"}
       ]} />
 
       <main class="flex-1 p-4 sm:p-8">
         <div class="max-w-2xl mx-auto">
-          <.page_header port={@port} device_version={@connection.device_version} />
+          <.device_header
+            device={@device}
+            device_form={@device_form}
+            active_port={@active_port}
+            new_mode={@new_mode}
+          />
 
           <div class="bg-base-200/50 rounded-xl p-6 mt-6">
-            <div class="flex items-center justify-between mb-6">
-              <h2 class="text-lg font-semibold">Configuration</h2>
-              <.status_badge draft_mode={@draft_mode} />
-            </div>
+            <.status_section
+              active_port={@active_port}
+              new_mode={@new_mode}
+              connected_devices={@connected_devices}
+              applying={@applying}
+              inputs={@inputs}
+            />
 
             <.inputs_section
               inputs={@inputs}
               input_values={@input_values}
-              draft_mode={@draft_mode}
+              active_port={@active_port}
             />
 
             <.outputs_section />
-
-            <.apply_button
-              :if={length(@inputs) > 0 && @draft_mode}
-              applying={@applying}
-            />
           </div>
         </div>
       </main>
 
       <.add_input_modal :if={@modal_open} form={@form} />
 
+      <.apply_modal
+        :if={@show_apply_modal}
+        device={@device}
+        connected_devices={@connected_devices}
+      />
+
       <.live_component
         :if={@calibrating_input}
         module={TswIoWeb.CalibrationWizard}
         id="calibration-wizard"
         input={@calibrating_input}
-        port={@port}
+        port={@active_port}
         session_state={@calibration_session_state}
       />
     </div>
@@ -346,37 +458,89 @@ defmodule TswIoWeb.DeviceConfigLive do
 
   # Components
 
-  attr :port, :string, required: true
-  attr :device_version, :string, default: nil
+  attr :device, :map, required: true
+  attr :device_form, :map, required: true
+  attr :active_port, :string, default: nil
+  attr :new_mode, :boolean, required: true
 
-  defp page_header(assigns) do
+  defp device_header(assigns) do
     ~H"""
     <header>
-      <h1 class="text-2xl font-semibold">Device Configuration</h1>
-      <p class="text-sm text-base-content/70 mt-1">
-        {@port}
-        <span :if={@device_version}> &middot; v{@device_version}</span>
-      </p>
+      <.form for={@device_form} phx-change="validate_device" phx-submit="save_device">
+        <.input
+          field={@device_form[:name]}
+          type="text"
+          class="text-2xl font-semibold bg-transparent border-0 p-0 focus:ring-0 w-full"
+          placeholder="Configuration Name"
+        />
+        <.input
+          field={@device_form[:description]}
+          type="textarea"
+          class="text-sm text-base-content/70 bg-transparent border-0 p-0 focus:ring-0 w-full resize-none mt-1"
+          placeholder="Add a description..."
+          rows="2"
+        />
+        <div class="flex items-center gap-3 mt-2">
+          <span class="text-xs text-base-content/50 font-mono">ID: {@device.config_id}</span>
+          <span :if={@active_port} class="badge badge-success badge-sm gap-1">
+            <span class="w-1.5 h-1.5 rounded-full bg-success-content animate-pulse" />
+            Active on {@active_port}
+          </span>
+          <button type="submit" class="btn btn-ghost btn-xs ml-auto">
+            <.icon name="hero-check" class="w-4 h-4" /> Save
+          </button>
+        </div>
+      </.form>
     </header>
     """
   end
 
-  attr :draft_mode, :boolean, required: true
+  attr :active_port, :string, default: nil
+  attr :new_mode, :boolean, required: true
+  attr :connected_devices, :list, required: true
+  attr :applying, :boolean, required: true
+  attr :inputs, :list, required: true
 
-  defp status_badge(assigns) do
+  defp status_section(assigns) do
+    can_apply = length(assigns.inputs) > 0 and not Enum.empty?(assigns.connected_devices)
+    assigns = assign(assigns, :can_apply, can_apply)
+
     ~H"""
-    <span :if={@draft_mode} class="badge badge-warning badge-sm gap-1">
-      <.icon name="hero-pencil-square" class="w-3 h-3" /> Draft
-    </span>
-    <span :if={!@draft_mode} class="badge badge-success badge-sm gap-1">
-      <.icon name="hero-check-circle" class="w-3 h-3" /> Active
-    </span>
+    <div class="mb-6 p-4 rounded-lg bg-base-100 border border-base-300">
+      <div class="flex items-center justify-between">
+        <div class="flex items-center gap-3">
+          <span :if={@active_port} class="w-3 h-3 rounded-full bg-success animate-pulse" />
+          <span :if={!@active_port} class="w-3 h-3 rounded-full bg-base-content/20" />
+          <div>
+            <p :if={@active_port} class="font-medium">Active on {@active_port}</p>
+            <p :if={!@active_port && Enum.empty?(@connected_devices)} class="text-base-content/70">
+              No devices connected
+            </p>
+            <p :if={!@active_port && not Enum.empty?(@connected_devices)} class="text-base-content/70">
+              Not applied to any device
+            </p>
+          </div>
+        </div>
+
+        <button
+          :if={@can_apply}
+          type="button"
+          phx-click="show_apply_modal"
+          disabled={@applying}
+          class="btn btn-primary btn-sm"
+        >
+          <.icon :if={@applying} name="hero-arrow-path" class="w-4 h-4 animate-spin" />
+          <.icon :if={!@applying} name="hero-play" class="w-4 h-4" />
+          {if @applying, do: "Applying...", else: "Apply to Device"}
+        </button>
+      </div>
+    </div>
     """
   end
 
   attr :inputs, :list, required: true
   attr :input_values, :map, required: true
-  attr :draft_mode, :boolean, required: true
+  attr :active_port, :string, default: nil
 
   defp inputs_section(assigns) do
     ~H"""
@@ -389,13 +553,10 @@ defmodule TswIoWeb.DeviceConfigLive do
         :if={length(@inputs) > 0}
         inputs={@inputs}
         input_values={@input_values}
-        draft_mode={@draft_mode}
+        active_port={@active_port}
       />
 
-      <button
-        phx-click="open_add_input_modal"
-        class="btn btn-outline btn-sm mt-4"
-      >
+      <button phx-click="open_add_input_modal" class="btn btn-outline btn-sm mt-4">
         <.icon name="hero-plus" class="w-4 h-4" /> Add Input
       </button>
     </div>
@@ -414,7 +575,7 @@ defmodule TswIoWeb.DeviceConfigLive do
 
   attr :inputs, :list, required: true
   attr :input_values, :map, required: true
-  attr :draft_mode, :boolean, required: true
+  attr :active_port, :string, default: nil
 
   defp inputs_table(assigns) do
     ~H"""
@@ -438,21 +599,18 @@ defmodule TswIoWeb.DeviceConfigLive do
             </td>
             <td class="font-mono text-sm">{input.sensitivity}</td>
             <td>
-              <.raw_value
-                value={Map.get(@input_values, input.pin)}
-                draft_mode={@draft_mode}
-              />
+              <.raw_value value={Map.get(@input_values, input.pin)} active={@active_port != nil} />
             </td>
             <td>
               <.calibrated_value
                 raw_value={Map.get(@input_values, input.pin)}
                 calibration={input.calibration}
-                draft_mode={@draft_mode}
+                active={@active_port != nil}
               />
             </td>
             <td class="flex gap-1">
               <button
-                :if={!@draft_mode}
+                :if={@active_port != nil}
                 phx-click="start_calibration"
                 phx-value-id={input.id}
                 class="btn btn-ghost btn-xs text-primary hover:bg-primary/10"
@@ -476,17 +634,17 @@ defmodule TswIoWeb.DeviceConfigLive do
   end
 
   attr :value, :integer, default: nil
-  attr :draft_mode, :boolean, required: true
+  attr :active, :boolean, required: true
 
   defp raw_value(assigns) do
     ~H"""
-    <span :if={@draft_mode} class="text-base-content/50 italic text-sm">
+    <span :if={!@active} class="text-base-content/50 italic text-sm">
       <.icon name="hero-lock-closed" class="w-3 h-3 inline mr-1" /> N/A
     </span>
-    <span :if={!@draft_mode && is_nil(@value)} class="text-base-content/50">
+    <span :if={@active && is_nil(@value)} class="text-base-content/50">
       &mdash;
     </span>
-    <span :if={!@draft_mode && !is_nil(@value)} class="font-mono">
+    <span :if={@active && !is_nil(@value)} class="font-mono">
       {@value}
     </span>
     """
@@ -494,7 +652,7 @@ defmodule TswIoWeb.DeviceConfigLive do
 
   attr :raw_value, :integer, default: nil
   attr :calibration, :map, default: nil
-  attr :draft_mode, :boolean, required: true
+  attr :active, :boolean, required: true
 
   defp calibrated_value(assigns) do
     calibration = loaded_calibration(assigns.calibration)
@@ -512,22 +670,19 @@ defmodule TswIoWeb.DeviceConfigLive do
       |> assign(:calibrated, calibrated)
 
     ~H"""
-    <span :if={@draft_mode} class="text-base-content/50 italic text-sm">
-      N/A
-    </span>
-    <span :if={!@draft_mode && is_nil(@calibration)} class="text-base-content/50 text-sm">
+    <span :if={!@active} class="text-base-content/50 italic text-sm">N/A</span>
+    <span :if={@active && is_nil(@calibration)} class="text-base-content/50 text-sm">
       Not calibrated
     </span>
-    <span :if={!@draft_mode && @calibration && is_nil(@raw_value)} class="text-base-content/50">
+    <span :if={@active && @calibration && is_nil(@raw_value)} class="text-base-content/50">
       &mdash;
     </span>
-    <span :if={!@draft_mode && @calibration && !is_nil(@calibrated)} class="font-mono">
+    <span :if={@active && @calibration && !is_nil(@calibrated)} class="font-mono">
       {@calibrated}
     </span>
     """
   end
 
-  # Returns nil if calibration is not loaded or nil, otherwise returns the calibration
   defp loaded_calibration(%Ecto.Association.NotLoaded{}), do: nil
   defp loaded_calibration(nil), do: nil
   defp loaded_calibration(calibration), do: calibration
@@ -543,33 +698,12 @@ defmodule TswIoWeb.DeviceConfigLive do
     """
   end
 
-  attr :applying, :boolean, required: true
-
-  defp apply_button(assigns) do
-    ~H"""
-    <div class="pt-4 border-t border-base-300">
-      <button
-        phx-click="apply_configuration"
-        disabled={@applying}
-        class="btn btn-primary w-full"
-      >
-        <.icon :if={@applying} name="hero-arrow-path" class="w-4 h-4 animate-spin" />
-        <.icon :if={!@applying} name="hero-check" class="w-4 h-4" />
-        {if @applying, do: "Applying...", else: "Apply Configuration"}
-      </button>
-    </div>
-    """
-  end
-
   attr :form, :map, required: true
 
   defp add_input_modal(assigns) do
     ~H"""
     <div class="fixed inset-0 z-50 flex items-center justify-center">
-      <div
-        class="absolute inset-0 bg-black/50"
-        phx-click="close_add_input_modal"
-      />
+      <div class="absolute inset-0 bg-black/50" phx-click="close_add_input_modal" />
       <div class="relative bg-base-100 rounded-xl shadow-xl w-full max-w-md mx-4 p-6">
         <h2 class="text-xl font-semibold mb-4">Add Input</h2>
 
@@ -616,11 +750,7 @@ defmodule TswIoWeb.DeviceConfigLive do
           </div>
 
           <div class="flex justify-end gap-2 mt-6">
-            <button
-              type="button"
-              phx-click="close_add_input_modal"
-              class="btn btn-ghost"
-            >
+            <button type="button" phx-click="close_add_input_modal" class="btn btn-ghost">
               Cancel
             </button>
             <button type="submit" class="btn btn-primary">
@@ -628,6 +758,47 @@ defmodule TswIoWeb.DeviceConfigLive do
             </button>
           </div>
         </.form>
+      </div>
+    </div>
+    """
+  end
+
+  attr :device, :map, required: true
+  attr :connected_devices, :list, required: true
+
+  defp apply_modal(assigns) do
+    ~H"""
+    <div class="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div class="fixed inset-0 bg-black/50" phx-click="close_apply_modal" />
+      <div class="relative bg-base-100 rounded-xl shadow-xl max-w-md w-full p-6">
+        <h3 class="text-lg font-semibold mb-4">Apply Configuration</h3>
+        <p class="text-sm text-base-content/70 mb-6">
+          Select a device to apply "<span class="font-medium">{@device.name}</span>" to:
+        </p>
+
+        <div class="space-y-2">
+          <button
+            :for={device <- @connected_devices}
+            type="button"
+            phx-click="apply_to_device"
+            phx-value-port={device.port}
+            class="w-full flex items-center gap-3 p-3 rounded-lg border border-base-300 hover:bg-base-200 transition-colors text-left"
+          >
+            <span class="w-2 h-2 rounded-full bg-success" />
+            <div class="min-w-0 flex-1">
+              <p class="font-medium truncate">{device.port}</p>
+              <p :if={device.device_version} class="text-xs text-base-content/60">
+                v{device.device_version}
+              </p>
+            </div>
+          </button>
+        </div>
+
+        <div class="mt-6 flex justify-end">
+          <button type="button" phx-click="close_apply_modal" class="btn btn-ghost">
+            Cancel
+          </button>
+        </div>
       </div>
     </div>
     """

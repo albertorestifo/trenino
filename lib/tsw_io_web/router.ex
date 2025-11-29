@@ -18,8 +18,8 @@ defmodule TswIoWeb.Router do
     pipe_through :browser
 
     live_session :default, on_mount: TswIoWeb.NavHook do
-      live "/", DeviceLive
-      live "/devices/:port/config", DeviceConfigLive
+      live "/", ConfigurationListLive
+      live "/configurations/:config_id", ConfigurationEditLive
       live "/simulator/config", SimulatorConfigLive
     end
   end
