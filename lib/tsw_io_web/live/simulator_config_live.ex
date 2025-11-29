@@ -5,15 +5,16 @@ defmodule TswIoWeb.SimulatorConfigLive do
 
   use TswIoWeb, :live_view
 
+  import TswIoWeb.NavComponents
+
+  alias TswIo.Serial.Connection
   alias TswIo.Simulator
   alias TswIo.Simulator.Config
 
   @impl true
   def mount(_params, _session, socket) do
-    if connected?(socket) do
-      Simulator.subscribe()
-    end
-
+    # NavHook handles nav subscriptions and nav state
+    # We still need page-specific state
     status = Simulator.get_status()
     config_result = Simulator.get_config()
     is_windows = Simulator.windows?()
@@ -29,11 +30,46 @@ defmodule TswIoWeb.SimulatorConfigLive do
     {:ok, socket}
   end
 
+  # PubSub handlers - update both nav state and local status
   @impl true
-  def handle_info({:simulator_status_changed, status}, socket) do
-    {:noreply, assign(socket, :status, status)}
+  def handle_info({:devices_updated, devices}, socket) do
+    {:noreply, assign(socket, :nav_devices, devices)}
   end
 
+  @impl true
+  def handle_info({:simulator_status_changed, status}, socket) do
+    socket =
+      socket
+      |> assign(:nav_simulator_status, status)
+      |> assign(:status, status)
+
+    {:noreply, socket}
+  end
+
+  # Nav component events
+  @impl true
+  def handle_event("nav_toggle_dropdown", _, socket) do
+    {:noreply, assign(socket, :nav_dropdown_open, !socket.assigns.nav_dropdown_open)}
+  end
+
+  @impl true
+  def handle_event("nav_close_dropdown", _, socket) do
+    {:noreply, assign(socket, :nav_dropdown_open, false)}
+  end
+
+  @impl true
+  def handle_event("nav_scan_devices", _, socket) do
+    Connection.scan()
+    {:noreply, assign(socket, :nav_scanning, true)}
+  end
+
+  @impl true
+  def handle_event("nav_disconnect_device", %{"port" => port}, socket) do
+    Connection.disconnect(port)
+    {:noreply, socket}
+  end
+
+  # Page-specific events
   @impl true
   def handle_event("validate", %{"config" => config_params}, socket) do
     changeset =
@@ -139,9 +175,19 @@ defmodule TswIoWeb.SimulatorConfigLive do
   def render(assigns) do
     ~H"""
     <div class="min-h-screen flex flex-col">
-      <.page_header />
+      <.nav_header
+        devices={@nav_devices}
+        simulator_status={@nav_simulator_status}
+        dropdown_open={@nav_dropdown_open}
+        scanning={@nav_scanning}
+      />
 
-      <main class="flex-1 p-8">
+      <.breadcrumb items={[
+        %{label: "Home", path: ~p"/"},
+        %{label: "Simulator Configuration"}
+      ]} />
+
+      <main class="flex-1 p-4 sm:p-8">
         <div class="max-w-2xl mx-auto">
           <header class="mb-8">
             <h1 class="text-2xl font-semibold">Simulator Configuration</h1>
@@ -198,16 +244,6 @@ defmodule TswIoWeb.SimulatorConfigLive do
         </div>
       </main>
     </div>
-    """
-  end
-
-  defp page_header(assigns) do
-    ~H"""
-    <header class="navbar bg-base-100 border-b border-base-300 px-4 sticky top-0 z-50">
-      <div class="flex-1">
-        <.link navigate={~p"/"} class="text-lg font-semibold">TWS IO</.link>
-      </div>
-    </header>
     """
   end
 

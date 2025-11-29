@@ -17,9 +17,11 @@ defmodule TswIoWeb.Router do
   scope "/", TswIoWeb do
     pipe_through :browser
 
-    live "/", DeviceLive
-    live "/devices/:port/config", DeviceConfigLive
-    live "/simulator/config", SimulatorConfigLive
+    live_session :default, on_mount: TswIoWeb.NavHook do
+      live "/", DeviceLive
+      live "/devices/:port/config", DeviceConfigLive
+      live "/simulator/config", SimulatorConfigLive
+    end
   end
 
   # Other scopes may use custom stacks.

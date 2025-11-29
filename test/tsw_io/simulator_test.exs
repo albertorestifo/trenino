@@ -1,8 +1,15 @@
 defmodule TswIo.SimulatorTest do
-  use TswIo.DataCase, async: true
+  # Non-async because the Simulator.Connection GenServer needs database access
+  use TswIo.DataCase, async: false
 
   alias TswIo.Simulator
   alias TswIo.Simulator.Config
+
+  # Allow the Connection GenServer to access the database sandbox
+  setup do
+    Ecto.Adapters.SQL.Sandbox.mode(TswIo.Repo, {:shared, self()})
+    :ok
+  end
 
   describe "get_config/0" do
     test "returns {:error, :not_found} when no config exists" do

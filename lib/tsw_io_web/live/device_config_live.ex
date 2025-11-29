@@ -1,6 +1,8 @@
 defmodule TswIoWeb.DeviceConfigLive do
   use TswIoWeb, :live_view
 
+  import TswIoWeb.NavComponents
+
   alias TswIo.Hardware
   alias TswIo.Hardware.Input
   alias TswIo.Hardware.Calibration.Session
@@ -13,7 +15,8 @@ defmodule TswIoWeb.DeviceConfigLive do
     if connected?(socket) do
       Hardware.subscribe_configuration()
       Hardware.subscribe_input_values(port)
-      Connection.subscribe()
+
+      # NavHook subscribes to Connection and Simulator, but we need device updates for disconnect detection
     end
 
     case find_connection(port) do
@@ -72,7 +75,30 @@ defmodule TswIoWeb.DeviceConfigLive do
     end
   end
 
-  # Event Handlers
+  # Nav component events
+  @impl true
+  def handle_event("nav_toggle_dropdown", _, socket) do
+    {:noreply, assign(socket, :nav_dropdown_open, !socket.assigns.nav_dropdown_open)}
+  end
+
+  @impl true
+  def handle_event("nav_close_dropdown", _, socket) do
+    {:noreply, assign(socket, :nav_dropdown_open, false)}
+  end
+
+  @impl true
+  def handle_event("nav_scan_devices", _, socket) do
+    Connection.scan()
+    {:noreply, assign(socket, :nav_scanning, true)}
+  end
+
+  @impl true
+  def handle_event("nav_disconnect_device", %{"port" => port}, socket) do
+    Connection.disconnect(port)
+    {:noreply, socket}
+  end
+
+  # Page-specific Event Handlers
 
   @impl true
   def handle_event("open_add_input_modal", _params, socket) do
@@ -237,7 +263,16 @@ defmodule TswIoWeb.DeviceConfigLive do
   end
 
   @impl true
+  def handle_info({:simulator_status_changed, status}, socket) do
+    {:noreply, assign(socket, :nav_simulator_status, status)}
+  end
+
+  @impl true
   def handle_info({:devices_updated, devices}, socket) do
+    # Update nav state
+    socket = assign(socket, :nav_devices, devices)
+
+    # Check if our device is still connected
     connection = Enum.find(devices, &(&1.port == socket.assigns.port && &1.status == :connected))
 
     if connection do
@@ -256,9 +291,20 @@ defmodule TswIoWeb.DeviceConfigLive do
   def render(assigns) do
     ~H"""
     <div class="min-h-screen flex flex-col">
-      <.nav_header port={@port} device_version={@connection.device_version} />
+      <.nav_header
+        devices={@nav_devices}
+        simulator_status={@nav_simulator_status}
+        dropdown_open={@nav_dropdown_open}
+        scanning={@nav_scanning}
+      />
 
-      <main class="flex-1 p-8">
+      <.breadcrumb items={[
+        %{label: "Home", path: ~p"/"},
+        %{label: @port, path: ~p"/devices/#{URI.encode_www_form(@port)}/config"},
+        %{label: "Configuration"}
+      ]} />
+
+      <main class="flex-1 p-4 sm:p-8">
         <div class="max-w-2xl mx-auto">
           <.page_header port={@port} device_version={@connection.device_version} />
 
@@ -299,25 +345,6 @@ defmodule TswIoWeb.DeviceConfigLive do
   end
 
   # Components
-
-  attr :port, :string, required: true
-  attr :device_version, :string, default: nil
-
-  defp nav_header(assigns) do
-    ~H"""
-    <header class="navbar bg-base-100 border-b border-base-300 px-4 sticky top-0 z-50">
-      <div class="flex-1">
-        <a href="/" class="flex items-center gap-2 text-base-content/70 hover:text-base-content">
-          <.icon name="hero-arrow-left" class="w-4 h-4" />
-          <span class="text-sm">Back to Devices</span>
-        </a>
-      </div>
-      <div class="flex-none">
-        <span class="text-sm text-base-content/70">TWS IO</span>
-      </div>
-    </header>
-    """
-  end
 
   attr :port, :string, required: true
   attr :device_version, :string, default: nil
