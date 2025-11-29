@@ -12,7 +12,7 @@ defmodule TswIoWeb.TrainEditLive do
   import TswIoWeb.SharedComponents
 
   alias TswIo.Train, as: TrainContext
-  alias TswIo.Train.{Train, Element}
+  alias TswIo.Train.{Train, Element, LeverConfig}
   alias TswIo.Serial.Connection
 
   @impl true
@@ -54,7 +54,9 @@ defmodule TswIoWeb.TrainEditLive do
      |> assign(:active_train, TrainContext.get_active_train())
      |> assign(:modal_open, false)
      |> assign(:element_form, to_form(Element.changeset(%Element{}, %{type: :lever})))
-     |> assign(:show_delete_modal, false)}
+     |> assign(:show_delete_modal, false)
+     |> assign(:configuring_element, nil)
+     |> assign(:lever_config_form, nil)}
   end
 
   defp mount_existing(socket, train_id) do
@@ -75,7 +77,9 @@ defmodule TswIoWeb.TrainEditLive do
          |> assign(:active_train, TrainContext.get_active_train())
          |> assign(:modal_open, false)
          |> assign(:element_form, to_form(Element.changeset(%Element{}, %{type: :lever})))
-         |> assign(:show_delete_modal, false)}
+         |> assign(:show_delete_modal, false)
+         |> assign(:configuring_element, nil)
+         |> assign(:lever_config_form, nil)}
 
       {:error, :not_found} ->
         {:ok,
@@ -180,6 +184,73 @@ defmodule TswIoWeb.TrainEditLive do
 
       {:error, :not_found} ->
         {:noreply, put_flash(socket, :error, "Element not found")}
+    end
+  end
+
+  # Lever configuration
+  @impl true
+  def handle_event("configure_lever", %{"id" => id}, socket) do
+    element_id = String.to_integer(id)
+
+    case TrainContext.get_element(element_id, preload: [lever_config: :notches]) do
+      {:ok, element} ->
+        lever_config = element.lever_config || %LeverConfig{element_id: element_id}
+        changeset = LeverConfig.changeset(lever_config, %{})
+
+        {:noreply,
+         socket
+         |> assign(:configuring_element, element)
+         |> assign(:lever_config_form, to_form(changeset))}
+
+      {:error, :not_found} ->
+        {:noreply, put_flash(socket, :error, "Element not found")}
+    end
+  end
+
+  @impl true
+  def handle_event("close_lever_config_modal", _params, socket) do
+    {:noreply,
+     socket
+     |> assign(:configuring_element, nil)
+     |> assign(:lever_config_form, nil)}
+  end
+
+  @impl true
+  def handle_event("validate_lever_config", %{"lever_config" => params}, socket) do
+    lever_config = socket.assigns.configuring_element.lever_config || %LeverConfig{}
+
+    changeset =
+      lever_config
+      |> LeverConfig.changeset(params)
+      |> Map.put(:action, :validate)
+
+    {:noreply, assign(socket, :lever_config_form, to_form(changeset))}
+  end
+
+  @impl true
+  def handle_event("save_lever_config", %{"lever_config" => params}, socket) do
+    element = socket.assigns.configuring_element
+
+    result =
+      if element.lever_config do
+        TrainContext.update_lever_config(element.lever_config, params)
+      else
+        TrainContext.create_lever_config(element.id, params)
+      end
+
+    case result do
+      {:ok, _config} ->
+        {:ok, elements} = TrainContext.list_elements(socket.assigns.train.id)
+
+        {:noreply,
+         socket
+         |> assign(:elements, elements)
+         |> assign(:configuring_element, nil)
+         |> assign(:lever_config_form, nil)
+         |> put_flash(:info, "Lever configuration saved")}
+
+      {:error, changeset} ->
+        {:noreply, assign(socket, :lever_config_form, to_form(changeset))}
     end
   end
 
@@ -332,6 +403,12 @@ defmodule TswIoWeb.TrainEditLive do
         is_active={@is_active}
         active_warning="This train is currently active in the simulator."
       />
+
+      <.lever_config_modal
+        :if={@configuring_element}
+        element={@configuring_element}
+        form={@lever_config_form}
+      />
     </div>
     """
   end
@@ -458,11 +535,12 @@ defmodule TswIoWeb.TrainEditLive do
 
         <div class="flex items-center gap-2">
           <button
-            :if={@is_active}
+            phx-click="configure_lever"
+            phx-value-id={@element.id}
             class="btn btn-ghost btn-xs text-primary"
-            title="Calibrate"
+            title="Configure"
           >
-            <.icon name="hero-adjustments-horizontal" class="w-4 h-4" />
+            <.icon name="hero-cog-6-tooth" class="w-4 h-4" />
           </button>
           <button
             phx-click="delete_element"
@@ -530,6 +608,109 @@ defmodule TswIoWeb.TrainEditLive do
             </button>
             <button type="submit" class="btn btn-primary">
               Add Element
+            </button>
+          </div>
+        </.form>
+      </div>
+    </div>
+    """
+  end
+
+  attr :element, :map, required: true
+  attr :form, :map, required: true
+
+  defp lever_config_modal(assigns) do
+    has_existing_config = assigns.element.lever_config != nil
+    assigns = assign(assigns, :has_existing_config, has_existing_config)
+
+    ~H"""
+    <div class="fixed inset-0 z-50 flex items-center justify-center">
+      <div class="absolute inset-0 bg-black/50" phx-click="close_lever_config_modal" />
+      <div class="relative bg-base-100 rounded-xl shadow-xl w-full max-w-lg mx-4 p-6">
+        <h2 class="text-xl font-semibold mb-1">Configure {@element.name}</h2>
+        <p class="text-sm text-base-content/60 mb-4">
+          Set the simulator API endpoints for this lever control.
+        </p>
+
+        <.form for={@form} phx-change="validate_lever_config" phx-submit="save_lever_config">
+          <div class="space-y-4">
+            <div class="bg-base-200/50 rounded-lg p-4">
+              <h3 class="text-sm font-semibold mb-3">Required Endpoints</h3>
+              <div class="space-y-3">
+                <div>
+                  <label class="label py-1">
+                    <span class="label-text text-xs">Minimum Value Endpoint</span>
+                  </label>
+                  <.input
+                    field={@form[:min_endpoint]}
+                    type="text"
+                    placeholder="e.g., CurrentDrivableActor/Throttle(Lever).MinInput"
+                    class="input input-bordered input-sm w-full font-mono text-xs"
+                  />
+                </div>
+                <div>
+                  <label class="label py-1">
+                    <span class="label-text text-xs">Maximum Value Endpoint</span>
+                  </label>
+                  <.input
+                    field={@form[:max_endpoint]}
+                    type="text"
+                    placeholder="e.g., CurrentDrivableActor/Throttle(Lever).MaxInput"
+                    class="input input-bordered input-sm w-full font-mono text-xs"
+                  />
+                </div>
+                <div>
+                  <label class="label py-1">
+                    <span class="label-text text-xs">Current Value Endpoint</span>
+                  </label>
+                  <.input
+                    field={@form[:value_endpoint]}
+                    type="text"
+                    placeholder="e.g., CurrentDrivableActor/Throttle(Lever).InputValue"
+                    class="input input-bordered input-sm w-full font-mono text-xs"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div class="bg-base-200/50 rounded-lg p-4">
+              <h3 class="text-sm font-semibold mb-1">Optional: Notch Endpoints</h3>
+              <p class="text-xs text-base-content/60 mb-3">
+                If the lever has discrete notch positions, provide these endpoints.
+              </p>
+              <div class="space-y-3">
+                <div>
+                  <label class="label py-1">
+                    <span class="label-text text-xs">Notch Count Endpoint</span>
+                  </label>
+                  <.input
+                    field={@form[:notch_count_endpoint]}
+                    type="text"
+                    placeholder="e.g., CurrentDrivableActor/Throttle(Lever).NotchCount"
+                    class="input input-bordered input-sm w-full font-mono text-xs"
+                  />
+                </div>
+                <div>
+                  <label class="label py-1">
+                    <span class="label-text text-xs">Current Notch Index Endpoint</span>
+                  </label>
+                  <.input
+                    field={@form[:notch_index_endpoint]}
+                    type="text"
+                    placeholder="e.g., CurrentDrivableActor/Throttle(Lever).CurrentNotch"
+                    class="input input-bordered input-sm w-full font-mono text-xs"
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="flex justify-end gap-2 mt-6">
+            <button type="button" phx-click="close_lever_config_modal" class="btn btn-ghost">
+              Cancel
+            </button>
+            <button type="submit" class="btn btn-primary">
+              {if @has_existing_config, do: "Update Configuration", else: "Save Configuration"}
             </button>
           </div>
         </.form>
