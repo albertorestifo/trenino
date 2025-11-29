@@ -282,29 +282,58 @@ defmodule TswIoWeb.SimulatorConfigLive do
   defp manual_config(assigns) do
     ~H"""
     <div class="space-y-6">
-      <div :if={not @is_windows} class="bg-info/10 border border-info/20 rounded-xl p-4">
-        <h3 class="font-medium mb-2">Setup Instructions</h3>
-        <div class="prose prose-sm">
-          <p class="text-base-content/70">
-            To enable the TSW API on your Windows PC running Train Sim World:
-          </p>
-          <ol class="text-base-content/70 space-y-1">
-            <li>Open Steam and go to your Library</li>
-            <li>Right-click on Train Sim World 6 and select Properties</li>
-            <li>
-              In the General tab, add <code class="bg-base-300 px-1 rounded">-HTTPAPI</code>
+      <div :if={not @is_windows} class="bg-base-200 rounded-xl p-5">
+        <h3 class="font-medium text-base mb-3">Setup Instructions</h3>
+        <p class="text-sm text-base-content/70 mb-4">
+          To enable the TSW API on your Windows PC running Train Sim World:
+        </p>
+        <ol class="text-sm text-base-content/80 space-y-3 list-none">
+          <li class="flex gap-3">
+            <span class="flex-shrink-0 w-6 h-6 rounded-full bg-base-300 flex items-center justify-center text-xs font-medium">
+              1
+            </span>
+            <span class="pt-0.5">Open Steam and go to your Library</span>
+          </li>
+          <li class="flex gap-3">
+            <span class="flex-shrink-0 w-6 h-6 rounded-full bg-base-300 flex items-center justify-center text-xs font-medium">
+              2
+            </span>
+            <span class="pt-0.5">Right-click on Train Sim World 6 and select Properties</span>
+          </li>
+          <li class="flex gap-3">
+            <span class="flex-shrink-0 w-6 h-6 rounded-full bg-base-300 flex items-center justify-center text-xs font-medium">
+              3
+            </span>
+            <span class="pt-0.5">
+              In the General tab, add
+              <code class="bg-base-300 px-1.5 py-0.5 rounded font-mono text-xs">-HTTPAPI</code>
               to Launch Options
-            </li>
-            <li>Start Train Sim World 6</li>
-            <li>
-              Find the API key in:
-              <code class="bg-base-300 px-1 rounded text-xs break-all">
+            </span>
+          </li>
+          <li class="flex gap-3">
+            <span class="flex-shrink-0 w-6 h-6 rounded-full bg-base-300 flex items-center justify-center text-xs font-medium">
+              4
+            </span>
+            <span class="pt-0.5">Start Train Sim World 6</span>
+          </li>
+          <li class="flex gap-3">
+            <span class="flex-shrink-0 w-6 h-6 rounded-full bg-base-300 flex items-center justify-center text-xs font-medium">
+              5
+            </span>
+            <span class="pt-0.5">
+              Find the API key in:<br />
+              <code class="bg-base-300 px-1.5 py-0.5 rounded font-mono text-xs break-all inline-block mt-1">
                 Documents\My Games\TrainSimWorld6\Saved\Config\CommAPIKey.txt
               </code>
-            </li>
-            <li>Enter the URL and API key below</li>
-          </ol>
-        </div>
+            </span>
+          </li>
+          <li class="flex gap-3">
+            <span class="flex-shrink-0 w-6 h-6 rounded-full bg-base-300 flex items-center justify-center text-xs font-medium">
+              6
+            </span>
+            <span class="pt-0.5">Enter the URL and API key below</span>
+          </li>
+        </ol>
       </div>
 
       <div :if={@is_windows} class="bg-base-200 rounded-xl p-4">
