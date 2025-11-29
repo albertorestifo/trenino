@@ -258,7 +258,9 @@ defmodule TswIo.Train do
 
   @doc """
   Derive train identifier from the current formation in the simulator.
+
+  Returns the common prefix of all ObjectClass values as a string.
   """
-  @spec derive_identifier(Client.t()) :: {:ok, Identifier.formation_info()} | {:error, term()}
+  @spec derive_identifier(Client.t()) :: {:ok, String.t()} | {:error, term()}
   defdelegate derive_identifier(client), to: Identifier, as: :derive_from_formation
 end

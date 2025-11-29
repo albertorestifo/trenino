@@ -122,6 +122,94 @@ defmodule TswIo.Simulator.Client do
   end
 
   @doc """
+  Gets a value from the specified path and extracts it as an integer.
+
+  Returns the first value from the "Values" map, parsed as an integer.
+
+  ## Examples
+
+      {:ok, 5} = TswIo.Simulator.Client.get_int(client, "CurrentFormation.FormationLength")
+
+  """
+  @spec get_int(t(), String.t()) :: {:ok, integer()} | error()
+  def get_int(%__MODULE__{} = client, path) when is_binary(path) do
+    with {:ok, %{"Values" => values}} when map_size(values) > 0 <- get(client, path) do
+      case Map.values(values) do
+        [value | _] when is_integer(value) -> {:ok, value}
+        [value | _] when is_float(value) -> {:ok, trunc(value)}
+        [value | _] when is_binary(value) -> parse_int(value)
+        _ -> {:error, :invalid_value}
+      end
+    else
+      {:ok, _} -> {:error, :invalid_value}
+      error -> error
+    end
+  end
+
+  @doc """
+  Gets a value from the specified path and extracts it as a float.
+
+  Returns the first value from the "Values" map, parsed as a float.
+
+  ## Examples
+
+      {:ok, 4.54} = TswIo.Simulator.Client.get_float(client, "CurrentDrivableActor.Function.HUD_GetSpeed")
+
+  """
+  @spec get_float(t(), String.t()) :: {:ok, float()} | error()
+  def get_float(%__MODULE__{} = client, path) when is_binary(path) do
+    with {:ok, %{"Values" => values}} when map_size(values) > 0 <- get(client, path) do
+      case Map.values(values) do
+        [value | _] when is_float(value) -> {:ok, value}
+        [value | _] when is_integer(value) -> {:ok, value * 1.0}
+        [value | _] when is_binary(value) -> parse_float(value)
+        _ -> {:error, :invalid_value}
+      end
+    else
+      {:ok, _} -> {:error, :invalid_value}
+      error -> error
+    end
+  end
+
+  @doc """
+  Gets a value from the specified path and extracts it as a string.
+
+  Returns the first value from the "Values" map as a string.
+
+  ## Examples
+
+      {:ok, "BR_Class_66_DB"} = TswIo.Simulator.Client.get_string(client, "CurrentFormation/0.ObjectClass")
+
+  """
+  @spec get_string(t(), String.t()) :: {:ok, String.t()} | error()
+  def get_string(%__MODULE__{} = client, path) when is_binary(path) do
+    with {:ok, %{"Values" => values}} when map_size(values) > 0 <- get(client, path) do
+      case Map.values(values) do
+        [value | _] when is_binary(value) -> {:ok, value}
+        [value | _] -> {:ok, to_string(value)}
+        _ -> {:error, :invalid_value}
+      end
+    else
+      {:ok, _} -> {:error, :invalid_value}
+      error -> error
+    end
+  end
+
+  defp parse_int(string) do
+    case Integer.parse(string) do
+      {value, ""} -> {:ok, value}
+      _ -> {:error, :invalid_value}
+    end
+  end
+
+  defp parse_float(string) do
+    case Float.parse(string) do
+      {value, ""} -> {:ok, value}
+      _ -> {:error, :invalid_value}
+    end
+  end
+
+  @doc """
   Writes a value to the specified path and endpoint.
 
   The path format is: `node_path.endpoint`

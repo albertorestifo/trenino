@@ -183,7 +183,7 @@ defmodule TswIo.Train.Detection do
 
   defp do_detect_train(%State{} = state, %Client{} = client) do
     case Identifier.derive_from_formation(client) do
-      {:ok, %{identifier: identifier}} ->
+      {:ok, identifier} ->
         handle_identifier_detected(state, identifier)
 
       {:error, reason} ->

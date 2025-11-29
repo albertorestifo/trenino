@@ -9,23 +9,17 @@ defmodule TswIo.Train.Identifier do
 
   alias TswIo.Simulator.Client
 
-  @type formation_info :: %{
-          length: non_neg_integer(),
-          object_classes: [String.t()],
-          identifier: String.t()
-        }
-
   @doc """
   Derives train identifier from the current formation in the simulator.
 
-  Returns the common prefix of all ObjectClass values.
+  Returns the common prefix of all ObjectClass values as a string.
+  Fetches object classes in parallel using async tasks.
   """
-  @spec derive_from_formation(Client.t()) :: {:ok, formation_info()} | {:error, term()}
+  @spec derive_from_formation(Client.t()) :: {:ok, String.t()} | {:error, term()}
   def derive_from_formation(%Client{} = client) do
-    with {:ok, length} <- get_formation_length(client),
+    with {:ok, length} <- Client.get_int(client, "CurrentFormation.FormationLength"),
          {:ok, object_classes} <- get_object_classes(client, length) do
-      identifier = common_prefix(object_classes)
-      {:ok, %{length: length, object_classes: object_classes, identifier: identifier}}
+      {:ok, common_prefix(object_classes)}
     end
   end
 
@@ -44,49 +38,33 @@ defmodule TswIo.Train.Identifier do
 
   # Private functions
 
-  defp get_formation_length(%Client{} = client) do
-    case Client.get(client, "CurrentFormation.FormationLength") do
-      {:ok, %{"Values" => values}} ->
-        case Map.values(values) do
-          [length | _] when is_integer(length) -> {:ok, length}
-          _ -> {:error, :invalid_formation_length}
-        end
-
-      {:ok, _response} ->
-        {:error, :invalid_formation_length}
-
-      error ->
-        error
-    end
-  end
-
   defp get_object_classes(%Client{} = client, length) when length > 0 do
-    results =
+    # Fetch all object classes in parallel using async tasks
+    tasks =
       0..(length - 1)
       |> Enum.map(fn index ->
-        case Client.get(client, "CurrentFormation/#{index}.ObjectClass") do
-          {:ok, %{"Values" => values}} ->
-            case Map.values(values) do
-              [class | _] when is_binary(class) -> {:ok, class}
-              _ -> {:error, {:invalid_object_class, index}}
-            end
-
-          error ->
-            error
-        end
+        Task.async(fn ->
+          Client.get_string(client, "CurrentFormation/#{index}.ObjectClass")
+        end)
       end)
 
-    errors = Enum.filter(results, &match?({:error, _}, &1))
+    # Collect results, filtering out errors
+    results =
+      tasks
+      |> Task.await_many(:timer.seconds(5))
+      |> Enum.filter(&match?({:ok, _}, &1))
+      |> Enum.map(fn {:ok, class} -> class end)
 
-    if errors == [] do
-      classes = Enum.map(results, fn {:ok, class} -> class end)
-      {:ok, classes}
+    # We need at least 2 results to compute a meaningful common prefix
+    if length(results) >= 2 do
+      {:ok, results}
     else
-      {:error, {:failed_to_get_classes, errors}}
+      {:error, :insufficient_formation_data}
     end
   end
 
-  defp get_object_classes(_client, 0), do: {:ok, []}
+  defp get_object_classes(_client, 0), do: {:error, :empty_formation}
+  defp get_object_classes(_client, 1), do: {:error, :single_car_formation}
 
   defp find_common_prefix(s1, s2) do
     s1_chars = String.graphemes(s1)
