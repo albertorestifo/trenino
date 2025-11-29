@@ -84,7 +84,7 @@ defmodule TswIoWeb.ConfigurationListLive do
     config = socket.assigns.apply_config
 
     case Hardware.apply_configuration(port, config.id) do
-      :ok ->
+      {:ok, _config_id} ->
         {:noreply,
          socket
          |> put_flash(:info, "Applying configuration to #{port}...")
