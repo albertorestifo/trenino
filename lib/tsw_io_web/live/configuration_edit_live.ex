@@ -516,13 +516,13 @@ defmodule TswIoWeb.ConfigurationEditLive do
         <.input
           field={@device_form[:name]}
           type="text"
-          class="text-2xl font-semibold bg-transparent border-0 p-0 focus:ring-0 w-full"
+          class="text-2xl font-semibold bg-transparent border border-base-300/0 hover:border-base-300/50 hover:bg-base-200/20 p-2 -ml-2 focus:ring-2 focus:ring-primary focus:border-primary w-full transition-all rounded-md"
           placeholder="Configuration Name"
         />
         <.input
           field={@device_form[:description]}
           type="textarea"
-          class="text-sm text-base-content/70 bg-transparent border-0 p-0 focus:ring-0 w-full resize-none mt-1"
+          class="text-sm text-base-content/70 bg-transparent border border-base-300/0 hover:border-base-300/50 hover:bg-base-200/20 p-2 -ml-2 focus:ring-2 focus:ring-primary focus:border-primary w-full resize-none mt-1 transition-all rounded-md"
           placeholder="Add a description..."
           rows="2"
         />
