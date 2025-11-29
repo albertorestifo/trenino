@@ -19,7 +19,7 @@ defmodule TswIoWeb.ConfigurationListLiveTest do
       html = html_response(conn, 200)
 
       # Always present regardless of device state
-      assert html =~ "TWS IO"
+      assert html =~ "TSW IO"
       assert html =~ "Configurations"
     end
 

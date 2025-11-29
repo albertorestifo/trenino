@@ -21,6 +21,8 @@ defmodule TswIoWeb.Router do
       live "/", ConfigurationListLive
       live "/configurations/:config_id", ConfigurationEditLive
       live "/simulator/config", SimulatorConfigLive
+      live "/trains", TrainListLive
+      live "/trains/:train_id", TrainEditLive
     end
   end
 

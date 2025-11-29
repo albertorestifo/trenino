@@ -27,6 +27,13 @@ defmodule TswIoWeb.NavHook do
      |> assign(:nav_devices, devices)
      |> assign(:nav_simulator_status, simulator_status)
      |> assign(:nav_dropdown_open, false)
-     |> assign(:nav_scanning, false)}
+     |> assign(:nav_scanning, false)
+     |> assign(:nav_current_path, "/")
+     |> attach_hook(:nav_path_tracker, :handle_params, &handle_params/3)}
+  end
+
+  defp handle_params(_params, uri, socket) do
+    path = URI.parse(uri).path
+    {:cont, assign(socket, :nav_current_path, path)}
   end
 end

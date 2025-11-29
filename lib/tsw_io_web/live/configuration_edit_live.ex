@@ -438,6 +438,7 @@ defmodule TswIoWeb.ConfigurationEditLive do
         simulator_status={@nav_simulator_status}
         dropdown_open={@nav_dropdown_open}
         scanning={@nav_scanning}
+        current_path={@nav_current_path}
       />
 
       <.breadcrumb items={[

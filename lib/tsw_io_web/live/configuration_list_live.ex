@@ -66,6 +66,7 @@ defmodule TswIoWeb.ConfigurationListLive do
         simulator_status={@nav_simulator_status}
         dropdown_open={@nav_dropdown_open}
         scanning={@nav_scanning}
+        current_path={@nav_current_path}
       />
 
       <main class="flex-1 p-4 sm:p-8">

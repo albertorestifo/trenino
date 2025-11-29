@@ -12,7 +12,9 @@
       "Bash(mix ecto.gen.migration:*)",
       "Bash(mix ecto.migrate:*)",
       "Bash(mix precommit:*)",
-      "Bash(mix run:*)"
+      "Bash(mix run:*)",
+      "Bash(find:*)",
+      "Bash(xargs cat:*)"
     ],
     "deny": [],
     "ask": []

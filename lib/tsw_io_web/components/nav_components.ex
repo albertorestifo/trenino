@@ -18,13 +18,18 @@ defmodule TswIoWeb.NavComponents do
   attr :simulator_status, :map, required: true
   attr :dropdown_open, :boolean, default: false
   attr :scanning, :boolean, default: false
+  attr :current_path, :string, default: "/"
 
   def nav_header(assigns) do
     ~H"""
     <header class="bg-base-100 border-b border-base-300 sticky top-0 z-50 px-4 sm:px-8">
       <div class="max-w-2xl mx-auto py-3 flex items-center">
-        <div class="flex-1">
-          <.link navigate={~p"/"} class="text-lg font-semibold">TWS IO</.link>
+        <div class="flex-1 flex items-center gap-6">
+          <.link navigate={~p"/"} class="text-lg font-semibold">TSW IO</.link>
+          <nav class="hidden sm:flex items-center gap-1">
+            <.nav_tab path={~p"/"} label="Devices" current_path={@current_path} />
+            <.nav_tab path={~p"/trains"} label="Trains" current_path={@current_path} />
+          </nav>
         </div>
 
         <div class="flex-none flex items-center gap-3">
@@ -62,6 +67,39 @@ defmodule TswIoWeb.NavComponents do
         </div>
       </div>
     </header>
+    """
+  end
+
+  attr :path, :string, required: true
+  attr :label, :string, required: true
+  attr :current_path, :string, required: true
+
+  defp nav_tab(assigns) do
+    is_active =
+      case assigns.path do
+        "/" ->
+          assigns.current_path == "/" or
+            String.starts_with?(assigns.current_path, "/configurations")
+
+        path ->
+          String.starts_with?(assigns.current_path, path)
+      end
+
+    assigns = assign(assigns, :is_active, is_active)
+
+    ~H"""
+    <.link
+      navigate={@path}
+      class={[
+        "px-3 py-1.5 rounded-lg text-sm font-medium transition-colors",
+        if(@is_active,
+          do: "bg-primary text-primary-content",
+          else: "text-base-content/70 hover:text-base-content hover:bg-base-200"
+        )
+      ]}
+    >
+      {@label}
+    </.link>
     """
   end
 

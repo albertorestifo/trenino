@@ -280,7 +280,7 @@ defmodule TswIoWeb.SimulatorConfigLiveTest do
     test "has link back to home page", %{conn: conn} do
       {:ok, _view, html} = live(conn, ~p"/simulator/config")
 
-      assert html =~ "TWS IO"
+      assert html =~ "TSW IO"
       assert html =~ ~s(href="/")
     end
   end
