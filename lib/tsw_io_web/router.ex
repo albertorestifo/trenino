@@ -19,6 +19,7 @@ defmodule TswIoWeb.Router do
 
     live "/", DeviceLive
     live "/devices/:port/config", DeviceConfigLive
+    live "/simulator/config", SimulatorConfigLive
   end
 
   # Other scopes may use custom stacks.

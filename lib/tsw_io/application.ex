@@ -17,6 +17,7 @@ defmodule TswIo.Application do
       TswIo.Serial.Connection,
       TswIo.Hardware.ConfigurationManager,
       TswIo.Hardware.Calibration.SessionSupervisor,
+      TswIo.Simulator.Connection,
       # Start to serve requests, typically the last entry
       TswIoWeb.Endpoint
     ]

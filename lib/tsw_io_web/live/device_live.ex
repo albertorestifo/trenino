@@ -2,18 +2,22 @@ defmodule TswIoWeb.DeviceLive do
   use TswIoWeb, :live_view
 
   alias TswIo.Serial.Connection
+  alias TswIo.Simulator
 
   @impl true
   def mount(_params, _session, socket) do
     if connected?(socket) do
       Connection.subscribe()
+      Simulator.subscribe()
     end
 
     devices = Connection.list_devices()
+    simulator_status = Simulator.get_status()
 
     {:ok,
      socket
      |> assign(:devices, devices)
+     |> assign(:simulator_status, simulator_status)
      |> assign(:dropdown_open, false)
      |> assign(:scanning, false)}
   end
@@ -21,6 +25,11 @@ defmodule TswIoWeb.DeviceLive do
   @impl true
   def handle_info({:devices_updated, devices}, socket) do
     {:noreply, assign(socket, :devices, devices)}
+  end
+
+  @impl true
+  def handle_info({:simulator_status_changed, status}, socket) do
+    {:noreply, assign(socket, :simulator_status, status)}
   end
 
   @impl true
@@ -51,6 +60,7 @@ defmodule TswIoWeb.DeviceLive do
     <div class="min-h-screen flex flex-col">
       <.status_bar
         devices={@devices}
+        simulator_status={@simulator_status}
         dropdown_open={@dropdown_open}
         scanning={@scanning}
       />
@@ -64,6 +74,7 @@ defmodule TswIoWeb.DeviceLive do
 
   # Status Bar Component
   attr :devices, :list, required: true
+  attr :simulator_status, :map, required: true
   attr :dropdown_open, :boolean, required: true
   attr :scanning, :boolean, required: true
 
@@ -75,6 +86,15 @@ defmodule TswIoWeb.DeviceLive do
       </div>
 
       <div class="flex-none flex items-center gap-4">
+        <.link
+          navigate={~p"/simulator/config"}
+          class="flex items-center gap-2 px-3 py-2 rounded-lg bg-base-200 hover:bg-base-300 transition-colors duration-150"
+          title="Simulator Connection"
+        >
+          <span class={["w-2 h-2 rounded-full", simulator_status_color(@simulator_status.status)]} />
+          <span class="text-sm font-medium hidden sm:inline">Simulator</span>
+        </.link>
+
         <div class="relative">
           <button
             phx-click="toggle_dropdown"
@@ -101,8 +121,6 @@ defmodule TswIoWeb.DeviceLive do
             scanning={@scanning}
           />
         </div>
-
-        <%!-- Theme toggle placeholder --%>
       </div>
     </header>
     """
@@ -315,5 +333,15 @@ defmodule TswIoWeb.DeviceLive do
 
   defp connected_count(devices) do
     Enum.count(devices, &(&1.status == :connected))
+  end
+
+  defp simulator_status_color(status) do
+    case status do
+      :connected -> "bg-success"
+      :connecting -> "bg-info animate-pulse"
+      :error -> "bg-error"
+      :needs_config -> "bg-warning"
+      :disconnected -> "bg-base-content/20"
+    end
   end
 end
