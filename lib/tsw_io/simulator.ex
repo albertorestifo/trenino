@@ -9,10 +9,9 @@ defmodule TswIo.Simulator do
   import Ecto.Query
 
   alias TswIo.Repo
+  alias TswIo.Simulator.AutoConfig
   alias TswIo.Simulator.Config
   alias TswIo.Simulator.Connection
-
-  @default_url "http://localhost:31270"
 
   @doc """
   Get the current simulator configuration.
@@ -100,85 +99,11 @@ defmodule TswIo.Simulator do
     end
   end
 
-  @doc """
-  Attempt to auto-detect the API key on Windows.
-
-  Looks for CommAPIKey.txt in the default TSW location:
-  `Documents/My Games/TrainSimWorld6/Saved/Config/CommAPIKey.txt`
-
-  Returns `{:ok, api_key}` if found, `{:error, reason}` otherwise.
-  """
-  @spec auto_detect_api_key() ::
-          {:ok, String.t()} | {:error, :not_windows | :file_not_found | :read_error}
-  def auto_detect_api_key do
-    if windows?() do
-      case System.get_env("USERPROFILE") do
-        nil ->
-          {:error, :userprofile_not_set}
-
-        userprofile ->
-          path =
-            Path.join([
-              userprofile,
-              "Documents",
-              "My Games",
-              "TrainSimWorld6",
-              "Saved",
-              "Config",
-              "CommAPIKey.txt"
-            ])
-
-          case File.read(path) do
-            {:ok, content} ->
-              api_key = String.trim(content)
-              {:ok, api_key}
-
-            {:error, :enoent} ->
-              {:error, :file_not_found}
-
-            {:error, _} ->
-              {:error, :read_error}
-          end
-      end
-    else
-      {:error, :not_windows}
-    end
-  end
-
-  @doc """
-  Create a configuration from auto-detected values.
-
-  Detects the API key and uses the default URL.
-  """
-  @spec auto_configure() ::
-          {:ok, Config.t()}
-          | {:error, :not_windows | :file_not_found | :read_error | Ecto.Changeset.t()}
-  def auto_configure do
-    with {:ok, api_key} <- auto_detect_api_key() do
-      save_config(%{
-        url: default_url(),
-        api_key: api_key,
-        auto_detected: true
-      })
-    end
-  end
-
-  @doc """
-  Get the default TSW API URL.
-  """
-  @spec default_url() :: String.t()
-  def default_url, do: @default_url
-
-  @doc """
-  Check if the current platform is Windows.
-  """
-  @spec windows?() :: boolean()
-  def windows? do
-    case :os.type() do
-      {:win32, _} -> true
-      _ -> false
-    end
-  end
+  # Delegate auto-configuration operations to AutoConfig module
+  defdelegate auto_detect_api_key(), to: AutoConfig
+  defdelegate auto_configure(), to: AutoConfig
+  defdelegate default_url(), to: AutoConfig
+  defdelegate windows?(), to: AutoConfig
 
   # Delegate connection operations to Connection module
   defdelegate subscribe(), to: Connection

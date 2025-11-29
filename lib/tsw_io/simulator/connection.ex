@@ -11,6 +11,7 @@ defmodule TswIo.Simulator.Connection do
   use GenServer
   require Logger
 
+  alias TswIo.Simulator.AutoConfig
   alias TswIo.Simulator.Client
   alias TswIo.Simulator.Config
   alias TswIo.Simulator.ConnectionState
@@ -140,11 +141,11 @@ defmodule TswIo.Simulator.Connection do
   # Private functions
 
   defp attempt_connection(%ConnectionState{} = state) do
-    case TswIo.Simulator.get_config() do
+    case AutoConfig.ensure_config() do
       {:ok, %Config{url: url, api_key: api_key}} ->
         do_connect(state, url, api_key)
 
-      {:error, :not_found} ->
+      {:error, _reason} ->
         ConnectionState.mark_needs_config(state)
     end
   end
