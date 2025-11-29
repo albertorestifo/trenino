@@ -1,8 +1,8 @@
-defmodule TswIo.Tsw.ClientTest do
+defmodule TswIo.Simulator.ClientTest do
   use ExUnit.Case, async: true
   use Mimic
 
-  alias TswIo.Tsw.Client
+  alias TswIo.Simulator.Client
 
   @base_url "http://localhost:31270"
   @api_key "test-api-key"

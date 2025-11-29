@@ -1,4 +1,4 @@
-defmodule TswIo.Tsw.Client do
+defmodule TswIo.Simulator.Client do
   @moduledoc """
   Client for the Train Sim World 6 External Interface API.
 
@@ -9,20 +9,20 @@ defmodule TswIo.Tsw.Client do
 
   Create a client with the base URL and API key:
 
-      client = TswIo.Tsw.Client.new("http://localhost:31270", "your-api-key")
+      client = TswIo.Simulator.Client.new("http://localhost:31270", "your-api-key")
 
   The API key is read from `CommAPIKey.txt` in the game's config directory.
 
   ## Usage
 
       # Get current speed
-      {:ok, response} = TswIo.Tsw.Client.get(client, "CurrentDrivableActor.Function.HUD_GetSpeed")
+      {:ok, response} = TswIo.Simulator.Client.get(client, "CurrentDrivableActor.Function.HUD_GetSpeed")
 
       # Set throttle position
-      {:ok, response} = TswIo.Tsw.Client.set(client, "CurrentDrivableActor/Throttle(Lever).InputValue", 0.5)
+      {:ok, response} = TswIo.Simulator.Client.set(client, "CurrentDrivableActor/Throttle(Lever).InputValue", 0.5)
 
       # List available controls
-      {:ok, nodes} = TswIo.Tsw.Client.list(client, "CurrentDrivableActor")
+      {:ok, nodes} = TswIo.Simulator.Client.list(client, "CurrentDrivableActor")
   """
 
   defstruct [:base_url, :api_key, :req]
@@ -46,8 +46,8 @@ defmodule TswIo.Tsw.Client do
 
   ## Examples
 
-      iex> client = TswIo.Tsw.Client.new("http://localhost:31270", "your-api-key")
-      %TswIo.Tsw.Client{base_url: "http://localhost:31270", api_key: "your-api-key", ...}
+      iex> client = TswIo.Simulator.Client.new("http://localhost:31270", "your-api-key")
+      %TswIo.Simulator.Client{base_url: "http://localhost:31270", api_key: "your-api-key", ...}
 
   """
   @spec new(String.t(), String.t()) :: t()
@@ -81,10 +81,10 @@ defmodule TswIo.Tsw.Client do
   ## Examples
 
       # List all root nodes
-      {:ok, nodes} = TswIo.Tsw.Client.list(client)
+      {:ok, nodes} = TswIo.Simulator.Client.list(client)
 
       # List nodes under a specific path
-      {:ok, nodes} = TswIo.Tsw.Client.list(client, "CurrentDrivableActor")
+      {:ok, nodes} = TswIo.Simulator.Client.list(client, "CurrentDrivableActor")
 
   """
   @spec list(t(), String.t() | nil) :: {:ok, response()} | error()
@@ -107,10 +107,10 @@ defmodule TswIo.Tsw.Client do
 
       # Get current speed (returns meters/second)
       {:ok, %{"Result" => "Success", "Values" => %{"Speed (ms)" => 4.54}}} =
-        TswIo.Tsw.Client.get(client, "CurrentDrivableActor.Function.HUD_GetSpeed")
+        TswIo.Simulator.Client.get(client, "CurrentDrivableActor.Function.HUD_GetSpeed")
 
       # Get throttle notch position
-      {:ok, response} = TswIo.Tsw.Client.get(
+      {:ok, response} = TswIo.Simulator.Client.get(
         client,
         "CurrentDrivableActor/Throttle(Lever).Function.GetCurrentNotchIndex"
       )
@@ -130,10 +130,10 @@ defmodule TswIo.Tsw.Client do
 
       # Set throttle position
       {:ok, %{"Result" => "Success"}} =
-        TswIo.Tsw.Client.set(client, "CurrentDrivableActor/Throttle(Lever).InputValue", 0.25)
+        TswIo.Simulator.Client.set(client, "CurrentDrivableActor/Throttle(Lever).InputValue", 0.25)
 
       # Set weather cloudiness
-      {:ok, response} = TswIo.Tsw.Client.set(client, "WeatherManager.Cloudiness", 0.5)
+      {:ok, response} = TswIo.Simulator.Client.set(client, "WeatherManager.Cloudiness", 0.5)
 
   """
   @spec set(t(), String.t(), number() | String.t() | boolean()) :: {:ok, response()} | error()
@@ -154,7 +154,7 @@ defmodule TswIo.Tsw.Client do
 
   ## Examples
 
-      {:ok, response} = TswIo.Tsw.Client.subscribe(
+      {:ok, response} = TswIo.Simulator.Client.subscribe(
         client,
         "CurrentDrivableActor.Function.HUD_GetSpeed",
         1
@@ -172,7 +172,7 @@ defmodule TswIo.Tsw.Client do
 
   ## Examples
 
-      {:ok, %{"Entries" => entries}} = TswIo.Tsw.Client.get_subscription(client, 1)
+      {:ok, %{"Entries" => entries}} = TswIo.Simulator.Client.get_subscription(client, 1)
 
   """
   @spec get_subscription(t(), integer()) :: {:ok, response()} | error()
@@ -186,7 +186,7 @@ defmodule TswIo.Tsw.Client do
 
   ## Examples
 
-      {:ok, response} = TswIo.Tsw.Client.unsubscribe(client, 1)
+      {:ok, response} = TswIo.Simulator.Client.unsubscribe(client, 1)
 
   """
   @spec unsubscribe(t(), integer()) :: {:ok, response()} | error()
@@ -199,7 +199,7 @@ defmodule TswIo.Tsw.Client do
 
   ## Examples
 
-      {:ok, subscriptions} = TswIo.Tsw.Client.list_subscriptions(client)
+      {:ok, subscriptions} = TswIo.Simulator.Client.list_subscriptions(client)
 
   """
   @spec list_subscriptions(t()) :: {:ok, response()} | error()
