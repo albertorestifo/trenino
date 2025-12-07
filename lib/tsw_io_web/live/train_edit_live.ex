@@ -869,6 +869,7 @@ defmodule TswIoWeb.TrainEditLive do
         module={TswIoWeb.NotchMappingWizard}
         id="notch-mapping-wizard"
         lever_config={@notch_mapping_wizard_element.lever_config}
+        element_name={@notch_mapping_wizard_element.name}
         port={get_bound_input_port(@notch_mapping_wizard_element)}
         pin={get_bound_input_pin(@notch_mapping_wizard_element)}
         calibration={get_bound_input_calibration(@notch_mapping_wizard_element)}

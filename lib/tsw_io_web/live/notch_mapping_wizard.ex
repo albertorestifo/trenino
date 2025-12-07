@@ -154,7 +154,7 @@ defmodule TswIoWeb.NotchMappingWizard do
     <div class="fixed inset-0 z-50 flex items-center justify-center">
       <div class="absolute inset-0 bg-black/50" phx-click="cancel" phx-target={@myself} />
       <div class="relative bg-base-100 rounded-xl shadow-xl w-full max-w-lg mx-4 p-6">
-        <.wizard_header lever_config={@lever_config} target={@myself} />
+        <.wizard_header element_name={@element_name} target={@myself} />
 
         <.loading_state :if={is_nil(@session_state)} />
 
@@ -176,7 +176,7 @@ defmodule TswIoWeb.NotchMappingWizard do
 
   # Components
 
-  attr :lever_config, :map, required: true
+  attr :element_name, :string, required: true
   attr :target, :any, required: true
 
   defp wizard_header(assigns) do
@@ -184,7 +184,7 @@ defmodule TswIoWeb.NotchMappingWizard do
     <div class="flex items-center justify-between mb-6">
       <div>
         <h2 class="text-xl font-semibold">Map Input Ranges</h2>
-        <p class="text-sm text-base-content/70">{@lever_config.element.name}</p>
+        <p class="text-sm text-base-content/70">{@element_name}</p>
       </div>
       <button
         phx-click="cancel"
