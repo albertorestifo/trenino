@@ -5,6 +5,131 @@ defmodule TswIoWeb.TrainEditLiveTest do
 
   alias TswIo.Train, as: TrainContext
 
+  # Sample state that NotchMappingSession broadcasts with events
+  @sample_notch_mapping_state %{
+    lever_config_id: 1,
+    notch_count: 3,
+    notches: [
+      %{id: 1, index: 0, type: :gate, description: "Notch 0"},
+      %{id: 2, index: 1, type: :linear, description: "Notch 1"},
+      %{id: 3, index: 2, type: :gate, description: "Notch 2"}
+    ],
+    total_travel: 800,
+    current_step: {:mapping_notch, 0},
+    current_notch_index: 0,
+    current_notch: %{id: 1, index: 0, type: :gate, description: "Notch 0"},
+    is_capturing: false,
+    captured_ranges: [nil, nil, nil],
+    current_value: 400,
+    current_min: nil,
+    current_max: nil,
+    sample_count: 0,
+    can_capture: false,
+    all_captured: false,
+    result: nil,
+    # Legacy fields
+    boundary_count: 4,
+    current_boundary_index: 0,
+    captured_boundaries: [nil, nil, nil],
+    notch_descriptions: ["Notch 0", "Notch 1", "Notch 2"],
+    is_stable: false
+  }
+
+  # All events broadcast by NotchMappingSession that TrainEditLive must handle.
+  # When adding new events to NotchMappingSession, add them here AND add a test below.
+  @notch_mapping_events [
+    :session_started,
+    :step_changed,
+    :sample_updated,
+    :capture_started,
+    :capture_stopped,
+    {:mapping_result, :ok},
+    {:mapping_result, :error},
+    :notch_mapping_cancelled
+  ]
+
+  describe "notch mapping event handlers" do
+    # These tests verify that TrainEditLive has handlers for ALL events
+    # broadcast by NotchMappingSession. This prevents crashes when new
+    # events are added to the session without updating the LiveView.
+    #
+    # IMPORTANT: When adding a new event to NotchMappingSession:
+    # 1. Add it to @notch_mapping_events above
+    # 2. Add a test case below
+    # 3. Add a handle_info clause in TrainEditLive
+
+    setup %{conn: conn} do
+      # Create a train so we can navigate to the edit page
+      {:ok, train} =
+        TrainContext.create_train(%{
+          name: "Test Train",
+          identifier: "Test_Train_#{System.unique_integer([:positive])}"
+        })
+
+      {:ok, view, _html} = live(conn, ~p"/trains/#{train.id}")
+      %{view: view, train: train}
+    end
+
+    test "handles :session_started event", %{view: view} do
+      send(view.pid, {:session_started, @sample_notch_mapping_state})
+      # Should not crash - verify the view is still alive
+      assert render(view) =~ "Test Train"
+    end
+
+    test "handles :step_changed event", %{view: view} do
+      send(view.pid, {:step_changed, @sample_notch_mapping_state})
+      assert render(view) =~ "Test Train"
+    end
+
+    test "handles :sample_updated event", %{view: view} do
+      send(view.pid, {:sample_updated, @sample_notch_mapping_state})
+      assert render(view) =~ "Test Train"
+    end
+
+    test "handles :capture_started event", %{view: view} do
+      state = %{@sample_notch_mapping_state | is_capturing: true}
+      send(view.pid, {:capture_started, state})
+      assert render(view) =~ "Test Train"
+    end
+
+    test "handles :capture_stopped event", %{view: view} do
+      send(view.pid, {:capture_stopped, @sample_notch_mapping_state})
+      assert render(view) =~ "Test Train"
+    end
+
+    test "handles :mapping_result success event", %{view: view} do
+      send(view.pid, {:mapping_result, {:ok, %{id: 1}}})
+      assert render(view) =~ "Test Train"
+    end
+
+    test "handles :mapping_result error event", %{view: view} do
+      send(view.pid, {:mapping_result, {:error, :some_error}})
+      assert render(view) =~ "Test Train"
+    end
+
+    test "handles :notch_mapping_cancelled event", %{view: view} do
+      send(view.pid, :notch_mapping_cancelled)
+      assert render(view) =~ "Test Train"
+    end
+
+    test "all documented events have test coverage" do
+      # This test ensures we don't forget to add tests when new events are added.
+      # The number of event tests should match the number of documented events.
+      #
+      # If this test fails, you need to:
+      # 1. Add a test for the new event above
+      # 2. Update the count below
+      expected_event_count = length(@notch_mapping_events)
+      # Count: session_started, step_changed, sample_updated, capture_started,
+      #        capture_stopped, mapping_result (ok), mapping_result (error), cancelled
+      actual_test_count = 8
+
+      assert actual_test_count == expected_event_count,
+             "Expected #{expected_event_count} event tests but have #{actual_test_count}. " <>
+               "Add a test for any new events in @notch_mapping_events."
+    end
+  end
+
   describe "new train form" do
     test "pre-fills identifier from query params when configuring detected train", %{conn: conn} do
       # When a train is detected but not configured, the user clicks "Configure"
