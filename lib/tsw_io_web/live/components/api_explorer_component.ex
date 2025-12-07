@@ -48,8 +48,29 @@ defmodule TswIoWeb.ApiExplorerComponent do
   end
 
   @impl true
-  def handle_event("navigate", %{"node" => node}, socket) do
-    %{client: client, path: path, search: search} = socket.assigns
+  def handle_event("navigate", %{"node" => node, "type" => "endpoint"}, socket) do
+    # Endpoints are leaf nodes - preview their value directly using dot notation
+    %{client: client, path: path} = socket.assigns
+
+    full_path = build_full_path(path, node, :endpoint)
+
+    case Client.get(client, full_path) do
+      {:ok, response} ->
+        {:noreply,
+         socket
+         |> assign(:preview, %{path: full_path, value: response})}
+
+      {:error, reason} ->
+        {:noreply,
+         socket
+         |> assign(:error, "Failed to read endpoint: #{inspect(reason)}")}
+    end
+  end
+
+  @impl true
+  def handle_event("navigate", %{"node" => node, "type" => "node"}, socket) do
+    # Nodes are containers - navigate into them
+    %{client: client, path: path} = socket.assigns
 
     new_path = path ++ [node]
     full_path = Enum.join(new_path, "/")
@@ -60,36 +81,54 @@ defmodule TswIoWeb.ApiExplorerComponent do
 
     # Fetch child nodes
     case Client.list(client, full_path) do
-      {:ok, %{"Nodes" => nodes}} ->
-        node_names = extract_node_names(nodes)
-        sorted_nodes = Enum.sort(node_names)
+      {:ok, response} ->
+        # Extract both Nodes and Endpoints from response
+        nodes = Map.get(response, "Nodes", [])
+        endpoints = Map.get(response, "Endpoints", [])
 
-        {:noreply,
-         socket
-         |> assign(:path, new_path)
-         |> assign(:nodes, sorted_nodes)
-         |> assign(:filtered_nodes, filter_nodes(sorted_nodes, search))
-         |> assign(:loading, false)
-         |> assign(:preview, nil)}
+        # Build items with type information for display
+        node_items = build_node_items(nodes)
+        endpoint_items = build_endpoint_items(endpoints)
 
-      {:ok, _response} ->
-        # Response without Nodes - might be a leaf node, try to get its value
-        case Client.get(client, full_path) do
-          {:ok, response} ->
-            {:noreply,
-             socket
-             |> assign(:loading, false)
-             |> assign(:preview, %{path: full_path, value: response})}
+        all_items = Enum.sort_by(node_items ++ endpoint_items, & &1.name)
 
-          {:error, reason} ->
-            {:noreply,
-             socket
-             |> assign(:loading, false)
-             |> assign(:error, "Failed to access: #{inspect(reason)}")}
+        if all_items == [] do
+          # No children - this is a leaf node, show its value
+          case Client.get(client, full_path) do
+            {:ok, value_response} ->
+              {:noreply,
+               socket
+               |> assign(:path, new_path)
+               |> assign(:items, [])
+               |> assign(:filtered_items, [])
+               |> assign(:search, "")
+               |> assign(:loading, false)
+               |> assign(:preview, %{path: full_path, value: value_response})}
+
+            {:error, _reason} ->
+              {:noreply,
+               socket
+               |> assign(:path, new_path)
+               |> assign(:items, [])
+               |> assign(:filtered_items, [])
+               |> assign(:search, "")
+               |> assign(:loading, false)
+               |> assign(:preview, nil)}
+          end
+        else
+          {:noreply,
+           socket
+           |> assign(:path, new_path)
+           |> assign(:items, all_items)
+           |> assign(:filtered_items, all_items)
+           |> assign(:search, "")
+           |> assign(:loading, false)
+           |> assign(:preview, nil)}
         end
 
       {:error, _reason} ->
-        # This might be a leaf node (endpoint), try to get its value
+        # This might be a leaf node (something that looks like a node but has no children)
+        # Try to get its value as a fallback
         case Client.get(client, full_path) do
           {:ok, response} ->
             {:noreply,
@@ -108,7 +147,7 @@ defmodule TswIoWeb.ApiExplorerComponent do
 
   @impl true
   def handle_event("go_back", %{"index" => index_str}, socket) do
-    %{client: client, search: search} = socket.assigns
+    %{client: client} = socket.assigns
 
     index = String.to_integer(index_str)
     new_path = Enum.take(socket.assigns.path, index)
@@ -129,23 +168,23 @@ defmodule TswIoWeb.ApiExplorerComponent do
       end
 
     case result do
-      {:ok, %{"Nodes" => nodes}} ->
-        node_names = extract_node_names(nodes)
-        sorted_nodes = Enum.sort(node_names)
+      {:ok, response} ->
+        # Extract both Nodes and Endpoints
+        nodes = Map.get(response, "Nodes", [])
+        endpoints = Map.get(response, "Endpoints", [])
+
+        node_items = build_node_items(nodes)
+        endpoint_items = build_endpoint_items(endpoints)
+
+        all_items = Enum.sort_by(node_items ++ endpoint_items, & &1.name)
 
         {:noreply,
          socket
          |> assign(:path, new_path)
-         |> assign(:nodes, sorted_nodes)
-         |> assign(:filtered_nodes, filter_nodes(sorted_nodes, search))
+         |> assign(:items, all_items)
+         |> assign(:filtered_items, all_items)
+         |> assign(:search, "")
          |> assign(:loading, false)}
-
-      {:ok, _response} ->
-        # Unexpected response format
-        {:noreply,
-         socket
-         |> assign(:loading, false)
-         |> assign(:error, "Unexpected response format from API")}
 
       {:error, reason} ->
         {:noreply,
@@ -157,23 +196,20 @@ defmodule TswIoWeb.ApiExplorerComponent do
 
   @impl true
   def handle_event("search", %{"value" => search}, socket) do
-    filtered = filter_nodes(socket.assigns.nodes, search)
+    filtered = filter_items(socket.assigns.items, search)
 
     {:noreply,
      socket
      |> assign(:search, search)
-     |> assign(:filtered_nodes, filtered)}
+     |> assign(:filtered_items, filtered)}
   end
 
   @impl true
-  def handle_event("preview", %{"node" => node}, socket) do
+  def handle_event("preview", %{"node" => node, "type" => type}, socket) do
     %{client: client, path: path} = socket.assigns
 
-    full_path =
-      case path do
-        [] -> node
-        segments -> Enum.join(segments, "/") <> "/" <> node
-      end
+    item_type = String.to_existing_atom(type)
+    full_path = build_full_path(path, node, item_type)
 
     case Client.get(client, full_path) do
       {:ok, response} ->
@@ -246,6 +282,8 @@ defmodule TswIoWeb.ApiExplorerComponent do
           <div class="mt-3">
             <input
               type="text"
+              id={"api-explorer-search-#{@full_path}"}
+              name="search"
               placeholder="Search nodes..."
               value={@search}
               phx-keyup="search"
@@ -267,30 +305,48 @@ defmodule TswIoWeb.ApiExplorerComponent do
           </div>
 
           <div
-            :if={not @loading and Enum.empty?(@filtered_nodes)}
+            :if={not @loading and Enum.empty?(@filtered_items)}
             class="text-center py-8 text-base-content/50"
           >
             <.icon name="hero-folder-open" class="w-12 h-12 mx-auto mb-2 opacity-30" />
-            <p class="text-sm">No nodes found</p>
+            <p class="text-sm">No items found</p>
           </div>
 
-          <div :if={not @loading and not Enum.empty?(@filtered_nodes)} class="space-y-1">
-            <div :for={node <- @filtered_nodes} class="group">
-              <div class="flex items-center gap-2 p-2 rounded-lg hover:bg-base-200 transition-colors">
+          <div :if={not @loading and not Enum.empty?(@filtered_items)} class="space-y-1">
+            <div :for={item <- @filtered_items} class="group">
+              <div class={[
+                "flex items-center gap-2 p-2 rounded-lg hover:bg-base-200 transition-colors",
+                item.type == :endpoint && "bg-base-200/30"
+              ]}>
                 <button
                   type="button"
                   phx-click="navigate"
-                  phx-value-node={node}
+                  phx-value-node={item.name}
+                  phx-value-type={item.type}
                   phx-target={@myself}
                   class="flex-1 flex items-center gap-2 text-left"
                 >
-                  <.icon name={node_icon(node)} class="w-4 h-4 text-base-content/50" />
-                  <span class="font-mono text-sm truncate">{node}</span>
+                  <.icon
+                    name={item_icon(item)}
+                    class={if item.type == :endpoint, do: "w-4 h-4 text-primary", else: "w-4 h-4 text-base-content/50"}
+                  />
+                  <span class="font-mono text-sm truncate">{item.name}</span>
+                  <span
+                    :if={item.type == :endpoint}
+                    class={[
+                      "text-xs px-1.5 py-0.5 rounded",
+                      item.writable && "bg-success/20 text-success",
+                      not item.writable && "bg-base-300 text-base-content/50"
+                    ]}
+                  >
+                    {if item.writable, do: "RW", else: "RO"}
+                  </span>
                 </button>
                 <button
                   type="button"
                   phx-click="preview"
-                  phx-value-node={node}
+                  phx-value-node={item.name}
+                  phx-value-type={item.type}
                   phx-target={@myself}
                   class="btn btn-ghost btn-xs opacity-0 group-hover:opacity-100 transition-opacity"
                   title="Preview value"
@@ -300,7 +356,7 @@ defmodule TswIoWeb.ApiExplorerComponent do
                 <button
                   type="button"
                   phx-click="select"
-                  phx-value-path={if @full_path == "", do: node, else: "#{@full_path}/#{node}"}
+                  phx-value-path={item_path(@full_path, item)}
                   phx-target={@myself}
                   class="btn btn-ghost btn-xs text-primary opacity-0 group-hover:opacity-100 transition-opacity"
                   title="Select this path"
@@ -339,37 +395,31 @@ defmodule TswIoWeb.ApiExplorerComponent do
 
   defp initialize_explorer(socket) do
     case Client.list(socket.assigns.client) do
-      {:ok, %{"Nodes" => nodes}} ->
-        node_names = extract_node_names(nodes)
-        sorted_nodes = Enum.sort(node_names)
+      {:ok, response} ->
+        # Extract both Nodes and Endpoints
+        nodes = Map.get(response, "Nodes", [])
+        endpoints = Map.get(response, "Endpoints", [])
+
+        node_items = build_node_items(nodes)
+        endpoint_items = build_endpoint_items(endpoints)
+
+        all_items = Enum.sort_by(node_items ++ endpoint_items, & &1.name)
 
         socket
         |> assign(:path, [])
-        |> assign(:nodes, sorted_nodes)
-        |> assign(:filtered_nodes, sorted_nodes)
+        |> assign(:items, all_items)
+        |> assign(:filtered_items, all_items)
         |> assign(:search, "")
         |> assign(:loading, false)
         |> assign(:error, nil)
         |> assign(:preview, nil)
         |> assign(:initialized, true)
 
-      {:ok, _response} ->
-        # Unexpected response format (no Nodes key)
-        socket
-        |> assign(:path, [])
-        |> assign(:nodes, [])
-        |> assign(:filtered_nodes, [])
-        |> assign(:search, "")
-        |> assign(:loading, false)
-        |> assign(:error, "Unexpected response format from API")
-        |> assign(:preview, nil)
-        |> assign(:initialized, true)
-
       {:error, reason} ->
         socket
         |> assign(:path, [])
-        |> assign(:nodes, [])
-        |> assign(:filtered_nodes, [])
+        |> assign(:items, [])
+        |> assign(:filtered_items, [])
         |> assign(:search, "")
         |> assign(:loading, false)
         |> assign(:error, "Failed to load API nodes: #{inspect(reason)}")
@@ -378,32 +428,76 @@ defmodule TswIoWeb.ApiExplorerComponent do
     end
   end
 
-  # Extracts node names from the API response format
-  # Root level uses "NodeName", child levels use "Name"
-  @spec extract_node_names([map()]) :: [String.t()]
-  defp extract_node_names(nodes) do
+  # Builds item maps for nodes (folders/containers)
+  defp build_node_items(nodes) when is_list(nodes) do
     Enum.map(nodes, fn node ->
-      Map.get(node, "NodeName") || Map.get(node, "Name", "")
+      name = Map.get(node, "NodeName") || Map.get(node, "Name", "")
+      %{name: name, type: :node, writable: false}
     end)
   end
 
-  @spec filter_nodes([String.t()], String.t()) :: [String.t()]
-  defp filter_nodes(nodes, ""), do: nodes
+  defp build_node_items(_), do: []
 
-  defp filter_nodes(nodes, search) do
+  # Builds item maps for endpoints (properties)
+  defp build_endpoint_items(endpoints) when is_list(endpoints) do
+    Enum.map(endpoints, fn endpoint ->
+      %{
+        name: Map.get(endpoint, "Name", ""),
+        type: :endpoint,
+        writable: Map.get(endpoint, "Writable", false)
+      }
+    end)
+  end
+
+  defp build_endpoint_items(_), do: []
+
+  # Builds the full API path for an item
+  # Nodes use slash notation: CurrentDrivableActor/Throttle(Lever)
+  # Endpoints use dot notation: CurrentDrivableActor/Throttle(Lever).InputValue
+  defp build_full_path([], name, _type), do: name
+
+  defp build_full_path(path, name, :endpoint) do
+    Enum.join(path, "/") <> "." <> name
+  end
+
+  defp build_full_path(path, name, :node) do
+    Enum.join(path, "/") <> "/" <> name
+  end
+
+  # Filter items by search term
+  defp filter_items(items, ""), do: items
+
+  defp filter_items(items, search) do
     search_lower = String.downcase(search)
 
-    Enum.filter(nodes, fn node ->
-      String.contains?(String.downcase(node), search_lower)
+    Enum.filter(items, fn item ->
+      String.contains?(String.downcase(item.name), search_lower)
     end)
   end
 
-  @spec node_icon(String.t()) :: String.t()
-  defp node_icon(node) do
+  # Returns icon based on item type
+  defp item_icon(%{type: :endpoint}), do: "hero-adjustments-horizontal"
+  defp item_icon(%{type: :node, name: name}) do
     cond do
-      String.contains?(node, "(") -> "hero-cube"
-      String.contains?(node, ".") -> "hero-document"
+      String.contains?(name, "(") -> "hero-cube"
       true -> "hero-folder"
+    end
+  end
+
+  # Returns the full path for an item, using dot notation for endpoints
+  defp item_path(base_path, %{name: name, type: :endpoint}) do
+    if base_path == "" do
+      name
+    else
+      "#{base_path}.#{name}"
+    end
+  end
+
+  defp item_path(base_path, %{name: name, type: :node}) do
+    if base_path == "" do
+      name
+    else
+      "#{base_path}/#{name}"
     end
   end
 

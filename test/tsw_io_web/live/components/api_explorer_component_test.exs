@@ -638,8 +638,8 @@ defmodule TswIoWeb.ApiExplorerComponentTest do
     end
   end
 
-  describe "node icons" do
-    test "shows correct icons for different node types", %{
+  describe "item icons and indicators" do
+    test "shows correct icons for nodes and endpoints", %{
       conn: conn,
       train: train,
       element: element,
@@ -656,8 +656,11 @@ defmodule TswIoWeb.ApiExplorerComponentTest do
            "NodePath" => "Root",
            "Nodes" => [
              %{"NodeName" => "Folder", "NodePath" => "Root/Folder"},
-             %{"NodeName" => "Document.Value", "NodePath" => "Root/Document.Value"},
              %{"NodeName" => "Function(param)", "NodePath" => "Root/Function(param)"}
+           ],
+           "Endpoints" => [
+             %{"Name" => "InputValue", "Writable" => true},
+             %{"Name" => "OutputValue", "Writable" => false}
            ]
          }}
       end)
@@ -667,12 +670,16 @@ defmodule TswIoWeb.ApiExplorerComponentTest do
       open_api_explorer(view, element, "min_endpoint")
 
       html = render(view)
-      # Folder icon for plain names
+      # Folder icon for plain node names
       assert html =~ "hero-folder"
-      # Document icon for names with dots
-      assert html =~ "hero-document"
       # Cube icon for function-like names with parentheses
       assert html =~ "hero-cube"
+      # Adjustments icon for endpoints
+      assert html =~ "hero-adjustments-horizontal"
+      # RW indicator for writable endpoints
+      assert html =~ "RW"
+      # RO indicator for read-only endpoints
+      assert html =~ "RO"
     end
   end
 end
