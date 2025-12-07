@@ -189,6 +189,38 @@ defmodule TswIo.Hardware do
   end
 
   @doc """
+  List all inputs across all devices.
+
+  Returns inputs with their device preloaded, ordered by device name then pin.
+  Only includes calibrated inputs by default.
+
+  ## Options
+
+    * `:include_uncalibrated` - Include inputs without calibration (default: false)
+
+  """
+  @spec list_all_inputs(keyword()) :: [Input.t()]
+  def list_all_inputs(opts \\ []) do
+    include_uncalibrated = Keyword.get(opts, :include_uncalibrated, false)
+
+    query =
+      Input
+      |> join(:inner, [i], d in Device, on: i.device_id == d.id)
+      |> order_by([i, d], [d.name, i.pin])
+      |> preload([:device, :calibration])
+
+    query =
+      if include_uncalibrated do
+        query
+      else
+        query
+        |> join(:inner, [i, d], c in Calibration, on: c.input_id == i.id)
+      end
+
+    Repo.all(query)
+  end
+
+  @doc """
   Create an input for a device.
   """
   @spec create_input(integer(), map()) :: {:ok, Input.t()} | {:error, Ecto.Changeset.t()}

@@ -31,3 +31,6 @@ config :phoenix_live_view,
 # with Ecto.Adapters.SQL.Sandbox. Tests that need this GenServer can start it
 # manually with proper sandbox access.
 config :tsw_io, :start_simulator_connection, false
+
+# Disable LeverController GenServer in tests to avoid pubsub conflicts.
+config :tsw_io, :start_lever_controller, false

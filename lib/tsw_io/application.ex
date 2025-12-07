@@ -23,7 +23,7 @@ defmodule TswIo.Application do
         TswIo.Train.Calibration.SessionSupervisor,
         # Start to serve requests, typically the last entry
         TswIoWeb.Endpoint
-      ] ++ simulator_connection_child()
+      ] ++ simulator_connection_child() ++ lever_controller_child()
 
     # See https://hexdocs.pm/elixir/Supervisor.html
     # for other strategies and supported options
@@ -50,6 +50,17 @@ defmodule TswIo.Application do
   defp simulator_connection_child do
     if Application.get_env(:tsw_io, :start_simulator_connection, true) do
       [TswIo.Simulator.Connection]
+    else
+      []
+    end
+  end
+
+  # Returns the LeverController child spec only in non-test environments.
+  # In test, this GenServer subscribes to multiple pubsub topics and
+  # interacts with other GenServers that may not be running.
+  defp lever_controller_child do
+    if Application.get_env(:tsw_io, :start_lever_controller, true) do
+      [TswIo.Train.LeverController]
     else
       []
     end

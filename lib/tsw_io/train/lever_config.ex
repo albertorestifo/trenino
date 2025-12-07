@@ -11,6 +11,7 @@ defmodule TswIo.Train.LeverConfig do
   import Ecto.Changeset
 
   alias TswIo.Train.Element
+  alias TswIo.Train.LeverInputBinding
   alias TswIo.Train.Notch
 
   @type t :: %__MODULE__{
@@ -24,6 +25,7 @@ defmodule TswIo.Train.LeverConfig do
           calibrated_at: DateTime.t() | nil,
           element: Element.t() | Ecto.Association.NotLoaded.t(),
           notches: [Notch.t()] | Ecto.Association.NotLoaded.t(),
+          input_binding: LeverInputBinding.t() | Ecto.Association.NotLoaded.t() | nil,
           inserted_at: DateTime.t() | nil,
           updated_at: DateTime.t() | nil
         }
@@ -38,6 +40,7 @@ defmodule TswIo.Train.LeverConfig do
 
     belongs_to :element, Element
     has_many :notches, Notch, on_delete: :delete_all
+    has_one :input_binding, LeverInputBinding, on_delete: :delete_all
 
     timestamps(type: :utc_datetime)
   end

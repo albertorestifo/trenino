@@ -331,7 +331,11 @@ defmodule TswIoWeb.ApiExplorerComponent do
                 >
                   <.icon
                     name={item_icon(item)}
-                    class={if item.type == :endpoint, do: "w-4 h-4 text-primary", else: "w-4 h-4 text-base-content/50"}
+                    class={
+                      if item.type == :endpoint,
+                        do: "w-4 h-4 text-primary",
+                        else: "w-4 h-4 text-base-content/50"
+                    }
                   />
                   <span class="font-mono text-sm truncate">{item.name}</span>
                   <span
@@ -480,6 +484,7 @@ defmodule TswIoWeb.ApiExplorerComponent do
 
   # Returns icon based on item type
   defp item_icon(%{type: :endpoint}), do: "hero-adjustments-horizontal"
+
   defp item_icon(%{type: :node, name: name}) do
     cond do
       String.contains?(name, "(") -> "hero-cube"
@@ -516,5 +521,7 @@ defmodule TswIoWeb.ApiExplorerComponent do
   defp format_field_name(:value_endpoint), do: "Current Value Endpoint"
   defp format_field_name(:notch_count_endpoint), do: "Notch Count Endpoint"
   defp format_field_name(:notch_index_endpoint), do: "Notch Index Endpoint"
-  defp format_field_name(field), do: field |> Atom.to_string() |> String.replace("_", " ") |> String.capitalize()
+
+  defp format_field_name(field),
+    do: field |> Atom.to_string() |> String.replace("_", " ") |> String.capitalize()
 end

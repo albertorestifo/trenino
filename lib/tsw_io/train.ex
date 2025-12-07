@@ -9,7 +9,7 @@ defmodule TswIo.Train do
   import Ecto.Query
 
   alias TswIo.Repo
-  alias TswIo.Train.{Train, Element, LeverConfig, Notch, Identifier}
+  alias TswIo.Train.{Train, Element, LeverConfig, LeverInputBinding, Notch, Identifier}
   alias TswIo.Train.Calibration.{SessionSupervisor, LeverSession}
   alias TswIo.Simulator.Client
 
@@ -117,7 +117,7 @@ defmodule TswIo.Train do
       Element
       |> where([e], e.train_id == ^train_id)
       |> order_by([e], e.name)
-      |> preload(lever_config: :notches)
+      |> preload(lever_config: [:notches, input_binding: [input: :device]])
       |> Repo.all()
 
     {:ok, elements}
@@ -378,4 +378,182 @@ defmodule TswIo.Train do
   """
   @spec subscribe_calibration(integer()) :: :ok
   defdelegate subscribe_calibration(lever_config_id), to: LeverSession, as: :subscribe
+
+  # ===================
+  # Input Binding Operations
+  # ===================
+
+  @doc """
+  Get the input binding for a lever config.
+  """
+  @spec get_binding(integer()) :: {:ok, LeverInputBinding.t()} | {:error, :not_found}
+  def get_binding(lever_config_id) do
+    case Repo.get_by(LeverInputBinding, lever_config_id: lever_config_id) do
+      nil -> {:error, :not_found}
+      binding -> {:ok, Repo.preload(binding, :input)}
+    end
+  end
+
+  @doc """
+  Bind an input to a lever config.
+
+  Creates a new binding or updates an existing one.
+  """
+  @spec bind_input(integer(), integer()) ::
+          {:ok, LeverInputBinding.t()} | {:error, Ecto.Changeset.t()}
+  def bind_input(lever_config_id, input_id) do
+    case Repo.get_by(LeverInputBinding, lever_config_id: lever_config_id) do
+      nil ->
+        %LeverInputBinding{}
+        |> LeverInputBinding.changeset(%{
+          lever_config_id: lever_config_id,
+          input_id: input_id
+        })
+        |> Repo.insert()
+
+      existing ->
+        existing
+        |> LeverInputBinding.changeset(%{input_id: input_id})
+        |> Repo.update()
+    end
+  end
+
+  @doc """
+  Unbind an input from a lever config.
+  """
+  @spec unbind_input(integer()) :: :ok | {:error, :not_found}
+  def unbind_input(lever_config_id) do
+    case Repo.get_by(LeverInputBinding, lever_config_id: lever_config_id) do
+      nil ->
+        {:error, :not_found}
+
+      binding ->
+        Repo.delete(binding)
+        :ok
+    end
+  end
+
+  @doc """
+  Enable or disable an input binding.
+  """
+  @spec set_binding_enabled(integer(), boolean()) ::
+          {:ok, LeverInputBinding.t()} | {:error, :not_found} | {:error, Ecto.Changeset.t()}
+  def set_binding_enabled(lever_config_id, enabled) do
+    case Repo.get_by(LeverInputBinding, lever_config_id: lever_config_id) do
+      nil ->
+        {:error, :not_found}
+
+      binding ->
+        binding
+        |> LeverInputBinding.changeset(%{enabled: enabled})
+        |> Repo.update()
+    end
+  end
+
+  @doc """
+  List all input bindings for a train.
+
+  Returns bindings with their associated lever configs and inputs preloaded.
+  """
+  @spec list_bindings_for_train(integer()) :: [LeverInputBinding.t()]
+  def list_bindings_for_train(train_id) do
+    LeverInputBinding
+    |> join(:inner, [b], lc in LeverConfig, on: b.lever_config_id == lc.id)
+    |> join(:inner, [b, lc], e in Element, on: lc.element_id == e.id)
+    |> where([b, lc, e], e.train_id == ^train_id)
+    |> preload([b], [:input, lever_config: [:element, :notches]])
+    |> Repo.all()
+  end
+
+  @doc """
+  Auto-distribute input ranges across notches for a lever config.
+
+  Divides the 0.0-1.0 input range evenly across all notches.
+  """
+  @spec auto_distribute_input_ranges(integer()) ::
+          {:ok, LeverConfig.t()} | {:error, :not_found} | {:error, term()}
+  def auto_distribute_input_ranges(lever_config_id) do
+    case get_lever_config(lever_config_id) do
+      {:error, :not_found} ->
+        {:error, :not_found}
+
+      {:ok, config} ->
+        notches = config.notches |> Enum.sort_by(& &1.index)
+        count = length(notches)
+
+        if count == 0 do
+          {:ok, config}
+        else
+          step = 1.0 / count
+
+          Repo.transaction(fn ->
+            notches
+            |> Enum.with_index()
+            |> Enum.each(fn {notch, idx} ->
+              input_min = Float.round(idx * step, 2)
+              input_max = Float.round((idx + 1) * step, 2)
+
+              notch
+              |> Notch.changeset(%{input_min: input_min, input_max: input_max})
+              |> Repo.update!()
+            end)
+
+            # Reload the config with updated notches
+            case get_lever_config(lever_config_id) do
+              {:ok, reloaded} -> reloaded
+              {:error, reason} -> Repo.rollback(reason)
+            end
+          end)
+        end
+    end
+  end
+
+  @doc """
+  Validate that notch input ranges cover the full 0.0-1.0 range without gaps.
+
+  Returns `:ok` if valid, or `{:error, :gaps_detected, gaps}` with a list of gap ranges.
+  """
+  @spec validate_notch_ranges(integer()) ::
+          :ok | {:error, :not_found} | {:error, :gaps_detected, [{float(), float()}]}
+  def validate_notch_ranges(lever_config_id) do
+    case get_lever_config(lever_config_id) do
+      {:error, :not_found} ->
+        {:error, :not_found}
+
+      {:ok, config} ->
+        notches = config.notches |> Enum.sort_by(& &1.index)
+
+        # Collect all ranges and find gaps
+        ranges =
+          notches
+          |> Enum.filter(fn n -> n.input_min != nil and n.input_max != nil end)
+          |> Enum.map(fn n -> {n.input_min, n.input_max} end)
+          |> Enum.sort_by(&elem(&1, 0))
+
+        gaps = find_gaps(ranges, 0.0, 1.0)
+
+        if gaps == [] do
+          :ok
+        else
+          {:error, :gaps_detected, gaps}
+        end
+    end
+  end
+
+  defp find_gaps([], start_val, end_val) when start_val < end_val do
+    [{start_val, end_val}]
+  end
+
+  defp find_gaps([], _start_val, _end_val), do: []
+
+  defp find_gaps([{range_start, range_end} | rest], current, end_val) do
+    gaps =
+      if range_start > current + 0.001 do
+        [{current, range_start}]
+      else
+        []
+      end
+
+    gaps ++ find_gaps(rest, max(current, range_end), end_val)
+  end
 end

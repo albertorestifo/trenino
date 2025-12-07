@@ -11,8 +11,10 @@ defmodule TswIoWeb.TrainEditLive do
   import TswIoWeb.NavComponents
   import TswIoWeb.SharedComponents
 
+  alias TswIo.Hardware
   alias TswIo.Train, as: TrainContext
-  alias TswIo.Train.{Train, Element, LeverConfig, Notch}
+  alias TswIo.Train.{Train, Element, LeverConfig, LeverInputBinding, Notch}
+  alias TswIo.Train.LeverController
   alias TswIo.Serial.Connection
 
   @impl true
@@ -62,7 +64,9 @@ defmodule TswIoWeb.TrainEditLive do
      |> assign(:auto_detecting, false)
      |> assign(:calibration_progress, nil)
      |> assign(:show_api_explorer, false)
-     |> assign(:api_explorer_field, nil)}
+     |> assign(:api_explorer_field, nil)
+     |> assign(:binding_element, nil)
+     |> assign(:available_inputs, [])}
   end
 
   defp mount_existing(socket, train_id) do
@@ -91,7 +95,9 @@ defmodule TswIoWeb.TrainEditLive do
          |> assign(:auto_detecting, false)
          |> assign(:calibration_progress, nil)
          |> assign(:show_api_explorer, false)
-         |> assign(:api_explorer_field, nil)}
+         |> assign(:api_explorer_field, nil)
+         |> assign(:binding_element, nil)
+         |> assign(:available_inputs, [])}
 
       {:error, :not_found} ->
         {:ok,
@@ -263,6 +269,101 @@ defmodule TswIoWeb.TrainEditLive do
 
       {:error, changeset} ->
         {:noreply, assign(socket, :lever_config_form, to_form(changeset))}
+    end
+  end
+
+  # Input binding
+  @impl true
+  def handle_event("open_input_binding", %{"id" => id}, socket) do
+    element_id = String.to_integer(id)
+
+    case TrainContext.get_element(element_id, preload: [lever_config: [:notches, :input_binding]]) do
+      {:ok, element} ->
+        if element.lever_config do
+          available_inputs = Hardware.list_all_inputs()
+
+          {:noreply,
+           socket
+           |> assign(:binding_element, element)
+           |> assign(:available_inputs, available_inputs)}
+        else
+          {:noreply, put_flash(socket, :error, "Please configure lever endpoints first")}
+        end
+
+      {:error, :not_found} ->
+        {:noreply, put_flash(socket, :error, "Element not found")}
+    end
+  end
+
+  @impl true
+  def handle_event("close_input_binding", _params, socket) do
+    {:noreply,
+     socket
+     |> assign(:binding_element, nil)
+     |> assign(:available_inputs, [])}
+  end
+
+  @impl true
+  def handle_event("bind_input", %{"input_id" => input_id_str}, socket) do
+    input_id = String.to_integer(input_id_str)
+    element = socket.assigns.binding_element
+
+    case TrainContext.bind_input(element.lever_config.id, input_id) do
+      {:ok, _binding} ->
+        {:ok, elements} = TrainContext.list_elements(socket.assigns.train.id)
+        LeverController.reload_bindings()
+
+        {:noreply,
+         socket
+         |> assign(:elements, elements)
+         |> assign(:binding_element, nil)
+         |> assign(:available_inputs, [])
+         |> put_flash(:info, "Input bound successfully")}
+
+      {:error, changeset} ->
+        {:noreply,
+         put_flash(socket, :error, "Failed to bind input: #{inspect(changeset.errors)}")}
+    end
+  end
+
+  @impl true
+  def handle_event("unbind_input", _params, socket) do
+    element = socket.assigns.binding_element
+
+    case TrainContext.unbind_input(element.lever_config.id) do
+      :ok ->
+        {:ok, elements} = TrainContext.list_elements(socket.assigns.train.id)
+        LeverController.reload_bindings()
+
+        {:noreply,
+         socket
+         |> assign(:elements, elements)
+         |> assign(:binding_element, nil)
+         |> assign(:available_inputs, [])
+         |> put_flash(:info, "Input unbound")}
+
+      {:error, :not_found} ->
+        {:noreply, put_flash(socket, :error, "No binding found")}
+    end
+  end
+
+  @impl true
+  def handle_event("auto_distribute_ranges", _params, socket) do
+    element = socket.assigns.mapping_notches_element
+
+    case TrainContext.auto_distribute_input_ranges(element.lever_config.id) do
+      {:ok, updated_config} ->
+        notch_forms = build_notch_forms(updated_config.notches)
+        LeverController.reload_bindings()
+
+        {:noreply,
+         socket
+         |> assign(:notch_forms, notch_forms)
+         |> assign(:mapping_notches_element, %{element | lever_config: updated_config})
+         |> put_flash(:info, "Input ranges distributed evenly")}
+
+      {:error, reason} ->
+        {:noreply, put_flash(socket, :error, "Failed to distribute ranges: #{inspect(reason)}")}
     end
   end
 
@@ -657,6 +758,12 @@ defmodule TswIoWeb.TrainEditLive do
         field={@api_explorer_field}
         client={@nav_simulator_status.client}
       />
+
+      <.input_binding_modal
+        :if={@binding_element}
+        element={@binding_element}
+        available_inputs={@available_inputs}
+      />
     </div>
     """
   end
@@ -751,12 +858,16 @@ defmodule TswIoWeb.TrainEditLive do
     lever_config = get_lever_config(assigns.element)
     is_calibrated = lever_config != nil and lever_config.calibrated_at != nil
     notch_count = if lever_config, do: length(lever_config.notches || []), else: 0
+    input_binding = get_input_binding(lever_config)
+    has_input_ranges = has_notch_input_ranges?(lever_config)
 
     assigns =
       assigns
       |> assign(:lever_config, lever_config)
       |> assign(:is_calibrated, is_calibrated)
       |> assign(:notch_count, notch_count)
+      |> assign(:input_binding, input_binding)
+      |> assign(:has_input_ranges, has_input_ranges)
 
     ~H"""
     <div class="bg-base-100 rounded-lg border border-base-300 p-4">
@@ -768,45 +879,114 @@ defmodule TswIoWeb.TrainEditLive do
             <span class="badge badge-ghost badge-sm capitalize">{@element.type}</span>
           </div>
 
-          <div class="mt-2 flex items-center gap-4 text-xs text-base-content/60">
-            <span :if={@lever_config}>
-              {notch_text(@notch_count)}
-            </span>
-            <span :if={@is_calibrated} class="text-success flex items-center gap-1">
-              <.icon name="hero-check-circle" class="w-3 h-3" /> Calibrated
-            </span>
-            <span :if={not @is_calibrated} class="text-warning flex items-center gap-1">
-              <.icon name="hero-exclamation-triangle" class="w-3 h-3" /> Not calibrated
-            </span>
+          <%!-- Configuration Progress Stepper --%>
+          <div class="mt-3 flex items-center gap-2 text-xs">
+            <div class={[
+              "flex items-center gap-1 px-2 py-1 rounded",
+              if(@lever_config,
+                do: "bg-success/10 text-success",
+                else: "bg-base-200 text-base-content/50"
+              )
+            ]}>
+              <.icon
+                name={if @lever_config, do: "hero-check-circle", else: "hero-cog-6-tooth"}
+                class="w-3.5 h-3.5"
+              />
+              <span>Endpoints</span>
+            </div>
+            <.icon name="hero-chevron-right" class="w-3 h-3 text-base-content/30" />
+            <div class={[
+              "flex items-center gap-1 px-2 py-1 rounded",
+              cond do
+                @input_binding -> "bg-success/10 text-success"
+                @lever_config -> "bg-primary/10 text-primary"
+                true -> "bg-base-200 text-base-content/50"
+              end
+            ]}>
+              <.icon
+                name={if @input_binding, do: "hero-check-circle", else: "hero-link"}
+                class="w-3.5 h-3.5"
+              />
+              <span>Input</span>
+            </div>
+            <.icon name="hero-chevron-right" class="w-3 h-3 text-base-content/30" />
+            <div class={[
+              "flex items-center gap-1 px-2 py-1 rounded",
+              cond do
+                @has_input_ranges -> "bg-success/10 text-success"
+                @input_binding -> "bg-primary/10 text-primary"
+                true -> "bg-base-200 text-base-content/50"
+              end
+            ]}>
+              <.icon
+                name={if @has_input_ranges, do: "hero-check-circle", else: "hero-queue-list"}
+                class="w-3.5 h-3.5"
+              />
+              <span>Mapping</span>
+            </div>
+          </div>
+
+          <%!-- Status indicators --%>
+          <div
+            :if={@lever_config && !@input_binding}
+            class="mt-3 p-2 bg-warning/10 border border-warning/30 rounded-lg"
+          >
+            <div class="flex items-start gap-2">
+              <.icon
+                name="hero-exclamation-triangle"
+                class="w-4 h-4 text-warning flex-shrink-0 mt-0.5"
+              />
+              <div class="text-xs">
+                <p class="font-medium text-warning">No hardware input bound</p>
+                <p class="text-base-content/70">Bind a calibrated input to control this lever.</p>
+              </div>
+            </div>
           </div>
         </div>
 
-        <div class="flex items-center gap-2">
-          <button
-            :if={@lever_config}
-            phx-click="open_notch_mapping"
-            phx-value-id={@element.id}
-            class="btn btn-ghost btn-xs text-primary"
-            title="Map Notches"
-          >
-            <.icon name="hero-queue-list" class="w-4 h-4" />
-          </button>
-          <button
-            phx-click="configure_lever"
-            phx-value-id={@element.id}
-            class="btn btn-ghost btn-xs text-primary"
-            title="Configure"
-          >
-            <.icon name="hero-cog-6-tooth" class="w-4 h-4" />
-          </button>
-          <button
-            phx-click="delete_element"
-            phx-value-id={@element.id}
-            class="btn btn-ghost btn-xs text-error"
-            title="Delete"
-          >
-            <.icon name="hero-trash" class="w-4 h-4" />
-          </button>
+        <div class="flex flex-col items-end gap-2">
+          <%!-- Primary actions --%>
+          <div class="flex items-center gap-2">
+            <button
+              :if={@lever_config}
+              phx-click="open_input_binding"
+              phx-value-id={@element.id}
+              class={[
+                "btn btn-sm gap-1",
+                if(@input_binding, do: "btn-outline btn-info", else: "btn-outline")
+              ]}
+            >
+              <.icon name="hero-link" class="w-4 h-4" />
+              {if @input_binding, do: "Change", else: "Bind Input"}
+            </button>
+            <button
+              :if={@lever_config && @input_binding}
+              phx-click="open_notch_mapping"
+              phx-value-id={@element.id}
+              class="btn btn-sm btn-outline gap-1"
+            >
+              <.icon name="hero-queue-list" class="w-4 h-4" /> Map Notches
+            </button>
+          </div>
+          <%!-- Secondary actions --%>
+          <div class="flex items-center gap-1">
+            <button
+              phx-click="configure_lever"
+              phx-value-id={@element.id}
+              class="btn btn-ghost btn-xs text-base-content/60"
+              title="Configure Endpoints"
+            >
+              <.icon name="hero-cog-6-tooth" class="w-4 h-4" />
+            </button>
+            <button
+              phx-click="delete_element"
+              phx-value-id={@element.id}
+              class="btn btn-ghost btn-xs text-error"
+              title="Delete"
+            >
+              <.icon name="hero-trash" class="w-4 h-4" />
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -816,9 +996,26 @@ defmodule TswIoWeb.TrainEditLive do
   defp get_lever_config(%Element{lever_config: %Ecto.Association.NotLoaded{}}), do: nil
   defp get_lever_config(%Element{lever_config: config}), do: config
 
-  defp notch_text(0), do: "No notches"
-  defp notch_text(1), do: "1 notch"
-  defp notch_text(n), do: "#{n} notches"
+  defp get_input_binding(nil), do: nil
+  defp get_input_binding(%LeverConfig{input_binding: %Ecto.Association.NotLoaded{}}), do: nil
+  defp get_input_binding(%LeverConfig{input_binding: nil}), do: nil
+
+  defp get_input_binding(%LeverConfig{
+         input_binding: %LeverInputBinding{input: %Ecto.Association.NotLoaded{}}
+       }),
+       do: nil
+
+  defp get_input_binding(%LeverConfig{input_binding: binding}), do: binding
+
+  defp has_notch_input_ranges?(nil), do: false
+
+  defp has_notch_input_ranges?(%LeverConfig{notches: notches}) when is_list(notches) do
+    Enum.any?(notches, fn notch ->
+      notch.input_min != nil and notch.input_max != nil
+    end)
+  end
+
+  defp has_notch_input_ranges?(_), do: false
 
   attr :form, :map, required: true
 
@@ -1056,13 +1253,24 @@ defmodule TswIoWeb.TrainEditLive do
               <h3 class="text-sm font-semibold">
                 Notches ({length(@notch_forms)})
               </h3>
-              <button
-                type="button"
-                phx-click="add_notch"
-                class="btn btn-ghost btn-xs text-primary"
-              >
-                <.icon name="hero-plus" class="w-4 h-4" /> Add Notch
-              </button>
+              <div class="flex items-center gap-2">
+                <button
+                  :if={not Enum.empty?(@notch_forms)}
+                  type="button"
+                  phx-click="auto_distribute_ranges"
+                  class="btn btn-ghost btn-xs text-info"
+                  title="Evenly distribute input ranges across all notches"
+                >
+                  <.icon name="hero-arrows-pointing-out" class="w-4 h-4" /> Auto-Distribute
+                </button>
+                <button
+                  type="button"
+                  phx-click="add_notch"
+                  class="btn btn-ghost btn-xs text-primary"
+                >
+                  <.icon name="hero-plus" class="w-4 h-4" /> Add Notch
+                </button>
+              </div>
             </div>
 
             <div :if={Enum.empty?(@notch_forms)} class="text-center py-8 text-base-content/50">
@@ -1158,6 +1366,42 @@ defmodule TswIoWeb.TrainEditLive do
                           />
                         </div>
                       </div>
+
+                      <div class="border-t border-base-300 pt-3 mt-3">
+                        <h4 class="text-xs font-medium text-base-content/60 mb-2">
+                          Input Range (0.0-1.0)
+                        </h4>
+                        <div class="grid grid-cols-2 gap-3">
+                          <div>
+                            <label class="label py-1">
+                              <span class="label-text text-xs">Input Min</span>
+                            </label>
+                            <.input
+                              field={f[:input_min]}
+                              type="number"
+                              step="0.01"
+                              min="0"
+                              max="1"
+                              placeholder="0.0"
+                              class="input input-bordered input-sm w-full font-mono"
+                            />
+                          </div>
+                          <div>
+                            <label class="label py-1">
+                              <span class="label-text text-xs">Input Max</span>
+                            </label>
+                            <.input
+                              field={f[:input_max]}
+                              type="number"
+                              step="0.01"
+                              min="0"
+                              max="1"
+                              placeholder="1.0"
+                              class="input input-bordered input-sm w-full font-mono"
+                            />
+                          </div>
+                        </div>
+                      </div>
                     </div>
 
                     <div class="flex-none pt-6">
@@ -1189,6 +1433,86 @@ defmodule TswIoWeb.TrainEditLive do
             disabled={Enum.empty?(@notch_forms)}
           >
             <.icon name="hero-check" class="w-4 h-4" /> Save Notches
+          </button>
+        </div>
+      </div>
+    </div>
+    """
+  end
+
+  attr :element, :map, required: true
+  attr :available_inputs, :list, required: true
+
+  defp input_binding_modal(assigns) do
+    current_binding = get_input_binding(assigns.element.lever_config)
+    assigns = assign(assigns, :current_binding, current_binding)
+
+    ~H"""
+    <div class="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div class="absolute inset-0 bg-black/50" phx-click="close_input_binding" />
+      <div class="relative bg-base-100 rounded-xl shadow-xl w-full max-w-md max-h-[90vh] flex flex-col">
+        <div class="p-6 border-b border-base-300">
+          <h2 class="text-xl font-semibold">Bind Hardware Input</h2>
+          <p class="text-sm text-base-content/60 mt-1">
+            Select a calibrated input to control <strong>{@element.name}</strong>
+          </p>
+        </div>
+
+        <div class="flex-1 overflow-y-auto p-6">
+          <div :if={@current_binding} class="mb-4">
+            <div class="bg-info/10 border border-info/30 rounded-lg p-4">
+              <div class="flex items-center justify-between">
+                <div>
+                  <h3 class="text-sm font-semibold">Currently Bound</h3>
+                  <p class="text-sm">
+                    {@current_binding.input.device.name} - Pin {@current_binding.input.pin}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  phx-click="unbind_input"
+                  class="btn btn-ghost btn-sm text-error"
+                >
+                  <.icon name="hero-link-slash" class="w-4 h-4" /> Unbind
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div :if={Enum.empty?(@available_inputs)} class="text-center py-8 text-base-content/50">
+            <.icon name="hero-cpu-chip" class="w-12 h-12 mx-auto mb-2 opacity-30" />
+            <p class="text-sm">No calibrated inputs available</p>
+            <p class="text-xs">Calibrate a device input first</p>
+          </div>
+
+          <div :if={not Enum.empty?(@available_inputs)} class="space-y-2">
+            <h3 class="text-sm font-semibold mb-2">Available Inputs</h3>
+            <button
+              :for={input <- @available_inputs}
+              type="button"
+              phx-click="bind_input"
+              phx-value-input_id={input.id}
+              class={"w-full text-left p-3 rounded-lg border transition-colors " <>
+                if(@current_binding && @current_binding.input_id == input.id,
+                  do: "bg-info/10 border-info",
+                  else: "bg-base-200/50 border-base-300 hover:bg-base-200")}
+            >
+              <div class="flex items-center justify-between">
+                <div>
+                  <p class="font-medium">{input.device.name}</p>
+                  <p class="text-sm text-base-content/60">Pin {input.pin}</p>
+                </div>
+                <div :if={@current_binding && @current_binding.input_id == input.id}>
+                  <.icon name="hero-check-circle" class="w-5 h-5 text-info" />
+                </div>
+              </div>
+            </button>
+          </div>
+        </div>
+
+        <div class="p-6 border-t border-base-300 flex justify-end">
+          <button type="button" phx-click="close_input_binding" class="btn btn-ghost">
+            Close
           </button>
         </div>
       </div>

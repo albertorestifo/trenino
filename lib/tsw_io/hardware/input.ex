@@ -4,6 +4,7 @@ defmodule TswIo.Hardware.Input do
 
   alias TswIo.Hardware.Device
   alias TswIo.Hardware.Input.Calibration
+  alias TswIo.Train.LeverInputBinding
 
   schema "device_inputs" do
     field :pin, :integer
@@ -12,6 +13,7 @@ defmodule TswIo.Hardware.Input do
 
     belongs_to :device, Device
     has_one :calibration, Calibration
+    has_many :lever_bindings, LeverInputBinding
 
     timestamps(type: :utc_datetime)
   end

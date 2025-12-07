@@ -7,7 +7,27 @@ defmodule TswIo.Train.Notch do
   - `:gate` - A fixed position with a single value
   - `:linear` - A continuous range with min and max values
 
-  Each notch can have an optional description for user reference.
+  ## Input Range Mapping
+
+  The `input_min` and `input_max` fields map physical lever positions to notches.
+  These values represent normalized hardware input positions from 0.0 to 1.0:
+  - `0.0` = physical lever at minimum calibrated position
+  - `1.0` = physical lever at maximum calibrated position
+
+  For example, if a throttle lever physically moves through positions 0-800
+  (after calibration normalization), and notch 0 covers the first 25% of travel:
+  - `input_min: 0.0, input_max: 0.25` (not 0-200)
+
+  These normalized values are independent of the specific hardware characteristics,
+  making lever configurations portable across different input devices.
+
+  ## Simulator Values
+
+  The `value`, `min_value`, and `max_value` fields represent simulator values
+  and can be any float, including negative numbers:
+  - Throttle: typically `0.0` to `1.0`
+  - Reverser: typically `-1.0` to `1.0`
+  - Dynamic brake: might be `-0.45` to `0.0`
   """
 
   use Ecto.Schema
@@ -25,6 +45,8 @@ defmodule TswIo.Train.Notch do
           value: float() | nil,
           min_value: float() | nil,
           max_value: float() | nil,
+          input_min: float() | nil,
+          input_max: float() | nil,
           description: String.t() | nil,
           lever_config: LeverConfig.t() | Ecto.Association.NotLoaded.t(),
           inserted_at: DateTime.t() | nil,
@@ -37,6 +59,9 @@ defmodule TswIo.Train.Notch do
     field :value, :float
     field :min_value, :float
     field :max_value, :float
+    # Input range mapping (0.0-1.0 calibrated input values)
+    field :input_min, :float
+    field :input_max, :float
     field :description, :string
 
     belongs_to :lever_config, LeverConfig
@@ -47,10 +72,21 @@ defmodule TswIo.Train.Notch do
   @spec changeset(t(), map()) :: Ecto.Changeset.t()
   def changeset(%__MODULE__{} = notch, attrs) do
     notch
-    |> cast(attrs, [:index, :type, :value, :min_value, :max_value, :description, :lever_config_id])
-    |> round_float_fields([:value, :min_value, :max_value])
+    |> cast(attrs, [
+      :index,
+      :type,
+      :value,
+      :min_value,
+      :max_value,
+      :input_min,
+      :input_max,
+      :description,
+      :lever_config_id
+    ])
+    |> round_float_fields([:value, :min_value, :max_value, :input_min, :input_max])
     |> validate_required([:index, :type])
     |> validate_notch_values()
+    |> validate_input_range()
     |> foreign_key_constraint(:lever_config_id)
     |> unique_constraint([:lever_config_id, :index])
   end
@@ -66,6 +102,39 @@ defmodule TswIo.Train.Notch do
         |> validate_required([:min_value, :max_value])
 
       _ ->
+        changeset
+    end
+  end
+
+  defp validate_input_range(changeset) do
+    input_min = get_field(changeset, :input_min)
+    input_max = get_field(changeset, :input_max)
+
+    cond do
+      # Both nil is valid (no input mapping yet)
+      is_nil(input_min) and is_nil(input_max) ->
+        changeset
+
+      # One set but not the other
+      is_nil(input_min) or is_nil(input_max) ->
+        changeset
+        |> add_error(:input_min, "both input_min and input_max must be set together")
+
+      # Min must be less than max
+      input_min >= input_max ->
+        changeset
+        |> add_error(:input_min, "must be less than input_max")
+
+      # Values must be in 0.0-1.0 range
+      input_min < 0.0 or input_min > 1.0 ->
+        changeset
+        |> add_error(:input_min, "must be between 0.0 and 1.0")
+
+      input_max < 0.0 or input_max > 1.0 ->
+        changeset
+        |> add_error(:input_max, "must be between 0.0 and 1.0")
+
+      true ->
         changeset
     end
   end
