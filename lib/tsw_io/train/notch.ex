@@ -120,10 +120,10 @@ defmodule TswIo.Train.Notch do
         changeset
         |> add_error(:input_min, "both input_min and input_max must be set together")
 
-      # Min must be less than max
-      input_min >= input_max ->
+      # Min must be less than or equal to max (equal is valid for gate notches with narrow detent)
+      input_min > input_max ->
         changeset
-        |> add_error(:input_min, "must be less than input_max")
+        |> add_error(:input_min, "must be less than or equal to input_max")
 
       # Values must be in 0.0-1.0 range
       input_min < 0.0 or input_min > 1.0 ->

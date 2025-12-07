@@ -445,11 +445,13 @@ defmodule TswIo.Train.Calibration.NotchMappingSession do
     case save_notch_ranges(state) do
       {:ok, updated_config} ->
         final_state = %{new_state | current_step: :complete, result: {:ok, updated_config}}
+        broadcast_event(final_state, :step_changed)
         broadcast_result(final_state, {:ok, updated_config})
         {:reply, :ok, final_state}
 
       {:error, _reason} = error ->
         final_state = %{new_state | current_step: :complete, result: error}
+        broadcast_event(final_state, :step_changed)
         broadcast_result(final_state, error)
         {:reply, error, final_state}
     end
