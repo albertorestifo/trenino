@@ -60,8 +60,9 @@ defmodule TswIoWeb.ApiExplorerComponent do
 
     # Fetch child nodes
     case Client.list(client, full_path) do
-      {:ok, %{"nodes" => nodes}} ->
-        sorted_nodes = Enum.sort(nodes)
+      {:ok, %{"Nodes" => nodes}} ->
+        node_names = extract_node_names(nodes)
+        sorted_nodes = Enum.sort(node_names)
 
         {:noreply,
          socket
@@ -70,6 +71,22 @@ defmodule TswIoWeb.ApiExplorerComponent do
          |> assign(:filtered_nodes, filter_nodes(sorted_nodes, search))
          |> assign(:loading, false)
          |> assign(:preview, nil)}
+
+      {:ok, _response} ->
+        # Response without Nodes - might be a leaf node, try to get its value
+        case Client.get(client, full_path) do
+          {:ok, response} ->
+            {:noreply,
+             socket
+             |> assign(:loading, false)
+             |> assign(:preview, %{path: full_path, value: response})}
+
+          {:error, reason} ->
+            {:noreply,
+             socket
+             |> assign(:loading, false)
+             |> assign(:error, "Failed to access: #{inspect(reason)}")}
+        end
 
       {:error, _reason} ->
         # This might be a leaf node (endpoint), try to get its value
@@ -112,8 +129,9 @@ defmodule TswIoWeb.ApiExplorerComponent do
       end
 
     case result do
-      {:ok, %{"nodes" => nodes}} ->
-        sorted_nodes = Enum.sort(nodes)
+      {:ok, %{"Nodes" => nodes}} ->
+        node_names = extract_node_names(nodes)
+        sorted_nodes = Enum.sort(node_names)
 
         {:noreply,
          socket
@@ -121,6 +139,13 @@ defmodule TswIoWeb.ApiExplorerComponent do
          |> assign(:nodes, sorted_nodes)
          |> assign(:filtered_nodes, filter_nodes(sorted_nodes, search))
          |> assign(:loading, false)}
+
+      {:ok, _response} ->
+        # Unexpected response format
+        {:noreply,
+         socket
+         |> assign(:loading, false)
+         |> assign(:error, "Unexpected response format from API")}
 
       {:error, reason} ->
         {:noreply,
@@ -314,8 +339,9 @@ defmodule TswIoWeb.ApiExplorerComponent do
 
   defp initialize_explorer(socket) do
     case Client.list(socket.assigns.client) do
-      {:ok, %{"nodes" => nodes}} ->
-        sorted_nodes = Enum.sort(nodes)
+      {:ok, %{"Nodes" => nodes}} ->
+        node_names = extract_node_names(nodes)
+        sorted_nodes = Enum.sort(node_names)
 
         socket
         |> assign(:path, [])
@@ -324,6 +350,18 @@ defmodule TswIoWeb.ApiExplorerComponent do
         |> assign(:search, "")
         |> assign(:loading, false)
         |> assign(:error, nil)
+        |> assign(:preview, nil)
+        |> assign(:initialized, true)
+
+      {:ok, _response} ->
+        # Unexpected response format (no Nodes key)
+        socket
+        |> assign(:path, [])
+        |> assign(:nodes, [])
+        |> assign(:filtered_nodes, [])
+        |> assign(:search, "")
+        |> assign(:loading, false)
+        |> assign(:error, "Unexpected response format from API")
         |> assign(:preview, nil)
         |> assign(:initialized, true)
 
@@ -338,6 +376,15 @@ defmodule TswIoWeb.ApiExplorerComponent do
         |> assign(:preview, nil)
         |> assign(:initialized, true)
     end
+  end
+
+  # Extracts node names from the API response format
+  # Root level uses "NodeName", child levels use "Name"
+  @spec extract_node_names([map()]) :: [String.t()]
+  defp extract_node_names(nodes) do
+    Enum.map(nodes, fn node ->
+      Map.get(node, "NodeName") || Map.get(node, "Name", "")
+    end)
   end
 
   @spec filter_nodes([String.t()], String.t()) :: [String.t()]

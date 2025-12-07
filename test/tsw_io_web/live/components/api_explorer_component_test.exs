@@ -81,9 +81,18 @@ defmodule TswIoWeb.ApiExplorerComponentTest do
         %ConnectionState{status: :connected, client: client}
       end)
 
-      # Mock Client.list to return root nodes
+      # Mock Client.list to return root nodes in actual API format
       stub(Client, :list, fn _client ->
-        {:ok, %{"nodes" => ["ControlDesk", "Gauges", "Train"]}}
+        {:ok,
+         %{
+           "NodeName" => "Root",
+           "NodePath" => "Root",
+           "Nodes" => [
+             %{"NodeName" => "ControlDesk", "NodePath" => "Root/ControlDesk"},
+             %{"NodeName" => "Gauges", "NodePath" => "Root/Gauges"},
+             %{"NodeName" => "Train", "NodePath" => "Root/Train"}
+           ]
+         }}
       end)
 
       {:ok, view, _html} = live(conn, ~p"/trains/#{train.id}")
@@ -134,11 +143,28 @@ defmodule TswIoWeb.ApiExplorerComponentTest do
 
       # First call returns root nodes, second returns child nodes
       expect(Client, :list, fn _client ->
-        {:ok, %{"nodes" => ["ControlDesk", "Gauges"]}}
+        {:ok,
+         %{
+           "NodeName" => "Root",
+           "NodePath" => "Root",
+           "Nodes" => [
+             %{"NodeName" => "ControlDesk", "NodePath" => "Root/ControlDesk"},
+             %{"NodeName" => "Gauges", "NodePath" => "Root/Gauges"}
+           ]
+         }}
       end)
 
       expect(Client, :list, fn _client, "ControlDesk" ->
-        {:ok, %{"nodes" => ["Throttle", "Brake", "Reverser"]}}
+        {:ok,
+         %{
+           "NodeName" => "ControlDesk",
+           "NodePath" => "Root/ControlDesk",
+           "Nodes" => [
+             %{"NodeName" => "Throttle", "NodePath" => "Root/ControlDesk/Throttle"},
+             %{"NodeName" => "Brake", "NodePath" => "Root/ControlDesk/Brake"},
+             %{"NodeName" => "Reverser", "NodePath" => "Root/ControlDesk/Reverser"}
+           ]
+         }}
       end)
 
       {:ok, view, _html} = live(conn, ~p"/trains/#{train.id}")
@@ -170,16 +196,34 @@ defmodule TswIoWeb.ApiExplorerComponentTest do
       end)
 
       expect(Client, :list, fn _client ->
-        {:ok, %{"nodes" => ["ControlDesk"]}}
+        {:ok,
+         %{
+           "NodeName" => "Root",
+           "NodePath" => "Root",
+           "Nodes" => [%{"NodeName" => "ControlDesk", "NodePath" => "Root/ControlDesk"}]
+         }}
       end)
 
       expect(Client, :list, fn _client, "ControlDesk" ->
-        {:ok, %{"nodes" => ["Throttle"]}}
+        {:ok,
+         %{
+           "NodeName" => "ControlDesk",
+           "NodePath" => "Root/ControlDesk",
+           "Nodes" => [%{"NodeName" => "Throttle", "NodePath" => "Root/ControlDesk/Throttle"}]
+         }}
       end)
 
       # Going back to root
       expect(Client, :list, fn _client ->
-        {:ok, %{"nodes" => ["ControlDesk", "Gauges"]}}
+        {:ok,
+         %{
+           "NodeName" => "Root",
+           "NodePath" => "Root",
+           "Nodes" => [
+             %{"NodeName" => "ControlDesk", "NodePath" => "Root/ControlDesk"},
+             %{"NodeName" => "Gauges", "NodePath" => "Root/Gauges"}
+           ]
+         }}
       end)
 
       {:ok, view, _html} = live(conn, ~p"/trains/#{train.id}")
@@ -212,7 +256,12 @@ defmodule TswIoWeb.ApiExplorerComponentTest do
       end)
 
       expect(Client, :list, fn _client ->
-        {:ok, %{"nodes" => ["Value"]}}
+        {:ok,
+         %{
+           "NodeName" => "Root",
+           "NodePath" => "Root",
+           "Nodes" => [%{"NodeName" => "Value", "NodePath" => "Root/Value"}]
+         }}
       end)
 
       # Navigating to Value fails list (it's a leaf), so we try get
@@ -250,7 +299,18 @@ defmodule TswIoWeb.ApiExplorerComponentTest do
       end)
 
       stub(Client, :list, fn _client ->
-        {:ok, %{"nodes" => ["Throttle", "ThrottleMin", "ThrottleMax", "Brake", "Reverser"]}}
+        {:ok,
+         %{
+           "NodeName" => "Root",
+           "NodePath" => "Root",
+           "Nodes" => [
+             %{"NodeName" => "Throttle", "NodePath" => "Root/Throttle"},
+             %{"NodeName" => "ThrottleMin", "NodePath" => "Root/ThrottleMin"},
+             %{"NodeName" => "ThrottleMax", "NodePath" => "Root/ThrottleMax"},
+             %{"NodeName" => "Brake", "NodePath" => "Root/Brake"},
+             %{"NodeName" => "Reverser", "NodePath" => "Root/Reverser"}
+           ]
+         }}
       end)
 
       {:ok, view, _html} = live(conn, ~p"/trains/#{train.id}")
@@ -286,7 +346,16 @@ defmodule TswIoWeb.ApiExplorerComponentTest do
       end)
 
       stub(Client, :list, fn _client ->
-        {:ok, %{"nodes" => ["ThrottleNode", "BRAKE", "reverser"]}}
+        {:ok,
+         %{
+           "NodeName" => "Root",
+           "NodePath" => "Root",
+           "Nodes" => [
+             %{"NodeName" => "ThrottleNode", "NodePath" => "Root/ThrottleNode"},
+             %{"NodeName" => "BRAKE", "NodePath" => "Root/BRAKE"},
+             %{"NodeName" => "reverser", "NodePath" => "Root/reverser"}
+           ]
+         }}
       end)
 
       {:ok, view, _html} = live(conn, ~p"/trains/#{train.id}")
@@ -316,7 +385,15 @@ defmodule TswIoWeb.ApiExplorerComponentTest do
       end)
 
       stub(Client, :list, fn _client ->
-        {:ok, %{"nodes" => ["ThrottleValue", "BrakeValue"]}}
+        {:ok,
+         %{
+           "NodeName" => "Root",
+           "NodePath" => "Root",
+           "Nodes" => [
+             %{"NodeName" => "ThrottleValue", "NodePath" => "Root/ThrottleValue"},
+             %{"NodeName" => "BrakeValue", "NodePath" => "Root/BrakeValue"}
+           ]
+         }}
       end)
 
       expect(Client, :get, fn _client, "ThrottleValue" ->
@@ -353,7 +430,15 @@ defmodule TswIoWeb.ApiExplorerComponentTest do
       end)
 
       stub(Client, :list, fn _client ->
-        {:ok, %{"nodes" => ["Throttle.Min", "Throttle.Max"]}}
+        {:ok,
+         %{
+           "NodeName" => "Root",
+           "NodePath" => "Root",
+           "Nodes" => [
+             %{"NodeName" => "Throttle.Min", "NodePath" => "Root/Throttle.Min"},
+             %{"NodeName" => "Throttle.Max", "NodePath" => "Root/Throttle.Max"}
+           ]
+         }}
       end)
 
       {:ok, view, _html} = live(conn, ~p"/trains/#{train.id}")
@@ -386,7 +471,12 @@ defmodule TswIoWeb.ApiExplorerComponentTest do
       end)
 
       stub(Client, :list, fn _client ->
-        {:ok, %{"nodes" => ["Throttle.Value"]}}
+        {:ok,
+         %{
+           "NodeName" => "Root",
+           "NodePath" => "Root",
+           "Nodes" => [%{"NodeName" => "Throttle.Value", "NodePath" => "Root/Throttle.Value"}]
+         }}
       end)
 
       expect(Client, :get, fn _client, "Throttle.Value" ->
@@ -424,7 +514,12 @@ defmodule TswIoWeb.ApiExplorerComponentTest do
       end)
 
       stub(Client, :list, fn _client ->
-        {:ok, %{"nodes" => ["Node1"]}}
+        {:ok,
+         %{
+           "NodeName" => "Root",
+           "NodePath" => "Root",
+           "Nodes" => [%{"NodeName" => "Node1", "NodePath" => "Root/Node1"}]
+         }}
       end)
 
       {:ok, view, _html} = live(conn, ~p"/trains/#{train.id}")
@@ -452,7 +547,12 @@ defmodule TswIoWeb.ApiExplorerComponentTest do
       end)
 
       stub(Client, :list, fn _client ->
-        {:ok, %{"nodes" => ["Node1"]}}
+        {:ok,
+         %{
+           "NodeName" => "Root",
+           "NodePath" => "Root",
+           "Nodes" => [%{"NodeName" => "Node1", "NodePath" => "Root/Node1"}]
+         }}
       end)
 
       {:ok, view, _html} = live(conn, ~p"/trains/#{train.id}")
@@ -482,7 +582,12 @@ defmodule TswIoWeb.ApiExplorerComponentTest do
       end)
 
       expect(Client, :list, fn _client ->
-        {:ok, %{"nodes" => ["Protected"]}}
+        {:ok,
+         %{
+           "NodeName" => "Root",
+           "NodePath" => "Root",
+           "Nodes" => [%{"NodeName" => "Protected", "NodePath" => "Root/Protected"}]
+         }}
       end)
 
       # List fails
@@ -545,10 +650,12 @@ defmodule TswIoWeb.ApiExplorerComponentTest do
       stub(Client, :list, fn _client ->
         {:ok,
          %{
-           "nodes" => [
-             "Folder",
-             "Document.Value",
-             "Function(param)"
+           "NodeName" => "Root",
+           "NodePath" => "Root",
+           "Nodes" => [
+             %{"NodeName" => "Folder", "NodePath" => "Root/Folder"},
+             %{"NodeName" => "Document.Value", "NodePath" => "Root/Document.Value"},
+             %{"NodeName" => "Function(param)", "NodePath" => "Root/Function(param)"}
            ]
          }}
       end)
