@@ -107,6 +107,7 @@ defmodule TswIo.MixProject do
       "assets.setup": ["tailwind.install --if-missing", "esbuild.install --if-missing"],
       "assets.build": ["compile", "tailwind tsw_io", "esbuild tsw_io"],
       "assets.deploy": [
+        "compile",
         "tailwind tsw_io --minify",
         "esbuild tsw_io --minify",
         "phx.digest"
