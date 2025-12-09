@@ -41,3 +41,6 @@ npm-debug.log
 
 /.expert
 
+# Claude Code local settings
+.claude/*.local*
+
