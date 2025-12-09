@@ -11,8 +11,8 @@ on:
         default: '0.1.0'
 
 env:
-  ELIXIR_VERSION: "1.17.3"
-  OTP_VERSION: "27.1.2"
+  ELIXIR_VERSION: "1.19"
+  OTP_VERSION: "28"
   MIX_ENV: prod
 
 jobs:
