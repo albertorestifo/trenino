@@ -11,7 +11,27 @@ defmodule TswIo.MixProject do
       aliases: aliases(),
       deps: deps(),
       compilers: [:phoenix_live_view] ++ Mix.compilers(),
-      listeners: [Phoenix.CodeReloader]
+      listeners: [Phoenix.CodeReloader],
+      releases: releases()
+    ]
+  end
+
+  defp releases do
+    [
+      tsw_io: [
+        # Standard release
+      ],
+      tsw_io_desktop: [
+        steps: [:assemble, &Burrito.wrap/1],
+        burrito: [
+          targets: [
+            macos_arm64: [os: :darwin, cpu: :aarch64],
+            macos_x86_64: [os: :darwin, cpu: :x86_64],
+            linux_x86_64: [os: :linux, cpu: :x86_64],
+            windows_x86_64: [os: :windows, cpu: :x86_64]
+          ]
+        ]
+      ]
     ]
   end
 
@@ -67,7 +87,8 @@ defmodule TswIo.MixProject do
       {:circuits_uart, "~> 1.5"},
       {:req, "~> 0.5.0"},
       {:mimic, "~> 2.0", only: :test},
-      {:usage_rules, "~> 0.1", only: :dev}
+      {:usage_rules, "~> 0.1", only: :dev},
+      {:burrito, "~> 1.1.0"}
     ]
   end
 

@@ -40,8 +40,10 @@ defmodule TswIo.Application do
   end
 
   defp skip_migrations?() do
-    # By default, sqlite migrations are run when using a release
-    System.get_env("RELEASE_NAME") == nil
+    # Run migrations automatically when using a release.
+    # Skip during Burrito build (BURRITO_TARGET is set at build time).
+    # Skip when not in a release (dev/test environments).
+    System.get_env("RELEASE_NAME") == nil || System.get_env("BURRITO_TARGET") != nil
   end
 
   # Returns the Simulator.Connection child spec only in non-test environments.

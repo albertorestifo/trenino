@@ -16,7 +16,9 @@ import Config
 #
 # Alternatively, you can use `mix phx.gen.release` to generate a `bin/server`
 # script that automatically sets the env var above.
-if System.get_env("PHX_SERVER") do
+#
+# For desktop releases (Burrito), server is always enabled.
+if System.get_env("PHX_SERVER") || System.get_env("BURRITO") do
   config :tsw_io, TswIoWeb.Endpoint, server: true
 end
 
@@ -66,33 +68,32 @@ if config_env() == :prod do
     pool_size: String.to_integer(System.get_env("POOL_SIZE") || "5")
 
   # The secret key base is used to sign/encrypt cookies and other secrets.
-  # A default value is used in config/dev.exs and config/test.exs but you
-  # want to use a different value for prod and you most likely don't want
-  # to check this value into version control, so we use an environment
-  # variable instead.
+  # For desktop releases, we generate a stable key based on machine identity.
+  # For server deployments, use the SECRET_KEY_BASE environment variable.
   secret_key_base =
     System.get_env("SECRET_KEY_BASE") ||
-      raise """
-      environment variable SECRET_KEY_BASE is missing.
-      You can generate one by calling: mix phx.gen.secret
-      """
+      (fn ->
+        # Generate a stable secret based on the data directory path
+        # This ensures the same key is used across restarts on the same machine
+        :crypto.hash(:sha256, database_path)
+        |> Base.encode64()
+        |> binary_part(0, 64)
+      end).()
 
-  host = System.get_env("PHX_HOST") || "example.com"
+  host = System.get_env("PHX_HOST") || "localhost"
   port = String.to_integer(System.get_env("PORT") || "4000")
 
   config :tsw_io, :dns_cluster_query, System.get_env("DNS_CLUSTER_QUERY")
 
   config :tsw_io, TswIoWeb.Endpoint,
-    url: [host: host, port: 443, scheme: "https"],
+    url: [host: host, port: port, scheme: "http"],
     http: [
-      # Enable IPv6 and bind on all interfaces.
-      # Set it to  {0, 0, 0, 0, 0, 0, 0, 1} for local network only access.
-      # See the documentation on https://hexdocs.pm/bandit/Bandit.html#t:options/0
-      # for details about using IPv6 vs IPv4 and loopback vs public addresses.
-      ip: {0, 0, 0, 0, 0, 0, 0, 0},
+      ip: {127, 0, 0, 1},
       port: port
     ],
-    secret_key_base: secret_key_base
+    secret_key_base: secret_key_base,
+    check_origin: false,
+    server: true
 
   # ## SSL Support
   #
