@@ -35,9 +35,11 @@ defmodule TswIoWeb.Endpoint do
     plug Phoenix.Ecto.CheckRepoStatus, otp_app: :tsw_io
   end
 
-  plug Phoenix.LiveDashboard.RequestLogger,
-    param_key: "request_logger",
-    cookie_key: "request_logger"
+  if Code.ensure_loaded?(Phoenix.LiveDashboard.RequestLogger) do
+    plug Phoenix.LiveDashboard.RequestLogger,
+      param_key: "request_logger",
+      cookie_key: "request_logger"
+  end
 
   plug Plug.RequestId
   plug Plug.Telemetry, event_prefix: [:phoenix, :endpoint]

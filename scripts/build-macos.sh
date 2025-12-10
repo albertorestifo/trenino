@@ -9,8 +9,10 @@ set -euo pipefail
 
 readonly SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 readonly PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
-readonly BURRITO_TARGET="macos_arm64"
 readonly TAURI_TARGET="aarch64-apple-darwin"
+
+# Export for Burrito
+export BURRITO_TARGET="macos_arm64"
 
 # Colors for output
 readonly RED='\033[0;31m'
@@ -85,16 +87,15 @@ build_elixir_backend() {
     cd "$PROJECT_ROOT"
 
     export MIX_ENV=prod
-    export BURRITO_TARGET="$BURRITO_TARGET"
 
     log_info "Installing dependencies..."
-    mix deps.get --only prod
+    mise exec -- mix deps.get --only prod
 
     log_info "Building assets..."
-    mix assets.deploy
+    mise exec -- mix assets.deploy
 
     log_info "Building release with Burrito..."
-    mix release tsw_io_desktop
+    mise exec -- mix release tsw_io_desktop --overwrite
 
     local binary_path="$PROJECT_ROOT/burrito_out/tsw_io_desktop_${BURRITO_TARGET}"
     if [[ ! -f "$binary_path" ]]; then
@@ -125,10 +126,10 @@ build_tauri_app() {
     cd "$PROJECT_ROOT/tauri"
 
     log_info "Installing Node dependencies..."
-    npm install
+    mise exec -- npm install
 
     log_info "Building Tauri app..."
-    npx tauri build --target "$TAURI_TARGET"
+    mise exec -- npx tauri build --target "$TAURI_TARGET"
 
     log_info "Tauri build complete"
 }
