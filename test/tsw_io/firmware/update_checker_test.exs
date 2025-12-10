@@ -213,9 +213,10 @@ defmodule TswIo.Firmware.UpdateCheckerTest do
     end
 
     test "dismiss_notification clears update state" do
+      UpdateChecker.subscribe()
       UpdateChecker.dismiss_notification()
-      # Give a moment for the state to update
-      Process.sleep(50)
+      # Wait for the broadcast to confirm the cast was processed
+      assert_receive :firmware_update_dismissed, 1000
       assert UpdateChecker.get_update_status() == :no_update
     end
   end
