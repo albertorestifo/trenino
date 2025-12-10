@@ -77,7 +77,7 @@ defmodule TswIo.Firmware.UploadHistory do
     |> cast(attrs, [:upload_id, :port, :board_type, :firmware_file_id])
     |> validate_required([:upload_id, :port, :board_type])
     |> put_change(:status, :started)
-    |> put_change(:started_at, DateTime.utc_now())
+    |> put_change(:started_at, DateTime.utc_now() |> DateTime.truncate(:second))
   end
 
   @doc """
@@ -85,7 +85,7 @@ defmodule TswIo.Firmware.UploadHistory do
   """
   @spec complete_changeset(t(), map()) :: Ecto.Changeset.t()
   def complete_changeset(%__MODULE__{} = history, attrs \\ %{}) do
-    now = DateTime.utc_now()
+    now = DateTime.utc_now() |> DateTime.truncate(:second)
 
     duration_ms =
       if history.started_at do
@@ -104,7 +104,7 @@ defmodule TswIo.Firmware.UploadHistory do
   """
   @spec fail_changeset(t(), String.t(), String.t() | nil) :: Ecto.Changeset.t()
   def fail_changeset(%__MODULE__{} = history, error_message, avrdude_output \\ nil) do
-    now = DateTime.utc_now()
+    now = DateTime.utc_now() |> DateTime.truncate(:second)
 
     duration_ms =
       if history.started_at do
@@ -125,7 +125,7 @@ defmodule TswIo.Firmware.UploadHistory do
   """
   @spec cancel_changeset(t()) :: Ecto.Changeset.t()
   def cancel_changeset(%__MODULE__{} = history) do
-    now = DateTime.utc_now()
+    now = DateTime.utc_now() |> DateTime.truncate(:second)
 
     duration_ms =
       if history.started_at do

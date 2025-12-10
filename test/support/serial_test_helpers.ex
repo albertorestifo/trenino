@@ -90,6 +90,21 @@ defmodule TswIo.SerialTestHelpers do
   end
 
   @doc """
+  Creates a DeviceConnection in :uploading state.
+
+  ## Options
+  - `:port` - Port name (default: "/dev/tty.test")
+  """
+  def build_uploading_connection(opts \\ []) do
+    {conn, _token} =
+      opts
+      |> build_connected_connection()
+      |> DeviceConnection.mark_uploading()
+
+    conn
+  end
+
+  @doc """
   Creates an IdentityResponse struct.
 
   ## Options

@@ -306,5 +306,108 @@ defmodule TswIo.Serial.Connection.DeviceConnectionTest do
       # Act & Assert
       assert DeviceConnection.active?(conn) == false
     end
+
+    test "returns false for :uploading status" do
+      # Arrange
+      conn = SerialTestHelpers.build_uploading_connection()
+
+      # Act & Assert
+      assert DeviceConnection.active?(conn) == false
+    end
+  end
+
+  describe "mark_uploading/1" do
+    test "transitions from :connected to :uploading with token" do
+      # Arrange
+      conn = SerialTestHelpers.build_connected_connection()
+
+      # Act
+      {updated_conn, token} = DeviceConnection.mark_uploading(conn)
+
+      # Assert
+      assert updated_conn.status == :uploading
+      assert updated_conn.pid == nil
+      assert updated_conn.upload_token == token
+      assert is_binary(token)
+      assert byte_size(token) > 0
+    end
+
+    test "generates unique tokens" do
+      # Arrange
+      conn1 = SerialTestHelpers.build_connected_connection()
+      conn2 = SerialTestHelpers.build_connected_connection(port: "/dev/tty.test2")
+
+      # Act
+      {_, token1} = DeviceConnection.mark_uploading(conn1)
+      {_, token2} = DeviceConnection.mark_uploading(conn2)
+
+      # Assert
+      assert token1 != token2
+    end
+
+    test "raises FunctionClauseError when not in :connected state" do
+      # Arrange
+      conn = SerialTestHelpers.build_discovering_connection()
+
+      # Act & Assert
+      assert_raise FunctionClauseError, fn ->
+        DeviceConnection.mark_uploading(conn)
+      end
+    end
+  end
+
+  describe "release_upload/2" do
+    test "transitions from :uploading to :failed with valid token" do
+      # Arrange
+      conn = SerialTestHelpers.build_connected_connection()
+      {uploading_conn, token} = DeviceConnection.mark_uploading(conn)
+      before_time = System.monotonic_time(:millisecond)
+
+      # Act
+      result = DeviceConnection.release_upload(uploading_conn, token)
+
+      after_time = System.monotonic_time(:millisecond)
+
+      # Assert
+      assert {:ok, released_conn} = result
+      assert released_conn.status == :failed
+      assert released_conn.upload_token == nil
+      assert released_conn.failed_at >= before_time
+      assert released_conn.failed_at <= after_time
+    end
+
+    test "returns error with invalid token" do
+      # Arrange
+      conn = SerialTestHelpers.build_connected_connection()
+      {uploading_conn, _token} = DeviceConnection.mark_uploading(conn)
+
+      # Act
+      result = DeviceConnection.release_upload(uploading_conn, "wrong_token")
+
+      # Assert
+      assert {:error, :invalid_token} = result
+    end
+
+    test "returns error when not in :uploading state" do
+      # Arrange
+      conn = SerialTestHelpers.build_connected_connection()
+
+      # Act
+      result = DeviceConnection.release_upload(conn, "any_token")
+
+      # Assert
+      assert {:error, :invalid_token} = result
+    end
+
+    test "returns error when :failed (not :uploading)" do
+      # Arrange
+      conn = SerialTestHelpers.build_failed_connection()
+
+      # Act
+      result = DeviceConnection.release_upload(conn, "any_token")
+
+      # Assert
+      assert {:error, :invalid_token} = result
+    end
   end
 end
