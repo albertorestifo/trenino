@@ -1,8 +1,8 @@
-# TWS IO
+# tsw_io
 
 **Bridge your custom hardware to Train Sim World**
 
-TWS IO connects physical control panels, throttle levers, and custom hardware to Train Sim World's External Interface API. Build immersive train cab experiences with real hardware controls.
+tsw_io connects physical control panels, throttle levers, and custom hardware to Train Sim World's External Interface API. Build immersive train cab experiences with real hardware controls.
 
 ![Elixir](https://img.shields.io/badge/Elixir-1.15+-purple)
 ![Phoenix](https://img.shields.io/badge/Phoenix-1.8-orange)
@@ -49,7 +49,7 @@ TWS IO connects physical control panels, throttle levers, and custom hardware to
 
 - Train Sim World (with External Interface API enabled)
 - Elixir 1.15+ and Erlang/OTP 26+
-- Hardware device with [TWS Board firmware](https://github.com/albertorestifo/tws_board)
+- Hardware device with [tsw_board firmware](https://github.com/albertorestifo/tsw_board)
 
 ### Installation
 
@@ -99,14 +99,14 @@ See the [Getting Started Guide](docs/getting-started.md) for detailed instructio
 
 ```
 ┌──────────────┐     ┌──────────────┐     ┌──────────────┐
-│   Hardware   │     │   TWS IO     │     │  Train Sim   │
+│   Hardware   │     │   tsw_io     │     │  Train Sim   │
 │   Device     │────►│   Server     │────►│    World     │
 │              │ USB │              │ API │              │
 └──────────────┘     └──────────────┘     └──────────────┘
 ```
 
 1. **Hardware sends input values** via USB serial protocol
-2. **TWS IO normalizes values** using calibration data (0-1023 → 0.0-1.0)
+2. **tsw_io normalizes values** using calibration data (0-1023 → 0.0-1.0)
 3. **Notch mapping converts** to simulator values based on configured ranges
 4. **API calls update** the train controls in real-time
 

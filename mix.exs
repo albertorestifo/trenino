@@ -26,8 +26,6 @@ defmodule TswIo.MixProject do
         burrito: [
           targets: [
             macos_arm64: [os: :darwin, cpu: :aarch64],
-            macos_x86_64: [os: :darwin, cpu: :x86_64],
-            linux_x86_64: [os: :linux, cpu: :x86_64],
             windows_x86_64: [os: :windows, cpu: :x86_64]
           ]
         ]
@@ -88,7 +86,7 @@ defmodule TswIo.MixProject do
       {:req, "~> 0.5.0"},
       {:mimic, "~> 2.0", only: :test},
       {:usage_rules, "~> 0.1", only: :dev},
-      {:burrito, "~> 1.1.0"}
+      {:burrito, "~> 1.0.0"}
     ]
   end
 

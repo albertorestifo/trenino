@@ -57,7 +57,7 @@ pub fn run() {
                         "main",
                         WebviewUrl::External(url.parse().unwrap()),
                     )
-                    .title("TWS IO")
+                    .title("tsw_io")
                     .inner_size(1200.0, 800.0)
                     .min_inner_size(800.0, 600.0)
                     .build()
@@ -71,5 +71,5 @@ pub fn run() {
             Ok(())
         })
         .run(tauri::generate_context!())
-        .expect("Error while running TWS IO");
+        .expect("Error while running tsw_io");
 }

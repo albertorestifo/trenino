@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "TWS IO",
+  "productName": "tsw_io",
   "version": "0.1.0",
   "identifier": "dev.restifo.tws-io",
   "build": {

@@ -1,6 +1,6 @@
 defmodule TswIo.Serial.Connection do
   @moduledoc """
-  Manages connections to TWS devices over serial ports.
+  Manages connections to tsw_io devices over serial ports.
 
   Implements a state machine for each port's lifecycle, preventing race
   conditions between discovery, connection, and cleanup operations.

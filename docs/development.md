@@ -246,6 +246,31 @@ Enable verbose serial logging:
 config :tsw_io, :serial_debug, true
 ```
 
+## Building the Desktop App
+
+The desktop application is built using Tauri with a Burrito-packaged Elixir backend.
+
+### Building for macOS (Local Development)
+
+Pre-built releases are only provided for Windows. To build for macOS (Apple Silicon) locally:
+
+#### Prerequisites
+
+- [mise](https://mise.jdx.dev/) - for managing tool versions
+- xz - install with `brew install xz`
+
+#### Build
+
+```bash
+# Install dependencies via mise
+mise install
+
+# Run the build script
+./scripts/build-macos.sh
+```
+
+The built `.dmg` and `.app` will be in `tauri/src-tauri/target/aarch64-apple-darwin/release/bundle/`.
+
 ## Deployment
 
 ### Production Build

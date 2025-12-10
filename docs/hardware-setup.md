@@ -1,14 +1,14 @@
 # Hardware Setup Guide
 
-This guide covers connecting and configuring physical hardware devices with TWS IO.
+This guide covers connecting and configuring physical hardware devices with tsw_io.
 
 ## Firmware
 
-Your hardware device needs the TWS Board firmware installed. See the [TWS Board repository](https://github.com/albertorestifo/tws_board) for installation instructions.
+Your hardware device needs the tsw_board firmware installed. See the [tsw_board repository](https://github.com/albertorestifo/tsw_board) for installation instructions.
 
 ## Supported Hardware
 
-TWS IO communicates with microcontroller-based devices via USB serial running the TWS Board firmware.
+tsw_io communicates with microcontroller-based devices via USB serial running the tsw_board firmware.
 
 ### Compatible Microcontrollers
 
@@ -59,7 +59,7 @@ The sensitivity value determines how much the input must change before sending a
 
 ### Automatic Discovery
 
-TWS IO automatically scans for devices every 60 seconds. Connected devices appear in the sidebar navigation.
+tsw_io automatically scans for devices every 60 seconds. Connected devices appear in the sidebar navigation.
 
 ### Manual Scan
 
@@ -143,7 +143,7 @@ After calibration, you'll see:
 
 ## Hardware Protocol Reference
 
-For firmware developers implementing the TWS IO protocol:
+For firmware developers implementing the tsw_io protocol:
 
 ### Message Format
 
