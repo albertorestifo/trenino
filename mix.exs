@@ -24,22 +24,13 @@ defmodule TswIo.MixProject do
       tsw_io_desktop: [
         steps: [:assemble, &Burrito.wrap/1],
         burrito: [
-          targets: burrito_targets()
+          targets: [
+            macos_arm64: [os: :darwin, cpu: :aarch64],
+            windows_x86_64: [os: :windows, cpu: :x86_64]
+          ]
         ]
       ]
     ]
-  end
-
-  defp burrito_targets do
-    all_targets = [
-      macos_arm64: [os: :darwin, cpu: :aarch64],
-      windows_x86_64: [os: :windows, cpu: :x86_64]
-    ]
-
-    case System.get_env("BURRITO_TARGET") do
-      nil -> all_targets
-      target -> Keyword.take(all_targets, [String.to_atom(target)])
-    end
   end
 
   # Configuration for the OTP application.
