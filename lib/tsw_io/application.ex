@@ -40,10 +40,9 @@ defmodule TswIo.Application do
   end
 
   defp skip_migrations?() do
-    # Run migrations automatically when using a release.
-    # Skip during Burrito build (BURRITO_TARGET is set at build time).
-    # Skip when not in a release (dev/test environments).
-    System.get_env("RELEASE_NAME") == nil || System.get_env("BURRITO_TARGET") != nil
+    # Skip migrations in dev/test (when not in a release).
+    # Run migrations automatically when using a release (including Burrito desktop builds).
+    System.get_env("RELEASE_NAME") == nil
   end
 
   # Returns the Simulator.Connection child spec only in non-test environments.
