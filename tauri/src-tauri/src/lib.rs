@@ -34,17 +34,26 @@ pub fn run() {
             let handle = app.handle().clone();
 
             // Spawn the Elixir backend as a sidecar process
-            let sidecar = handle
-                .shell()
-                .sidecar("tsw_io_backend")
-                .expect("Failed to create sidecar command");
+            let sidecar = match handle.shell().sidecar("tsw_io_backend") {
+                Ok(cmd) => cmd,
+                Err(e) => {
+                    eprintln!("Failed to create sidecar command: {}", e);
+                    return Err(Box::new(e));
+                }
+            };
 
-            let (mut _rx, _child) = sidecar
+            let (mut _rx, _child) = match sidecar
                 .env("PORT", BACKEND_PORT.to_string())
                 .env("MIX_ENV", "prod")
                 .env("BURRITO", "1")
                 .spawn()
-                .expect("Failed to spawn backend sidecar");
+            {
+                Ok(result) => result,
+                Err(e) => {
+                    eprintln!("Failed to spawn backend sidecar: {}", e);
+                    return Err(Box::new(e));
+                }
+            };
 
             // Wait for backend to be ready in a separate thread
             std::thread::spawn(move || {
