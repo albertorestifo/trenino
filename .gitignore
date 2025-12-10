@@ -60,3 +60,5 @@ npm-debug.log
 /tauri/src-tauri/binaries/*-x86_64-unknown-linux-gnu
 /tauri/src-tauri/binaries/*-x86_64-pc-windows-msvc
 
+# Firmware cache
+priv/firmware_cache
