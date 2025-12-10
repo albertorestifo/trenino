@@ -31,13 +31,7 @@
   },
   "plugins": {
     "shell": {
-      "sidecar": true,
-      "scope": [
-        {
-          "name": "binaries/tsw_io_backend",
-          "sidecar": true
-        }
-      ]
+      "open": true
     }
   }
 }

@@ -6,7 +6,14 @@
   "permissions": [
     "core:default",
     "opener:default",
-    "shell:allow-spawn",
-    "shell:allow-execute"
+    {
+      "identifier": "shell:allow-spawn",
+      "allow": [
+        {
+          "name": "binaries/tsw_io_backend",
+          "sidecar": true
+        }
+      ]
+    }
   ]
 }

@@ -129,7 +129,8 @@ build_tauri_app() {
     mise exec -- npm install
 
     log_info "Building Tauri app..."
-    mise exec -- npx tauri build --target "$TAURI_TARGET"
+    # --bundles app skips DMG creation for faster local builds
+    mise exec -- npx tauri build --target "$TAURI_TARGET" --bundles app
 
     log_info "Tauri build complete"
 }
@@ -146,9 +147,8 @@ main() {
 
     log_info "Build complete!"
     echo ""
-    echo "Output files:"
-    echo "  DMG: ${bundle_dir}/dmg/"
-    echo "  App: ${bundle_dir}/macos/"
+    echo "Output:"
+    echo "  App: ${bundle_dir}/macos/tsw_io.app"
 }
 
 main "$@"
