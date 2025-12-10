@@ -24,7 +24,8 @@ defmodule TswIo.Train.LeverMapperTest do
     end
 
     test "maps minimum input to minimum simulator value", %{lever_config: config} do
-      assert {:ok, 0.0} = LeverMapper.map_input(config, 0.0)
+      assert {:ok, value} = LeverMapper.map_input(config, 0.0)
+      assert value == 0.0
     end
 
     test "maps maximum input to maximum simulator value", %{lever_config: config} do
@@ -67,7 +68,8 @@ defmodule TswIo.Train.LeverMapperTest do
     end
 
     test "maps middle input to neutral (0.0)", %{lever_config: config} do
-      assert {:ok, 0.0} = LeverMapper.map_input(config, 0.5)
+      assert {:ok, value} = LeverMapper.map_input(config, 0.5)
+      assert value == 0.0
     end
 
     test "interpolates between negative and positive", %{lever_config: config} do
@@ -104,7 +106,8 @@ defmodule TswIo.Train.LeverMapperTest do
     end
 
     test "maps maximum input to zero", %{lever_config: config} do
-      assert {:ok, 0.0} = LeverMapper.map_input(config, 1.0)
+      assert {:ok, value} = LeverMapper.map_input(config, 1.0)
+      assert value == 0.0
     end
 
     test "interpolates in negative range", %{lever_config: config} do
@@ -143,7 +146,8 @@ defmodule TswIo.Train.LeverMapperTest do
 
     test "maps values in first notch range", %{lever_config: config} do
       # At input 0.0, should be at min of first notch
-      assert {:ok, 0.0} = LeverMapper.map_input(config, 0.0)
+      assert {:ok, value} = LeverMapper.map_input(config, 0.0)
+      assert value == 0.0
 
       # At input 0.125 (halfway through first notch), should be 0.15
       # Position within notch: (0.125 - 0.0) / (0.25 - 0.0) = 0.5
@@ -207,9 +211,12 @@ defmodule TswIo.Train.LeverMapperTest do
       assert {:ok, -1.0} = LeverMapper.map_input(config, 0.32)
 
       # Second notch range
-      assert {:ok, 0.0} = LeverMapper.map_input(config, 0.33)
-      assert {:ok, 0.0} = LeverMapper.map_input(config, 0.5)
-      assert {:ok, 0.0} = LeverMapper.map_input(config, 0.66)
+      assert {:ok, value1} = LeverMapper.map_input(config, 0.33)
+      assert value1 == 0.0
+      assert {:ok, value2} = LeverMapper.map_input(config, 0.5)
+      assert value2 == 0.0
+      assert {:ok, value3} = LeverMapper.map_input(config, 0.66)
+      assert value3 == 0.0
 
       # Third notch range
       assert {:ok, 1.0} = LeverMapper.map_input(config, 0.67)
@@ -244,12 +251,13 @@ defmodule TswIo.Train.LeverMapperTest do
     end
 
     test "maps values within notch range", %{lever_config: config} do
-      assert {:ok, 0.0} = LeverMapper.map_input(config, 0.2)
+      assert {:ok, value1} = LeverMapper.map_input(config, 0.2)
+      assert value1 == 0.0
       assert {:ok, 0.5} = LeverMapper.map_input(config, 0.5)
       # At 0.79 (near max), should be almost 1.0
       # Position: (0.79 - 0.2) / (0.8 - 0.2) = 0.59 / 0.6 = 0.983...
-      {:ok, value} = LeverMapper.map_input(config, 0.79)
-      assert value > 0.9
+      {:ok, value2} = LeverMapper.map_input(config, 0.79)
+      assert value2 > 0.9
     end
 
     test "returns error for input at or after notch max", %{lever_config: config} do
@@ -327,8 +335,10 @@ defmodule TswIo.Train.LeverMapperTest do
         %Notch{input_min: 0.5, input_max: 1.0}
       ]
 
-      assert %Notch{input_min: 0.0} = LeverMapper.find_notch(notches, 0.25)
-      assert %Notch{input_min: 0.5} = LeverMapper.find_notch(notches, 0.75)
+      notch1 = LeverMapper.find_notch(notches, 0.25)
+      assert notch1.input_min == 0.0
+      notch2 = LeverMapper.find_notch(notches, 0.75)
+      assert notch2.input_min == 0.5
     end
 
     test "handles boundary value at 1.0" do
@@ -355,7 +365,8 @@ defmodule TswIo.Train.LeverMapperTest do
         %Notch{input_min: 0.0, input_max: 1.0}
       ]
 
-      assert %Notch{input_min: 0.0} = LeverMapper.find_notch(notches, 0.5)
+      notch = LeverMapper.find_notch(notches, 0.5)
+      assert notch.input_min == 0.0
     end
   end
 
@@ -376,7 +387,8 @@ defmodule TswIo.Train.LeverMapperTest do
         input_max: 1.0
       }
 
-      assert {:ok, 0.0} = LeverMapper.calculate_value(notch, 0.0)
+      assert {:ok, value} = LeverMapper.calculate_value(notch, 0.0)
+      assert value == 0.0
       assert {:ok, 0.5} = LeverMapper.calculate_value(notch, 0.5)
       assert {:ok, 1.0} = LeverMapper.calculate_value(notch, 1.0)
     end
@@ -391,7 +403,8 @@ defmodule TswIo.Train.LeverMapperTest do
       }
 
       assert {:ok, -1.0} = LeverMapper.calculate_value(notch, 0.0)
-      assert {:ok, 0.0} = LeverMapper.calculate_value(notch, 0.5)
+      assert {:ok, value} = LeverMapper.calculate_value(notch, 0.5)
+      assert value == 0.0
       assert {:ok, 1.0} = LeverMapper.calculate_value(notch, 1.0)
     end
 
