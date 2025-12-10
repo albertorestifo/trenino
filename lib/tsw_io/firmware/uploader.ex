@@ -38,7 +38,8 @@ defmodule TswIo.Firmware.Uploader do
 
     with {:ok, avrdude_path} <- Avrdude.executable_path(),
          {:ok, config} <- BoardConfig.get_config(board_type),
-         :ok <- verify_hex_file(hex_file_path) do
+         :ok <- verify_hex_file(hex_file_path),
+         :ok <- maybe_trigger_bootloader(port, config) do
       args = build_args(config, port, hex_file_path)
 
       Logger.info("Running avrdude: #{avrdude_path} #{Enum.join(args, " ")}")
@@ -46,13 +47,53 @@ defmodule TswIo.Firmware.Uploader do
       case run_avrdude(avrdude_path, args, progress_callback) do
         {:ok, output} ->
           duration_ms = System.monotonic_time(:millisecond) - start_time
+          Logger.info("Avrdude completed successfully in #{duration_ms}ms")
           {:ok, %{duration_ms: duration_ms, output: output}}
 
         {:error, output} ->
-          {:error, parse_error(output), output}
+          error_type = parse_error(output)
+          Logger.error("Avrdude failed with error: #{error_type}")
+          Logger.error("Avrdude output:\n#{output}")
+          {:error, error_type, output}
       end
     end
   end
+
+  # Trigger bootloader on boards that need 1200bps touch (Leonardo, Micro, Pro Micro)
+  defp maybe_trigger_bootloader(port, %{use_1200bps_touch: true}) do
+    Logger.info("Triggering bootloader with 1200bps touch on #{port}")
+
+    case Circuits.UART.start_link() do
+      {:ok, uart} ->
+        # Open at 1200 baud, then close immediately to trigger bootloader
+        result =
+          case Circuits.UART.open(uart, port, speed: 1200) do
+            :ok ->
+              # Small delay to ensure the signal is registered
+              Process.sleep(50)
+              Circuits.UART.close(uart)
+              # Wait for bootloader to start (typically appears on a new port)
+              Logger.info("Waiting for bootloader to start...")
+              Process.sleep(1500)
+              :ok
+
+            {:error, reason} ->
+              Logger.warning("Could not open port for 1200bps touch: #{inspect(reason)}")
+              # Continue anyway - device might already be in bootloader mode
+              :ok
+          end
+
+        GenServer.stop(uart)
+        result
+
+      {:error, reason} ->
+        Logger.warning("Could not start UART for 1200bps touch: #{inspect(reason)}")
+        # Continue anyway
+        :ok
+    end
+  end
+
+  defp maybe_trigger_bootloader(_port, _config), do: :ok
 
   # Build avrdude command arguments
   defp build_args(config, port, hex_file_path) do
@@ -157,6 +198,12 @@ defmodule TswIo.Firmware.Uploader do
       String.contains?(output, "stk500") and String.contains?(output, "not responding") ->
         :bootloader_not_responding
 
+      String.contains?(output, "initialization failed") ->
+        :bootloader_not_responding
+
+      String.contains?(output, "butterfly") and String.contains?(output, "AVR910") ->
+        :bootloader_not_responding
+
       String.contains?(output, "device signature") ->
         :wrong_board_type
 
@@ -189,12 +236,14 @@ defmodule TswIo.Firmware.Uploader do
 
   def error_message(:bootloader_not_responding) do
     """
-    Bootloader not responding. Please verify:
-    - Selected board type matches your physical board
-    - Device is powered on
-    - Try a different USB port or cable
+    Bootloader not responding. For Pro Micro, Leonardo, and Micro boards:
+    - Double-tap the reset button to enter bootloader mode
+    - Start the upload within 8 seconds
 
-    If problem persists, the bootloader may be corrupted.
+    For other boards, verify:
+    - Selected board type matches your physical board
+    - Device is powered on and connected
+    - Try a different USB port or cable
     """
   end
 

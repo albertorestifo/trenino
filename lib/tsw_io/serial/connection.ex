@@ -102,18 +102,19 @@ defmodule TswIo.Serial.Connection do
   @doc """
   Request exclusive access to a port for firmware upload.
 
-  Closes the UART connection and marks the device as uploading.
+  Closes any existing UART connection and marks the port as uploading.
   Returns a token that must be used to release the port.
+
+  Works for any port - connected, disconnected, or not yet tracked.
+  Avrdude will handle the actual device connection.
 
   ## Returns
 
     * `{:ok, token}` - Port is now available for avrdude
-    * `{:error, :device_not_found}` - Port not tracked
-    * `{:error, :not_connected}` - Device not in connected state
     * `{:error, :upload_in_progress}` - Another upload is already in progress
   """
   @spec request_upload_access(String.t()) ::
-          {:ok, String.t()} | {:error, :device_not_found | :not_connected | :upload_in_progress}
+          {:ok, String.t()} | {:error, :upload_in_progress}
   def request_upload_access(port) do
     GenServer.call(__MODULE__, {:request_upload_access, port})
   end
@@ -188,11 +189,8 @@ defmodule TswIo.Serial.Connection do
       {:reply, {:error, :upload_in_progress}, state}
     else
       case State.get(state, port) do
-        nil ->
-          {:reply, {:error, :device_not_found}, state}
-
-        %DeviceConnection{status: :connected, pid: pid} = conn ->
-          # Close the UART connection synchronously
+        %DeviceConnection{pid: pid} = conn when not is_nil(pid) ->
+          # Close any existing UART connection
           safe_close_uart(pid)
           # Mark as uploading and get token
           {updated_conn, token} = DeviceConnection.mark_uploading(conn)
@@ -200,8 +198,20 @@ defmodule TswIo.Serial.Connection do
           broadcast_update(updated_state)
           {:reply, {:ok, token}, updated_state}
 
-        %DeviceConnection{status: _status} ->
-          {:reply, {:error, :not_connected}, state}
+        %DeviceConnection{} = conn ->
+          # No UART connection to close, just mark as uploading
+          {updated_conn, token} = DeviceConnection.mark_uploading(conn)
+          updated_state = State.put(state, updated_conn)
+          broadcast_update(updated_state)
+          {:reply, {:ok, token}, updated_state}
+
+        nil ->
+          # Port not tracked - create a temporary entry for upload
+          conn = %DeviceConnection{port: port, status: :available}
+          {updated_conn, token} = DeviceConnection.mark_uploading(conn)
+          updated_state = State.put(state, updated_conn)
+          broadcast_update(updated_state)
+          {:reply, {:ok, token}, updated_state}
       end
     end
   end

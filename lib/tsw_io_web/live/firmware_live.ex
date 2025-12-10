@@ -93,6 +93,12 @@ defmodule TswIoWeb.FirmwareLive do
      )}
   end
 
+  @impl true
+  def handle_info(:firmware_update_dismissed, socket) do
+    # Update notification was dismissed, no action needed
+    {:noreply, socket}
+  end
+
   # Nav events
   @impl true
   def handle_event("nav_toggle_dropdown", _, socket) do

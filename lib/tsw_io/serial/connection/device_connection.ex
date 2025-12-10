@@ -105,10 +105,11 @@ defmodule TswIo.Serial.Connection.DeviceConnection do
   Transition to :uploading state for firmware upload.
 
   Generates a unique token that must be provided to release the port.
-  The UART process should be closed before calling this.
+  Any existing UART process should be closed before calling this.
+  Works for any device status - avrdude handles the actual connection.
   """
   @spec mark_uploading(t()) :: {t(), String.t()}
-  def mark_uploading(%__MODULE__{status: :connected} = conn) do
+  def mark_uploading(%__MODULE__{} = conn) do
     token = generate_upload_token()
     updated = %__MODULE__{conn | status: :uploading, pid: nil, upload_token: token}
     {updated, token}

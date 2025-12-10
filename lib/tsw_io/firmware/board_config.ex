@@ -20,7 +20,8 @@ defmodule TswIo.Firmware.BoardConfig do
           mcu: String.t(),
           programmer: String.t(),
           baud_rate: pos_integer(),
-          hex_filename: String.t()
+          hex_filename: String.t(),
+          use_1200bps_touch: boolean()
         }
 
   @configs %{
@@ -29,49 +30,56 @@ defmodule TswIo.Firmware.BoardConfig do
       mcu: "m328p",
       programmer: "arduino",
       baud_rate: 115_200,
-      hex_filename: "tws-io-arduino-uno.hex"
+      hex_filename: "tws-io-arduino-uno.hex",
+      use_1200bps_touch: false
     },
     nano: %{
       name: "Arduino Nano",
       mcu: "m328p",
       programmer: "arduino",
       baud_rate: 57_600,
-      hex_filename: "tws-io-arduino-nano.hex"
+      hex_filename: "tws-io-arduino-nano.hex",
+      use_1200bps_touch: false
     },
     nano_old_bootloader: %{
       name: "Arduino Nano (Old Bootloader)",
       mcu: "m328p",
       programmer: "arduino",
       baud_rate: 57_600,
-      hex_filename: "tws-io-arduino-nano-old-bootloader.hex"
+      hex_filename: "tws-io-arduino-nano-old-bootloader.hex",
+      use_1200bps_touch: false
     },
     leonardo: %{
       name: "Arduino Leonardo",
       mcu: "m32u4",
       programmer: "avr109",
       baud_rate: 57_600,
-      hex_filename: "tws-io-arduino-leonardo.hex"
+      hex_filename: "tws-io-arduino-leonardo.hex",
+      use_1200bps_touch: true
     },
     micro: %{
       name: "Arduino Micro",
       mcu: "m32u4",
       programmer: "avr109",
       baud_rate: 57_600,
-      hex_filename: "tws-io-arduino-micro.hex"
+      hex_filename: "tws-io-arduino-micro.hex",
+      use_1200bps_touch: true
     },
     mega2560: %{
       name: "Arduino Mega 2560",
       mcu: "m2560",
       programmer: "wiring",
       baud_rate: 115_200,
-      hex_filename: "tws-io-arduino-mega-2560.hex"
+      hex_filename: "tws-io-arduino-mega-2560.hex",
+      use_1200bps_touch: false
     },
     sparkfun_pro_micro: %{
       name: "SparkFun Pro Micro",
       mcu: "m32u4",
       programmer: "avr109",
       baud_rate: 57_600,
-      hex_filename: "tws-io-sparkfun-pro-micro.hex"
+      hex_filename: "tws-io-sparkfun-pro-micro.hex",
+      use_1200bps_touch: true
     }
   }
 

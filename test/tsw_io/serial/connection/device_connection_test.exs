@@ -347,14 +347,17 @@ defmodule TswIo.Serial.Connection.DeviceConnectionTest do
       assert token1 != token2
     end
 
-    test "raises FunctionClauseError when not in :connected state" do
-      # Arrange
+    test "works for any device status" do
+      # Arrange - a device in :discovering state
       conn = SerialTestHelpers.build_discovering_connection()
 
-      # Act & Assert
-      assert_raise FunctionClauseError, fn ->
-        DeviceConnection.mark_uploading(conn)
-      end
+      # Act - should work without raising
+      {updated_conn, token} = DeviceConnection.mark_uploading(conn)
+
+      # Assert
+      assert updated_conn.status == :uploading
+      assert is_binary(token)
+      assert updated_conn.upload_token == token
     end
   end
 
