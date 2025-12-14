@@ -117,6 +117,9 @@ defmodule TswIoWeb.FirmwareLive do
     {:noreply, socket}
   end
 
+  @impl true
+  def handle_info(_msg, socket), do: {:noreply, socket}
+
   # Nav events
   @impl true
   def handle_event("nav_toggle_dropdown", _, socket) do

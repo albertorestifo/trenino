@@ -412,6 +412,9 @@ defmodule TswIoWeb.ConfigurationEditLive do
     {:noreply, socket}
   end
 
+  @impl true
+  def handle_info(_msg, socket), do: {:noreply, socket}
+
   defp find_active_port_in_list(devices, config_id) do
     devices
     |> Enum.find(&(&1.device_config_id == config_id && &1.status == :connected))

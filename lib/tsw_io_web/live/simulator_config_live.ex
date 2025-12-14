@@ -46,6 +46,9 @@ defmodule TswIoWeb.SimulatorConfigLive do
     {:noreply, socket}
   end
 
+  @impl true
+  def handle_info(_msg, socket), do: {:noreply, socket}
+
   # Nav component events
   @impl true
   def handle_event("nav_toggle_dropdown", _, socket) do

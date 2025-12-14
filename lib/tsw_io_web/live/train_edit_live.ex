@@ -746,6 +746,9 @@ defmodule TswIoWeb.TrainEditLive do
      |> assign(:api_explorer_field, nil)}
   end
 
+  @impl true
+  def handle_info(_msg, socket), do: {:noreply, socket}
+
   # Private functions
 
   defp build_notch_forms(notches) when is_list(notches) do

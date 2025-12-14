@@ -60,6 +60,9 @@ defmodule TswIoWeb.TrainListLive do
   end
 
   @impl true
+  def handle_info(_msg, socket), do: {:noreply, socket}
+
+  @impl true
   def handle_event("nav_toggle_dropdown", _, socket) do
     {:noreply, assign(socket, :nav_dropdown_open, !socket.assigns.nav_dropdown_open)}
   end
