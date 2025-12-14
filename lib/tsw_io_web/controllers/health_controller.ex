@@ -28,6 +28,24 @@ defmodule TswIoWeb.HealthController do
     end
   end
 
+  @doc """
+  Graceful shutdown endpoint for desktop app integration.
+
+  Called by Tauri when the desktop app window is closed to ensure
+  the Elixir backend shuts down cleanly instead of becoming orphaned.
+  """
+  def shutdown(conn, _params) do
+    # Spawn a task to stop the system after responding
+    # This ensures the response is sent before shutdown begins
+    Task.start(fn ->
+      # Brief delay to ensure response is sent
+      Process.sleep(100)
+      System.stop(0)
+    end)
+
+    json(conn, %{status: "shutting_down"})
+  end
+
   defp check_database_ready do
     # Try to query a table that exists after migrations
     # Using Ecto query to check if the database is accessible

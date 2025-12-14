@@ -15,10 +15,12 @@ defmodule TswIoWeb.Router do
   end
 
   # Health check endpoint - returns 200 only when app is fully ready
+  # Shutdown endpoint for graceful desktop app termination
   scope "/api", TswIoWeb do
     pipe_through :api
 
     get "/health", HealthController, :index
+    post "/shutdown", HealthController, :shutdown
   end
 
   scope "/", TswIoWeb do

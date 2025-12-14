@@ -1,10 +1,15 @@
 use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
 use tauri_plugin_shell::ShellExt;
+use tauri_plugin_shell::process::CommandChild;
+use std::sync::Mutex;
 use std::time::Duration;
 
 const BACKEND_PORT: u16 = 4000;
 const MAX_RETRIES: u32 = 120; // 2 minutes max wait
 const RETRY_DELAY_MS: u64 = 500;
+
+/// State to hold the backend sidecar process handle for cleanup on exit
+struct BackendProcess(Mutex<Option<CommandChild>>);
 
 /// Check if the backend is fully ready (migrations complete) by checking health endpoint
 fn check_backend_ready() -> Result<bool, String> {
@@ -68,6 +73,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_shell::init())
+        .manage(BackendProcess(Mutex::new(None)))
         .setup(|app| {
             let handle = app.handle().clone();
 
@@ -97,7 +103,7 @@ pub fn run() {
                 }
             };
 
-            let (mut _rx, _child) = match sidecar
+            let (mut _rx, child) = match sidecar
                 .env("PORT", BACKEND_PORT.to_string())
                 .env("MIX_ENV", "prod")
                 .env("BURRITO", "1")
@@ -109,6 +115,10 @@ pub fn run() {
                     return Err(Box::new(e));
                 }
             };
+
+            // Store the child process handle in app state for cleanup on exit
+            let backend_state: tauri::State<BackendProcess> = app.state();
+            *backend_state.0.lock().unwrap() = Some(child);
 
             // Wait for backend to be ready in a separate thread
             let splash_handle = splash_window;
@@ -145,6 +155,50 @@ pub fn run() {
 
             Ok(())
         })
-        .run(tauri::generate_context!())
-        .expect("Error while running tsw_io");
+        .build(tauri::generate_context!())
+        .expect("Error while building tsw_io")
+        .run(|app_handle, event| {
+            if let tauri::RunEvent::ExitRequested { .. } = event {
+                // Gracefully shut down the backend by calling the shutdown endpoint
+                println!("App exit requested, initiating graceful backend shutdown");
+
+                let shutdown_url = format!("http://localhost:{}/api/shutdown", BACKEND_PORT);
+                let mut shutdown_succeeded = false;
+
+                // Send POST request to shutdown endpoint
+                // This tells the Elixir backend to call System.stop(0) which
+                // gracefully shuts down the Erlang VM and all child processes
+                match reqwest::blocking::Client::new()
+                    .post(&shutdown_url)
+                    .timeout(Duration::from_secs(2))
+                    .send()
+                {
+                    Ok(response) => {
+                        if response.status().is_success() {
+                            println!("Backend shutdown initiated successfully");
+                            shutdown_succeeded = true;
+                        } else {
+                            println!("Backend shutdown returned status: {}", response.status());
+                        }
+                    }
+                    Err(e) => {
+                        // Backend might already be down or unreachable
+                        println!("Could not reach backend for shutdown: {}", e);
+                    }
+                }
+
+                // If graceful shutdown succeeded, give it time to complete
+                // Otherwise, fall back to killing the process directly
+                if shutdown_succeeded {
+                    std::thread::sleep(Duration::from_millis(500));
+                } else if let Some(backend_state) = app_handle.try_state::<BackendProcess>() {
+                    if let Ok(mut guard) = backend_state.0.lock() {
+                        if let Some(child) = guard.take() {
+                            println!("Falling back to forceful process termination");
+                            let _ = child.kill();
+                        }
+                    }
+                }
+            }
+        });
 }
