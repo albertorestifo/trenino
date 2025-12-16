@@ -71,6 +71,66 @@ defmodule TswIoWeb.ConfigurationEditLiveTest do
     end
   end
 
+  describe "Button input changeset" do
+    test "validates debounce range for button" do
+      # Valid debounce
+      changeset =
+        Input.changeset(%Input{}, %{pin: 5, input_type: :button, debounce: 20, device_id: 1})
+
+      assert changeset.valid?
+
+      # Debounce too low
+      changeset =
+        Input.changeset(%Input{}, %{pin: 5, input_type: :button, debounce: -1, device_id: 1})
+
+      refute changeset.valid?
+      assert %{debounce: ["must be greater than or equal to 0"]} = errors_on(changeset)
+
+      # Debounce too high
+      changeset =
+        Input.changeset(%Input{}, %{pin: 5, input_type: :button, debounce: 256, device_id: 1})
+
+      refute changeset.valid?
+      assert %{debounce: ["must be less than or equal to 255"]} = errors_on(changeset)
+    end
+
+    test "validates pin range for button" do
+      changeset =
+        Input.changeset(%Input{}, %{pin: 0, input_type: :button, debounce: 20, device_id: 1})
+
+      refute changeset.valid?
+      assert %{pin: ["must be greater than 0"]} = errors_on(changeset)
+
+      changeset =
+        Input.changeset(%Input{}, %{pin: 128, input_type: :button, debounce: 20, device_id: 1})
+
+      refute changeset.valid?
+      assert %{pin: ["must be less than 128"]} = errors_on(changeset)
+
+      changeset =
+        Input.changeset(%Input{}, %{pin: 100, input_type: :button, debounce: 20, device_id: 1})
+
+      assert changeset.valid?
+    end
+
+    test "requires debounce for button input" do
+      changeset =
+        Input.changeset(%Input{}, %{pin: 5, input_type: :button, device_id: 1})
+
+      refute changeset.valid?
+      assert %{debounce: ["can't be blank"]} = errors_on(changeset)
+    end
+
+    test "does not require sensitivity for button input" do
+      changeset =
+        Input.changeset(%Input{}, %{pin: 5, input_type: :button, debounce: 20, device_id: 1})
+
+      assert changeset.valid?
+      # No sensitivity error for button type
+      assert errors_on(changeset) == %{}
+    end
+  end
+
   describe "Hardware context integration" do
     setup do
       {:ok, device} = Hardware.create_device(%{name: "Test Device"})
@@ -87,6 +147,17 @@ defmodule TswIoWeb.ConfigurationEditLiveTest do
       assert input.sensitivity == 5
     end
 
+    test "creates button input for device", %{device: device} do
+      {:ok, input} =
+        Hardware.create_input(device.id, %{pin: 5, input_type: :button, debounce: 20})
+
+      assert input.device_id == device.id
+      assert input.pin == 5
+      assert input.input_type == :button
+      assert input.debounce == 20
+      assert input.sensitivity == nil
+    end
+
     test "lists inputs ordered by pin", %{device: device} do
       {:ok, _} = Hardware.create_input(device.id, %{pin: 10, input_type: :analog, sensitivity: 5})
       {:ok, _} = Hardware.create_input(device.id, %{pin: 2, input_type: :analog, sensitivity: 5})
@@ -96,6 +167,18 @@ defmodule TswIoWeb.ConfigurationEditLiveTest do
       pins = Enum.map(inputs, & &1.pin)
 
       assert pins == [2, 5, 10]
+    end
+
+    test "lists both analog and button inputs ordered by pin", %{device: device} do
+      {:ok, _} = Hardware.create_input(device.id, %{pin: 10, input_type: :analog, sensitivity: 5})
+      {:ok, _} = Hardware.create_input(device.id, %{pin: 2, input_type: :button, debounce: 20})
+      {:ok, _} = Hardware.create_input(device.id, %{pin: 5, input_type: :analog, sensitivity: 5})
+
+      {:ok, inputs} = Hardware.list_inputs(device.id)
+      pins = Enum.map(inputs, & &1.pin)
+
+      assert pins == [2, 5, 10]
+      assert Enum.map(inputs, & &1.input_type) == [:button, :analog, :analog]
     end
 
     test "deletes input", %{device: device} do
@@ -113,6 +196,15 @@ defmodule TswIoWeb.ConfigurationEditLiveTest do
 
       {:error, changeset} =
         Hardware.create_input(device.id, %{pin: 5, input_type: :analog, sensitivity: 5})
+
+      assert %{device_id: ["has already been taken"]} = errors_on(changeset)
+    end
+
+    test "enforces unique pin even across different input types", %{device: device} do
+      {:ok, _} = Hardware.create_input(device.id, %{pin: 5, input_type: :analog, sensitivity: 5})
+
+      {:error, changeset} =
+        Hardware.create_input(device.id, %{pin: 5, input_type: :button, debounce: 20})
 
       assert %{device_id: ["has already been taken"]} = errors_on(changeset)
     end

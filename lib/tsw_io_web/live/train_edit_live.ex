@@ -13,7 +13,7 @@ defmodule TswIoWeb.TrainEditLive do
 
   alias TswIo.Hardware
   alias TswIo.Train, as: TrainContext
-  alias TswIo.Train.{Train, Element, LeverConfig, LeverInputBinding, Notch}
+  alias TswIo.Train.{Train, Element, LeverConfig, LeverInputBinding, Notch, ButtonInputBinding}
   alias TswIo.Train.{LeverController, ButtonController}
   alias TswIo.Serial.Connection
 
@@ -302,25 +302,17 @@ defmodule TswIoWeb.TrainEditLive do
         available_inputs = Hardware.list_all_inputs(include_uncalibrated: true)
         button_inputs = Enum.filter(available_inputs, &(&1.input_type == :button))
 
-        # Build form with existing binding data or defaults
-        form_data =
-          case element.button_binding do
-            nil ->
-              %{endpoint: "", on_value: 1.0, off_value: 0.0}
+        # Use changeset for form (follows lever config pattern)
+        binding =
+          element.button_binding ||
+            %ButtonInputBinding{element_id: element_id, on_value: 1.0, off_value: 0.0}
 
-            binding ->
-              %{
-                input_id: binding.input_id,
-                endpoint: binding.endpoint,
-                on_value: binding.on_value,
-                off_value: binding.off_value
-              }
-          end
+        changeset = ButtonInputBinding.changeset(binding, %{})
 
         {:noreply,
          socket
          |> assign(:configuring_button_element, element)
-         |> assign(:button_config_form, to_form(form_data, as: :button_config))
+         |> assign(:button_config_form, to_form(changeset))
          |> assign(:available_button_inputs, button_inputs)}
 
       {:error, :not_found} ->
@@ -338,64 +330,63 @@ defmodule TswIoWeb.TrainEditLive do
   end
 
   @impl true
-  def handle_event("validate_button_config", %{"button_config" => params}, socket) do
-    {:noreply, assign(socket, :button_config_form, to_form(params, as: :button_config))}
+  def handle_event("validate_button_config", %{"button_input_binding" => params}, socket) do
+    binding =
+      socket.assigns.configuring_button_element.button_binding ||
+        %ButtonInputBinding{}
+
+    changeset =
+      binding
+      |> ButtonInputBinding.changeset(params)
+      |> Map.put(:action, :validate)
+
+    {:noreply, assign(socket, :button_config_form, to_form(changeset))}
   end
 
   @impl true
-  def handle_event("save_button_config", %{"button_config" => params}, socket) do
+  def handle_event("save_button_config", %{"button_input_binding" => params}, socket) do
     element = socket.assigns.configuring_button_element
-    input_id = String.to_integer(params["input_id"] || "0")
 
-    if input_id == 0 do
-      {:noreply, put_flash(socket, :error, "Please select a button input")}
-    else
-      attrs = %{
-        endpoint: params["endpoint"],
-        on_value: parse_float(params["on_value"], 1.0),
-        off_value: parse_float(params["off_value"], 0.0)
-      }
+    # Add element_id to params for changeset validation
+    params = Map.put(params, "element_id", element.id)
 
-      result =
-        case element.button_binding do
-          nil ->
-            TrainContext.create_button_binding(element.id, input_id, attrs)
+    result =
+      case element.button_binding do
+        nil ->
+          input_id = parse_input_id(params["input_id"])
 
-          existing ->
-            TrainContext.update_button_binding(existing, Map.put(attrs, :input_id, input_id))
-        end
+          if input_id do
+            TrainContext.create_button_binding(element.id, input_id, params)
+          else
+            changeset =
+              %ButtonInputBinding{}
+              |> ButtonInputBinding.changeset(params)
+              |> Map.put(:action, :validate)
 
-      case result do
-        {:ok, _binding} ->
-          {:ok, elements} = TrainContext.list_elements(socket.assigns.train.id)
-          ButtonController.reload_bindings()
+            {:error, changeset}
+          end
 
-          {:noreply,
-           socket
-           |> assign(:elements, elements)
-           |> assign(:configuring_button_element, nil)
-           |> assign(:button_config_form, nil)
-           |> assign(:available_button_inputs, [])
-           |> put_flash(:info, "Button configuration saved")}
-
-        {:error, changeset} ->
-          {:noreply, put_flash(socket, :error, "Failed to save: #{inspect(changeset.errors)}")}
+        existing ->
+          TrainContext.update_button_binding(existing, params)
       end
+
+    case result do
+      {:ok, _binding} ->
+        {:ok, elements} = TrainContext.list_elements(socket.assigns.train.id)
+        ButtonController.reload_bindings()
+
+        {:noreply,
+         socket
+         |> assign(:elements, elements)
+         |> assign(:configuring_button_element, nil)
+         |> assign(:button_config_form, nil)
+         |> assign(:available_button_inputs, [])
+         |> put_flash(:info, "Button configuration saved")}
+
+      {:error, changeset} ->
+        {:noreply, assign(socket, :button_config_form, to_form(changeset))}
     end
   end
-
-  defp parse_float(nil, default), do: default
-  defp parse_float("", default), do: default
-
-  defp parse_float(str, default) when is_binary(str) do
-    case Float.parse(str) do
-      {val, _} -> Float.round(val, 2)
-      :error -> default
-    end
-  end
-
-  defp parse_float(val, _default) when is_float(val), do: Float.round(val, 2)
-  defp parse_float(val, _default) when is_integer(val), do: val / 1.0
 
   # Input binding
   @impl true
@@ -876,6 +867,19 @@ defmodule TswIoWeb.TrainEditLive do
       |> to_form()
     end)
   end
+
+  defp parse_input_id(nil), do: nil
+  defp parse_input_id(""), do: nil
+
+  defp parse_input_id(str) when is_binary(str) do
+    case Integer.parse(str) do
+      {id, _} when id > 0 -> id
+      _ -> nil
+    end
+  end
+
+  defp parse_input_id(id) when is_integer(id) and id > 0, do: id
+  defp parse_input_id(_), do: nil
 
   defp save_train(%{assigns: %{new_mode: true}} = socket, params) do
     case TrainContext.create_train(params) do
@@ -1926,10 +1930,13 @@ defmodule TswIoWeb.TrainEditLive do
   attr :simulator_connected, :boolean, required: true
 
   defp button_config_modal(assigns) do
+    # Get current input_id from changeset-backed form
+    current_input_id = Phoenix.HTML.Form.input_value(assigns.form, :input_id)
+
     current_input_id =
-      case assigns.form do
-        %{params: %{"input_id" => id}} when is_binary(id) -> String.to_integer(id)
-        %{source: %{input_id: id}} when is_integer(id) -> id
+      case current_input_id do
+        id when is_integer(id) -> id
+        id when is_binary(id) and id != "" -> String.to_integer(id)
         _ -> nil
       end
 
@@ -1974,7 +1981,7 @@ defmodule TswIoWeb.TrainEditLive do
                 >
                   <input
                     type="radio"
-                    name="button_config[input_id]"
+                    name={@form[:input_id].name}
                     value={input.id}
                     checked={@current_input_id == input.id}
                     class="radio radio-primary radio-sm"
@@ -1990,51 +1997,36 @@ defmodule TswIoWeb.TrainEditLive do
             <%!-- Endpoint Configuration --%>
             <div class="bg-base-200/50 rounded-lg p-4">
               <h3 class="text-sm font-semibold mb-3">Simulator Endpoint</h3>
-              <div>
-                <label class="label py-1">
-                  <span class="label-text text-xs">Endpoint Path</span>
-                </label>
-                <input
-                  type="text"
-                  name="button_config[endpoint]"
-                  value={@form[:endpoint].value}
-                  placeholder="e.g., CurrentDrivableActor/Horn.InputValue"
-                  class="input input-bordered input-sm w-full font-mono text-xs"
-                />
-                <p class="text-xs text-base-content/50 mt-1">
-                  The API endpoint to set when the button is pressed or released
-                </p>
-              </div>
+              <.input
+                field={@form[:endpoint]}
+                type="text"
+                label="Endpoint Path"
+                placeholder="e.g., CurrentDrivableActor/Horn.InputValue"
+                class="input input-bordered input-sm w-full font-mono text-xs"
+              />
+              <p class="text-xs text-base-content/50 mt-1">
+                The API endpoint to set when the button is pressed or released
+              </p>
             </div>
 
             <%!-- ON/OFF Values --%>
             <div class="bg-base-200/50 rounded-lg p-4">
               <h3 class="text-sm font-semibold mb-3">Values</h3>
               <div class="grid grid-cols-2 gap-4">
-                <div>
-                  <label class="label py-1">
-                    <span class="label-text text-xs">ON Value (when pressed)</span>
-                  </label>
-                  <input
-                    type="number"
-                    name="button_config[on_value]"
-                    value={@form[:on_value].value}
-                    step="0.1"
-                    class="input input-bordered input-sm w-full font-mono"
-                  />
-                </div>
-                <div>
-                  <label class="label py-1">
-                    <span class="label-text text-xs">OFF Value (when released)</span>
-                  </label>
-                  <input
-                    type="number"
-                    name="button_config[off_value]"
-                    value={@form[:off_value].value}
-                    step="0.1"
-                    class="input input-bordered input-sm w-full font-mono"
-                  />
-                </div>
+                <.input
+                  field={@form[:on_value]}
+                  type="number"
+                  label="ON Value (when pressed)"
+                  step="0.01"
+                  class="input input-bordered input-sm w-full font-mono"
+                />
+                <.input
+                  field={@form[:off_value]}
+                  type="number"
+                  label="OFF Value (when released)"
+                  step="0.01"
+                  class="input input-bordered input-sm w-full font-mono"
+                />
               </div>
               <p class="text-xs text-base-content/50 mt-2">
                 Common values: 1.0/0.0 for toggle, 1.0/-1.0 for bidirectional

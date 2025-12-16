@@ -3,6 +3,7 @@ defmodule TswIoWeb.TrainEditLiveTest do
 
   import Phoenix.LiveViewTest
 
+  alias TswIo.Hardware
   alias TswIo.Train, as: TrainContext
 
   # Sample state that NotchMappingSession broadcasts with events
@@ -167,6 +168,280 @@ defmodule TswIoWeb.TrainEditLiveTest do
       assert train.identifier == "BR_Class_66"
       assert train.name == "Class 66"
       assert train.description == "British freight locomotive"
+    end
+  end
+
+  describe "button elements" do
+    setup %{conn: conn} do
+      {:ok, train} =
+        TrainContext.create_train(%{
+          name: "Test Train",
+          identifier: "Test_Train_Button_#{System.unique_integer([:positive])}"
+        })
+
+      %{conn: conn, train: train}
+    end
+
+    test "can add a button element", %{conn: conn, train: train} do
+      {:ok, view, _html} = live(conn, ~p"/trains/#{train.id}")
+
+      # Open the add element modal
+      view |> element("button", "Add Element") |> render_click()
+
+      # Submit the form with button type
+      view
+      |> form("form[phx-submit='add_element']", element: %{name: "Horn", type: "button"})
+      |> render_submit()
+
+      # Verify the element was created
+      {:ok, elements} = TrainContext.list_elements(train.id)
+      assert length(elements) == 1
+      assert hd(elements).name == "Horn"
+      assert hd(elements).type == :button
+    end
+
+    test "displays button element card with correct badge", %{conn: conn, train: train} do
+      # Create a button element directly
+      {:ok, _element} = TrainContext.create_element(train.id, %{name: "Horn", type: :button})
+
+      # Load the view after element is created
+      {:ok, _view, html} = live(conn, ~p"/trains/#{train.id}")
+
+      assert html =~ "Horn"
+      assert html =~ "button"
+    end
+
+    test "can delete a button element", %{conn: conn, train: train} do
+      # Create a button element directly
+      {:ok, elem} = TrainContext.create_element(train.id, %{name: "Horn", type: :button})
+
+      # Load the view
+      {:ok, view, _html} = live(conn, ~p"/trains/#{train.id}")
+
+      # Delete it
+      view
+      |> element("[phx-click='delete_element'][phx-value-id='#{elem.id}']")
+      |> render_click()
+
+      # Verify the element was deleted
+      {:ok, elements} = TrainContext.list_elements(train.id)
+      assert elements == []
+    end
+
+    test "can open button configuration modal", %{conn: conn, train: train} do
+      # Create a button element
+      {:ok, elem} = TrainContext.create_element(train.id, %{name: "Horn", type: :button})
+
+      # Load the view
+      {:ok, view, _html} = live(conn, ~p"/trains/#{train.id}")
+
+      # Click configure
+      html =
+        view
+        |> element("[phx-click='configure_button'][phx-value-id='#{elem.id}']")
+        |> render_click()
+
+      # Verify modal opened
+      assert html =~ "Configure Horn"
+      assert html =~ "Button Input"
+      assert html =~ "Simulator Endpoint"
+    end
+
+    test "can close button configuration modal", %{conn: conn, train: train} do
+      # Create a button element
+      {:ok, elem} = TrainContext.create_element(train.id, %{name: "Horn", type: :button})
+
+      # Load the view
+      {:ok, view, _html} = live(conn, ~p"/trains/#{train.id}")
+
+      # Open modal
+      view
+      |> element("[phx-click='configure_button'][phx-value-id='#{elem.id}']")
+      |> render_click()
+
+      # Close modal using the Cancel button
+      html =
+        view
+        |> element("button[phx-click='close_button_config_modal']")
+        |> render_click()
+
+      # Verify modal closed
+      refute html =~ "Configure Horn"
+    end
+
+    test "shows message when no button inputs available", %{conn: conn, train: train} do
+      # Create a button element
+      {:ok, elem} = TrainContext.create_element(train.id, %{name: "Horn", type: :button})
+
+      # Load the view
+      {:ok, view, _html} = live(conn, ~p"/trains/#{train.id}")
+
+      # Open modal
+      html =
+        view
+        |> element("[phx-click='configure_button'][phx-value-id='#{elem.id}']")
+        |> render_click()
+
+      # Should show no inputs message
+      assert html =~ "No button inputs available"
+      assert html =~ "Add a button input in a device configuration first"
+    end
+
+    test "can configure button with available input", %{conn: conn, train: train} do
+      # Create a device with button input
+      {:ok, device} = Hardware.create_device(%{name: "Test Device"})
+
+      {:ok, input} =
+        Hardware.create_input(device.id, %{pin: 5, input_type: :button, debounce: 20})
+
+      # Create a button element
+      {:ok, elem} = TrainContext.create_element(train.id, %{name: "Horn", type: :button})
+
+      # Load the view
+      {:ok, view, _html} = live(conn, ~p"/trains/#{train.id}")
+
+      # Open modal
+      view
+      |> element("[phx-click='configure_button'][phx-value-id='#{elem.id}']")
+      |> render_click()
+
+      # Submit the form
+      view
+      |> form("form[phx-submit='save_button_config']",
+        button_input_binding: %{
+          input_id: input.id,
+          endpoint: "CurrentDrivableActor/Horn.InputValue",
+          on_value: "1.0",
+          off_value: "0.0"
+        }
+      )
+      |> render_submit()
+
+      # Verify binding was created
+      {:ok, binding} = TrainContext.get_button_binding(elem.id)
+      assert binding.input_id == input.id
+      assert binding.endpoint == "CurrentDrivableActor/Horn.InputValue"
+      assert binding.on_value == 1.0
+      assert binding.off_value == 0.0
+    end
+
+    test "shows binding info on button element card after configuration", %{
+      conn: conn,
+      train: train
+    } do
+      # Create a device with button input
+      {:ok, device} = Hardware.create_device(%{name: "Test Device"})
+
+      {:ok, input} =
+        Hardware.create_input(device.id, %{pin: 5, input_type: :button, debounce: 20})
+
+      # Create a button element
+      {:ok, elem} = TrainContext.create_element(train.id, %{name: "Horn", type: :button})
+
+      # Create binding
+      {:ok, _binding} =
+        TrainContext.create_button_binding(elem.id, input.id, %{
+          endpoint: "CurrentDrivableActor/Horn.InputValue"
+        })
+
+      # Load the view to see the binding
+      {:ok, _view, html} = live(conn, ~p"/trains/#{train.id}")
+
+      # Should show binding info
+      assert html =~ "Test Device"
+      assert html =~ "Pin 5"
+      assert html =~ "CurrentDrivableActor/Horn.InputValue"
+    end
+  end
+
+  describe "button element with custom on/off values" do
+    setup %{conn: conn} do
+      {:ok, train} =
+        TrainContext.create_train(%{
+          name: "Test Train",
+          identifier: "Test_Train_Values_#{System.unique_integer([:positive])}"
+        })
+
+      {:ok, device} = Hardware.create_device(%{name: "Test Device"})
+
+      {:ok, input} =
+        Hardware.create_input(device.id, %{pin: 5, input_type: :button, debounce: 20})
+
+      {:ok, elem} = TrainContext.create_element(train.id, %{name: "Horn", type: :button})
+
+      %{conn: conn, train: train, element: elem, input: input}
+    end
+
+    test "can configure button with custom on/off values", %{
+      conn: conn,
+      train: train,
+      element: elem,
+      input: input
+    } do
+      # Load the view
+      {:ok, view, _html} = live(conn, ~p"/trains/#{train.id}")
+
+      # Open modal
+      view
+      |> element("[phx-click='configure_button'][phx-value-id='#{elem.id}']")
+      |> render_click()
+
+      # Submit the form with custom values
+      view
+      |> form("form[phx-submit='save_button_config']",
+        button_input_binding: %{
+          input_id: input.id,
+          endpoint: "CurrentDrivableActor/Horn.InputValue",
+          on_value: "100.0",
+          off_value: "-50.0"
+        }
+      )
+      |> render_submit()
+
+      # Verify binding was created with custom values
+      {:ok, binding} = TrainContext.get_button_binding(elem.id)
+      assert binding.on_value == 100.0
+      assert binding.off_value == -50.0
+    end
+
+    test "can update existing button binding", %{
+      conn: conn,
+      train: train,
+      element: elem,
+      input: input
+    } do
+      # Create initial binding
+      {:ok, _binding} =
+        TrainContext.create_button_binding(elem.id, input.id, %{
+          endpoint: "CurrentDrivableActor/Horn.InputValue",
+          on_value: 1.0,
+          off_value: 0.0
+        })
+
+      # Load view and open modal
+      {:ok, view, _html} = live(conn, ~p"/trains/#{train.id}")
+
+      view
+      |> element("[phx-click='configure_button'][phx-value-id='#{elem.id}']")
+      |> render_click()
+
+      # Update with new values
+      view
+      |> form("form[phx-submit='save_button_config']",
+        button_input_binding: %{
+          input_id: input.id,
+          endpoint: "CurrentDrivableActor/Bell.InputValue",
+          on_value: "50.0",
+          off_value: "-25.0"
+        }
+      )
+      |> render_submit()
+
+      # Verify binding was updated
+      {:ok, binding} = TrainContext.get_button_binding(elem.id)
+      assert binding.endpoint == "CurrentDrivableActor/Bell.InputValue"
+      assert binding.on_value == 50.0
+      assert binding.off_value == -25.0
     end
   end
 end

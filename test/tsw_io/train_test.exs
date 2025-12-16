@@ -1,8 +1,9 @@
 defmodule TswIo.TrainTest do
   use TswIo.DataCase, async: true
 
+  alias TswIo.Hardware
   alias TswIo.Train, as: TrainContext
-  alias TswIo.Train.{Train, Element, LeverConfig, Notch}
+  alias TswIo.Train.{Train, Element, LeverConfig, ButtonInputBinding, Notch}
 
   describe "create_train/1" do
     test "creates a train with valid attributes" do
@@ -445,6 +446,376 @@ defmodule TswIo.TrainTest do
 
       assert {:ok, %Notch{} = updated} = TrainContext.update_notch_description(notch, nil)
       assert updated.description == nil
+    end
+  end
+
+  # Button element and binding tests
+
+  describe "create_element/2 for button type" do
+    test "creates button element with valid attributes" do
+      {:ok, train} = TrainContext.create_train(%{name: "Class 66", identifier: "BR_Class_66"})
+      attrs = %{name: "Horn", type: :button}
+
+      assert {:ok, %Element{} = element} = TrainContext.create_element(train.id, attrs)
+      assert element.train_id == train.id
+      assert element.name == "Horn"
+      assert element.type == :button
+    end
+
+    test "accepts string button type" do
+      {:ok, train} = TrainContext.create_train(%{name: "Class 66", identifier: "BR_Class_66"})
+      attrs = %{name: "Horn", type: "button"}
+
+      assert {:ok, %Element{} = element} = TrainContext.create_element(train.id, attrs)
+      assert element.type == :button
+    end
+  end
+
+  describe "list_elements/1 with button elements" do
+    test "returns both lever and button elements" do
+      {:ok, train} = TrainContext.create_train(%{name: "Class 66", identifier: "BR_Class_66"})
+
+      {:ok, _} = TrainContext.create_element(train.id, %{name: "Throttle", type: :lever})
+      {:ok, _} = TrainContext.create_element(train.id, %{name: "Horn", type: :button})
+      {:ok, _} = TrainContext.create_element(train.id, %{name: "Bell", type: :button})
+
+      {:ok, elements} = TrainContext.list_elements(train.id)
+
+      assert length(elements) == 3
+      types = Enum.map(elements, & &1.type) |> Enum.sort()
+      assert types == [:button, :button, :lever]
+    end
+
+    test "preloads button_binding for button elements" do
+      {:ok, train} = TrainContext.create_train(%{name: "Class 66", identifier: "BR_Class_66"})
+      {:ok, element} = TrainContext.create_element(train.id, %{name: "Horn", type: :button})
+
+      {:ok, device} = Hardware.create_device(%{name: "Test Device"})
+
+      {:ok, input} =
+        Hardware.create_input(device.id, %{pin: 5, input_type: :button, debounce: 20})
+
+      {:ok, _binding} =
+        TrainContext.create_button_binding(element.id, input.id, %{
+          endpoint: "CurrentDrivableActor/Horn.InputValue"
+        })
+
+      {:ok, [found]} = TrainContext.list_elements(train.id)
+
+      assert found.button_binding != nil
+      assert found.button_binding.endpoint == "CurrentDrivableActor/Horn.InputValue"
+    end
+  end
+
+  describe "get_button_binding/1" do
+    setup do
+      {:ok, train} = TrainContext.create_train(%{name: "Class 66", identifier: "BR_Class_66"})
+      {:ok, element} = TrainContext.create_element(train.id, %{name: "Horn", type: :button})
+      {:ok, device} = Hardware.create_device(%{name: "Test Device"})
+
+      {:ok, input} =
+        Hardware.create_input(device.id, %{pin: 5, input_type: :button, debounce: 20})
+
+      %{element: element, input: input, device: device}
+    end
+
+    test "returns button binding by element id", %{element: element, input: input} do
+      {:ok, binding} =
+        TrainContext.create_button_binding(element.id, input.id, %{
+          endpoint: "CurrentDrivableActor/Horn.InputValue"
+        })
+
+      assert {:ok, %ButtonInputBinding{} = found} = TrainContext.get_button_binding(element.id)
+      assert found.id == binding.id
+      assert found.endpoint == "CurrentDrivableActor/Horn.InputValue"
+    end
+
+    test "returns error when no binding exists", %{element: element} do
+      assert {:error, :not_found} = TrainContext.get_button_binding(element.id)
+    end
+
+    test "preloads input with device", %{element: element, input: input, device: device} do
+      {:ok, _binding} =
+        TrainContext.create_button_binding(element.id, input.id, %{
+          endpoint: "CurrentDrivableActor/Horn.InputValue"
+        })
+
+      {:ok, found} = TrainContext.get_button_binding(element.id)
+
+      assert found.input.id == input.id
+      assert found.input.device.id == device.id
+    end
+  end
+
+  describe "create_button_binding/3" do
+    setup do
+      {:ok, train} = TrainContext.create_train(%{name: "Class 66", identifier: "BR_Class_66"})
+      {:ok, element} = TrainContext.create_element(train.id, %{name: "Horn", type: :button})
+      {:ok, device} = Hardware.create_device(%{name: "Test Device"})
+
+      {:ok, input} =
+        Hardware.create_input(device.id, %{pin: 5, input_type: :button, debounce: 20})
+
+      %{element: element, input: input}
+    end
+
+    test "creates button binding with valid attributes", %{element: element, input: input} do
+      attrs = %{endpoint: "CurrentDrivableActor/Horn.InputValue"}
+
+      assert {:ok, %ButtonInputBinding{} = binding} =
+               TrainContext.create_button_binding(element.id, input.id, attrs)
+
+      assert binding.element_id == element.id
+      assert binding.input_id == input.id
+      assert binding.endpoint == "CurrentDrivableActor/Horn.InputValue"
+      assert binding.on_value == 1.0
+      assert binding.off_value == 0.0
+      assert binding.enabled == true
+    end
+
+    test "creates button binding with custom on/off values", %{element: element, input: input} do
+      attrs = %{
+        endpoint: "CurrentDrivableActor/Horn.InputValue",
+        on_value: 100.0,
+        off_value: -50.0
+      }
+
+      assert {:ok, %ButtonInputBinding{} = binding} =
+               TrainContext.create_button_binding(element.id, input.id, attrs)
+
+      assert binding.on_value == 100.0
+      assert binding.off_value == -50.0
+    end
+
+    test "returns error when endpoint is missing", %{element: element, input: input} do
+      assert {:error, changeset} = TrainContext.create_button_binding(element.id, input.id, %{})
+
+      assert %{endpoint: ["can't be blank"]} = errors_on(changeset)
+    end
+  end
+
+  describe "update_button_binding/2" do
+    setup do
+      {:ok, train} = TrainContext.create_train(%{name: "Class 66", identifier: "BR_Class_66"})
+      {:ok, element} = TrainContext.create_element(train.id, %{name: "Horn", type: :button})
+      {:ok, device} = Hardware.create_device(%{name: "Test Device"})
+
+      {:ok, input} =
+        Hardware.create_input(device.id, %{pin: 5, input_type: :button, debounce: 20})
+
+      {:ok, binding} =
+        TrainContext.create_button_binding(element.id, input.id, %{
+          endpoint: "CurrentDrivableActor/Horn.InputValue"
+        })
+
+      %{binding: binding}
+    end
+
+    test "updates endpoint", %{binding: binding} do
+      {:ok, updated} =
+        TrainContext.update_button_binding(binding, %{
+          endpoint: "CurrentDrivableActor/Bell.InputValue"
+        })
+
+      assert updated.endpoint == "CurrentDrivableActor/Bell.InputValue"
+    end
+
+    test "updates on/off values", %{binding: binding} do
+      {:ok, updated} =
+        TrainContext.update_button_binding(binding, %{on_value: 5.0, off_value: -5.0})
+
+      assert updated.on_value == 5.0
+      assert updated.off_value == -5.0
+    end
+
+    test "updates enabled flag", %{binding: binding} do
+      {:ok, updated} = TrainContext.update_button_binding(binding, %{enabled: false})
+
+      assert updated.enabled == false
+    end
+  end
+
+  describe "delete_button_binding/1" do
+    setup do
+      {:ok, train} = TrainContext.create_train(%{name: "Class 66", identifier: "BR_Class_66"})
+      {:ok, element} = TrainContext.create_element(train.id, %{name: "Horn", type: :button})
+      {:ok, device} = Hardware.create_device(%{name: "Test Device"})
+
+      {:ok, input} =
+        Hardware.create_input(device.id, %{pin: 5, input_type: :button, debounce: 20})
+
+      {:ok, _binding} =
+        TrainContext.create_button_binding(element.id, input.id, %{
+          endpoint: "CurrentDrivableActor/Horn.InputValue"
+        })
+
+      %{element: element}
+    end
+
+    test "deletes button binding by element id", %{element: element} do
+      assert :ok = TrainContext.delete_button_binding(element.id)
+      assert {:error, :not_found} = TrainContext.get_button_binding(element.id)
+    end
+
+    test "returns error when no binding exists" do
+      assert {:error, :not_found} = TrainContext.delete_button_binding(999_999)
+    end
+  end
+
+  describe "set_button_binding_enabled/2" do
+    setup do
+      {:ok, train} = TrainContext.create_train(%{name: "Class 66", identifier: "BR_Class_66"})
+      {:ok, element} = TrainContext.create_element(train.id, %{name: "Horn", type: :button})
+      {:ok, device} = Hardware.create_device(%{name: "Test Device"})
+
+      {:ok, input} =
+        Hardware.create_input(device.id, %{pin: 5, input_type: :button, debounce: 20})
+
+      {:ok, _binding} =
+        TrainContext.create_button_binding(element.id, input.id, %{
+          endpoint: "CurrentDrivableActor/Horn.InputValue"
+        })
+
+      %{element: element}
+    end
+
+    test "disables button binding", %{element: element} do
+      {:ok, updated} = TrainContext.set_button_binding_enabled(element.id, false)
+
+      assert updated.enabled == false
+    end
+
+    test "enables button binding", %{element: element} do
+      # First disable it
+      TrainContext.set_button_binding_enabled(element.id, false)
+
+      # Then enable it
+      {:ok, updated} = TrainContext.set_button_binding_enabled(element.id, true)
+
+      assert updated.enabled == true
+    end
+
+    test "returns error when no binding exists" do
+      assert {:error, :not_found} = TrainContext.set_button_binding_enabled(999_999, true)
+    end
+  end
+
+  describe "list_button_bindings_for_train/1" do
+    setup do
+      {:ok, train} = TrainContext.create_train(%{name: "Class 66", identifier: "BR_Class_66"})
+      {:ok, device} = Hardware.create_device(%{name: "Test Device"})
+
+      {:ok, input1} =
+        Hardware.create_input(device.id, %{pin: 5, input_type: :button, debounce: 20})
+
+      {:ok, input2} =
+        Hardware.create_input(device.id, %{pin: 6, input_type: :button, debounce: 20})
+
+      %{train: train, input1: input1, input2: input2}
+    end
+
+    test "returns empty list when no button bindings exist", %{train: train} do
+      assert [] = TrainContext.list_button_bindings_for_train(train.id)
+    end
+
+    test "returns button bindings for train", %{train: train, input1: input1, input2: input2} do
+      {:ok, element1} = TrainContext.create_element(train.id, %{name: "Horn", type: :button})
+      {:ok, element2} = TrainContext.create_element(train.id, %{name: "Bell", type: :button})
+
+      {:ok, _} =
+        TrainContext.create_button_binding(element1.id, input1.id, %{
+          endpoint: "CurrentDrivableActor/Horn.InputValue"
+        })
+
+      {:ok, _} =
+        TrainContext.create_button_binding(element2.id, input2.id, %{
+          endpoint: "CurrentDrivableActor/Bell.InputValue"
+        })
+
+      bindings = TrainContext.list_button_bindings_for_train(train.id)
+
+      assert length(bindings) == 2
+    end
+
+    test "does not return bindings from other trains", %{train: train, input1: input1} do
+      {:ok, other_train} =
+        TrainContext.create_train(%{name: "Other Train", identifier: "other_train"})
+
+      {:ok, element1} = TrainContext.create_element(train.id, %{name: "Horn", type: :button})
+
+      {:ok, element2} =
+        TrainContext.create_element(other_train.id, %{name: "Horn", type: :button})
+
+      {:ok, _} =
+        TrainContext.create_button_binding(element1.id, input1.id, %{
+          endpoint: "CurrentDrivableActor/Horn.InputValue"
+        })
+
+      {:ok, input3} =
+        Hardware.create_input(
+          (Hardware.list_all_inputs(include_uncalibrated: true) |> hd()).device_id,
+          %{pin: 7, input_type: :button, debounce: 20}
+        )
+
+      {:ok, _} =
+        TrainContext.create_button_binding(element2.id, input3.id, %{
+          endpoint: "CurrentDrivableActor/Horn.InputValue"
+        })
+
+      bindings = TrainContext.list_button_bindings_for_train(train.id)
+
+      assert length(bindings) == 1
+    end
+
+    test "preloads element and input with device", %{train: train, input1: input1} do
+      {:ok, element} = TrainContext.create_element(train.id, %{name: "Horn", type: :button})
+
+      {:ok, _} =
+        TrainContext.create_button_binding(element.id, input1.id, %{
+          endpoint: "CurrentDrivableActor/Horn.InputValue"
+        })
+
+      [binding] = TrainContext.list_button_bindings_for_train(train.id)
+
+      assert binding.element.name == "Horn"
+      assert binding.input.pin == 5
+      assert binding.input.device.name == "Test Device"
+    end
+  end
+
+  describe "list_button_elements/1" do
+    test "returns only button elements" do
+      {:ok, train} = TrainContext.create_train(%{name: "Class 66", identifier: "BR_Class_66"})
+
+      {:ok, _} = TrainContext.create_element(train.id, %{name: "Throttle", type: :lever})
+      {:ok, _} = TrainContext.create_element(train.id, %{name: "Horn", type: :button})
+      {:ok, _} = TrainContext.create_element(train.id, %{name: "Bell", type: :button})
+
+      elements = TrainContext.list_button_elements(train.id)
+
+      assert length(elements) == 2
+      assert Enum.all?(elements, &(&1.type == :button))
+    end
+
+    test "returns elements ordered by name" do
+      {:ok, train} = TrainContext.create_train(%{name: "Class 66", identifier: "BR_Class_66"})
+
+      {:ok, _} = TrainContext.create_element(train.id, %{name: "Horn", type: :button})
+      {:ok, _} = TrainContext.create_element(train.id, %{name: "Bell", type: :button})
+      {:ok, _} = TrainContext.create_element(train.id, %{name: "Wiper", type: :button})
+
+      elements = TrainContext.list_button_elements(train.id)
+      names = Enum.map(elements, & &1.name)
+
+      assert names == ["Bell", "Horn", "Wiper"]
+    end
+
+    test "returns empty list when no button elements exist" do
+      {:ok, train} = TrainContext.create_train(%{name: "Class 66", identifier: "BR_Class_66"})
+
+      {:ok, _} = TrainContext.create_element(train.id, %{name: "Throttle", type: :lever})
+
+      assert [] = TrainContext.list_button_elements(train.id)
     end
   end
 end

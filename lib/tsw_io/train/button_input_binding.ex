@@ -46,8 +46,23 @@ defmodule TswIo.Train.ButtonInputBinding do
     binding
     |> cast(attrs, [:element_id, :input_id, :endpoint, :on_value, :off_value, :enabled])
     |> validate_required([:element_id, :input_id, :endpoint])
+    |> round_float_fields([:on_value, :off_value])
     |> foreign_key_constraint(:element_id)
     |> foreign_key_constraint(:input_id)
     |> unique_constraint(:element_id)
+  end
+
+  # Rounds float fields to 2 decimal places per project standards
+  # (prevents precision artifacts like -0.20000000298023224)
+  defp round_float_fields(changeset, fields) do
+    Enum.reduce(fields, changeset, fn field, acc ->
+      case fetch_change(acc, field) do
+        {:ok, value} when is_float(value) ->
+          put_change(acc, field, Float.round(value, 2))
+
+        _ ->
+          acc
+      end
+    end)
   end
 end

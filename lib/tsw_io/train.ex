@@ -704,12 +704,18 @@ defmodule TswIo.Train do
   @spec create_button_binding(integer(), integer(), map()) ::
           {:ok, ButtonInputBinding.t()} | {:error, Ecto.Changeset.t()}
   def create_button_binding(element_id, input_id, attrs) do
-    %ButtonInputBinding{}
-    |> ButtonInputBinding.changeset(
+    # Normalize attrs to string keys for consistency with form params
+    attrs =
       attrs
-      |> Map.put(:element_id, element_id)
-      |> Map.put(:input_id, input_id)
-    )
+      |> Map.new(fn
+        {k, v} when is_atom(k) -> {Atom.to_string(k), v}
+        {k, v} -> {k, v}
+      end)
+      |> Map.put("element_id", element_id)
+      |> Map.put("input_id", input_id)
+
+    %ButtonInputBinding{}
+    |> ButtonInputBinding.changeset(attrs)
     |> Repo.insert()
   end
 
