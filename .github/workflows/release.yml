@@ -125,7 +125,7 @@ jobs:
           BURRITO_TARGET: ${{ matrix.target }}
 
       - name: Upload Elixir binary
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: elixir-${{ matrix.target }}
           path: burrito_out/${{ matrix.binary_name }}
@@ -155,7 +155,7 @@ jobs:
           ls -la
 
       - name: Upload avrdude binary
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: avrdude-${{ matrix.target }}
           path: |
