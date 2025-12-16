@@ -151,10 +151,10 @@ defmodule TswIo.HardwareTest do
       errors = errors_on(changeset)
       assert %{pin: ["can't be blank"]} = errors
       assert %{input_type: ["can't be blank"]} = errors
-      assert %{sensitivity: ["can't be blank"]} = errors
+      # Note: sensitivity is now only required when input_type is :analog
     end
 
-    test "validates pin must be greater than 0" do
+    test "validates pin must be greater than 0 for analog" do
       {:ok, device} = Hardware.create_device(%{name: "Test Device"})
       attrs = %{pin: 0, input_type: :analog, sensitivity: 5}
 
@@ -162,12 +162,12 @@ defmodule TswIo.HardwareTest do
       assert %{pin: ["must be greater than 0"]} = errors_on(changeset)
     end
 
-    test "validates pin must be less than 255" do
+    test "validates pin must be less than 128 for analog" do
       {:ok, device} = Hardware.create_device(%{name: "Test Device"})
-      attrs = %{pin: 255, input_type: :analog, sensitivity: 5}
+      attrs = %{pin: 128, input_type: :analog, sensitivity: 5}
 
       assert {:error, changeset} = Hardware.create_input(device.id, attrs)
-      assert %{pin: ["must be less than 255"]} = errors_on(changeset)
+      assert %{pin: ["must be less than 128"]} = errors_on(changeset)
     end
 
     test "validates sensitivity must be greater than 0" do

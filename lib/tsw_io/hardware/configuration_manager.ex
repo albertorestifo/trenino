@@ -250,20 +250,76 @@ defmodule TswIo.Hardware.ConfigurationManager do
     inputs
     |> Enum.with_index()
     |> Enum.reduce_while(:ok, fn {%Input{} = input, index}, :ok ->
-      message = %Configure{
-        config_id: config_id,
-        total_parts: total_parts,
-        part_number: index,
-        input_type: input.input_type,
-        pin: input.pin,
-        sensitivity: input.sensitivity
-      }
+      message = build_configure_message(config_id, total_parts, index, input)
 
       case Connection.send_message(port, message) do
         :ok -> {:cont, :ok}
         error -> {:halt, error}
       end
     end)
+  end
+
+  defp build_configure_message(
+         config_id,
+         total_parts,
+         part_number,
+         %Input{input_type: :analog} = input
+       ) do
+    %Configure{
+      config_id: config_id,
+      total_parts: total_parts,
+      part_number: part_number,
+      input_type: :analog,
+      pin: input.pin,
+      sensitivity: input.sensitivity
+    }
+  end
+
+  defp build_configure_message(
+         config_id,
+         total_parts,
+         part_number,
+         %Input{input_type: :button} = input
+       ) do
+    %Configure{
+      config_id: config_id,
+      total_parts: total_parts,
+      part_number: part_number,
+      input_type: :button,
+      pin: input.pin,
+      debounce: input.debounce
+    }
+  end
+
+  defp build_configure_message(
+         config_id,
+         total_parts,
+         part_number,
+         %Input{input_type: :matrix} = input
+       ) do
+    # Ensure matrix_pins are loaded and sorted by position
+    matrix_pins = input.matrix_pins || []
+
+    row_pins =
+      matrix_pins
+      |> Enum.filter(&(&1.pin_type == :row))
+      |> Enum.sort_by(& &1.position)
+      |> Enum.map(& &1.pin)
+
+    col_pins =
+      matrix_pins
+      |> Enum.filter(&(&1.pin_type == :col))
+      |> Enum.sort_by(& &1.position)
+      |> Enum.map(& &1.pin)
+
+    %Configure{
+      config_id: config_id,
+      total_parts: total_parts,
+      part_number: part_number,
+      input_type: :matrix,
+      row_pins: row_pins,
+      col_pins: col_pins
+    }
   end
 
   defp broadcast_config_event(event) do

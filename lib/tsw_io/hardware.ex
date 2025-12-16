@@ -8,13 +8,41 @@ defmodule TswIo.Hardware do
   alias TswIo.Repo
   alias TswIo.Hardware.{ConfigId, Device, Input}
   alias TswIo.Hardware.Input.Calibration
+  alias TswIo.Hardware.Input.MatrixPin
   alias TswIo.Hardware.Calibration.{Calculator, SessionSupervisor}
+  alias TswIo.Serial.Connection
+  alias TswIo.Serial.Protocol.SetOutput
 
   # Delegate configuration operations to ConfigurationManager
   defdelegate apply_configuration(port, device_id), to: TswIo.Hardware.ConfigurationManager
   defdelegate subscribe_configuration(), to: TswIo.Hardware.ConfigurationManager
   defdelegate subscribe_input_values(port), to: TswIo.Hardware.ConfigurationManager
   defdelegate get_input_values(port), to: TswIo.Hardware.ConfigurationManager
+
+  @doc """
+  Set a digital output pin to high or low.
+
+  This is a fire-and-forget operation with no acknowledgment from the device.
+
+  ## Parameters
+    - port: Serial port identifier
+    - pin: Output pin number (0-255)
+    - value: `:low` or `:high`
+
+  ## Examples
+
+      iex> Hardware.set_output("/dev/ttyUSB0", 13, :high)
+      :ok
+
+      iex> Hardware.set_output("/dev/ttyUSB0", 13, :low)
+      :ok
+
+  """
+  @spec set_output(String.t(), integer(), :low | :high) :: :ok | {:error, term()}
+  def set_output(port, pin, value) when value in [:low, :high] do
+    message = %SetOutput{pin: pin, value: value}
+    Connection.send_message(port, message)
+  end
 
   # Configuration operations
 
@@ -182,7 +210,7 @@ defmodule TswIo.Hardware do
       Input
       |> where([i], i.device_id == ^device_id)
       |> order_by([i], i.pin)
-      |> preload(:calibration)
+      |> preload([:calibration, :matrix_pins])
       |> Repo.all()
 
     {:ok, inputs}
@@ -244,6 +272,68 @@ defmodule TswIo.Hardware do
 
   def delete_input(%Input{} = input) do
     Repo.delete(input)
+  end
+
+  @doc """
+  Set matrix pins for a matrix input.
+
+  Replaces all existing matrix pins with the provided row and column pins.
+
+  ## Parameters
+    - input_id: The matrix input ID
+    - row_pins: List of row pin numbers in order
+    - col_pins: List of column pin numbers in order
+
+  ## Examples
+
+      iex> set_matrix_pins(input_id, [2, 3, 4], [5, 6])
+      {:ok, [%MatrixPin{}, ...]}
+
+  """
+  @spec set_matrix_pins(integer(), [integer()], [integer()]) ::
+          {:ok, [MatrixPin.t()]} | {:error, Ecto.Changeset.t()}
+  def set_matrix_pins(input_id, row_pins, col_pins) do
+    # Delete existing matrix pins for this input
+    from(mp in MatrixPin, where: mp.input_id == ^input_id)
+    |> Repo.delete_all()
+
+    # Create row pins
+    row_results =
+      row_pins
+      |> Enum.with_index()
+      |> Enum.map(fn {pin, position} ->
+        %MatrixPin{}
+        |> MatrixPin.changeset(%{
+          input_id: input_id,
+          pin_type: :row,
+          pin: pin,
+          position: position
+        })
+        |> Repo.insert()
+      end)
+
+    # Create col pins
+    col_results =
+      col_pins
+      |> Enum.with_index()
+      |> Enum.map(fn {pin, position} ->
+        %MatrixPin{}
+        |> MatrixPin.changeset(%{
+          input_id: input_id,
+          pin_type: :col,
+          pin: pin,
+          position: position
+        })
+        |> Repo.insert()
+      end)
+
+    # Check for errors
+    all_results = row_results ++ col_results
+
+    case Enum.find(all_results, &match?({:error, _}, &1)) do
+      nil -> {:ok, Enum.map(all_results, fn {:ok, pin} -> pin end)}
+      {:error, changeset} -> {:error, changeset}
+    end
   end
 
   @doc """
