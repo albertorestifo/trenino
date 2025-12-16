@@ -9,7 +9,17 @@ defmodule TswIo.Train do
   import Ecto.Query
 
   alias TswIo.Repo
-  alias TswIo.Train.{Train, Element, LeverConfig, LeverInputBinding, Notch, Identifier}
+
+  alias TswIo.Train.{
+    Train,
+    Element,
+    LeverConfig,
+    LeverInputBinding,
+    ButtonInputBinding,
+    Notch,
+    Identifier
+  }
+
   alias TswIo.Train.Calibration.{SessionSupervisor, LeverSession}
   alias TswIo.Simulator.Client
 
@@ -117,7 +127,10 @@ defmodule TswIo.Train do
       Element
       |> where([e], e.train_id == ^train_id)
       |> order_by([e], e.name)
-      |> preload(lever_config: [:notches, input_binding: [input: :device]])
+      |> preload(
+        lever_config: [:notches, input_binding: [input: :device]],
+        button_binding: [input: :device]
+      )
       |> Repo.all()
 
     {:ok, elements}
@@ -661,5 +674,113 @@ defmodule TswIo.Train do
       end
 
     gaps ++ find_gaps(rest, max(current, range_end), end_val)
+  end
+
+  # ===================
+  # Button Binding Operations
+  # ===================
+
+  @doc """
+  Get the button binding for an element.
+  """
+  @spec get_button_binding(integer()) :: {:ok, ButtonInputBinding.t()} | {:error, :not_found}
+  def get_button_binding(element_id) do
+    case Repo.get_by(ButtonInputBinding, element_id: element_id) do
+      nil -> {:error, :not_found}
+      binding -> {:ok, Repo.preload(binding, input: :device)}
+    end
+  end
+
+  @doc """
+  Create a button binding for an element.
+
+  ## Parameters
+
+    * `element_id` - The button element ID
+    * `input_id` - The button input ID
+    * `attrs` - Map with `:endpoint`, and optionally `:on_value`, `:off_value`, `:enabled`
+
+  """
+  @spec create_button_binding(integer(), integer(), map()) ::
+          {:ok, ButtonInputBinding.t()} | {:error, Ecto.Changeset.t()}
+  def create_button_binding(element_id, input_id, attrs) do
+    %ButtonInputBinding{}
+    |> ButtonInputBinding.changeset(
+      attrs
+      |> Map.put(:element_id, element_id)
+      |> Map.put(:input_id, input_id)
+    )
+    |> Repo.insert()
+  end
+
+  @doc """
+  Update a button binding.
+  """
+  @spec update_button_binding(ButtonInputBinding.t(), map()) ::
+          {:ok, ButtonInputBinding.t()} | {:error, Ecto.Changeset.t()}
+  def update_button_binding(%ButtonInputBinding{} = binding, attrs) do
+    binding
+    |> ButtonInputBinding.changeset(attrs)
+    |> Repo.update()
+  end
+
+  @doc """
+  Delete a button binding by element ID.
+  """
+  @spec delete_button_binding(integer()) :: :ok | {:error, :not_found}
+  def delete_button_binding(element_id) do
+    case Repo.get_by(ButtonInputBinding, element_id: element_id) do
+      nil ->
+        {:error, :not_found}
+
+      binding ->
+        Repo.delete(binding)
+        :ok
+    end
+  end
+
+  @doc """
+  Enable or disable a button binding.
+  """
+  @spec set_button_binding_enabled(integer(), boolean()) ::
+          {:ok, ButtonInputBinding.t()} | {:error, :not_found} | {:error, Ecto.Changeset.t()}
+  def set_button_binding_enabled(element_id, enabled) do
+    case Repo.get_by(ButtonInputBinding, element_id: element_id) do
+      nil ->
+        {:error, :not_found}
+
+      binding ->
+        binding
+        |> ButtonInputBinding.changeset(%{enabled: enabled})
+        |> Repo.update()
+    end
+  end
+
+  @doc """
+  List all button bindings for a train.
+
+  Returns bindings with their associated elements and inputs preloaded.
+  """
+  @spec list_button_bindings_for_train(integer()) :: [ButtonInputBinding.t()]
+  def list_button_bindings_for_train(train_id) do
+    ButtonInputBinding
+    |> join(:inner, [b], e in Element, on: b.element_id == e.id)
+    |> where([b, e], e.train_id == ^train_id)
+    |> preload([b], [:element, input: :device])
+    |> Repo.all()
+  end
+
+  @doc """
+  List all button elements for a train.
+
+  Returns elements that have type :button.
+  """
+  @spec list_button_elements(integer()) :: [Element.t()]
+  def list_button_elements(train_id) do
+    Element
+    |> where([e], e.train_id == ^train_id and e.type == :button)
+    |> order_by([e], e.name)
+    |> preload(button_binding: [input: :device])
+    |> Repo.all()
   end
 end

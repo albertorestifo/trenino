@@ -27,6 +27,7 @@ defmodule TswIo.Application do
       ] ++
         simulator_connection_child() ++
         lever_controller_child() ++
+        button_controller_child() ++
         update_checker_child() ++
         app_version_checker_child()
 
@@ -68,6 +69,17 @@ defmodule TswIo.Application do
   defp lever_controller_child do
     if Application.get_env(:tsw_io, :start_lever_controller, true) do
       [TswIo.Train.LeverController]
+    else
+      []
+    end
+  end
+
+  # Returns the ButtonController child spec only in non-test environments.
+  # In test, this GenServer subscribes to multiple pubsub topics and
+  # interacts with other GenServers that may not be running.
+  defp button_controller_child do
+    if Application.get_env(:tsw_io, :start_button_controller, true) do
+      [TswIo.Train.ButtonController]
     else
       []
     end

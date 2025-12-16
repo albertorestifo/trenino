@@ -11,8 +11,9 @@ defmodule TswIo.Train.Element do
 
   alias TswIo.Train.Train
   alias TswIo.Train.LeverConfig
+  alias TswIo.Train.ButtonInputBinding
 
-  @type element_type :: :lever
+  @type element_type :: :lever | :button
 
   @type t :: %__MODULE__{
           id: integer() | nil,
@@ -21,16 +22,18 @@ defmodule TswIo.Train.Element do
           name: String.t() | nil,
           train: Train.t() | Ecto.Association.NotLoaded.t(),
           lever_config: LeverConfig.t() | nil | Ecto.Association.NotLoaded.t(),
+          button_binding: ButtonInputBinding.t() | nil | Ecto.Association.NotLoaded.t(),
           inserted_at: DateTime.t() | nil,
           updated_at: DateTime.t() | nil
         }
 
   schema "train_elements" do
-    field :type, Ecto.Enum, values: [:lever]
+    field :type, Ecto.Enum, values: [:lever, :button]
     field :name, :string
 
     belongs_to :train, Train
     has_one :lever_config, LeverConfig
+    has_one :button_binding, ButtonInputBinding
 
     timestamps(type: :utc_datetime)
   end

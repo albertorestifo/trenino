@@ -14,7 +14,7 @@ defmodule TswIoWeb.TrainEditLive do
   alias TswIo.Hardware
   alias TswIo.Train, as: TrainContext
   alias TswIo.Train.{Train, Element, LeverConfig, LeverInputBinding, Notch}
-  alias TswIo.Train.LeverController
+  alias TswIo.Train.{LeverController, ButtonController}
   alias TswIo.Serial.Connection
 
   @impl true
@@ -68,12 +68,21 @@ defmodule TswIoWeb.TrainEditLive do
      |> assign(:binding_element, nil)
      |> assign(:available_inputs, [])
      |> assign(:notch_mapping_wizard_element, nil)
-     |> assign(:notch_mapping_state, nil)}
+     |> assign(:notch_mapping_state, nil)
+     |> assign(:configuring_button_element, nil)
+     |> assign(:button_config_form, nil)
+     |> assign(:binding_button_element, nil)
+     |> assign(:available_button_inputs, [])}
   end
 
   defp mount_existing(socket, train_id) do
     case TrainContext.get_train(train_id,
-           preload: [elements: [lever_config: [:notches, input_binding: [input: :device]]]]
+           preload: [
+             elements: [
+               lever_config: [:notches, input_binding: [input: :device]],
+               button_binding: [input: :device]
+             ]
+           ]
          ) do
       {:ok, train} ->
         if connected?(socket) do
@@ -103,7 +112,11 @@ defmodule TswIoWeb.TrainEditLive do
          |> assign(:binding_element, nil)
          |> assign(:available_inputs, [])
          |> assign(:notch_mapping_wizard_element, nil)
-         |> assign(:notch_mapping_state, nil)}
+         |> assign(:notch_mapping_state, nil)
+         |> assign(:configuring_button_element, nil)
+         |> assign(:button_config_form, nil)
+         |> assign(:binding_button_element, nil)
+         |> assign(:available_button_inputs, [])}
 
       {:error, :not_found} ->
         {:ok,
@@ -277,6 +290,112 @@ defmodule TswIoWeb.TrainEditLive do
         {:noreply, assign(socket, :lever_config_form, to_form(changeset))}
     end
   end
+
+  # Button configuration
+  @impl true
+  def handle_event("configure_button", %{"id" => id}, socket) do
+    element_id = String.to_integer(id)
+
+    case TrainContext.get_element(element_id, preload: [button_binding: [input: :device]]) do
+      {:ok, element} ->
+        # Get available button inputs
+        available_inputs = Hardware.list_all_inputs(include_uncalibrated: true)
+        button_inputs = Enum.filter(available_inputs, &(&1.input_type == :button))
+
+        # Build form with existing binding data or defaults
+        form_data =
+          case element.button_binding do
+            nil ->
+              %{endpoint: "", on_value: 1.0, off_value: 0.0}
+
+            binding ->
+              %{
+                input_id: binding.input_id,
+                endpoint: binding.endpoint,
+                on_value: binding.on_value,
+                off_value: binding.off_value
+              }
+          end
+
+        {:noreply,
+         socket
+         |> assign(:configuring_button_element, element)
+         |> assign(:button_config_form, to_form(form_data, as: :button_config))
+         |> assign(:available_button_inputs, button_inputs)}
+
+      {:error, :not_found} ->
+        {:noreply, put_flash(socket, :error, "Element not found")}
+    end
+  end
+
+  @impl true
+  def handle_event("close_button_config_modal", _params, socket) do
+    {:noreply,
+     socket
+     |> assign(:configuring_button_element, nil)
+     |> assign(:button_config_form, nil)
+     |> assign(:available_button_inputs, [])}
+  end
+
+  @impl true
+  def handle_event("validate_button_config", %{"button_config" => params}, socket) do
+    {:noreply, assign(socket, :button_config_form, to_form(params, as: :button_config))}
+  end
+
+  @impl true
+  def handle_event("save_button_config", %{"button_config" => params}, socket) do
+    element = socket.assigns.configuring_button_element
+    input_id = String.to_integer(params["input_id"] || "0")
+
+    if input_id == 0 do
+      {:noreply, put_flash(socket, :error, "Please select a button input")}
+    else
+      attrs = %{
+        endpoint: params["endpoint"],
+        on_value: parse_float(params["on_value"], 1.0),
+        off_value: parse_float(params["off_value"], 0.0)
+      }
+
+      result =
+        case element.button_binding do
+          nil ->
+            TrainContext.create_button_binding(element.id, input_id, attrs)
+
+          existing ->
+            TrainContext.update_button_binding(existing, Map.put(attrs, :input_id, input_id))
+        end
+
+      case result do
+        {:ok, _binding} ->
+          {:ok, elements} = TrainContext.list_elements(socket.assigns.train.id)
+          ButtonController.reload_bindings()
+
+          {:noreply,
+           socket
+           |> assign(:elements, elements)
+           |> assign(:configuring_button_element, nil)
+           |> assign(:button_config_form, nil)
+           |> assign(:available_button_inputs, [])
+           |> put_flash(:info, "Button configuration saved")}
+
+        {:error, changeset} ->
+          {:noreply, put_flash(socket, :error, "Failed to save: #{inspect(changeset.errors)}")}
+      end
+    end
+  end
+
+  defp parse_float(nil, default), do: default
+  defp parse_float("", default), do: default
+
+  defp parse_float(str, default) when is_binary(str) do
+    case Float.parse(str) do
+      {val, _} -> Float.round(val, 2)
+      :error -> default
+    end
+  end
+
+  defp parse_float(val, _default) when is_float(val), do: Float.round(val, 2)
+  defp parse_float(val, _default) when is_integer(val), do: val / 1.0
 
   # Input binding
   @impl true
@@ -882,6 +1001,14 @@ defmodule TswIoWeb.TrainEditLive do
         available_inputs={@available_inputs}
       />
 
+      <.button_config_modal
+        :if={@configuring_button_element}
+        element={@configuring_button_element}
+        form={@button_config_form}
+        available_inputs={@available_button_inputs}
+        simulator_connected={@nav_simulator_status.status == :connected}
+      />
+
       <.live_component
         :if={@notch_mapping_wizard_element}
         module={TswIoWeb.NotchMappingWizard}
@@ -960,7 +1087,16 @@ defmodule TswIoWeb.TrainEditLive do
       <.empty_elements_state :if={Enum.empty?(@elements)} />
 
       <div :if={not Enum.empty?(@elements)} class="space-y-3">
-        <.element_card :for={element <- @elements} element={element} is_active={@is_active} />
+        <.lever_element_card
+          :for={element <- Enum.filter(@elements, &(&1.type == :lever))}
+          element={element}
+          is_active={@is_active}
+        />
+        <.button_element_card
+          :for={element <- Enum.filter(@elements, &(&1.type == :button))}
+          element={element}
+          is_active={@is_active}
+        />
       </div>
 
       <button phx-click="open_add_element_modal" class="btn btn-outline btn-sm mt-4">
@@ -983,7 +1119,7 @@ defmodule TswIoWeb.TrainEditLive do
   attr :element, :map, required: true
   attr :is_active, :boolean, required: true
 
-  defp element_card(assigns) do
+  defp lever_element_card(assigns) do
     lever_config = get_lever_config(assigns.element)
     is_calibrated = lever_config != nil and lever_config.calibrated_at != nil
     notch_count = if lever_config, do: length(lever_config.notches || []), else: 0
@@ -1183,6 +1319,104 @@ defmodule TswIoWeb.TrainEditLive do
 
   defp find_port_for_device_config(_), do: nil
 
+  # Button element components
+
+  attr :element, :map, required: true
+  attr :is_active, :boolean, required: true
+
+  defp button_element_card(assigns) do
+    button_binding = get_button_binding(assigns.element)
+    has_endpoint = button_binding != nil and button_binding.endpoint != nil
+
+    assigns =
+      assigns
+      |> assign(:button_binding, button_binding)
+      |> assign(:has_endpoint, has_endpoint)
+
+    ~H"""
+    <div class="bg-base-100 rounded-lg border border-base-300 p-4">
+      <div class="flex items-start justify-between gap-4">
+        <div class="flex-1">
+          <div class="flex items-center gap-2">
+            <.icon name="hero-finger-print" class="w-5 h-5 text-base-content/50" />
+            <h4 class="font-medium">{@element.name}</h4>
+            <span class="badge badge-warning badge-sm capitalize">{@element.type}</span>
+          </div>
+
+          <%!-- Configuration Progress --%>
+          <div class="mt-3 flex items-center gap-2 text-xs">
+            <div class={[
+              "flex items-center gap-1 px-2 py-1 rounded",
+              if(@button_binding,
+                do: "bg-success/10 text-success",
+                else: "bg-base-200 text-base-content/50"
+              )
+            ]}>
+              <.icon
+                name={if @button_binding, do: "hero-check-circle", else: "hero-link"}
+                class="w-3.5 h-3.5"
+              />
+              <span>Bound</span>
+            </div>
+            <.icon name="hero-chevron-right" class="w-3 h-3 text-base-content/30" />
+            <div class={[
+              "flex items-center gap-1 px-2 py-1 rounded",
+              if(@has_endpoint,
+                do: "bg-success/10 text-success",
+                else: "bg-base-200 text-base-content/50"
+              )
+            ]}>
+              <.icon
+                name={if @has_endpoint, do: "hero-check-circle", else: "hero-cog-6-tooth"}
+                class="w-3.5 h-3.5"
+              />
+              <span>Configured</span>
+            </div>
+          </div>
+
+          <%!-- Show binding info --%>
+          <div :if={@button_binding} class="mt-2 text-xs text-base-content/60">
+            <span class="font-medium">Input:</span>
+            {@button_binding.input.device.name} / Pin {@button_binding.input.pin}
+          </div>
+          <div :if={@has_endpoint} class="mt-1 text-xs text-base-content/60 font-mono truncate">
+            {@button_binding.endpoint}
+          </div>
+        </div>
+
+        <div class="flex flex-col items-end gap-2">
+          <%!-- Primary actions --%>
+          <div class="flex items-center gap-2">
+            <button
+              phx-click="configure_button"
+              phx-value-id={@element.id}
+              class="btn btn-sm btn-outline gap-1"
+            >
+              <.icon name="hero-cog-6-tooth" class="w-4 h-4" />
+              {if @button_binding, do: "Configure", else: "Set Up"}
+            </button>
+          </div>
+          <%!-- Secondary actions --%>
+          <div class="flex items-center gap-1">
+            <button
+              phx-click="delete_element"
+              phx-value-id={@element.id}
+              class="btn btn-ghost btn-xs text-error"
+              title="Delete"
+            >
+              <.icon name="hero-trash" class="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+    """
+  end
+
+  defp get_button_binding(%Element{button_binding: %Ecto.Association.NotLoaded{}}), do: nil
+  defp get_button_binding(%Element{button_binding: nil}), do: nil
+  defp get_button_binding(%Element{button_binding: binding}), do: binding
+
   attr :form, :map, required: true
 
   defp add_element_modal(assigns) do
@@ -1213,11 +1447,11 @@ defmodule TswIoWeb.TrainEditLive do
               <.input
                 field={@form[:type]}
                 type="select"
-                options={[{"Lever", :lever}]}
+                options={[{"Lever", :lever}, {"Button", :button}]}
                 class="select select-bordered w-full"
               />
               <p class="text-xs text-base-content/50 mt-1">
-                More element types coming soon
+                Lever for analog inputs, Button for digital inputs
               </p>
             </div>
           </div>
@@ -1681,6 +1915,146 @@ defmodule TswIoWeb.TrainEditLive do
             Close
           </button>
         </div>
+      </div>
+    </div>
+    """
+  end
+
+  attr :element, :map, required: true
+  attr :form, :map, required: true
+  attr :available_inputs, :list, required: true
+  attr :simulator_connected, :boolean, required: true
+
+  defp button_config_modal(assigns) do
+    current_input_id =
+      case assigns.form do
+        %{params: %{"input_id" => id}} when is_binary(id) -> String.to_integer(id)
+        %{source: %{input_id: id}} when is_integer(id) -> id
+        _ -> nil
+      end
+
+    assigns = assign(assigns, :current_input_id, current_input_id)
+
+    ~H"""
+    <div class="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <div class="absolute inset-0 bg-black/50" phx-click="close_button_config_modal" />
+      <div class="relative bg-base-100 rounded-xl shadow-xl w-full max-w-lg max-h-[90vh] flex flex-col">
+        <div class="p-6 border-b border-base-300">
+          <h2 class="text-xl font-semibold">Configure {@element.name}</h2>
+          <p class="text-sm text-base-content/60 mt-1">
+            Select a button input and configure the endpoint values.
+          </p>
+        </div>
+
+        <.form
+          for={@form}
+          phx-change="validate_button_config"
+          phx-submit="save_button_config"
+          class="flex flex-col flex-1 overflow-hidden"
+        >
+          <div class="flex-1 overflow-y-auto p-6 space-y-6">
+            <%!-- Input Selection --%>
+            <div>
+              <h3 class="text-sm font-semibold mb-3">Button Input</h3>
+              <div
+                :if={Enum.empty?(@available_inputs)}
+                class="text-center py-6 text-base-content/50 bg-base-200/50 rounded-lg"
+              >
+                <.icon name="hero-finger-print" class="w-10 h-10 mx-auto mb-2 opacity-30" />
+                <p class="text-sm">No button inputs available</p>
+                <p class="text-xs">Add a button input in a device configuration first</p>
+              </div>
+              <div :if={not Enum.empty?(@available_inputs)} class="space-y-2">
+                <label
+                  :for={input <- @available_inputs}
+                  class={"flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors " <>
+                    if(@current_input_id == input.id,
+                      do: "bg-primary/10 border-primary",
+                      else: "bg-base-200/50 border-base-300 hover:bg-base-200")}
+                >
+                  <input
+                    type="radio"
+                    name="button_config[input_id]"
+                    value={input.id}
+                    checked={@current_input_id == input.id}
+                    class="radio radio-primary radio-sm"
+                  />
+                  <div class="flex-1">
+                    <p class="font-medium">{input.device.name}</p>
+                    <p class="text-sm text-base-content/60">Pin {input.pin}</p>
+                  </div>
+                </label>
+              </div>
+            </div>
+
+            <%!-- Endpoint Configuration --%>
+            <div class="bg-base-200/50 rounded-lg p-4">
+              <h3 class="text-sm font-semibold mb-3">Simulator Endpoint</h3>
+              <div>
+                <label class="label py-1">
+                  <span class="label-text text-xs">Endpoint Path</span>
+                </label>
+                <input
+                  type="text"
+                  name="button_config[endpoint]"
+                  value={@form[:endpoint].value}
+                  placeholder="e.g., CurrentDrivableActor/Horn.InputValue"
+                  class="input input-bordered input-sm w-full font-mono text-xs"
+                />
+                <p class="text-xs text-base-content/50 mt-1">
+                  The API endpoint to set when the button is pressed or released
+                </p>
+              </div>
+            </div>
+
+            <%!-- ON/OFF Values --%>
+            <div class="bg-base-200/50 rounded-lg p-4">
+              <h3 class="text-sm font-semibold mb-3">Values</h3>
+              <div class="grid grid-cols-2 gap-4">
+                <div>
+                  <label class="label py-1">
+                    <span class="label-text text-xs">ON Value (when pressed)</span>
+                  </label>
+                  <input
+                    type="number"
+                    name="button_config[on_value]"
+                    value={@form[:on_value].value}
+                    step="0.1"
+                    class="input input-bordered input-sm w-full font-mono"
+                  />
+                </div>
+                <div>
+                  <label class="label py-1">
+                    <span class="label-text text-xs">OFF Value (when released)</span>
+                  </label>
+                  <input
+                    type="number"
+                    name="button_config[off_value]"
+                    value={@form[:off_value].value}
+                    step="0.1"
+                    class="input input-bordered input-sm w-full font-mono"
+                  />
+                </div>
+              </div>
+              <p class="text-xs text-base-content/50 mt-2">
+                Common values: 1.0/0.0 for toggle, 1.0/-1.0 for bidirectional
+              </p>
+            </div>
+          </div>
+
+          <div class="p-6 border-t border-base-300 flex justify-end gap-2">
+            <button type="button" phx-click="close_button_config_modal" class="btn btn-ghost">
+              Cancel
+            </button>
+            <button
+              type="submit"
+              class="btn btn-primary"
+              disabled={Enum.empty?(@available_inputs)}
+            >
+              <.icon name="hero-check" class="w-4 h-4" /> Save Configuration
+            </button>
+          </div>
+        </.form>
       </div>
     </div>
     """

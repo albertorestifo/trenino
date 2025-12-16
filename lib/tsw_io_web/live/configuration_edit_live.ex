@@ -638,7 +638,7 @@ defmodule TswIoWeb.ConfigurationEditLive do
           <tr class="bg-base-200">
             <th class="text-center">Pin</th>
             <th>Type</th>
-            <th>Sensitivity</th>
+            <th>Settings</th>
             <th>Raw</th>
             <th>Calibrated</th>
             <th class="w-24"></th>
@@ -648,22 +648,36 @@ defmodule TswIoWeb.ConfigurationEditLive do
           <tr :for={input <- @inputs} class="hover:bg-base-200/50">
             <td class="text-center font-mono">{input.pin}</td>
             <td>
-              <span class="badge badge-info badge-sm capitalize">{input.input_type}</span>
+              <span class={[
+                "badge badge-sm capitalize",
+                input.input_type == :analog && "badge-info",
+                input.input_type == :button && "badge-warning"
+              ]}>
+                {input.input_type}
+              </span>
             </td>
-            <td class="font-mono text-sm">{input.sensitivity}</td>
+            <td class="font-mono text-sm">
+              <span :if={input.input_type == :analog}>Sens: {input.sensitivity}</span>
+              <span :if={input.input_type == :button}>Deb: {input.debounce || 0}ms</span>
+            </td>
             <td>
-              <.raw_value value={Map.get(@input_values, input.pin)} active={@active_port != nil} />
+              <.raw_value
+                value={Map.get(@input_values, input.pin)}
+                active={@active_port != nil}
+                input_type={input.input_type}
+              />
             </td>
             <td>
               <.calibrated_value
                 raw_value={Map.get(@input_values, input.pin)}
                 calibration={input.calibration}
                 active={@active_port != nil}
+                input_type={input.input_type}
               />
             </td>
             <td class="flex gap-1">
               <button
-                :if={@active_port != nil}
+                :if={@active_port != nil && input.input_type == :analog}
                 phx-click="start_calibration"
                 phx-value-id={input.id}
                 class="btn btn-ghost btn-xs text-primary hover:bg-primary/10"
@@ -688,6 +702,7 @@ defmodule TswIoWeb.ConfigurationEditLive do
 
   attr :value, :integer, default: nil
   attr :active, :boolean, required: true
+  attr :input_type, :atom, default: :analog
 
   defp raw_value(assigns) do
     ~H"""
@@ -697,8 +712,14 @@ defmodule TswIoWeb.ConfigurationEditLive do
     <span :if={@active && is_nil(@value)} class="text-base-content/50">
       &mdash;
     </span>
-    <span :if={@active && !is_nil(@value)} class="font-mono">
+    <%!-- Analog: show numeric value --%>
+    <span :if={@active && !is_nil(@value) && @input_type == :analog} class="font-mono">
       {@value}
+    </span>
+    <%!-- Button: show Pressed/Released badge --%>
+    <span :if={@active && !is_nil(@value) && @input_type == :button}>
+      <span :if={@value == 1} class="badge badge-success badge-xs">Pressed</span>
+      <span :if={@value == 0} class="badge badge-ghost badge-xs">Released</span>
     </span>
     """
   end
@@ -706,6 +727,7 @@ defmodule TswIoWeb.ConfigurationEditLive do
   attr :raw_value, :integer, default: nil
   attr :calibration, :map, default: nil
   attr :active, :boolean, required: true
+  attr :input_type, :atom, default: :analog
 
   defp calibrated_value(assigns) do
     calibration = loaded_calibration(assigns.calibration)
@@ -723,14 +745,28 @@ defmodule TswIoWeb.ConfigurationEditLive do
       |> assign(:calibrated, calibrated)
 
     ~H"""
-    <span :if={!@active} class="text-base-content/50 italic text-sm">N/A</span>
-    <span :if={@active && is_nil(@calibration)} class="text-base-content/50 text-sm">
+    <%!-- Button inputs don't need calibration --%>
+    <span :if={@input_type == :button} class="text-base-content/50 text-sm">N/A</span>
+    <%!-- Analog inputs --%>
+    <span :if={@input_type == :analog && !@active} class="text-base-content/50 italic text-sm">
+      N/A
+    </span>
+    <span
+      :if={@input_type == :analog && @active && is_nil(@calibration)}
+      class="text-base-content/50 text-sm"
+    >
       Not calibrated
     </span>
-    <span :if={@active && @calibration && is_nil(@raw_value)} class="text-base-content/50">
+    <span
+      :if={@input_type == :analog && @active && @calibration && is_nil(@raw_value)}
+      class="text-base-content/50"
+    >
       &mdash;
     </span>
-    <span :if={@active && @calibration && !is_nil(@calibrated)} class="font-mono">
+    <span
+      :if={@input_type == :analog && @active && @calibration && !is_nil(@calibrated)}
+      class="font-mono"
+    >
       {@calibrated}
     </span>
     """
@@ -783,12 +819,12 @@ defmodule TswIoWeb.ConfigurationEditLive do
               <.input
                 field={@form[:input_type]}
                 type="select"
-                options={[{"Analog", :analog}]}
+                options={[{"Analog", :analog}, {"Button", :button}]}
                 class="select select-bordered w-full"
               />
             </div>
 
-            <div>
+            <div :if={@form[:input_type].value in [:analog, "analog"]}>
               <label class="label">
                 <span class="label-text">Sensitivity (1-10)</span>
               </label>
@@ -797,6 +833,20 @@ defmodule TswIoWeb.ConfigurationEditLive do
                 type="number"
                 min="1"
                 max="10"
+                class="input input-bordered w-full"
+              />
+            </div>
+
+            <div :if={@form[:input_type].value in [:button, "button"]}>
+              <label class="label">
+                <span class="label-text">Debounce (0-255 ms)</span>
+              </label>
+              <.input
+                field={@form[:debounce]}
+                type="number"
+                min="0"
+                max="255"
+                placeholder="20"
                 class="input input-bordered w-full"
               />
             </div>
