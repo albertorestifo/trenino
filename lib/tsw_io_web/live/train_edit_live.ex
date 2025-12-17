@@ -347,9 +347,6 @@ defmodule TswIoWeb.TrainEditLive do
   def handle_event("save_button_config", %{"button_input_binding" => params}, socket) do
     element = socket.assigns.configuring_button_element
 
-    # Add element_id to params for changeset validation
-    params = Map.put(params, "element_id", element.id)
-
     result =
       case element.button_binding do
         nil ->
@@ -360,7 +357,7 @@ defmodule TswIoWeb.TrainEditLive do
           else
             changeset =
               %ButtonInputBinding{}
-              |> ButtonInputBinding.changeset(params)
+              |> ButtonInputBinding.changeset(Map.put(params, "element_id", element.id))
               |> Map.put(:action, :validate)
 
             {:error, changeset}

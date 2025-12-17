@@ -698,24 +698,28 @@ defmodule TswIo.Train do
 
     * `element_id` - The button element ID
     * `input_id` - The button input ID
-    * `attrs` - Map with `:endpoint`, and optionally `:on_value`, `:off_value`, `:enabled`
+    * `attrs` - Map with `:endpoint` or `"endpoint"`, and optionally `:on_value`, `:off_value`, `:enabled`
 
+  Merges `element_id` and `input_id` into `attrs` for the changeset.
   """
   @spec create_button_binding(integer(), integer(), map()) ::
           {:ok, ButtonInputBinding.t()} | {:error, Ecto.Changeset.t()}
   def create_button_binding(element_id, input_id, attrs) do
-    # Normalize attrs to string keys for consistency with form params
-    attrs =
-      attrs
-      |> Map.new(fn
-        {k, v} when is_atom(k) -> {Atom.to_string(k), v}
-        {k, v} -> {k, v}
-      end)
-      |> Map.put("element_id", element_id)
-      |> Map.put("input_id", input_id)
+    # Changesets require consistent key types (all atoms or all strings).
+    # Since form params come as strings, ensure IDs use the same key type as attrs.
+    params =
+      case Map.keys(attrs) do
+        [key | _] when is_binary(key) ->
+          # String keys from form - add IDs as strings
+          Map.merge(attrs, %{"element_id" => element_id, "input_id" => input_id})
+
+        _ ->
+          # Atom keys from direct map - add IDs as atoms
+          Map.merge(attrs, %{element_id: element_id, input_id: input_id})
+      end
 
     %ButtonInputBinding{}
-    |> ButtonInputBinding.changeset(attrs)
+    |> ButtonInputBinding.changeset(params)
     |> Repo.insert()
   end
 

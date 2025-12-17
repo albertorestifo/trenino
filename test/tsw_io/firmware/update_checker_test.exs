@@ -1,5 +1,6 @@
 defmodule TswIo.Firmware.UpdateCheckerTest do
   use TswIo.DataCase, async: false
+  use Mimic
 
   alias TswIo.Firmware
   alias TswIo.Firmware.UpdateCheck
@@ -8,6 +9,8 @@ defmodule TswIo.Firmware.UpdateCheckerTest do
 
   import Ecto.Query
 
+  setup :verify_on_exit!
+
   # Helper to start UpdateChecker for tests that need it
   defp start_update_checker(_context) do
     # Stop any existing UpdateChecker
@@ -15,6 +18,11 @@ defmodule TswIo.Firmware.UpdateCheckerTest do
       nil -> :ok
       pid -> GenServer.stop(pid, :normal, 100)
     end
+
+    # Stub Req to prevent real HTTP calls during update checks
+    stub(Req, :get, fn _url, _opts ->
+      {:ok, %Req.Response{status: 404, body: []}}
+    end)
 
     # Start with auto_check disabled to prevent interference
     {:ok, _pid} =

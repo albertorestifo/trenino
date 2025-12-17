@@ -2,6 +2,8 @@ defmodule TswIo.Firmware.DownloaderTest do
   use TswIo.DataCase, async: false
   use Mimic
 
+  import ExUnit.CaptureLog
+
   alias TswIo.Firmware
   alias TswIo.Firmware.Downloader
 
@@ -242,7 +244,10 @@ defmodule TswIo.Firmware.DownloaderTest do
         {:ok, %Req.Response{status: 403, body: %{"message" => "Rate limit exceeded"}}}
       end)
 
-      assert {:error, {:github_api_error, 403}} = Downloader.check_for_updates()
+      # capture_log suppresses expected error log output
+      capture_log(fn ->
+        assert {:error, {:github_api_error, 403}} = Downloader.check_for_updates()
+      end)
     end
 
     test "returns error on network failure" do
@@ -250,8 +255,11 @@ defmodule TswIo.Firmware.DownloaderTest do
         {:error, %Mint.TransportError{reason: :econnrefused}}
       end)
 
-      assert {:error, %Mint.TransportError{reason: :econnrefused}} =
-               Downloader.check_for_updates()
+      # capture_log suppresses expected error log output
+      capture_log(fn ->
+        assert {:error, %Mint.TransportError{reason: :econnrefused}} =
+                 Downloader.check_for_updates()
+      end)
     end
 
     test "handles release without published_at" do
