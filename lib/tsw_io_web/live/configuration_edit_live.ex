@@ -11,7 +11,7 @@ defmodule TswIoWeb.ConfigurationEditLive do
   import TswIoWeb.NavComponents
 
   alias TswIo.Hardware
-  alias TswIo.Hardware.{ConfigId, Device, Input}
+  alias TswIo.Hardware.{ConfigId, Device, Input, Output}
   alias TswIo.Hardware.Calibration.Session
   alias TswIo.Serial.Connection
 
@@ -47,11 +47,14 @@ defmodule TswIoWeb.ConfigurationEditLive do
      |> assign(:device, device)
      |> assign(:device_form, to_form(changeset))
      |> assign(:inputs, [])
+     |> assign(:outputs, [])
      |> assign(:input_values, %{})
      |> assign(:new_mode, true)
      |> assign(:active_port, nil)
      |> assign(:modal_open, false)
      |> assign(:form, to_form(Input.changeset(%Input{}, %{input_type: :analog, sensitivity: 5})))
+     |> assign(:output_modal_open, false)
+     |> assign(:output_form, to_form(Output.changeset(%Output{}, %{})))
      |> assign(:applying, false)
      |> assign(:calibrating_input, nil)
      |> assign(:calibration_session_state, nil)
@@ -74,6 +77,7 @@ defmodule TswIoWeb.ConfigurationEditLive do
         end
 
         {:ok, inputs} = Hardware.list_inputs(device.id)
+        {:ok, outputs} = Hardware.list_outputs(device.id)
         active_port = find_active_port(config_id)
         input_values = if active_port, do: Hardware.get_input_values(active_port), else: %{}
         changeset = Device.changeset(device, %{})
@@ -83,6 +87,7 @@ defmodule TswIoWeb.ConfigurationEditLive do
          |> assign(:device, device)
          |> assign(:device_form, to_form(changeset))
          |> assign(:inputs, inputs)
+         |> assign(:outputs, outputs)
          |> assign(:input_values, input_values)
          |> assign(:new_mode, false)
          |> assign(:active_port, active_port)
@@ -91,6 +96,8 @@ defmodule TswIoWeb.ConfigurationEditLive do
            :form,
            to_form(Input.changeset(%Input{}, %{input_type: :analog, sensitivity: 5}))
          )
+         |> assign(:output_modal_open, false)
+         |> assign(:output_form, to_form(Output.changeset(%Output{}, %{})))
          |> assign(:applying, false)
          |> assign(:calibrating_input, nil)
          |> assign(:calibration_session_state, nil)
@@ -219,6 +226,71 @@ defmodule TswIoWeb.ConfigurationEditLive do
       {:error, _reason} ->
         {:noreply, put_flash(socket, :error, "Failed to delete input")}
     end
+  end
+
+  # Output management
+  @impl true
+  def handle_event("open_add_output_modal", _params, socket) do
+    {:noreply, assign(socket, :output_modal_open, true)}
+  end
+
+  @impl true
+  def handle_event("close_add_output_modal", _params, socket) do
+    {:noreply,
+     socket
+     |> assign(:output_modal_open, false)
+     |> assign(:output_form, to_form(Output.changeset(%Output{}, %{})))}
+  end
+
+  @impl true
+  def handle_event("validate_output", %{"output" => params}, socket) do
+    changeset =
+      %Output{}
+      |> Output.changeset(Map.put(params, "device_id", socket.assigns.device.id))
+      |> Map.put(:action, :validate)
+
+    {:noreply, assign(socket, :output_form, to_form(changeset))}
+  end
+
+  @impl true
+  def handle_event("add_output", %{"output" => params}, socket) do
+    case Hardware.create_output(socket.assigns.device.id, params) do
+      {:ok, _output} ->
+        {:ok, outputs} = Hardware.list_outputs(socket.assigns.device.id)
+
+        {:noreply,
+         socket
+         |> assign(:outputs, outputs)
+         |> assign(:output_modal_open, false)
+         |> assign(:output_form, to_form(Output.changeset(%Output{}, %{})))}
+
+      {:error, changeset} ->
+        {:noreply, assign(socket, :output_form, to_form(changeset))}
+    end
+  end
+
+  @impl true
+  def handle_event("delete_output", %{"id" => id}, socket) do
+    case Hardware.delete_output(String.to_integer(id)) do
+      {:ok, _output} ->
+        {:ok, outputs} = Hardware.list_outputs(socket.assigns.device.id)
+        {:noreply, assign(socket, :outputs, outputs)}
+
+      {:error, _reason} ->
+        {:noreply, put_flash(socket, :error, "Failed to delete output")}
+    end
+  end
+
+  @impl true
+  def handle_event("test_output", %{"id" => id, "action" => action}, socket) do
+    output = Enum.find(socket.assigns.outputs, &(&1.id == String.to_integer(id)))
+
+    if output && socket.assigns.active_port do
+      value = if action == "on", do: :high, else: :low
+      Hardware.set_output(socket.assigns.active_port, output.pin, value)
+    end
+
+    {:noreply, socket}
   end
 
   # Apply configuration
@@ -476,7 +548,7 @@ defmodule TswIoWeb.ConfigurationEditLive do
               active_port={@active_port}
             />
 
-            <.outputs_section />
+            <.outputs_section outputs={@outputs} active_port={@active_port} />
           </div>
 
           <.danger_zone :if={not @new_mode} active={@active_port != nil} />
@@ -484,6 +556,8 @@ defmodule TswIoWeb.ConfigurationEditLive do
       </main>
 
       <.add_input_modal :if={@modal_open} form={@form} />
+
+      <.add_output_modal :if={@output_modal_open} form={@output_form} />
 
       <.apply_modal
         :if={@show_apply_modal}
@@ -776,13 +850,92 @@ defmodule TswIoWeb.ConfigurationEditLive do
   defp loaded_calibration(nil), do: nil
   defp loaded_calibration(calibration), do: calibration
 
+  attr :outputs, :list, required: true
+  attr :active_port, :string, default: nil
+
   defp outputs_section(assigns) do
     ~H"""
     <div class="mb-6">
       <h3 class="text-base font-semibold mb-4">Outputs</h3>
-      <div class="bg-base-100 rounded-lg p-6 text-center border border-base-300 border-dashed">
-        <p class="text-sm text-base-content/50">Coming soon</p>
-      </div>
+
+      <.empty_outputs_state :if={Enum.empty?(@outputs)} />
+
+      <.outputs_table :if={length(@outputs) > 0} outputs={@outputs} active_port={@active_port} />
+
+      <button phx-click="open_add_output_modal" class="btn btn-outline btn-sm mt-4">
+        <.icon name="hero-plus" class="w-4 h-4" /> Add Output
+      </button>
+    </div>
+    """
+  end
+
+  defp empty_outputs_state(assigns) do
+    ~H"""
+    <div class="bg-base-100 rounded-lg p-8 text-center">
+      <.icon name="hero-light-bulb" class="w-10 h-10 mx-auto text-base-content/30" />
+      <p class="mt-2 text-sm text-base-content/70">No outputs configured</p>
+      <p class="text-xs text-base-content/50">Add LEDs or indicators to control</p>
+    </div>
+    """
+  end
+
+  attr :outputs, :list, required: true
+  attr :active_port, :string, default: nil
+
+  defp outputs_table(assigns) do
+    ~H"""
+    <div class="overflow-x-auto">
+      <table class="table table-sm bg-base-100 rounded-lg">
+        <thead>
+          <tr class="bg-base-200">
+            <th class="text-center">Pin</th>
+            <th>Name</th>
+            <th :if={@active_port} class="text-center">Test</th>
+            <th class="w-16"></th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr :for={output <- @outputs} class="hover:bg-base-200/50">
+            <td class="text-center font-mono">{output.pin}</td>
+            <td>
+              <span :if={output.name} class="text-sm">{output.name}</span>
+              <span :if={!output.name} class="text-sm text-base-content/50 italic">Unnamed</span>
+            </td>
+            <td :if={@active_port} class="text-center">
+              <div class="flex justify-center gap-1">
+                <button
+                  phx-click="test_output"
+                  phx-value-id={output.id}
+                  phx-value-action="on"
+                  class="btn btn-xs btn-success btn-outline"
+                  title="Turn on"
+                >
+                  <.icon name="hero-bolt" class="w-3 h-3" />
+                </button>
+                <button
+                  phx-click="test_output"
+                  phx-value-id={output.id}
+                  phx-value-action="off"
+                  class="btn btn-xs btn-ghost"
+                  title="Turn off"
+                >
+                  <.icon name="hero-bolt-slash" class="w-3 h-3" />
+                </button>
+              </div>
+            </td>
+            <td>
+              <button
+                phx-click="delete_output"
+                phx-value-id={output.id}
+                class="btn btn-ghost btn-xs text-error hover:bg-error/10"
+                aria-label="Delete output"
+              >
+                <.icon name="hero-trash" class="w-4 h-4" />
+              </button>
+            </td>
+          </tr>
+        </tbody>
+      </table>
     </div>
     """
   end
@@ -858,6 +1011,58 @@ defmodule TswIoWeb.ConfigurationEditLive do
             </button>
             <button type="submit" class="btn btn-primary">
               Add Input
+            </button>
+          </div>
+        </.form>
+      </div>
+    </div>
+    """
+  end
+
+  attr :form, :map, required: true
+
+  defp add_output_modal(assigns) do
+    ~H"""
+    <div class="fixed inset-0 z-50 flex items-center justify-center">
+      <div class="absolute inset-0 bg-black/50" phx-click="close_add_output_modal" />
+      <div class="relative bg-base-100 rounded-xl shadow-xl w-full max-w-md mx-4 p-6">
+        <h2 class="text-xl font-semibold mb-4">Add Output</h2>
+
+        <.form for={@form} phx-change="validate_output" phx-submit="add_output">
+          <div class="space-y-4">
+            <div>
+              <label class="label">
+                <span class="label-text">Pin Number</span>
+              </label>
+              <.input
+                field={@form[:pin]}
+                type="number"
+                placeholder="Enter pin number (0-255)"
+                min="0"
+                max="255"
+                class="input input-bordered w-full"
+              />
+            </div>
+
+            <div>
+              <label class="label">
+                <span class="label-text">Name (optional)</span>
+              </label>
+              <.input
+                field={@form[:name]}
+                type="text"
+                placeholder="e.g., Brake Warning LED"
+                class="input input-bordered w-full"
+              />
+            </div>
+          </div>
+
+          <div class="flex justify-end gap-2 mt-6">
+            <button type="button" phx-click="close_add_output_modal" class="btn btn-ghost">
+              Cancel
+            </button>
+            <button type="submit" class="btn btn-primary">
+              Add Output
             </button>
           </div>
         </.form>

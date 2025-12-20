@@ -6,7 +6,7 @@ defmodule TswIo.Hardware do
   import Ecto.Query
 
   alias TswIo.Repo
-  alias TswIo.Hardware.{ConfigId, Device, Input}
+  alias TswIo.Hardware.{ConfigId, Device, Input, Output}
   alias TswIo.Hardware.Input.Calibration
   alias TswIo.Hardware.Input.MatrixPin
   alias TswIo.Hardware.Calibration.{Calculator, SessionSupervisor}
@@ -351,6 +351,59 @@ defmodule TswIo.Hardware do
       nil -> {:error, :not_found}
       input -> {:ok, Repo.preload(input, preloads)}
     end
+  end
+
+  # Output operations
+
+  @doc """
+  List all outputs for a device, ordered by pin.
+  """
+  @spec list_outputs(integer()) :: {:ok, [Output.t()]}
+  def list_outputs(device_id) do
+    outputs =
+      Output
+      |> where([o], o.device_id == ^device_id)
+      |> order_by([o], o.pin)
+      |> Repo.all()
+
+    {:ok, outputs}
+  end
+
+  @doc """
+  Get an output by ID.
+  """
+  @spec get_output(integer()) :: {:ok, Output.t()} | {:error, :not_found}
+  def get_output(id) do
+    case Repo.get(Output, id) do
+      nil -> {:error, :not_found}
+      output -> {:ok, output}
+    end
+  end
+
+  @doc """
+  Create an output for a device.
+  """
+  @spec create_output(integer(), map()) :: {:ok, Output.t()} | {:error, Ecto.Changeset.t()}
+  def create_output(device_id, attrs) do
+    %Output{device_id: device_id}
+    |> Output.changeset(attrs)
+    |> Repo.insert()
+  end
+
+  @doc """
+  Delete an output by ID or Output struct.
+  """
+  @spec delete_output(integer() | Output.t()) ::
+          {:ok, Output.t()} | {:error, :not_found | Ecto.Changeset.t()}
+  def delete_output(output_id) when is_integer(output_id) do
+    case Repo.get(Output, output_id) do
+      nil -> {:error, :not_found}
+      output -> Repo.delete(output)
+    end
+  end
+
+  def delete_output(%Output{} = output) do
+    Repo.delete(output)
   end
 
   # Calibration operations

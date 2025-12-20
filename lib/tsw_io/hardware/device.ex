@@ -12,6 +12,7 @@ defmodule TswIo.Hardware.Device do
 
   alias TswIo.Hardware.ConfigId
   alias TswIo.Hardware.Input
+  alias TswIo.Hardware.Output
 
   @type t :: %__MODULE__{
           id: integer() | nil,
@@ -19,6 +20,7 @@ defmodule TswIo.Hardware.Device do
           description: String.t() | nil,
           config_id: integer() | nil,
           inputs: [Input.t()] | Ecto.Association.NotLoaded.t(),
+          outputs: [Output.t()] | Ecto.Association.NotLoaded.t(),
           inserted_at: DateTime.t() | nil,
           updated_at: DateTime.t() | nil
         }
@@ -29,6 +31,7 @@ defmodule TswIo.Hardware.Device do
     field :config_id, :integer
 
     has_many :inputs, Input
+    has_many :outputs, Output
 
     timestamps(type: :utc_datetime)
   end
