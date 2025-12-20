@@ -223,10 +223,11 @@ defmodule TswIo.Hardware.ConfigurationManager do
   end
 
   defp do_apply_configuration(port, device_id, %State{} = state) do
-    with {:ok, _device} <- Hardware.get_device(device_id),
+    with {:ok, device} <- Hardware.get_device(device_id),
          {:ok, inputs} <- Hardware.list_inputs(device_id),
          :ok <- validate_inputs(inputs),
-         {:ok, config_id} <- Hardware.generate_config_id(),
+         # Use the existing config_id - don't generate a new one
+         config_id = device.config_id,
          :ok <- send_configuration_messages(port, config_id, inputs) do
       timer_ref = Process.send_after(self(), {:config_timeout, config_id}, @config_timeout_ms)
 

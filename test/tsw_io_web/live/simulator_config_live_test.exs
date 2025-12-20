@@ -32,7 +32,10 @@ defmodule TswIoWeb.SimulatorConfigLiveTest do
     end
 
     test "pre-fills default URL when no config exists", %{conn: conn} do
-      {:ok, _view, html} = live(conn, ~p"/simulator/config")
+      {:ok, view, _html} = live(conn, ~p"/simulator/config")
+
+      # On Windows, toggle to manual mode to see the form
+      html = maybe_toggle_to_manual(view)
 
       assert html =~ "http://localhost:31270"
     end
@@ -40,7 +43,10 @@ defmodule TswIoWeb.SimulatorConfigLiveTest do
     test "shows existing config when present", %{conn: conn} do
       {:ok, _config} = create_config(%{url: "http://192.168.1.100:31270", api_key: "my-key"})
 
-      {:ok, _view, html} = live(conn, ~p"/simulator/config")
+      {:ok, view, _html} = live(conn, ~p"/simulator/config")
+
+      # On Windows, toggle to manual mode to see the form
+      html = maybe_toggle_to_manual(view)
 
       assert html =~ "http://192.168.1.100:31270"
     end
@@ -113,6 +119,9 @@ defmodule TswIoWeb.SimulatorConfigLiveTest do
     test "validates URL format on change", %{conn: conn} do
       {:ok, view, _html} = live(conn, ~p"/simulator/config")
 
+      # On Windows, toggle to manual mode first
+      maybe_toggle_to_manual(view)
+
       html =
         view
         |> form("#config-form", config: %{url: "invalid-url", api_key: "test-key"})
@@ -124,6 +133,9 @@ defmodule TswIoWeb.SimulatorConfigLiveTest do
     test "validates required api_key", %{conn: conn} do
       {:ok, view, _html} = live(conn, ~p"/simulator/config")
 
+      # On Windows, toggle to manual mode first
+      maybe_toggle_to_manual(view)
+
       html =
         view
         |> form("#config-form", config: %{url: "http://localhost:31270", api_key: ""})
@@ -134,6 +146,9 @@ defmodule TswIoWeb.SimulatorConfigLiveTest do
 
     test "accepts valid HTTPS URL", %{conn: conn} do
       {:ok, view, _html} = live(conn, ~p"/simulator/config")
+
+      # On Windows, toggle to manual mode first
+      maybe_toggle_to_manual(view)
 
       html =
         view
@@ -150,6 +165,9 @@ defmodule TswIoWeb.SimulatorConfigLiveTest do
     test "creates new config successfully", %{conn: conn} do
       {:ok, view, _html} = live(conn, ~p"/simulator/config")
 
+      # On Windows, toggle to manual mode first
+      maybe_toggle_to_manual(view)
+
       view
       |> form("#config-form", config: %{url: "http://localhost:31270", api_key: "my-api-key"})
       |> render_submit()
@@ -165,6 +183,9 @@ defmodule TswIoWeb.SimulatorConfigLiveTest do
 
       {:ok, view, _html} = live(conn, ~p"/simulator/config")
 
+      # On Windows, toggle to manual mode first
+      maybe_toggle_to_manual(view)
+
       view
       |> form("#config-form", config: %{url: "http://192.168.1.100:31270", api_key: "new-key"})
       |> render_submit()
@@ -177,6 +198,9 @@ defmodule TswIoWeb.SimulatorConfigLiveTest do
 
     test "shows validation errors on invalid submission", %{conn: conn} do
       {:ok, view, _html} = live(conn, ~p"/simulator/config")
+
+      # On Windows, toggle to manual mode first
+      maybe_toggle_to_manual(view)
 
       html =
         view
@@ -295,5 +319,20 @@ defmodule TswIoWeb.SimulatorConfigLiveTest do
     %Config{}
     |> Config.changeset(Map.merge(default_attrs, attrs))
     |> TswIo.Repo.insert()
+  end
+
+  # On Windows, the manual config form is hidden by default.
+  # This helper toggles to manual mode if needed and returns the rendered HTML.
+  defp maybe_toggle_to_manual(view) do
+    html = render(view)
+
+    if html =~ "Manual Configuration" do
+      # Windows mode - need to toggle to manual
+      view
+      |> element("button", "Manual Configuration")
+      |> render_click()
+    else
+      html
+    end
   end
 end

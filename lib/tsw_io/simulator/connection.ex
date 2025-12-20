@@ -18,7 +18,6 @@ defmodule TswIo.Simulator.Connection do
 
   @health_check_interval_ms 30_000
   @retry_interval_ms 30_000
-  @connect_timeout_ms 5_000
   @pubsub_topic "simulator:connection"
 
   def start_link(_opts) do
@@ -162,7 +161,46 @@ defmodule TswIo.Simulator.Connection do
     {:noreply, new_state}
   end
 
+  # Handle async connection task result
+  @impl true
+  def handle_info({ref, result}, %ConnectionState{} = state) when is_reference(ref) do
+    # Flush the DOWN message from the task
+    Process.demonitor(ref, [:flush])
+
+    new_state = handle_connection_result(state, result)
+    broadcast_state_change(new_state)
+    {:noreply, new_state}
+  end
+
+  # Handle async task crash
+  @impl true
+  def handle_info({:DOWN, _ref, :process, _pid, reason}, %ConnectionState{} = state) do
+    Logger.warning("Connection task crashed: #{inspect(reason)}")
+    schedule_retry()
+    new_state = ConnectionState.mark_error(state, :connection_failed)
+    broadcast_state_change(new_state)
+    {:noreply, new_state}
+  end
+
   # Private functions
+
+  defp handle_connection_result(%ConnectionState{} = state, {:ok, info}) do
+    Logger.info("Successfully connected to TSW API")
+    schedule_health_check()
+    ConnectionState.mark_connected(state, info)
+  end
+
+  defp handle_connection_result(%ConnectionState{} = state, {:error, {:invalid_key, _}}) do
+    Logger.warning("Failed to connect to TSW API: invalid API key")
+    schedule_retry()
+    ConnectionState.mark_error(state, :invalid_key)
+  end
+
+  defp handle_connection_result(%ConnectionState{} = state, {:error, reason}) do
+    Logger.warning("Failed to connect to TSW API: #{inspect(reason)}")
+    schedule_retry()
+    ConnectionState.mark_error(state, :connection_failed)
+  end
 
   defp attempt_connection(%ConnectionState{} = state) do
     case AutoConfig.ensure_config() do
@@ -180,29 +218,14 @@ defmodule TswIo.Simulator.Connection do
     client = Client.new(url, api_key)
     state_connecting = ConnectionState.mark_connecting(state, client)
 
-    task = Task.async(fn -> Client.info(client) end)
+    # Start async connection - don't block the GenServer
+    Task.Supervisor.async_nolink(TswIo.TaskSupervisor, fn ->
+      Client.info(client)
+    end)
 
-    case Task.yield(task, @connect_timeout_ms) || Task.shutdown(task) do
-      {:ok, {:ok, info}} ->
-        Logger.info("Successfully connected to TSW API")
-        schedule_health_check()
-        ConnectionState.mark_connected(state_connecting, info)
-
-      {:ok, {:error, {:invalid_key, _}}} ->
-        Logger.warning("Failed to connect to TSW API: invalid API key")
-        schedule_retry()
-        ConnectionState.mark_error(state_connecting, :invalid_key)
-
-      {:ok, {:error, reason}} ->
-        Logger.warning("Failed to connect to TSW API: #{inspect(reason)}")
-        schedule_retry()
-        ConnectionState.mark_error(state_connecting, :connection_failed)
-
-      nil ->
-        Logger.warning("Connection to TSW API timed out")
-        schedule_retry()
-        ConnectionState.mark_error(state_connecting, :timeout)
-    end
+    # Return immediately in connecting state
+    # Result will be handled in handle_info({ref, result}, ...)
+    state_connecting
   end
 
   defp perform_health_check(%ConnectionState{client: nil} = state) do

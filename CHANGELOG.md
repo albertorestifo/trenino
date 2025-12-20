@@ -12,3 +12,5 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Fix firmware upload crash when avrdude is not installed (now shows proper error message)
 - Fix firmware upload on Windows for Pro Micro/Leonardo boards (detect bootloader on new COM port after 1200bps touch)
 - Fix slow device reconnection after firmware upload (was waiting 30s backoff, now reconnects immediately)
+- Fix config_id being regenerated when applying saved configuration (now preserves the existing config_id)
+- Fix slow page transitions when simulator is disconnected (connection retries are now async)

@@ -16,6 +16,7 @@ defmodule TswIo.Application do
         {DNSCluster, query: Application.get_env(:tsw_io, :dns_cluster_query) || :ignore},
         {Phoenix.PubSub, name: TswIo.PubSub},
         {Registry, keys: :unique, name: TswIo.Registry},
+        {Task.Supervisor, name: TswIo.TaskSupervisor},
         TswIo.Serial.Connection,
         TswIo.Hardware.ConfigurationManager,
         TswIo.Hardware.Calibration.SessionSupervisor,
