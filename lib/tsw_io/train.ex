@@ -228,8 +228,14 @@ defmodule TswIo.Train do
         notches
         |> Enum.with_index()
         |> Enum.map(fn {notch_attrs, index} ->
+          # Ensure all keys are strings to avoid mixed key types
+          attrs_with_index =
+            notch_attrs
+            |> Map.new(fn {k, v} -> {to_string(k), v} end)
+            |> Map.put("index", index)
+
           %Notch{lever_config_id: lever_config.id}
-          |> Notch.changeset(Map.put(notch_attrs, :index, index))
+          |> Notch.changeset(attrs_with_index)
           |> Repo.insert()
         end)
 
@@ -314,8 +320,14 @@ defmodule TswIo.Train do
         notches
         |> Enum.with_index()
         |> Enum.map(fn {notch_attrs, index} ->
+          # Ensure all keys are strings to avoid mixed key types
+          attrs_with_index =
+            notch_attrs
+            |> Map.new(fn {k, v} -> {to_string(k), v} end)
+            |> Map.put("index", index)
+
           %Notch{lever_config_id: lever_config.id}
-          |> Notch.changeset(Map.put(notch_attrs, :index, index))
+          |> Notch.changeset(attrs_with_index)
           |> Repo.insert()
         end)
 

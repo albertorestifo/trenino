@@ -830,17 +830,38 @@ defmodule TswIoWeb.TrainEditLive do
   # API Explorer component events
   @impl true
   def handle_info({:api_explorer_select, field, path}, socket) do
-    # Update the lever config form with the selected path
-    current_form = socket.assigns.lever_config_form
-    current_params = current_form.params || %{}
-    updated_params = Map.put(current_params, Atom.to_string(field), path)
+    # Determine which modal is open and update the appropriate form
+    socket =
+      cond do
+        # Lever config modal is open
+        socket.assigns.configuring_element != nil ->
+          current_form = socket.assigns.lever_config_form
+          current_params = current_form.params || %{}
+          updated_params = Map.put(current_params, Atom.to_string(field), path)
 
-    lever_config = socket.assigns.configuring_element.lever_config || %LeverConfig{}
-    changeset = LeverConfig.changeset(lever_config, updated_params)
+          lever_config = socket.assigns.configuring_element.lever_config || %LeverConfig{}
+          changeset = LeverConfig.changeset(lever_config, updated_params)
+          assign(socket, :lever_config_form, to_form(changeset))
+
+        # Button config modal is open
+        socket.assigns.configuring_button_element != nil ->
+          current_form = socket.assigns.button_config_form
+          current_params = current_form.params || %{}
+          updated_params = Map.put(current_params, Atom.to_string(field), path)
+
+          binding =
+            socket.assigns.configuring_button_element.button_binding ||
+              %ButtonInputBinding{}
+
+          changeset = ButtonInputBinding.changeset(binding, updated_params)
+          assign(socket, :button_config_form, to_form(changeset))
+
+        true ->
+          socket
+      end
 
     {:noreply,
      socket
-     |> assign(:lever_config_form, to_form(changeset))
      |> assign(:show_api_explorer, false)
      |> assign(:api_explorer_field, nil)}
   end
@@ -2022,13 +2043,34 @@ defmodule TswIoWeb.TrainEditLive do
             <%!-- Endpoint Configuration --%>
             <div class="bg-base-200/50 rounded-lg p-4">
               <h3 class="text-sm font-semibold mb-3">Simulator Endpoint</h3>
-              <.input
-                field={@form[:endpoint]}
-                type="text"
-                label="Endpoint Path"
-                placeholder="e.g., CurrentDrivableActor/Horn.InputValue"
-                class="input input-bordered input-sm w-full font-mono text-xs"
-              />
+              <div>
+                <label class="label py-1">
+                  <span class="label-text text-xs">Endpoint Path</span>
+                </label>
+                <div class="flex gap-2">
+                  <.input
+                    field={@form[:endpoint]}
+                    type="text"
+                    placeholder="e.g., CurrentDrivableActor/Horn.InputValue"
+                    class="input input-bordered input-sm flex-1 font-mono text-xs"
+                    title={Phoenix.HTML.Form.normalize_value("text", @form[:endpoint].value)}
+                  />
+                  <button
+                    type="button"
+                    phx-click="open_api_explorer"
+                    phx-value-field="endpoint"
+                    class="btn btn-ghost btn-sm"
+                    title={
+                      if @simulator_connected,
+                        do: "Browse API",
+                        else: "Connect simulator to browse API"
+                    }
+                    disabled={not @simulator_connected}
+                  >
+                    <.icon name="hero-folder-open" class="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
               <p class="text-xs text-base-content/50 mt-1">
                 The API endpoint to set when the button is pressed or released
               </p>
