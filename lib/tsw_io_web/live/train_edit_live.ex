@@ -1250,7 +1250,7 @@ defmodule TswIoWeb.TrainEditLive do
             </button>
             <button
               :if={@lever_config && @input_binding}
-              phx-click="open_guided_notch_mapping"
+              phx-click="open_notch_mapping"
               phx-value-id={@element.id}
               class="btn btn-sm btn-outline gap-1"
             >

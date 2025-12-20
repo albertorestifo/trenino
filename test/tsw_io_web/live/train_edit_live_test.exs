@@ -354,6 +354,84 @@ defmodule TswIoWeb.TrainEditLiveTest do
     end
   end
 
+  describe "map notches button" do
+    setup %{conn: conn} do
+      {:ok, train} =
+        TrainContext.create_train(%{
+          name: "Test Train",
+          identifier: "Test_Train_Notches_#{System.unique_integer([:positive])}"
+        })
+
+      # Create lever element
+      {:ok, element} = TrainContext.create_element(train.id, %{name: "Throttle", type: :lever})
+
+      # Create lever config with endpoints
+      {:ok, lever_config} =
+        TrainContext.create_lever_config(element.id, %{
+          min_endpoint: "CurrentDrivableActor/Throttle.Function.GetMinimumInputValue",
+          max_endpoint: "CurrentDrivableActor/Throttle.Function.GetMaximumInputValue",
+          value_endpoint: "CurrentDrivableActor/Throttle.InputValue"
+        })
+
+      # Create a device with analog input and calibration
+      {:ok, device} = Hardware.create_device(%{name: "Test Device"})
+
+      {:ok, input} =
+        Hardware.create_input(device.id, %{pin: 0, input_type: :analog, sensitivity: 5})
+
+      {:ok, _calibration} =
+        Hardware.save_calibration(input.id, %{
+          min_value: 0,
+          max_value: 1023,
+          max_hardware_value: 1023,
+          center_value: 512,
+          deadzone: 10
+        })
+
+      # Bind the input to the lever config
+      {:ok, _binding} = TrainContext.bind_input(lever_config.id, input.id)
+
+      %{conn: conn, train: train, element: element, lever_config: lever_config}
+    end
+
+    test "opens notch mapping modal when clicking Map Notches button", %{
+      conn: conn,
+      train: train,
+      element: element
+    } do
+      {:ok, view, _html} = live(conn, ~p"/trains/#{train.id}")
+
+      # Click Map Notches button - it should open the notch mapping modal
+      html =
+        view
+        |> element("[phx-click='open_notch_mapping'][phx-value-id='#{element.id}']")
+        |> render_click()
+
+      # Verify the notch mapping modal opened (not the wizard)
+      assert html =~ "Map Notches - Throttle"
+      assert html =~ "Define discrete notch positions"
+      # Should have an "Add Notch" button to add notches
+      assert html =~ "Add Notch"
+    end
+
+    test "does not require notches to already exist", %{
+      conn: conn,
+      train: train,
+      element: element
+    } do
+      {:ok, view, _html} = live(conn, ~p"/trains/#{train.id}")
+
+      # Click Map Notches - should work even without existing notches
+      html =
+        view
+        |> element("[phx-click='open_notch_mapping'][phx-value-id='#{element.id}']")
+        |> render_click()
+
+      # Verify the modal opened and shows empty notches count
+      assert html =~ "Notches (0)"
+    end
+  end
+
   describe "button element with custom on/off values" do
     setup %{conn: conn} do
       {:ok, train} =
