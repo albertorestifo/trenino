@@ -39,8 +39,8 @@ defmodule TswIo.Firmware.Uploader do
     with {:ok, avrdude_path} <- Avrdude.executable_path(),
          {:ok, config} <- BoardConfig.get_config(board_type),
          :ok <- verify_hex_file(hex_file_path),
-         :ok <- maybe_trigger_bootloader(port, config) do
-      args = build_args(config, port, hex_file_path)
+         {:ok, upload_port} <- maybe_trigger_bootloader(port, config) do
+      args = build_args(config, upload_port, hex_file_path)
 
       Logger.info("Running avrdude: #{avrdude_path} #{Enum.join(args, " ")}")
 
@@ -63,6 +63,9 @@ defmodule TswIo.Firmware.Uploader do
   defp maybe_trigger_bootloader(port, %{use_1200bps_touch: true}) do
     Logger.info("Triggering bootloader with 1200bps touch on #{port}")
 
+    # Get list of ports before triggering bootloader
+    ports_before = get_available_ports()
+
     case Circuits.UART.start_link() do
       {:ok, uart} ->
         # Open at 1200 baud, then close immediately to trigger bootloader
@@ -75,12 +78,15 @@ defmodule TswIo.Firmware.Uploader do
               # Wait for bootloader to start (typically appears on a new port)
               Logger.info("Waiting for bootloader to start...")
               Process.sleep(1500)
-              :ok
+
+              # On Windows, the bootloader often appears on a different port
+              # Try to detect the new port
+              detect_bootloader_port(port, ports_before)
 
             {:error, reason} ->
               Logger.warning("Could not open port for 1200bps touch: #{inspect(reason)}")
               # Continue anyway - device might already be in bootloader mode
-              :ok
+              {:ok, port}
           end
 
         GenServer.stop(uart)
@@ -89,11 +95,75 @@ defmodule TswIo.Firmware.Uploader do
       {:error, reason} ->
         Logger.warning("Could not start UART for 1200bps touch: #{inspect(reason)}")
         # Continue anyway
-        :ok
+        {:ok, port}
     end
   end
 
-  defp maybe_trigger_bootloader(_port, _config), do: :ok
+  defp maybe_trigger_bootloader(port, _config), do: {:ok, port}
+
+  # Detect the bootloader port after 1200bps touch
+  # On Windows, the device often reappears on a different COM port
+  defp detect_bootloader_port(original_port, ports_before) do
+    ports_after = get_available_ports()
+    new_ports = ports_after -- ports_before
+
+    cond do
+      # If the original port is still available, use it (common on macOS/Linux)
+      original_port in ports_after ->
+        Logger.info("Original port #{original_port} still available, using it")
+        {:ok, original_port}
+
+      # If a new port appeared, use that (common on Windows)
+      length(new_ports) == 1 ->
+        [new_port] = new_ports
+        Logger.info("Bootloader appeared on new port #{new_port} (was #{original_port})")
+        {:ok, new_port}
+
+      # Multiple new ports appeared - try to find one that looks like a bootloader
+      length(new_ports) > 1 ->
+        # Prefer the highest numbered COM port (bootloader usually gets a new higher number)
+        new_port = Enum.max(new_ports)
+        Logger.info("Multiple new ports appeared, using #{new_port}")
+        {:ok, new_port}
+
+      # No ports available - wait a bit more and retry once
+      true ->
+        Logger.info("Port disappeared, waiting for bootloader to appear...")
+        Process.sleep(1000)
+        retry_detect_bootloader_port(original_port, ports_before)
+    end
+  end
+
+  defp retry_detect_bootloader_port(original_port, ports_before) do
+    ports_after = get_available_ports()
+    new_ports = ports_after -- ports_before
+
+    cond do
+      original_port in ports_after ->
+        {:ok, original_port}
+
+      length(new_ports) >= 1 ->
+        new_port = Enum.max(new_ports)
+        Logger.info("Bootloader appeared on port #{new_port}")
+        {:ok, new_port}
+
+      length(ports_after) > 0 ->
+        # Use any available port as a last resort
+        new_port = Enum.max(ports_after)
+        Logger.warning("Could not detect bootloader port, trying #{new_port}")
+        {:ok, new_port}
+
+      true ->
+        Logger.error("No ports available after bootloader trigger")
+        {:error, :bootloader_port_not_found}
+    end
+  end
+
+  defp get_available_ports do
+    Circuits.UART.enumerate()
+    |> Map.keys()
+    |> Enum.sort()
+  end
 
   # Build avrdude command arguments
   defp build_args(config, port, hex_file_path) do
@@ -187,6 +257,9 @@ defmodule TswIo.Firmware.Uploader do
   defp parse_error(output) do
     cond do
       String.contains?(output, "can't open device") ->
+        :port_not_found
+
+      String.contains?(output, "cannot open port") ->
         :port_not_found
 
       String.contains?(output, "programmer is not responding") ->
@@ -296,6 +369,16 @@ defmodule TswIo.Firmware.Uploader do
     - macOS: brew install avrdude
     - Linux: apt-get install avrdude
     - Windows: Download from https://github.com/avrdudes/avrdude/releases
+    """
+  end
+
+  def error_message(:bootloader_port_not_found) do
+    """
+    Bootloader port not found. The device disconnected but the bootloader
+    did not appear on any port. Please try:
+    - Double-tap the reset button to manually enter bootloader mode
+    - Start the upload within 8 seconds
+    - Try a different USB port
     """
   end
 
