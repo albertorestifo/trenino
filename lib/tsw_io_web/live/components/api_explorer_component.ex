@@ -116,6 +116,9 @@ defmodule TswIoWeb.ApiExplorerComponent do
                |> assign(:preview, nil)}
           end
         else
+          # Check if this node has standard lever endpoints
+          lever_detection = detect_lever_endpoints(endpoint_items, full_path)
+
           {:noreply,
            socket
            |> assign(:path, new_path)
@@ -123,7 +126,8 @@ defmodule TswIoWeb.ApiExplorerComponent do
            |> assign(:filtered_items, all_items)
            |> assign(:search, "")
            |> assign(:loading, false)
-           |> assign(:preview, nil)}
+           |> assign(:preview, nil)
+           |> assign(:lever_detection, lever_detection)}
         end
 
       {:error, _reason} ->
@@ -178,13 +182,18 @@ defmodule TswIoWeb.ApiExplorerComponent do
 
         all_items = Enum.sort_by(node_items ++ endpoint_items, & &1.name)
 
+        # Detect lever endpoints at this path
+        full_path = Enum.join(new_path, "/")
+        lever_detection = detect_lever_endpoints(endpoint_items, full_path)
+
         {:noreply,
          socket
          |> assign(:path, new_path)
          |> assign(:items, all_items)
          |> assign(:filtered_items, all_items)
          |> assign(:search, "")
-         |> assign(:loading, false)}
+         |> assign(:loading, false)
+         |> assign(:lever_detection, lever_detection)}
 
       {:error, reason} ->
         {:noreply,
@@ -230,6 +239,23 @@ defmodule TswIoWeb.ApiExplorerComponent do
   @impl true
   def handle_event("close", _params, socket) do
     send(self(), {:api_explorer_close})
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_event("auto_configure", _params, socket) do
+    # Send all the detected lever endpoints to the parent
+    detection = socket.assigns.lever_detection
+
+    endpoints = %{
+      min_endpoint: detection.min_endpoint,
+      max_endpoint: detection.max_endpoint,
+      value_endpoint: detection.value_endpoint,
+      notch_count_endpoint: detection.notch_count_endpoint,
+      notch_index_endpoint: detection.notch_index_endpoint
+    }
+
+    send(self(), {:api_explorer_auto_configure, endpoints})
     {:noreply, socket}
   end
 
@@ -294,6 +320,60 @@ defmodule TswIoWeb.ApiExplorerComponent do
               phx-debounce="150"
               class="input input-bordered input-sm w-full"
             />
+          </div>
+        </div>
+
+        <div
+          :if={@lever_detection}
+          class="mx-4 mt-4 p-4 bg-primary/10 border border-primary/30 rounded-lg"
+        >
+          <div class="flex items-start gap-3">
+            <.icon name="hero-sparkles" class="w-5 h-5 text-primary flex-shrink-0 mt-0.5" />
+            <div class="flex-1 min-w-0">
+              <h3 class="font-semibold text-sm">
+                Lever Control Detected
+                <span
+                  :if={@lever_detection.has_notches}
+                  class="text-xs font-normal text-base-content/60 ml-1"
+                >
+                  (with notches)
+                </span>
+              </h3>
+              <p class="text-xs text-base-content/70 mt-1">
+                This node has standard lever endpoints. Auto-configure all fields?
+              </p>
+              <div class="mt-2 text-xs text-base-content/60 space-y-0.5">
+                <div class="flex items-center gap-1.5">
+                  <.icon name="hero-check" class="w-3 h-3 text-success" />
+                  <span>Min/Max Value</span>
+                </div>
+                <div class="flex items-center gap-1.5">
+                  <.icon name="hero-check" class="w-3 h-3 text-success" />
+                  <span>Current Value (InputValue)</span>
+                </div>
+                <div class="flex items-center gap-1.5">
+                  <.icon
+                    name={if @lever_detection.has_notches, do: "hero-check", else: "hero-minus"}
+                    class={
+                      if @lever_detection.has_notches,
+                        do: "w-3 h-3 text-success",
+                        else: "w-3 h-3 text-base-content/40"
+                    }
+                  />
+                  <span class={unless @lever_detection.has_notches, do: "text-base-content/40"}>
+                    Notch Count & Index
+                  </span>
+                </div>
+              </div>
+              <button
+                type="button"
+                phx-click="auto_configure"
+                phx-target={@myself}
+                class="btn btn-primary btn-sm mt-3"
+              >
+                <.icon name="hero-bolt" class="w-4 h-4" /> Auto-Configure All Fields
+              </button>
+            </div>
           </div>
         </div>
 
@@ -420,6 +500,7 @@ defmodule TswIoWeb.ApiExplorerComponent do
         |> assign(:loading, false)
         |> assign(:error, nil)
         |> assign(:preview, nil)
+        |> assign(:lever_detection, nil)
         |> assign(:initialized, true)
 
       {:error, reason} ->
@@ -431,6 +512,7 @@ defmodule TswIoWeb.ApiExplorerComponent do
         |> assign(:loading, false)
         |> assign(:error, "Failed to load API nodes: #{inspect(reason)}")
         |> assign(:preview, nil)
+        |> assign(:lever_detection, nil)
         |> assign(:initialized, true)
     end
   end
@@ -524,4 +606,37 @@ defmodule TswIoWeb.ApiExplorerComponent do
 
   defp format_field_name(field),
     do: field |> Atom.to_string() |> String.replace("_", " ") |> String.capitalize()
+
+  # Lever endpoint detection
+  # Standard TSW lever controls have these endpoints:
+  # Required: Function.GetMinimumInputValue, Function.GetMaximumInputValue, InputValue (writable)
+  # Optional: Function.GetNotchCount, Function.GetCurrentNotchIndex
+  defp detect_lever_endpoints(endpoint_items, node_path) do
+    endpoint_names = MapSet.new(endpoint_items, & &1.name)
+
+    has_min = MapSet.member?(endpoint_names, "Function.GetMinimumInputValue")
+    has_max = MapSet.member?(endpoint_names, "Function.GetMaximumInputValue")
+
+    has_input_value =
+      Enum.any?(endpoint_items, fn ep -> ep.name == "InputValue" and ep.writable end)
+
+    has_notch_count = MapSet.member?(endpoint_names, "Function.GetNotchCount")
+    has_notch_index = MapSet.member?(endpoint_names, "Function.GetCurrentNotchIndex")
+
+    # Must have all 3 required endpoints
+    if has_min and has_max and has_input_value do
+      %{
+        node_path: node_path,
+        min_endpoint: "#{node_path}.Function.GetMinimumInputValue",
+        max_endpoint: "#{node_path}.Function.GetMaximumInputValue",
+        value_endpoint: "#{node_path}.InputValue",
+        notch_count_endpoint: if(has_notch_count, do: "#{node_path}.Function.GetNotchCount"),
+        notch_index_endpoint:
+          if(has_notch_index, do: "#{node_path}.Function.GetCurrentNotchIndex"),
+        has_notches: has_notch_count and has_notch_index
+      }
+    else
+      nil
+    end
+  end
 end

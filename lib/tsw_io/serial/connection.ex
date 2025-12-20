@@ -76,6 +76,17 @@ defmodule TswIo.Serial.Connection do
     GenServer.cast(__MODULE__, {:disconnect, port})
   end
 
+  @doc """
+  Update the config_id for a connected device.
+
+  This is called when a configuration is successfully applied to update
+  the device's tracked config_id to match what's now stored on the device.
+  """
+  @spec update_device_config_id(String.t(), integer()) :: :ok
+  def update_device_config_id(port, config_id) do
+    GenServer.cast(__MODULE__, {:update_config_id, port, config_id})
+  end
+
   @doc "Subscribe to device update events"
   @spec subscribe() :: :ok | {:error, term()}
   def subscribe do
@@ -287,6 +298,21 @@ defmodule TswIo.Serial.Connection do
     Logger.debug("Cleanup complete for port #{port}")
     broadcast_update(updated_state)
     {:noreply, updated_state}
+  end
+
+  @impl true
+  def handle_cast({:update_config_id, port, config_id}, state) do
+    case State.get(state, port) do
+      %DeviceConnection{status: :connected} = conn ->
+        updated_conn = %DeviceConnection{conn | device_config_id: config_id}
+        updated_state = State.put(state, updated_conn)
+        broadcast_update(updated_state)
+        {:noreply, updated_state}
+
+      _ ->
+        # Device not connected, ignore
+        {:noreply, state}
+    end
   end
 
   @impl true

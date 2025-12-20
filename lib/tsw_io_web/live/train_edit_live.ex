@@ -854,6 +854,29 @@ defmodule TswIoWeb.TrainEditLive do
   end
 
   @impl true
+  def handle_info({:api_explorer_auto_configure, endpoints}, socket) do
+    # Auto-fill all lever config fields from detected endpoints
+    lever_config = socket.assigns.configuring_element.lever_config || %LeverConfig{}
+
+    params = %{
+      "min_endpoint" => endpoints.min_endpoint,
+      "max_endpoint" => endpoints.max_endpoint,
+      "value_endpoint" => endpoints.value_endpoint,
+      "notch_count_endpoint" => endpoints.notch_count_endpoint,
+      "notch_index_endpoint" => endpoints.notch_index_endpoint
+    }
+
+    changeset = LeverConfig.changeset(lever_config, params)
+
+    {:noreply,
+     socket
+     |> assign(:lever_config_form, to_form(changeset))
+     |> assign(:show_api_explorer, false)
+     |> assign(:api_explorer_field, nil)
+     |> put_flash(:info, "Auto-configured lever endpoints")}
+  end
+
+  @impl true
   def handle_info(_msg, socket), do: {:noreply, socket}
 
   # Private functions
@@ -1482,7 +1505,7 @@ defmodule TswIoWeb.TrainEditLive do
     ~H"""
     <div class="fixed inset-0 z-50 flex items-center justify-center">
       <div class="absolute inset-0 bg-black/50" phx-click="close_lever_config_modal" />
-      <div class="relative bg-base-100 rounded-xl shadow-xl w-full max-w-lg mx-4 p-6 max-h-[90vh] overflow-y-auto">
+      <div class="relative bg-base-100 rounded-xl shadow-xl w-full max-w-2xl mx-4 p-6 max-h-[90vh] overflow-y-auto">
         <h2 class="text-xl font-semibold mb-1">Configure {@element.name}</h2>
         <p class="text-sm text-base-content/60 mb-4">
           Set the simulator API endpoints for this lever control.
@@ -1562,6 +1585,10 @@ defmodule TswIoWeb.TrainEditLive do
   attr :simulator_connected, :boolean, required: true
 
   defp endpoint_input(assigns) do
+    # Get current value for the title tooltip
+    current_value = Phoenix.HTML.Form.normalize_value("text", assigns.form[assigns.field].value)
+    assigns = assign(assigns, :current_value, current_value)
+
     ~H"""
     <div>
       <label class="label py-1">
@@ -1573,6 +1600,7 @@ defmodule TswIoWeb.TrainEditLive do
           type="text"
           placeholder={@placeholder}
           class="input input-bordered input-sm flex-1 font-mono text-xs"
+          title={@current_value}
         />
         <button
           type="button"

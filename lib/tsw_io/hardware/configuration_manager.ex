@@ -149,6 +149,8 @@ defmodule TswIo.Hardware.ConfigurationManager do
         case Hardware.confirm_configuration(device_id, config_id) do
           {:ok, device} ->
             Logger.info("Configuration #{config_id} successfully stored on device")
+            # Update the device connection's config_id to match
+            Connection.update_device_config_id(port, config_id)
             broadcast_config_event({:configuration_applied, port, device, config_id})
             {:noreply, %{state | in_flight: new_in_flight}}
 
