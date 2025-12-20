@@ -219,16 +219,16 @@ defmodule TswIo.Serial.Connection do
   @impl true
   def handle_call({:release_upload_access, port, token}, _from, state) do
     case State.get(state, port) do
-      %DeviceConnection{status: :uploading} = conn ->
-        case DeviceConnection.release_upload(conn, token) do
-          {:ok, updated_conn} ->
-            updated_state = State.put(state, updated_conn)
-            broadcast_update(updated_state)
-            {:reply, :ok, updated_state}
+      %DeviceConnection{status: :uploading, upload_token: ^token} ->
+        # Remove the port entry so it's discovered fresh (no backoff delay)
+        updated_state = State.delete(state, port)
+        broadcast_update(updated_state)
+        # Trigger immediate scan to reconnect quickly
+        Process.send_after(self(), :post_upload_scan, 500)
+        {:reply, :ok, updated_state}
 
-          {:error, :invalid_token} ->
-            {:reply, {:error, :invalid_token}, state}
-        end
+      %DeviceConnection{status: :uploading} ->
+        {:reply, {:error, :invalid_token}, state}
 
       _ ->
         {:reply, {:error, :invalid_token}, state}
@@ -293,6 +293,12 @@ defmodule TswIo.Serial.Connection do
   def handle_info(:discover, %State{} = state) do
     discover_new_ports(state)
     schedule_discovery()
+    {:noreply, state}
+  end
+
+  def handle_info(:post_upload_scan, state) do
+    # Scan for devices after firmware upload completes
+    discover_new_ports(state)
     {:noreply, state}
   end
 
