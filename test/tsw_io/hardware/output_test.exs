@@ -1,5 +1,5 @@
 defmodule TswIo.Hardware.OutputTest do
-  use TswIo.DataCase, async: true
+  use TswIo.DataCase, async: false
 
   alias TswIo.Hardware
   alias TswIo.Hardware.Output

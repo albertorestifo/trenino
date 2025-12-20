@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- Output configuration UI for LEDs and indicators
+  - Add/delete outputs with pin number (0-255) and optional name
+  - Test buttons to toggle outputs on/off when device is connected
+  - Outputs are controlled via SetOutput commands (not stored on device)
+
 ### Fixed
 
 - Allow pin 0 to be selected when configuring analog and button inputs (pin 0 is a valid Arduino pin)
