@@ -35,13 +35,13 @@ defmodule TswIo.Hardware.Input do
       :analog ->
         changeset
         |> validate_required([:sensitivity])
-        |> validate_number(:pin, greater_than: 0, less_than: 128)
+        |> validate_number(:pin, greater_than_or_equal_to: 0, less_than: 128)
         |> validate_number(:sensitivity, greater_than: 0, less_than_or_equal_to: 10)
 
       :button ->
         changeset
         |> validate_required([:debounce])
-        |> validate_number(:pin, greater_than: 0, less_than: 128)
+        |> validate_number(:pin, greater_than_or_equal_to: 0, less_than: 128)
         |> validate_number(:debounce, greater_than_or_equal_to: 0, less_than_or_equal_to: 255)
 
       :matrix ->

@@ -154,12 +154,12 @@ defmodule TswIo.HardwareTest do
       # Note: sensitivity is now only required when input_type is :analog
     end
 
-    test "validates pin must be greater than 0 for analog" do
+    test "validates pin must be greater than or equal to 0 for analog" do
       {:ok, device} = Hardware.create_device(%{name: "Test Device"})
-      attrs = %{pin: 0, input_type: :analog, sensitivity: 5}
+      attrs = %{pin: -1, input_type: :analog, sensitivity: 5}
 
       assert {:error, changeset} = Hardware.create_input(device.id, attrs)
-      assert %{pin: ["must be greater than 0"]} = errors_on(changeset)
+      assert %{pin: ["must be greater than or equal to 0"]} = errors_on(changeset)
     end
 
     test "validates pin must be less than 128 for analog" do

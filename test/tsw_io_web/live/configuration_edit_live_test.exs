@@ -34,10 +34,10 @@ defmodule TswIoWeb.ConfigurationEditLiveTest do
 
     test "validates pin range for analog" do
       changeset =
-        Input.changeset(%Input{}, %{pin: 0, input_type: :analog, sensitivity: 5, device_id: 1})
+        Input.changeset(%Input{}, %{pin: -1, input_type: :analog, sensitivity: 5, device_id: 1})
 
       refute changeset.valid?
-      assert %{pin: ["must be greater than 0"]} = errors_on(changeset)
+      assert %{pin: ["must be greater than or equal to 0"]} = errors_on(changeset)
 
       changeset =
         Input.changeset(%Input{}, %{pin: 128, input_type: :analog, sensitivity: 5, device_id: 1})
@@ -46,7 +46,7 @@ defmodule TswIoWeb.ConfigurationEditLiveTest do
       assert %{pin: ["must be less than 128"]} = errors_on(changeset)
 
       changeset =
-        Input.changeset(%Input{}, %{pin: 100, input_type: :analog, sensitivity: 5, device_id: 1})
+        Input.changeset(%Input{}, %{pin: 0, input_type: :analog, sensitivity: 5, device_id: 1})
 
       assert changeset.valid?
     end
@@ -96,10 +96,10 @@ defmodule TswIoWeb.ConfigurationEditLiveTest do
 
     test "validates pin range for button" do
       changeset =
-        Input.changeset(%Input{}, %{pin: 0, input_type: :button, debounce: 20, device_id: 1})
+        Input.changeset(%Input{}, %{pin: -1, input_type: :button, debounce: 20, device_id: 1})
 
       refute changeset.valid?
-      assert %{pin: ["must be greater than 0"]} = errors_on(changeset)
+      assert %{pin: ["must be greater than or equal to 0"]} = errors_on(changeset)
 
       changeset =
         Input.changeset(%Input{}, %{pin: 128, input_type: :button, debounce: 20, device_id: 1})

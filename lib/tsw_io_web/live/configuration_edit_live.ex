@@ -805,8 +805,8 @@ defmodule TswIoWeb.ConfigurationEditLive do
               <.input
                 field={@form[:pin]}
                 type="number"
-                placeholder="Enter pin number (1-254)"
-                min="1"
+                placeholder="Enter pin number (0-254)"
+                min="0"
                 max="254"
                 class="input input-bordered w-full"
               />
