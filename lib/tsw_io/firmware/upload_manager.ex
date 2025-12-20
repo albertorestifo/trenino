@@ -273,6 +273,11 @@ defmodule TswIo.Firmware.UploadManager do
     Logger.error("Failed firmware upload #{upload.upload_id}: #{reason}")
   end
 
+  defp handle_upload_result(upload, {:error, reason}) do
+    # Handle 2-element error tuples (e.g., from early with clause failures)
+    handle_upload_result(upload, {:error, reason, nil})
+  end
+
   defp handle_upload_crash(upload, reason) do
     # Release the port
     Connection.release_upload_access(upload.port, upload.release_token)
