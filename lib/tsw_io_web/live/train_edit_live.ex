@@ -72,7 +72,9 @@ defmodule TswIoWeb.TrainEditLive do
      |> assign(:configuring_button_element, nil)
      |> assign(:button_config_form, nil)
      |> assign(:binding_button_element, nil)
-     |> assign(:available_button_inputs, [])}
+     |> assign(:available_button_inputs, [])
+     |> assign(:recording_button_input, false)
+     |> assign(:recording_timeout_ref, nil)}
   end
 
   defp mount_existing(socket, train_id) do
@@ -116,7 +118,9 @@ defmodule TswIoWeb.TrainEditLive do
          |> assign(:configuring_button_element, nil)
          |> assign(:button_config_form, nil)
          |> assign(:binding_button_element, nil)
-         |> assign(:available_button_inputs, [])}
+         |> assign(:available_button_inputs, [])
+         |> assign(:recording_button_input, false)
+         |> assign(:recording_timeout_ref, nil)}
 
       {:error, :not_found} ->
         {:ok,
@@ -298,9 +302,11 @@ defmodule TswIoWeb.TrainEditLive do
 
     case TrainContext.get_element(element_id, preload: [button_binding: [input: :device]]) do
       {:ok, element} ->
-        # Get available button inputs
+        # Get available button inputs (includes both button and matrix types)
         available_inputs = Hardware.list_all_inputs(include_uncalibrated: true)
-        button_inputs = Enum.filter(available_inputs, &(&1.input_type == :button))
+
+        button_inputs =
+          Enum.filter(available_inputs, &(&1.input_type in [:button, :matrix]))
 
         # Use changeset for form (follows lever config pattern)
         binding =
@@ -322,11 +328,37 @@ defmodule TswIoWeb.TrainEditLive do
 
   @impl true
   def handle_event("close_button_config_modal", _params, socket) do
+    {:noreply, close_button_config(socket)}
+  end
+
+  @impl true
+  def handle_event("start_recording_button", _params, socket) do
+    # Cancel any existing timeout
+    if socket.assigns.recording_timeout_ref do
+      Process.cancel_timer(socket.assigns.recording_timeout_ref)
+    end
+
+    # Subscribe to input values from all connected devices
+    devices = TswIo.Serial.Connection.list_devices()
+
+    Enum.each(devices, fn device_conn ->
+      if device_conn.status == :connected do
+        Hardware.ConfigurationManager.subscribe_input_values(device_conn.port)
+      end
+    end)
+
+    # Set 10 second timeout
+    timeout_ref = Process.send_after(self(), :button_recording_timeout, 10_000)
+
     {:noreply,
      socket
-     |> assign(:configuring_button_element, nil)
-     |> assign(:button_config_form, nil)
-     |> assign(:available_button_inputs, [])}
+     |> assign(:recording_button_input, true)
+     |> assign(:recording_timeout_ref, timeout_ref)}
+  end
+
+  @impl true
+  def handle_event("cancel_recording_button", _params, socket) do
+    {:noreply, stop_button_recording(socket)}
   end
 
   @impl true
@@ -897,6 +929,51 @@ defmodule TswIoWeb.TrainEditLive do
      |> put_flash(:info, "Auto-configured lever endpoints")}
   end
 
+  # Button recording - detect input press
+  @impl true
+  def handle_info({:input_value_updated, port, pin, value}, socket) do
+    # Only process if recording AND value is 1 (button press, not release)
+    if socket.assigns.recording_button_input && value == 1 do
+      case find_input_by_port_and_pin(port, pin, socket.assigns.available_button_inputs) do
+        {:ok, input} ->
+          # Stop recording and select this input
+          socket = stop_button_recording(socket)
+
+          # Update the form with the detected input
+          binding =
+            socket.assigns.configuring_button_element.button_binding ||
+              %ButtonInputBinding{}
+
+          current_params = socket.assigns.button_config_form.params || %{}
+          updated_params = Map.put(current_params, "input_id", to_string(input.id))
+          changeset = ButtonInputBinding.changeset(binding, updated_params)
+
+          {:noreply,
+           socket
+           |> assign(:button_config_form, to_form(changeset))
+           |> put_flash(:info, "Detected: #{input.device.name} - #{format_detected_pin(input, pin)}")}
+
+        {:error, :not_found} ->
+          # Button pressed but not in available inputs - keep recording
+          {:noreply, socket}
+      end
+    else
+      {:noreply, socket}
+    end
+  end
+
+  @impl true
+  def handle_info(:button_recording_timeout, socket) do
+    if socket.assigns.recording_button_input do
+      {:noreply,
+       socket
+       |> stop_button_recording()
+       |> put_flash(:warning, "Recording timed out - no button press detected")}
+    else
+      {:noreply, socket}
+    end
+  end
+
   @impl true
   def handle_info(_msg, socket), do: {:noreply, socket}
 
@@ -938,6 +1015,91 @@ defmodule TswIoWeb.TrainEditLive do
 
   defp parse_input_id(id) when is_integer(id) and id > 0, do: id
   defp parse_input_id(_), do: nil
+
+  # Button recording helpers
+  defp stop_button_recording(socket) do
+    if socket.assigns.recording_timeout_ref do
+      Process.cancel_timer(socket.assigns.recording_timeout_ref)
+    end
+
+    socket
+    |> assign(:recording_button_input, false)
+    |> assign(:recording_timeout_ref, nil)
+  end
+
+  defp close_button_config(socket) do
+    socket
+    |> stop_button_recording()
+    |> assign(:configuring_button_element, nil)
+    |> assign(:button_config_form, nil)
+    |> assign(:available_button_inputs, [])
+  end
+
+  defp find_input_by_port_and_pin(port, pin, available_inputs) do
+    # Find device config_id for this port
+    device_conn =
+      TswIo.Serial.Connection.list_devices()
+      |> Enum.find(fn d -> d.port == port && d.status == :connected end)
+
+    case device_conn do
+      nil ->
+        {:error, :not_found}
+
+      %{device_config_id: config_id} ->
+        # Find input matching this device and pin
+        result =
+          Enum.find(available_inputs, fn input ->
+            input.device.config_id == config_id && matches_input_pin?(input, pin)
+          end)
+
+        case result do
+          nil -> {:error, :not_found}
+          input -> {:ok, input}
+        end
+    end
+  end
+
+  defp matches_input_pin?(%{input_type: :button, pin: input_pin}, detected_pin) do
+    input_pin == detected_pin
+  end
+
+  defp matches_input_pin?(%{input_type: :matrix, matrix_pins: matrix_pins}, detected_pin)
+       when detected_pin >= 128 do
+    # For matrix inputs, check if the virtual pin is within this matrix's range
+    row_pins = Enum.filter(matrix_pins, &(&1.pin_type == :row))
+    col_pins = Enum.filter(matrix_pins, &(&1.pin_type == :col))
+    num_rows = length(row_pins)
+    num_cols = length(col_pins)
+
+    # Virtual pin formula: 128 + (row_idx * num_cols + col_idx)
+    # Valid range: 128 to 128 + (num_rows * num_cols) - 1
+    offset = detected_pin - 128
+    offset >= 0 && offset < num_rows * num_cols
+  end
+
+  defp matches_input_pin?(_input, _detected_pin), do: false
+
+  defp format_detected_pin(%{input_type: :button}, pin), do: "Pin #{pin}"
+
+  defp format_detected_pin(%{input_type: :matrix, matrix_pins: matrix_pins}, pin) do
+    col_count = Enum.count(matrix_pins, &(&1.pin_type == :col))
+    offset = pin - 128
+    row = div(offset, col_count)
+    col = rem(offset, col_count)
+    "Matrix Button (Row #{row}, Col #{col})"
+  end
+
+  defp format_detected_pin(_input, pin), do: "Pin #{pin}"
+
+  defp format_button_input_description(%{input_type: :button, pin: pin}), do: "Pin #{pin}"
+
+  defp format_button_input_description(%{input_type: :matrix, matrix_pins: matrix_pins}) do
+    row_count = Enum.count(matrix_pins, &(&1.pin_type == :row))
+    col_count = Enum.count(matrix_pins, &(&1.pin_type == :col))
+    "Matrix #{row_count}x#{col_count} (#{row_count * col_count} buttons)"
+  end
+
+  defp format_button_input_description(_input), do: "Unknown"
 
   defp save_train(%{assigns: %{new_mode: true}} = socket, params) do
     case TrainContext.create_train(params) do
@@ -1069,6 +1231,7 @@ defmodule TswIoWeb.TrainEditLive do
         form={@button_config_form}
         available_inputs={@available_button_inputs}
         simulator_connected={@nav_simulator_status.status == :connected}
+        recording={@recording_button_input}
       />
 
       <.live_component
@@ -2010,6 +2173,7 @@ defmodule TswIoWeb.TrainEditLive do
   attr :form, :map, required: true
   attr :available_inputs, :list, required: true
   attr :simulator_connected, :boolean, required: true
+  attr :recording, :boolean, required: true
 
   defp button_config_modal(assigns) do
     # Get current input_id from changeset-backed form
@@ -2044,16 +2208,48 @@ defmodule TswIoWeb.TrainEditLive do
           <div class="flex-1 overflow-y-auto p-6 space-y-6">
             <%!-- Input Selection --%>
             <div>
-              <h3 class="text-sm font-semibold mb-3">Button Input</h3>
+              <div class="flex items-center justify-between mb-3">
+                <h3 class="text-sm font-semibold">Button Input</h3>
+                <button
+                  type="button"
+                  phx-click={if @recording, do: "cancel_recording_button", else: "start_recording_button"}
+                  class={[
+                    "btn btn-sm gap-1",
+                    if(@recording, do: "btn-error", else: "btn-primary")
+                  ]}
+                  disabled={Enum.empty?(@available_inputs)}
+                >
+                  <.icon
+                    name={if @recording, do: "hero-x-mark", else: "hero-hand-raised"}
+                    class="w-4 h-4"
+                  />
+                  {if @recording, do: "Cancel", else: "Record"}
+                </button>
+              </div>
+
+              <%!-- Recording indicator --%>
+              <div
+                :if={@recording}
+                class="mb-3 p-3 bg-primary/10 border border-primary rounded-lg"
+              >
+                <div class="flex items-center gap-2">
+                  <span class="loading loading-spinner loading-sm text-primary"></span>
+                  <span class="text-sm font-medium">Press any button on your hardware...</span>
+                </div>
+                <p class="text-xs text-base-content/60 mt-1">
+                  Waiting for input (10 second timeout)
+                </p>
+              </div>
+
               <div
                 :if={Enum.empty?(@available_inputs)}
                 class="text-center py-6 text-base-content/50 bg-base-200/50 rounded-lg"
               >
                 <.icon name="hero-finger-print" class="w-10 h-10 mx-auto mb-2 opacity-30" />
                 <p class="text-sm">No button inputs available</p>
-                <p class="text-xs">Add a button input in a device configuration first</p>
+                <p class="text-xs">Add a button or matrix input in a device configuration first</p>
               </div>
-              <div :if={not Enum.empty?(@available_inputs)} class="space-y-2">
+              <div :if={not Enum.empty?(@available_inputs) and not @recording} class="space-y-2">
                 <label
                   :for={input <- @available_inputs}
                   class={"flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors " <>
@@ -2070,7 +2266,9 @@ defmodule TswIoWeb.TrainEditLive do
                   />
                   <div class="flex-1">
                     <p class="font-medium">{input.device.name}</p>
-                    <p class="text-sm text-base-content/60">Pin {input.pin}</p>
+                    <p class="text-sm text-base-content/60">
+                      {format_button_input_description(input)}
+                    </p>
                   </div>
                 </label>
               </div>

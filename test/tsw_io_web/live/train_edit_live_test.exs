@@ -284,7 +284,7 @@ defmodule TswIoWeb.TrainEditLiveTest do
 
       # Should show no inputs message
       assert html =~ "No button inputs available"
-      assert html =~ "Add a button input in a device configuration first"
+      assert html =~ "Add a button or matrix input in a device configuration first"
     end
 
     test "can configure button with available input", %{conn: conn, train: train} do
