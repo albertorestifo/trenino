@@ -101,9 +101,10 @@ defmodule TswIoWeb.MatrixTestWizardTest do
       assert result =~ "3x3 (9)"
     end
 
-    test "cannot add second matrix input with same pin=0", %{conn: conn, device: device} do
-      # First, add a matrix input
-      {:ok, _input} = Hardware.create_input(device.id, %{pin: 0, input_type: :matrix})
+    test "can add multiple matrix inputs to same device", %{conn: conn, device: device} do
+      # First, add a matrix input with pins 2,3 and 8,9
+      {:ok, input1} = Hardware.create_input(device.id, %{input_type: :matrix})
+      {:ok, _} = Hardware.set_matrix_pins(input1.id, [2, 3], [8, 9])
 
       {:ok, view, _html} = live(conn, "/configurations/#{device.config_id}")
 
@@ -115,7 +116,7 @@ defmodule TswIoWeb.MatrixTestWizardTest do
       |> form("form[phx-submit='add_input']", %{input: %{input_type: "matrix"}})
       |> render_change()
 
-      # Set row and column pins
+      # Set different row and column pins (no overlap with first matrix)
       view
       |> element("input[name='row_pins']")
       |> render_change(%{"row_pins" => "10,11"})
@@ -124,21 +125,23 @@ defmodule TswIoWeb.MatrixTestWizardTest do
       |> element("input[name='col_pins']")
       |> render_change(%{"col_pins" => "12,13"})
 
-      # Submit should fail gracefully (there's already a matrix input)
+      # Submit should succeed - multiple matrix inputs are allowed
       result =
         view
         |> form("form[phx-submit='add_input']", %{input: %{input_type: "matrix"}})
         |> render_submit()
 
-      # Should show an error message about matrix already existing
-      assert result =~ "matrix input already exists"
+      # Modal should close and both matrix inputs should be visible
+      refute result =~ "text-xl font-semibold mb-4\">Add Input"
+      # Both matrices should be shown (2x2 = 4 buttons each)
+      assert result =~ "2x2 (4)"
     end
   end
 
   describe "Matrix test wizard integration" do
     setup do
       {:ok, device} = Hardware.create_device(%{name: "Test Device"})
-      {:ok, input} = Hardware.create_input(device.id, %{pin: 0, input_type: :matrix})
+      {:ok, input} = Hardware.create_input(device.id, %{input_type: :matrix})
       {:ok, _pins} = Hardware.set_matrix_pins(input.id, [2, 3, 4], [8, 9, 10])
 
       # Reload input with matrix_pins

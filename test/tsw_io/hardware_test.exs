@@ -149,8 +149,9 @@ defmodule TswIo.HardwareTest do
       assert {:error, changeset} = Hardware.create_input(device.id, %{})
 
       errors = errors_on(changeset)
-      assert %{pin: ["can't be blank"]} = errors
+      # input_type is always required
       assert %{input_type: ["can't be blank"]} = errors
+      # Note: pin is only required for analog/button types, not matrix
       # Note: sensitivity is now only required when input_type is :analog
     end
 
@@ -265,29 +266,40 @@ defmodule TswIo.HardwareTest do
   end
 
   describe "create_input/2 with matrix type" do
-    test "creates matrix input with pin=0" do
+    test "creates matrix input with null pin" do
       {:ok, device} = Hardware.create_device(%{name: "Test Device"})
-      attrs = %{pin: 0, input_type: :matrix}
+      attrs = %{input_type: :matrix}
 
       assert {:ok, %Input{} = input} = Hardware.create_input(device.id, attrs)
       assert input.device_id == device.id
-      assert input.pin == 0
+      assert input.pin == nil
       assert input.input_type == :matrix
     end
 
-    test "matrix input requires pin to be 0" do
+    test "matrix input requires pin to be null" do
       {:ok, device} = Hardware.create_device(%{name: "Test Device"})
       attrs = %{pin: 5, input_type: :matrix}
 
       assert {:error, changeset} = Hardware.create_input(device.id, attrs)
-      assert %{pin: ["must be equal to 0"]} = errors_on(changeset)
+      assert %{pin: ["must be null for matrix inputs"]} = errors_on(changeset)
+    end
+
+    test "allows multiple matrix inputs per device" do
+      {:ok, device} = Hardware.create_device(%{name: "Test Device"})
+
+      assert {:ok, input1} = Hardware.create_input(device.id, %{input_type: :matrix})
+      assert {:ok, input2} = Hardware.create_input(device.id, %{input_type: :matrix})
+
+      assert input1.id != input2.id
+      assert input1.pin == nil
+      assert input2.pin == nil
     end
   end
 
   describe "set_matrix_pins/3" do
     test "creates row and column pins for matrix input" do
       {:ok, device} = Hardware.create_device(%{name: "Test Device"})
-      {:ok, input} = Hardware.create_input(device.id, %{pin: 0, input_type: :matrix})
+      {:ok, input} = Hardware.create_input(device.id, %{input_type: :matrix})
 
       row_pins = [2, 3, 4, 5]
       col_pins = [8, 9, 10]
@@ -308,7 +320,7 @@ defmodule TswIo.HardwareTest do
 
     test "replaces existing matrix pins" do
       {:ok, device} = Hardware.create_device(%{name: "Test Device"})
-      {:ok, input} = Hardware.create_input(device.id, %{pin: 0, input_type: :matrix})
+      {:ok, input} = Hardware.create_input(device.id, %{input_type: :matrix})
 
       # Set initial pins
       {:ok, _} = Hardware.set_matrix_pins(input.id, [2, 3], [8, 9])
@@ -326,10 +338,11 @@ defmodule TswIo.HardwareTest do
 
     test "validates pin range (0-127)" do
       {:ok, device} = Hardware.create_device(%{name: "Test Device"})
-      {:ok, input} = Hardware.create_input(device.id, %{pin: 0, input_type: :matrix})
+      {:ok, input} = Hardware.create_input(device.id, %{input_type: :matrix})
 
       assert {:error, _changeset} = Hardware.set_matrix_pins(input.id, [128], [8, 9])
       assert {:error, _changeset} = Hardware.set_matrix_pins(input.id, [2, 3], [128])
+      # Note: -1 is invalid as a matrix GPIO pin (valid range is 0-127)
       assert {:error, _changeset} = Hardware.set_matrix_pins(input.id, [-1], [8, 9])
     end
   end
@@ -337,7 +350,7 @@ defmodule TswIo.HardwareTest do
   describe "list_inputs/1 with matrix" do
     test "preloads matrix_pins" do
       {:ok, device} = Hardware.create_device(%{name: "Test Device"})
-      {:ok, input} = Hardware.create_input(device.id, %{pin: 0, input_type: :matrix})
+      {:ok, input} = Hardware.create_input(device.id, %{input_type: :matrix})
       {:ok, _} = Hardware.set_matrix_pins(input.id, [2, 3, 4], [8, 9])
 
       {:ok, [loaded_input]} = Hardware.list_inputs(device.id)

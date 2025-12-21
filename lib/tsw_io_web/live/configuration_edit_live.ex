@@ -442,10 +442,9 @@ defmodule TswIoWeb.ConfigurationEditLive do
       row_pins = parse_pins(row_pins_input)
       col_pins = parse_pins(col_pins_input)
 
-      # Create matrix input with pin=0 (placeholder for matrix type)
+      # Create matrix input (pin is null for matrix inputs - actual pins are in matrix_pins)
       case Hardware.create_input(socket.assigns.device.id, %{
-             "input_type" => "matrix",
-             "pin" => 0
+             "input_type" => "matrix"
            }) do
         {:ok, input} ->
           # Set the matrix pins
@@ -473,12 +472,14 @@ defmodule TswIoWeb.ConfigurationEditLive do
           end
 
         {:error, changeset} ->
-          # Check if this is a unique constraint error (matrix already exists)
+          # Extract a user-friendly error message from the changeset
           error_message =
-            if changeset.errors[:device_id] do
-              "A matrix input already exists for this device. Only one matrix input is allowed per device."
-            else
-              "Failed to create matrix input"
+            changeset.errors
+            |> Enum.map(fn {field, {msg, _opts}} -> "#{field}: #{msg}" end)
+            |> Enum.join(", ")
+            |> case do
+              "" -> "Failed to create matrix input"
+              errors -> errors
             end
 
           {:noreply, assign(socket, :matrix_errors, %{general: error_message})}
