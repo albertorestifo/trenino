@@ -263,4 +263,86 @@ defmodule TswIo.HardwareTest do
       assert {:error, :not_found} = Hardware.delete_input(999_999)
     end
   end
+
+  describe "create_input/2 with matrix type" do
+    test "creates matrix input with pin=0" do
+      {:ok, device} = Hardware.create_device(%{name: "Test Device"})
+      attrs = %{pin: 0, input_type: :matrix}
+
+      assert {:ok, %Input{} = input} = Hardware.create_input(device.id, attrs)
+      assert input.device_id == device.id
+      assert input.pin == 0
+      assert input.input_type == :matrix
+    end
+
+    test "matrix input requires pin to be 0" do
+      {:ok, device} = Hardware.create_device(%{name: "Test Device"})
+      attrs = %{pin: 5, input_type: :matrix}
+
+      assert {:error, changeset} = Hardware.create_input(device.id, attrs)
+      assert %{pin: ["must be equal to 0"]} = errors_on(changeset)
+    end
+  end
+
+  describe "set_matrix_pins/3" do
+    test "creates row and column pins for matrix input" do
+      {:ok, device} = Hardware.create_device(%{name: "Test Device"})
+      {:ok, input} = Hardware.create_input(device.id, %{pin: 0, input_type: :matrix})
+
+      row_pins = [2, 3, 4, 5]
+      col_pins = [8, 9, 10]
+
+      assert {:ok, pins} = Hardware.set_matrix_pins(input.id, row_pins, col_pins)
+      assert length(pins) == 7
+
+      row_pin_records = Enum.filter(pins, &(&1.pin_type == :row))
+      col_pin_records = Enum.filter(pins, &(&1.pin_type == :col))
+
+      assert length(row_pin_records) == 4
+      assert length(col_pin_records) == 3
+
+      # Verify positions are set correctly
+      assert Enum.map(Enum.sort_by(row_pin_records, & &1.position), & &1.pin) == [2, 3, 4, 5]
+      assert Enum.map(Enum.sort_by(col_pin_records, & &1.position), & &1.pin) == [8, 9, 10]
+    end
+
+    test "replaces existing matrix pins" do
+      {:ok, device} = Hardware.create_device(%{name: "Test Device"})
+      {:ok, input} = Hardware.create_input(device.id, %{pin: 0, input_type: :matrix})
+
+      # Set initial pins
+      {:ok, _} = Hardware.set_matrix_pins(input.id, [2, 3], [8, 9])
+
+      # Replace with new pins
+      {:ok, pins} = Hardware.set_matrix_pins(input.id, [10, 11, 12], [20, 21])
+      assert length(pins) == 5
+
+      row_pin_records = Enum.filter(pins, &(&1.pin_type == :row))
+      col_pin_records = Enum.filter(pins, &(&1.pin_type == :col))
+
+      assert Enum.map(Enum.sort_by(row_pin_records, & &1.position), & &1.pin) == [10, 11, 12]
+      assert Enum.map(Enum.sort_by(col_pin_records, & &1.position), & &1.pin) == [20, 21]
+    end
+
+    test "validates pin range (0-127)" do
+      {:ok, device} = Hardware.create_device(%{name: "Test Device"})
+      {:ok, input} = Hardware.create_input(device.id, %{pin: 0, input_type: :matrix})
+
+      assert {:error, _changeset} = Hardware.set_matrix_pins(input.id, [128], [8, 9])
+      assert {:error, _changeset} = Hardware.set_matrix_pins(input.id, [2, 3], [128])
+      assert {:error, _changeset} = Hardware.set_matrix_pins(input.id, [-1], [8, 9])
+    end
+  end
+
+  describe "list_inputs/1 with matrix" do
+    test "preloads matrix_pins" do
+      {:ok, device} = Hardware.create_device(%{name: "Test Device"})
+      {:ok, input} = Hardware.create_input(device.id, %{pin: 0, input_type: :matrix})
+      {:ok, _} = Hardware.set_matrix_pins(input.id, [2, 3, 4], [8, 9])
+
+      {:ok, [loaded_input]} = Hardware.list_inputs(device.id)
+
+      assert length(loaded_input.matrix_pins) == 5
+    end
+  end
 end

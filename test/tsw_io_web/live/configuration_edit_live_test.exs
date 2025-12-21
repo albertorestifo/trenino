@@ -131,6 +131,31 @@ defmodule TswIoWeb.ConfigurationEditLiveTest do
     end
   end
 
+  describe "Matrix input changeset" do
+    test "validates pin must be 0 for matrix type" do
+      changeset =
+        Input.changeset(%Input{}, %{pin: 5, input_type: :matrix, device_id: 1})
+
+      refute changeset.valid?
+      assert %{pin: ["must be equal to 0"]} = errors_on(changeset)
+    end
+
+    test "accepts pin 0 for matrix type" do
+      changeset =
+        Input.changeset(%Input{}, %{pin: 0, input_type: :matrix, device_id: 1})
+
+      assert changeset.valid?
+    end
+
+    test "does not require sensitivity or debounce for matrix type" do
+      changeset =
+        Input.changeset(%Input{}, %{pin: 0, input_type: :matrix, device_id: 1})
+
+      assert changeset.valid?
+      assert errors_on(changeset) == %{}
+    end
+  end
+
   describe "Hardware context integration" do
     setup do
       {:ok, device} = Hardware.create_device(%{name: "Test Device"})

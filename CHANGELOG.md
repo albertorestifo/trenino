@@ -4,6 +4,23 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Added
+
+- Matrix input configuration UI
+  - New "Matrix" input type option in add input modal
+  - Configure row and column GPIO pins using comma-separated values
+  - Live grid preview showing matrix dimensions and virtual pin mapping
+  - Validation for pin range (0-127), duplicates, and overlap between rows/columns
+- Matrix button test wizard
+  - Visual grid showing all matrix button positions
+  - Real-time button highlighting when pressed (purple)
+  - Persistent green state with checkmark for tested buttons (pressed at least once)
+  - Progress bar showing tested button count and percentage
+  - Reset button to clear tested state
+  - Allows verifying matrix wiring by testing all button connections
+
 ## [0.2.0]
 
 ### Added

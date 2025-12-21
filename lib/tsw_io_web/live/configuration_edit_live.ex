@@ -53,6 +53,11 @@ defmodule TswIoWeb.ConfigurationEditLive do
      |> assign(:active_port, nil)
      |> assign(:modal_open, false)
      |> assign(:form, to_form(Input.changeset(%Input{}, %{input_type: :analog, sensitivity: 5})))
+     |> assign(:matrix_row_pins_input, "")
+     |> assign(:matrix_col_pins_input, "")
+     |> assign(:matrix_errors, %{})
+     |> assign(:testing_matrix_input, nil)
+     |> assign(:matrix_tested_buttons, MapSet.new())
      |> assign(:output_modal_open, false)
      |> assign(:output_form, to_form(Output.changeset(%Output{}, %{})))
      |> assign(:applying, false)
@@ -96,6 +101,11 @@ defmodule TswIoWeb.ConfigurationEditLive do
            :form,
            to_form(Input.changeset(%Input{}, %{input_type: :analog, sensitivity: 5}))
          )
+         |> assign(:matrix_row_pins_input, "")
+         |> assign(:matrix_col_pins_input, "")
+         |> assign(:matrix_errors, %{})
+         |> assign(:testing_matrix_input, nil)
+         |> assign(:matrix_tested_buttons, MapSet.new())
          |> assign(:output_modal_open, false)
          |> assign(:output_form, to_form(Output.changeset(%Output{}, %{})))
          |> assign(:applying, false)
@@ -183,7 +193,10 @@ defmodule TswIoWeb.ConfigurationEditLive do
     {:noreply,
      socket
      |> assign(:modal_open, false)
-     |> assign(:form, to_form(Input.changeset(%Input{}, %{input_type: :analog, sensitivity: 5})))}
+     |> assign(:form, to_form(Input.changeset(%Input{}, %{input_type: :analog, sensitivity: 5})))
+     |> assign(:matrix_row_pins_input, "")
+     |> assign(:matrix_col_pins_input, "")
+     |> assign(:matrix_errors, %{})}
   end
 
   @impl true
@@ -197,7 +210,28 @@ defmodule TswIoWeb.ConfigurationEditLive do
   end
 
   @impl true
+  def handle_event("validate_matrix_pins", %{"row_pins" => row_pins, "col_pins" => col_pins}, socket) do
+    errors = validate_matrix_pins(row_pins, col_pins)
+
+    {:noreply,
+     socket
+     |> assign(:matrix_row_pins_input, row_pins)
+     |> assign(:matrix_col_pins_input, col_pins)
+     |> assign(:matrix_errors, errors)}
+  end
+
+  @impl true
   def handle_event("add_input", %{"input" => params}, socket) do
+    input_type = params["input_type"]
+
+    if input_type in ["matrix", :matrix] do
+      add_matrix_input(socket, params)
+    else
+      add_regular_input(socket, params)
+    end
+  end
+
+  defp add_regular_input(socket, params) do
     case Hardware.create_input(socket.assigns.device.id, params) do
       {:ok, _input} ->
         {:ok, inputs} = Hardware.list_inputs(socket.assigns.device.id)
@@ -215,6 +249,130 @@ defmodule TswIoWeb.ConfigurationEditLive do
         {:noreply, assign(socket, :form, to_form(changeset))}
     end
   end
+
+  defp add_matrix_input(socket, _params) do
+    row_pins_input = socket.assigns.matrix_row_pins_input
+    col_pins_input = socket.assigns.matrix_col_pins_input
+
+    errors = validate_matrix_pins(row_pins_input, col_pins_input)
+
+    if map_size(errors) > 0 do
+      {:noreply, assign(socket, :matrix_errors, errors)}
+    else
+      row_pins = parse_pins(row_pins_input)
+      col_pins = parse_pins(col_pins_input)
+
+      # Create matrix input with pin=0 (placeholder for matrix type)
+      case Hardware.create_input(socket.assigns.device.id, %{
+             "input_type" => "matrix",
+             "pin" => 0
+           }) do
+        {:ok, input} ->
+          # Set the matrix pins
+          case Hardware.set_matrix_pins(input.id, row_pins, col_pins) do
+            {:ok, _pins} ->
+              {:ok, inputs} = Hardware.list_inputs(socket.assigns.device.id)
+
+              {:noreply,
+               socket
+               |> assign(:inputs, inputs)
+               |> assign(:modal_open, false)
+               |> assign(:form, to_form(Input.changeset(%Input{}, %{input_type: :analog, sensitivity: 5})))
+               |> assign(:matrix_row_pins_input, "")
+               |> assign(:matrix_col_pins_input, "")
+               |> assign(:matrix_errors, %{})}
+
+            {:error, _changeset} ->
+              # Clean up the input we just created
+              Hardware.delete_input(input.id)
+
+              {:noreply,
+               assign(socket, :matrix_errors, %{general: "Failed to save matrix pins"})}
+          end
+
+        {:error, changeset} ->
+          {:noreply, assign(socket, :form, to_form(changeset))}
+      end
+    end
+  end
+
+  defp validate_matrix_pins(row_pins_str, col_pins_str) do
+    errors = %{}
+
+    row_pins = parse_pins(row_pins_str)
+    col_pins = parse_pins(col_pins_str)
+
+    errors =
+      if Enum.empty?(row_pins) do
+        Map.put(errors, :row_pins, "At least one row pin is required")
+      else
+        errors
+      end
+
+    errors =
+      if Enum.empty?(col_pins) do
+        Map.put(errors, :col_pins, "At least one column pin is required")
+      else
+        errors
+      end
+
+    # Check pin range (0-127)
+    invalid_row_pins = Enum.filter(row_pins, &(&1 < 0 or &1 > 127))
+    invalid_col_pins = Enum.filter(col_pins, &(&1 < 0 or &1 > 127))
+
+    errors =
+      if not Enum.empty?(invalid_row_pins) do
+        Map.put(errors, :row_pins, "Pins must be between 0 and 127")
+      else
+        errors
+      end
+
+    errors =
+      if not Enum.empty?(invalid_col_pins) do
+        Map.put(errors, :col_pins, "Pins must be between 0 and 127")
+      else
+        errors
+      end
+
+    # Check for duplicates within each list
+    errors =
+      if length(row_pins) != length(Enum.uniq(row_pins)) do
+        Map.put(errors, :row_pins, "Duplicate pins are not allowed")
+      else
+        errors
+      end
+
+    errors =
+      if length(col_pins) != length(Enum.uniq(col_pins)) do
+        Map.put(errors, :col_pins, "Duplicate pins are not allowed")
+      else
+        errors
+      end
+
+    # Check for overlap between rows and columns
+    overlap = MapSet.intersection(MapSet.new(row_pins), MapSet.new(col_pins))
+
+    if MapSet.size(overlap) > 0 do
+      Map.put(errors, :general, "Row and column pins cannot overlap")
+    else
+      errors
+    end
+  end
+
+  defp parse_pins(pins_str) when is_binary(pins_str) do
+    pins_str
+    |> String.split(",")
+    |> Enum.map(&String.trim/1)
+    |> Enum.reject(&(&1 == ""))
+    |> Enum.flat_map(fn s ->
+      case Integer.parse(s) do
+        {n, ""} -> [n]
+        _ -> []
+      end
+    end)
+  end
+
+  defp parse_pins(_), do: []
 
   @impl true
   def handle_event("delete_input", %{"id" => id}, socket) do
@@ -378,6 +536,23 @@ defmodule TswIoWeb.ConfigurationEditLive do
     end
   end
 
+  # Matrix Test
+  @impl true
+  def handle_event("start_matrix_test", %{"id" => id}, socket) do
+    input = Enum.find(socket.assigns.inputs, &(&1.id == String.to_integer(id)))
+
+    if input && socket.assigns.active_port do
+      {:noreply, assign(socket, :testing_matrix_input, input)}
+    else
+      {:noreply, put_flash(socket, :error, "Apply configuration to a device before testing")}
+    end
+  end
+
+  @impl true
+  def handle_info(:close_matrix_test, socket) do
+    {:noreply, assign(socket, :testing_matrix_input, nil)}
+  end
+
   # PubSub Event Handlers
 
   @impl true
@@ -451,7 +626,22 @@ defmodule TswIoWeb.ConfigurationEditLive do
   @impl true
   def handle_info({:input_value_updated, _port, pin, value}, socket) do
     new_values = Map.put(socket.assigns.input_values, pin, value)
-    {:noreply, assign(socket, :input_values, new_values)}
+    socket = assign(socket, :input_values, new_values)
+
+    # Track tested buttons for matrix (virtual pins >= 128) when pressed
+    socket =
+      if pin >= 128 and value == 1 and socket.assigns.testing_matrix_input do
+        update(socket, :matrix_tested_buttons, &MapSet.put(&1, pin))
+      else
+        socket
+      end
+
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_info(:reset_matrix_test, socket) do
+    {:noreply, assign(socket, :matrix_tested_buttons, MapSet.new())}
   end
 
   @impl true
@@ -555,7 +745,13 @@ defmodule TswIoWeb.ConfigurationEditLive do
         </div>
       </main>
 
-      <.add_input_modal :if={@modal_open} form={@form} />
+      <.add_input_modal
+        :if={@modal_open}
+        form={@form}
+        matrix_row_pins_input={@matrix_row_pins_input}
+        matrix_col_pins_input={@matrix_col_pins_input}
+        matrix_errors={@matrix_errors}
+      />
 
       <.add_output_modal :if={@output_modal_open} form={@output_form} />
 
@@ -578,6 +774,16 @@ defmodule TswIoWeb.ConfigurationEditLive do
         input={@calibrating_input}
         port={@active_port}
         session_state={@calibration_session_state}
+      />
+
+      <.live_component
+        :if={@testing_matrix_input}
+        module={TswIoWeb.MatrixTestWizard}
+        id="matrix-test-wizard"
+        input={@testing_matrix_input}
+        port={@active_port}
+        input_values={@input_values}
+        tested_buttons={@matrix_tested_buttons}
       />
     </div>
     """
@@ -715,17 +921,21 @@ defmodule TswIoWeb.ConfigurationEditLive do
             <th>Settings</th>
             <th>Raw</th>
             <th>Calibrated</th>
-            <th class="w-24"></th>
+            <th class="w-32"></th>
           </tr>
         </thead>
         <tbody>
           <tr :for={input <- @inputs} class="hover:bg-base-200/50">
-            <td class="text-center font-mono">{input.pin}</td>
+            <td class="text-center font-mono">
+              <span :if={input.input_type != :matrix}>{input.pin}</span>
+              <span :if={input.input_type == :matrix} class="text-base-content/50">--</span>
+            </td>
             <td>
               <span class={[
                 "badge badge-sm capitalize",
                 input.input_type == :analog && "badge-info",
-                input.input_type == :button && "badge-warning"
+                input.input_type == :button && "badge-warning",
+                input.input_type == :matrix && "badge-secondary"
               ]}>
                 {input.input_type}
               </span>
@@ -733,6 +943,7 @@ defmodule TswIoWeb.ConfigurationEditLive do
             <td class="font-mono text-sm">
               <span :if={input.input_type == :analog}>Sens: {input.sensitivity}</span>
               <span :if={input.input_type == :button}>Deb: {input.debounce || 0}ms</span>
+              <.matrix_settings :if={input.input_type == :matrix} matrix_pins={input.matrix_pins} />
             </td>
             <td>
               <.raw_value
@@ -759,6 +970,14 @@ defmodule TswIoWeb.ConfigurationEditLive do
                 <.icon name="hero-adjustments-horizontal" class="w-4 h-4" /> Calibrate
               </button>
               <button
+                :if={@active_port != nil && input.input_type == :matrix}
+                phx-click="start_matrix_test"
+                phx-value-id={input.id}
+                class="btn btn-ghost btn-xs text-primary hover:bg-primary/10"
+              >
+                <.icon name="hero-squares-2x2" class="w-4 h-4" /> Test
+              </button>
+              <button
                 phx-click="delete_input"
                 phx-value-id={input.id}
                 class="btn btn-ghost btn-xs text-error hover:bg-error/10"
@@ -773,6 +992,34 @@ defmodule TswIoWeb.ConfigurationEditLive do
     </div>
     """
   end
+
+  attr :matrix_pins, :list, default: []
+
+  defp matrix_settings(assigns) do
+    matrix_pins = loaded_matrix_pins(assigns.matrix_pins)
+    num_rows = Enum.count(matrix_pins, &(&1.pin_type == :row))
+    num_cols = Enum.count(matrix_pins, &(&1.pin_type == :col))
+    total = num_rows * num_cols
+
+    assigns =
+      assigns
+      |> assign(:num_rows, num_rows)
+      |> assign(:num_cols, num_cols)
+      |> assign(:total, total)
+
+    ~H"""
+    <span :if={@num_rows > 0 and @num_cols > 0}>
+      {@num_rows}x{@num_cols} ({@total})
+    </span>
+    <span :if={@num_rows == 0 or @num_cols == 0} class="text-base-content/50">
+      Not configured
+    </span>
+    """
+  end
+
+  defp loaded_matrix_pins(%Ecto.Association.NotLoaded{}), do: []
+  defp loaded_matrix_pins(nil), do: []
+  defp loaded_matrix_pins(pins), do: pins
 
   attr :value, :integer, default: nil
   attr :active, :boolean, required: true
@@ -941,17 +1188,35 @@ defmodule TswIoWeb.ConfigurationEditLive do
   end
 
   attr :form, :map, required: true
+  attr :matrix_row_pins_input, :string, required: true
+  attr :matrix_col_pins_input, :string, required: true
+  attr :matrix_errors, :map, required: true
 
   defp add_input_modal(assigns) do
+    row_pins = parse_pins(assigns.matrix_row_pins_input)
+    col_pins = parse_pins(assigns.matrix_col_pins_input)
+    num_rows = length(row_pins)
+    num_cols = length(col_pins)
+    total_buttons = num_rows * num_cols
+
+    assigns =
+      assigns
+      |> assign(:num_rows, num_rows)
+      |> assign(:num_cols, num_cols)
+      |> assign(:total_buttons, total_buttons)
+      |> assign(:row_pins, row_pins)
+      |> assign(:col_pins, col_pins)
+
     ~H"""
     <div class="fixed inset-0 z-50 flex items-center justify-center">
       <div class="absolute inset-0 bg-black/50" phx-click="close_add_input_modal" />
-      <div class="relative bg-base-100 rounded-xl shadow-xl w-full max-w-md mx-4 p-6">
+      <div class="relative bg-base-100 rounded-xl shadow-xl w-full max-w-md mx-4 p-6 max-h-[90vh] overflow-y-auto">
         <h2 class="text-xl font-semibold mb-4">Add Input</h2>
 
         <.form for={@form} phx-change="validate_input" phx-submit="add_input">
           <div class="space-y-4">
-            <div>
+            <%!-- Pin Number (hidden for matrix type) --%>
+            <div :if={@form[:input_type].value not in [:matrix, "matrix"]}>
               <label class="label">
                 <span class="label-text">Pin Number</span>
               </label>
@@ -972,7 +1237,7 @@ defmodule TswIoWeb.ConfigurationEditLive do
               <.input
                 field={@form[:input_type]}
                 type="select"
-                options={[{"Analog", :analog}, {"Button", :button}]}
+                options={[{"Analog", :analog}, {"Button", :button}, {"Matrix", :matrix}]}
                 class="select select-bordered w-full"
               />
             </div>
@@ -1002,6 +1267,101 @@ defmodule TswIoWeb.ConfigurationEditLive do
                 placeholder="20"
                 class="input input-bordered w-full"
               />
+            </div>
+
+            <%!-- Matrix Configuration Panel --%>
+            <div :if={@form[:input_type].value in [:matrix, "matrix"]} class="space-y-4">
+              <div class="bg-base-200 rounded-lg p-4">
+                <p class="text-sm text-base-content/70 mb-3">
+                  Enter GPIO pin numbers for rows and columns, separated by commas.
+                </p>
+
+                <div class="space-y-3">
+                  <div>
+                    <label class="label py-1">
+                      <span class="label-text text-sm">Row Pins</span>
+                    </label>
+                    <input
+                      type="text"
+                      name="row_pins"
+                      value={@matrix_row_pins_input}
+                      placeholder="e.g., 2, 3, 4, 5"
+                      phx-change="validate_matrix_pins"
+                      phx-debounce="300"
+                      class={[
+                        "input input-bordered input-sm w-full",
+                        @matrix_errors[:row_pins] && "input-error"
+                      ]}
+                    />
+                    <p :if={@matrix_errors[:row_pins]} class="text-error text-xs mt-1">
+                      {@matrix_errors[:row_pins]}
+                    </p>
+                  </div>
+
+                  <div>
+                    <label class="label py-1">
+                      <span class="label-text text-sm">Column Pins</span>
+                    </label>
+                    <input
+                      type="text"
+                      name="col_pins"
+                      value={@matrix_col_pins_input}
+                      placeholder="e.g., 8, 9, 10"
+                      phx-change="validate_matrix_pins"
+                      phx-debounce="300"
+                      class={[
+                        "input input-bordered input-sm w-full",
+                        @matrix_errors[:col_pins] && "input-error"
+                      ]}
+                    />
+                    <p :if={@matrix_errors[:col_pins]} class="text-error text-xs mt-1">
+                      {@matrix_errors[:col_pins]}
+                    </p>
+                  </div>
+
+                  <p :if={@matrix_errors[:general]} class="text-error text-sm">
+                    {@matrix_errors[:general]}
+                  </p>
+                </div>
+              </div>
+
+              <%!-- Grid Preview --%>
+              <div :if={@num_rows > 0 and @num_cols > 0} class="bg-base-200 rounded-lg p-4">
+                <div class="flex items-center justify-between mb-3">
+                  <span class="text-sm font-medium">Grid Preview</span>
+                  <span class="badge badge-secondary badge-sm">
+                    {@num_rows}x{@num_cols} = {@total_buttons} buttons
+                  </span>
+                </div>
+
+                <div class="overflow-x-auto">
+                  <table class="text-xs">
+                    <thead>
+                      <tr>
+                        <th class="p-1"></th>
+                        <th :for={{col_pin, col_idx} <- Enum.with_index(@col_pins)} class="p-1 text-center font-mono text-base-content/70">
+                          C{col_idx}<br/><span class="text-[10px]">({col_pin})</span>
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr :for={{row_pin, row_idx} <- Enum.with_index(@row_pins)}>
+                        <td class="p-1 font-mono text-base-content/70">
+                          R{row_idx} <span class="text-[10px]">({row_pin})</span>
+                        </td>
+                        <td :for={{_col_pin, col_idx} <- Enum.with_index(@col_pins)} class="p-1">
+                          <div class="w-8 h-6 bg-base-300 rounded flex items-center justify-center text-[10px] font-mono">
+                            {128 + row_idx * @num_cols + col_idx}
+                          </div>
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+                <p class="text-[10px] text-base-content/50 mt-2">
+                  Virtual pin = 128 + (row x cols + col)
+                </p>
+              </div>
             </div>
           </div>
 
