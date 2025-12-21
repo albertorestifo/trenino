@@ -128,4 +128,45 @@ defmodule TswIoWeb.ConfigurationListLiveTest do
       :disconnected -> "bg-base-content/20"
     end
   end
+
+  describe "device scanning" do
+    test "scan button shows scanning state when clicked", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      # Open the dropdown first
+      view |> element("button[phx-click='nav_toggle_dropdown']") |> render_click()
+
+      html = render(view)
+
+      # Dropdown is open and shows "Scan for Devices"
+      assert html =~ "Scan for Devices"
+      refute html =~ "Scanning..."
+
+      # Click the scan button
+      html = view |> element("button[phx-click='nav_scan_devices']") |> render_click()
+
+      # Now shows "Scanning..."
+      assert html =~ "Scanning..."
+      refute html =~ "Scan for Devices"
+    end
+
+    test "scan button resets after scan_complete event", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      # Open the dropdown first
+      view |> element("button[phx-click='nav_toggle_dropdown']") |> render_click()
+
+      # Click the scan button to start scanning
+      view |> element("button[phx-click='nav_scan_devices']") |> render_click()
+
+      # Simulate scan completion
+      send(view.pid, :scan_complete)
+
+      html = render(view)
+
+      # Button should be reset to "Scan for Devices"
+      assert html =~ "Scan for Devices"
+      refute html =~ "Scanning..."
+    end
+  end
 end

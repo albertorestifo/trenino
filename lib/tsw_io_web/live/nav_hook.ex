@@ -72,6 +72,10 @@ defmodule TswIoWeb.NavHook do
     {:cont, assign(socket, :nav_devices, devices)}
   end
 
+  defp handle_info(:scan_complete, socket) do
+    {:cont, assign(socket, :nav_scanning, false)}
+  end
+
   # Firmware update events
   defp handle_info({:firmware_update_available, version}, socket) do
     {:cont, assign(socket, :nav_firmware_update, %{available: true, version: version})}

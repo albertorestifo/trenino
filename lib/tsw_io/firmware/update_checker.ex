@@ -249,6 +249,12 @@ defmodule TswIo.Firmware.UpdateChecker do
     {:noreply, new_state}
   end
 
+  @impl true
+  def handle_info(:scan_complete, %State{} = state) do
+    # Ignore scan_complete events - not relevant for update checker
+    {:noreply, state}
+  end
+
   # Private Functions
 
   defp maybe_perform_check(%State{checking: true} = state, _force) do

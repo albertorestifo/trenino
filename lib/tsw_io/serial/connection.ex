@@ -249,6 +249,7 @@ defmodule TswIo.Serial.Connection do
   @impl true
   def handle_cast(:scan, state) do
     discover_new_ports(state)
+    broadcast_scan_complete()
     {:noreply, state}
   end
 
@@ -415,6 +416,10 @@ defmodule TswIo.Serial.Connection do
   defp broadcast_update(state) do
     devices = Map.values(state.ports)
     Phoenix.PubSub.broadcast(TswIo.PubSub, @pubsub_topic, {:devices_updated, devices})
+  end
+
+  defp broadcast_scan_complete do
+    Phoenix.PubSub.broadcast(TswIo.PubSub, @pubsub_topic, :scan_complete)
   end
 
   defp broadcast_message(port, message) do

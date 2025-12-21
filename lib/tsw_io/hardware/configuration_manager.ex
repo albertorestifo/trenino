@@ -212,6 +212,12 @@ defmodule TswIo.Hardware.ConfigurationManager do
     end
   end
 
+  @impl true
+  def handle_info(:scan_complete, %State{} = state) do
+    # Ignore scan_complete events - not relevant for configuration manager
+    {:noreply, state}
+  end
+
   # Private helpers
 
   defp maybe_subscribe_to_port(%State{} = state, port) do
