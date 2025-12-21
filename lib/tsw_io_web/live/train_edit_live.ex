@@ -1271,9 +1271,9 @@ defmodule TswIoWeb.TrainEditLive do
           </div>
         </div>
 
-        <div class="flex flex-col items-end gap-2">
+        <div class="flex flex-col items-end gap-2 flex-shrink-0">
           <%!-- Primary actions --%>
-          <div class="flex items-center gap-2">
+          <div class="flex flex-wrap items-center justify-end gap-2">
             <button
               :if={@lever_config}
               phx-click="open_input_binding"
