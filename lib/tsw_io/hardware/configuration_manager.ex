@@ -256,10 +256,15 @@ defmodule TswIo.Hardware.ConfigurationManager do
   defp send_configuration_messages(port, config_id, inputs) do
     total_parts = length(inputs)
 
+    Logger.info(
+      "Sending configuration to device on #{port}: config_id=#{config_id}, total_parts=#{total_parts}"
+    )
+
     inputs
     |> Enum.with_index()
     |> Enum.reduce_while(:ok, fn {%Input{} = input, index}, :ok ->
       message = build_configure_message(config_id, total_parts, index, input)
+      Logger.info("  [#{index + 1}/#{total_parts}] #{inspect(message)}")
 
       case Connection.send_message(port, message) do
         :ok -> {:cont, :ok}
