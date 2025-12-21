@@ -210,11 +210,11 @@ defmodule TswIoWeb.ConfigurationEditLive do
   end
 
   @impl true
-  def handle_event(
-        "validate_matrix_pins",
-        %{"row_pins" => row_pins, "col_pins" => col_pins},
-        socket
-      ) do
+  def handle_event("validate_matrix_pins", params, socket) do
+    # Handle partial updates - use existing value if not provided
+    row_pins = Map.get(params, "row_pins", socket.assigns.matrix_row_pins_input)
+    col_pins = Map.get(params, "col_pins", socket.assigns.matrix_col_pins_input)
+
     errors = validate_matrix_pins(row_pins, col_pins)
 
     {:noreply,

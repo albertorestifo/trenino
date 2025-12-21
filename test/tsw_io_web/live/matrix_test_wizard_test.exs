@@ -1,7 +1,56 @@
 defmodule TswIoWeb.MatrixTestWizardTest do
   use TswIoWeb.ConnCase
 
+  import Phoenix.LiveViewTest
+
   alias TswIo.Hardware
+
+  describe "validate_matrix_pins event" do
+    setup do
+      {:ok, device} = Hardware.create_device(%{name: "Test Device"})
+      %{device: device}
+    end
+
+    test "handles validation when only row_pins is provided", %{conn: conn, device: device} do
+      {:ok, view, _html} = live(conn, "/configurations/#{device.config_id}")
+
+      # Open the add input modal
+      view |> element("button", "Add Input") |> render_click()
+
+      # Change to matrix type using the actual form
+      view
+      |> form("form[phx-submit='add_input']", %{input: %{input_type: "matrix"}})
+      |> render_change()
+
+      # Type only in row_pins field - this should not crash
+      result =
+        view
+        |> element("input[name='row_pins']")
+        |> render_change(%{"row_pins" => "2,"})
+
+      assert result =~ "Row Pins"
+    end
+
+    test "handles validation when only col_pins is provided", %{conn: conn, device: device} do
+      {:ok, view, _html} = live(conn, "/configurations/#{device.config_id}")
+
+      # Open the add input modal
+      view |> element("button", "Add Input") |> render_click()
+
+      # Change to matrix type
+      view
+      |> form("form[phx-submit='add_input']", %{input: %{input_type: "matrix"}})
+      |> render_change()
+
+      # Type only in col_pins field - this should not crash
+      result =
+        view
+        |> element("input[name='col_pins']")
+        |> render_change(%{"col_pins" => "8,"})
+
+      assert result =~ "Column Pins"
+    end
+  end
 
   describe "Matrix test wizard integration" do
     setup do
