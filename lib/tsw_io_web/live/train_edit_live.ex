@@ -1063,8 +1063,15 @@ defmodule TswIoWeb.TrainEditLive do
     input_pin == detected_pin
   end
 
-  defp matches_input_pin?(%{input_type: :matrix, matrix_pins: matrix_pins}, detected_pin)
+  defp matches_input_pin?(%{input_type: :matrix, matrix_pins: %Ecto.Association.NotLoaded{}}, detected_pin)
        when detected_pin >= 128 do
+    # Matrix pins not loaded - assume any virtual pin could match this matrix
+    # This is a fallback; ideally matrix_pins should be preloaded
+    true
+  end
+
+  defp matches_input_pin?(%{input_type: :matrix, matrix_pins: matrix_pins}, detected_pin)
+       when detected_pin >= 128 and is_list(matrix_pins) do
     # For matrix inputs, check if the virtual pin is within this matrix's range
     row_pins = Enum.filter(matrix_pins, &(&1.pin_type == :row))
     col_pins = Enum.filter(matrix_pins, &(&1.pin_type == :col))
@@ -1081,19 +1088,34 @@ defmodule TswIoWeb.TrainEditLive do
 
   defp format_detected_pin(%{input_type: :button}, pin), do: "Pin #{pin}"
 
-  defp format_detected_pin(%{input_type: :matrix, matrix_pins: matrix_pins}, pin) do
+  defp format_detected_pin(%{input_type: :matrix, matrix_pins: %Ecto.Association.NotLoaded{}}, pin) do
+    "Matrix Button (Virtual Pin #{pin})"
+  end
+
+  defp format_detected_pin(%{input_type: :matrix, matrix_pins: matrix_pins}, pin)
+       when is_list(matrix_pins) do
     col_count = Enum.count(matrix_pins, &(&1.pin_type == :col))
-    offset = pin - 128
-    row = div(offset, col_count)
-    col = rem(offset, col_count)
-    "Matrix Button (Row #{row}, Col #{col})"
+
+    if col_count > 0 do
+      offset = pin - 128
+      row = div(offset, col_count)
+      col = rem(offset, col_count)
+      "Matrix Button (Row #{row}, Col #{col})"
+    else
+      "Matrix Button (Virtual Pin #{pin})"
+    end
   end
 
   defp format_detected_pin(_input, pin), do: "Pin #{pin}"
 
   defp format_button_input_description(%{input_type: :button, pin: pin}), do: "Pin #{pin}"
 
-  defp format_button_input_description(%{input_type: :matrix, matrix_pins: matrix_pins}) do
+  defp format_button_input_description(%{input_type: :matrix, matrix_pins: %Ecto.Association.NotLoaded{}}) do
+    "Matrix"
+  end
+
+  defp format_button_input_description(%{input_type: :matrix, matrix_pins: matrix_pins})
+       when is_list(matrix_pins) do
     row_count = Enum.count(matrix_pins, &(&1.pin_type == :row))
     col_count = Enum.count(matrix_pins, &(&1.pin_type == :col))
     "Matrix #{row_count}x#{col_count} (#{row_count * col_count} buttons)"
