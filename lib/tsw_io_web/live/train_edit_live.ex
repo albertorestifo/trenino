@@ -646,10 +646,10 @@ defmodule TswIoWeb.TrainEditLive do
     element = socket.assigns.mapping_notches_element
     notch_forms = socket.assigns.notch_forms
 
-    # Extract params from all forms
+    # Extract values from forms - apply_changes handles both loaded and edited forms
     notch_params =
       Enum.map(notch_forms, fn form ->
-        form.params
+        extract_notch_params(form)
       end)
 
     case TrainContext.save_notches(element.lever_config, notch_params) do
@@ -907,6 +907,23 @@ defmodule TswIoWeb.TrainEditLive do
       Notch.changeset(notch, %{})
       |> to_form()
     end)
+  end
+
+  # Extract notch parameters from a form
+  # Uses apply_changes to handle both loaded forms (data in struct) and
+  # edited forms (data in changes)
+  defp extract_notch_params(form) do
+    notch = Ecto.Changeset.apply_changes(form.source)
+
+    %{
+      "type" => notch.type && to_string(notch.type),
+      "description" => notch.description,
+      "value" => notch.value,
+      "min_value" => notch.min_value,
+      "max_value" => notch.max_value,
+      "input_min" => notch.input_min,
+      "input_max" => notch.input_max
+    }
   end
 
   defp parse_input_id(nil), do: nil
@@ -1276,6 +1293,19 @@ defmodule TswIoWeb.TrainEditLive do
               class="btn btn-sm btn-outline gap-1"
             >
               <.icon name="hero-queue-list" class="w-4 h-4" /> Map Notches
+            </button>
+            <button
+              :if={@lever_config && @input_binding && @notch_count > 0}
+              phx-click="open_guided_notch_mapping"
+              phx-value-id={@element.id}
+              class={[
+                "btn btn-sm gap-1",
+                if(@has_input_ranges, do: "btn-outline btn-success", else: "btn-primary")
+              ]}
+              title="Map physical lever positions to notch ranges"
+            >
+              <.icon name="hero-adjustments-horizontal" class="w-4 h-4" />
+              {if @has_input_ranges, do: "Remap Ranges", else: "Map Input Ranges"}
             </button>
           </div>
           <%!-- Secondary actions --%>
