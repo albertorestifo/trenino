@@ -210,7 +210,11 @@ defmodule TswIoWeb.ConfigurationEditLive do
   end
 
   @impl true
-  def handle_event("validate_matrix_pins", %{"row_pins" => row_pins, "col_pins" => col_pins}, socket) do
+  def handle_event(
+        "validate_matrix_pins",
+        %{"row_pins" => row_pins, "col_pins" => col_pins},
+        socket
+      ) do
     errors = validate_matrix_pins(row_pins, col_pins)
 
     {:noreply,
@@ -277,7 +281,10 @@ defmodule TswIoWeb.ConfigurationEditLive do
                socket
                |> assign(:inputs, inputs)
                |> assign(:modal_open, false)
-               |> assign(:form, to_form(Input.changeset(%Input{}, %{input_type: :analog, sensitivity: 5})))
+               |> assign(
+                 :form,
+                 to_form(Input.changeset(%Input{}, %{input_type: :analog, sensitivity: 5}))
+               )
                |> assign(:matrix_row_pins_input, "")
                |> assign(:matrix_col_pins_input, "")
                |> assign(:matrix_errors, %{})}
@@ -286,8 +293,7 @@ defmodule TswIoWeb.ConfigurationEditLive do
               # Clean up the input we just created
               Hardware.delete_input(input.id)
 
-              {:noreply,
-               assign(socket, :matrix_errors, %{general: "Failed to save matrix pins"})}
+              {:noreply, assign(socket, :matrix_errors, %{general: "Failed to save matrix pins"})}
           end
 
         {:error, changeset} ->
@@ -1339,8 +1345,11 @@ defmodule TswIoWeb.ConfigurationEditLive do
                     <thead>
                       <tr>
                         <th class="p-1"></th>
-                        <th :for={{col_pin, col_idx} <- Enum.with_index(@col_pins)} class="p-1 text-center font-mono text-base-content/70">
-                          C{col_idx}<br/><span class="text-[10px]">({col_pin})</span>
+                        <th
+                          :for={{col_pin, col_idx} <- Enum.with_index(@col_pins)}
+                          class="p-1 text-center font-mono text-base-content/70"
+                        >
+                          C{col_idx}<br /><span class="text-[10px]">({col_pin})</span>
                         </th>
                       </tr>
                     </thead>
