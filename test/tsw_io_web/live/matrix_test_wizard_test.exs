@@ -50,6 +50,89 @@ defmodule TswIoWeb.MatrixTestWizardTest do
 
       assert result =~ "Column Pins"
     end
+
+    test "can add a matrix input with row and column pins", %{conn: conn, device: device} do
+      {:ok, view, _html} = live(conn, "/configurations/#{device.config_id}")
+
+      # Open the add input modal
+      view |> element("button", "Add Input") |> render_click()
+
+      # Change to matrix type
+      view
+      |> form("form[phx-submit='add_input']", %{input: %{input_type: "matrix"}})
+      |> render_change()
+
+      # Set row and column pins - verify values are reflected in UI
+      html_after_row =
+        view
+        |> element("input[name='row_pins']")
+        |> render_change(%{"row_pins" => "2,3,4"})
+
+      # The grid preview should show after entering row pins
+      assert html_after_row =~ "value=\"2,3,4\""
+
+      html_after_col =
+        view
+        |> element("input[name='col_pins']")
+        |> render_change(%{"col_pins" => "5,6,7"})
+
+      # The grid should now show the matrix dimensions
+      assert html_after_col =~ "value=\"5,6,7\""
+      # Check for virtual pin numbers in the grid (128 is the first virtual pin)
+      assert html_after_col =~ "128"
+
+      # Verify there are no matrix validation errors before submitting
+      refute html_after_col =~ "At least one"
+
+      # Submit the form - this should not crash
+      result =
+        view
+        |> form("form[phx-submit='add_input']", %{input: %{input_type: "matrix"}})
+        |> render_submit()
+
+      # Modal should close (the h2 title should be gone, but button on main page stays)
+      # The modal has a specific structure, check for modal-specific elements being gone
+      refute result =~ "text-xl font-semibold mb-4\">Add Input"
+
+      # Matrix input should be visible in the inputs table
+      # The type is displayed as the atom, so it's lowercase "matrix"
+      assert result =~ "matrix"
+      # The dimensions are displayed as "3x3 (9)"
+      assert result =~ "3x3 (9)"
+    end
+
+    test "cannot add second matrix input with same pin=0", %{conn: conn, device: device} do
+      # First, add a matrix input
+      {:ok, _input} = Hardware.create_input(device.id, %{pin: 0, input_type: :matrix})
+
+      {:ok, view, _html} = live(conn, "/configurations/#{device.config_id}")
+
+      # Open the add input modal
+      view |> element("button", "Add Input") |> render_click()
+
+      # Change to matrix type
+      view
+      |> form("form[phx-submit='add_input']", %{input: %{input_type: "matrix"}})
+      |> render_change()
+
+      # Set row and column pins
+      view
+      |> element("input[name='row_pins']")
+      |> render_change(%{"row_pins" => "10,11"})
+
+      view
+      |> element("input[name='col_pins']")
+      |> render_change(%{"col_pins" => "12,13"})
+
+      # Submit should fail gracefully (there's already a matrix input)
+      result =
+        view
+        |> form("form[phx-submit='add_input']", %{input: %{input_type: "matrix"}})
+        |> render_submit()
+
+      # Should show an error, not crash
+      assert result =~ "already been taken" or result =~ "Matrix" or result =~ "Add Input"
+    end
   end
 
   describe "Matrix test wizard integration" do

@@ -235,151 +235,6 @@ defmodule TswIoWeb.ConfigurationEditLive do
     end
   end
 
-  defp add_regular_input(socket, params) do
-    case Hardware.create_input(socket.assigns.device.id, params) do
-      {:ok, _input} ->
-        {:ok, inputs} = Hardware.list_inputs(socket.assigns.device.id)
-
-        {:noreply,
-         socket
-         |> assign(:inputs, inputs)
-         |> assign(:modal_open, false)
-         |> assign(
-           :form,
-           to_form(Input.changeset(%Input{}, %{input_type: :analog, sensitivity: 5}))
-         )}
-
-      {:error, changeset} ->
-        {:noreply, assign(socket, :form, to_form(changeset))}
-    end
-  end
-
-  defp add_matrix_input(socket, _params) do
-    row_pins_input = socket.assigns.matrix_row_pins_input
-    col_pins_input = socket.assigns.matrix_col_pins_input
-
-    errors = validate_matrix_pins(row_pins_input, col_pins_input)
-
-    if map_size(errors) > 0 do
-      {:noreply, assign(socket, :matrix_errors, errors)}
-    else
-      row_pins = parse_pins(row_pins_input)
-      col_pins = parse_pins(col_pins_input)
-
-      # Create matrix input with pin=0 (placeholder for matrix type)
-      case Hardware.create_input(socket.assigns.device.id, %{
-             "input_type" => "matrix",
-             "pin" => 0
-           }) do
-        {:ok, input} ->
-          # Set the matrix pins
-          case Hardware.set_matrix_pins(input.id, row_pins, col_pins) do
-            {:ok, _pins} ->
-              {:ok, inputs} = Hardware.list_inputs(socket.assigns.device.id)
-
-              {:noreply,
-               socket
-               |> assign(:inputs, inputs)
-               |> assign(:modal_open, false)
-               |> assign(
-                 :form,
-                 to_form(Input.changeset(%Input{}, %{input_type: :analog, sensitivity: 5}))
-               )
-               |> assign(:matrix_row_pins_input, "")
-               |> assign(:matrix_col_pins_input, "")
-               |> assign(:matrix_errors, %{})}
-
-            {:error, _changeset} ->
-              # Clean up the input we just created
-              Hardware.delete_input(input.id)
-
-              {:noreply, assign(socket, :matrix_errors, %{general: "Failed to save matrix pins"})}
-          end
-
-        {:error, changeset} ->
-          {:noreply, assign(socket, :form, to_form(changeset))}
-      end
-    end
-  end
-
-  defp validate_matrix_pins(row_pins_str, col_pins_str) do
-    errors = %{}
-
-    row_pins = parse_pins(row_pins_str)
-    col_pins = parse_pins(col_pins_str)
-
-    errors =
-      if Enum.empty?(row_pins) do
-        Map.put(errors, :row_pins, "At least one row pin is required")
-      else
-        errors
-      end
-
-    errors =
-      if Enum.empty?(col_pins) do
-        Map.put(errors, :col_pins, "At least one column pin is required")
-      else
-        errors
-      end
-
-    # Check pin range (0-127)
-    invalid_row_pins = Enum.filter(row_pins, &(&1 < 0 or &1 > 127))
-    invalid_col_pins = Enum.filter(col_pins, &(&1 < 0 or &1 > 127))
-
-    errors =
-      if not Enum.empty?(invalid_row_pins) do
-        Map.put(errors, :row_pins, "Pins must be between 0 and 127")
-      else
-        errors
-      end
-
-    errors =
-      if not Enum.empty?(invalid_col_pins) do
-        Map.put(errors, :col_pins, "Pins must be between 0 and 127")
-      else
-        errors
-      end
-
-    # Check for duplicates within each list
-    errors =
-      if length(row_pins) != length(Enum.uniq(row_pins)) do
-        Map.put(errors, :row_pins, "Duplicate pins are not allowed")
-      else
-        errors
-      end
-
-    errors =
-      if length(col_pins) != length(Enum.uniq(col_pins)) do
-        Map.put(errors, :col_pins, "Duplicate pins are not allowed")
-      else
-        errors
-      end
-
-    # Check for overlap between rows and columns
-    overlap = MapSet.intersection(MapSet.new(row_pins), MapSet.new(col_pins))
-
-    if MapSet.size(overlap) > 0 do
-      Map.put(errors, :general, "Row and column pins cannot overlap")
-    else
-      errors
-    end
-  end
-
-  defp parse_pins(pins_str) when is_binary(pins_str) do
-    pins_str
-    |> String.split(",")
-    |> Enum.map(&String.trim/1)
-    |> Enum.reject(&(&1 == ""))
-    |> Enum.flat_map(fn s ->
-      case Integer.parse(s) do
-        {n, ""} -> [n]
-        _ -> []
-      end
-    end)
-  end
-
-  defp parse_pins(_), do: []
-
   @impl true
   def handle_event("delete_input", %{"id" => id}, socket) do
     case Hardware.delete_input(String.to_integer(id)) do
@@ -553,6 +408,155 @@ defmodule TswIoWeb.ConfigurationEditLive do
       {:noreply, put_flash(socket, :error, "Apply configuration to a device before testing")}
     end
   end
+
+  # Private helpers for input creation
+
+  defp add_regular_input(socket, params) do
+    case Hardware.create_input(socket.assigns.device.id, params) do
+      {:ok, _input} ->
+        {:ok, inputs} = Hardware.list_inputs(socket.assigns.device.id)
+
+        {:noreply,
+         socket
+         |> assign(:inputs, inputs)
+         |> assign(:modal_open, false)
+         |> assign(
+           :form,
+           to_form(Input.changeset(%Input{}, %{input_type: :analog, sensitivity: 5}))
+         )}
+
+      {:error, changeset} ->
+        {:noreply, assign(socket, :form, to_form(changeset))}
+    end
+  end
+
+  defp add_matrix_input(socket, _params) do
+    row_pins_input = socket.assigns.matrix_row_pins_input
+    col_pins_input = socket.assigns.matrix_col_pins_input
+
+    errors = validate_matrix_pins(row_pins_input, col_pins_input)
+
+    if map_size(errors) > 0 do
+      {:noreply, assign(socket, :matrix_errors, errors)}
+    else
+      row_pins = parse_pins(row_pins_input)
+      col_pins = parse_pins(col_pins_input)
+
+      # Create matrix input with pin=0 (placeholder for matrix type)
+      case Hardware.create_input(socket.assigns.device.id, %{
+             "input_type" => "matrix",
+             "pin" => 0
+           }) do
+        {:ok, input} ->
+          # Set the matrix pins
+          case Hardware.set_matrix_pins(input.id, row_pins, col_pins) do
+            {:ok, _pins} ->
+              {:ok, inputs} = Hardware.list_inputs(socket.assigns.device.id)
+
+              {:noreply,
+               socket
+               |> assign(:inputs, inputs)
+               |> assign(:modal_open, false)
+               |> assign(
+                 :form,
+                 to_form(Input.changeset(%Input{}, %{input_type: :analog, sensitivity: 5}))
+               )
+               |> assign(:matrix_row_pins_input, "")
+               |> assign(:matrix_col_pins_input, "")
+               |> assign(:matrix_errors, %{})}
+
+            {:error, _changeset} ->
+              # Clean up the input we just created
+              Hardware.delete_input(input.id)
+
+              {:noreply, assign(socket, :matrix_errors, %{general: "Failed to save matrix pins"})}
+          end
+
+        {:error, changeset} ->
+          {:noreply, assign(socket, :form, to_form(changeset))}
+      end
+    end
+  end
+
+  defp validate_matrix_pins(row_pins_str, col_pins_str) do
+    errors = %{}
+
+    row_pins = parse_pins(row_pins_str)
+    col_pins = parse_pins(col_pins_str)
+
+    errors =
+      if Enum.empty?(row_pins) do
+        Map.put(errors, :row_pins, "At least one row pin is required")
+      else
+        errors
+      end
+
+    errors =
+      if Enum.empty?(col_pins) do
+        Map.put(errors, :col_pins, "At least one column pin is required")
+      else
+        errors
+      end
+
+    # Check pin range (0-127)
+    invalid_row_pins = Enum.filter(row_pins, &(&1 < 0 or &1 > 127))
+    invalid_col_pins = Enum.filter(col_pins, &(&1 < 0 or &1 > 127))
+
+    errors =
+      if not Enum.empty?(invalid_row_pins) do
+        Map.put(errors, :row_pins, "Pins must be between 0 and 127")
+      else
+        errors
+      end
+
+    errors =
+      if not Enum.empty?(invalid_col_pins) do
+        Map.put(errors, :col_pins, "Pins must be between 0 and 127")
+      else
+        errors
+      end
+
+    # Check for duplicates within each list
+    errors =
+      if length(row_pins) != length(Enum.uniq(row_pins)) do
+        Map.put(errors, :row_pins, "Duplicate pins are not allowed")
+      else
+        errors
+      end
+
+    errors =
+      if length(col_pins) != length(Enum.uniq(col_pins)) do
+        Map.put(errors, :col_pins, "Duplicate pins are not allowed")
+      else
+        errors
+      end
+
+    # Check for overlap between rows and columns
+    overlap = MapSet.intersection(MapSet.new(row_pins), MapSet.new(col_pins))
+
+    if MapSet.size(overlap) > 0 do
+      Map.put(errors, :general, "Row and column pins cannot overlap")
+    else
+      errors
+    end
+  end
+
+  defp parse_pins(pins_str) when is_binary(pins_str) do
+    pins_str
+    |> String.split(",")
+    |> Enum.map(&String.trim/1)
+    |> Enum.reject(&(&1 == ""))
+    |> Enum.flat_map(fn s ->
+      case Integer.parse(s) do
+        {n, ""} -> [n]
+        _ -> []
+      end
+    end)
+  end
+
+  defp parse_pins(_), do: []
+
+  # handle_info callbacks
 
   @impl true
   def handle_info(:close_matrix_test, socket) do
