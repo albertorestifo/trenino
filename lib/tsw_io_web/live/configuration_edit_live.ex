@@ -473,7 +473,15 @@ defmodule TswIoWeb.ConfigurationEditLive do
           end
 
         {:error, changeset} ->
-          {:noreply, assign(socket, :form, to_form(changeset))}
+          # Check if this is a unique constraint error (matrix already exists)
+          error_message =
+            if changeset.errors[:device_id] do
+              "A matrix input already exists for this device. Only one matrix input is allowed per device."
+            else
+              "Failed to create matrix input"
+            end
+
+          {:noreply, assign(socket, :matrix_errors, %{general: error_message})}
       end
     end
   end

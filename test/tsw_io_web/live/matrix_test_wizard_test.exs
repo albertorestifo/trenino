@@ -130,8 +130,8 @@ defmodule TswIoWeb.MatrixTestWizardTest do
         |> form("form[phx-submit='add_input']", %{input: %{input_type: "matrix"}})
         |> render_submit()
 
-      # Should show an error, not crash
-      assert result =~ "already been taken" or result =~ "Matrix" or result =~ "Add Input"
+      # Should show an error message about matrix already existing
+      assert result =~ "matrix input already exists"
     end
   end
 
