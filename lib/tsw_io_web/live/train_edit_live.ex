@@ -1271,9 +1271,9 @@ defmodule TswIoWeb.TrainEditLive do
           </div>
         </div>
 
-        <div class="flex flex-col items-end gap-2 flex-shrink-0">
+        <div class="flex flex-col items-end gap-2">
           <%!-- Primary actions --%>
-          <div class="flex flex-wrap items-center justify-end gap-2">
+          <div class="flex items-center gap-2">
             <button
               :if={@lever_config}
               phx-click="open_input_binding"
@@ -1293,19 +1293,6 @@ defmodule TswIoWeb.TrainEditLive do
               class="btn btn-sm btn-outline gap-1"
             >
               <.icon name="hero-queue-list" class="w-4 h-4" /> Map Notches
-            </button>
-            <button
-              :if={@lever_config && @input_binding && @notch_count > 0}
-              phx-click="open_guided_notch_mapping"
-              phx-value-id={@element.id}
-              class={[
-                "btn btn-sm gap-1",
-                if(@has_input_ranges, do: "btn-outline btn-success", else: "btn-primary")
-              ]}
-              title="Map physical lever positions to notch ranges"
-            >
-              <.icon name="hero-adjustments-horizontal" class="w-4 h-4" />
-              {if @has_input_ranges, do: "Remap Ranges", else: "Map Input Ranges"}
             </button>
           </div>
           <%!-- Secondary actions --%>
@@ -1675,7 +1662,12 @@ defmodule TswIoWeb.TrainEditLive do
 
   defp notch_mapping_modal(assigns) do
     has_notch_endpoints = assigns.element.lever_config.notch_count_endpoint != nil
-    assigns = assign(assigns, :has_notch_endpoints, has_notch_endpoints)
+    has_input_binding = get_input_binding(assigns.element.lever_config) != nil
+
+    assigns =
+      assigns
+      |> assign(:has_notch_endpoints, has_notch_endpoints)
+      |> assign(:has_input_binding, has_input_binding)
 
     ~H"""
     <div class="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -1902,18 +1894,32 @@ defmodule TswIoWeb.TrainEditLive do
           </div>
         </div>
 
-        <div class="p-6 border-t border-base-300 flex justify-end gap-2">
-          <button type="button" phx-click="close_notch_mapping" class="btn btn-ghost">
-            Cancel
-          </button>
-          <button
-            type="button"
-            phx-click="save_notches"
-            class="btn btn-primary"
-            disabled={Enum.empty?(@notch_forms)}
-          >
-            <.icon name="hero-check" class="w-4 h-4" /> Save Notches
-          </button>
+        <div class="p-6 border-t border-base-300 flex justify-between gap-2">
+          <div>
+            <button
+              :if={@has_input_binding and not Enum.empty?(@notch_forms)}
+              type="button"
+              phx-click="open_guided_notch_mapping"
+              phx-value-id={@element.id}
+              class="btn btn-secondary btn-sm gap-1"
+              title="Map physical lever positions to notch ranges"
+            >
+              <.icon name="hero-adjustments-horizontal" class="w-4 h-4" /> Map Input Ranges
+            </button>
+          </div>
+          <div class="flex gap-2">
+            <button type="button" phx-click="close_notch_mapping" class="btn btn-ghost">
+              Cancel
+            </button>
+            <button
+              type="button"
+              phx-click="save_notches"
+              class="btn btn-primary"
+              disabled={Enum.empty?(@notch_forms)}
+            >
+              <.icon name="hero-check" class="w-4 h-4" /> Save Notches
+            </button>
+          </div>
         </div>
       </div>
     </div>
