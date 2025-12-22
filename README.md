@@ -50,27 +50,6 @@ See the video tutorial (WIP).
 
 ---
 
-## Roadmap
-
-This is an overview of the planned features, which I'll work on as I find the time:
-
-**Output Support**
-
-- LED indicators driven by simulator state
-- 7-segment displays
-
-**More Input Types**
-
-- Digital inputs for buttons and switches
-- Matrix support for button panels
-
-**Platform & Features**
-
-- Import/Export train configuration
-- Shared repository of train configurations
-
----
-
 ## Development
 
 ```bash

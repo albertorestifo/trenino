@@ -72,7 +72,11 @@ defmodule TswIoWeb.TrainEditLive do
      |> assign(:configuring_button_element, nil)
      |> assign(:button_config_form, nil)
      |> assign(:binding_button_element, nil)
-     |> assign(:available_button_inputs, [])}
+     |> assign(:available_button_inputs, [])
+     |> assign(:show_config_wizard, false)
+     |> assign(:config_wizard_element, nil)
+     |> assign(:config_wizard_mode, nil)
+     |> assign(:config_wizard_event, nil)}
   end
 
   defp mount_existing(socket, train_id) do
@@ -116,7 +120,11 @@ defmodule TswIoWeb.TrainEditLive do
          |> assign(:configuring_button_element, nil)
          |> assign(:button_config_form, nil)
          |> assign(:binding_button_element, nil)
-         |> assign(:available_button_inputs, [])}
+         |> assign(:available_button_inputs, [])
+         |> assign(:show_config_wizard, false)
+         |> assign(:config_wizard_element, nil)
+         |> assign(:config_wizard_mode, nil)
+         |> assign(:config_wizard_event, nil)}
 
       {:error, :not_found} ->
         {:ok,
@@ -224,20 +232,31 @@ defmodule TswIoWeb.TrainEditLive do
     end
   end
 
-  # Lever configuration
+  # Lever configuration - opens the configuration wizard (or fallback modal if simulator not connected)
   @impl true
   def handle_event("configure_lever", %{"id" => id}, socket) do
     element_id = String.to_integer(id)
 
     case TrainContext.get_element(element_id, preload: [lever_config: :notches]) do
       {:ok, element} ->
-        lever_config = element.lever_config || %LeverConfig{element_id: element_id}
-        changeset = LeverConfig.changeset(lever_config, %{})
+        if Map.get(socket.assigns, :nav_simulator_client) != nil do
+          # Use the new wizard when simulator is connected
+          {:noreply,
+           socket
+           |> assign(:show_config_wizard, true)
+           |> assign(:config_wizard_element, element)
+           |> assign(:config_wizard_mode, :lever)
+           |> assign(:config_wizard_event, nil)}
+        else
+          # Fallback to legacy modal when simulator not connected
+          lever_config = element.lever_config || %LeverConfig{element_id: element_id}
+          changeset = LeverConfig.changeset(lever_config, %{})
 
-        {:noreply,
-         socket
-         |> assign(:configuring_element, element)
-         |> assign(:lever_config_form, to_form(changeset))}
+          {:noreply,
+           socket
+           |> assign(:configuring_element, element)
+           |> assign(:lever_config_form, to_form(changeset))}
+        end
 
       {:error, :not_found} ->
         {:noreply, put_flash(socket, :error, "Element not found")}
@@ -291,7 +310,7 @@ defmodule TswIoWeb.TrainEditLive do
     end
   end
 
-  # Button configuration
+  # Button configuration - opens the configuration wizard (or fallback modal if simulator not connected)
   @impl true
   def handle_event("configure_button", %{"id" => id}, socket) do
     element_id = String.to_integer(id)
@@ -302,18 +321,29 @@ defmodule TswIoWeb.TrainEditLive do
         available_inputs = Hardware.list_all_inputs(include_uncalibrated: true)
         button_inputs = Enum.filter(available_inputs, &(&1.input_type == :button))
 
-        # Use changeset for form (follows lever config pattern)
-        binding =
-          element.button_binding ||
-            %ButtonInputBinding{element_id: element_id, on_value: 1.0, off_value: 0.0}
+        if Map.get(socket.assigns, :nav_simulator_client) != nil do
+          # Use the new wizard when simulator is connected
+          {:noreply,
+           socket
+           |> assign(:show_config_wizard, true)
+           |> assign(:config_wizard_element, element)
+           |> assign(:config_wizard_mode, :button)
+           |> assign(:config_wizard_event, nil)
+           |> assign(:available_button_inputs, button_inputs)}
+        else
+          # Fallback to legacy modal when simulator not connected
+          binding =
+            element.button_binding ||
+              %ButtonInputBinding{element_id: element_id, on_value: 1.0, off_value: 0.0}
 
-        changeset = ButtonInputBinding.changeset(binding, %{})
+          changeset = ButtonInputBinding.changeset(binding, %{})
 
-        {:noreply,
-         socket
-         |> assign(:configuring_button_element, element)
-         |> assign(:button_config_form, to_form(changeset))
-         |> assign(:available_button_inputs, button_inputs)}
+          {:noreply,
+           socket
+           |> assign(:configuring_button_element, element)
+           |> assign(:button_config_form, to_form(changeset))
+           |> assign(:available_button_inputs, button_inputs)}
+        end
 
       {:error, :not_found} ->
         {:noreply, put_flash(socket, :error, "Element not found")}
@@ -827,74 +857,155 @@ defmodule TswIoWeb.TrainEditLive do
      |> assign(:notch_mapping_state, nil)}
   end
 
-  # API Explorer component events
+  # API Explorer component events - forward to wizard when open
   @impl true
   def handle_info({:api_explorer_select, field, path}, socket) do
-    # Determine which modal is open and update the appropriate form
-    socket =
-      cond do
-        # Lever config modal is open
-        socket.assigns.configuring_element != nil ->
-          current_form = socket.assigns.lever_config_form
-          current_params = current_form.params || %{}
-          updated_params = Map.put(current_params, Atom.to_string(field), path)
+    cond do
+      # Wizard is open - forward the event
+      Map.get(socket.assigns, :show_config_wizard) ->
+        {:noreply, assign(socket, :config_wizard_event, {:select, field, path})}
 
-          lever_config = socket.assigns.configuring_element.lever_config || %LeverConfig{}
-          changeset = LeverConfig.changeset(lever_config, updated_params)
-          assign(socket, :lever_config_form, to_form(changeset))
+      # Legacy: Lever config modal is open
+      socket.assigns.configuring_element != nil ->
+        current_form = socket.assigns.lever_config_form
+        current_params = current_form.params || %{}
+        updated_params = Map.put(current_params, Atom.to_string(field), path)
 
-        # Button config modal is open
-        socket.assigns.configuring_button_element != nil ->
-          current_form = socket.assigns.button_config_form
-          current_params = current_form.params || %{}
-          updated_params = Map.put(current_params, Atom.to_string(field), path)
+        lever_config = socket.assigns.configuring_element.lever_config || %LeverConfig{}
+        changeset = LeverConfig.changeset(lever_config, updated_params)
 
-          binding =
-            socket.assigns.configuring_button_element.button_binding ||
-              %ButtonInputBinding{}
+        {:noreply,
+         socket
+         |> assign(:lever_config_form, to_form(changeset))
+         |> assign(:show_api_explorer, false)
+         |> assign(:api_explorer_field, nil)}
 
-          changeset = ButtonInputBinding.changeset(binding, updated_params)
-          assign(socket, :button_config_form, to_form(changeset))
+      # Legacy: Button config modal is open
+      socket.assigns.configuring_button_element != nil ->
+        current_form = socket.assigns.button_config_form
+        current_params = current_form.params || %{}
+        updated_params = Map.put(current_params, Atom.to_string(field), path)
 
-        true ->
-          socket
-      end
+        binding =
+          socket.assigns.configuring_button_element.button_binding ||
+            %ButtonInputBinding{}
 
-    {:noreply,
-     socket
-     |> assign(:show_api_explorer, false)
-     |> assign(:api_explorer_field, nil)}
+        changeset = ButtonInputBinding.changeset(binding, updated_params)
+
+        {:noreply,
+         socket
+         |> assign(:button_config_form, to_form(changeset))
+         |> assign(:show_api_explorer, false)
+         |> assign(:api_explorer_field, nil)}
+
+      true ->
+        {:noreply,
+         socket
+         |> assign(:show_api_explorer, false)
+         |> assign(:api_explorer_field, nil)}
+    end
   end
 
   @impl true
   def handle_info({:api_explorer_close}, socket) do
-    {:noreply,
-     socket
-     |> assign(:show_api_explorer, false)
-     |> assign(:api_explorer_field, nil)}
+    cond do
+      # Wizard is open - forward the close event
+      Map.get(socket.assigns, :show_config_wizard) ->
+        {:noreply, assign(socket, :config_wizard_event, :close)}
+
+      true ->
+        {:noreply,
+         socket
+         |> assign(:show_api_explorer, false)
+         |> assign(:api_explorer_field, nil)}
+    end
   end
 
   @impl true
   def handle_info({:api_explorer_auto_configure, endpoints}, socket) do
-    # Auto-fill all lever config fields from detected endpoints
-    lever_config = socket.assigns.configuring_element.lever_config || %LeverConfig{}
+    cond do
+      # Wizard is open - forward the auto-configure event
+      Map.get(socket.assigns, :show_config_wizard) ->
+        {:noreply, assign(socket, :config_wizard_event, {:auto_configure, endpoints})}
 
-    params = %{
-      "min_endpoint" => endpoints.min_endpoint,
-      "max_endpoint" => endpoints.max_endpoint,
-      "value_endpoint" => endpoints.value_endpoint,
-      "notch_count_endpoint" => endpoints.notch_count_endpoint,
-      "notch_index_endpoint" => endpoints.notch_index_endpoint
-    }
+      # Legacy: Lever config modal is open
+      socket.assigns.configuring_element != nil ->
+        lever_config = socket.assigns.configuring_element.lever_config || %LeverConfig{}
 
-    changeset = LeverConfig.changeset(lever_config, params)
+        params = %{
+          "min_endpoint" => endpoints.min_endpoint,
+          "max_endpoint" => endpoints.max_endpoint,
+          "value_endpoint" => endpoints.value_endpoint,
+          "notch_count_endpoint" => endpoints.notch_count_endpoint,
+          "notch_index_endpoint" => endpoints.notch_index_endpoint
+        }
+
+        changeset = LeverConfig.changeset(lever_config, params)
+
+        {:noreply,
+         socket
+         |> assign(:lever_config_form, to_form(changeset))
+         |> assign(:show_api_explorer, false)
+         |> assign(:api_explorer_field, nil)
+         |> put_flash(:info, "Auto-configured lever endpoints")}
+
+      true ->
+        {:noreply, socket}
+    end
+  end
+
+  @impl true
+  def handle_info({:api_explorer_individual_selection}, socket) do
+    if Map.get(socket.assigns, :show_config_wizard) do
+      {:noreply, assign(socket, :config_wizard_event, :individual_selection)}
+    else
+      {:noreply, socket}
+    end
+  end
+
+  @impl true
+  def handle_info({:api_explorer_button_detected, detection}, socket) do
+    if Map.get(socket.assigns, :show_config_wizard) do
+      {:noreply, assign(socket, :config_wizard_event, {:button_detected, detection})}
+    else
+      {:noreply, socket}
+    end
+  end
+
+  # Configuration wizard completion events
+  @impl true
+  def handle_info({:configuration_complete, element_id, :ok}, socket) do
+    {:ok, elements} = TrainContext.list_elements(socket.assigns.train.id)
+
+    # Reload controller bindings based on type
+    element = Enum.find(elements, &(&1.id == element_id))
+
+    if element do
+      case element.type do
+        :lever -> TswIo.Train.LeverController.reload_bindings()
+        :button -> TswIo.Train.ButtonController.reload_bindings()
+        _ -> :ok
+      end
+    end
 
     {:noreply,
      socket
-     |> assign(:lever_config_form, to_form(changeset))
-     |> assign(:show_api_explorer, false)
-     |> assign(:api_explorer_field, nil)
-     |> put_flash(:info, "Auto-configured lever endpoints")}
+     |> assign(:elements, elements)
+     |> assign(:show_config_wizard, false)
+     |> assign(:config_wizard_element, nil)
+     |> assign(:config_wizard_mode, nil)
+     |> assign(:config_wizard_event, nil)
+     |> put_flash(:info, "Configuration saved")}
+  end
+
+  @impl true
+  def handle_info({:configuration_cancelled, _element_id}, socket) do
+    {:noreply,
+     socket
+     |> assign(:show_config_wizard, false)
+     |> assign(:config_wizard_element, nil)
+     |> assign(:config_wizard_mode, nil)
+     |> assign(:config_wizard_event, nil)}
   end
 
   @impl true
@@ -1052,6 +1163,17 @@ defmodule TswIoWeb.TrainEditLive do
         form={@button_config_form}
         available_inputs={@available_button_inputs}
         simulator_connected={@nav_simulator_status.status == :connected}
+      />
+
+      <.live_component
+        :if={@show_config_wizard and Map.get(assigns, :nav_simulator_client) != nil}
+        module={TswIoWeb.ConfigurationWizardComponent}
+        id="config-wizard"
+        mode={@config_wizard_mode}
+        element={@config_wizard_element}
+        client={@nav_simulator_client}
+        available_inputs={@available_button_inputs}
+        explorer_event={@config_wizard_event}
       />
 
       <.live_component
