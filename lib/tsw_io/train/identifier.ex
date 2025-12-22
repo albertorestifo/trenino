@@ -39,7 +39,137 @@ defmodule TswIo.Train.Identifier do
     strip_trailing_non_alphanumeric(prefix)
   end
 
+  @doc """
+  Extracts a human-readable train name from a TSW6 train identifier.
+
+  The identifier follows the pattern: `RVM_<ROUTE>_<CLASS>_<VARIANT>_C`
+  The function attempts to extract meaningful train names from common patterns.
+
+  ## Examples
+
+      iex> extract_train_name("RVM_PBO_Class142_DMSL_New_GMPTE_C")
+      "Class 142"
+
+      iex> extract_train_name("RVM_FSN_DB_BR430_ETW4_C")
+      "DB BR 430"
+
+      iex> extract_train_name("RVM_LIRREX_M9-B_C")
+      "M9"
+
+      iex> extract_train_name("RVM_CJP_BNSF_ES44C4_C")
+      "BNSF ES44C4"
+
+      iex> extract_train_name("unknown_format")
+      ""
+  """
+  @spec extract_train_name(String.t()) :: String.t()
+  def extract_train_name(identifier) when is_binary(identifier) do
+    # Strip optional _C suffix and split by underscores
+    parts =
+      identifier
+      |> String.replace_suffix("_C", "")
+      |> String.split("_")
+
+    extract_name_from_parts(parts)
+  end
+
   # Private functions
+
+  # Handle RVM prefix pattern: RVM_<ROUTE>_...
+  defp extract_name_from_parts(["RVM" | rest]) do
+    extract_name_from_parts(rest)
+  end
+
+  # Skip route code (usually 3-6 char abbreviation) and process remaining parts
+  defp extract_name_from_parts([_route | rest]) when length(rest) > 0 do
+    candidate = find_train_name_pattern(rest)
+
+    if candidate != "", do: candidate, else: fallback_name(rest)
+  end
+
+  defp extract_name_from_parts(_), do: ""
+
+  # Pattern matching for common train name formats
+  defp find_train_name_pattern(parts) do
+    # First check for multi-part patterns (DB + BR, company + model)
+    case find_db_br_pattern(parts) do
+      "" ->
+        case find_company_model_pattern(parts) do
+          "" -> find_single_part_pattern(parts)
+          name -> name
+        end
+
+      name ->
+        name
+    end
+  end
+
+  # Match single-part patterns like "Class142" or "M9"
+  defp find_single_part_pattern(parts) do
+    Enum.find_value(parts, "", fn part ->
+      cond do
+        # Match "Class" followed by number (e.g., "Class142")
+        String.match?(part, ~r/^Class\d+$/i) ->
+          String.replace(part, ~r/^(Class)(\d+)$/i, "\\1 \\2")
+
+        # Match standalone model numbers (M9, M7, etc.) - single letter followed by 1-2 digits
+        String.match?(part, ~r/^[A-Z]\d{1,2}(-[A-Z])?$/i) ->
+          String.replace(part, ~r/^([A-Z]\d+)(-[A-Z])?$/i, "\\1")
+
+        true ->
+          nil
+      end
+    end)
+  end
+
+  defp find_db_br_pattern(parts) do
+    parts
+    |> Enum.chunk_every(2, 1, :discard)
+    |> Enum.find_value("", fn
+      ["DB", br] ->
+        if String.match?(br, ~r/^BR\d+$/i) do
+          number = String.replace(br, ~r/^BR(\d+)$/i, "\\1")
+          "DB BR #{number}"
+        else
+          nil
+        end
+
+      _ ->
+        nil
+    end)
+  end
+
+  defp find_company_model_pattern(parts) do
+    parts
+    |> Enum.chunk_every(2, 1, :discard)
+    |> Enum.find_value("", fn
+      [company, model] ->
+        if is_company_name?(company) and String.match?(model, ~r/^[A-Z0-9]+/i) do
+          "#{company} #{model}"
+        else
+          nil
+        end
+
+      _ ->
+        nil
+    end)
+  end
+
+  defp is_company_name?(part) do
+    # Common railway company abbreviations
+    part in ["BNSF", "UP", "NS", "CSX", "DB", "SNCF", "LIRR", "MBTA", "NJT", "AMTK"]
+  end
+
+  defp fallback_name(parts) do
+    # As a last resort, try to find the most "train-like" part
+    # (contains letters and numbers, not too long)
+    parts
+    |> Enum.find("", fn part ->
+      String.match?(part, ~r/^[A-Z0-9]{2,10}$/i) and
+        String.match?(part, ~r/\d/) and
+        String.match?(part, ~r/[A-Z]/i)
+    end)
+  end
 
   defp get_object_classes(_client, 0), do: {:error, :empty_formation}
   defp get_object_classes(_client, 1), do: {:error, :single_car_formation}

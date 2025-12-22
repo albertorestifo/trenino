@@ -12,6 +12,7 @@ defmodule TswIoWeb.TrainEditLive do
   import TswIoWeb.SharedComponents
 
   alias TswIo.Hardware
+  alias TswIo.Simulator.ControlDetector
   alias TswIo.Train, as: TrainContext
   alias TswIo.Train.{Train, Element, LeverConfig, LeverInputBinding, Notch, ButtonInputBinding}
   alias TswIo.Train.{LeverController, ButtonController}
@@ -44,7 +45,15 @@ defmodule TswIoWeb.TrainEditLive do
     # Check for pre-filled identifier from URL query params
     identifier = params["identifier"] || ""
 
-    train = %Train{name: "", description: nil, identifier: identifier}
+    # Extract a suggested name from the identifier if present
+    suggested_name =
+      if identifier != "" do
+        TswIo.Train.Identifier.extract_train_name(identifier)
+      else
+        ""
+      end
+
+    train = %Train{name: suggested_name, description: nil, identifier: identifier}
     changeset = Train.changeset(train, %{})
 
     {:ok,
@@ -74,7 +83,10 @@ defmodule TswIoWeb.TrainEditLive do
      |> assign(:binding_button_element, nil)
      |> assign(:available_button_inputs, [])
      |> assign(:recording_button_input, false)
-     |> assign(:recording_timeout_ref, nil)}
+     |> assign(:recording_timeout_ref, nil)
+     |> assign(:button_input_values, %{})
+     |> assign(:lever_suggestion, nil)
+     |> assign(:button_suggestion, nil)}
   end
 
   defp mount_existing(socket, train_id) do
@@ -120,7 +132,10 @@ defmodule TswIoWeb.TrainEditLive do
          |> assign(:binding_button_element, nil)
          |> assign(:available_button_inputs, [])
          |> assign(:recording_button_input, false)
-         |> assign(:recording_timeout_ref, nil)}
+         |> assign(:recording_timeout_ref, nil)
+         |> assign(:button_input_values, %{})
+         |> assign(:lever_suggestion, nil)
+         |> assign(:button_suggestion, nil)}
 
       {:error, :not_found} ->
         {:ok,
@@ -238,10 +253,18 @@ defmodule TswIoWeb.TrainEditLive do
         lever_config = element.lever_config || %LeverConfig{element_id: element_id}
         changeset = LeverConfig.changeset(lever_config, %{})
 
+        # Try to get a suggestion if simulator is connected
+        lever_suggestion =
+          case ControlDetector.suggest_lever(element.name) do
+            {:ok, suggestion} -> suggestion
+            {:error, _} -> nil
+          end
+
         {:noreply,
          socket
          |> assign(:configuring_element, element)
-         |> assign(:lever_config_form, to_form(changeset))}
+         |> assign(:lever_config_form, to_form(changeset))
+         |> assign(:lever_suggestion, lever_suggestion)}
 
       {:error, :not_found} ->
         {:noreply, put_flash(socket, :error, "Element not found")}
@@ -253,7 +276,31 @@ defmodule TswIoWeb.TrainEditLive do
     {:noreply,
      socket
      |> assign(:configuring_element, nil)
-     |> assign(:lever_config_form, nil)}
+     |> assign(:lever_config_form, nil)
+     |> assign(:lever_suggestion, nil)}
+  end
+
+  @impl true
+  def handle_event("apply_lever_suggestion", _params, socket) do
+    case socket.assigns.lever_suggestion do
+      nil ->
+        {:noreply, socket}
+
+      suggestion ->
+        lever_config = socket.assigns.configuring_element.lever_config || %LeverConfig{}
+
+        params = %{
+          "min_endpoint" => suggestion.min_endpoint,
+          "max_endpoint" => suggestion.max_endpoint,
+          "value_endpoint" => suggestion.value_endpoint,
+          "notch_count_endpoint" => suggestion.notch_count_endpoint,
+          "notch_index_endpoint" => suggestion.notch_index_endpoint
+        }
+
+        changeset = LeverConfig.changeset(lever_config, params)
+
+        {:noreply, assign(socket, :lever_config_form, to_form(changeset))}
+    end
   end
 
   @impl true
@@ -308,6 +355,15 @@ defmodule TswIoWeb.TrainEditLive do
         button_inputs =
           Enum.filter(available_inputs, &(&1.input_type in [:button, :matrix]))
 
+        # Subscribe to input values from all connected devices for live testing
+        devices = TswIo.Serial.Connection.list_devices()
+
+        Enum.each(devices, fn device_conn ->
+          if device_conn.status == :connected do
+            Hardware.ConfigurationManager.subscribe_input_values(device_conn.port)
+          end
+        end)
+
         # Use changeset for form (follows lever config pattern)
         binding =
           element.button_binding ||
@@ -315,11 +371,20 @@ defmodule TswIoWeb.TrainEditLive do
 
         changeset = ButtonInputBinding.changeset(binding, %{})
 
+        # Try to get a suggestion if simulator is connected
+        button_suggestion =
+          case ControlDetector.suggest_button(element.name) do
+            {:ok, suggestion} -> suggestion
+            {:error, _} -> nil
+          end
+
         {:noreply,
          socket
          |> assign(:configuring_button_element, element)
          |> assign(:button_config_form, to_form(changeset))
-         |> assign(:available_button_inputs, button_inputs)}
+         |> assign(:available_button_inputs, button_inputs)
+         |> assign(:button_input_values, %{})
+         |> assign(:button_suggestion, button_suggestion)}
 
       {:error, :not_found} ->
         {:noreply, put_flash(socket, :error, "Element not found")}
@@ -359,6 +424,26 @@ defmodule TswIoWeb.TrainEditLive do
   @impl true
   def handle_event("cancel_recording_button", _params, socket) do
     {:noreply, stop_button_recording(socket)}
+  end
+
+  @impl true
+  def handle_event("apply_button_suggestion", _params, socket) do
+    case socket.assigns.button_suggestion do
+      nil ->
+        {:noreply, socket}
+
+      suggestion ->
+        binding =
+          socket.assigns.configuring_button_element.button_binding || %ButtonInputBinding{}
+
+        params = %{
+          "endpoint" => suggestion.endpoint
+        }
+
+        changeset = ButtonInputBinding.changeset(binding, params)
+
+        {:noreply, assign(socket, :button_config_form, to_form(changeset))}
+    end
   end
 
   @impl true
@@ -571,7 +656,9 @@ defmodule TswIoWeb.TrainEditLive do
   def handle_event("open_notch_mapping", %{"id" => id}, socket) do
     element_id = String.to_integer(id)
 
-    case TrainContext.get_element(element_id, preload: [lever_config: :notches]) do
+    case TrainContext.get_element(element_id,
+           preload: [lever_config: [:notches, input_binding: [input: :device]]]
+         ) do
       {:ok, element} ->
         if element.lever_config do
           notch_forms = build_notch_forms(element.lever_config.notches)
@@ -929,10 +1016,20 @@ defmodule TswIoWeb.TrainEditLive do
      |> put_flash(:info, "Auto-configured lever endpoints")}
   end
 
-  # Button recording - detect input press
+  # Button input value updates - track for live testing and recording
   @impl true
   def handle_info({:input_value_updated, port, pin, value}, socket) do
-    # Only process if recording AND value is 1 (button press, not release)
+    # Always update button_input_values when modal is open (for live testing)
+    socket =
+      if socket.assigns.configuring_button_element do
+        update(socket, :button_input_values, fn values ->
+          Map.put(values, {port, pin}, value)
+        end)
+      else
+        socket
+      end
+
+    # If recording and button pressed, detect the input
     if socket.assigns.recording_button_input && value == 1 do
       case find_input_by_port_and_pin(port, pin, socket.assigns.available_button_inputs) do
         {:ok, input} ->
@@ -945,13 +1042,28 @@ defmodule TswIoWeb.TrainEditLive do
               %ButtonInputBinding{}
 
           current_params = socket.assigns.button_config_form.params || %{}
-          updated_params = Map.put(current_params, "input_id", to_string(input.id))
+
+          # For matrix inputs, store the specific virtual pin
+          updated_params =
+            if input.input_type == :matrix do
+              current_params
+              |> Map.put("input_id", to_string(input.id))
+              |> Map.put("virtual_pin", to_string(pin))
+            else
+              current_params
+              |> Map.put("input_id", to_string(input.id))
+              |> Map.put("virtual_pin", nil)
+            end
+
           changeset = ButtonInputBinding.changeset(binding, updated_params)
 
           {:noreply,
            socket
            |> assign(:button_config_form, to_form(changeset))
-           |> put_flash(:info, "Detected: #{input.device.name} - #{format_detected_pin(input, pin)}")}
+           |> put_flash(
+             :info,
+             "Detected: #{input.device.name} - #{format_detected_pin(input, pin)}"
+           )}
 
         {:error, :not_found} ->
           # Button pressed but not in available inputs - keep recording
@@ -1033,6 +1145,8 @@ defmodule TswIoWeb.TrainEditLive do
     |> assign(:configuring_button_element, nil)
     |> assign(:button_config_form, nil)
     |> assign(:available_button_inputs, [])
+    |> assign(:button_input_values, %{})
+    |> assign(:button_suggestion, nil)
   end
 
   defp find_input_by_port_and_pin(port, pin, available_inputs) do
@@ -1063,7 +1177,10 @@ defmodule TswIoWeb.TrainEditLive do
     input_pin == detected_pin
   end
 
-  defp matches_input_pin?(%{input_type: :matrix, matrix_pins: %Ecto.Association.NotLoaded{}}, detected_pin)
+  defp matches_input_pin?(
+         %{input_type: :matrix, matrix_pins: %Ecto.Association.NotLoaded{}},
+         detected_pin
+       )
        when detected_pin >= 128 do
     # Matrix pins not loaded - assume any virtual pin could match this matrix
     # This is a fallback; ideally matrix_pins should be preloaded
@@ -1088,7 +1205,10 @@ defmodule TswIoWeb.TrainEditLive do
 
   defp format_detected_pin(%{input_type: :button}, pin), do: "Pin #{pin}"
 
-  defp format_detected_pin(%{input_type: :matrix, matrix_pins: %Ecto.Association.NotLoaded{}}, pin) do
+  defp format_detected_pin(
+         %{input_type: :matrix, matrix_pins: %Ecto.Association.NotLoaded{}},
+         pin
+       ) do
     "Matrix Button (Virtual Pin #{pin})"
   end
 
@@ -1110,7 +1230,10 @@ defmodule TswIoWeb.TrainEditLive do
 
   defp format_button_input_description(%{input_type: :button, pin: pin}), do: "Pin #{pin}"
 
-  defp format_button_input_description(%{input_type: :matrix, matrix_pins: %Ecto.Association.NotLoaded{}}) do
+  defp format_button_input_description(%{
+         input_type: :matrix,
+         matrix_pins: %Ecto.Association.NotLoaded{}
+       }) do
     "Matrix"
   end
 
@@ -1122,6 +1245,62 @@ defmodule TswIoWeb.TrainEditLive do
   end
 
   defp format_button_input_description(_input), do: "Unknown"
+
+  # Check if any pin for this input is currently pressed
+  defp input_is_pressed?(%{input_type: :button, pin: pin}, input_values) do
+    # Find any input value for this pin that is pressed
+    Enum.any?(input_values, fn {{_port, p}, value} ->
+      p == pin && value == 1
+    end)
+  end
+
+  defp input_is_pressed?(%{input_type: :matrix} = input, input_values) do
+    get_pressed_matrix_pin(input, input_values) != nil
+  end
+
+  defp input_is_pressed?(_input, _input_values), do: false
+
+  # Format virtual pin range for matrix input
+  defp format_matrix_virtual_pins(%{matrix_pins: %Ecto.Association.NotLoaded{}}), do: "128+"
+
+  defp format_matrix_virtual_pins(%{matrix_pins: matrix_pins}) when is_list(matrix_pins) do
+    row_count = Enum.count(matrix_pins, &(&1.pin_type == :row))
+    col_count = Enum.count(matrix_pins, &(&1.pin_type == :col))
+    total = row_count * col_count
+
+    if total > 0 do
+      "128-#{127 + total}"
+    else
+      "128+"
+    end
+  end
+
+  defp format_matrix_virtual_pins(_), do: "128+"
+
+  # Get the currently pressed virtual pin for a matrix input
+  defp get_pressed_matrix_pin(
+         %{input_type: :matrix, matrix_pins: %Ecto.Association.NotLoaded{}},
+         input_values
+       ) do
+    # Find any pressed pin >= 128
+    Enum.find_value(input_values, fn {{_port, pin}, value} ->
+      if pin >= 128 && value == 1, do: pin
+    end)
+  end
+
+  defp get_pressed_matrix_pin(%{input_type: :matrix, matrix_pins: matrix_pins}, input_values)
+       when is_list(matrix_pins) do
+    row_count = Enum.count(matrix_pins, &(&1.pin_type == :row))
+    col_count = Enum.count(matrix_pins, &(&1.pin_type == :col))
+    total = row_count * col_count
+
+    # Find any pressed virtual pin in the range for this matrix
+    Enum.find_value(input_values, fn {{_port, pin}, value} ->
+      if pin >= 128 && pin < 128 + total && value == 1, do: pin
+    end)
+  end
+
+  defp get_pressed_matrix_pin(_, _), do: nil
 
   defp save_train(%{assigns: %{new_mode: true}} = socket, params) do
     case TrainContext.create_train(params) do
@@ -1223,6 +1402,7 @@ defmodule TswIoWeb.TrainEditLive do
         element={@configuring_element}
         form={@lever_config_form}
         simulator_connected={@nav_simulator_status.status == :connected}
+        suggestion={@lever_suggestion}
       />
 
       <.notch_mapping_modal
@@ -1254,6 +1434,8 @@ defmodule TswIoWeb.TrainEditLive do
         available_inputs={@available_button_inputs}
         simulator_connected={@nav_simulator_status.status == :connected}
         recording={@recording_button_input}
+        input_values={@button_input_values}
+        suggestion={@button_suggestion}
       />
 
       <.live_component
@@ -1720,6 +1902,7 @@ defmodule TswIoWeb.TrainEditLive do
   attr :element, :map, required: true
   attr :form, :map, required: true
   attr :simulator_connected, :boolean, required: true
+  attr :suggestion, :map, default: nil
 
   defp lever_config_modal(assigns) do
     has_existing_config = assigns.element.lever_config != nil
@@ -1733,6 +1916,31 @@ defmodule TswIoWeb.TrainEditLive do
         <p class="text-sm text-base-content/60 mb-4">
           Set the simulator API endpoints for this lever control.
         </p>
+
+        <%!-- Suggestion UI --%>
+        <div :if={@suggestion} class="mb-4 p-4 bg-success/10 border border-success/30 rounded-lg">
+          <div class="flex items-start justify-between gap-3">
+            <div class="flex-1">
+              <div class="flex items-center gap-2 mb-2">
+                <.icon name="hero-light-bulb" class="w-5 h-5 text-success" />
+                <h3 class="font-semibold text-success">Suggested Control Found</h3>
+                <span class="badge badge-sm badge-success">
+                  {trunc(@suggestion.confidence * 100)}% match
+                </span>
+              </div>
+              <p class="text-sm text-base-content/70 mb-2">
+                Found control: <span class="font-mono text-sm">{@suggestion.control_name}</span>
+              </p>
+              <button
+                type="button"
+                phx-click="apply_lever_suggestion"
+                class="btn btn-success btn-sm"
+              >
+                <.icon name="hero-arrow-down-tray" class="w-4 h-4" /> Apply Suggestion
+              </button>
+            </div>
+          </div>
+        </div>
 
         <.form for={@form} phx-change="validate_lever_config" phx-submit="save_lever_config">
           <div class="space-y-4">
@@ -1912,6 +2120,16 @@ defmodule TswIoWeb.TrainEditLive do
               </h3>
               <div class="flex items-center gap-2">
                 <button
+                  :if={@has_input_binding and not Enum.empty?(@notch_forms)}
+                  type="button"
+                  phx-click="open_guided_notch_mapping"
+                  phx-value-id={@element.id}
+                  class="btn btn-secondary btn-xs gap-1"
+                  title="Map physical lever positions to notch ranges"
+                >
+                  <.icon name="hero-adjustments-horizontal" class="w-4 h-4" /> Map Input Ranges
+                </button>
+                <button
                   :if={not Enum.empty?(@notch_forms)}
                   type="button"
                   phx-click="auto_distribute_ranges"
@@ -2079,32 +2297,18 @@ defmodule TswIoWeb.TrainEditLive do
           </div>
         </div>
 
-        <div class="p-6 border-t border-base-300 flex justify-between gap-2">
-          <div>
-            <button
-              :if={@has_input_binding and not Enum.empty?(@notch_forms)}
-              type="button"
-              phx-click="open_guided_notch_mapping"
-              phx-value-id={@element.id}
-              class="btn btn-secondary btn-sm gap-1"
-              title="Map physical lever positions to notch ranges"
-            >
-              <.icon name="hero-adjustments-horizontal" class="w-4 h-4" /> Map Input Ranges
-            </button>
-          </div>
-          <div class="flex gap-2">
-            <button type="button" phx-click="close_notch_mapping" class="btn btn-ghost">
-              Cancel
-            </button>
-            <button
-              type="button"
-              phx-click="save_notches"
-              class="btn btn-primary"
-              disabled={Enum.empty?(@notch_forms)}
-            >
-              <.icon name="hero-check" class="w-4 h-4" /> Save Notches
-            </button>
-          </div>
+        <div class="p-6 border-t border-base-300 flex justify-end gap-2">
+          <button type="button" phx-click="close_notch_mapping" class="btn btn-ghost">
+            Cancel
+          </button>
+          <button
+            type="button"
+            phx-click="save_notches"
+            class="btn btn-primary"
+            disabled={Enum.empty?(@notch_forms)}
+          >
+            <.icon name="hero-check" class="w-4 h-4" /> Save Notches
+          </button>
         </div>
       </div>
     </div>
@@ -2196,6 +2400,8 @@ defmodule TswIoWeb.TrainEditLive do
   attr :available_inputs, :list, required: true
   attr :simulator_connected, :boolean, required: true
   attr :recording, :boolean, required: true
+  attr :input_values, :map, required: true
+  attr :suggestion, :map, default: nil
 
   defp button_config_modal(assigns) do
     # Get current input_id from changeset-backed form
@@ -2228,13 +2434,39 @@ defmodule TswIoWeb.TrainEditLive do
           class="flex flex-col flex-1 overflow-hidden"
         >
           <div class="flex-1 overflow-y-auto p-6 space-y-6">
+            <%!-- Suggestion UI --%>
+            <div :if={@suggestion} class="p-4 bg-success/10 border border-success/30 rounded-lg">
+              <div class="flex items-start justify-between gap-3">
+                <div class="flex-1">
+                  <div class="flex items-center gap-2 mb-2">
+                    <.icon name="hero-light-bulb" class="w-5 h-5 text-success" />
+                    <h3 class="font-semibold text-success">Suggested Control Found</h3>
+                    <span class="badge badge-sm badge-success">
+                      {trunc(@suggestion.confidence * 100)}% match
+                    </span>
+                  </div>
+                  <p class="text-sm text-base-content/70 mb-2">
+                    Found control: <span class="font-mono text-sm">{@suggestion.control_name}</span>
+                  </p>
+                  <button
+                    type="button"
+                    phx-click="apply_button_suggestion"
+                    class="btn btn-success btn-sm"
+                  >
+                    <.icon name="hero-arrow-down-tray" class="w-4 h-4" /> Apply Suggestion
+                  </button>
+                </div>
+              </div>
+            </div>
             <%!-- Input Selection --%>
             <div>
               <div class="flex items-center justify-between mb-3">
                 <h3 class="text-sm font-semibold">Button Input</h3>
                 <button
                   type="button"
-                  phx-click={if @recording, do: "cancel_recording_button", else: "start_recording_button"}
+                  phx-click={
+                    if @recording, do: "cancel_recording_button", else: "start_recording_button"
+                  }
                   class={[
                     "btn btn-sm gap-1",
                     if(@recording, do: "btn-error", else: "btn-primary")
@@ -2274,10 +2506,15 @@ defmodule TswIoWeb.TrainEditLive do
               <div :if={not Enum.empty?(@available_inputs) and not @recording} class="space-y-2">
                 <label
                   :for={input <- @available_inputs}
-                  class={"flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors " <>
-                    if(@current_input_id == input.id,
-                      do: "bg-primary/10 border-primary",
-                      else: "bg-base-200/50 border-base-300 hover:bg-base-200")}
+                  class={"flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-all " <>
+                    cond do
+                      input_is_pressed?(input, @input_values) ->
+                        "bg-success/20 border-success ring-2 ring-success/30"
+                      @current_input_id == input.id ->
+                        "bg-primary/10 border-primary"
+                      true ->
+                        "bg-base-200/50 border-base-300 hover:bg-base-200"
+                    end}
                 >
                   <input
                     type="radio"
@@ -2286,14 +2523,51 @@ defmodule TswIoWeb.TrainEditLive do
                     checked={@current_input_id == input.id}
                     class="radio radio-primary radio-sm"
                   />
-                  <div class="flex-1">
-                    <p class="font-medium">{input.device.name}</p>
+                  <div class="flex-1 min-w-0">
+                    <div class="flex items-center gap-2">
+                      <p class="font-medium">{input.device.name}</p>
+                      <span
+                        :if={input_is_pressed?(input, @input_values)}
+                        class="badge badge-success badge-xs gap-1"
+                      >
+                        <span class="w-1.5 h-1.5 rounded-full bg-success animate-pulse"></span>
+                        Pressed
+                      </span>
+                    </div>
                     <p class="text-sm text-base-content/60">
                       {format_button_input_description(input)}
+                    </p>
+                    <p
+                      :if={input.input_type == :matrix}
+                      class="text-xs text-base-content/50 font-mono"
+                    >
+                      Virtual pins: {format_matrix_virtual_pins(input)}
+                      {if pressed_pin = get_pressed_matrix_pin(input, @input_values) do
+                        " (pin #{pressed_pin} pressed)"
+                      end}
                     </p>
                   </div>
                 </label>
               </div>
+            </div>
+
+            <%!-- Hidden virtual_pin field for matrix inputs --%>
+            <input type="hidden" name={@form[:virtual_pin].name} value={@form[:virtual_pin].value} />
+
+            <%!-- Show selected virtual pin for matrix inputs --%>
+            <div
+              :if={@form[:virtual_pin].value && @form[:virtual_pin].value != ""}
+              class="bg-info/10 border border-info/30 rounded-lg p-3 mb-4"
+            >
+              <div class="flex items-center gap-2">
+                <.icon name="hero-cpu-chip" class="w-4 h-4 text-info" />
+                <span class="text-sm font-medium">
+                  Matrix Button: Virtual Pin {@form[:virtual_pin].value}
+                </span>
+              </div>
+              <p class="text-xs text-base-content/60 mt-1">
+                Press "Record" to select a different matrix button
+              </p>
             </div>
 
             <%!-- Endpoint Configuration --%>

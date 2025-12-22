@@ -449,3 +449,127 @@ GUI tool for exploring and testing the API.
 - Download: https://www.postman.com/downloads/
 - Add `DTGCommKey` in Headers tab
 - Add parameters in Params tab
+
+---
+
+## Control Type Detection
+
+Based on analysis of 5 different trains (UK, German, US passenger and freight), all controls follow consistent patterns:
+
+### Identifying Levers vs Buttons
+
+**Lever Controls** (analogue/notched):
+- Detection: Has `Function.GetNotchCount` in endpoints
+- Examples: Throttle, Reverser, Brake levers
+
+**Button Controls** (digital/momentary):
+- Detection: Has `Property.bDefaultToPressed` in endpoints
+- Examples: Horn, Safety buttons, Switches
+
+### Code Example
+
+```elixir
+def detect_control_type(endpoints) do
+  cond do
+    Enum.any?(endpoints, &(&1["Name"] == "Function.GetNotchCount")) -> :lever
+    Enum.any?(endpoints, &(&1["Name"] == "Property.bDefaultToPressed")) -> :button
+    true -> :unknown
+  end
+end
+```
+
+### Common Lever Names by Function
+
+| Function | Possible API Names |
+|----------|-------------------|
+| Power | `Throttle`, `MasterController`, `Throttle_F`, `Throttle(Lever)` |
+| Reverser | `Reverser`, `Reverser_F`, `Reverser(Lever)` |
+| Train Brake | `TrainBrake`, `AutomaticBrake`, `Westcode3StepBrake`, `TrainBrake_F` |
+| Loco Brake | `LocoBrake`, `IndependentBrake`, `LocoBrake_F`, `IndependentBrake(Lever)` |
+| Dynamic Brake | `DynamicBrake`, `DynamicBrake_F`, `DynamicBrake(Lever)` |
+
+### Common Button Names by Function
+
+| Function | Possible API Names |
+|----------|-------------------|
+| Safety Acknowledge | `AWS_ResetButton`, `PZB_Acknowledge`, `Acknowledge`, `AlerterReset(Button)` |
+| Vigilance | `DSDPedal`, `SifaPedal`, `DeadmanFootSwitch`, `SifaResetPedal_F` |
+| Emergency | `EmergencyBrake`, `EmergencyBrakeHandle`, `EmergencyBrakeValve_F` |
+| Sander | `Sand`, `Sander`, `Sand_F`, `LeadSand(Switch)` |
+| Engine | `EngineStart`, `EngineStop`, `EngineStart_Int`, `EngineStart(Button)` |
+
+### Naming Conventions
+
+**Suffixes:**
+| Suffix | Meaning |
+|--------|---------|
+| `_F` / `_B` | Front/Back cab (German locos with dual cabs) |
+| `_L` / `_R` | Left/Right side |
+| `(Lever)` | Lever control (US trains) |
+| `(Button)` | Button control (US trains) |
+| `(Switch)` | Toggle switch (US trains) |
+| `(Dial)` | Rotary dial (US trains) |
+
+**Prefixes:**
+| Prefix | Meaning | Region |
+|--------|---------|--------|
+| `MCB_` | Miniature Circuit Breaker | UK |
+| `PZB_` | Train protection (Punktförmige Zugbeeinflussung) | Germany |
+| `AWS_` | Automatic Warning System | UK |
+| `ATC_` / `ACSES_` | Train control systems | USA |
+| `Sifa` | Vigilance system (Sicherheitsfahrschaltung) | Germany |
+
+---
+
+## Train Identification
+
+### Getting Train Class
+
+```bash
+curl -H "DTGCommKey: <key>" \
+  "http://localhost:31270/get/CurrentFormation/0.ObjectClass"
+# Returns: {"Result":"Success","Values":{"ObjectClass":"RVM_PBO_Class142_DMSL_New_GMPTE_C"}}
+```
+
+### ObjectClass Format
+
+Pattern: `RVM_<ROUTE>_<CLASS>_<VARIANT>_C`
+
+| ObjectClass | Train |
+|-------------|-------|
+| `RVM_PBO_Class142_DMSL_New_GMPTE_C` | UK Class 142 Pacer |
+| `RVM_FSN_DB_BR430_ETW4_C` | German DB BR 430 S-Bahn |
+| `RVM_LIRREX_M9-B_C` | US LIRR M9 |
+| `RVM_CJP_BNSF_ES44C4_C` | US BNSF ES44C4 Freight |
+| `RVM_SRM_DB_BR111_C` | German DB BR 111 |
+
+### Extracting Train Name
+
+The class name can be parsed to extract a human-readable name:
+1. Remove `RVM_` prefix
+2. Remove `_C` suffix
+3. Extract the class identifier (e.g., `Class142`, `DB_BR430`, `BNSF_ES44C4`)
+4. Format for display (e.g., "Class 142", "DB BR 430", "BNSF ES44C4")
+
+---
+
+## Region-Specific Notes
+
+### UK Trains
+- AWS (Automatic Warning System) for safety - `AWS_ResetButton`
+- DSD (Driver's Safety Device) for vigilance - `DSDPedal`
+- Westcode brake systems on older units
+
+### German Trains
+- PZB (train protection) - `PZB_Acknowledge`, `PZB_Release`, `PZB_Override`
+- LZB (advanced ATP on high-speed lines) - `LZB_*` controls
+- Sifa (vigilance) - `SifaPedal`, `SifaReset`
+- Dual cab controls use `_F`/`_B` suffixes
+- Tap-changer locos have `SimParam_TapChangerTapIndex`
+
+### US Trains
+- ATC/ACSES train control - `ATC_Fuse`, `ACSES_*`
+- Alerter for vigilance - `AlerterReset`, `DeadmanFootSwitch`
+- Separate throttle and brake levers (not combined MasterController)
+- Bell control (unique to US) - `Bell`, `Bell(Lever)`
+- EOT (End of Train) device - `EOT_*` controls

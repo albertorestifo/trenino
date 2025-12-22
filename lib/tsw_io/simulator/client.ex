@@ -25,6 +25,8 @@ defmodule TswIo.Simulator.Client do
       {:ok, nodes} = TswIo.Simulator.Client.list(client, "CurrentDrivableActor")
   """
 
+  require Logger
+
   defstruct [:base_url, :api_key, :req]
 
   @type t :: %__MODULE__{
@@ -233,6 +235,7 @@ defmodule TswIo.Simulator.Client do
   """
   @spec set(t(), String.t(), number() | String.t() | boolean()) :: {:ok, response()} | error()
   def set(%__MODULE__{} = client, path, value) when is_binary(path) do
+    Logger.info("[Simulator] SET #{path} = #{inspect(value)}")
     request(client, :patch, "/set/#{path}", params: [Value: value])
   end
 

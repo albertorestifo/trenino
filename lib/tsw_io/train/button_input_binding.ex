@@ -19,6 +19,7 @@ defmodule TswIo.Train.ButtonInputBinding do
           id: integer() | nil,
           element_id: integer() | nil,
           input_id: integer() | nil,
+          virtual_pin: integer() | nil,
           endpoint: String.t() | nil,
           on_value: float(),
           off_value: float(),
@@ -34,6 +35,8 @@ defmodule TswIo.Train.ButtonInputBinding do
     field :on_value, :float, default: 1.0
     field :off_value, :float, default: 0.0
     field :enabled, :boolean, default: true
+    # For matrix inputs, stores the specific virtual pin (128+)
+    field :virtual_pin, :integer
 
     belongs_to :element, Element
     belongs_to :input, Input
@@ -44,8 +47,17 @@ defmodule TswIo.Train.ButtonInputBinding do
   @spec changeset(t(), map()) :: Ecto.Changeset.t()
   def changeset(%__MODULE__{} = binding, attrs) do
     binding
-    |> cast(attrs, [:element_id, :input_id, :endpoint, :on_value, :off_value, :enabled])
+    |> cast(attrs, [
+      :element_id,
+      :input_id,
+      :virtual_pin,
+      :endpoint,
+      :on_value,
+      :off_value,
+      :enabled
+    ])
     |> validate_required([:element_id, :input_id, :endpoint])
+    |> validate_number(:virtual_pin, greater_than_or_equal_to: 128, less_than: 256)
     |> round_float_fields([:on_value, :off_value])
     |> foreign_key_constraint(:element_id)
     |> foreign_key_constraint(:input_id)

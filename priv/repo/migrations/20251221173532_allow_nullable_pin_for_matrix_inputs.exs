@@ -9,9 +9,9 @@ defmodule TswIo.Repo.Migrations.AllowNullablePinForMatrixInputs do
     # This allows multiple matrix inputs (pin=null) while preventing
     # duplicate real GPIO pins on the same device
     create unique_index(:device_inputs, [:device_id, :pin],
-      where: "pin IS NOT NULL",
-      name: :device_inputs_device_id_pin_unique
-    )
+             where: "pin IS NOT NULL",
+             name: :device_inputs_device_id_pin_unique
+           )
 
     # Update existing matrix inputs to have null pin
     execute "UPDATE device_inputs SET pin = NULL WHERE input_type = 'matrix'"
@@ -22,8 +22,8 @@ defmodule TswIo.Repo.Migrations.AllowNullablePinForMatrixInputs do
     execute "UPDATE device_inputs SET pin = -1 WHERE input_type = 'matrix'"
 
     drop_if_exists unique_index(:device_inputs, [:device_id, :pin],
-      name: :device_inputs_device_id_pin_unique
-    )
+                     name: :device_inputs_device_id_pin_unique
+                   )
 
     create unique_index(:device_inputs, [:device_id, :pin])
   end

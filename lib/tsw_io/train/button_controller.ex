@@ -44,7 +44,7 @@ defmodule TswIo.Train.ButtonController do
           }
 
     @type binding_lookup :: %{
-            (input_id :: integer()) => %{
+            {input_id :: integer(), virtual_pin :: integer() | nil} => %{
               element_id: integer(),
               endpoint: String.t(),
               on_value: float(),
@@ -178,7 +178,7 @@ defmodule TswIo.Train.ButtonController do
     # Get all connected devices
     devices = SerialConnection.list_devices()
 
-    # Build mapping from (port, pin) -> input_id for button inputs only
+    # Build mapping from (port, pin) -> input_id for button and matrix inputs
     {input_lookup, new_ports} =
       devices
       |> Enum.filter(&(&1.status == :connected and &1.device_config_id != nil))
@@ -190,12 +190,12 @@ defmodule TswIo.Train.ButtonController do
           device ->
             {:ok, inputs} = Hardware.list_inputs(device.id)
 
-            # Only include button inputs
-            button_inputs = Enum.filter(inputs, &(&1.input_type == :button))
+            # Include button and matrix inputs
+            button_like_inputs = Enum.filter(inputs, &(&1.input_type in [:button, :matrix]))
 
             updated_lookup =
-              Enum.reduce(button_inputs, lookup, fn input, acc ->
-                Map.put(acc, {device_conn.port, input.pin}, input.id)
+              Enum.reduce(button_like_inputs, lookup, fn input, acc ->
+                build_input_pin_lookup(acc, device_conn.port, input)
               end)
 
             {updated_lookup, MapSet.put(ports, device_conn.port)}
@@ -217,14 +217,60 @@ defmodule TswIo.Train.ButtonController do
     end
   end
 
+  # Build lookup entries for a button input (single pin)
+  defp build_input_pin_lookup(lookup, port, %{input_type: :button, pin: pin, id: id}) do
+    Map.put(lookup, {port, pin}, id)
+  end
+
+  # Build lookup entries for a matrix input (virtual pins for each button)
+  defp build_input_pin_lookup(lookup, port, %{input_type: :matrix, id: id} = input) do
+    matrix_pins =
+      case input.matrix_pins do
+        %Ecto.Association.NotLoaded{} -> []
+        nil -> []
+        pins -> pins
+      end
+
+    if Enum.empty?(matrix_pins) do
+      lookup
+    else
+      row_pins =
+        matrix_pins
+        |> Enum.filter(&(&1.pin_type == :row))
+        |> Enum.sort_by(& &1.position)
+
+      col_pins =
+        matrix_pins
+        |> Enum.filter(&(&1.pin_type == :col))
+        |> Enum.sort_by(& &1.position)
+
+      num_cols = length(col_pins)
+
+      # Create lookup for each virtual pin: 128 + (row_idx * num_cols + col_idx)
+      row_pins
+      |> Enum.with_index()
+      |> Enum.reduce(lookup, fn {_row_pin, row_idx}, acc ->
+        col_pins
+        |> Enum.with_index()
+        |> Enum.reduce(acc, fn {_col_pin, col_idx}, inner_acc ->
+          virtual_pin = 128 + row_idx * num_cols + col_idx
+          Map.put(inner_acc, {port, virtual_pin}, id)
+        end)
+      end)
+    end
+  end
+
   defp load_bindings_for_train(%State{} = state, train) do
     bindings = Train.list_button_bindings_for_train(train.id)
 
+    # Build lookup with composite key {input_id, virtual_pin}
+    # For button inputs, virtual_pin is nil
+    # For matrix inputs, virtual_pin is the specific pin (128+)
     binding_lookup =
       bindings
       |> Enum.filter(& &1.enabled)
       |> Enum.map(fn %ButtonInputBinding{} = binding ->
-        {binding.input_id,
+        {{binding.input_id, binding.virtual_pin},
          %{
            element_id: binding.element_id,
            endpoint: binding.endpoint,
@@ -247,7 +293,7 @@ defmodule TswIo.Train.ButtonController do
 
   defp handle_input_update(%State{} = state, port, pin, raw_value) do
     with {:ok, input_id} <- Map.fetch(state.input_lookup, {port, pin}),
-         {:ok, binding_info} <- Map.fetch(state.binding_lookup, input_id) do
+         {:ok, binding_info} <- find_binding(state.binding_lookup, input_id, pin) do
       # Button value: 1 = pressed (on_value), 0 = released (off_value)
       sim_value =
         if raw_value == 1 do
@@ -272,6 +318,18 @@ defmodule TswIo.Train.ButtonController do
     else
       :error -> :skip
     end
+  end
+
+  # Find binding for an input. For matrix inputs (pin >= 128), we look for a
+  # binding with that specific virtual_pin. For button inputs, we look for nil.
+  defp find_binding(binding_lookup, input_id, pin) when pin >= 128 do
+    # Matrix input - look for specific virtual pin binding
+    Map.fetch(binding_lookup, {input_id, pin})
+  end
+
+  defp find_binding(binding_lookup, input_id, _pin) do
+    # Button input - virtual_pin is nil
+    Map.fetch(binding_lookup, {input_id, nil})
   end
 
   defp send_to_simulator(endpoint, value) do

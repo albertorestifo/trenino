@@ -63,7 +63,8 @@ defmodule TswIo.Train.ButtonControllerTest do
       state = ButtonController.get_state()
 
       assert state.active_train.id == train.id
-      assert Map.has_key?(state.binding_lookup, input.id)
+      # Button inputs use {input_id, nil} as key (nil virtual_pin)
+      assert Map.has_key?(state.binding_lookup, {input.id, nil})
     end
   end
 
@@ -94,9 +95,10 @@ defmodule TswIo.Train.ButtonControllerTest do
       state = ButtonController.get_state()
 
       assert state.active_train.id == train.id
-      assert Map.has_key?(state.binding_lookup, input.id)
+      # Button inputs use {input_id, nil} as key (nil virtual_pin)
+      assert Map.has_key?(state.binding_lookup, {input.id, nil})
 
-      binding_info = state.binding_lookup[input.id]
+      binding_info = state.binding_lookup[{input.id, nil}]
       assert binding_info.endpoint == "CurrentDrivableActor/Horn.InputValue"
       assert binding_info.on_value == 1.0
       assert binding_info.off_value == 0.0
@@ -135,7 +137,8 @@ defmodule TswIo.Train.ButtonControllerTest do
       state = ButtonController.get_state()
 
       # Should not have the binding since it's disabled
-      refute Map.has_key?(state.binding_lookup, input.id)
+      # Button inputs use {input_id, nil} as key (nil virtual_pin)
+      refute Map.has_key?(state.binding_lookup, {input.id, nil})
     end
   end
 
@@ -166,7 +169,8 @@ defmodule TswIo.Train.ButtonControllerTest do
       Process.sleep(50)
 
       state = ButtonController.get_state()
-      binding_info = state.binding_lookup[input.id]
+      # Button inputs use {input_id, nil} as key (nil virtual_pin)
+      binding_info = state.binding_lookup[{input.id, nil}]
 
       assert binding_info.on_value == 100.0
       assert binding_info.off_value == -50.0
