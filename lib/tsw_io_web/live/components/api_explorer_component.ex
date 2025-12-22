@@ -18,6 +18,9 @@ defmodule TswIoWeb.ApiExplorerComponent do
 
   - `{:api_explorer_select, field, path}` - When user selects a path
   - `{:api_explorer_close}` - When user closes the explorer
+  - `{:api_explorer_auto_configure, endpoints}` - When user clicks "Configure All Endpoints" on a detected lever
+  - `{:api_explorer_individual_selection}` - When user clicks "Choose Individual Endpoints"
+  - `{:api_explorer_button_detected, detection}` - When user clicks "Use This Endpoint" on a detected button
   """
 
   use TswIoWeb, :live_component
@@ -25,11 +28,15 @@ defmodule TswIoWeb.ApiExplorerComponent do
   alias TswIo.Simulator.Client
 
   @impl true
-  def update(%{client: %Client{} = client, field: field}, socket) do
+  def update(%{client: %Client{} = client, field: field} = assigns, socket) do
+    # Mode determines detection behavior: :lever, :button, or nil (auto-detect both)
+    mode = Map.get(assigns, :mode)
+
     socket =
       socket
       |> assign(:field, field)
       |> assign(:client, client)
+      |> assign(:detection_mode, mode)
 
     # Initialize on first mount
     socket =
@@ -116,8 +123,18 @@ defmodule TswIoWeb.ApiExplorerComponent do
                |> assign(:preview, nil)}
           end
         else
-          # Check if this node has standard lever endpoints
-          lever_detection = detect_lever_endpoints(endpoint_items, full_path)
+          # Check if this node has standard lever or button endpoints
+          # Detection is filtered by mode if set
+          detection_mode = socket.assigns[:detection_mode]
+          lever_detection = detect_lever_endpoints(endpoint_items, full_path, detection_mode)
+
+          button_detection =
+            detect_button_endpoints(
+              endpoint_items,
+              full_path,
+              detection_mode,
+              socket.assigns.client
+            )
 
           {:noreply,
            socket
@@ -127,7 +144,8 @@ defmodule TswIoWeb.ApiExplorerComponent do
            |> assign(:search, "")
            |> assign(:loading, false)
            |> assign(:preview, nil)
-           |> assign(:lever_detection, lever_detection)}
+           |> assign(:lever_detection, lever_detection)
+           |> assign(:button_detection, button_detection)}
         end
 
       {:error, _reason} ->
@@ -182,9 +200,18 @@ defmodule TswIoWeb.ApiExplorerComponent do
 
         all_items = Enum.sort_by(node_items ++ endpoint_items, & &1.name)
 
-        # Detect lever endpoints at this path
+        # Detect lever and button endpoints at this path
         full_path = Enum.join(new_path, "/")
-        lever_detection = detect_lever_endpoints(endpoint_items, full_path)
+        detection_mode = socket.assigns[:detection_mode]
+        lever_detection = detect_lever_endpoints(endpoint_items, full_path, detection_mode)
+
+        button_detection =
+          detect_button_endpoints(
+            endpoint_items,
+            full_path,
+            detection_mode,
+            socket.assigns.client
+          )
 
         {:noreply,
          socket
@@ -193,7 +220,8 @@ defmodule TswIoWeb.ApiExplorerComponent do
          |> assign(:filtered_items, all_items)
          |> assign(:search, "")
          |> assign(:loading, false)
-         |> assign(:lever_detection, lever_detection)}
+         |> assign(:lever_detection, lever_detection)
+         |> assign(:button_detection, button_detection)}
 
       {:error, reason} ->
         {:noreply,
@@ -256,6 +284,21 @@ defmodule TswIoWeb.ApiExplorerComponent do
     }
 
     send(self(), {:api_explorer_auto_configure, endpoints})
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_event("start_individual_selection", _params, socket) do
+    # Notify parent that user wants to select endpoints individually
+    send(self(), {:api_explorer_individual_selection})
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_event("select_button_endpoint", _params, socket) do
+    # Send the detected button endpoint to the parent
+    detection = socket.assigns.button_detection
+    send(self(), {:api_explorer_button_detected, detection})
     {:noreply, socket}
   end
 
@@ -365,13 +408,51 @@ defmodule TswIoWeb.ApiExplorerComponent do
                   </span>
                 </div>
               </div>
+              <div class="flex flex-wrap gap-2 mt-3">
+                <button
+                  type="button"
+                  phx-click="auto_configure"
+                  phx-target={@myself}
+                  class="btn btn-primary btn-sm"
+                >
+                  <.icon name="hero-bolt" class="w-4 h-4" /> Configure All Endpoints
+                </button>
+                <button
+                  type="button"
+                  phx-click="start_individual_selection"
+                  phx-target={@myself}
+                  class="btn btn-ghost btn-sm"
+                >
+                  <.icon name="hero-adjustments-horizontal" class="w-4 h-4" />
+                  Choose Individual Endpoints
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div
+          :if={@button_detection}
+          class="mx-4 mt-4 p-4 bg-success/10 border border-success/30 rounded-lg"
+        >
+          <div class="flex items-start gap-3">
+            <.icon name="hero-hand-raised" class="w-5 h-5 text-success flex-shrink-0 mt-0.5" />
+            <div class="flex-1 min-w-0">
+              <h3 class="font-semibold text-sm">Button Endpoint Found</h3>
+              <p class="text-xs text-base-content/70 mt-1 font-mono">
+                {@button_detection.endpoint}
+              </p>
+              <div :if={@button_detection.has_min_max} class="mt-2 text-xs text-base-content/60">
+                <span class="font-medium">Suggested values:</span>
+                ON = {@button_detection.suggested_on}, OFF = {@button_detection.suggested_off}
+              </div>
               <button
                 type="button"
-                phx-click="auto_configure"
+                phx-click="select_button_endpoint"
                 phx-target={@myself}
-                class="btn btn-primary btn-sm mt-3"
+                class="btn btn-success btn-sm mt-3"
               >
-                <.icon name="hero-bolt" class="w-4 h-4" /> Auto-Configure All Fields
+                <.icon name="hero-check" class="w-4 h-4" /> Use This Endpoint
               </button>
             </div>
           </div>
@@ -501,6 +582,7 @@ defmodule TswIoWeb.ApiExplorerComponent do
         |> assign(:error, nil)
         |> assign(:preview, nil)
         |> assign(:lever_detection, nil)
+        |> assign(:button_detection, nil)
         |> assign(:initialized, true)
 
       {:error, reason} ->
@@ -513,6 +595,7 @@ defmodule TswIoWeb.ApiExplorerComponent do
         |> assign(:error, "Failed to load API nodes: #{inspect(reason)}")
         |> assign(:preview, nil)
         |> assign(:lever_detection, nil)
+        |> assign(:button_detection, nil)
         |> assign(:initialized, true)
     end
   end
@@ -607,11 +690,59 @@ defmodule TswIoWeb.ApiExplorerComponent do
   defp format_field_name(field),
     do: field |> Atom.to_string() |> String.replace("_", " ") |> String.capitalize()
 
+  # Button endpoint detection
+  # When in :button mode, any node with a writable InputValue endpoint is a valid button
+  # We also fetch min/max values if available to suggest on/off values
+  defp detect_button_endpoints(_endpoint_items, _node_path, :lever, _client), do: nil
+
+  defp detect_button_endpoints(endpoint_items, node_path, _mode, client) do
+    endpoint_names = MapSet.new(endpoint_items, & &1.name)
+
+    has_input_value =
+      Enum.any?(endpoint_items, fn ep -> ep.name == "InputValue" and ep.writable end)
+
+    if has_input_value do
+      # Try to get min/max values to suggest on/off values
+      has_min = MapSet.member?(endpoint_names, "Function.GetMinimumInputValue")
+      has_max = MapSet.member?(endpoint_names, "Function.GetMaximumInputValue")
+
+      {suggested_off, suggested_on} =
+        if has_min and has_max do
+          min_val = fetch_endpoint_value(client, "#{node_path}.Function.GetMinimumInputValue")
+          max_val = fetch_endpoint_value(client, "#{node_path}.Function.GetMaximumInputValue")
+          {min_val, max_val}
+        else
+          {0.0, 1.0}
+        end
+
+      %{
+        node_path: node_path,
+        endpoint: "#{node_path}.InputValue",
+        suggested_on: suggested_on,
+        suggested_off: suggested_off,
+        has_min_max: has_min and has_max
+      }
+    else
+      nil
+    end
+  end
+
+  defp fetch_endpoint_value(client, path) do
+    case Client.get(client, path) do
+      {:ok, value} when is_number(value) -> Float.round(value / 1, 2)
+      {:ok, %{"value" => value}} when is_number(value) -> Float.round(value / 1, 2)
+      _ -> nil
+    end
+  end
+
   # Lever endpoint detection
   # Standard TSW lever controls have these endpoints:
   # Required: Function.GetMinimumInputValue, Function.GetMaximumInputValue, InputValue (writable)
   # Optional: Function.GetNotchCount, Function.GetCurrentNotchIndex
-  defp detect_lever_endpoints(endpoint_items, node_path) do
+  # Only detected when mode is :lever or nil (auto-detect)
+  defp detect_lever_endpoints(_endpoint_items, _node_path, :button), do: nil
+
+  defp detect_lever_endpoints(endpoint_items, node_path, _mode) do
     endpoint_names = MapSet.new(endpoint_items, & &1.name)
 
     has_min = MapSet.member?(endpoint_names, "Function.GetMinimumInputValue")
