@@ -121,19 +121,22 @@ defmodule TswIoWeb.ConfigurationWizardComponent do
     |> assign(:initialized, true)
   end
 
-  defp get_existing_input_id(%Element{button_binding: binding}, :button) when not is_nil(binding) do
+  defp get_existing_input_id(%Element{button_binding: binding}, :button)
+       when not is_nil(binding) do
     binding.input_id
   end
 
   defp get_existing_input_id(_element, _mode), do: nil
 
-  defp get_existing_on_value(%Element{button_binding: binding}, :button) when not is_nil(binding) do
+  defp get_existing_on_value(%Element{button_binding: binding}, :button)
+       when not is_nil(binding) do
     binding.on_value
   end
 
   defp get_existing_on_value(_element, _mode), do: 1.0
 
-  defp get_existing_off_value(%Element{button_binding: binding}, :button) when not is_nil(binding) do
+  defp get_existing_off_value(%Element{button_binding: binding}, :button)
+       when not is_nil(binding) do
     binding.off_value
   end
 
@@ -265,7 +268,12 @@ defmodule TswIoWeb.ConfigurationWizardComponent do
           </div>
 
           <div class="flex items-center gap-2 mt-4">
-            <.step_indicator step={1} label="Find in Simulator" active={@wizard_step == :browsing} completed={@wizard_step in [:testing, :confirming]} />
+            <.step_indicator
+              step={1}
+              label="Find in Simulator"
+              active={@wizard_step == :browsing}
+              completed={@wizard_step in [:testing, :confirming]}
+            />
             <div class="flex-1 h-px bg-base-300" />
             <.step_indicator
               :if={@mode == :button}
@@ -340,7 +348,7 @@ defmodule TswIoWeb.ConfigurationWizardComponent do
         "w-6 h-6 rounded-full flex items-center justify-center text-xs font-medium",
         @active && "bg-primary text-primary-content",
         @completed && "bg-success text-success-content",
-        not @active and not @completed && "bg-base-300 text-base-content/50"
+        (not @active and not @completed) && "bg-base-300 text-base-content/50"
       ]}>
         <.icon :if={@completed} name="hero-check" class="w-4 h-4" />
         <span :if={not @completed}>{@step}</span>
@@ -348,7 +356,7 @@ defmodule TswIoWeb.ConfigurationWizardComponent do
       <span class={[
         "text-sm",
         @active && "font-medium",
-        not @active and not @completed && "text-base-content/50"
+        (not @active and not @completed) && "text-base-content/50"
       ]}>
         {@label}
       </span>
@@ -533,13 +541,23 @@ defmodule TswIoWeb.ConfigurationWizardComponent do
             <span class="text-base-content/60">Current Value:</span>
             <span>{get_endpoint(@detected_endpoints, @manual_selections, :value_endpoint)}</span>
           </div>
-          <div :if={get_endpoint(@detected_endpoints, @manual_selections, :notch_count_endpoint)} class="flex justify-between">
+          <div
+            :if={get_endpoint(@detected_endpoints, @manual_selections, :notch_count_endpoint)}
+            class="flex justify-between"
+          >
             <span class="text-base-content/60">Notch Count:</span>
-            <span>{get_endpoint(@detected_endpoints, @manual_selections, :notch_count_endpoint)}</span>
+            <span>
+              {get_endpoint(@detected_endpoints, @manual_selections, :notch_count_endpoint)}
+            </span>
           </div>
-          <div :if={get_endpoint(@detected_endpoints, @manual_selections, :notch_index_endpoint)} class="flex justify-between">
+          <div
+            :if={get_endpoint(@detected_endpoints, @manual_selections, :notch_index_endpoint)}
+            class="flex justify-between"
+          >
             <span class="text-base-content/60">Notch Index:</span>
-            <span>{get_endpoint(@detected_endpoints, @manual_selections, :notch_index_endpoint)}</span>
+            <span>
+              {get_endpoint(@detected_endpoints, @manual_selections, :notch_index_endpoint)}
+            </span>
           </div>
         </div>
       </div>

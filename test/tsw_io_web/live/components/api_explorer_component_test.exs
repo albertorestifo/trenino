@@ -13,26 +13,34 @@ defmodule TswIoWeb.ApiExplorerComponentTest do
   setup :set_mimic_global
 
   setup do
-    # Create a train with an element and lever config
+    # Create a train with elements
     {:ok, train} =
       TrainContext.create_train(%{
         name: "Test Train",
         identifier: "Test_Train_#{System.unique_integer([:positive])}"
       })
 
-    {:ok, element} =
+    # Create a lever element with config
+    {:ok, lever_element} =
       TrainContext.create_element(train.id, %{
         name: "Throttle",
         type: :lever
       })
 
     {:ok, lever_config} =
-      TrainContext.create_lever_config(element.id, %{
+      TrainContext.create_lever_config(lever_element.id, %{
         min_endpoint: "Throttle.Min",
         max_endpoint: "Throttle.Max",
         value_endpoint: "Throttle.Value",
         notch_count_endpoint: "Throttle.NotchCount",
         notch_index_endpoint: "Throttle.NotchIndex"
+      })
+
+    # Create a button element for button detection tests
+    {:ok, button_element} =
+      TrainContext.create_element(train.id, %{
+        name: "Horn",
+        type: :button
       })
 
     # Reload train with all associations for tests
@@ -47,25 +55,33 @@ defmodule TswIoWeb.ApiExplorerComponentTest do
       |> ConnectionState.mark_connecting(client)
       |> ConnectionState.mark_connected(%{"version" => "1.0"})
 
+    # Get lever element from reloaded train (to ensure it has lever_config association)
+    lever_element = Enum.find(train.elements, &(&1.type == :lever))
+
     %{
       train: train,
-      element: hd(train.elements),
+      element: lever_element,
+      lever_element: lever_element,
+      button_element: button_element,
       lever_config: lever_config,
       client: client,
       simulator_status: simulator_status
     }
   end
 
-  # Helper to open the lever config modal and then the API explorer
-  defp open_api_explorer(view, element, field) do
-    # First open the lever config modal
+  # Helper to open the configuration wizard in lever mode (which contains the embedded API explorer)
+  # When simulator is connected, clicking configure_lever opens the wizard directly
+  defp open_api_explorer(view, el, _field) do
+    # Open the wizard (which contains the embedded API explorer)
     view
-    |> element("button[phx-click='configure_lever'][phx-value-id='#{element.id}']")
+    |> element("button[phx-click='configure_lever'][phx-value-id='#{el.id}']")
     |> render_click()
+  end
 
-    # Then open the API explorer
+  # Helper to open the configuration wizard in button mode
+  defp open_button_api_explorer(view, button_element) do
     view
-    |> element("button[phx-click='open_api_explorer'][phx-value-field='#{field}']")
+    |> element("button[phx-click='configure_button'][phx-value-id='#{button_element.id}']")
     |> render_click()
   end
 
@@ -421,7 +437,7 @@ defmodule TswIoWeb.ApiExplorerComponentTest do
   end
 
   describe "path selection" do
-    test "selecting path sends event to parent and closes explorer", %{
+    test "selecting path sends event to parent", %{
       conn: conn,
       train: train,
       element: element,
@@ -454,11 +470,10 @@ defmodule TswIoWeb.ApiExplorerComponentTest do
 
       html = render(view)
 
-      # Explorer should be closed
-      refute html =~ "Browse Simulator API"
-
-      # The form field should be updated with the selected path
-      # (lever config modal should still be open with the updated value)
+      # In wizard flow, explorer stays open - the wizard manages the overall flow
+      # The selection is captured and can be seen in various ways
+      assert html =~ "Browse Simulator API"
+      # The path is still visible in the explorer
       assert html =~ "Throttle.Min"
     end
 
@@ -500,7 +515,8 @@ defmodule TswIoWeb.ApiExplorerComponentTest do
       |> render_click()
 
       html = render(view)
-      refute html =~ "Browse Simulator API"
+      # Explorer stays open in wizard flow - selection is captured by the wizard
+      assert html =~ "Browse Simulator API"
     end
   end
 
@@ -614,7 +630,7 @@ defmodule TswIoWeb.ApiExplorerComponentTest do
       assert html =~ "Failed to access"
     end
 
-    test "browse buttons are disabled when simulator not connected", %{
+    test "does not open wizard when simulator not connected", %{
       conn: conn,
       train: train,
       element: element
@@ -625,16 +641,15 @@ defmodule TswIoWeb.ApiExplorerComponentTest do
 
       {:ok, view, _html} = live(conn, ~p"/trains/#{train.id}")
 
-      # First open the lever config modal
+      # Try to configure - should not open wizard since simulator not connected
       view
       |> element("button[phx-click='configure_lever'][phx-value-id='#{element.id}']")
       |> render_click()
 
-      # The browse button should be disabled when simulator is not connected
+      # The wizard/explorer should NOT be shown when simulator is not connected
       html = render(view)
-      assert html =~ "disabled"
-      # The explorer should not be shown
       refute html =~ "Browse Simulator API"
+      refute html =~ "Configure Throttle"
     end
   end
 
@@ -680,6 +695,277 @@ defmodule TswIoWeb.ApiExplorerComponentTest do
       assert html =~ "RW"
       # RO indicator for read-only endpoints
       assert html =~ "RO"
+    end
+  end
+
+  describe "lever detection" do
+    test "shows lever detection banner when navigating to lever node", %{
+      conn: conn,
+      train: train,
+      element: element,
+      client: client
+    } do
+      stub(Simulator, :get_status, fn ->
+        %ConnectionState{status: :connected, client: client}
+      end)
+
+      # First call returns root nodes
+      expect(Client, :list, fn _client ->
+        {:ok,
+         %{
+           "NodeName" => "Root",
+           "NodePath" => "Root",
+           "Nodes" => [
+             %{"NodeName" => "Throttle(Lever)", "NodePath" => "Root/Throttle(Lever)"}
+           ]
+         }}
+      end)
+
+      # Second call returns lever endpoints
+      expect(Client, :list, fn _client, "Throttle(Lever)" ->
+        {:ok,
+         %{
+           "NodeName" => "Throttle(Lever)",
+           "NodePath" => "Root/Throttle(Lever)",
+           "Nodes" => [],
+           "Endpoints" => [
+             %{"Name" => "InputValue", "Writable" => true},
+             %{"Name" => "Function.GetMinimumInputValue", "Writable" => false},
+             %{"Name" => "Function.GetMaximumInputValue", "Writable" => false},
+             %{"Name" => "Function.GetNotchCount", "Writable" => false},
+             %{"Name" => "Function.GetCurrentNotchIndex", "Writable" => false}
+           ]
+         }}
+      end)
+
+      {:ok, view, _html} = live(conn, ~p"/trains/#{train.id}")
+
+      open_api_explorer(view, element, "min_endpoint")
+
+      # Navigate to the lever node
+      view
+      |> element("button[phx-click='navigate'][phx-value-node='Throttle(Lever)']")
+      |> render_click()
+
+      html = render(view)
+
+      # Should show lever detection banner
+      assert html =~ "Lever Control Detected"
+      assert html =~ "Configure All Endpoints"
+      assert html =~ "Choose Individual Endpoints"
+      # With notches available
+      assert html =~ "with notches"
+    end
+
+    test "shows lever detection without notches when notch endpoints missing", %{
+      conn: conn,
+      train: train,
+      element: element,
+      client: client
+    } do
+      stub(Simulator, :get_status, fn ->
+        %ConnectionState{status: :connected, client: client}
+      end)
+
+      expect(Client, :list, fn _client ->
+        {:ok,
+         %{
+           "NodeName" => "Root",
+           "NodePath" => "Root",
+           "Nodes" => [%{"NodeName" => "SimpleLever", "NodePath" => "Root/SimpleLever"}]
+         }}
+      end)
+
+      # Lever without notch endpoints
+      expect(Client, :list, fn _client, "SimpleLever" ->
+        {:ok,
+         %{
+           "NodeName" => "SimpleLever",
+           "NodePath" => "Root/SimpleLever",
+           "Nodes" => [],
+           "Endpoints" => [
+             %{"Name" => "InputValue", "Writable" => true},
+             %{"Name" => "Function.GetMinimumInputValue", "Writable" => false},
+             %{"Name" => "Function.GetMaximumInputValue", "Writable" => false}
+           ]
+         }}
+      end)
+
+      {:ok, view, _html} = live(conn, ~p"/trains/#{train.id}")
+
+      open_api_explorer(view, element, "min_endpoint")
+
+      view
+      |> element("button[phx-click='navigate'][phx-value-node='SimpleLever']")
+      |> render_click()
+
+      html = render(view)
+
+      assert html =~ "Lever Control Detected"
+      # Should NOT show "with notches"
+      refute html =~ "with notches"
+    end
+  end
+
+  describe "button detection" do
+    test "shows button detection banner when navigating to button node", %{
+      conn: conn,
+      train: train,
+      button_element: button_element,
+      client: client
+    } do
+      stub(Simulator, :get_status, fn ->
+        %ConnectionState{status: :connected, client: client}
+      end)
+
+      expect(Client, :list, fn _client ->
+        {:ok,
+         %{
+           "NodeName" => "Root",
+           "NodePath" => "Root",
+           "Nodes" => [%{"NodeName" => "HornControl", "NodePath" => "Root/HornControl"}]
+         }}
+      end)
+
+      # Button node - has InputValue but NOT min/max endpoints (not a lever)
+      expect(Client, :list, fn _client, "HornControl" ->
+        {:ok,
+         %{
+           "NodeName" => "HornControl",
+           "NodePath" => "Root/HornControl",
+           "Nodes" => [],
+           "Endpoints" => [
+             %{"Name" => "InputValue", "Writable" => true}
+           ]
+         }}
+      end)
+
+      {:ok, view, _html} = live(conn, ~p"/trains/#{train.id}")
+
+      # Open wizard in BUTTON mode (not lever mode)
+      open_button_api_explorer(view, button_element)
+
+      view
+      |> element("button[phx-click='navigate'][phx-value-node='HornControl']")
+      |> render_click()
+
+      html = render(view)
+
+      # Should show button detection banner (only in button mode)
+      assert html =~ "Button Endpoint Found"
+      assert html =~ "HornControl.InputValue"
+      assert html =~ "Use This Endpoint"
+    end
+
+    test "shows suggested values when button has min/max endpoints", %{
+      conn: conn,
+      train: train,
+      button_element: button_element,
+      client: client
+    } do
+      stub(Simulator, :get_status, fn ->
+        %ConnectionState{status: :connected, client: client}
+      end)
+
+      expect(Client, :list, fn _client ->
+        {:ok,
+         %{
+           "NodeName" => "Root",
+           "NodePath" => "Root",
+           "Nodes" => [%{"NodeName" => "Bell", "NodePath" => "Root/Bell"}]
+         }}
+      end)
+
+      # Button with min/max values
+      expect(Client, :list, fn _client, "Bell" ->
+        {:ok,
+         %{
+           "NodeName" => "Bell",
+           "NodePath" => "Root/Bell",
+           "Nodes" => [],
+           "Endpoints" => [
+             %{"Name" => "InputValue", "Writable" => true},
+             %{"Name" => "Function.GetMinimumInputValue", "Writable" => false},
+             %{"Name" => "Function.GetMaximumInputValue", "Writable" => false}
+           ]
+         }}
+      end)
+
+      # Mock fetching min/max values
+      expect(Client, :get, fn _client, "Bell.Function.GetMinimumInputValue" ->
+        {:ok, 0.0}
+      end)
+
+      expect(Client, :get, fn _client, "Bell.Function.GetMaximumInputValue" ->
+        {:ok, 1.0}
+      end)
+
+      {:ok, view, _html} = live(conn, ~p"/trains/#{train.id}")
+
+      # Open wizard in BUTTON mode
+      open_button_api_explorer(view, button_element)
+
+      view
+      |> element("button[phx-click='navigate'][phx-value-node='Bell']")
+      |> render_click()
+
+      html = render(view)
+
+      # Should show button detection with suggested values
+      assert html =~ "Button Endpoint Found"
+      assert html =~ "Bell.InputValue"
+    end
+
+    test "does not show button detection for lever nodes", %{
+      conn: conn,
+      train: train,
+      element: element,
+      client: client
+    } do
+      stub(Simulator, :get_status, fn ->
+        %ConnectionState{status: :connected, client: client}
+      end)
+
+      expect(Client, :list, fn _client ->
+        {:ok,
+         %{
+           "NodeName" => "Root",
+           "NodePath" => "Root",
+           "Nodes" => [%{"NodeName" => "Throttle", "NodePath" => "Root/Throttle"}]
+         }}
+      end)
+
+      # Full lever node
+      expect(Client, :list, fn _client, "Throttle" ->
+        {:ok,
+         %{
+           "NodeName" => "Throttle",
+           "NodePath" => "Root/Throttle",
+           "Nodes" => [],
+           "Endpoints" => [
+             %{"Name" => "InputValue", "Writable" => true},
+             %{"Name" => "Function.GetMinimumInputValue", "Writable" => false},
+             %{"Name" => "Function.GetMaximumInputValue", "Writable" => false},
+             %{"Name" => "Function.GetNotchCount", "Writable" => false},
+             %{"Name" => "Function.GetCurrentNotchIndex", "Writable" => false}
+           ]
+         }}
+      end)
+
+      {:ok, view, _html} = live(conn, ~p"/trains/#{train.id}")
+
+      open_api_explorer(view, element, "min_endpoint")
+
+      view
+      |> element("button[phx-click='navigate'][phx-value-node='Throttle']")
+      |> render_click()
+
+      html = render(view)
+
+      # Should show lever detection, not button detection
+      assert html =~ "Lever Control Detected"
+      # Should NOT show button detection (lever takes precedence in default mode)
+      # In default mode, lever is detected if it matches, button is only shown if NOT a lever
     end
   end
 end

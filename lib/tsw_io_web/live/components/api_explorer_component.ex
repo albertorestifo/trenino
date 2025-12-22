@@ -127,7 +127,14 @@ defmodule TswIoWeb.ApiExplorerComponent do
           # Detection is filtered by mode if set
           detection_mode = socket.assigns[:detection_mode]
           lever_detection = detect_lever_endpoints(endpoint_items, full_path, detection_mode)
-          button_detection = detect_button_endpoints(endpoint_items, full_path, detection_mode, socket.assigns.client)
+
+          button_detection =
+            detect_button_endpoints(
+              endpoint_items,
+              full_path,
+              detection_mode,
+              socket.assigns.client
+            )
 
           {:noreply,
            socket
@@ -197,7 +204,14 @@ defmodule TswIoWeb.ApiExplorerComponent do
         full_path = Enum.join(new_path, "/")
         detection_mode = socket.assigns[:detection_mode]
         lever_detection = detect_lever_endpoints(endpoint_items, full_path, detection_mode)
-        button_detection = detect_button_endpoints(endpoint_items, full_path, detection_mode, socket.assigns.client)
+
+        button_detection =
+          detect_button_endpoints(
+            endpoint_items,
+            full_path,
+            detection_mode,
+            socket.assigns.client
+          )
 
         {:noreply,
          socket
@@ -409,7 +423,8 @@ defmodule TswIoWeb.ApiExplorerComponent do
                   phx-target={@myself}
                   class="btn btn-ghost btn-sm"
                 >
-                  <.icon name="hero-adjustments-horizontal" class="w-4 h-4" /> Choose Individual Endpoints
+                  <.icon name="hero-adjustments-horizontal" class="w-4 h-4" />
+                  Choose Individual Endpoints
                 </button>
               </div>
             </div>
