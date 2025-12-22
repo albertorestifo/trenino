@@ -8,18 +8,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
-- Matrix input configuration UI
-  - New "Matrix" input type option in add input modal
-  - Configure row and column GPIO pins using comma-separated values
-  - Live grid preview showing matrix dimensions and virtual pin mapping
-  - Validation for pin range (0-127), duplicates, and overlap between rows/columns
-- Matrix button test wizard
-  - Visual grid showing all matrix button positions
-  - Real-time button highlighting when pressed (purple)
-  - Persistent green state with checkmark for tested buttons (pressed at least once)
-  - Progress bar showing tested button count and percentage
-  - Reset button to clear tested state
-  - Allows verifying matrix wiring by testing all button connections
+- Matrix input support
+  - New "Matrix" input type with row/column GPIO pin configuration
+  - Live grid preview showing dimensions and virtual pin mapping
+  - Matrix Test Wizard for verifying button wiring with real-time highlighting and progress tracking
+- Lever endpoint auto-detection
+  - Automatically detects standard lever endpoints when navigating the API explorer
+  - One-click configuration of all lever fields (min, max, value, notch count, notch index)
+- API explorer in button configuration modal
+- Debug logging for configuration commands sent to device
+
+### Fixed
+
+- Button getting stuck in "scan" position
+- "Map Notches" button showing circular error message
+- Device configuration not being associated after leaving config page
+- "Mixed key types" error when saving notches
+- Matrix pin validation crash when typing in a single field
+- Improved error messages for matrix input constraints
 
 ## [0.2.0]
 
