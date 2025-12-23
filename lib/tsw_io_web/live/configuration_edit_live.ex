@@ -678,7 +678,7 @@ defmodule TswIoWeb.ConfigurationEditLive do
 
     # Track tested buttons for matrix (virtual pins >= 128) when pressed
     socket =
-      if pin >= 128 and value == 1 and socket.assigns.testing_matrix_input do
+      if pin >= 128 and value == 1 and socket.assigns.testing_matrix do
         update(socket, :matrix_tested_buttons, &MapSet.put(&1, pin))
       else
         socket
@@ -757,7 +757,9 @@ defmodule TswIoWeb.ConfigurationEditLive do
           device_form={@device_form}
           active_port={@active_port}
           new_mode={@new_mode}
-          can_apply={(length(@inputs) > 0 or length(@matrices) > 0) and not Enum.empty?(@connected_devices)}
+          can_apply={
+            (length(@inputs) > 0 or length(@matrices) > 0) and not Enum.empty?(@connected_devices)
+          }
           applying={@applying}
         />
 
@@ -1297,7 +1299,6 @@ defmodule TswIoWeb.ConfigurationEditLive do
                 class="input input-bordered w-full"
               />
             </div>
-
           </div>
 
           <div class="flex justify-end gap-2 mt-6">
@@ -1339,7 +1340,7 @@ defmodule TswIoWeb.ConfigurationEditLive do
       <div class="relative bg-base-100 rounded-xl shadow-xl w-full max-w-md mx-4 p-6 max-h-[90vh] overflow-y-auto">
         <h2 class="text-xl font-semibold mb-4">Add Matrix</h2>
 
-        <div class="space-y-4">
+        <form phx-change="validate_matrix_pins" phx-submit="add_matrix" class="space-y-4">
           <div class="bg-base-200 rounded-lg p-4">
             <p class="text-sm text-base-content/70 mb-3">
               Enter GPIO pin numbers for rows and columns, separated by commas.
@@ -1355,7 +1356,6 @@ defmodule TswIoWeb.ConfigurationEditLive do
                   name="row_pins"
                   value={@matrix_row_pins_input}
                   placeholder="e.g., 2, 3, 4, 5"
-                  phx-change="validate_matrix_pins"
                   phx-debounce="300"
                   class={[
                     "input input-bordered input-sm w-full",
@@ -1376,7 +1376,6 @@ defmodule TswIoWeb.ConfigurationEditLive do
                   name="col_pins"
                   value={@matrix_col_pins_input}
                   placeholder="e.g., 8, 9, 10"
-                  phx-change="validate_matrix_pins"
                   phx-debounce="300"
                   class={[
                     "input input-bordered input-sm w-full",
@@ -1434,16 +1433,16 @@ defmodule TswIoWeb.ConfigurationEditLive do
               Virtual pin = 128 + (row x cols + col)
             </p>
           </div>
-        </div>
 
-        <div class="flex justify-end gap-2 mt-6">
-          <button type="button" phx-click="close_add_matrix_modal" class="btn btn-ghost">
-            Cancel
-          </button>
-          <button type="button" phx-click="add_matrix" class="btn btn-primary">
-            Add Matrix
-          </button>
-        </div>
+          <div class="flex justify-end gap-2 mt-6">
+            <button type="button" phx-click="close_add_matrix_modal" class="btn btn-ghost">
+              Cancel
+            </button>
+            <button type="submit" class="btn btn-primary">
+              Add Matrix
+            </button>
+          </div>
+        </form>
       </div>
     </div>
     """

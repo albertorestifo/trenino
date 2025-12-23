@@ -31,12 +31,15 @@ defmodule TswIoWeb.ApiExplorerComponent do
   def update(%{client: %Client{} = client, field: field} = assigns, socket) do
     # Mode determines detection behavior: :lever, :button, or nil (auto-detect both)
     mode = Map.get(assigns, :mode)
+    # Embedded mode means this component is inside another modal and shouldn't render its own wrapper
+    embedded = Map.get(assigns, :embedded, false)
 
     socket =
       socket
       |> assign(:field, field)
       |> assign(:client, client)
       |> assign(:detection_mode, mode)
+      |> assign(:embedded, embedded)
 
     # Initialize on first mount
     socket =
@@ -308,11 +311,11 @@ defmodule TswIoWeb.ApiExplorerComponent do
     assigns = assign(assigns, :full_path, full_path)
 
     ~H"""
-    <div class="fixed inset-0 z-[60] flex items-center justify-center p-4">
-      <div class="absolute inset-0 bg-black/50" phx-click="close" phx-target={@myself} />
-      <div class="relative bg-base-100 rounded-xl shadow-xl w-full max-w-2xl max-h-[85vh] flex flex-col">
+    <div class={if @embedded, do: "flex-1 flex flex-col overflow-hidden", else: "fixed inset-0 z-[60] flex items-center justify-center p-4"}>
+      <div :if={!@embedded} class="absolute inset-0 bg-black/50" phx-click="close" phx-target={@myself} />
+      <div class={unless @embedded, do: "relative bg-base-100 rounded-xl shadow-xl w-full max-w-2xl max-h-[85vh] flex flex-col", else: "flex-1 flex flex-col overflow-hidden"}>
         <div class="p-4 border-b border-base-300">
-          <div class="flex items-center justify-between mb-3">
+          <div :if={!@embedded} class="flex items-center justify-between mb-3">
             <div>
               <h2 class="text-lg font-semibold">Browse Simulator API</h2>
               <p class="text-sm text-base-content/60">Selecting: {format_field_name(@field)}</p>

@@ -37,11 +37,12 @@ defmodule TswIoWeb.MatrixTestWizardTest do
 
     test "matrix appears after creation", %{conn: conn, device: device} do
       # Add a matrix programmatically
-      {:ok, _matrix} = Hardware.create_matrix(device.id, %{
-        name: "Test Matrix",
-        row_pins: [2, 3],
-        col_pins: [8, 9]
-      })
+      {:ok, _matrix} =
+        Hardware.create_matrix(device.id, %{
+          name: "Test Matrix",
+          row_pins: [2, 3],
+          col_pins: [8, 9]
+        })
 
       {:ok, _view, html} = live(conn, "/configurations/#{device.config_id}")
 
@@ -54,11 +55,13 @@ defmodule TswIoWeb.MatrixTestWizardTest do
   describe "Matrix test wizard integration" do
     setup do
       {:ok, device} = Hardware.create_device(%{name: "Test Device"})
-      {:ok, matrix} = Hardware.create_matrix(device.id, %{
-        name: "Test Matrix",
-        row_pins: [2, 3, 4],
-        col_pins: [8, 9, 10]
-      })
+
+      {:ok, matrix} =
+        Hardware.create_matrix(device.id, %{
+          name: "Test Matrix",
+          row_pins: [2, 3, 4],
+          col_pins: [8, 9, 10]
+        })
 
       %{device: device, matrix: matrix}
     end

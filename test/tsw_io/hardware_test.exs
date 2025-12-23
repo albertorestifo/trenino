@@ -314,16 +314,27 @@ defmodule TswIo.HardwareTest do
     test "validates pin range (0-127)" do
       {:ok, device} = Hardware.create_device(%{name: "Test Device"})
 
-      assert {:error, _changeset} = Hardware.create_matrix(device.id, %{name: "M", row_pins: [128], col_pins: [8, 9]})
-      assert {:error, _changeset} = Hardware.create_matrix(device.id, %{name: "M", row_pins: [2, 3], col_pins: [128]})
-      assert {:error, _changeset} = Hardware.create_matrix(device.id, %{name: "M", row_pins: [-1], col_pins: [8, 9]})
+      assert {:error, _changeset} =
+               Hardware.create_matrix(device.id, %{name: "M", row_pins: [128], col_pins: [8, 9]})
+
+      assert {:error, _changeset} =
+               Hardware.create_matrix(device.id, %{name: "M", row_pins: [2, 3], col_pins: [128]})
+
+      assert {:error, _changeset} =
+               Hardware.create_matrix(device.id, %{name: "M", row_pins: [-1], col_pins: [8, 9]})
     end
   end
 
   describe "list_matrices/1" do
     test "returns matrices with preloaded pins and buttons" do
       {:ok, device} = Hardware.create_device(%{name: "Test Device"})
-      {:ok, _matrix} = Hardware.create_matrix(device.id, %{name: "Test Matrix", row_pins: [2, 3], col_pins: [8, 9]})
+
+      {:ok, _matrix} =
+        Hardware.create_matrix(device.id, %{
+          name: "Test Matrix",
+          row_pins: [2, 3],
+          col_pins: [8, 9]
+        })
 
       {:ok, [loaded_matrix]} = Hardware.list_matrices(device.id)
 
@@ -336,7 +347,13 @@ defmodule TswIo.HardwareTest do
   describe "delete_matrix/1" do
     test "deletes matrix and cascades to virtual buttons" do
       {:ok, device} = Hardware.create_device(%{name: "Test Device"})
-      {:ok, matrix} = Hardware.create_matrix(device.id, %{name: "Test Matrix", row_pins: [2, 3], col_pins: [8, 9]})
+
+      {:ok, matrix} =
+        Hardware.create_matrix(device.id, %{
+          name: "Test Matrix",
+          row_pins: [2, 3],
+          col_pins: [8, 9]
+        })
 
       # Verify buttons exist
       {:ok, inputs} = Hardware.list_inputs(device.id, include_virtual_buttons: true)
@@ -354,8 +371,16 @@ defmodule TswIo.HardwareTest do
   describe "list_inputs/2 with include_virtual_buttons option" do
     test "excludes virtual buttons by default" do
       {:ok, device} = Hardware.create_device(%{name: "Test Device"})
-      {:ok, _matrix} = Hardware.create_matrix(device.id, %{name: "Test Matrix", row_pins: [2, 3], col_pins: [8, 9]})
-      {:ok, _analog} = Hardware.create_input(device.id, %{pin: 0, input_type: :analog, sensitivity: 5})
+
+      {:ok, _matrix} =
+        Hardware.create_matrix(device.id, %{
+          name: "Test Matrix",
+          row_pins: [2, 3],
+          col_pins: [8, 9]
+        })
+
+      {:ok, _analog} =
+        Hardware.create_input(device.id, %{pin: 0, input_type: :analog, sensitivity: 5})
 
       {:ok, inputs} = Hardware.list_inputs(device.id)
       assert length(inputs) == 1
@@ -364,8 +389,16 @@ defmodule TswIo.HardwareTest do
 
     test "includes virtual buttons when option is true" do
       {:ok, device} = Hardware.create_device(%{name: "Test Device"})
-      {:ok, _matrix} = Hardware.create_matrix(device.id, %{name: "Test Matrix", row_pins: [2, 3], col_pins: [8, 9]})
-      {:ok, _analog} = Hardware.create_input(device.id, %{pin: 0, input_type: :analog, sensitivity: 5})
+
+      {:ok, _matrix} =
+        Hardware.create_matrix(device.id, %{
+          name: "Test Matrix",
+          row_pins: [2, 3],
+          col_pins: [8, 9]
+        })
+
+      {:ok, _analog} =
+        Hardware.create_input(device.id, %{pin: 0, input_type: :analog, sensitivity: 5})
 
       {:ok, inputs} = Hardware.list_inputs(device.id, include_virtual_buttons: true)
       assert length(inputs) == 5

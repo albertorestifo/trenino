@@ -66,7 +66,7 @@ defmodule TswIo.Train.ButtonController do
           }
 
     @type binding_lookup :: %{
-            input_id :: integer() => binding_info()
+            (input_id :: integer()) => binding_info()
           }
 
     @type active_button :: %{

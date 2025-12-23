@@ -852,7 +852,63 @@ defmodule TswIoWeb.TrainEditLive do
      |> assign(:show_config_wizard, false)
      |> assign(:config_wizard_element, nil)
      |> assign(:config_wizard_mode, nil)
-     |> assign(:config_wizard_event, nil)}
+     |> assign(:config_wizard_event, nil)
+     |> assign(:button_detection_inputs, nil)}
+  end
+
+  # Button detection for configuration wizard
+  @impl true
+  def handle_info({:start_button_detection, available_inputs}, socket) do
+    # Build lookup of pin -> input_id for quick detection
+    # Subscribe to input values from all ports that have button inputs
+    ports =
+      available_inputs
+      |> Enum.map(& &1.device.config_id)
+      |> Enum.uniq()
+      |> Enum.map(&TswIo.Hardware.ConfigurationManager.config_id_to_port/1)
+      |> Enum.reject(&is_nil/1)
+
+    Enum.each(ports, &TswIo.Hardware.subscribe_input_values/1)
+
+    # Build a lookup map: {config_id, pin} -> input_id
+    input_lookup =
+      available_inputs
+      |> Enum.map(fn input ->
+        {{input.device.config_id, input.pin}, input.id}
+      end)
+      |> Map.new()
+
+    {:noreply, assign(socket, :button_detection_inputs, input_lookup)}
+  end
+
+  @impl true
+  def handle_info(:stop_button_detection, socket) do
+    {:noreply, assign(socket, :button_detection_inputs, nil)}
+  end
+
+  @impl true
+  def handle_info({:input_value_updated, port, pin, value}, socket) do
+    # Check if we're in button detection mode and a button was pressed
+    if socket.assigns[:button_detection_inputs] && value == 1 do
+      # Look up which input this corresponds to
+      config_id = TswIo.Hardware.ConfigurationManager.port_to_config_id(port)
+
+      case Map.get(socket.assigns.button_detection_inputs, {config_id, pin}) do
+        nil ->
+          {:noreply, socket}
+
+        input_id ->
+          # Found the button! Send to wizard component
+          send_update(TswIoWeb.ConfigurationWizardComponent,
+            id: "config-wizard",
+            button_detected_input_id: input_id
+          )
+
+          {:noreply, assign(socket, :button_detection_inputs, nil)}
+      end
+    else
+      {:noreply, socket}
+    end
   end
 
   # Sequence manager component events
@@ -880,6 +936,7 @@ defmodule TswIoWeb.TrainEditLive do
       {:ok, element} ->
         {:noreply,
          socket
+         |> assign(:show_api_explorer, false)
          |> assign(:show_config_wizard, true)
          |> assign(:config_wizard_element, element)
          |> assign(:config_wizard_mode, :lever)
@@ -893,12 +950,15 @@ defmodule TswIoWeb.TrainEditLive do
   defp open_button_config_wizard(socket, element_id) do
     case TrainContext.get_element(element_id, preload: [button_binding: [input: :device]]) do
       {:ok, element} ->
-        available_inputs = Hardware.list_all_inputs(include_uncalibrated: true)
+        available_inputs =
+          Hardware.list_all_inputs(include_uncalibrated: true, include_virtual_buttons: true)
+
         button_inputs = Enum.filter(available_inputs, &(&1.input_type == :button))
         sequences = TrainContext.list_sequences(socket.assigns.train.id)
 
         {:noreply,
          socket
+         |> assign(:show_api_explorer, false)
          |> assign(:show_config_wizard, true)
          |> assign(:config_wizard_element, element)
          |> assign(:config_wizard_mode, :button)

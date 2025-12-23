@@ -87,6 +87,28 @@ defmodule TswIo.Hardware.ConfigurationManager do
     GenServer.call(__MODULE__, {:get_input_values, port})
   end
 
+  @doc "Convert a config_id to port by looking up connected devices"
+  @spec config_id_to_port(integer()) :: String.t() | nil
+  def config_id_to_port(config_id) do
+    Connection.connected_devices()
+    |> Enum.find(&(&1.device_config_id == config_id))
+    |> case do
+      nil -> nil
+      device -> device.port
+    end
+  end
+
+  @doc "Convert a port to config_id by looking up connected devices"
+  @spec port_to_config_id(String.t()) :: integer() | nil
+  def port_to_config_id(port) do
+    Connection.connected_devices()
+    |> Enum.find(&(&1.port == port))
+    |> case do
+      nil -> nil
+      device -> device.device_config_id
+    end
+  end
+
   # Server callbacks
 
   @impl true
