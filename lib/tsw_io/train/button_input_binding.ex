@@ -29,6 +29,7 @@ defmodule TswIo.Train.ButtonInputBinding do
 
   alias TswIo.Hardware.Input
   alias TswIo.Train.Element
+  alias TswIo.Train.Sequence
 
   @type mode :: :simple | :momentary | :sequence
   @type hardware_type :: :momentary | :latching
@@ -45,8 +46,12 @@ defmodule TswIo.Train.ButtonInputBinding do
           mode: mode(),
           hardware_type: hardware_type(),
           repeat_interval_ms: integer(),
+          on_sequence_id: integer() | nil,
+          off_sequence_id: integer() | nil,
           element: Element.t() | Ecto.Association.NotLoaded.t(),
           input: Input.t() | Ecto.Association.NotLoaded.t(),
+          on_sequence: Sequence.t() | Ecto.Association.NotLoaded.t() | nil,
+          off_sequence: Sequence.t() | Ecto.Association.NotLoaded.t() | nil,
           inserted_at: DateTime.t() | nil,
           updated_at: DateTime.t() | nil
         }
@@ -67,6 +72,8 @@ defmodule TswIo.Train.ButtonInputBinding do
 
     belongs_to :element, Element
     belongs_to :input, Input
+    belongs_to :on_sequence, Sequence
+    belongs_to :off_sequence, Sequence
 
     timestamps(type: :utc_datetime)
   end
@@ -84,20 +91,24 @@ defmodule TswIo.Train.ButtonInputBinding do
       :enabled,
       :mode,
       :hardware_type,
-      :repeat_interval_ms
+      :repeat_interval_ms,
+      :on_sequence_id,
+      :off_sequence_id
     ])
     |> validate_required([:element_id, :input_id])
     |> validate_mode_requirements()
+    |> validate_sequence_requirements()
     |> validate_number(:virtual_pin, greater_than_or_equal_to: 128, less_than: 256)
     |> validate_number(:repeat_interval_ms, greater_than: 0, less_than_or_equal_to: 5000)
     |> round_float_fields([:on_value, :off_value])
     |> foreign_key_constraint(:element_id)
     |> foreign_key_constraint(:input_id)
+    |> foreign_key_constraint(:on_sequence_id)
+    |> foreign_key_constraint(:off_sequence_id)
     |> unique_constraint(:element_id)
   end
 
   # Mode-specific validation: simple and momentary modes require endpoint
-  # sequence mode will require sequence references (added in Phase 2)
   defp validate_mode_requirements(changeset) do
     mode = get_field(changeset, :mode)
 
@@ -110,11 +121,30 @@ defmodule TswIo.Train.ButtonInputBinding do
         |> validate_required([:endpoint, :repeat_interval_ms])
 
       :sequence ->
-        # Endpoint is optional for sequence mode (sequences have their own endpoints)
-        changeset
+        # Sequence mode requires on_sequence_id
+        validate_required(changeset, [:on_sequence_id])
 
       nil ->
         changeset
+    end
+  end
+
+  # Validate sequence requirements based on hardware type
+  # off_sequence_id is only valid for latching hardware with sequence mode
+  defp validate_sequence_requirements(changeset) do
+    mode = get_field(changeset, :mode)
+    hardware_type = get_field(changeset, :hardware_type)
+    off_sequence_id = get_field(changeset, :off_sequence_id)
+
+    # off_sequence is only valid for latching hardware in sequence mode
+    if mode != :sequence and off_sequence_id != nil do
+      add_error(changeset, :off_sequence_id, "is only valid in sequence mode")
+    else
+      if mode == :sequence and hardware_type == :momentary and off_sequence_id != nil do
+        add_error(changeset, :off_sequence_id, "is only valid for latching hardware")
+      else
+        changeset
+      end
     end
   end
 
