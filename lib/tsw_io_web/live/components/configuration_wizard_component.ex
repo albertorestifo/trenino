@@ -28,7 +28,10 @@ defmodule TswIoWeb.ConfigurationWizardComponent do
 
   use TswIoWeb, :live_component
 
+  require Logger
+
   alias TswIo.Simulator.Client
+  alias TswIo.Simulator.LeverAnalyzer
   alias TswIo.Train
   alias TswIo.Train.Element
 
@@ -1028,21 +1031,76 @@ defmodule TswIoWeb.ConfigurationWizardComponent do
   end
 
   defp save_lever_configuration(%{assigns: assigns}) do
-    %{element: element, detected_endpoints: detected, manual_selections: manual} = assigns
+    %{element: element, detected_endpoints: detected, manual_selections: manual, client: client} =
+      assigns
+
+    # Get the control path (node path) from detected endpoints
+    # The node_path is stored during detection, or we derive it from value_endpoint
+    value_endpoint = get_endpoint(detected, manual, :value_endpoint)
+    control_path = derive_control_path(detected, value_endpoint)
 
     params =
       %{}
       |> maybe_put(:min_endpoint, get_endpoint(detected, manual, :min_endpoint))
       |> maybe_put(:max_endpoint, get_endpoint(detected, manual, :max_endpoint))
-      |> maybe_put(:value_endpoint, get_endpoint(detected, manual, :value_endpoint))
+      |> maybe_put(:value_endpoint, value_endpoint)
       |> maybe_put(:notch_count_endpoint, get_endpoint(detected, manual, :notch_count_endpoint))
       |> maybe_put(:notch_index_endpoint, get_endpoint(detected, manual, :notch_index_endpoint))
 
-    if element.lever_config do
-      Train.update_lever_config(element.lever_config, params)
-    else
-      Train.create_lever_config(element.id, params)
+    # Run lever analysis to detect true behavior
+    case run_lever_analysis(client, control_path) do
+      {:ok, analysis_result} ->
+        Logger.info(
+          "[ConfigWizard] Lever analysis complete: type=#{analysis_result.lever_type}, " <>
+            "notches=#{length(analysis_result.suggested_notches)}"
+        )
+
+        # Save with analysis results
+        if element.lever_config do
+          Train.update_lever_config_with_analysis(element.lever_config, params, analysis_result)
+        else
+          Train.create_lever_config_with_analysis(element.id, params, analysis_result)
+        end
+
+      {:error, reason} ->
+        Logger.warning(
+          "[ConfigWizard] Lever analysis failed: #{inspect(reason)}, saving without analysis"
+        )
+
+        # Fallback to saving without analysis
+        if element.lever_config do
+          Train.update_lever_config(element.lever_config, params)
+        else
+          Train.create_lever_config(element.id, params)
+        end
     end
+  end
+
+  # Derive the control path from detected endpoints or value_endpoint
+  defp derive_control_path(%{node_path: node_path}, _value_endpoint) when is_binary(node_path) do
+    node_path
+  end
+
+  defp derive_control_path(_detected, value_endpoint) when is_binary(value_endpoint) do
+    # Value endpoint is like "CurrentDrivableActor/MasterController.InputValue"
+    # Extract the control path by removing the ".InputValue" suffix
+    case String.split(value_endpoint, ".") do
+      [path | _rest] -> path
+      _ -> value_endpoint
+    end
+  end
+
+  defp derive_control_path(_detected, _value_endpoint), do: nil
+
+  # Run lever analysis with error handling
+  defp run_lever_analysis(nil, _control_path), do: {:error, :no_client}
+  defp run_lever_analysis(_client, nil), do: {:error, :no_control_path}
+
+  defp run_lever_analysis(%Client{} = client, control_path) do
+    Logger.info("[ConfigWizard] Running lever analysis on #{control_path}...")
+
+    # Run analysis with a restore position at the neutral point (0.5)
+    LeverAnalyzer.analyze(client, control_path, restore_position: 0.5)
   end
 
   defp save_button_configuration(%{assigns: assigns}) do

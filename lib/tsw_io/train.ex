@@ -198,6 +198,119 @@ defmodule TswIo.Train do
   end
 
   @doc """
+  Create a lever config with analysis results from LeverAnalyzer.
+
+  This creates the lever config and automatically populates notches based on
+  the analyzer's suggested_notches, which are derived from empirical testing
+  of the lever's actual behavior.
+
+  ## Parameters
+
+    * `element_id` - The element ID to create the config for
+    * `attrs` - Map with endpoint paths (min_endpoint, max_endpoint, value_endpoint)
+    * `analysis_result` - The result from `LeverAnalyzer.analyze/2`
+
+  ## Example
+
+      {:ok, result} = LeverAnalyzer.analyze(client, "CurrentDrivableActor/MasterController")
+      {:ok, config} = Train.create_lever_config_with_analysis(element_id, endpoints, result)
+  """
+  @spec create_lever_config_with_analysis(integer(), map(), map()) ::
+          {:ok, LeverConfig.t()} | {:error, term()}
+  def create_lever_config_with_analysis(element_id, attrs, %{
+        lever_type: lever_type,
+        suggested_notches: suggested_notches
+      }) do
+    Repo.transaction(fn ->
+      # Create the lever config with lever_type
+      config_attrs = Map.put(attrs, :lever_type, lever_type)
+
+      case create_lever_config(element_id, config_attrs) do
+        {:ok, lever_config} ->
+          # Create notches from analysis results
+          case create_notches_from_suggestions(lever_config.id, suggested_notches) do
+            :ok ->
+              Repo.preload(lever_config, :notches)
+
+            {:error, reason} ->
+              Repo.rollback(reason)
+          end
+
+        {:error, changeset} ->
+          Repo.rollback(changeset)
+      end
+    end)
+  end
+
+  @doc """
+  Update a lever config with new analysis results.
+
+  Replaces existing notches with those from the new analysis.
+  """
+  @spec update_lever_config_with_analysis(LeverConfig.t(), map(), map()) ::
+          {:ok, LeverConfig.t()} | {:error, term()}
+  def update_lever_config_with_analysis(%LeverConfig{} = config, attrs, %{
+        lever_type: lever_type,
+        suggested_notches: suggested_notches
+      }) do
+    Repo.transaction(fn ->
+      # Update the lever config with lever_type
+      config_attrs = Map.put(attrs, :lever_type, lever_type)
+
+      case update_lever_config(config, config_attrs) do
+        {:ok, updated_config} ->
+          # Delete existing notches
+          Notch
+          |> where([n], n.lever_config_id == ^updated_config.id)
+          |> Repo.delete_all()
+
+          # Create notches from analysis results
+          case create_notches_from_suggestions(updated_config.id, suggested_notches) do
+            :ok ->
+              Repo.preload(updated_config, :notches)
+
+            {:error, reason} ->
+              Repo.rollback(reason)
+          end
+
+        {:error, changeset} ->
+          Repo.rollback(changeset)
+      end
+    end)
+  end
+
+  defp create_notches_from_suggestions(lever_config_id, suggested_notches) do
+    results =
+      Enum.map(suggested_notches, fn notch ->
+        # Note: We do NOT copy input_min/input_max from analyzer suggestions.
+        # The analyzer's values represent simulator positions (where each notch
+        # is in the simulator's 0.0-1.0 input range).
+        # The Notch schema's input_min/input_max are for hardware input mapping,
+        # which must be done separately via NotchMappingSession.
+        attrs = %{
+          index: notch[:index] || 0,
+          type: notch[:type],
+          value: notch[:value],
+          min_value: notch[:min_value],
+          max_value: notch[:max_value],
+          description: notch[:description]
+        }
+
+        %Notch{lever_config_id: lever_config_id}
+        |> Notch.changeset(attrs)
+        |> Repo.insert()
+      end)
+
+    errors = Enum.filter(results, &match?({:error, _}, &1))
+
+    if errors == [] do
+      :ok
+    else
+      {:error, {:notch_errors, errors}}
+    end
+  end
+
+  @doc """
   Update a lever config.
   """
   @spec update_lever_config(LeverConfig.t(), map()) ::
