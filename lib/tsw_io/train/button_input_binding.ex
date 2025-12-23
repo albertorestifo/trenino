@@ -38,7 +38,6 @@ defmodule TswIo.Train.ButtonInputBinding do
           id: integer() | nil,
           element_id: integer() | nil,
           input_id: integer() | nil,
-          virtual_pin: integer() | nil,
           endpoint: String.t() | nil,
           on_value: float(),
           off_value: float(),
@@ -61,8 +60,6 @@ defmodule TswIo.Train.ButtonInputBinding do
     field :on_value, :float, default: 1.0
     field :off_value, :float, default: 0.0
     field :enabled, :boolean, default: true
-    # For matrix inputs, stores the specific virtual pin (128+)
-    field :virtual_pin, :integer
     # Mode: :simple (send once), :momentary (repeat while held), :sequence (execute sequence)
     field :mode, Ecto.Enum, values: [:simple, :momentary, :sequence], default: :simple
     # Hardware type: :momentary (spring-loaded), :latching (stays in position)
@@ -84,7 +81,6 @@ defmodule TswIo.Train.ButtonInputBinding do
     |> cast(attrs, [
       :element_id,
       :input_id,
-      :virtual_pin,
       :endpoint,
       :on_value,
       :off_value,
@@ -98,7 +94,6 @@ defmodule TswIo.Train.ButtonInputBinding do
     |> validate_required([:element_id, :input_id])
     |> validate_mode_requirements()
     |> validate_sequence_requirements()
-    |> validate_number(:virtual_pin, greater_than_or_equal_to: 128, less_than: 256)
     |> validate_number(:repeat_interval_ms, greater_than: 0, less_than_or_equal_to: 5000)
     |> round_float_fields([:on_value, :off_value])
     |> foreign_key_constraint(:element_id)

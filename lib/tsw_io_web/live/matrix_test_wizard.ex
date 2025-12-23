@@ -35,18 +35,9 @@ defmodule TswIoWeb.MatrixTestWizard do
   end
 
   @impl true
-  def update(%{input: input} = assigns, socket) do
-    matrix_pins = loaded_matrix_pins(input.matrix_pins)
-
-    rows =
-      matrix_pins
-      |> Enum.filter(&(&1.pin_type == :row))
-      |> Enum.sort_by(& &1.position)
-
-    cols =
-      matrix_pins
-      |> Enum.filter(&(&1.pin_type == :col))
-      |> Enum.sort_by(& &1.position)
+  def update(%{matrix: matrix} = assigns, socket) do
+    rows = matrix.row_pins |> Enum.sort_by(& &1.position)
+    cols = matrix.col_pins |> Enum.sort_by(& &1.position)
 
     {:ok,
      socket
@@ -332,7 +323,4 @@ defmodule TswIoWeb.MatrixTestWizard do
     """
   end
 
-  defp loaded_matrix_pins(%Ecto.Association.NotLoaded{}), do: []
-  defp loaded_matrix_pins(nil), do: []
-  defp loaded_matrix_pins(pins), do: pins
 end

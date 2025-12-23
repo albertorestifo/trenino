@@ -233,10 +233,11 @@ defmodule TswIo.Hardware.ConfigurationManager do
   defp do_apply_configuration(port, device_id, %State{} = state) do
     with {:ok, device} <- Hardware.get_device(device_id),
          {:ok, inputs} <- Hardware.list_inputs(device_id),
-         :ok <- validate_inputs(inputs),
+         {:ok, matrices} <- Hardware.list_matrices(device_id),
+         :ok <- validate_configuration(inputs, matrices),
          # Use the existing config_id - don't generate a new one
          config_id = device.config_id,
-         :ok <- send_configuration_messages(port, config_id, inputs) do
+         :ok <- send_configuration_messages(port, config_id, inputs, matrices) do
       timer_ref = Process.send_after(self(), {:config_timeout, config_id}, @config_timeout_ms)
 
       in_flight_info = %{
@@ -250,20 +251,22 @@ defmodule TswIo.Hardware.ConfigurationManager do
     end
   end
 
-  defp validate_inputs([]), do: {:error, :no_inputs}
-  defp validate_inputs(_inputs), do: :ok
+  defp validate_configuration([], []), do: {:error, :no_inputs}
+  defp validate_configuration(_inputs, _matrices), do: :ok
 
-  defp send_configuration_messages(port, config_id, inputs) do
-    total_parts = length(inputs)
+  defp send_configuration_messages(port, config_id, inputs, matrices) do
+    # Build list of all configuration parts: inputs + matrices
+    config_parts = build_config_parts(inputs, matrices)
+    total_parts = length(config_parts)
 
     Logger.info(
       "Sending configuration to device on #{port}: config_id=#{config_id}, total_parts=#{total_parts}"
     )
 
-    inputs
+    config_parts
     |> Enum.with_index()
-    |> Enum.reduce_while(:ok, fn {%Input{} = input, index}, :ok ->
-      message = build_configure_message(config_id, total_parts, index, input)
+    |> Enum.reduce_while(:ok, fn {part, index}, :ok ->
+      message = build_configure_message(config_id, total_parts, index, part)
       Logger.info("  [#{index + 1}/#{total_parts}] #{inspect(message)}")
 
       case Connection.send_message(port, message) do
@@ -273,11 +276,18 @@ defmodule TswIo.Hardware.ConfigurationManager do
     end)
   end
 
+  # Build a list of configuration parts from inputs and matrices
+  defp build_config_parts(inputs, matrices) do
+    input_parts = Enum.map(inputs, &{:input, &1})
+    matrix_parts = Enum.map(matrices, &{:matrix, &1})
+    input_parts ++ matrix_parts
+  end
+
   defp build_configure_message(
          config_id,
          total_parts,
          part_number,
-         %Input{input_type: :analog} = input
+         {:input, %Input{input_type: :analog} = input}
        ) do
     %Configure{
       config_id: config_id,
@@ -293,7 +303,7 @@ defmodule TswIo.Hardware.ConfigurationManager do
          config_id,
          total_parts,
          part_number,
-         %Input{input_type: :button} = input
+         {:input, %Input{input_type: :button} = input}
        ) do
     %Configure{
       config_id: config_id,
@@ -309,20 +319,16 @@ defmodule TswIo.Hardware.ConfigurationManager do
          config_id,
          total_parts,
          part_number,
-         %Input{input_type: :matrix} = input
+         {:matrix, matrix}
        ) do
-    # Ensure matrix_pins are loaded and sorted by position
-    matrix_pins = input.matrix_pins || []
-
+    # Get row and col pins from the matrix association
     row_pins =
-      matrix_pins
-      |> Enum.filter(&(&1.pin_type == :row))
+      matrix.row_pins
       |> Enum.sort_by(& &1.position)
       |> Enum.map(& &1.pin)
 
     col_pins =
-      matrix_pins
-      |> Enum.filter(&(&1.pin_type == :col))
+      matrix.col_pins
       |> Enum.sort_by(& &1.position)
       |> Enum.map(& &1.pin)
 

@@ -6,7 +6,7 @@ defmodule TswIo.Hardware do
   import Ecto.Query
 
   alias TswIo.Repo
-  alias TswIo.Hardware.{ConfigId, Device, Input, Output}
+  alias TswIo.Hardware.{ConfigId, Device, Input, Matrix, Output}
   alias TswIo.Hardware.Input.Calibration
   alias TswIo.Hardware.Input.MatrixPin
   alias TswIo.Hardware.Calibration.{Calculator, SessionSupervisor}
@@ -131,7 +131,7 @@ defmodule TswIo.Hardware do
   @doc """
   Delete a device configuration.
 
-  This will cascade delete all associated inputs and calibrations.
+  This will cascade delete all associated inputs, matrices, and calibrations.
   Returns an error if the configuration is currently active on any connected device.
 
   ## Examples
@@ -150,7 +150,7 @@ defmodule TswIo.Hardware do
       {:error, :configuration_active}
     else
       # Delete inputs and their calibrations first (cascade)
-      {:ok, inputs} = list_inputs(device.id)
+      {:ok, inputs} = list_inputs(device.id, include_virtual_buttons: true)
 
       Enum.each(inputs, fn input ->
         # Delete calibration if exists
@@ -160,6 +160,10 @@ defmodule TswIo.Hardware do
 
         Repo.delete(input)
       end)
+
+      # Delete matrices (will cascade delete matrix pins)
+      {:ok, matrices} = list_matrices(device.id)
+      Enum.each(matrices, &Repo.delete/1)
 
       # Delete the device
       Repo.delete(device)
@@ -203,15 +207,30 @@ defmodule TswIo.Hardware do
 
   @doc """
   List all inputs for a device, ordered by pin.
+
+  ## Options
+
+    * `:include_virtual_buttons` - Include virtual buttons from matrices (default: false)
+
   """
-  @spec list_inputs(integer()) :: {:ok, [Input.t()]}
-  def list_inputs(device_id) do
-    inputs =
+  @spec list_inputs(integer(), keyword()) :: {:ok, [Input.t()]}
+  def list_inputs(device_id, opts \\ []) do
+    include_virtual = Keyword.get(opts, :include_virtual_buttons, false)
+
+    query =
       Input
       |> where([i], i.device_id == ^device_id)
       |> order_by([i], i.pin)
-      |> preload([:calibration, :matrix_pins])
-      |> Repo.all()
+      |> preload([:calibration])
+
+    query =
+      if include_virtual do
+        query
+      else
+        where(query, [i], is_nil(i.matrix_id))
+      end
+
+    inputs = Repo.all(query)
 
     {:ok, inputs}
   end
@@ -225,11 +244,13 @@ defmodule TswIo.Hardware do
   ## Options
 
     * `:include_uncalibrated` - Include inputs without calibration (default: false)
+    * `:include_virtual_buttons` - Include virtual buttons from matrices (default: false)
 
   """
   @spec list_all_inputs(keyword()) :: [Input.t()]
   def list_all_inputs(opts \\ []) do
     include_uncalibrated = Keyword.get(opts, :include_uncalibrated, false)
+    include_virtual = Keyword.get(opts, :include_virtual_buttons, false)
 
     query =
       Input
@@ -243,6 +264,13 @@ defmodule TswIo.Hardware do
       else
         query
         |> join(:inner, [i, d], c in Calibration, on: c.input_id == i.id)
+      end
+
+    query =
+      if include_virtual do
+        query
+      else
+        where(query, [i], is_nil(i.matrix_id))
       end
 
     Repo.all(query)
@@ -275,28 +303,187 @@ defmodule TswIo.Hardware do
   end
 
   @doc """
-  Set matrix pins for a matrix input.
+  Get an input by ID.
 
-  Replaces all existing matrix pins with the provided row and column pins.
+  ## Options
+
+    * `:preload` - List of associations to preload (default: [])
+  """
+  @spec get_input(integer(), keyword()) :: {:ok, Input.t()} | {:error, :not_found}
+  def get_input(id, opts \\ []) do
+    preloads = Keyword.get(opts, :preload, [])
+
+    case Repo.get(Input, id) do
+      nil -> {:error, :not_found}
+      input -> {:ok, Repo.preload(input, preloads)}
+    end
+  end
+
+  # Matrix operations
+
+  @doc """
+  List all matrices for a device.
+  """
+  @spec list_matrices(integer()) :: {:ok, [Matrix.t()]}
+  def list_matrices(device_id) do
+    matrices =
+      Matrix
+      |> where([m], m.device_id == ^device_id)
+      |> order_by([m], m.name)
+      |> preload([:row_pins, :col_pins, :buttons])
+      |> Repo.all()
+
+    {:ok, matrices}
+  end
+
+  @doc """
+  Get a matrix by ID.
+
+  ## Options
+
+    * `:preload` - List of associations to preload (default: [:row_pins, :col_pins, :buttons])
+  """
+  @spec get_matrix(integer(), keyword()) :: {:ok, Matrix.t()} | {:error, :not_found}
+  def get_matrix(id, opts \\ []) do
+    preloads = Keyword.get(opts, :preload, [:row_pins, :col_pins, :buttons])
+
+    case Repo.get(Matrix, id) do
+      nil -> {:error, :not_found}
+      matrix -> {:ok, Repo.preload(matrix, preloads)}
+    end
+  end
+
+  @doc """
+  Create a matrix configuration with row/column pins.
+
+  Automatically creates virtual button inputs for each cell in the matrix.
 
   ## Parameters
-    - input_id: The matrix input ID
-    - row_pins: List of row pin numbers in order
-    - col_pins: List of column pin numbers in order
+    - device_id: The device ID
+    - attrs: Map containing :name, :row_pins, :col_pins
+      - row_pins: [2, 3, 4]  (list of pin numbers)
+      - col_pins: [5, 6, 7]  (list of pin numbers)
 
   ## Examples
 
-      iex> set_matrix_pins(input_id, [2, 3, 4], [5, 6])
-      {:ok, [%MatrixPin{}, ...]}
-
+      iex> create_matrix(device_id, %{
+        name: "Main Panel",
+        row_pins: [2, 3, 4],
+        col_pins: [5, 6, 7]
+      })
+      {:ok, %Matrix{}}
   """
-  @spec set_matrix_pins(integer(), [integer()], [integer()]) ::
-          {:ok, [MatrixPin.t()]} | {:error, Ecto.Changeset.t()}
-  def set_matrix_pins(input_id, row_pins, col_pins) do
-    # Delete existing matrix pins for this input
-    from(mp in MatrixPin, where: mp.input_id == ^input_id)
-    |> Repo.delete_all()
+  @spec create_matrix(integer(), map()) :: {:ok, Matrix.t()} | {:error, Ecto.Changeset.t()}
+  def create_matrix(device_id, attrs) do
+    row_pins = Map.get(attrs, :row_pins, [])
+    col_pins = Map.get(attrs, :col_pins, [])
 
+    Repo.transaction(fn ->
+      # Create matrix
+      matrix_result =
+        %Matrix{device_id: device_id}
+        |> Matrix.changeset(Map.take(attrs, [:name]))
+        |> Repo.insert()
+
+      case matrix_result do
+        {:ok, matrix} ->
+          # Create matrix pins
+          case create_matrix_pins(matrix.id, row_pins, col_pins) do
+            {:ok, _pins} ->
+              # Create virtual button inputs
+              case create_virtual_buttons(device_id, matrix.id, row_pins, col_pins) do
+                {:ok, _buttons} ->
+                  Repo.preload(matrix, [:row_pins, :col_pins, :buttons])
+
+                {:error, reason} ->
+                  Repo.rollback(reason)
+              end
+
+            {:error, reason} ->
+              Repo.rollback(reason)
+          end
+
+        {:error, changeset} ->
+          Repo.rollback(changeset)
+      end
+    end)
+  end
+
+  @doc """
+  Update matrix configuration.
+
+  If row_pins or col_pins are provided, removes old virtual buttons and creates new ones.
+  Existing button bindings for removed buttons will be cascade deleted.
+  """
+  @spec update_matrix(Matrix.t(), map()) :: {:ok, Matrix.t()} | {:error, term()}
+  def update_matrix(%Matrix{} = matrix, attrs) do
+    row_pins = Map.get(attrs, :row_pins)
+    col_pins = Map.get(attrs, :col_pins)
+
+    Repo.transaction(fn ->
+      # Update matrix name if provided
+      matrix =
+        if Map.has_key?(attrs, :name) do
+          case matrix |> Matrix.changeset(Map.take(attrs, [:name])) |> Repo.update() do
+            {:ok, updated} -> updated
+            {:error, changeset} -> Repo.rollback(changeset)
+          end
+        else
+          matrix
+        end
+
+      # Update pins if provided
+      if row_pins && col_pins do
+        # Delete old virtual buttons
+        from(i in Input, where: i.matrix_id == ^matrix.id)
+        |> Repo.delete_all()
+
+        # Delete old matrix pins
+        from(mp in MatrixPin, where: mp.matrix_id == ^matrix.id)
+        |> Repo.delete_all()
+
+        # Create new matrix pins
+        case create_matrix_pins(matrix.id, row_pins, col_pins) do
+          {:ok, _pins} ->
+            # Create new virtual buttons
+            case create_virtual_buttons(matrix.device_id, matrix.id, row_pins, col_pins) do
+              {:ok, _buttons} ->
+                Repo.preload(matrix, [:row_pins, :col_pins, :buttons], force: true)
+
+              {:error, reason} ->
+                Repo.rollback(reason)
+            end
+
+          {:error, reason} ->
+            Repo.rollback(reason)
+        end
+      else
+        matrix
+      end
+    end)
+  end
+
+  @doc """
+  Delete a matrix and all its virtual buttons.
+
+  Button bindings for virtual buttons will be cascade deleted.
+  """
+  @spec delete_matrix(Matrix.t()) :: {:ok, Matrix.t()} | {:error, term()}
+  def delete_matrix(%Matrix{} = matrix) do
+    Repo.delete(matrix)
+  end
+
+  @spec delete_matrix(integer()) :: {:ok, Matrix.t()} | {:error, :not_found | term()}
+  def delete_matrix(matrix_id) when is_integer(matrix_id) do
+    case Repo.get(Matrix, matrix_id) do
+      nil -> {:error, :not_found}
+      matrix -> Repo.delete(matrix)
+    end
+  end
+
+  # Private matrix helpers
+
+  defp create_matrix_pins(matrix_id, row_pins, col_pins) do
     # Create row pins
     row_results =
       row_pins
@@ -304,7 +491,7 @@ defmodule TswIo.Hardware do
       |> Enum.map(fn {pin, position} ->
         %MatrixPin{}
         |> MatrixPin.changeset(%{
-          input_id: input_id,
+          matrix_id: matrix_id,
           pin_type: :row,
           pin: pin,
           position: position
@@ -319,7 +506,7 @@ defmodule TswIo.Hardware do
       |> Enum.map(fn {pin, position} ->
         %MatrixPin{}
         |> MatrixPin.changeset(%{
-          input_id: input_id,
+          matrix_id: matrix_id,
           pin_type: :col,
           pin: pin,
           position: position
@@ -327,7 +514,6 @@ defmodule TswIo.Hardware do
         |> Repo.insert()
       end)
 
-    # Check for errors
     all_results = row_results ++ col_results
 
     case Enum.find(all_results, &match?({:error, _}, &1)) do
@@ -336,20 +522,30 @@ defmodule TswIo.Hardware do
     end
   end
 
-  @doc """
-  Get an input by ID.
+  defp create_virtual_buttons(device_id, matrix_id, row_pins, col_pins) do
+    num_rows = length(row_pins)
+    num_cols = length(col_pins)
 
-  ## Options
+    buttons =
+      for row_idx <- 0..(num_rows - 1),
+          col_idx <- 0..(num_cols - 1) do
+        virtual_pin = Matrix.virtual_pin(row_idx, col_idx, num_cols)
 
-    * `:preload` - List of associations to preload (default: [])
-  """
-  @spec get_input(integer(), keyword()) :: {:ok, Input.t()} | {:error, :not_found}
-  def get_input(id, opts \\ []) do
-    preloads = Keyword.get(opts, :preload, [])
+        %Input{}
+        |> Input.changeset(%{
+          device_id: device_id,
+          matrix_id: matrix_id,
+          input_type: :button,
+          pin: virtual_pin,
+          name: "R#{row_idx}C#{col_idx}",
+          debounce: 50
+        })
+        |> Repo.insert()
+      end
 
-    case Repo.get(Input, id) do
-      nil -> {:error, :not_found}
-      input -> {:ok, Repo.preload(input, preloads)}
+    case Enum.find(buttons, &match?({:error, _}, &1)) do
+      nil -> {:ok, Enum.map(buttons, fn {:ok, btn} -> btn end)}
+      {:error, changeset} -> {:error, changeset}
     end
   end
 

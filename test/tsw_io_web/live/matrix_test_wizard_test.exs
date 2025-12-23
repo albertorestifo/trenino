@@ -4,160 +4,73 @@ defmodule TswIoWeb.MatrixTestWizardTest do
   import Phoenix.LiveViewTest
 
   alias TswIo.Hardware
+  alias TswIo.Hardware.Matrix
 
-  describe "validate_matrix_pins event" do
+  describe "Matrix management UI" do
     setup do
       {:ok, device} = Hardware.create_device(%{name: "Test Device"})
       %{device: device}
     end
 
-    test "handles validation when only row_pins is provided", %{conn: conn, device: device} do
+    test "can add a matrix with row and column pins", %{conn: conn, device: device} do
       {:ok, view, _html} = live(conn, "/configurations/#{device.config_id}")
 
-      # Open the add input modal
-      view |> element("button", "Add Input") |> render_click()
+      # Open the add matrix modal
+      view |> element("button[phx-click='open_add_matrix_modal']") |> render_click()
 
-      # Change to matrix type using the actual form
-      view
-      |> form("form[phx-submit='add_input']", %{input: %{input_type: "matrix"}})
-      |> render_change()
-
-      # Type only in row_pins field - this should not crash
-      result =
-        view
-        |> element("input[name='row_pins']")
-        |> render_change(%{"row_pins" => "2,"})
-
-      assert result =~ "Row Pins"
-    end
-
-    test "handles validation when only col_pins is provided", %{conn: conn, device: device} do
-      {:ok, view, _html} = live(conn, "/configurations/#{device.config_id}")
-
-      # Open the add input modal
-      view |> element("button", "Add Input") |> render_click()
-
-      # Change to matrix type
-      view
-      |> form("form[phx-submit='add_input']", %{input: %{input_type: "matrix"}})
-      |> render_change()
-
-      # Type only in col_pins field - this should not crash
-      result =
-        view
-        |> element("input[name='col_pins']")
-        |> render_change(%{"col_pins" => "8,"})
-
-      assert result =~ "Column Pins"
-    end
-
-    test "can add a matrix input with row and column pins", %{conn: conn, device: device} do
-      {:ok, view, _html} = live(conn, "/configurations/#{device.config_id}")
-
-      # Open the add input modal
-      view |> element("button", "Add Input") |> render_click()
-
-      # Change to matrix type
-      view
-      |> form("form[phx-submit='add_input']", %{input: %{input_type: "matrix"}})
-      |> render_change()
-
-      # Set row and column pins - verify values are reflected in UI
-      html_after_row =
-        view
-        |> element("input[name='row_pins']")
-        |> render_change(%{"row_pins" => "2,3,4"})
-
-      # The grid preview should show after entering row pins
-      assert html_after_row =~ "value=\"2,3,4\""
-
-      html_after_col =
-        view
-        |> element("input[name='col_pins']")
-        |> render_change(%{"col_pins" => "5,6,7"})
-
-      # The grid should now show the matrix dimensions
-      assert html_after_col =~ "value=\"5,6,7\""
-      # Check for virtual pin numbers in the grid (128 is the first virtual pin)
-      assert html_after_col =~ "128"
-
-      # Verify there are no matrix validation errors before submitting
-      refute html_after_col =~ "At least one"
-
-      # Submit the form - this should not crash
-      result =
-        view
-        |> form("form[phx-submit='add_input']", %{input: %{input_type: "matrix"}})
-        |> render_submit()
-
-      # Modal should close (the h2 title should be gone, but button on main page stays)
-      # The modal has a specific structure, check for modal-specific elements being gone
-      refute result =~ "text-xl font-semibold mb-4\">Add Input"
-
-      # Matrix input should be visible in the inputs table
-      # The type is displayed as the atom, so it's lowercase "matrix"
-      assert result =~ "matrix"
-      # The dimensions are displayed as "3x3 (9)"
-      assert result =~ "3x3 (9)"
-    end
-
-    test "can add multiple matrix inputs to same device", %{conn: conn, device: device} do
-      # First, add a matrix input with pins 2,3 and 8,9
-      {:ok, input1} = Hardware.create_input(device.id, %{input_type: :matrix})
-      {:ok, _} = Hardware.set_matrix_pins(input1.id, [2, 3], [8, 9])
-
-      {:ok, view, _html} = live(conn, "/configurations/#{device.config_id}")
-
-      # Open the add input modal
-      view |> element("button", "Add Input") |> render_click()
-
-      # Change to matrix type
-      view
-      |> form("form[phx-submit='add_input']", %{input: %{input_type: "matrix"}})
-      |> render_change()
-
-      # Set different row and column pins (no overlap with first matrix)
+      # Fill in row and column pins
       view
       |> element("input[name='row_pins']")
-      |> render_change(%{"row_pins" => "10,11"})
+      |> render_change(%{"row_pins" => "2,3,4"})
 
       view
       |> element("input[name='col_pins']")
-      |> render_change(%{"col_pins" => "12,13"})
+      |> render_change(%{"col_pins" => "8,9,10"})
 
-      # Submit should succeed - multiple matrix inputs are allowed
-      result =
-        view
-        |> form("form[phx-submit='add_input']", %{input: %{input_type: "matrix"}})
-        |> render_submit()
+      # Click add button in modal
+      view |> element("button[phx-click='add_matrix']") |> render_click()
 
-      # Modal should close and both matrix inputs should be visible
-      refute result =~ "text-xl font-semibold mb-4\">Add Input"
-      # Both matrices should be shown (2x2 = 4 buttons each)
-      assert result =~ "2x2 (4)"
+      # Matrix should be visible in the matrices section
+      {:ok, _view, html} = live(conn, "/configurations/#{device.config_id}")
+      assert html =~ "3x3"
+    end
+
+    test "matrix appears after creation", %{conn: conn, device: device} do
+      # Add a matrix programmatically
+      {:ok, _matrix} = Hardware.create_matrix(device.id, %{
+        name: "Test Matrix",
+        row_pins: [2, 3],
+        col_pins: [8, 9]
+      })
+
+      {:ok, _view, html} = live(conn, "/configurations/#{device.config_id}")
+
+      # Matrix should be visible
+      assert html =~ "Test Matrix"
+      assert html =~ "2x2"
     end
   end
 
   describe "Matrix test wizard integration" do
     setup do
       {:ok, device} = Hardware.create_device(%{name: "Test Device"})
-      {:ok, input} = Hardware.create_input(device.id, %{input_type: :matrix})
-      {:ok, _pins} = Hardware.set_matrix_pins(input.id, [2, 3, 4], [8, 9, 10])
+      {:ok, matrix} = Hardware.create_matrix(device.id, %{
+        name: "Test Matrix",
+        row_pins: [2, 3, 4],
+        col_pins: [8, 9, 10]
+      })
 
-      # Reload input with matrix_pins
-      {:ok, [input]} = Hardware.list_inputs(device.id)
-
-      %{device: device, input: input}
+      %{device: device, matrix: matrix}
     end
 
-    test "matrix input has correct matrix_pins loaded", %{input: input} do
-      assert length(input.matrix_pins) == 6
+    test "matrix has correct row and col pins loaded", %{matrix: matrix} do
+      assert length(matrix.row_pins) == 3
+      assert length(matrix.col_pins) == 3
+    end
 
-      row_pins = Enum.filter(input.matrix_pins, &(&1.pin_type == :row))
-      col_pins = Enum.filter(input.matrix_pins, &(&1.pin_type == :col))
-
-      assert length(row_pins) == 3
-      assert length(col_pins) == 3
+    test "matrix has virtual buttons created", %{matrix: matrix} do
+      # 3x3 matrix = 9 buttons
+      assert length(matrix.buttons) == 9
     end
 
     test "calculates virtual pins correctly" do
@@ -169,10 +82,10 @@ defmodule TswIoWeb.MatrixTestWizardTest do
 
       num_cols = 3
 
-      assert 128 + (0 * num_cols + 0) == 128
-      assert 128 + (0 * num_cols + 2) == 130
-      assert 128 + (1 * num_cols + 0) == 131
-      assert 128 + (2 * num_cols + 2) == 136
+      assert Matrix.virtual_pin(0, 0, num_cols) == 128
+      assert Matrix.virtual_pin(0, 2, num_cols) == 130
+      assert Matrix.virtual_pin(1, 0, num_cols) == 131
+      assert Matrix.virtual_pin(2, 2, num_cols) == 136
     end
   end
 

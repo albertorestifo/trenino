@@ -155,20 +155,18 @@ defmodule TswIo.HardwareTest do
       # Note: sensitivity is now only required when input_type is :analog
     end
 
-    test "validates pin must be greater than or equal to 0 for analog" do
+    test "validates pin must be between 0 and 127 for analog" do
       {:ok, device} = Hardware.create_device(%{name: "Test Device"})
+
+      # Pin too low
       attrs = %{pin: -1, input_type: :analog, sensitivity: 5}
-
       assert {:error, changeset} = Hardware.create_input(device.id, attrs)
-      assert %{pin: ["must be greater than or equal to 0"]} = errors_on(changeset)
-    end
+      assert %{pin: ["must be between 0 and 127 for physical inputs"]} = errors_on(changeset)
 
-    test "validates pin must be less than 128 for analog" do
-      {:ok, device} = Hardware.create_device(%{name: "Test Device"})
+      # Pin too high
       attrs = %{pin: 128, input_type: :analog, sensitivity: 5}
-
       assert {:error, changeset} = Hardware.create_input(device.id, attrs)
-      assert %{pin: ["must be less than 128"]} = errors_on(changeset)
+      assert %{pin: ["must be between 0 and 127 for physical inputs"]} = errors_on(changeset)
     end
 
     test "validates sensitivity must be greater than 0" do
@@ -265,97 +263,112 @@ defmodule TswIo.HardwareTest do
     end
   end
 
-  describe "create_input/2 with matrix type" do
-    test "creates matrix input with null pin" do
-      {:ok, device} = Hardware.create_device(%{name: "Test Device"})
-      attrs = %{input_type: :matrix}
-
-      assert {:ok, %Input{} = input} = Hardware.create_input(device.id, attrs)
-      assert input.device_id == device.id
-      assert input.pin == nil
-      assert input.input_type == :matrix
-    end
-
-    test "matrix input requires pin to be null" do
-      {:ok, device} = Hardware.create_device(%{name: "Test Device"})
-      attrs = %{pin: 5, input_type: :matrix}
-
-      assert {:error, changeset} = Hardware.create_input(device.id, attrs)
-      assert %{pin: ["must be null for matrix inputs"]} = errors_on(changeset)
-    end
-
-    test "allows multiple matrix inputs per device" do
+  describe "create_matrix/2" do
+    test "creates matrix with name and row/col pins" do
       {:ok, device} = Hardware.create_device(%{name: "Test Device"})
 
-      assert {:ok, input1} = Hardware.create_input(device.id, %{input_type: :matrix})
-      assert {:ok, input2} = Hardware.create_input(device.id, %{input_type: :matrix})
+      attrs = %{
+        name: "Test Matrix",
+        row_pins: [2, 3, 4, 5],
+        col_pins: [8, 9, 10]
+      }
 
-      assert input1.id != input2.id
-      assert input1.pin == nil
-      assert input2.pin == nil
-    end
-  end
+      assert {:ok, matrix} = Hardware.create_matrix(device.id, attrs)
+      assert matrix.name == "Test Matrix"
+      assert matrix.device_id == device.id
 
-  describe "set_matrix_pins/3" do
-    test "creates row and column pins for matrix input" do
-      {:ok, device} = Hardware.create_device(%{name: "Test Device"})
-      {:ok, input} = Hardware.create_input(device.id, %{input_type: :matrix})
-
-      row_pins = [2, 3, 4, 5]
-      col_pins = [8, 9, 10]
-
-      assert {:ok, pins} = Hardware.set_matrix_pins(input.id, row_pins, col_pins)
-      assert length(pins) == 7
-
-      row_pin_records = Enum.filter(pins, &(&1.pin_type == :row))
-      col_pin_records = Enum.filter(pins, &(&1.pin_type == :col))
-
-      assert length(row_pin_records) == 4
-      assert length(col_pin_records) == 3
+      # Verify pins were created
+      assert length(matrix.row_pins) == 4
+      assert length(matrix.col_pins) == 3
 
       # Verify positions are set correctly
-      assert Enum.map(Enum.sort_by(row_pin_records, & &1.position), & &1.pin) == [2, 3, 4, 5]
-      assert Enum.map(Enum.sort_by(col_pin_records, & &1.position), & &1.pin) == [8, 9, 10]
+      row_pin_values = Enum.map(Enum.sort_by(matrix.row_pins, & &1.position), & &1.pin)
+      col_pin_values = Enum.map(Enum.sort_by(matrix.col_pins, & &1.position), & &1.pin)
+
+      assert row_pin_values == [2, 3, 4, 5]
+      assert col_pin_values == [8, 9, 10]
     end
 
-    test "replaces existing matrix pins" do
+    test "creates virtual button inputs for each matrix position" do
       {:ok, device} = Hardware.create_device(%{name: "Test Device"})
-      {:ok, input} = Hardware.create_input(device.id, %{input_type: :matrix})
 
-      # Set initial pins
-      {:ok, _} = Hardware.set_matrix_pins(input.id, [2, 3], [8, 9])
+      attrs = %{
+        name: "Test Matrix",
+        row_pins: [2, 3],
+        col_pins: [8, 9, 10]
+      }
 
-      # Replace with new pins
-      {:ok, pins} = Hardware.set_matrix_pins(input.id, [10, 11, 12], [20, 21])
-      assert length(pins) == 5
+      assert {:ok, matrix} = Hardware.create_matrix(device.id, attrs)
+      assert length(matrix.buttons) == 6
 
-      row_pin_records = Enum.filter(pins, &(&1.pin_type == :row))
-      col_pin_records = Enum.filter(pins, &(&1.pin_type == :col))
-
-      assert Enum.map(Enum.sort_by(row_pin_records, & &1.position), & &1.pin) == [10, 11, 12]
-      assert Enum.map(Enum.sort_by(col_pin_records, & &1.position), & &1.pin) == [20, 21]
+      # Verify virtual pins are correctly calculated (128 + row_idx * num_cols + col_idx)
+      button_pins = Enum.map(matrix.buttons, & &1.pin) |> Enum.sort()
+      expected_pins = [128, 129, 130, 131, 132, 133]
+      assert button_pins == expected_pins
     end
+
+    # Note: Currently only one matrix per device is supported because all matrices
+    # create virtual buttons starting at pin 128. Future enhancement could support
+    # multiple matrices by using unique pin ranges per matrix.
 
     test "validates pin range (0-127)" do
       {:ok, device} = Hardware.create_device(%{name: "Test Device"})
-      {:ok, input} = Hardware.create_input(device.id, %{input_type: :matrix})
 
-      assert {:error, _changeset} = Hardware.set_matrix_pins(input.id, [128], [8, 9])
-      assert {:error, _changeset} = Hardware.set_matrix_pins(input.id, [2, 3], [128])
-      # Note: -1 is invalid as a matrix GPIO pin (valid range is 0-127)
-      assert {:error, _changeset} = Hardware.set_matrix_pins(input.id, [-1], [8, 9])
+      assert {:error, _changeset} = Hardware.create_matrix(device.id, %{name: "M", row_pins: [128], col_pins: [8, 9]})
+      assert {:error, _changeset} = Hardware.create_matrix(device.id, %{name: "M", row_pins: [2, 3], col_pins: [128]})
+      assert {:error, _changeset} = Hardware.create_matrix(device.id, %{name: "M", row_pins: [-1], col_pins: [8, 9]})
     end
   end
 
-  describe "list_inputs/1 with matrix" do
-    test "preloads matrix_pins" do
+  describe "list_matrices/1" do
+    test "returns matrices with preloaded pins and buttons" do
       {:ok, device} = Hardware.create_device(%{name: "Test Device"})
-      {:ok, input} = Hardware.create_input(device.id, %{input_type: :matrix})
-      {:ok, _} = Hardware.set_matrix_pins(input.id, [2, 3, 4], [8, 9])
+      {:ok, _matrix} = Hardware.create_matrix(device.id, %{name: "Test Matrix", row_pins: [2, 3], col_pins: [8, 9]})
 
-      {:ok, [loaded_input]} = Hardware.list_inputs(device.id)
+      {:ok, [loaded_matrix]} = Hardware.list_matrices(device.id)
 
-      assert length(loaded_input.matrix_pins) == 5
+      assert length(loaded_matrix.row_pins) == 2
+      assert length(loaded_matrix.col_pins) == 2
+      assert length(loaded_matrix.buttons) == 4
+    end
+  end
+
+  describe "delete_matrix/1" do
+    test "deletes matrix and cascades to virtual buttons" do
+      {:ok, device} = Hardware.create_device(%{name: "Test Device"})
+      {:ok, matrix} = Hardware.create_matrix(device.id, %{name: "Test Matrix", row_pins: [2, 3], col_pins: [8, 9]})
+
+      # Verify buttons exist
+      {:ok, inputs} = Hardware.list_inputs(device.id, include_virtual_buttons: true)
+      assert length(inputs) == 4
+
+      # Delete matrix
+      assert {:ok, _} = Hardware.delete_matrix(matrix)
+
+      # Verify buttons are deleted
+      {:ok, inputs} = Hardware.list_inputs(device.id, include_virtual_buttons: true)
+      assert length(inputs) == 0
+    end
+  end
+
+  describe "list_inputs/2 with include_virtual_buttons option" do
+    test "excludes virtual buttons by default" do
+      {:ok, device} = Hardware.create_device(%{name: "Test Device"})
+      {:ok, _matrix} = Hardware.create_matrix(device.id, %{name: "Test Matrix", row_pins: [2, 3], col_pins: [8, 9]})
+      {:ok, _analog} = Hardware.create_input(device.id, %{pin: 0, input_type: :analog, sensitivity: 5})
+
+      {:ok, inputs} = Hardware.list_inputs(device.id)
+      assert length(inputs) == 1
+      assert hd(inputs).input_type == :analog
+    end
+
+    test "includes virtual buttons when option is true" do
+      {:ok, device} = Hardware.create_device(%{name: "Test Device"})
+      {:ok, _matrix} = Hardware.create_matrix(device.id, %{name: "Test Matrix", row_pins: [2, 3], col_pins: [8, 9]})
+      {:ok, _analog} = Hardware.create_input(device.id, %{pin: 0, input_type: :analog, sensitivity: 5})
+
+      {:ok, inputs} = Hardware.list_inputs(device.id, include_virtual_buttons: true)
+      assert length(inputs) == 5
     end
   end
 end

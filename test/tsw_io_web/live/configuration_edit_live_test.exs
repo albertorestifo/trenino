@@ -52,13 +52,13 @@ defmodule TswIoWeb.ConfigurationEditLiveTest do
         Input.changeset(%Input{}, %{pin: -1, input_type: :analog, sensitivity: 5, device_id: 1})
 
       refute changeset.valid?
-      assert %{pin: ["must be greater than or equal to 0"]} = errors_on(changeset)
+      assert %{pin: ["must be between 0 and 127 for physical inputs"]} = errors_on(changeset)
 
       changeset =
         Input.changeset(%Input{}, %{pin: 128, input_type: :analog, sensitivity: 5, device_id: 1})
 
       refute changeset.valid?
-      assert %{pin: ["must be less than 128"]} = errors_on(changeset)
+      assert %{pin: ["must be between 0 and 127 for physical inputs"]} = errors_on(changeset)
 
       changeset =
         Input.changeset(%Input{}, %{pin: 0, input_type: :analog, sensitivity: 5, device_id: 1})
@@ -114,13 +114,13 @@ defmodule TswIoWeb.ConfigurationEditLiveTest do
         Input.changeset(%Input{}, %{pin: -1, input_type: :button, debounce: 20, device_id: 1})
 
       refute changeset.valid?
-      assert %{pin: ["must be greater than or equal to 0"]} = errors_on(changeset)
+      assert %{pin: ["must be between 0 and 127 for physical inputs"]} = errors_on(changeset)
 
       changeset =
         Input.changeset(%Input{}, %{pin: 128, input_type: :button, debounce: 20, device_id: 1})
 
       refute changeset.valid?
-      assert %{pin: ["must be less than 128"]} = errors_on(changeset)
+      assert %{pin: ["must be between 0 and 127 for physical inputs"]} = errors_on(changeset)
 
       changeset =
         Input.changeset(%Input{}, %{pin: 100, input_type: :button, debounce: 20, device_id: 1})
@@ -142,31 +142,6 @@ defmodule TswIoWeb.ConfigurationEditLiveTest do
 
       assert changeset.valid?
       # No sensitivity error for button type
-      assert errors_on(changeset) == %{}
-    end
-  end
-
-  describe "Matrix input changeset" do
-    test "validates pin must be null for matrix type" do
-      changeset =
-        Input.changeset(%Input{}, %{pin: 5, input_type: :matrix, device_id: 1})
-
-      refute changeset.valid?
-      assert %{pin: ["must be null for matrix inputs"]} = errors_on(changeset)
-    end
-
-    test "accepts null pin for matrix type" do
-      changeset =
-        Input.changeset(%Input{}, %{input_type: :matrix, device_id: 1})
-
-      assert changeset.valid?
-    end
-
-    test "does not require sensitivity or debounce for matrix type" do
-      changeset =
-        Input.changeset(%Input{}, %{input_type: :matrix, device_id: 1})
-
-      assert changeset.valid?
       assert errors_on(changeset) == %{}
     end
   end

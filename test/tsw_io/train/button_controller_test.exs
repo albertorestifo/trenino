@@ -63,8 +63,8 @@ defmodule TswIo.Train.ButtonControllerTest do
       state = ButtonController.get_state()
 
       assert state.active_train.id == train.id
-      # Button inputs use {input_id, nil} as key (nil virtual_pin)
-      assert Map.has_key?(state.binding_lookup, {input.id, nil})
+      # Button inputs use input_id as key
+      assert Map.has_key?(state.binding_lookup, input.id)
     end
   end
 
@@ -95,10 +95,10 @@ defmodule TswIo.Train.ButtonControllerTest do
       state = ButtonController.get_state()
 
       assert state.active_train.id == train.id
-      # Button inputs use {input_id, nil} as key (nil virtual_pin)
-      assert Map.has_key?(state.binding_lookup, {input.id, nil})
+      # Button inputs use input_id as key
+      assert Map.has_key?(state.binding_lookup, input.id)
 
-      binding_info = state.binding_lookup[{input.id, nil}]
+      binding_info = state.binding_lookup[input.id]
       assert binding_info.endpoint == "CurrentDrivableActor/Horn.InputValue"
       assert binding_info.on_value == 1.0
       assert binding_info.off_value == 0.0
@@ -137,8 +137,8 @@ defmodule TswIo.Train.ButtonControllerTest do
       state = ButtonController.get_state()
 
       # Should not have the binding since it's disabled
-      # Button inputs use {input_id, nil} as key (nil virtual_pin)
-      refute Map.has_key?(state.binding_lookup, {input.id, nil})
+      # Button inputs use input_id as key
+      refute Map.has_key?(state.binding_lookup, input.id)
     end
   end
 
@@ -169,8 +169,8 @@ defmodule TswIo.Train.ButtonControllerTest do
       Process.sleep(50)
 
       state = ButtonController.get_state()
-      # Button inputs use {input_id, nil} as key (nil virtual_pin)
-      binding_info = state.binding_lookup[{input.id, nil}]
+      # Button inputs use input_id as key
+      binding_info = state.binding_lookup[input.id]
 
       assert binding_info.on_value == 100.0
       assert binding_info.off_value == -50.0
@@ -206,7 +206,7 @@ defmodule TswIo.Train.ButtonControllerTest do
       Process.sleep(50)
 
       state = ButtonController.get_state()
-      binding_info = state.binding_lookup[{input.id, nil}]
+      binding_info = state.binding_lookup[input.id]
 
       assert binding_info.mode == :simple
       assert binding_info.hardware_type == :momentary
@@ -228,7 +228,7 @@ defmodule TswIo.Train.ButtonControllerTest do
       Process.sleep(50)
 
       state = ButtonController.get_state()
-      binding_info = state.binding_lookup[{input.id, nil}]
+      binding_info = state.binding_lookup[input.id]
 
       assert binding_info.mode == :momentary
       assert binding_info.repeat_interval_ms == 200
@@ -249,7 +249,7 @@ defmodule TswIo.Train.ButtonControllerTest do
       Process.sleep(50)
 
       state = ButtonController.get_state()
-      binding_info = state.binding_lookup[{input.id, nil}]
+      binding_info = state.binding_lookup[input.id]
 
       assert binding_info.hardware_type == :latching
     end
@@ -492,7 +492,7 @@ defmodule TswIo.Train.ButtonControllerTest do
       Process.sleep(50)
 
       state = ButtonController.get_state()
-      binding_info = state.binding_lookup[{ctx.input.id, nil}]
+      binding_info = state.binding_lookup[ctx.input.id]
 
       assert binding_info.mode == :sequence
       assert binding_info.on_sequence != nil
@@ -513,7 +513,7 @@ defmodule TswIo.Train.ButtonControllerTest do
       Process.sleep(50)
 
       state = ButtonController.get_state()
-      binding_info = state.binding_lookup[{ctx.input.id, nil}]
+      binding_info = state.binding_lookup[ctx.input.id]
 
       assert binding_info.off_sequence != nil
       assert binding_info.off_sequence.id == ctx.off_sequence.id
@@ -612,13 +612,13 @@ defmodule TswIo.Train.ButtonControllerTest do
 
       # Manually set on_sequence to nil in the binding lookup to test the nil case
       :sys.replace_state(Process.whereis(ButtonController), fn state ->
-        binding_info = Map.get(state.binding_lookup, {ctx.input.id, nil})
+        binding_info = Map.get(state.binding_lookup, ctx.input.id)
         updated_binding = %{binding_info | on_sequence: nil}
 
         %{
           state
           | input_lookup: Map.put(state.input_lookup, {"COM1", 15}, ctx.input.id),
-            binding_lookup: Map.put(state.binding_lookup, {ctx.input.id, nil}, updated_binding)
+            binding_lookup: Map.put(state.binding_lookup, ctx.input.id, updated_binding)
         }
       end)
 
