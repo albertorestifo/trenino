@@ -7,6 +7,21 @@ defmodule TswIo.Train.ButtonInputBinding do
 
   Each button element can have at most one input binding. The same input
   can be bound to different button elements across different trains.
+
+  ## Binding Modes
+
+  The binding supports three modes:
+
+  - **`:simple`** - Default mode. Sends on_value when pressed, off_value when released.
+  - **`:momentary`** - Repeats the on_value at a fixed interval while button is held.
+    Useful for controls like horn that need continuous "pressed" signals.
+  - **`:sequence`** - Executes a sequence of commands when button is pressed.
+    Commands are sent in order with configurable delays.
+
+  ## Hardware Types
+
+  - **`:momentary`** - Spring-loaded button that returns when released (e.g., doorbell)
+  - **`:latching`** - Toggle switch that stays in position until pressed again
   """
 
   use Ecto.Schema
@@ -14,6 +29,9 @@ defmodule TswIo.Train.ButtonInputBinding do
 
   alias TswIo.Hardware.Input
   alias TswIo.Train.Element
+
+  @type mode :: :simple | :momentary | :sequence
+  @type hardware_type :: :momentary | :latching
 
   @type t :: %__MODULE__{
           id: integer() | nil,
@@ -24,6 +42,9 @@ defmodule TswIo.Train.ButtonInputBinding do
           on_value: float(),
           off_value: float(),
           enabled: boolean(),
+          mode: mode(),
+          hardware_type: hardware_type(),
+          repeat_interval_ms: integer(),
           element: Element.t() | Ecto.Association.NotLoaded.t(),
           input: Input.t() | Ecto.Association.NotLoaded.t(),
           inserted_at: DateTime.t() | nil,
@@ -37,6 +58,12 @@ defmodule TswIo.Train.ButtonInputBinding do
     field :enabled, :boolean, default: true
     # For matrix inputs, stores the specific virtual pin (128+)
     field :virtual_pin, :integer
+    # Mode: :simple (send once), :momentary (repeat while held), :sequence (execute sequence)
+    field :mode, Ecto.Enum, values: [:simple, :momentary, :sequence], default: :simple
+    # Hardware type: :momentary (spring-loaded), :latching (stays in position)
+    field :hardware_type, Ecto.Enum, values: [:momentary, :latching], default: :momentary
+    # Repeat interval for momentary mode (ms)
+    field :repeat_interval_ms, :integer, default: 100
 
     belongs_to :element, Element
     belongs_to :input, Input
@@ -54,14 +81,41 @@ defmodule TswIo.Train.ButtonInputBinding do
       :endpoint,
       :on_value,
       :off_value,
-      :enabled
+      :enabled,
+      :mode,
+      :hardware_type,
+      :repeat_interval_ms
     ])
-    |> validate_required([:element_id, :input_id, :endpoint])
+    |> validate_required([:element_id, :input_id])
+    |> validate_mode_requirements()
     |> validate_number(:virtual_pin, greater_than_or_equal_to: 128, less_than: 256)
+    |> validate_number(:repeat_interval_ms, greater_than: 0, less_than_or_equal_to: 5000)
     |> round_float_fields([:on_value, :off_value])
     |> foreign_key_constraint(:element_id)
     |> foreign_key_constraint(:input_id)
     |> unique_constraint(:element_id)
+  end
+
+  # Mode-specific validation: simple and momentary modes require endpoint
+  # sequence mode will require sequence references (added in Phase 2)
+  defp validate_mode_requirements(changeset) do
+    mode = get_field(changeset, :mode)
+
+    case mode do
+      :simple ->
+        validate_required(changeset, [:endpoint])
+
+      :momentary ->
+        changeset
+        |> validate_required([:endpoint, :repeat_interval_ms])
+
+      :sequence ->
+        # Endpoint is optional for sequence mode (sequences have their own endpoints)
+        changeset
+
+      nil ->
+        changeset
+    end
   end
 
   # Rounds float fields to 2 decimal places per project standards

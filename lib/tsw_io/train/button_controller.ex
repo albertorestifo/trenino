@@ -7,6 +7,7 @@ defmodule TswIo.Train.ButtonController do
   - Subscribes to hardware input events
   - Maps button press/release to simulator ON/OFF values
   - Sends values to the simulator when an enabled binding exists
+  - Manages momentary mode (repeat commands while held)
 
   ## Architecture
 
@@ -14,12 +15,15 @@ defmodule TswIo.Train.ButtonController do
   - Active train and its enabled button bindings
   - Mapping from (port, pin) → input_id for quick lookup
   - Last sent values to avoid redundant simulator calls
+  - Active buttons with timers for momentary mode
 
   When a button input value changes:
   1. Look up the input_id from (port, pin)
   2. Check if there's an enabled binding for this input on the active train
-  3. Determine value based on button state (1 → on_value, 0 → off_value)
-  4. Send value to simulator via Client
+  3. Handle based on mode:
+     - Simple: Send on_value when pressed, off_value when released
+     - Momentary: Repeat on_value at interval while held, off_value on release
+     - Sequence: Execute command sequence (handled in Phase 2)
 
   Unlike LeverController, no calibration or notch mapping is needed since
   buttons are already binary (0/1) from the hardware.
@@ -43,13 +47,24 @@ defmodule TswIo.Train.ButtonController do
             {port :: String.t(), pin :: integer()} => integer()
           }
 
+    @type binding_info :: %{
+            element_id: integer(),
+            endpoint: String.t() | nil,
+            on_value: float(),
+            off_value: float(),
+            mode: ButtonInputBinding.mode(),
+            hardware_type: ButtonInputBinding.hardware_type(),
+            repeat_interval_ms: integer()
+          }
+
     @type binding_lookup :: %{
-            {input_id :: integer(), virtual_pin :: integer() | nil} => %{
-              element_id: integer(),
-              endpoint: String.t(),
-              on_value: float(),
-              off_value: float()
-            }
+            {input_id :: integer(), virtual_pin :: integer() | nil} => binding_info()
+          }
+
+    @type active_button :: %{
+            element_id: integer(),
+            binding_info: binding_info(),
+            timer_ref: reference() | nil
           }
 
     @type t :: %__MODULE__{
@@ -57,14 +72,16 @@ defmodule TswIo.Train.ButtonController do
             input_lookup: input_lookup(),
             binding_lookup: binding_lookup(),
             subscribed_ports: MapSet.t(String.t()),
-            last_sent_values: %{integer() => float()}
+            last_sent_values: %{integer() => float()},
+            active_buttons: %{integer() => active_button()}
           }
 
     defstruct active_train: nil,
               input_lookup: %{},
               binding_lookup: %{},
               subscribed_ports: MapSet.new(),
-              last_sent_values: %{}
+              last_sent_values: %{},
+              active_buttons: %{}
   end
 
   # Client API
@@ -126,6 +143,8 @@ defmodule TswIo.Train.ButtonController do
   end
 
   def handle_cast(:reload_bindings, %State{active_train: train} = state) do
+    # Cancel all active buttons before reloading
+    state = cancel_all_active_buttons(state)
     {:noreply, load_bindings_for_train(state, train)}
   end
 
@@ -133,11 +152,16 @@ defmodule TswIo.Train.ButtonController do
   @impl true
   def handle_info({:train_changed, nil}, %State{} = state) do
     Logger.info("[ButtonController] Train deactivated, clearing bindings")
-    {:noreply, %{state | active_train: nil, binding_lookup: %{}, last_sent_values: %{}}}
+    state = cancel_all_active_buttons(state)
+
+    {:noreply,
+     %{state | active_train: nil, binding_lookup: %{}, last_sent_values: %{}, active_buttons: %{}}}
   end
 
   def handle_info({:train_changed, train}, %State{} = state) do
     Logger.info("[ButtonController] Train activated: #{train.name}")
+    # Cancel active buttons from previous train
+    state = cancel_all_active_buttons(state)
     new_state = load_bindings_for_train(state, train)
     {:noreply, new_state}
   end
@@ -164,6 +188,38 @@ defmodule TswIo.Train.ButtonController do
     case handle_input_update(state, port, pin, raw_value) do
       {:ok, new_state} -> {:noreply, new_state}
       :skip -> {:noreply, state}
+    end
+  end
+
+  # Momentary repeat timer
+  def handle_info({:momentary_repeat, element_id}, %State{} = state) do
+    case Map.get(state.active_buttons, element_id) do
+      nil ->
+        # Button was released, timer is stale
+        {:noreply, state}
+
+      %{binding_info: binding_info, timer_ref: old_ref} = active_button ->
+        # Send the on_value again
+        send_to_simulator(binding_info.endpoint, binding_info.on_value)
+
+        # Update last sent value
+        state = put_in(state.last_sent_values[element_id], binding_info.on_value)
+
+        # Schedule next repeat
+        new_ref =
+          Process.send_after(
+            self(),
+            {:momentary_repeat, element_id},
+            binding_info.repeat_interval_ms
+          )
+
+        # Cancel old timer if it exists (shouldn't happen, but be safe)
+        if old_ref, do: Process.cancel_timer(old_ref)
+
+        # Update timer reference
+        state = put_in(state.active_buttons[element_id], %{active_button | timer_ref: new_ref})
+
+        {:noreply, state}
     end
   end
 
@@ -275,7 +331,10 @@ defmodule TswIo.Train.ButtonController do
            element_id: binding.element_id,
            endpoint: binding.endpoint,
            on_value: binding.on_value,
-           off_value: binding.off_value
+           off_value: binding.off_value,
+           mode: binding.mode,
+           hardware_type: binding.hardware_type,
+           repeat_interval_ms: binding.repeat_interval_ms
          }}
       end)
       |> Map.new()
@@ -294,30 +353,143 @@ defmodule TswIo.Train.ButtonController do
   defp handle_input_update(%State{} = state, port, pin, raw_value) do
     with {:ok, input_id} <- Map.fetch(state.input_lookup, {port, pin}),
          {:ok, binding_info} <- find_binding(state.binding_lookup, input_id, pin) do
-      # Button value: 1 = pressed (on_value), 0 = released (off_value)
-      sim_value =
-        if raw_value == 1 do
-          binding_info.on_value
-        else
-          binding_info.off_value
-        end
-
-      # Only send if value changed (avoid flooding simulator)
       element_id = binding_info.element_id
 
-      if Map.get(state.last_sent_values, element_id) != sim_value do
-        send_to_simulator(binding_info.endpoint, sim_value)
-
-        # Broadcast button state update for UI
-        broadcast_button_update(element_id, sim_value, raw_value == 1)
-
-        {:ok, %{state | last_sent_values: Map.put(state.last_sent_values, element_id, sim_value)}}
-      else
-        :skip
+      case raw_value do
+        1 -> handle_button_press(state, element_id, binding_info)
+        0 -> handle_button_release(state, element_id, binding_info)
+        _ -> :skip
       end
     else
       :error -> :skip
     end
+  end
+
+  # Handle button press based on mode
+  defp handle_button_press(%State{} = state, element_id, %{mode: :simple} = binding_info) do
+    sim_value = binding_info.on_value
+
+    if Map.get(state.last_sent_values, element_id) != sim_value do
+      send_to_simulator(binding_info.endpoint, sim_value)
+      broadcast_button_update(element_id, sim_value, true)
+
+      {:ok, %{state | last_sent_values: Map.put(state.last_sent_values, element_id, sim_value)}}
+    else
+      :skip
+    end
+  end
+
+  defp handle_button_press(%State{} = state, element_id, %{mode: :momentary} = binding_info) do
+    # Send initial on_value
+    sim_value = binding_info.on_value
+    send_to_simulator(binding_info.endpoint, sim_value)
+    broadcast_button_update(element_id, sim_value, true)
+
+    # Schedule first repeat
+    timer_ref =
+      Process.send_after(
+        self(),
+        {:momentary_repeat, element_id},
+        binding_info.repeat_interval_ms
+      )
+
+    # Track active button
+    active_button = %{
+      element_id: element_id,
+      binding_info: binding_info,
+      timer_ref: timer_ref
+    }
+
+    state = %{
+      state
+      | last_sent_values: Map.put(state.last_sent_values, element_id, sim_value),
+        active_buttons: Map.put(state.active_buttons, element_id, active_button)
+    }
+
+    {:ok, state}
+  end
+
+  defp handle_button_press(%State{} = state, element_id, %{mode: :sequence} = binding_info) do
+    # Sequence mode will be implemented in Phase 2
+    # For now, just send on_value once (fallback to simple behavior)
+    sim_value = binding_info.on_value
+
+    if Map.get(state.last_sent_values, element_id) != sim_value do
+      if binding_info.endpoint do
+        send_to_simulator(binding_info.endpoint, sim_value)
+      end
+
+      broadcast_button_update(element_id, sim_value, true)
+
+      {:ok, %{state | last_sent_values: Map.put(state.last_sent_values, element_id, sim_value)}}
+    else
+      :skip
+    end
+  end
+
+  # Handle button release based on mode
+  defp handle_button_release(%State{} = state, element_id, %{mode: :simple} = binding_info) do
+    sim_value = binding_info.off_value
+
+    if Map.get(state.last_sent_values, element_id) != sim_value do
+      send_to_simulator(binding_info.endpoint, sim_value)
+      broadcast_button_update(element_id, sim_value, false)
+
+      {:ok, %{state | last_sent_values: Map.put(state.last_sent_values, element_id, sim_value)}}
+    else
+      :skip
+    end
+  end
+
+  defp handle_button_release(%State{} = state, element_id, %{mode: :momentary} = binding_info) do
+    # Cancel the repeat timer
+    state = cancel_active_button(state, element_id)
+
+    # Send off_value
+    sim_value = binding_info.off_value
+    send_to_simulator(binding_info.endpoint, sim_value)
+    broadcast_button_update(element_id, sim_value, false)
+
+    state = %{state | last_sent_values: Map.put(state.last_sent_values, element_id, sim_value)}
+
+    {:ok, state}
+  end
+
+  defp handle_button_release(%State{} = state, element_id, %{mode: :sequence} = binding_info) do
+    # Sequence mode will be implemented in Phase 2
+    # For now, just send off_value once (fallback to simple behavior)
+    sim_value = binding_info.off_value
+
+    if Map.get(state.last_sent_values, element_id) != sim_value do
+      if binding_info.endpoint do
+        send_to_simulator(binding_info.endpoint, sim_value)
+      end
+
+      broadcast_button_update(element_id, sim_value, false)
+
+      {:ok, %{state | last_sent_values: Map.put(state.last_sent_values, element_id, sim_value)}}
+    else
+      :skip
+    end
+  end
+
+  defp cancel_active_button(%State{} = state, element_id) do
+    case Map.pop(state.active_buttons, element_id) do
+      {nil, _} ->
+        state
+
+      {%{timer_ref: timer_ref}, new_active_buttons} ->
+        if timer_ref, do: Process.cancel_timer(timer_ref)
+        %{state | active_buttons: new_active_buttons}
+    end
+  end
+
+  defp cancel_all_active_buttons(%State{active_buttons: active_buttons} = state) do
+    Enum.each(active_buttons, fn {_element_id, %{timer_ref: timer_ref}} ->
+      if timer_ref, do: Process.cancel_timer(timer_ref)
+    end)
+
+    %{state | active_buttons: %{}}
   end
 
   # Find binding for an input. For matrix inputs (pin >= 128), we look for a
