@@ -4,7 +4,7 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [Unreleased]
+## [0.3.0]
 
 ### Added
 
@@ -18,8 +18,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Command sequences
   - Create reusable sequences of simulator commands per train
   - Each command specifies endpoint, value, and delay before next command
+  - Test button to execute sequences directly from the sequence manager
   - Buttons in sequence mode can trigger different sequences for press and release (latching only)
-  - Sequence manager UI in train edit page for creating and editing sequences
 - Button endpoint auto-detection
   - "Auto-detect" option in button configuration wizard
   - Automatically discovers InputValue endpoints from simulator
@@ -33,7 +33,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   - Automatically detects standard lever endpoints when navigating the API explorer
   - One-click configuration of all lever fields (min, max, value, notch count, notch index)
 - API explorer in button configuration modal
-- Debug logging for configuration commands sent to device
+- Warning banner when simulator is disconnected on train edit page
+
+### Changed
+
+- Configuration wizard now opens automatically after adding a new element
+- Input Type field moved to top of Add Input modal for better workflow
+- Inputs and Outputs now displayed in separate sections in device configuration
+- Apply to Device button moved to page header for easier access
+- Flash messages now display correctly across all pages
 
 ### Fixed
 
@@ -42,7 +50,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Device configuration not being associated after leaving config page
 - "Mixed key types" error when saving notches
 - Matrix pin validation crash when typing in a single field
-- Improved error messages for matrix input constraints
+- List cards not clickable on entire surface
+- "Set up" button not responding in element configuration
+- Flash messages not visible (clipped by navbar)
 
 ## [0.2.0]
 
