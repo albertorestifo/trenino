@@ -16,6 +16,7 @@ defmodule TswIoWeb.TrainEditLive do
   alias TswIo.Train.{Train, Element, LeverConfig, LeverInputBinding, Notch, Identifier}
   alias TswIo.Train.LeverController
   alias TswIo.Serial.Connection
+  alias TswIoWeb.SequenceManagerComponent
 
   @impl true
   def mount(%{"train_id" => "new"} = params, _session, socket) do
@@ -80,7 +81,8 @@ defmodule TswIoWeb.TrainEditLive do
      |> assign(:show_config_wizard, false)
      |> assign(:config_wizard_element, nil)
      |> assign(:config_wizard_mode, nil)
-     |> assign(:config_wizard_event, nil)}
+     |> assign(:config_wizard_event, nil)
+     |> assign(:sequences, [])}
   end
 
   defp mount_existing(socket, train_id) do
@@ -98,6 +100,7 @@ defmodule TswIoWeb.TrainEditLive do
         end
 
         changeset = Train.changeset(train, %{})
+        sequences = TrainContext.list_sequences(train.id)
 
         {:ok,
          socket
@@ -124,7 +127,8 @@ defmodule TswIoWeb.TrainEditLive do
          |> assign(:show_config_wizard, false)
          |> assign(:config_wizard_element, nil)
          |> assign(:config_wizard_mode, nil)
-         |> assign(:config_wizard_event, nil)}
+         |> assign(:config_wizard_event, nil)
+         |> assign(:sequences, sequences)}
 
       {:error, :not_found} ->
         {:ok,
@@ -871,6 +875,13 @@ defmodule TswIoWeb.TrainEditLive do
      |> assign(:config_wizard_event, nil)}
   end
 
+  # Sequence manager component events
+  @impl true
+  def handle_info({SequenceManagerComponent, :sequences_changed}, socket) do
+    sequences = TrainContext.list_sequences(socket.assigns.train.id)
+    {:noreply, assign(socket, :sequences, sequences)}
+  end
+
   @impl true
   def handle_info(_msg, socket), do: {:noreply, socket}
 
@@ -953,6 +964,14 @@ defmodule TswIoWeb.TrainEditLive do
           <div :if={not @new_mode} class="bg-base-200/50 rounded-xl p-6 mt-6">
             <.elements_section elements={@elements} is_active={@is_active} />
           </div>
+
+          <.live_component
+            :if={not @new_mode}
+            module={SequenceManagerComponent}
+            id="sequence-manager"
+            train_id={@train.id}
+            sequences={@sequences}
+          />
 
           <.danger_zone
             :if={not @new_mode}
