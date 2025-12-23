@@ -643,6 +643,60 @@ defmodule TswIoWeb.TrainEditLive do
     {:noreply, socket}
   end
 
+  # Auto-detect control messages from ControlDetectionSession
+  @impl true
+  def handle_info({:control_detected, changes}, socket) do
+    {:noreply,
+     socket
+     |> assign(:auto_detect_status, :detected)
+     |> assign(:auto_detect_changes, changes)}
+  end
+
+  @impl true
+  def handle_info({:detection_timeout}, socket) do
+    {:noreply, assign(socket, :auto_detect_status, :timeout)}
+  end
+
+  @impl true
+  def handle_info({:tick_countdown, _component_id}, socket) do
+    remaining = Map.get(socket.assigns, :auto_detect_countdown, 30) - 1
+
+    if remaining > 0 and Map.get(socket.assigns, :auto_detect_status) == :listening do
+      Process.send_after(self(), {:tick_countdown, nil}, 1000)
+      {:noreply, assign(socket, :auto_detect_countdown, remaining)}
+    else
+      {:noreply, socket}
+    end
+  end
+
+  @impl true
+  def handle_info({:auto_detect_selected, change}, socket) do
+    # Forward to the configuration wizard as a button detection
+    if Map.get(socket.assigns, :show_config_wizard) do
+      detection = %{
+        endpoint: change.endpoint,
+        suggested_on: change.current_value,
+        suggested_off: change.previous_value
+      }
+
+      {:noreply,
+       socket
+       |> assign(:show_auto_detect, false)
+       |> assign(:auto_detect_status, nil)
+       |> assign(:config_wizard_event, {:button_detected, detection})}
+    else
+      {:noreply, assign(socket, :show_auto_detect, false)}
+    end
+  end
+
+  @impl true
+  def handle_info({:auto_detect_cancelled}, socket) do
+    {:noreply,
+     socket
+     |> assign(:show_auto_detect, false)
+     |> assign(:auto_detect_status, nil)}
+  end
+
   # Calibration events
   @impl true
   def handle_info({:calibration_progress, progress_state}, socket) do
