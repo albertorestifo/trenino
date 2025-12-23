@@ -805,4 +805,160 @@ defmodule TswIo.Train do
     |> preload(button_binding: [input: :device])
     |> Repo.all()
   end
+
+  # =============================================================================
+  # Sequence functions
+  # =============================================================================
+
+  alias TswIo.Train.Sequence
+  alias TswIo.Train.SequenceCommand
+
+  @doc """
+  Create a new sequence for a train.
+  """
+  @spec create_sequence(integer(), map()) :: {:ok, Sequence.t()} | {:error, Ecto.Changeset.t()}
+  def create_sequence(train_id, attrs) do
+    params = Map.put(attrs, :train_id, train_id)
+
+    %Sequence{}
+    |> Sequence.changeset(params)
+    |> Repo.insert()
+  end
+
+  @doc """
+  Get a sequence by ID with commands preloaded.
+  """
+  @spec get_sequence(integer()) :: {:ok, Sequence.t()} | {:error, :not_found}
+  def get_sequence(id) do
+    case Repo.get(Sequence, id) |> Repo.preload(:commands) do
+      nil -> {:error, :not_found}
+      sequence -> {:ok, sequence}
+    end
+  end
+
+  @doc """
+  Get a sequence by ID without preloading.
+  """
+  @spec get_sequence!(integer()) :: Sequence.t()
+  def get_sequence!(id) do
+    Repo.get!(Sequence, id)
+  end
+
+  @doc """
+  Update a sequence.
+  """
+  @spec update_sequence(Sequence.t(), map()) :: {:ok, Sequence.t()} | {:error, Ecto.Changeset.t()}
+  def update_sequence(%Sequence{} = sequence, attrs) do
+    sequence
+    |> Sequence.changeset(attrs)
+    |> Repo.update()
+  end
+
+  @doc """
+  Delete a sequence.
+  """
+  @spec delete_sequence(Sequence.t()) :: {:ok, Sequence.t()} | {:error, Ecto.Changeset.t()}
+  def delete_sequence(%Sequence{} = sequence) do
+    Repo.delete(sequence)
+  end
+
+  @doc """
+  List all sequences for a train.
+  """
+  @spec list_sequences(integer()) :: [Sequence.t()]
+  def list_sequences(train_id) do
+    Sequence
+    |> where([s], s.train_id == ^train_id)
+    |> order_by([s], s.name)
+    |> preload(:commands)
+    |> Repo.all()
+  end
+
+  @doc """
+  Set the commands for a sequence.
+
+  Replaces all existing commands with the new ones.
+  Positions are automatically assigned based on list order (0-indexed).
+
+  ## Parameters
+
+  - `sequence` - The sequence to update
+  - `commands` - List of command maps with `:endpoint`, `:value`, and optionally `:delay_ms`
+
+  ## Example
+
+      Train.set_sequence_commands(sequence, [
+        %{endpoint: "Horn.InputValue", value: 1.0, delay_ms: 500},
+        %{endpoint: "Horn.InputValue", value: 0.0}
+      ])
+  """
+  @spec set_sequence_commands(Sequence.t(), [map()]) ::
+          {:ok, [SequenceCommand.t()]} | {:error, term()}
+  def set_sequence_commands(%Sequence{id: sequence_id}, commands) when is_list(commands) do
+    Repo.transaction(fn ->
+      # Delete existing commands
+      SequenceCommand
+      |> where([c], c.sequence_id == ^sequence_id)
+      |> Repo.delete_all()
+
+      # Insert new commands with positions
+      results =
+        commands
+        |> Enum.with_index()
+        |> Enum.map(fn {attrs, position} ->
+          params =
+            attrs
+            |> Map.put(:sequence_id, sequence_id)
+            |> Map.put(:position, position)
+
+          %SequenceCommand{}
+          |> SequenceCommand.changeset(params)
+          |> Repo.insert()
+        end)
+
+      # Check for errors
+      case Enum.find(results, fn
+             {:error, _} -> true
+             _ -> false
+           end) do
+        {:error, changeset} ->
+          Repo.rollback(changeset)
+
+        nil ->
+          Enum.map(results, fn {:ok, cmd} -> cmd end)
+      end
+    end)
+  end
+
+  @doc """
+  Add a single command to a sequence at the end.
+  """
+  @spec add_sequence_command(Sequence.t(), map()) ::
+          {:ok, SequenceCommand.t()} | {:error, Ecto.Changeset.t()}
+  def add_sequence_command(%Sequence{id: sequence_id}, attrs) do
+    # Get the highest position
+    max_position =
+      SequenceCommand
+      |> where([c], c.sequence_id == ^sequence_id)
+      |> select([c], max(c.position))
+      |> Repo.one() || -1
+
+    params =
+      attrs
+      |> Map.put(:sequence_id, sequence_id)
+      |> Map.put(:position, max_position + 1)
+
+    %SequenceCommand{}
+    |> SequenceCommand.changeset(params)
+    |> Repo.insert()
+  end
+
+  @doc """
+  Delete a sequence command.
+  """
+  @spec delete_sequence_command(SequenceCommand.t()) ::
+          {:ok, SequenceCommand.t()} | {:error, Ecto.Changeset.t()}
+  def delete_sequence_command(%SequenceCommand{} = command) do
+    Repo.delete(command)
+  end
 end
