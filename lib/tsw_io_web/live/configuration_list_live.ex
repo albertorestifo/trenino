@@ -112,18 +112,18 @@ defmodule TswIoWeb.ConfigurationListLive do
     assigns = assign(assigns, :input_count, input_count)
 
     ~H"""
-    <div class={[
-      "rounded-xl transition-colors group",
-      if(@active,
-        do: "border-2 border-success bg-success/5",
-        else: "border border-base-300 bg-base-200/50 hover:bg-base-200"
-      )
-    ]}>
+    <.link
+      navigate={~p"/configurations/#{@config.config_id}"}
+      class={[
+        "block rounded-xl transition-colors group cursor-pointer",
+        if(@active,
+          do: "border-2 border-success bg-success/5",
+          else: "border border-base-300 bg-base-200/50 hover:bg-base-200"
+        )
+      ]}
+    >
       <div class="flex items-start justify-between gap-4 p-5">
-        <.link
-          navigate={~p"/configurations/#{@config.config_id}"}
-          class="flex-1 cursor-pointer"
-        >
+        <div class="flex-1">
           <div class="flex items-center gap-2">
             <h3 class="font-medium truncate group-hover:text-primary transition-colors">
               {@config.name}
@@ -142,14 +142,14 @@ defmodule TswIoWeb.ConfigurationListLive do
             <span class="font-mono">ID: {@config.config_id}</span>
             <span>{input_count_text(@input_count)}</span>
           </div>
-        </.link>
+        </div>
 
         <.icon
           name="hero-chevron-right"
           class="w-5 h-5 text-base-content/30 group-hover:text-base-content/50 transition-colors flex-shrink-0"
         />
       </div>
-    </div>
+    </.link>
     """
   end
 

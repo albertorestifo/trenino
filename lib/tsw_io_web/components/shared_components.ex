@@ -253,15 +253,18 @@ defmodule TswIoWeb.SharedComponents do
 
   def list_card(assigns) do
     ~H"""
-    <div class={[
-      "rounded-xl transition-colors group",
-      if(@active,
-        do: "border-2 border-success bg-success/5",
-        else: "border border-base-300 bg-base-200/50 hover:bg-base-200"
-      )
-    ]}>
+    <.link
+      navigate={@navigate_to}
+      class={[
+        "block rounded-xl transition-colors group cursor-pointer",
+        if(@active,
+          do: "border-2 border-success bg-success/5",
+          else: "border border-base-300 bg-base-200/50 hover:bg-base-200"
+        )
+      ]}
+    >
       <div class="flex items-start justify-between gap-4 p-5">
-        <.link navigate={@navigate_to} class="flex-1 cursor-pointer">
+        <div class="flex-1">
           <div class="flex items-center gap-2">
             <h3 class="font-medium truncate group-hover:text-primary transition-colors">
               {@title}
@@ -279,14 +282,14 @@ defmodule TswIoWeb.SharedComponents do
           <div :if={@metadata != []} class="mt-2 flex items-center gap-4 text-xs text-base-content/60">
             <span :for={item <- @metadata} class="font-mono">{item}</span>
           </div>
-        </.link>
+        </div>
 
         <.icon
           name="hero-chevron-right"
           class="w-5 h-5 text-base-content/30 group-hover:text-base-content/50 transition-colors flex-shrink-0"
         />
       </div>
-    </div>
+    </.link>
     """
   end
 
