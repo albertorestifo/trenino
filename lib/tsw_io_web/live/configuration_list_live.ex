@@ -8,8 +8,6 @@ defmodule TswIoWeb.ConfigurationListLive do
 
   use TswIoWeb, :live_view
 
-  import TswIoWeb.NavComponents
-
   alias TswIo.Hardware
   alias TswIo.Serial.Connection
 
@@ -63,44 +61,31 @@ defmodule TswIoWeb.ConfigurationListLive do
     assigns = assign(assigns, :active_config_ids, active_config_ids)
 
     ~H"""
-    <div class="min-h-screen flex flex-col">
-      <.nav_header
-        devices={@nav_devices}
-        simulator_status={@nav_simulator_status}
-        firmware_update={@nav_firmware_update}
-        app_version_update={@nav_app_version_update}
-        firmware_checking={@nav_firmware_checking}
-        dropdown_open={@nav_dropdown_open}
-        scanning={@nav_scanning}
-        current_path={@nav_current_path}
-      />
-
-      <main class="flex-1 p-4 sm:p-8">
-        <div class="max-w-2xl mx-auto">
-          <header class="mb-8 flex items-center justify-between">
-            <div>
-              <h1 class="text-2xl font-semibold">Configurations</h1>
-              <p class="text-sm text-base-content/70 mt-1">
-                Manage device configurations
-              </p>
-            </div>
-            <.link navigate={~p"/configurations/new"} class="btn btn-primary">
-              <.icon name="hero-plus" class="w-4 h-4" /> New Configuration
-            </.link>
-          </header>
-
-          <.empty_state :if={Enum.empty?(@configurations)} />
-
-          <div :if={not Enum.empty?(@configurations)} class="space-y-4">
-            <.configuration_card
-              :for={config <- @configurations}
-              config={config}
-              active={MapSet.member?(@active_config_ids, config.config_id)}
-            />
+    <main class="flex-1 p-4 sm:p-8">
+      <div class="max-w-2xl mx-auto">
+        <header class="mb-8 flex items-center justify-between">
+          <div>
+            <h1 class="text-2xl font-semibold">Configurations</h1>
+            <p class="text-sm text-base-content/70 mt-1">
+              Manage device configurations
+            </p>
           </div>
+          <.link navigate={~p"/configurations/new"} class="btn btn-primary">
+            <.icon name="hero-plus" class="w-4 h-4" /> New Configuration
+          </.link>
+        </header>
+
+        <.empty_state :if={Enum.empty?(@configurations)} />
+
+        <div :if={not Enum.empty?(@configurations)} class="space-y-4">
+          <.configuration_card
+            :for={config <- @configurations}
+            config={config}
+            active={MapSet.member?(@active_config_ids, config.config_id)}
+          />
         </div>
-      </main>
-    </div>
+      </div>
+    </main>
     """
   end
 

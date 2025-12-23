@@ -8,7 +8,6 @@ defmodule TswIoWeb.TrainListLive do
 
   use TswIoWeb, :live_view
 
-  import TswIoWeb.NavComponents
   import TswIoWeb.SharedComponents
 
   alias TswIo.Train, as: TrainContext
@@ -92,54 +91,41 @@ defmodule TswIoWeb.TrainListLive do
     assigns = assign(assigns, :active_train_id, active_train_id)
 
     ~H"""
-    <div class="min-h-screen flex flex-col">
-      <.nav_header
-        devices={@nav_devices}
-        simulator_status={@nav_simulator_status}
-        firmware_update={@nav_firmware_update}
-        app_version_update={@nav_app_version_update}
-        firmware_checking={@nav_firmware_checking}
-        dropdown_open={@nav_dropdown_open}
-        scanning={@nav_scanning}
-        current_path={@nav_current_path}
-      />
+    <main class="flex-1 p-4 sm:p-8">
+      <div class="max-w-2xl mx-auto">
+        <.page_header
+          title="Trains"
+          subtitle="Manage train configurations"
+          action_path={~p"/trains/new"}
+          action_text="New Train"
+        />
 
-      <main class="flex-1 p-4 sm:p-8">
-        <div class="max-w-2xl mx-auto">
-          <.page_header
-            title="Trains"
-            subtitle="Manage train configurations"
-            action_path={~p"/trains/new"}
-            action_text="New Train"
+        <.unconfigured_banner
+          :if={@current_identifier && @active_train == nil}
+          identifier={@current_identifier}
+        />
+
+        <.empty_state
+          :if={Enum.empty?(@trains)}
+          icon="hero-truck"
+          heading="No Train Configurations"
+          description="Create a train configuration to set up controls for your simulator trains."
+          action_path={~p"/trains/new"}
+          action_text="Create Train Configuration"
+        />
+
+        <div :if={not Enum.empty?(@trains)} class="space-y-4">
+          <.list_card
+            :for={train <- @trains}
+            active={train.id == @active_train_id}
+            navigate_to={~p"/trains/#{train.id}"}
+            title={train.name}
+            description={train.description}
+            metadata={[train.identifier, element_count_text(length(train.elements))]}
           />
-
-          <.unconfigured_banner
-            :if={@current_identifier && @active_train == nil}
-            identifier={@current_identifier}
-          />
-
-          <.empty_state
-            :if={Enum.empty?(@trains)}
-            icon="hero-truck"
-            heading="No Train Configurations"
-            description="Create a train configuration to set up controls for your simulator trains."
-            action_path={~p"/trains/new"}
-            action_text="Create Train Configuration"
-          />
-
-          <div :if={not Enum.empty?(@trains)} class="space-y-4">
-            <.list_card
-              :for={train <- @trains}
-              active={train.id == @active_train_id}
-              navigate_to={~p"/trains/#{train.id}"}
-              title={train.name}
-              description={train.description}
-              metadata={[train.identifier, element_count_text(length(train.elements))]}
-            />
-          </div>
         </div>
-      </main>
-    </div>
+      </div>
+    </main>
     """
   end
 

@@ -26,7 +26,7 @@ defmodule TswIoWeb.Router do
   scope "/", TswIoWeb do
     pipe_through :browser
 
-    live_session :default, on_mount: TswIoWeb.NavHook do
+    live_session :default, on_mount: TswIoWeb.NavHook, layout: {TswIoWeb.Layouts, :app} do
       live "/", ConfigurationListLive
       live "/configurations/:config_id", ConfigurationEditLive
       live "/simulator/config", SimulatorConfigLive

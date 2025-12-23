@@ -227,42 +227,6 @@ defmodule TswIoWeb.TrainEditLive do
     end
   end
 
-  defp open_config_wizard_for_element(socket, %Element{type: :lever} = element) do
-    case TrainContext.get_element(element.id, preload: [lever_config: :notches]) do
-      {:ok, element} ->
-        {:noreply,
-         socket
-         |> assign(:show_config_wizard, true)
-         |> assign(:config_wizard_element, element)
-         |> assign(:config_wizard_mode, :lever)
-         |> assign(:config_wizard_event, nil)}
-
-      {:error, _} ->
-        {:noreply, socket}
-    end
-  end
-
-  defp open_config_wizard_for_element(socket, %Element{type: :button} = element) do
-    case TrainContext.get_element(element.id, preload: [button_binding: [input: :device]]) do
-      {:ok, element} ->
-        available_inputs = Hardware.list_all_inputs(include_uncalibrated: true)
-        button_inputs = Enum.filter(available_inputs, &(&1.input_type == :button))
-        sequences = TrainContext.list_sequences(socket.assigns.train.id)
-
-        {:noreply,
-         socket
-         |> assign(:show_config_wizard, true)
-         |> assign(:config_wizard_element, element)
-         |> assign(:config_wizard_mode, :button)
-         |> assign(:config_wizard_event, nil)
-         |> assign(:available_button_inputs, button_inputs)
-         |> assign(:sequences, sequences)}
-
-      {:error, _} ->
-        {:noreply, socket}
-    end
-  end
-
   @impl true
   def handle_event("delete_element", %{"id" => id}, socket) do
     case TrainContext.get_element(String.to_integer(id)) do
@@ -289,20 +253,7 @@ defmodule TswIoWeb.TrainEditLive do
     if simulator_status.status != :connected or simulator_status.client == nil do
       {:noreply, put_flash(socket, :error, "Connect to the simulator to configure elements")}
     else
-      element_id = String.to_integer(id)
-
-      case TrainContext.get_element(element_id, preload: [lever_config: :notches]) do
-        {:ok, element} ->
-          {:noreply,
-           socket
-           |> assign(:show_config_wizard, true)
-           |> assign(:config_wizard_element, element)
-           |> assign(:config_wizard_mode, :lever)
-           |> assign(:config_wizard_event, nil)}
-
-        {:error, :not_found} ->
-          {:noreply, put_flash(socket, :error, "Element not found")}
-      end
+      open_lever_config_wizard(socket, String.to_integer(id))
     end
   end
 
@@ -314,25 +265,7 @@ defmodule TswIoWeb.TrainEditLive do
     if simulator_status.status != :connected or simulator_status.client == nil do
       {:noreply, put_flash(socket, :error, "Connect to the simulator to configure elements")}
     else
-      element_id = String.to_integer(id)
-
-      case TrainContext.get_element(element_id, preload: [button_binding: [input: :device]]) do
-        {:ok, element} ->
-          # Get available button inputs for the wizard
-          available_inputs = Hardware.list_all_inputs(include_uncalibrated: true)
-          button_inputs = Enum.filter(available_inputs, &(&1.input_type == :button))
-
-          {:noreply,
-           socket
-           |> assign(:show_config_wizard, true)
-           |> assign(:config_wizard_element, element)
-           |> assign(:config_wizard_mode, :button)
-           |> assign(:config_wizard_event, nil)
-           |> assign(:available_button_inputs, button_inputs)}
-
-        {:error, :not_found} ->
-          {:noreply, put_flash(socket, :error, "Element not found")}
-      end
+      open_button_config_wizard(socket, String.to_integer(id))
     end
   end
 
@@ -934,6 +867,50 @@ defmodule TswIoWeb.TrainEditLive do
 
   # Private functions
 
+  defp open_config_wizard_for_element(socket, %Element{type: :lever} = element) do
+    open_lever_config_wizard(socket, element.id)
+  end
+
+  defp open_config_wizard_for_element(socket, %Element{type: :button} = element) do
+    open_button_config_wizard(socket, element.id)
+  end
+
+  defp open_lever_config_wizard(socket, element_id) do
+    case TrainContext.get_element(element_id, preload: [lever_config: :notches]) do
+      {:ok, element} ->
+        {:noreply,
+         socket
+         |> assign(:show_config_wizard, true)
+         |> assign(:config_wizard_element, element)
+         |> assign(:config_wizard_mode, :lever)
+         |> assign(:config_wizard_event, nil)}
+
+      {:error, _} ->
+        {:noreply, socket}
+    end
+  end
+
+  defp open_button_config_wizard(socket, element_id) do
+    case TrainContext.get_element(element_id, preload: [button_binding: [input: :device]]) do
+      {:ok, element} ->
+        available_inputs = Hardware.list_all_inputs(include_uncalibrated: true)
+        button_inputs = Enum.filter(available_inputs, &(&1.input_type == :button))
+        sequences = TrainContext.list_sequences(socket.assigns.train.id)
+
+        {:noreply,
+         socket
+         |> assign(:show_config_wizard, true)
+         |> assign(:config_wizard_element, element)
+         |> assign(:config_wizard_mode, :button)
+         |> assign(:config_wizard_event, nil)
+         |> assign(:available_button_inputs, button_inputs)
+         |> assign(:sequences, sequences)}
+
+      {:error, _} ->
+        {:noreply, socket}
+    end
+  end
+
   defp build_notch_forms(notches) when is_list(notches) do
     Enum.map(notches, fn notch ->
       Notch.changeset(notch, %{})
@@ -982,113 +959,110 @@ defmodule TswIoWeb.TrainEditLive do
     assigns = assign(assigns, :is_active, is_active)
 
     ~H"""
-    <div class="min-h-screen flex flex-col">
-      <.nav_header
-        devices={@nav_devices}
-        simulator_status={@nav_simulator_status}
-        firmware_update={@nav_firmware_update}
-        app_version_update={@nav_app_version_update}
-        firmware_checking={@nav_firmware_checking}
-        dropdown_open={@nav_dropdown_open}
-        scanning={@nav_scanning}
-        current_path={@nav_current_path}
-      />
+    <.breadcrumb items={[
+      %{label: "Trains", path: ~p"/trains"},
+      %{label: @train.name || "New Train"}
+    ]} />
 
-      <.breadcrumb items={[
-        %{label: "Trains", path: ~p"/trains"},
-        %{label: @train.name || "New Train"}
-      ]} />
+    <main class="flex-1 p-4 sm:p-8">
+      <div class="max-w-2xl mx-auto">
+        <.train_header
+          train={@train}
+          train_form={@train_form}
+          is_active={@is_active}
+          new_mode={@new_mode}
+        />
 
-      <main class="flex-1 p-4 sm:p-8">
-        <div class="max-w-2xl mx-auto">
-          <.train_header
-            train={@train}
-            train_form={@train_form}
-            is_active={@is_active}
-            new_mode={@new_mode}
-          />
-
-          <div :if={not @new_mode} class="bg-base-200/50 rounded-xl p-6 mt-6">
-            <.elements_section elements={@elements} is_active={@is_active} />
-          </div>
-
-          <.live_component
-            :if={not @new_mode}
-            module={SequenceManagerComponent}
-            id="sequence-manager"
-            train_id={@train.id}
-            sequences={@sequences}
-          />
-
-          <.danger_zone
-            :if={not @new_mode}
-            action_label="Delete Train"
-            action_description="Permanently remove this train and all associated elements and calibration data"
-            on_action="show_delete_modal"
-            disabled={@is_active}
-            disabled_reason="Cannot delete while train is currently active"
-          />
+        <div
+          :if={not @new_mode and @nav_simulator_status.status != :connected}
+          class="alert alert-warning mt-6"
+        >
+          <.icon name="hero-exclamation-triangle" class="w-5 h-5" />
+          <span>
+            Simulator not connected. Connect to the simulator to configure elements and test sequences.
+          </span>
         </div>
-      </main>
 
-      <.add_element_modal :if={@modal_open} form={@element_form} />
+        <div :if={not @new_mode} class="bg-base-200/50 rounded-xl p-6 mt-6">
+          <.elements_section elements={@elements} is_active={@is_active} />
+        </div>
 
-      <.confirmation_modal
-        :if={@show_delete_modal}
-        on_close="close_delete_modal"
-        on_confirm="confirm_delete"
-        title="Delete Train"
-        item_name={@train.name}
-        description="This will permanently delete the train configuration and all its elements and calibration data."
-        is_active={@is_active}
-        active_warning="This train is currently active in the simulator."
-      />
+        <.live_component
+          :if={not @new_mode}
+          module={SequenceManagerComponent}
+          id="sequence-manager"
+          train_id={@train.id}
+          sequences={@sequences}
+        />
 
-      <.notch_mapping_modal
-        :if={@mapping_notches_element}
-        element={@mapping_notches_element}
-        notch_forms={@notch_forms}
-        auto_detecting={@auto_detecting}
-        simulator_connected={@nav_simulator_status.status == :connected}
-      />
+        <.danger_zone
+          :if={not @new_mode}
+          action_label="Delete Train"
+          action_description="Permanently remove this train and all associated elements and calibration data"
+          on_action="show_delete_modal"
+          disabled={@is_active}
+          disabled_reason="Cannot delete while train is currently active"
+        />
+      </div>
+    </main>
 
-      <.live_component
-        :if={@show_api_explorer}
-        module={TswIoWeb.ApiExplorerComponent}
-        id="api-explorer"
-        field={@api_explorer_field}
-        client={@nav_simulator_status.client}
-      />
+    <.add_element_modal :if={@modal_open} form={@element_form} />
 
-      <.input_binding_modal
-        :if={@binding_element}
-        element={@binding_element}
-        available_inputs={@available_inputs}
-      />
+    <.confirmation_modal
+      :if={@show_delete_modal}
+      on_close="close_delete_modal"
+      on_confirm="confirm_delete"
+      title="Delete Train"
+      item_name={@train.name}
+      description="This will permanently delete the train configuration and all its elements and calibration data."
+      is_active={@is_active}
+      active_warning="This train is currently active in the simulator."
+    />
 
-      <.live_component
-        :if={@show_config_wizard and @nav_simulator_status.client != nil}
-        module={TswIoWeb.ConfigurationWizardComponent}
-        id="config-wizard"
-        mode={@config_wizard_mode}
-        element={@config_wizard_element}
-        client={@nav_simulator_status.client}
-        available_inputs={@available_button_inputs}
-        explorer_event={@config_wizard_event}
-      />
+    <.notch_mapping_modal
+      :if={@mapping_notches_element}
+      element={@mapping_notches_element}
+      notch_forms={@notch_forms}
+      auto_detecting={@auto_detecting}
+      simulator_connected={@nav_simulator_status.status == :connected}
+    />
 
-      <.live_component
-        :if={@notch_mapping_wizard_element}
-        module={TswIoWeb.NotchMappingWizard}
-        id="notch-mapping-wizard"
-        lever_config={@notch_mapping_wizard_element.lever_config}
-        element_name={@notch_mapping_wizard_element.name}
-        port={get_bound_input_port(@notch_mapping_wizard_element)}
-        pin={get_bound_input_pin(@notch_mapping_wizard_element)}
-        calibration={get_bound_input_calibration(@notch_mapping_wizard_element)}
-        session_state={@notch_mapping_state}
-      />
-    </div>
+    <.live_component
+      :if={@show_api_explorer}
+      module={TswIoWeb.ApiExplorerComponent}
+      id="api-explorer"
+      field={@api_explorer_field}
+      client={@nav_simulator_status.client}
+    />
+
+    <.input_binding_modal
+      :if={@binding_element}
+      element={@binding_element}
+      available_inputs={@available_inputs}
+    />
+
+    <.live_component
+      :if={@show_config_wizard and @nav_simulator_status.client != nil}
+      module={TswIoWeb.ConfigurationWizardComponent}
+      id="config-wizard"
+      mode={@config_wizard_mode}
+      element={@config_wizard_element}
+      client={@nav_simulator_status.client}
+      available_inputs={@available_button_inputs}
+      explorer_event={@config_wizard_event}
+    />
+
+    <.live_component
+      :if={@notch_mapping_wizard_element}
+      module={TswIoWeb.NotchMappingWizard}
+      id="notch-mapping-wizard"
+      lever_config={@notch_mapping_wizard_element.lever_config}
+      element_name={@notch_mapping_wizard_element.name}
+      port={get_bound_input_port(@notch_mapping_wizard_element)}
+      pin={get_bound_input_pin(@notch_mapping_wizard_element)}
+      calibration={get_bound_input_calibration(@notch_mapping_wizard_element)}
+      session_state={@notch_mapping_state}
+    />
     """
   end
 

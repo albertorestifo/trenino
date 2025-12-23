@@ -717,98 +717,85 @@ defmodule TswIoWeb.ConfigurationEditLive do
     assigns = assign(assigns, :connected_devices, connected_devices)
 
     ~H"""
-    <div class="min-h-screen flex flex-col">
-      <.nav_header
-        devices={@nav_devices}
-        simulator_status={@nav_simulator_status}
-        firmware_update={@nav_firmware_update}
-        app_version_update={@nav_app_version_update}
-        firmware_checking={@nav_firmware_checking}
-        dropdown_open={@nav_dropdown_open}
-        scanning={@nav_scanning}
-        current_path={@nav_current_path}
-      />
+    <.breadcrumb items={[
+      %{label: "Configurations", path: ~p"/"},
+      %{label: @device.name || "New Configuration"}
+    ]} />
 
-      <.breadcrumb items={[
-        %{label: "Configurations", path: ~p"/"},
-        %{label: @device.name || "New Configuration"}
-      ]} />
+    <main class="flex-1 p-4 sm:p-8">
+      <div class="max-w-2xl mx-auto">
+        <.device_header
+          device={@device}
+          device_form={@device_form}
+          active_port={@active_port}
+          new_mode={@new_mode}
+          can_apply={length(@inputs) > 0 and not Enum.empty?(@connected_devices)}
+          applying={@applying}
+        />
 
-      <main class="flex-1 p-4 sm:p-8">
-        <div class="max-w-2xl mx-auto">
-          <.device_header
-            device={@device}
-            device_form={@device_form}
+        <div class="bg-base-200/50 rounded-xl p-6 mt-6">
+          <.inputs_section
+            inputs={@inputs}
+            input_values={@input_values}
             active_port={@active_port}
-            new_mode={@new_mode}
-            can_apply={length(@inputs) > 0 and not Enum.empty?(@connected_devices)}
-            applying={@applying}
-          />
-
-          <div class="bg-base-200/50 rounded-xl p-6 mt-6">
-            <.inputs_section
-              inputs={@inputs}
-              input_values={@input_values}
-              active_port={@active_port}
-            />
-          </div>
-
-          <div class="bg-base-200/50 rounded-xl p-6 mt-6">
-            <.outputs_section outputs={@outputs} active_port={@active_port} />
-          </div>
-
-          <.danger_zone
-            :if={not @new_mode}
-            action_label="Delete Configuration"
-            action_description="Permanently remove this configuration and all associated data"
-            on_action="show_delete_modal"
-            disabled={@active_port != nil}
-            disabled_reason="Cannot delete while configuration is active on a device"
           />
         </div>
-      </main>
 
-      <.add_input_modal
-        :if={@modal_open}
-        form={@form}
-        matrix_row_pins_input={@matrix_row_pins_input}
-        matrix_col_pins_input={@matrix_col_pins_input}
-        matrix_errors={@matrix_errors}
-      />
+        <div class="bg-base-200/50 rounded-xl p-6 mt-6">
+          <.outputs_section outputs={@outputs} active_port={@active_port} />
+        </div>
 
-      <.add_output_modal :if={@output_modal_open} form={@output_form} />
+        <.danger_zone
+          :if={not @new_mode}
+          action_label="Delete Configuration"
+          action_description="Permanently remove this configuration and all associated data"
+          on_action="show_delete_modal"
+          disabled={@active_port != nil}
+          disabled_reason="Cannot delete while configuration is active on a device"
+        />
+      </div>
+    </main>
 
-      <.apply_modal
-        :if={@show_apply_modal}
-        device={@device}
-        connected_devices={@connected_devices}
-      />
+    <.add_input_modal
+      :if={@modal_open}
+      form={@form}
+      matrix_row_pins_input={@matrix_row_pins_input}
+      matrix_col_pins_input={@matrix_col_pins_input}
+      matrix_errors={@matrix_errors}
+    />
 
-      <.delete_modal
-        :if={@show_delete_modal}
-        device={@device}
-        active={@active_port != nil}
-      />
+    <.add_output_modal :if={@output_modal_open} form={@output_form} />
 
-      <.live_component
-        :if={@calibrating_input}
-        module={TswIoWeb.CalibrationWizard}
-        id="calibration-wizard"
-        input={@calibrating_input}
-        port={@active_port}
-        session_state={@calibration_session_state}
-      />
+    <.apply_modal
+      :if={@show_apply_modal}
+      device={@device}
+      connected_devices={@connected_devices}
+    />
 
-      <.live_component
-        :if={@testing_matrix_input}
-        module={TswIoWeb.MatrixTestWizard}
-        id="matrix-test-wizard"
-        input={@testing_matrix_input}
-        port={@active_port}
-        input_values={@input_values}
-        tested_buttons={@matrix_tested_buttons}
-      />
-    </div>
+    <.delete_modal
+      :if={@show_delete_modal}
+      device={@device}
+      active={@active_port != nil}
+    />
+
+    <.live_component
+      :if={@calibrating_input}
+      module={TswIoWeb.CalibrationWizard}
+      id="calibration-wizard"
+      input={@calibrating_input}
+      port={@active_port}
+      session_state={@calibration_session_state}
+    />
+
+    <.live_component
+      :if={@testing_matrix_input}
+      module={TswIoWeb.MatrixTestWizard}
+      id="matrix-test-wizard"
+      input={@testing_matrix_input}
+      port={@active_port}
+      input_values={@input_values}
+      tested_buttons={@matrix_tested_buttons}
+    />
     """
   end
 
@@ -851,8 +838,7 @@ defmodule TswIoWeb.ConfigurationEditLive do
         <div class="flex items-center gap-3 mt-4">
           <span class="text-xs text-base-content/50 font-mono">ID: {@device.config_id}</span>
           <span :if={@active_port} class="badge badge-success badge-sm gap-1">
-            <span class="w-1.5 h-1.5 rounded-full bg-success-content animate-pulse" />
-            Active
+            <span class="w-1.5 h-1.5 rounded-full bg-success-content animate-pulse" /> Active
           </span>
           <div class="ml-auto flex items-center gap-2">
             <button

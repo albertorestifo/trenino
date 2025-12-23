@@ -11,8 +11,6 @@ defmodule TswIoWeb.FirmwareLive do
 
   use TswIoWeb, :live_view
 
-  import TswIoWeb.NavComponents
-
   alias TswIo.Firmware
   alias TswIo.Firmware.{BoardConfig, FirmwareFile}
   alias TswIo.Serial.Connection
@@ -298,105 +296,92 @@ defmodule TswIoWeb.FirmwareLive do
       |> assign(:older_releases, older_releases)
 
     ~H"""
-    <div class="min-h-screen flex flex-col">
-      <.nav_header
-        devices={@nav_devices}
-        simulator_status={@nav_simulator_status}
-        firmware_update={@nav_firmware_update}
-        app_version_update={@nav_app_version_update}
-        firmware_checking={@nav_firmware_checking}
-        dropdown_open={@nav_dropdown_open}
-        scanning={@nav_scanning}
-        current_path={@nav_current_path}
-      />
+    <main class="flex-1 p-4 sm:p-8">
+      <div class="max-w-4xl mx-auto">
+        <header class="mb-8 flex items-center justify-between">
+          <div>
+            <h1 class="text-2xl font-semibold">Firmware</h1>
+            <p class="text-sm text-base-content/70 mt-1">
+              Download and upload firmware to your devices
+            </p>
+          </div>
+          <button
+            phx-click="check_updates"
+            disabled={@checking_updates}
+            class="btn btn-primary"
+          >
+            <.icon
+              name="hero-arrow-path"
+              class={if @checking_updates, do: "w-4 h-4 animate-spin", else: "w-4 h-4"}
+            />
+            {if @checking_updates, do: "Checking...", else: "Check for Updates"}
+          </button>
+        </header>
 
-      <main class="flex-1 p-4 sm:p-8">
-        <div class="max-w-4xl mx-auto">
-          <header class="mb-8 flex items-center justify-between">
-            <div>
-              <h1 class="text-2xl font-semibold">Firmware</h1>
-              <p class="text-sm text-base-content/70 mt-1">
-                Download and upload firmware to your devices
-              </p>
-            </div>
-            <button
-              phx-click="check_updates"
-              disabled={@checking_updates}
-              class="btn btn-primary"
-            >
-              <.icon
-                name="hero-arrow-path"
-                class={if @checking_updates, do: "w-4 h-4 animate-spin", else: "w-4 h-4"}
-              />
-              {if @checking_updates, do: "Checking...", else: "Check for Updates"}
-            </button>
-          </header>
+        <.empty_releases :if={Enum.empty?(@releases)} checking={@checking_updates} />
 
-          <.empty_releases :if={Enum.empty?(@releases)} checking={@checking_updates} />
+        <div :if={not Enum.empty?(@releases)} class="space-y-8">
+          <section>
+            <h2 class="text-lg font-medium mb-4">Available Releases</h2>
+            <div class="space-y-4">
+              <%!-- Latest release with emphasis --%>
+              <.release_card :if={@latest_release} release={@latest_release} is_latest={true} />
 
-          <div :if={not Enum.empty?(@releases)} class="space-y-8">
-            <section>
-              <h2 class="text-lg font-medium mb-4">Available Releases</h2>
-              <div class="space-y-4">
-                <%!-- Latest release with emphasis --%>
-                <.release_card :if={@latest_release} release={@latest_release} is_latest={true} />
-
-                <%!-- Older releases in collapsible section --%>
-                <div :if={not Enum.empty?(@older_releases)}>
-                  <button
-                    phx-click="toggle_older_releases"
-                    class="btn btn-ghost btn-sm w-full justify-start text-base-content/70 hover:text-base-content"
-                  >
-                    <.icon
-                      name="hero-chevron-down"
-                      class={
+              <%!-- Older releases in collapsible section --%>
+              <div :if={not Enum.empty?(@older_releases)}>
+                <button
+                  phx-click="toggle_older_releases"
+                  class="btn btn-ghost btn-sm w-full justify-start text-base-content/70 hover:text-base-content"
+                >
+                  <.icon
+                    name="hero-chevron-down"
+                    class={
                         "w-4 h-4 transition-transform duration-150 #{if @show_older_releases, do: "rotate-180", else: ""}"
                       }
-                    />
-                    {if @show_older_releases,
-                      do: "Hide older releases",
-                      else:
-                        "Show #{length(@older_releases)} older release#{if length(@older_releases) > 1, do: "s", else: ""}"}
-                  </button>
+                  />
+                  {if @show_older_releases,
+                    do: "Hide older releases",
+                    else:
+                      "Show #{length(@older_releases)} older release#{if length(@older_releases) > 1, do: "s", else: ""}"}
+                </button>
 
-                  <div class={[
-                    "overflow-hidden transition-all duration-150 ease-in-out",
-                    if(@show_older_releases,
-                      do: "max-h-[2000px] opacity-100 mt-4",
-                      else: "max-h-0 opacity-0"
-                    )
-                  ]}>
-                    <div class="space-y-4">
-                      <.release_card
-                        :for={release <- @older_releases}
-                        release={release}
-                        is_latest={false}
-                      />
-                    </div>
+                <div class={[
+                  "overflow-hidden transition-all duration-150 ease-in-out",
+                  if(@show_older_releases,
+                    do: "max-h-[2000px] opacity-100 mt-4",
+                    else: "max-h-0 opacity-0"
+                  )
+                ]}>
+                  <div class="space-y-4">
+                    <.release_card
+                      :for={release <- @older_releases}
+                      release={release}
+                      is_latest={false}
+                    />
                   </div>
                 </div>
               </div>
-            </section>
+            </div>
+          </section>
 
-            <section :if={not Enum.empty?(@upload_history)}>
-              <h2 class="text-lg font-medium mb-4">Upload History</h2>
-              <.history_table history={@upload_history} />
-            </section>
-          </div>
+          <section :if={not Enum.empty?(@upload_history)}>
+            <h2 class="text-lg font-medium mb-4">Upload History</h2>
+            <.history_table history={@upload_history} />
+          </section>
         </div>
-      </main>
+      </div>
+    </main>
 
-      <.upload_modal
-        :if={@show_upload_modal}
-        release={@selected_release}
-        available_ports={@available_ports}
-        selected_port={@selected_port}
-        board_type={@selected_board_type}
-        progress={@upload_progress}
-        error={@upload_error}
-        current_upload={@current_upload}
-      />
-    </div>
+    <.upload_modal
+      :if={@show_upload_modal}
+      release={@selected_release}
+      available_ports={@available_ports}
+      selected_port={@selected_port}
+      board_type={@selected_board_type}
+      progress={@upload_progress}
+      error={@upload_error}
+      current_upload={@current_upload}
+    />
     """
   end
 

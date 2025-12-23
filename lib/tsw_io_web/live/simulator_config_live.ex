@@ -177,80 +177,67 @@ defmodule TswIoWeb.SimulatorConfigLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <div class="min-h-screen flex flex-col">
-      <.nav_header
-        devices={@nav_devices}
-        simulator_status={@nav_simulator_status}
-        firmware_update={@nav_firmware_update}
-        app_version_update={@nav_app_version_update}
-        firmware_checking={@nav_firmware_checking}
-        dropdown_open={@nav_dropdown_open}
-        scanning={@nav_scanning}
-        current_path={@nav_current_path}
-      />
+    <.breadcrumb items={[
+      %{label: "Home", path: ~p"/"},
+      %{label: "Simulator Configuration"}
+    ]} />
 
-      <.breadcrumb items={[
-        %{label: "Home", path: ~p"/"},
-        %{label: "Simulator Configuration"}
-      ]} />
+    <main class="flex-1 p-4 sm:p-8">
+      <div class="max-w-2xl mx-auto">
+        <header class="mb-8">
+          <h1 class="text-2xl font-semibold">Simulator Configuration</h1>
+          <p class="text-sm text-base-content/70 mt-1">
+            Configure connection to Train Sim World API
+          </p>
+        </header>
 
-      <main class="flex-1 p-4 sm:p-8">
-        <div class="max-w-2xl mx-auto">
-          <header class="mb-8">
-            <h1 class="text-2xl font-semibold">Simulator Configuration</h1>
-            <p class="text-sm text-base-content/70 mt-1">
-              Configure connection to Train Sim World API
-            </p>
-          </header>
+        <.connection_status status={@status} />
 
-          <.connection_status status={@status} />
+        <.form for={@form} phx-change="validate" phx-submit="save" class="mt-8" id="config-form">
+          <.windows_config
+            :if={@is_windows and not @show_manual}
+            auto_detecting={@auto_detecting}
+            config={@config}
+          />
 
-          <.form for={@form} phx-change="validate" phx-submit="save" class="mt-8" id="config-form">
-            <.windows_config
+          <.manual_config :if={@show_manual} form={@form} is_windows={@is_windows} />
+
+          <div class="mt-6 flex flex-wrap gap-4">
+            <button type="submit" class="btn btn-primary">
+              Save Configuration
+            </button>
+
+            <button
               :if={@is_windows and not @show_manual}
-              auto_detecting={@auto_detecting}
-              config={@config}
-            />
+              type="button"
+              phx-click="toggle_manual"
+              class="btn btn-ghost"
+            >
+              Manual Configuration
+            </button>
 
-            <.manual_config :if={@show_manual} form={@form} is_windows={@is_windows} />
+            <button
+              :if={@is_windows and @show_manual}
+              type="button"
+              phx-click="toggle_manual"
+              class="btn btn-ghost"
+            >
+              Use Auto-Detection
+            </button>
 
-            <div class="mt-6 flex flex-wrap gap-4">
-              <button type="submit" class="btn btn-primary">
-                Save Configuration
-              </button>
-
-              <button
-                :if={@is_windows and not @show_manual}
-                type="button"
-                phx-click="toggle_manual"
-                class="btn btn-ghost"
-              >
-                Manual Configuration
-              </button>
-
-              <button
-                :if={@is_windows and @show_manual}
-                type="button"
-                phx-click="toggle_manual"
-                class="btn btn-ghost"
-              >
-                Use Auto-Detection
-              </button>
-
-              <button
-                :if={@config.id}
-                type="button"
-                phx-click="delete"
-                class="btn btn-error btn-outline ml-auto"
-                data-confirm="Are you sure you want to delete this configuration?"
-              >
-                Delete
-              </button>
-            </div>
-          </.form>
-        </div>
-      </main>
-    </div>
+            <button
+              :if={@config.id}
+              type="button"
+              phx-click="delete"
+              class="btn btn-error btn-outline ml-auto"
+              data-confirm="Are you sure you want to delete this configuration?"
+            >
+              Delete
+            </button>
+          </div>
+        </.form>
+      </div>
+    </main>
     """
   end
 
