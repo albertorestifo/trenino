@@ -9,6 +9,7 @@ defmodule TswIoWeb.ConfigurationEditLive do
   use TswIoWeb, :live_view
 
   import TswIoWeb.NavComponents
+  import TswIoWeb.SharedComponents
 
   alias TswIo.Hardware
   alias TswIo.Hardware.{ConfigId, Device, Input, Output}
@@ -760,7 +761,14 @@ defmodule TswIoWeb.ConfigurationEditLive do
             <.outputs_section outputs={@outputs} active_port={@active_port} />
           </div>
 
-          <.danger_zone :if={not @new_mode} active={@active_port != nil} />
+          <.danger_zone
+            :if={not @new_mode}
+            action_label="Delete Configuration"
+            action_description="Permanently remove this configuration and all associated data"
+            on_action="show_delete_modal"
+            disabled={@active_port != nil}
+            disabled_reason="Cannot delete while configuration is active on a device"
+          />
         </div>
       </main>
 
@@ -819,26 +827,36 @@ defmodule TswIoWeb.ConfigurationEditLive do
     ~H"""
     <header>
       <.form for={@device_form} phx-change="validate_device" phx-submit="save_device">
-        <.input
-          field={@device_form[:name]}
-          type="text"
-          class="text-2xl font-semibold bg-transparent border border-base-300/0 hover:border-base-300/50 hover:bg-base-200/20 p-2 -ml-2 focus:ring-2 focus:ring-primary focus:border-primary w-full transition-all rounded-md"
-          placeholder="Configuration Name"
-        />
-        <.input
-          field={@device_form[:description]}
-          type="textarea"
-          class="text-sm text-base-content/70 bg-transparent border border-base-300/0 hover:border-base-300/50 hover:bg-base-200/20 p-2 -ml-2 focus:ring-2 focus:ring-primary focus:border-primary w-full resize-none mt-1 transition-all rounded-md"
-          placeholder="Add a description..."
-          rows="2"
-        />
-        <div class="flex items-center gap-3 mt-2">
+        <div>
+          <label class="label">
+            <span class="label-text">Configuration Name</span>
+          </label>
+          <.input
+            field={@device_form[:name]}
+            type="text"
+            class="input input-bordered w-full text-lg font-semibold"
+            placeholder="e.g., Arduino Mega Controller"
+          />
+        </div>
+        <div class="mt-3">
+          <label class="label">
+            <span class="label-text">Description</span>
+          </label>
+          <.input
+            field={@device_form[:description]}
+            type="textarea"
+            class="textarea textarea-bordered w-full resize-none"
+            placeholder="Add a description (optional)"
+            rows="2"
+          />
+        </div>
+        <div class="flex items-center gap-3 mt-4">
           <span class="text-xs text-base-content/50 font-mono">ID: {@device.config_id}</span>
           <span :if={@active_port} class="badge badge-success badge-sm gap-1">
             <span class="w-1.5 h-1.5 rounded-full bg-success-content animate-pulse" />
             Active on {@active_port}
           </span>
-          <button type="submit" class="btn btn-ghost btn-xs ml-auto">
+          <button type="submit" class="btn btn-primary btn-sm ml-auto">
             <.icon name="hero-check" class="w-4 h-4" /> Save
           </button>
         </div>
@@ -897,9 +915,19 @@ defmodule TswIoWeb.ConfigurationEditLive do
   defp inputs_section(assigns) do
     ~H"""
     <div class="mb-6">
-      <h3 class="text-base font-semibold mb-4">Inputs</h3>
+      <div class="flex items-center justify-between mb-4">
+        <h3 class="text-base font-semibold">Inputs</h3>
+        <button phx-click="open_add_input_modal" class="btn btn-outline btn-sm">
+          <.icon name="hero-plus" class="w-4 h-4" /> Add Input
+        </button>
+      </div>
 
-      <.empty_inputs_state :if={Enum.empty?(@inputs)} />
+      <.empty_collection_state
+        :if={Enum.empty?(@inputs)}
+        icon="hero-plus-circle"
+        message="No inputs configured"
+        submessage="Add your first input to get started"
+      />
 
       <.inputs_table
         :if={length(@inputs) > 0}
@@ -907,20 +935,6 @@ defmodule TswIoWeb.ConfigurationEditLive do
         input_values={@input_values}
         active_port={@active_port}
       />
-
-      <button phx-click="open_add_input_modal" class="btn btn-outline btn-sm mt-4">
-        <.icon name="hero-plus" class="w-4 h-4" /> Add Input
-      </button>
-    </div>
-    """
-  end
-
-  defp empty_inputs_state(assigns) do
-    ~H"""
-    <div class="bg-base-100 rounded-lg p-8 text-center">
-      <.icon name="hero-plus-circle" class="w-10 h-10 mx-auto text-base-content/30" />
-      <p class="mt-2 text-sm text-base-content/70">No inputs configured</p>
-      <p class="text-xs text-base-content/50">Add your first input to get started</p>
     </div>
     """
   end
@@ -1122,25 +1136,21 @@ defmodule TswIoWeb.ConfigurationEditLive do
   defp outputs_section(assigns) do
     ~H"""
     <div class="mb-6">
-      <h3 class="text-base font-semibold mb-4">Outputs</h3>
+      <div class="flex items-center justify-between mb-4">
+        <h3 class="text-base font-semibold">Outputs</h3>
+        <button phx-click="open_add_output_modal" class="btn btn-outline btn-sm">
+          <.icon name="hero-plus" class="w-4 h-4" /> Add Output
+        </button>
+      </div>
 
-      <.empty_outputs_state :if={Enum.empty?(@outputs)} />
+      <.empty_collection_state
+        :if={Enum.empty?(@outputs)}
+        icon="hero-light-bulb"
+        message="No outputs configured"
+        submessage="Add LEDs or indicators to control"
+      />
 
       <.outputs_table :if={length(@outputs) > 0} outputs={@outputs} active_port={@active_port} />
-
-      <button phx-click="open_add_output_modal" class="btn btn-outline btn-sm mt-4">
-        <.icon name="hero-plus" class="w-4 h-4" /> Add Output
-      </button>
-    </div>
-    """
-  end
-
-  defp empty_outputs_state(assigns) do
-    ~H"""
-    <div class="bg-base-100 rounded-lg p-8 text-center">
-      <.icon name="hero-light-bulb" class="w-10 h-10 mx-auto text-base-content/30" />
-      <p class="mt-2 text-sm text-base-content/70">No outputs configured</p>
-      <p class="text-xs text-base-content/50">Add LEDs or indicators to control</p>
     </div>
     """
   end
@@ -1489,38 +1499,6 @@ defmodule TswIoWeb.ConfigurationEditLive do
             Cancel
           </button>
         </div>
-      </div>
-    </div>
-    """
-  end
-
-  attr :active, :boolean, required: true
-
-  defp danger_zone(assigns) do
-    ~H"""
-    <div class="mt-12 pt-8 border-t border-base-300">
-      <h3 class="text-sm font-semibold text-error mb-4">Danger Zone</h3>
-      <div class="p-4 rounded-lg border border-error/30 bg-error/5">
-        <div class="flex items-center justify-between gap-4">
-          <div>
-            <p class="font-medium text-sm">Delete Configuration</p>
-            <p class="text-xs text-base-content/70 mt-1">
-              Permanently remove this configuration and all associated data
-            </p>
-          </div>
-          <button
-            type="button"
-            phx-click="show_delete_modal"
-            disabled={@active}
-            class="btn btn-error btn-sm"
-          >
-            <.icon name="hero-trash" class="w-4 h-4" /> Delete
-          </button>
-        </div>
-        <p :if={@active} class="text-xs text-warning mt-3">
-          <.icon name="hero-exclamation-triangle" class="w-4 h-4 inline" />
-          Cannot delete while configuration is active on a device
-        </p>
       </div>
     </div>
     """
