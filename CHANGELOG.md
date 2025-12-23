@@ -8,6 +8,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- Button binding modes
+  - **Simple mode**: Sends ON value when pressed, OFF value when released (default behavior)
+  - **Momentary mode**: Repeats ON value at configurable interval while button is held (for horn, etc.)
+  - **Sequence mode**: Executes a series of commands with configurable delays
+- Hardware type configuration for buttons
+  - **Momentary**: Spring-loaded buttons that return when released
+  - **Latching**: Toggle switches that stay in position until pressed again
+- Command sequences
+  - Create reusable sequences of simulator commands per train
+  - Each command specifies endpoint, value, and delay before next command
+  - Buttons in sequence mode can trigger different sequences for press and release (latching only)
+  - Sequence manager UI in train edit page for creating and editing sequences
+- Button endpoint auto-detection
+  - "Auto-detect" option in button configuration wizard
+  - Automatically discovers InputValue endpoints from simulator
+  - Monitors for value changes when you interact with controls in-game
+  - Suggests ON/OFF values based on detected changes
 - Matrix input support
   - New "Matrix" input type with row/column GPIO pin configuration
   - Live grid preview showing dimensions and virtual pin mapping
