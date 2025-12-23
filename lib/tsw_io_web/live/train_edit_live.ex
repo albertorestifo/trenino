@@ -204,17 +204,62 @@ defmodule TswIoWeb.TrainEditLive do
   @impl true
   def handle_event("add_element", %{"element" => params}, socket) do
     case TrainContext.create_element(socket.assigns.train.id, params) do
-      {:ok, _element} ->
+      {:ok, element} ->
         {:ok, elements} = TrainContext.list_elements(socket.assigns.train.id)
 
-        {:noreply,
-         socket
-         |> assign(:elements, elements)
-         |> assign(:modal_open, false)
-         |> assign(:element_form, to_form(Element.changeset(%Element{}, %{type: :lever})))}
+        socket =
+          socket
+          |> assign(:elements, elements)
+          |> assign(:modal_open, false)
+          |> assign(:element_form, to_form(Element.changeset(%Element{}, %{type: :lever})))
+
+        # Automatically open configuration wizard if simulator is connected
+        simulator_status = socket.assigns.nav_simulator_status
+
+        if simulator_status.status == :connected and simulator_status.client != nil do
+          open_config_wizard_for_element(socket, element)
+        else
+          {:noreply, socket}
+        end
 
       {:error, changeset} ->
         {:noreply, assign(socket, :element_form, to_form(changeset))}
+    end
+  end
+
+  defp open_config_wizard_for_element(socket, %Element{type: :lever} = element) do
+    case TrainContext.get_element(element.id, preload: [lever_config: :notches]) do
+      {:ok, element} ->
+        {:noreply,
+         socket
+         |> assign(:show_config_wizard, true)
+         |> assign(:config_wizard_element, element)
+         |> assign(:config_wizard_mode, :lever)
+         |> assign(:config_wizard_event, nil)}
+
+      {:error, _} ->
+        {:noreply, socket}
+    end
+  end
+
+  defp open_config_wizard_for_element(socket, %Element{type: :button} = element) do
+    case TrainContext.get_element(element.id, preload: [button_binding: [input: :device]]) do
+      {:ok, element} ->
+        available_inputs = Hardware.list_all_inputs(include_uncalibrated: true)
+        button_inputs = Enum.filter(available_inputs, &(&1.input_type == :button))
+        sequences = TrainContext.list_sequences(socket.assigns.train.id)
+
+        {:noreply,
+         socket
+         |> assign(:show_config_wizard, true)
+         |> assign(:config_wizard_element, element)
+         |> assign(:config_wizard_mode, :button)
+         |> assign(:config_wizard_event, nil)
+         |> assign(:available_button_inputs, button_inputs)
+         |> assign(:sequences, sequences)}
+
+      {:error, _} ->
+        {:noreply, socket}
     end
   end
 
@@ -239,9 +284,9 @@ defmodule TswIoWeb.TrainEditLive do
   # Lever configuration - requires simulator to be connected
   @impl true
   def handle_event("configure_lever", %{"id" => id}, socket) do
-    simulator_client = get_in(socket.assigns, [:nav_simulator_status, Access.key(:client)])
+    simulator_status = socket.assigns.nav_simulator_status
 
-    if simulator_client == nil do
+    if simulator_status.status != :connected or simulator_status.client == nil do
       {:noreply, put_flash(socket, :error, "Connect to the simulator to configure elements")}
     else
       element_id = String.to_integer(id)
@@ -264,9 +309,9 @@ defmodule TswIoWeb.TrainEditLive do
   # Button configuration - requires simulator to be connected
   @impl true
   def handle_event("configure_button", %{"id" => id}, socket) do
-    simulator_client = get_in(socket.assigns, [:nav_simulator_status, Access.key(:client)])
+    simulator_status = socket.assigns.nav_simulator_status
 
-    if simulator_client == nil do
+    if simulator_status.status != :connected or simulator_status.client == nil do
       {:noreply, put_flash(socket, :error, "Connect to the simulator to configure elements")}
     else
       element_id = String.to_integer(id)
