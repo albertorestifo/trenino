@@ -1058,22 +1058,32 @@ defmodule TswIoWeb.TrainEditLive do
     ~H"""
     <header>
       <.form for={@train_form} phx-change="validate_train" phx-submit="save_train">
-        <.input
-          field={@train_form[:name]}
-          type="text"
-          class="text-2xl font-semibold bg-transparent border border-base-300/0 hover:border-base-300/50 hover:bg-base-200/20 p-2 -ml-2 focus:ring-2 focus:ring-primary focus:border-primary w-full transition-all rounded-md"
-          placeholder="Train Name"
-        />
-        <.input
-          field={@train_form[:description]}
-          type="textarea"
-          class="text-sm text-base-content/70 bg-transparent border border-base-300/0 hover:border-base-300/50 hover:bg-base-200/20 p-2 -ml-2 focus:ring-2 focus:ring-primary focus:border-primary w-full resize-none mt-1 transition-all rounded-md"
-          placeholder="Add a description..."
-          rows="2"
-        />
+        <div>
+          <label class="label">
+            <span class="label-text">Train Name</span>
+          </label>
+          <.input
+            field={@train_form[:name]}
+            type="text"
+            class="input input-bordered w-full text-lg font-semibold"
+            placeholder="e.g., BR Class 66"
+          />
+        </div>
         <div class="mt-3">
           <label class="label">
-            <span class="label-text text-sm text-base-content/70">Train Identifier</span>
+            <span class="label-text">Description</span>
+          </label>
+          <.input
+            field={@train_form[:description]}
+            type="textarea"
+            class="textarea textarea-bordered w-full resize-none"
+            placeholder="Add a description (optional)"
+            rows="2"
+          />
+        </div>
+        <div class="mt-3">
+          <label class="label">
+            <span class="label-text">Train Identifier</span>
           </label>
           <.input
             field={@train_form[:identifier]}
