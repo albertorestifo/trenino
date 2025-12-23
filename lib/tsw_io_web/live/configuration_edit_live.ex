@@ -1202,6 +1202,18 @@ defmodule TswIoWeb.ConfigurationEditLive do
 
         <.form for={@form} phx-change="validate_input" phx-submit="add_input">
           <div class="space-y-4">
+            <div>
+              <label class="label">
+                <span class="label-text">Input Type</span>
+              </label>
+              <.input
+                field={@form[:input_type]}
+                type="select"
+                options={[{"Analog", :analog}, {"Button", :button}, {"Matrix", :matrix}]}
+                class="select select-bordered w-full"
+              />
+            </div>
+
             <%!-- Pin Number (hidden for matrix type) --%>
             <div :if={@form[:input_type].value not in [:matrix, "matrix"]}>
               <label class="label">
@@ -1214,18 +1226,6 @@ defmodule TswIoWeb.ConfigurationEditLive do
                 min="0"
                 max="254"
                 class="input input-bordered w-full"
-              />
-            </div>
-
-            <div>
-              <label class="label">
-                <span class="label-text">Input Type</span>
-              </label>
-              <.input
-                field={@form[:input_type]}
-                type="select"
-                options={[{"Analog", :analog}, {"Button", :button}, {"Matrix", :matrix}]}
-                class="select select-bordered w-full"
               />
             </div>
 
