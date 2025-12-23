@@ -47,6 +47,11 @@ defmodule TswIo.Train.ButtonController do
             {port :: String.t(), pin :: integer()} => integer()
           }
 
+    @type sequence_info :: %{
+            id: integer(),
+            commands: [%{endpoint: String.t(), value: float(), delay_ms: integer()}]
+          }
+
     @type binding_info :: %{
             element_id: integer(),
             endpoint: String.t() | nil,
@@ -54,7 +59,9 @@ defmodule TswIo.Train.ButtonController do
             off_value: float(),
             mode: ButtonInputBinding.mode(),
             hardware_type: ButtonInputBinding.hardware_type(),
-            repeat_interval_ms: integer()
+            repeat_interval_ms: integer(),
+            on_sequence: sequence_info() | nil,
+            off_sequence: sequence_info() | nil
           }
 
     @type binding_lookup :: %{
@@ -64,7 +71,8 @@ defmodule TswIo.Train.ButtonController do
     @type active_button :: %{
             element_id: integer(),
             binding_info: binding_info(),
-            timer_ref: reference() | nil
+            timer_ref: reference() | nil,
+            sequence_task: pid() | nil
           }
 
     @type t :: %__MODULE__{
@@ -223,6 +231,13 @@ defmodule TswIo.Train.ButtonController do
     end
   end
 
+  # Sequence execution complete
+  def handle_info({:sequence_complete, element_id}, %State{} = state) do
+    # Clean up the active button entry
+    state = %{state | active_buttons: Map.delete(state.active_buttons, element_id)}
+    {:noreply, state}
+  end
+
   # Catch-all for unknown messages
   def handle_info(_msg, %State{} = state) do
     {:noreply, state}
@@ -326,16 +341,7 @@ defmodule TswIo.Train.ButtonController do
       bindings
       |> Enum.filter(& &1.enabled)
       |> Enum.map(fn %ButtonInputBinding{} = binding ->
-        {{binding.input_id, binding.virtual_pin},
-         %{
-           element_id: binding.element_id,
-           endpoint: binding.endpoint,
-           on_value: binding.on_value,
-           off_value: binding.off_value,
-           mode: binding.mode,
-           hardware_type: binding.hardware_type,
-           repeat_interval_ms: binding.repeat_interval_ms
-         }}
+        {{binding.input_id, binding.virtual_pin}, build_binding_info(binding)}
       end)
       |> Map.new()
 
@@ -344,6 +350,37 @@ defmodule TswIo.Train.ButtonController do
     )
 
     %{state | active_train: train, binding_lookup: binding_lookup, last_sent_values: %{}}
+  end
+
+  defp build_binding_info(%ButtonInputBinding{} = binding) do
+    %{
+      element_id: binding.element_id,
+      endpoint: binding.endpoint,
+      on_value: binding.on_value,
+      off_value: binding.off_value,
+      mode: binding.mode,
+      hardware_type: binding.hardware_type,
+      repeat_interval_ms: binding.repeat_interval_ms,
+      on_sequence: load_sequence_info(binding.on_sequence_id),
+      off_sequence: load_sequence_info(binding.off_sequence_id)
+    }
+  end
+
+  defp load_sequence_info(nil), do: nil
+
+  defp load_sequence_info(sequence_id) do
+    case Train.get_sequence(sequence_id) do
+      {:ok, sequence} ->
+        commands =
+          Enum.map(sequence.commands, fn cmd ->
+            %{endpoint: cmd.endpoint, value: cmd.value, delay_ms: cmd.delay_ms}
+          end)
+
+        %{id: sequence.id, commands: commands}
+
+      {:error, _} ->
+        nil
+    end
   end
 
   defp handle_input_update(%State{active_train: nil}, _port, _pin, _raw_value) do
@@ -410,20 +447,42 @@ defmodule TswIo.Train.ButtonController do
   end
 
   defp handle_button_press(%State{} = state, element_id, %{mode: :sequence} = binding_info) do
-    # Sequence mode will be implemented in Phase 2
-    # For now, just send on_value once (fallback to simple behavior)
-    sim_value = binding_info.on_value
+    case binding_info.on_sequence do
+      nil ->
+        # No sequence configured, skip
+        Logger.warning("[ButtonController] Sequence mode button has no on_sequence configured")
+        :skip
 
-    if Map.get(state.last_sent_values, element_id) != sim_value do
-      if binding_info.endpoint do
-        send_to_simulator(binding_info.endpoint, sim_value)
-      end
+      %{commands: commands} when commands == [] ->
+        # Empty sequence, skip
+        :skip
 
-      broadcast_button_update(element_id, sim_value, true)
+      %{commands: commands} ->
+        # Spawn a task to execute the sequence
+        controller_pid = self()
 
-      {:ok, %{state | last_sent_values: Map.put(state.last_sent_values, element_id, sim_value)}}
-    else
-      :skip
+        task_pid =
+          spawn(fn ->
+            execute_sequence_commands(commands, controller_pid, element_id)
+          end)
+
+        broadcast_button_update(element_id, binding_info.on_value, true)
+
+        # Track active button for momentary hardware (to cancel on release)
+        active_button = %{
+          element_id: element_id,
+          binding_info: binding_info,
+          timer_ref: nil,
+          sequence_task: task_pid
+        }
+
+        state = %{
+          state
+          | last_sent_values: Map.put(state.last_sent_values, element_id, binding_info.on_value),
+            active_buttons: Map.put(state.active_buttons, element_id, active_button)
+        }
+
+        {:ok, state}
     end
   end
 
@@ -456,20 +515,75 @@ defmodule TswIo.Train.ButtonController do
   end
 
   defp handle_button_release(%State{} = state, element_id, %{mode: :sequence} = binding_info) do
-    # Sequence mode will be implemented in Phase 2
-    # For now, just send off_value once (fallback to simple behavior)
-    sim_value = binding_info.off_value
+    # Cancel any running sequence for momentary hardware
+    state = cancel_active_button(state, element_id)
 
-    if Map.get(state.last_sent_values, element_id) != sim_value do
-      if binding_info.endpoint do
-        send_to_simulator(binding_info.endpoint, sim_value)
-      end
+    case binding_info.hardware_type do
+      :momentary ->
+        # For momentary hardware, just cancel the running sequence (done above)
+        broadcast_button_update(element_id, binding_info.off_value, false)
 
-      broadcast_button_update(element_id, sim_value, false)
+        state = %{
+          state
+          | last_sent_values: Map.put(state.last_sent_values, element_id, binding_info.off_value)
+        }
 
-      {:ok, %{state | last_sent_values: Map.put(state.last_sent_values, element_id, sim_value)}}
-    else
-      :skip
+        {:ok, state}
+
+      :latching ->
+        # For latching hardware, execute off_sequence if defined
+        case binding_info.off_sequence do
+          nil ->
+            # No off_sequence, just update state
+            broadcast_button_update(element_id, binding_info.off_value, false)
+
+            state = %{
+              state
+              | last_sent_values:
+                  Map.put(state.last_sent_values, element_id, binding_info.off_value)
+            }
+
+            {:ok, state}
+
+          %{commands: commands} when commands == [] ->
+            broadcast_button_update(element_id, binding_info.off_value, false)
+
+            state = %{
+              state
+              | last_sent_values:
+                  Map.put(state.last_sent_values, element_id, binding_info.off_value)
+            }
+
+            {:ok, state}
+
+          %{commands: commands} ->
+            # Execute off_sequence
+            controller_pid = self()
+
+            task_pid =
+              spawn(fn ->
+                execute_sequence_commands(commands, controller_pid, element_id)
+              end)
+
+            broadcast_button_update(element_id, binding_info.off_value, false)
+
+            # Track for potential future cancellation
+            active_button = %{
+              element_id: element_id,
+              binding_info: binding_info,
+              timer_ref: nil,
+              sequence_task: task_pid
+            }
+
+            state = %{
+              state
+              | last_sent_values:
+                  Map.put(state.last_sent_values, element_id, binding_info.off_value),
+                active_buttons: Map.put(state.active_buttons, element_id, active_button)
+            }
+
+            {:ok, state}
+        end
     end
   end
 
@@ -478,15 +592,24 @@ defmodule TswIo.Train.ButtonController do
       {nil, _} ->
         state
 
-      {%{timer_ref: timer_ref}, new_active_buttons} ->
-        if timer_ref, do: Process.cancel_timer(timer_ref)
+      {active_button, new_active_buttons} ->
+        if active_button.timer_ref, do: Process.cancel_timer(active_button.timer_ref)
+
+        sequence_task = Map.get(active_button, :sequence_task)
+
+        if sequence_task && Process.alive?(sequence_task),
+          do: Process.exit(sequence_task, :kill)
+
         %{state | active_buttons: new_active_buttons}
     end
   end
 
   defp cancel_all_active_buttons(%State{active_buttons: active_buttons} = state) do
-    Enum.each(active_buttons, fn {_element_id, %{timer_ref: timer_ref}} ->
-      if timer_ref, do: Process.cancel_timer(timer_ref)
+    Enum.each(active_buttons, fn {_element_id, button} ->
+      if button.timer_ref, do: Process.cancel_timer(button.timer_ref)
+
+      if button[:sequence_task] && Process.alive?(button.sequence_task),
+        do: Process.exit(button.sequence_task, :kill)
     end)
 
     %{state | active_buttons: %{}}
@@ -540,5 +663,34 @@ defmodule TswIo.Train.ButtonController do
       "train:button_values",
       {:button_state_changed, element_id, %{value: value_sent, pressed: pressed?}}
     )
+  end
+
+  # Execute sequence commands with delays between them
+  # This runs in a spawned process and sends commands directly to the simulator
+  defp execute_sequence_commands(commands, controller_pid, element_id) do
+    Enum.each(commands, fn %{endpoint: endpoint, value: value, delay_ms: delay_ms} ->
+      # Send value to simulator
+      case get_simulator_client() do
+        {:ok, client} ->
+          case TswIo.Simulator.Client.set(client, endpoint, value) do
+            {:ok, _} ->
+              Logger.debug("[ButtonController] Sequence command: #{endpoint} = #{value}")
+
+            {:error, reason} ->
+              Logger.warning("[ButtonController] Sequence command failed: #{inspect(reason)}")
+          end
+
+        :error ->
+          Logger.warning("[ButtonController] Simulator not connected for sequence")
+      end
+
+      # Wait for delay before next command
+      if delay_ms > 0 do
+        Process.sleep(delay_ms)
+      end
+    end)
+
+    # Notify controller that sequence is complete
+    send(controller_pid, {:sequence_complete, element_id})
   end
 end

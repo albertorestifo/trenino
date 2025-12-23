@@ -446,4 +446,189 @@ defmodule TswIo.Train.ButtonControllerTest do
       assert state.last_sent_values[element.id] == 0.0
     end
   end
+
+  describe "sequence mode" do
+    setup do
+      start_supervised!(ButtonController)
+
+      {:ok, train} = TrainContext.create_train(%{name: "Test Train", identifier: "test_train"})
+      {:ok, element} = TrainContext.create_element(train.id, %{name: "Door", type: :button})
+      {:ok, device} = Hardware.create_device(%{name: "Test Device"})
+
+      {:ok, input} =
+        Hardware.create_input(device.id, %{pin: 15, input_type: :button, debounce: 20})
+
+      # Create sequences
+      {:ok, on_sequence} = TrainContext.create_sequence(train.id, %{name: "Door Open"})
+
+      TrainContext.set_sequence_commands(on_sequence, [
+        %{endpoint: "DoorKey.InputValue", value: 1.0, delay_ms: 10},
+        %{endpoint: "DoorOpen.InputValue", value: 1.0, delay_ms: 0}
+      ])
+
+      {:ok, off_sequence} = TrainContext.create_sequence(train.id, %{name: "Door Close"})
+
+      TrainContext.set_sequence_commands(off_sequence, [
+        %{endpoint: "DoorClose.InputValue", value: 1.0, delay_ms: 0}
+      ])
+
+      %{
+        train: train,
+        element: element,
+        input: input,
+        on_sequence: on_sequence,
+        off_sequence: off_sequence
+      }
+    end
+
+    test "loads sequence info with binding", ctx do
+      {:ok, _binding} =
+        TrainContext.create_button_binding(ctx.element.id, ctx.input.id, %{
+          mode: :sequence,
+          on_sequence_id: ctx.on_sequence.id
+        })
+
+      send(Process.whereis(ButtonController), {:train_changed, ctx.train})
+      Process.sleep(50)
+
+      state = ButtonController.get_state()
+      binding_info = state.binding_lookup[{ctx.input.id, nil}]
+
+      assert binding_info.mode == :sequence
+      assert binding_info.on_sequence != nil
+      assert binding_info.on_sequence.id == ctx.on_sequence.id
+      assert length(binding_info.on_sequence.commands) == 2
+    end
+
+    test "loads off_sequence for latching hardware", ctx do
+      {:ok, _binding} =
+        TrainContext.create_button_binding(ctx.element.id, ctx.input.id, %{
+          mode: :sequence,
+          hardware_type: :latching,
+          on_sequence_id: ctx.on_sequence.id,
+          off_sequence_id: ctx.off_sequence.id
+        })
+
+      send(Process.whereis(ButtonController), {:train_changed, ctx.train})
+      Process.sleep(50)
+
+      state = ButtonController.get_state()
+      binding_info = state.binding_lookup[{ctx.input.id, nil}]
+
+      assert binding_info.off_sequence != nil
+      assert binding_info.off_sequence.id == ctx.off_sequence.id
+    end
+
+    test "tracks active button during sequence execution", ctx do
+      {:ok, _binding} =
+        TrainContext.create_button_binding(ctx.element.id, ctx.input.id, %{
+          mode: :sequence,
+          on_sequence_id: ctx.on_sequence.id
+        })
+
+      send(Process.whereis(ButtonController), {:train_changed, ctx.train})
+      Process.sleep(50)
+
+      :sys.replace_state(Process.whereis(ButtonController), fn state ->
+        %{state | input_lookup: Map.put(state.input_lookup, {"COM1", 15}, ctx.input.id)}
+      end)
+
+      # Press button
+      send(Process.whereis(ButtonController), {:input_value_updated, "COM1", 15, 1})
+      Process.sleep(5)
+
+      state = ButtonController.get_state()
+      assert Map.has_key?(state.active_buttons, ctx.element.id)
+      assert state.active_buttons[ctx.element.id].sequence_task != nil
+    end
+
+    test "clears active button when sequence completes", ctx do
+      {:ok, _binding} =
+        TrainContext.create_button_binding(ctx.element.id, ctx.input.id, %{
+          mode: :sequence,
+          on_sequence_id: ctx.on_sequence.id
+        })
+
+      send(Process.whereis(ButtonController), {:train_changed, ctx.train})
+      Process.sleep(50)
+
+      :sys.replace_state(Process.whereis(ButtonController), fn state ->
+        %{state | input_lookup: Map.put(state.input_lookup, {"COM1", 15}, ctx.input.id)}
+      end)
+
+      # Press button
+      send(Process.whereis(ButtonController), {:input_value_updated, "COM1", 15, 1})
+
+      # Wait for sequence to complete (10ms delay + buffer)
+      Process.sleep(50)
+
+      state = ButtonController.get_state()
+      refute Map.has_key?(state.active_buttons, ctx.element.id)
+    end
+
+    test "cancels sequence on button release for momentary hardware", ctx do
+      {:ok, _binding} =
+        TrainContext.create_button_binding(ctx.element.id, ctx.input.id, %{
+          mode: :sequence,
+          hardware_type: :momentary,
+          on_sequence_id: ctx.on_sequence.id
+        })
+
+      send(Process.whereis(ButtonController), {:train_changed, ctx.train})
+      Process.sleep(50)
+
+      :sys.replace_state(Process.whereis(ButtonController), fn state ->
+        %{state | input_lookup: Map.put(state.input_lookup, {"COM1", 15}, ctx.input.id)}
+      end)
+
+      # Press button
+      send(Process.whereis(ButtonController), {:input_value_updated, "COM1", 15, 1})
+      Process.sleep(5)
+
+      state = ButtonController.get_state()
+      task_pid = state.active_buttons[ctx.element.id].sequence_task
+
+      # Release button before sequence completes
+      send(Process.whereis(ButtonController), {:input_value_updated, "COM1", 15, 0})
+      Process.sleep(10)
+
+      # Task should be killed
+      refute Process.alive?(task_pid)
+
+      state = ButtonController.get_state()
+      refute Map.has_key?(state.active_buttons, ctx.element.id)
+    end
+
+    test "skips when no on_sequence configured", ctx do
+      # Create binding with sequence, then we'll remove the sequence info to test the nil case
+      {:ok, _binding} =
+        TrainContext.create_button_binding(ctx.element.id, ctx.input.id, %{
+          mode: :sequence,
+          on_sequence_id: ctx.on_sequence.id
+        })
+
+      send(Process.whereis(ButtonController), {:train_changed, ctx.train})
+      Process.sleep(50)
+
+      # Manually set on_sequence to nil in the binding lookup to test the nil case
+      :sys.replace_state(Process.whereis(ButtonController), fn state ->
+        binding_info = Map.get(state.binding_lookup, {ctx.input.id, nil})
+        updated_binding = %{binding_info | on_sequence: nil}
+
+        %{
+          state
+          | input_lookup: Map.put(state.input_lookup, {"COM1", 15}, ctx.input.id),
+            binding_lookup: Map.put(state.binding_lookup, {ctx.input.id, nil}, updated_binding)
+        }
+      end)
+
+      # Press button
+      send(Process.whereis(ButtonController), {:input_value_updated, "COM1", 15, 1})
+      Process.sleep(20)
+
+      # Should skip - no active button created
+      state = ButtonController.get_state()
+      refute Map.has_key?(state.active_buttons, ctx.element.id)
+    end
+  end
 end
