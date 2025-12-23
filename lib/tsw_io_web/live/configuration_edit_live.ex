@@ -741,14 +741,8 @@ defmodule TswIoWeb.ConfigurationEditLive do
             device_form={@device_form}
             active_port={@active_port}
             new_mode={@new_mode}
-          />
-
-          <.status_section
-            active_port={@active_port}
-            new_mode={@new_mode}
-            connected_devices={@connected_devices}
+            can_apply={length(@inputs) > 0 and not Enum.empty?(@connected_devices)}
             applying={@applying}
-            inputs={@inputs}
           />
 
           <div class="bg-base-200/50 rounded-xl p-6 mt-6">
@@ -824,6 +818,8 @@ defmodule TswIoWeb.ConfigurationEditLive do
   attr :device_form, :map, required: true
   attr :active_port, :string, default: nil
   attr :new_mode, :boolean, required: true
+  attr :can_apply, :boolean, required: true
+  attr :applying, :boolean, required: true
 
   defp device_header(assigns) do
     ~H"""
@@ -856,57 +852,27 @@ defmodule TswIoWeb.ConfigurationEditLive do
           <span class="text-xs text-base-content/50 font-mono">ID: {@device.config_id}</span>
           <span :if={@active_port} class="badge badge-success badge-sm gap-1">
             <span class="w-1.5 h-1.5 rounded-full bg-success-content animate-pulse" />
-            Active on {@active_port}
+            Active
           </span>
-          <button type="submit" class="btn btn-primary btn-sm ml-auto">
-            <.icon name="hero-check" class="w-4 h-4" /> Save
-          </button>
+          <div class="ml-auto flex items-center gap-2">
+            <button
+              :if={@can_apply}
+              type="button"
+              phx-click="show_apply_modal"
+              disabled={@applying}
+              class="btn btn-outline btn-sm"
+            >
+              <.icon :if={@applying} name="hero-arrow-path" class="w-4 h-4 animate-spin" />
+              <.icon :if={!@applying} name="hero-play" class="w-4 h-4" />
+              {if @applying, do: "Applying...", else: "Apply to Device"}
+            </button>
+            <button type="submit" class="btn btn-primary btn-sm">
+              <.icon name="hero-check" class="w-4 h-4" /> Save
+            </button>
+          </div>
         </div>
       </.form>
     </header>
-    """
-  end
-
-  attr :active_port, :string, default: nil
-  attr :new_mode, :boolean, required: true
-  attr :connected_devices, :list, required: true
-  attr :applying, :boolean, required: true
-  attr :inputs, :list, required: true
-
-  defp status_section(assigns) do
-    can_apply = length(assigns.inputs) > 0 and not Enum.empty?(assigns.connected_devices)
-    assigns = assign(assigns, :can_apply, can_apply)
-
-    ~H"""
-    <div class="mt-6 p-4 rounded-lg bg-base-100 border border-base-300">
-      <div class="flex items-center justify-between">
-        <div class="flex items-center gap-3">
-          <span :if={@active_port} class="w-3 h-3 rounded-full bg-success animate-pulse" />
-          <span :if={!@active_port} class="w-3 h-3 rounded-full bg-base-content/20" />
-          <div>
-            <p :if={@active_port} class="font-medium">Active on {@active_port}</p>
-            <p :if={!@active_port && Enum.empty?(@connected_devices)} class="text-base-content/70">
-              No devices connected
-            </p>
-            <p :if={!@active_port && not Enum.empty?(@connected_devices)} class="text-base-content/70">
-              Not applied to any device
-            </p>
-          </div>
-        </div>
-
-        <button
-          :if={@can_apply}
-          type="button"
-          phx-click="show_apply_modal"
-          disabled={@applying}
-          class="btn btn-primary btn-sm"
-        >
-          <.icon :if={@applying} name="hero-arrow-path" class="w-4 h-4 animate-spin" />
-          <.icon :if={!@applying} name="hero-play" class="w-4 h-4" />
-          {if @applying, do: "Applying...", else: "Apply to Device"}
-        </button>
-      </div>
-    </div>
     """
   end
 
