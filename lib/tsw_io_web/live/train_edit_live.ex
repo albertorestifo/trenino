@@ -1115,14 +1115,14 @@ defmodule TswIoWeb.TrainEditLive do
   defp elements_section(assigns) do
     ~H"""
     <div class="mb-6">
-      <div class="flex items-center justify-between mb-4">
-        <h3 class="text-base font-semibold">Elements</h3>
-        <button phx-click="open_add_element_modal" class="btn btn-outline btn-sm">
-          <.icon name="hero-plus" class="w-4 h-4" /> Add Element
-        </button>
-      </div>
+      <.section_header title="Elements" action_label="Add Element" on_action="open_add_element_modal" />
 
-      <.empty_elements_state :if={Enum.empty?(@elements)} />
+      <.empty_collection_state
+        :if={Enum.empty?(@elements)}
+        icon="hero-adjustments-horizontal"
+        message="No elements configured"
+        submessage="Add elements to control train functions"
+      />
 
       <div :if={not Enum.empty?(@elements)} class="space-y-3">
         <.lever_element_card
@@ -1137,16 +1137,6 @@ defmodule TswIoWeb.TrainEditLive do
         />
       </div>
     </div>
-    """
-  end
-
-  defp empty_elements_state(assigns) do
-    ~H"""
-    <.empty_collection_state
-      icon="hero-adjustments-horizontal"
-      message="No elements configured"
-      submessage="Add elements to control train functions"
-    />
     """
   end
 

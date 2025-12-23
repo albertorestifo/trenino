@@ -915,12 +915,7 @@ defmodule TswIoWeb.ConfigurationEditLive do
   defp inputs_section(assigns) do
     ~H"""
     <div class="mb-6">
-      <div class="flex items-center justify-between mb-4">
-        <h3 class="text-base font-semibold">Inputs</h3>
-        <button phx-click="open_add_input_modal" class="btn btn-outline btn-sm">
-          <.icon name="hero-plus" class="w-4 h-4" /> Add Input
-        </button>
-      </div>
+      <.section_header title="Inputs" action_label="Add Input" on_action="open_add_input_modal" />
 
       <.empty_collection_state
         :if={Enum.empty?(@inputs)}
@@ -1136,12 +1131,7 @@ defmodule TswIoWeb.ConfigurationEditLive do
   defp outputs_section(assigns) do
     ~H"""
     <div class="mb-6">
-      <div class="flex items-center justify-between mb-4">
-        <h3 class="text-base font-semibold">Outputs</h3>
-        <button phx-click="open_add_output_modal" class="btn btn-outline btn-sm">
-          <.icon name="hero-plus" class="w-4 h-4" /> Add Output
-        </button>
-      </div>
+      <.section_header title="Outputs" action_label="Add Output" on_action="open_add_output_modal" />
 
       <.empty_collection_state
         :if={Enum.empty?(@outputs)}

@@ -11,6 +11,8 @@ defmodule TswIoWeb.SequenceManagerComponent do
 
   use TswIoWeb, :live_component
 
+  import TswIoWeb.SharedComponents
+
   alias TswIo.Train, as: TrainContext
 
   @impl true
@@ -270,14 +272,19 @@ defmodule TswIoWeb.SequenceManagerComponent do
   def render(assigns) do
     ~H"""
     <div class="bg-base-200/50 rounded-xl p-6 mt-6">
-      <div class="flex items-center justify-between mb-4">
-        <h3 class="text-base font-semibold">Sequences</h3>
-        <button phx-click="open_add_modal" phx-target={@myself} class="btn btn-outline btn-sm">
-          <.icon name="hero-plus" class="w-4 h-4" /> New Sequence
-        </button>
-      </div>
+      <.section_header
+        title="Sequences"
+        action_label="New Sequence"
+        on_action="open_add_modal"
+        target={@myself}
+      />
 
-      <.empty_state :if={Enum.empty?(@sequences)} />
+      <.empty_collection_state
+        :if={Enum.empty?(@sequences)}
+        icon="hero-list-bullet"
+        message="No sequences defined"
+        submessage="Execute multiple commands from a single button press"
+      />
 
       <div :if={not Enum.empty?(@sequences)} class="space-y-2">
         <.sequence_card
@@ -299,16 +306,6 @@ defmodule TswIoWeb.SequenceManagerComponent do
         commands={@editing_commands}
         myself={@myself}
       />
-    </div>
-    """
-  end
-
-  defp empty_state(assigns) do
-    ~H"""
-    <div class="bg-base-100 rounded-lg p-8 text-center">
-      <.icon name="hero-list-bullet" class="w-10 h-10 mx-auto text-base-content/30" />
-      <p class="mt-2 text-sm text-base-content/70">No sequences defined</p>
-      <p class="text-xs text-base-content/50">Execute multiple commands from a single button press</p>
     </div>
     """
   end

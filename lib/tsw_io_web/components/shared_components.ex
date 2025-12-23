@@ -291,6 +291,43 @@ defmodule TswIoWeb.SharedComponents do
   end
 
   # ===================
+  # Section Header Component
+  # ===================
+
+  @doc """
+  A section header with title and optional action button.
+
+  Used for consistent section styling across edit pages (Elements, Sequences, Inputs, Outputs).
+
+  ## Examples
+
+      <.section_header title="Elements" action_label="Add Element" on_action="open_add_element_modal" />
+
+      <.section_header title="Sequences" action_label="New Sequence" on_action="open_add_modal" target={@myself} />
+
+  """
+  attr :title, :string, required: true
+  attr :action_label, :string, default: nil
+  attr :on_action, :string, default: nil
+  attr :target, :any, default: nil
+
+  def section_header(assigns) do
+    ~H"""
+    <div class="flex items-center justify-between mb-4">
+      <h3 class="text-base font-semibold">{@title}</h3>
+      <button
+        :if={@action_label && @on_action}
+        phx-click={@on_action}
+        phx-target={@target}
+        class="btn btn-outline btn-sm"
+      >
+        <.icon name="hero-plus" class="w-4 h-4" /> {@action_label}
+      </button>
+    </div>
+    """
+  end
+
+  # ===================
   # Page Header Component
   # ===================
 
