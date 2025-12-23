@@ -818,4 +818,170 @@ defmodule TswIo.TrainTest do
       assert [] = TrainContext.list_button_elements(train.id)
     end
   end
+
+  # ============================================================================
+  # Sequence tests
+  # ============================================================================
+
+  describe "create_sequence/2" do
+    test "creates a sequence with valid attributes" do
+      {:ok, train} = TrainContext.create_train(%{name: "Class 66", identifier: "BR_Class_66"})
+
+      assert {:ok, sequence} = TrainContext.create_sequence(train.id, %{name: "Door Open"})
+      assert sequence.name == "Door Open"
+      assert sequence.train_id == train.id
+    end
+
+    test "requires name" do
+      {:ok, train} = TrainContext.create_train(%{name: "Class 66", identifier: "BR_Class_66"})
+
+      assert {:error, changeset} = TrainContext.create_sequence(train.id, %{})
+      assert "can't be blank" in errors_on(changeset).name
+    end
+
+    test "enforces unique name per train" do
+      {:ok, train} = TrainContext.create_train(%{name: "Class 66", identifier: "BR_Class_66"})
+
+      assert {:ok, _} = TrainContext.create_sequence(train.id, %{name: "Door Open"})
+      assert {:error, changeset} = TrainContext.create_sequence(train.id, %{name: "Door Open"})
+      assert "has already been taken" in errors_on(changeset).train_id
+    end
+  end
+
+  describe "get_sequence/1" do
+    test "returns sequence with commands preloaded" do
+      {:ok, train} = TrainContext.create_train(%{name: "Class 66", identifier: "BR_Class_66"})
+      {:ok, sequence} = TrainContext.create_sequence(train.id, %{name: "Door Open"})
+
+      {:ok, _} =
+        TrainContext.add_sequence_command(sequence, %{
+          endpoint: "Horn.InputValue",
+          value: 1.0
+        })
+
+      assert {:ok, fetched} = TrainContext.get_sequence(sequence.id)
+      assert fetched.name == "Door Open"
+      assert length(fetched.commands) == 1
+    end
+
+    test "returns error for non-existent sequence" do
+      assert {:error, :not_found} = TrainContext.get_sequence(999_999)
+    end
+  end
+
+  describe "list_sequences/1" do
+    test "returns all sequences for a train" do
+      {:ok, train} = TrainContext.create_train(%{name: "Class 66", identifier: "BR_Class_66"})
+
+      {:ok, _} = TrainContext.create_sequence(train.id, %{name: "Door Open"})
+      {:ok, _} = TrainContext.create_sequence(train.id, %{name: "Door Close"})
+
+      sequences = TrainContext.list_sequences(train.id)
+      assert length(sequences) == 2
+    end
+
+    test "returns sequences ordered by name" do
+      {:ok, train} = TrainContext.create_train(%{name: "Class 66", identifier: "BR_Class_66"})
+
+      {:ok, _} = TrainContext.create_sequence(train.id, %{name: "Zebra"})
+      {:ok, _} = TrainContext.create_sequence(train.id, %{name: "Alpha"})
+
+      sequences = TrainContext.list_sequences(train.id)
+      names = Enum.map(sequences, & &1.name)
+      assert names == ["Alpha", "Zebra"]
+    end
+
+    test "does not return sequences from other trains" do
+      {:ok, train1} = TrainContext.create_train(%{name: "Class 66", identifier: "BR_Class_66"})
+      {:ok, train2} = TrainContext.create_train(%{name: "Class 43", identifier: "BR_Class_43"})
+
+      {:ok, _} = TrainContext.create_sequence(train1.id, %{name: "Horn"})
+      {:ok, _} = TrainContext.create_sequence(train2.id, %{name: "Bell"})
+
+      sequences = TrainContext.list_sequences(train1.id)
+      assert length(sequences) == 1
+      assert hd(sequences).name == "Horn"
+    end
+  end
+
+  describe "set_sequence_commands/2" do
+    test "sets commands with auto-assigned positions" do
+      {:ok, train} = TrainContext.create_train(%{name: "Class 66", identifier: "BR_Class_66"})
+      {:ok, sequence} = TrainContext.create_sequence(train.id, %{name: "Door Open"})
+
+      commands = [
+        %{endpoint: "Key.InputValue", value: 1.0, delay_ms: 500},
+        %{endpoint: "Rotary.InputValue", value: 0.5, delay_ms: 250},
+        %{endpoint: "Open.InputValue", value: 1.0}
+      ]
+
+      assert {:ok, created} = TrainContext.set_sequence_commands(sequence, commands)
+      assert length(created) == 3
+
+      positions = Enum.map(created, & &1.position)
+      assert positions == [0, 1, 2]
+    end
+
+    test "replaces existing commands" do
+      {:ok, train} = TrainContext.create_train(%{name: "Class 66", identifier: "BR_Class_66"})
+      {:ok, sequence} = TrainContext.create_sequence(train.id, %{name: "Door Open"})
+
+      {:ok, _} =
+        TrainContext.set_sequence_commands(sequence, [
+          %{endpoint: "Old.InputValue", value: 1.0}
+        ])
+
+      {:ok, _} =
+        TrainContext.set_sequence_commands(sequence, [
+          %{endpoint: "New.InputValue", value: 2.0}
+        ])
+
+      {:ok, fetched} = TrainContext.get_sequence(sequence.id)
+      assert length(fetched.commands) == 1
+      assert hd(fetched.commands).endpoint == "New.InputValue"
+    end
+
+    test "rounds float values to 2 decimal places" do
+      {:ok, train} = TrainContext.create_train(%{name: "Class 66", identifier: "BR_Class_66"})
+      {:ok, sequence} = TrainContext.create_sequence(train.id, %{name: "Test"})
+
+      {:ok, [cmd]} =
+        TrainContext.set_sequence_commands(sequence, [
+          %{endpoint: "Test.InputValue", value: 0.123456}
+        ])
+
+      assert cmd.value == 0.12
+    end
+  end
+
+  describe "add_sequence_command/2" do
+    test "adds command at the end" do
+      {:ok, train} = TrainContext.create_train(%{name: "Class 66", identifier: "BR_Class_66"})
+      {:ok, sequence} = TrainContext.create_sequence(train.id, %{name: "Test"})
+
+      {:ok, cmd1} =
+        TrainContext.add_sequence_command(sequence, %{endpoint: "First.InputValue", value: 1.0})
+
+      {:ok, cmd2} =
+        TrainContext.add_sequence_command(sequence, %{endpoint: "Second.InputValue", value: 2.0})
+
+      assert cmd1.position == 0
+      assert cmd2.position == 1
+    end
+  end
+
+  describe "delete_sequence/1" do
+    test "deletes sequence and its commands" do
+      {:ok, train} = TrainContext.create_train(%{name: "Class 66", identifier: "BR_Class_66"})
+      {:ok, sequence} = TrainContext.create_sequence(train.id, %{name: "Test"})
+
+      {:ok, _} =
+        TrainContext.set_sequence_commands(sequence, [
+          %{endpoint: "Test.InputValue", value: 1.0}
+        ])
+
+      assert {:ok, _} = TrainContext.delete_sequence(sequence)
+      assert {:error, :not_found} = TrainContext.get_sequence(sequence.id)
+    end
+  end
 end
