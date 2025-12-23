@@ -192,6 +192,49 @@ defmodule TswIoWeb.SequenceManagerComponent do
     end
   end
 
+  @impl true
+  def handle_event("test_sequence", %{"id" => id_str}, socket) do
+    id = String.to_integer(id_str)
+
+    case TrainContext.get_sequence(id) do
+      {:ok, sequence} ->
+        commands = sequence.commands || []
+
+        if Enum.empty?(commands) do
+          {:noreply, put_flash(socket, :error, "Sequence has no commands to test")}
+        else
+          # Execute sequence commands in a spawned task
+          spawn(fn ->
+            execute_test_sequence(commands)
+          end)
+
+          {:noreply, put_flash(socket, :info, "Testing sequence: #{sequence.name}")}
+        end
+
+      {:error, _} ->
+        {:noreply, put_flash(socket, :error, "Could not find sequence")}
+    end
+  end
+
+  defp execute_test_sequence(commands) do
+    alias TswIo.Simulator.Connection, as: SimulatorConnection
+    alias TswIo.Simulator.ConnectionState
+
+    Enum.each(commands, fn cmd ->
+      case SimulatorConnection.get_status() do
+        %ConnectionState{status: :connected, client: client} when client != nil ->
+          TswIo.Simulator.Client.set(client, cmd.endpoint, cmd.value)
+
+        _ ->
+          :ok
+      end
+
+      if cmd.delay_ms > 0 do
+        Process.sleep(cmd.delay_ms)
+      end
+    end)
+  end
+
   defp update_command_field(command, :endpoint, value), do: %{command | endpoint: value}
   defp update_command_field(command, :value, value), do: %{command | value: value}
   defp update_command_field(command, :delay_ms, value), do: %{command | delay_ms: value}
@@ -264,8 +307,18 @@ defmodule TswIoWeb.SequenceManagerComponent do
     ~H"""
     <div class="text-center py-8 text-base-content/50">
       <.icon name="hero-list-bullet" class="w-12 h-12 mx-auto mb-2 opacity-30" />
-      <p class="text-sm">No sequences defined</p>
-      <p class="text-xs">Create sequences to execute multiple commands from a single button press</p>
+      <p class="text-sm font-medium">No sequences defined</p>
+      <p class="text-xs mt-1">
+        Sequences let you execute multiple commands from a single button press
+      </p>
+      <details class="text-xs text-left mt-3 max-w-xs mx-auto">
+        <summary class="cursor-pointer font-medium text-center">Example uses</summary>
+        <ul class="list-disc list-inside mt-2 space-y-1 text-base-content/60">
+          <li>Engine startup: Master key → Fuel pump → Starter</li>
+          <li>Emergency brake: Reverser neutral → Apply brake → Sound horn</li>
+          <li>Door cycle: Open doors → Wait 5s → Close doors</li>
+        </ul>
+      </details>
     </div>
     """
   end
@@ -290,6 +343,16 @@ defmodule TswIoWeb.SequenceManagerComponent do
           </div>
         </div>
         <div class="flex items-center gap-1">
+          <button
+            phx-click="test_sequence"
+            phx-value-id={@sequence.id}
+            phx-target={@myself}
+            class="btn btn-ghost btn-xs text-success"
+            title="Test sequence"
+            disabled={@command_count == 0}
+          >
+            <.icon name="hero-play" class="w-4 h-4" />
+          </button>
           <button
             phx-click="edit_sequence"
             phx-value-id={@sequence.id}

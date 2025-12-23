@@ -667,30 +667,69 @@ defmodule TswIo.Train.ButtonController do
 
   # Execute sequence commands with delays between them
   # This runs in a spawned process and sends commands directly to the simulator
+  # The process monitors the controller and exits if the controller dies
   defp execute_sequence_commands(commands, controller_pid, element_id) do
-    Enum.each(commands, fn %{endpoint: endpoint, value: value, delay_ms: delay_ms} ->
-      # Send value to simulator
-      case get_simulator_client() do
-        {:ok, client} ->
-          case TswIo.Simulator.Client.set(client, endpoint, value) do
-            {:ok, _} ->
-              Logger.debug("[ButtonController] Sequence command: #{endpoint} = #{value}")
+    # Monitor the controller so we die if it dies
+    controller_ref = Process.monitor(controller_pid)
 
-            {:error, reason} ->
-              Logger.warning("[ButtonController] Sequence command failed: #{inspect(reason)}")
-          end
+    try do
+      execute_sequence_loop(commands, controller_pid, element_id, controller_ref)
+    catch
+      :exit, :controller_died ->
+        Logger.debug("[ButtonController] Sequence cancelled: controller died")
+        :ok
 
-        :error ->
-          Logger.warning("[ButtonController] Simulator not connected for sequence")
-      end
+      :exit, :killed ->
+        Logger.debug("[ButtonController] Sequence cancelled: task killed")
+        :ok
+    end
+  end
 
-      # Wait for delay before next command
-      if delay_ms > 0 do
-        Process.sleep(delay_ms)
-      end
-    end)
-
-    # Notify controller that sequence is complete
+  defp execute_sequence_loop([], controller_pid, element_id, controller_ref) do
+    # All commands executed, notify controller
+    Process.demonitor(controller_ref, [:flush])
     send(controller_pid, {:sequence_complete, element_id})
+  end
+
+  defp execute_sequence_loop(
+         [%{endpoint: endpoint, value: value, delay_ms: delay_ms} | rest],
+         controller_pid,
+         element_id,
+         controller_ref
+       ) do
+    # Check if controller is still alive before sending command
+    receive do
+      {:DOWN, ^controller_ref, :process, ^controller_pid, _reason} ->
+        exit(:controller_died)
+    after
+      0 ->
+        # Send value to simulator
+        case get_simulator_client() do
+          {:ok, client} ->
+            case TswIo.Simulator.Client.set(client, endpoint, value) do
+              {:ok, _} ->
+                Logger.debug("[ButtonController] Sequence command: #{endpoint} = #{value}")
+
+              {:error, reason} ->
+                Logger.warning("[ButtonController] Sequence command failed: #{inspect(reason)}")
+            end
+
+          :error ->
+            Logger.warning("[ButtonController] Simulator not connected for sequence")
+        end
+    end
+
+    # Wait for delay, but check for controller death during wait
+    if delay_ms > 0 do
+      receive do
+        {:DOWN, ^controller_ref, :process, ^controller_pid, _reason} ->
+          exit(:controller_died)
+      after
+        delay_ms -> :ok
+      end
+    end
+
+    # Continue with next command
+    execute_sequence_loop(rest, controller_pid, element_id, controller_ref)
   end
 end

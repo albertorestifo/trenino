@@ -706,7 +706,17 @@ defmodule TswIoWeb.ConfigurationWizardComponent do
 
         <div :if={Enum.empty?(@sequences)} class="alert alert-warning">
           <.icon name="hero-exclamation-triangle" class="w-5 h-5" />
-          <span>No sequences defined. Create sequences in the Sequences section first.</span>
+          <div>
+            <span>No sequences defined.</span>
+            <a
+              href="#sequences"
+              phx-click="cancel"
+              phx-target={@myself}
+              class="link link-primary ml-1"
+            >
+              Create one in the Sequences section
+            </a>
+          </div>
         </div>
       </div>
 
@@ -793,14 +803,20 @@ defmodule TswIoWeb.ConfigurationWizardComponent do
     """
   end
 
-  defp mode_description(:simple), do: "Sends ON when pressed, OFF when released"
-  defp mode_description(:momentary), do: "Repeats ON value at interval while held"
-  defp mode_description(:sequence), do: "Executes a command sequence"
+  defp mode_description(:simple),
+    do: "Sends ON when pressed, OFF when released. Use for: lights, doors, switches"
 
-  defp hardware_type_description(:momentary), do: "Button returns when released (like a doorbell)"
+  defp mode_description(:momentary),
+    do: "Repeats ON value while held. Use for: horn, bell, announcements"
+
+  defp mode_description(:sequence),
+    do: "Executes a command sequence. Use for: startup procedures, multi-step operations"
+
+  defp hardware_type_description(:momentary),
+    do: "Button returns when released (like a keyboard key or doorbell)"
 
   defp hardware_type_description(:latching),
-    do: "Toggle that stays in position until pressed again"
+    do: "Toggle switch that stays in position (like a light switch)"
 
   # Confirmation panel component
   attr :myself, :any, required: true

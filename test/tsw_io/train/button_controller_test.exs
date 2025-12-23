@@ -630,5 +630,136 @@ defmodule TswIo.Train.ButtonControllerTest do
       state = ButtonController.get_state()
       refute Map.has_key?(state.active_buttons, ctx.element.id)
     end
+
+    test "rapid button presses properly cancel previous sequences", ctx do
+      {:ok, _binding} =
+        TrainContext.create_button_binding(ctx.element.id, ctx.input.id, %{
+          mode: :sequence,
+          hardware_type: :momentary,
+          on_sequence_id: ctx.on_sequence.id
+        })
+
+      send(Process.whereis(ButtonController), {:train_changed, ctx.train})
+      Process.sleep(50)
+
+      :sys.replace_state(Process.whereis(ButtonController), fn state ->
+        %{state | input_lookup: Map.put(state.input_lookup, {"COM1", 15}, ctx.input.id)}
+      end)
+
+      # Press button (starts sequence)
+      send(Process.whereis(ButtonController), {:input_value_updated, "COM1", 15, 1})
+      Process.sleep(5)
+
+      state = ButtonController.get_state()
+      first_task_pid = state.active_buttons[ctx.element.id].sequence_task
+
+      # Release and immediately press again before first completes
+      send(Process.whereis(ButtonController), {:input_value_updated, "COM1", 15, 0})
+      send(Process.whereis(ButtonController), {:input_value_updated, "COM1", 15, 1})
+      Process.sleep(5)
+
+      # First task should be killed
+      refute Process.alive?(first_task_pid)
+
+      # New task should be running
+      state = ButtonController.get_state()
+      assert Map.has_key?(state.active_buttons, ctx.element.id)
+      second_task_pid = state.active_buttons[ctx.element.id].sequence_task
+      assert Process.alive?(second_task_pid)
+    end
+
+    test "sequence task is cancelled on train change", ctx do
+      {:ok, _binding} =
+        TrainContext.create_button_binding(ctx.element.id, ctx.input.id, %{
+          mode: :sequence,
+          on_sequence_id: ctx.on_sequence.id
+        })
+
+      send(Process.whereis(ButtonController), {:train_changed, ctx.train})
+      Process.sleep(50)
+
+      :sys.replace_state(Process.whereis(ButtonController), fn state ->
+        %{state | input_lookup: Map.put(state.input_lookup, {"COM1", 15}, ctx.input.id)}
+      end)
+
+      # Press button to start sequence
+      send(Process.whereis(ButtonController), {:input_value_updated, "COM1", 15, 1})
+      Process.sleep(5)
+
+      state = ButtonController.get_state()
+      task_pid = state.active_buttons[ctx.element.id].sequence_task
+      assert Process.alive?(task_pid)
+
+      # Change train (deactivate)
+      send(Process.whereis(ButtonController), {:train_changed, nil})
+      Process.sleep(20)
+
+      # Task should be killed
+      refute Process.alive?(task_pid)
+
+      state = ButtonController.get_state()
+      assert state.active_buttons == %{}
+    end
+
+    test "sequence with long delays is properly cancelled", ctx do
+      # Create a sequence with a long delay
+      {:ok, long_sequence} = TrainContext.create_sequence(ctx.train.id, %{name: "Long Delay"})
+
+      TrainContext.set_sequence_commands(long_sequence, [
+        %{endpoint: "First.InputValue", value: 1.0, delay_ms: 5000},
+        %{endpoint: "Second.InputValue", value: 1.0, delay_ms: 0}
+      ])
+
+      {:ok, _binding} =
+        TrainContext.create_button_binding(ctx.element.id, ctx.input.id, %{
+          mode: :sequence,
+          hardware_type: :momentary,
+          on_sequence_id: long_sequence.id
+        })
+
+      send(Process.whereis(ButtonController), {:train_changed, ctx.train})
+      Process.sleep(50)
+
+      :sys.replace_state(Process.whereis(ButtonController), fn state ->
+        %{state | input_lookup: Map.put(state.input_lookup, {"COM1", 15}, ctx.input.id)}
+      end)
+
+      # Press button to start sequence with long delay
+      send(Process.whereis(ButtonController), {:input_value_updated, "COM1", 15, 1})
+      Process.sleep(10)
+
+      state = ButtonController.get_state()
+      task_pid = state.active_buttons[ctx.element.id].sequence_task
+      assert Process.alive?(task_pid)
+
+      # Release button - should cancel immediately, not wait for 5000ms delay
+      send(Process.whereis(ButtonController), {:input_value_updated, "COM1", 15, 0})
+      Process.sleep(20)
+
+      # Task should be killed immediately
+      refute Process.alive?(task_pid)
+
+      state = ButtonController.get_state()
+      refute Map.has_key?(state.active_buttons, ctx.element.id)
+    end
+
+    test "ignores stale sequence_complete messages", ctx do
+      {:ok, _binding} =
+        TrainContext.create_button_binding(ctx.element.id, ctx.input.id, %{
+          mode: :sequence,
+          on_sequence_id: ctx.on_sequence.id
+        })
+
+      send(Process.whereis(ButtonController), {:train_changed, ctx.train})
+      Process.sleep(50)
+
+      # Send a stale sequence_complete message (for an element not in active_buttons)
+      send(Process.whereis(ButtonController), {:sequence_complete, 999_999})
+      Process.sleep(10)
+
+      # Controller should still be running and not crash
+      state = ButtonController.get_state()
+      assert state.active_train.id == ctx.train.id
+    end
   end
 end
