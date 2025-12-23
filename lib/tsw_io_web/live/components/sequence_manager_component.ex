@@ -305,10 +305,10 @@ defmodule TswIoWeb.SequenceManagerComponent do
 
   defp empty_state(assigns) do
     ~H"""
-    <div class="text-center py-8 text-base-content/50">
-      <.icon name="hero-list-bullet" class="w-12 h-12 mx-auto mb-2 opacity-30" />
-      <p class="text-sm">No sequences defined</p>
-      <p class="text-xs">Execute multiple commands from a single button press</p>
+    <div class="bg-base-100 rounded-lg p-8 text-center">
+      <.icon name="hero-list-bullet" class="w-10 h-10 mx-auto text-base-content/30" />
+      <p class="mt-2 text-sm text-base-content/70">No sequences defined</p>
+      <p class="text-xs text-base-content/50">Execute multiple commands from a single button press</p>
     </div>
     """
   end
