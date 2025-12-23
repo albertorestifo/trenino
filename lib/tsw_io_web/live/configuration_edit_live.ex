@@ -743,21 +743,23 @@ defmodule TswIoWeb.ConfigurationEditLive do
             new_mode={@new_mode}
           />
 
-          <div class="bg-base-200/50 rounded-xl p-6 mt-6">
-            <.status_section
-              active_port={@active_port}
-              new_mode={@new_mode}
-              connected_devices={@connected_devices}
-              applying={@applying}
-              inputs={@inputs}
-            />
+          <.status_section
+            active_port={@active_port}
+            new_mode={@new_mode}
+            connected_devices={@connected_devices}
+            applying={@applying}
+            inputs={@inputs}
+          />
 
+          <div class="bg-base-200/50 rounded-xl p-6 mt-6">
             <.inputs_section
               inputs={@inputs}
               input_values={@input_values}
               active_port={@active_port}
             />
+          </div>
 
+          <div class="bg-base-200/50 rounded-xl p-6 mt-6">
             <.outputs_section outputs={@outputs} active_port={@active_port} />
           </div>
 
@@ -876,7 +878,7 @@ defmodule TswIoWeb.ConfigurationEditLive do
     assigns = assign(assigns, :can_apply, can_apply)
 
     ~H"""
-    <div class="mb-6 p-4 rounded-lg bg-base-100 border border-base-300">
+    <div class="mt-6 p-4 rounded-lg bg-base-100 border border-base-300">
       <div class="flex items-center justify-between">
         <div class="flex items-center gap-3">
           <span :if={@active_port} class="w-3 h-3 rounded-full bg-success animate-pulse" />
@@ -914,7 +916,7 @@ defmodule TswIoWeb.ConfigurationEditLive do
 
   defp inputs_section(assigns) do
     ~H"""
-    <div class="mb-6">
+    <div>
       <.section_header title="Inputs" action_label="Add Input" on_action="open_add_input_modal" />
 
       <.empty_collection_state
@@ -1130,7 +1132,7 @@ defmodule TswIoWeb.ConfigurationEditLive do
 
   defp outputs_section(assigns) do
     ~H"""
-    <div class="mb-6">
+    <div>
       <.section_header title="Outputs" action_label="Add Output" on_action="open_add_output_modal" />
 
       <.empty_collection_state
