@@ -675,19 +675,13 @@ defmodule TswIoWeb.TrainEditLive do
 
   @impl true
   def handle_info({:auto_detect_selected, change}, socket) do
-    # Forward to the configuration wizard as a button detection
+    # Forward to the configuration wizard
     if Map.get(socket.assigns, :show_config_wizard) do
-      detection = %{
-        endpoint: change.endpoint,
-        suggested_on: change.current_value,
-        suggested_off: change.previous_value
-      }
-
       {:noreply,
        socket
        |> assign(:show_auto_detect, false)
        |> assign(:auto_detect_status, nil)
-       |> assign(:config_wizard_event, {:button_detected, detection})}
+       |> assign(:config_wizard_event, {:auto_detect_result, change})}
     else
       {:noreply, assign(socket, :show_auto_detect, false)}
     end
@@ -695,10 +689,18 @@ defmodule TswIoWeb.TrainEditLive do
 
   @impl true
   def handle_info({:auto_detect_cancelled}, socket) do
-    {:noreply,
-     socket
-     |> assign(:show_auto_detect, false)
-     |> assign(:auto_detect_status, nil)}
+    if Map.get(socket.assigns, :show_config_wizard) do
+      {:noreply,
+       socket
+       |> assign(:show_auto_detect, false)
+       |> assign(:auto_detect_status, nil)
+       |> assign(:config_wizard_event, :auto_detect_cancelled)}
+    else
+      {:noreply,
+       socket
+       |> assign(:show_auto_detect, false)
+       |> assign(:auto_detect_status, nil)}
+    end
   end
 
   # Calibration events

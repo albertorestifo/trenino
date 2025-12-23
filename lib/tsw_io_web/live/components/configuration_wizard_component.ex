@@ -108,6 +108,27 @@ defmodule TswIoWeb.ConfigurationWizardComponent do
     assign(socket, :explorer_event, nil)
   end
 
+  defp handle_explorer_event(%{explorer_event: {:auto_detect_result, change}}, socket) do
+    # Auto-detect completed - use the detected endpoint
+    on_value = change[:current_value] || socket.assigns.on_value
+    off_value = change[:previous_value] || socket.assigns.off_value
+
+    socket
+    |> assign(:detected_endpoints, %{endpoint: change.endpoint})
+    |> assign(:on_value, Float.round(on_value, 2))
+    |> assign(:off_value, Float.round(off_value, 2))
+    |> assign(:show_auto_detect, false)
+    |> assign(:wizard_step, :testing)
+    |> check_mapping_complete()
+    |> assign(:explorer_event, nil)
+  end
+
+  defp handle_explorer_event(%{explorer_event: :auto_detect_cancelled}, socket) do
+    socket
+    |> assign(:show_auto_detect, false)
+    |> assign(:explorer_event, nil)
+  end
+
   defp handle_explorer_event(_assigns, socket), do: socket
 
   defp initialize_wizard(socket, element, mode) do
@@ -131,6 +152,7 @@ defmodule TswIoWeb.ConfigurationWizardComponent do
     |> assign(:off_sequence_id, get_existing_off_sequence_id(element, mode))
     |> assign(:show_explorer, true)
     |> assign(:individual_selection_mode, false)
+    |> assign(:show_auto_detect, false)
     |> assign(:initialized, true)
   end
 
@@ -269,6 +291,16 @@ defmodule TswIoWeb.ConfigurationWizardComponent do
   end
 
   @impl true
+  def handle_event("open_auto_detect", _params, socket) do
+    {:noreply, assign(socket, :show_auto_detect, true)}
+  end
+
+  @impl true
+  def handle_event("close_auto_detect", _params, socket) do
+    {:noreply, assign(socket, :show_auto_detect, false)}
+  end
+
+  @impl true
   def handle_event("test_on", _params, socket) do
     endpoint = get_configured_endpoint(socket)
     on_value = socket.assigns.on_value
@@ -392,6 +424,25 @@ defmodule TswIoWeb.ConfigurationWizardComponent do
 
         <div class="flex-1 overflow-hidden flex">
           <div :if={@wizard_step == :browsing} class="flex-1 flex flex-col">
+            <div :if={@mode == :button} class="p-4 border-b border-base-300 bg-base-200/50">
+              <div class="flex items-center justify-between">
+                <div class="flex items-center gap-2">
+                  <.icon name="hero-sparkles" class="w-5 h-5 text-primary" />
+                  <span class="font-medium">Quick Setup</span>
+                </div>
+                <button
+                  type="button"
+                  phx-click="open_auto_detect"
+                  phx-target={@myself}
+                  class="btn btn-primary btn-sm"
+                >
+                  <.icon name="hero-cursor-arrow-rays" class="w-4 h-4" /> Auto-Detect Control
+                </button>
+              </div>
+              <p class="text-xs text-base-content/60 mt-1">
+                Interact with a control in the simulator to automatically detect it, or browse below
+              </p>
+            </div>
             <.live_component
               module={TswIoWeb.ApiExplorerComponent}
               id="wizard-api-explorer"
@@ -400,6 +451,13 @@ defmodule TswIoWeb.ConfigurationWizardComponent do
               mode={@mode}
             />
           </div>
+
+          <.live_component
+            :if={@show_auto_detect}
+            module={TswIoWeb.AutoDetectComponent}
+            id="wizard-auto-detect"
+            client={@client}
+          />
 
           <div :if={@wizard_step == :testing and @mode == :button} class="flex-1 p-6 overflow-y-auto">
             <.button_test_panel
