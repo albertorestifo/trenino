@@ -1115,7 +1115,12 @@ defmodule TswIoWeb.TrainEditLive do
   defp elements_section(assigns) do
     ~H"""
     <div class="mb-6">
-      <h3 class="text-base font-semibold mb-4">Elements</h3>
+      <div class="flex items-center justify-between mb-4">
+        <h3 class="text-base font-semibold">Elements</h3>
+        <button phx-click="open_add_element_modal" class="btn btn-outline btn-sm">
+          <.icon name="hero-plus" class="w-4 h-4" /> Add Element
+        </button>
+      </div>
 
       <.empty_elements_state :if={Enum.empty?(@elements)} />
 
@@ -1131,10 +1136,6 @@ defmodule TswIoWeb.TrainEditLive do
           is_active={@is_active}
         />
       </div>
-
-      <button phx-click="open_add_element_modal" class="btn btn-outline btn-sm mt-4">
-        <.icon name="hero-plus" class="w-4 h-4" /> Add Element
-      </button>
     </div>
     """
   end

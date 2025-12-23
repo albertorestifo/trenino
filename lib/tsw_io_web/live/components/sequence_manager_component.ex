@@ -307,18 +307,8 @@ defmodule TswIoWeb.SequenceManagerComponent do
     ~H"""
     <div class="text-center py-8 text-base-content/50">
       <.icon name="hero-list-bullet" class="w-12 h-12 mx-auto mb-2 opacity-30" />
-      <p class="text-sm font-medium">No sequences defined</p>
-      <p class="text-xs mt-1">
-        Sequences let you execute multiple commands from a single button press
-      </p>
-      <details class="text-xs text-left mt-3 max-w-xs mx-auto">
-        <summary class="cursor-pointer font-medium text-center">Example uses</summary>
-        <ul class="list-disc list-inside mt-2 space-y-1 text-base-content/60">
-          <li>Engine startup: Master key → Fuel pump → Starter</li>
-          <li>Emergency brake: Reverser neutral → Apply brake → Sound horn</li>
-          <li>Door cycle: Open doors → Wait 5s → Close doors</li>
-        </ul>
-      </details>
+      <p class="text-sm">No sequences defined</p>
+      <p class="text-xs">Execute multiple commands from a single button press</p>
     </div>
     """
   end
