@@ -116,6 +116,9 @@ defmodule TswIoWeb.ConfigurationWizardComponent do
     |> assign(:selected_input_id, get_existing_input_id(element, mode))
     |> assign(:on_value, get_existing_on_value(element, mode))
     |> assign(:off_value, get_existing_off_value(element, mode))
+    |> assign(:binding_mode, get_existing_binding_mode(element, mode))
+    |> assign(:hardware_type, get_existing_hardware_type(element, mode))
+    |> assign(:repeat_interval_ms, get_existing_repeat_interval(element, mode))
     |> assign(:show_explorer, true)
     |> assign(:individual_selection_mode, false)
     |> assign(:initialized, true)
@@ -142,6 +145,27 @@ defmodule TswIoWeb.ConfigurationWizardComponent do
 
   defp get_existing_off_value(_element, _mode), do: 0.0
 
+  defp get_existing_binding_mode(%Element{button_binding: binding}, :button)
+       when not is_nil(binding) do
+    binding.mode
+  end
+
+  defp get_existing_binding_mode(_element, _mode), do: :simple
+
+  defp get_existing_hardware_type(%Element{button_binding: binding}, :button)
+       when not is_nil(binding) do
+    binding.hardware_type
+  end
+
+  defp get_existing_hardware_type(_element, _mode), do: :momentary
+
+  defp get_existing_repeat_interval(%Element{button_binding: binding}, :button)
+       when not is_nil(binding) do
+    binding.repeat_interval_ms
+  end
+
+  defp get_existing_repeat_interval(_element, _mode), do: 100
+
   @impl true
   def handle_event("select_input", %{"input-id" => input_id_str}, socket) do
     input_id = String.to_integer(input_id_str)
@@ -167,6 +191,29 @@ defmodule TswIoWeb.ConfigurationWizardComponent do
     case Float.parse(value_str) do
       {value, _} -> {:noreply, assign(socket, :off_value, Float.round(value, 2))}
       :error -> {:noreply, socket}
+    end
+  end
+
+  @impl true
+  def handle_event("update_binding_mode", %{"value" => mode_str}, socket) do
+    mode = String.to_existing_atom(mode_str)
+    {:noreply, assign(socket, :binding_mode, mode)}
+  end
+
+  @impl true
+  def handle_event("update_hardware_type", %{"value" => type_str}, socket) do
+    type = String.to_existing_atom(type_str)
+    {:noreply, assign(socket, :hardware_type, type)}
+  end
+
+  @impl true
+  def handle_event("update_repeat_interval", %{"value" => value_str}, socket) do
+    case Integer.parse(value_str) do
+      {value, _} when value > 0 and value <= 5000 ->
+        {:noreply, assign(socket, :repeat_interval_ms, value)}
+
+      _ ->
+        {:noreply, socket}
     end
   end
 
@@ -303,7 +350,7 @@ defmodule TswIoWeb.ConfigurationWizardComponent do
             />
           </div>
 
-          <div :if={@wizard_step == :testing and @mode == :button} class="flex-1 p-6">
+          <div :if={@wizard_step == :testing and @mode == :button} class="flex-1 p-6 overflow-y-auto">
             <.button_test_panel
               myself={@myself}
               detected_endpoints={@detected_endpoints}
@@ -311,12 +358,15 @@ defmodule TswIoWeb.ConfigurationWizardComponent do
               selected_input_id={@selected_input_id}
               on_value={@on_value}
               off_value={@off_value}
+              binding_mode={@binding_mode}
+              hardware_type={@hardware_type}
+              repeat_interval_ms={@repeat_interval_ms}
               test_state={@test_state}
               mapping_complete={@mapping_complete}
             />
           </div>
 
-          <div :if={@wizard_step == :confirming} class="flex-1 p-6">
+          <div :if={@wizard_step == :confirming} class="flex-1 p-6 overflow-y-auto">
             <.confirmation_panel
               myself={@myself}
               mode={@mode}
@@ -327,6 +377,9 @@ defmodule TswIoWeb.ConfigurationWizardComponent do
               available_inputs={@available_inputs}
               on_value={@on_value}
               off_value={@off_value}
+              binding_mode={@binding_mode}
+              hardware_type={@hardware_type}
+              repeat_interval_ms={@repeat_interval_ms}
             />
           </div>
         </div>
@@ -371,6 +424,9 @@ defmodule TswIoWeb.ConfigurationWizardComponent do
   attr :selected_input_id, :integer, default: nil
   attr :on_value, :float, required: true
   attr :off_value, :float, required: true
+  attr :binding_mode, :atom, required: true
+  attr :hardware_type, :atom, required: true
+  attr :repeat_interval_ms, :integer, required: true
   attr :test_state, :any, default: nil
   attr :mapping_complete, :boolean, required: true
 
@@ -386,7 +442,7 @@ defmodule TswIoWeb.ConfigurationWizardComponent do
 
       <div>
         <h3 class="font-semibold mb-2">Select Hardware Input</h3>
-        <div class="grid grid-cols-2 gap-2 max-h-48 overflow-y-auto">
+        <div class="grid grid-cols-2 gap-2 max-h-32 overflow-y-auto">
           <label
             :for={input <- @available_inputs}
             class={[
@@ -415,6 +471,68 @@ defmodule TswIoWeb.ConfigurationWizardComponent do
         </div>
         <p :if={@available_inputs == []} class="text-sm text-base-content/60 italic">
           No button inputs configured. Add button inputs in device settings first.
+        </p>
+      </div>
+
+      <div class="grid grid-cols-2 gap-4">
+        <div>
+          <label class="label">
+            <span class="label-text font-medium">Button Mode</span>
+          </label>
+          <select
+            phx-change="update_binding_mode"
+            phx-target={@myself}
+            class="select select-bordered w-full"
+          >
+            <option value="simple" selected={@binding_mode == :simple}>
+              Simple (send once)
+            </option>
+            <option value="momentary" selected={@binding_mode == :momentary}>
+              Momentary (repeat while held)
+            </option>
+          </select>
+          <p class="text-xs text-base-content/50 mt-1">
+            {mode_description(@binding_mode)}
+          </p>
+        </div>
+        <div>
+          <label class="label">
+            <span class="label-text font-medium">Hardware Type</span>
+          </label>
+          <select
+            phx-change="update_hardware_type"
+            phx-target={@myself}
+            class="select select-bordered w-full"
+          >
+            <option value="momentary" selected={@hardware_type == :momentary}>
+              Momentary (spring-loaded)
+            </option>
+            <option value="latching" selected={@hardware_type == :latching}>
+              Latching (toggle switch)
+            </option>
+          </select>
+          <p class="text-xs text-base-content/50 mt-1">
+            {hardware_type_description(@hardware_type)}
+          </p>
+        </div>
+      </div>
+
+      <div :if={@binding_mode == :momentary} class="bg-base-200/50 rounded-lg p-4">
+        <label class="label">
+          <span class="label-text font-medium">Repeat Interval (ms)</span>
+        </label>
+        <input
+          type="number"
+          min="10"
+          max="5000"
+          step="10"
+          value={@repeat_interval_ms}
+          phx-blur="update_repeat_interval"
+          phx-target={@myself}
+          class="input input-bordered w-full"
+        />
+        <p class="text-xs text-base-content/50 mt-1">
+          How often to repeat the ON value while button is held (10-5000ms)
         </p>
       </div>
 
@@ -501,6 +619,15 @@ defmodule TswIoWeb.ConfigurationWizardComponent do
     """
   end
 
+  defp mode_description(:simple), do: "Sends ON when pressed, OFF when released"
+  defp mode_description(:momentary), do: "Repeats ON value at interval while held"
+  defp mode_description(:sequence), do: "Executes a command sequence"
+
+  defp hardware_type_description(:momentary), do: "Button returns when released (like a doorbell)"
+
+  defp hardware_type_description(:latching),
+    do: "Toggle that stays in position until pressed again"
+
   # Confirmation panel component
   attr :myself, :any, required: true
   attr :mode, :atom, required: true
@@ -511,6 +638,9 @@ defmodule TswIoWeb.ConfigurationWizardComponent do
   attr :available_inputs, :list, default: []
   attr :on_value, :float, default: 1.0
   attr :off_value, :float, default: 0.0
+  attr :binding_mode, :atom, default: :simple
+  attr :hardware_type, :atom, default: :momentary
+  attr :repeat_interval_ms, :integer, default: 100
 
   defp confirmation_panel(assigns) do
     selected_input = Enum.find(assigns.available_inputs, &(&1.id == assigns.selected_input_id))
@@ -576,6 +706,18 @@ defmodule TswIoWeb.ConfigurationWizardComponent do
             </span>
           </div>
           <div class="flex justify-between">
+            <span class="text-base-content/60">Button Mode:</span>
+            <span>{format_binding_mode(@binding_mode)}</span>
+          </div>
+          <div class="flex justify-between">
+            <span class="text-base-content/60">Hardware Type:</span>
+            <span>{format_hardware_type(@hardware_type)}</span>
+          </div>
+          <div :if={@binding_mode == :momentary} class="flex justify-between">
+            <span class="text-base-content/60">Repeat Interval:</span>
+            <span>{@repeat_interval_ms}ms</span>
+          </div>
+          <div class="flex justify-between">
             <span class="text-base-content/60">ON Value:</span>
             <span>{@on_value}</span>
           </div>
@@ -607,6 +749,13 @@ defmodule TswIoWeb.ConfigurationWizardComponent do
     </div>
     """
   end
+
+  defp format_binding_mode(:simple), do: "Simple"
+  defp format_binding_mode(:momentary), do: "Momentary (repeat while held)"
+  defp format_binding_mode(:sequence), do: "Sequence"
+
+  defp format_hardware_type(:momentary), do: "Momentary (spring-loaded)"
+  defp format_hardware_type(:latching), do: "Latching (toggle switch)"
 
   # Helper functions
 
@@ -682,7 +831,10 @@ defmodule TswIoWeb.ConfigurationWizardComponent do
     params = %{
       endpoint: detected[:endpoint],
       on_value: Float.round(assigns.on_value, 2),
-      off_value: Float.round(assigns.off_value, 2)
+      off_value: Float.round(assigns.off_value, 2),
+      mode: assigns.binding_mode,
+      hardware_type: assigns.hardware_type,
+      repeat_interval_ms: assigns.repeat_interval_ms
     }
 
     case element.button_binding do
