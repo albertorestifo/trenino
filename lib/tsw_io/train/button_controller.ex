@@ -200,33 +200,20 @@ defmodule TswIo.Train.ButtonController do
     end
   end
 
-  # Momentary repeat timer
+  # Momentary repeat - keeps sending InputValue while button is held
+  # Sends as fast as possible (no delay between sends)
   def handle_info({:momentary_repeat, element_id}, %State{} = state) do
     case Map.get(state.active_buttons, element_id) do
       nil ->
-        # Button was released, timer is stale
+        # Button was released, stop
         {:noreply, state}
 
-      %{binding_info: binding_info, timer_ref: old_ref} = active_button ->
+      %{binding_info: binding_info} = _active_button ->
         # Send the on_value again
         send_to_simulator(binding_info.endpoint, binding_info.on_value)
 
-        # Update last sent value
-        state = put_in(state.last_sent_values[element_id], binding_info.on_value)
-
-        # Schedule next repeat
-        new_ref =
-          Process.send_after(
-            self(),
-            {:momentary_repeat, element_id},
-            binding_info.repeat_interval_ms
-          )
-
-        # Cancel old timer if it exists (shouldn't happen, but be safe)
-        if old_ref, do: Process.cancel_timer(old_ref)
-
-        # Update timer reference
-        state = put_in(state.active_buttons[element_id], %{active_button | timer_ref: new_ref})
+        # Immediately queue next send (no delay)
+        send(self(), {:momentary_repeat, element_id})
 
         {:noreply, state}
     end
@@ -298,6 +285,11 @@ defmodule TswIo.Train.ButtonController do
       bindings
       |> Enum.filter(& &1.enabled)
       |> Enum.map(fn %ButtonInputBinding{} = binding ->
+        Logger.info(
+          "[ButtonController] Binding: element=#{binding.element_id}, mode=#{inspect(binding.mode)}, " <>
+            "interval=#{binding.repeat_interval_ms}ms"
+        )
+
         {binding.input_id, build_binding_info(binding)}
       end)
       |> Map.new()
@@ -374,24 +366,21 @@ defmodule TswIo.Train.ButtonController do
   end
 
   defp handle_button_press(%State{} = state, element_id, %{mode: :momentary} = binding_info) do
-    # Send initial on_value
+    # Set Interacting=true and InputValue=on_value, then keep sending InputValue
     sim_value = binding_info.on_value
-    send_to_simulator(binding_info.endpoint, sim_value)
+
+    # Set Interacting=true first, then InputValue
+    send_to_simulator_with_interacting(binding_info.endpoint, sim_value, true)
     broadcast_button_update(element_id, sim_value, true)
 
-    # Schedule first repeat
-    timer_ref =
-      Process.send_after(
-        self(),
-        {:momentary_repeat, element_id},
-        binding_info.repeat_interval_ms
-      )
+    # Start continuous sending loop (no delay)
+    send(self(), {:momentary_repeat, element_id})
 
     # Track active button
     active_button = %{
       element_id: element_id,
       binding_info: binding_info,
-      timer_ref: timer_ref
+      timer_ref: nil
     }
 
     state = %{
@@ -443,6 +432,15 @@ defmodule TswIo.Train.ButtonController do
     end
   end
 
+  # Catch-all for unexpected modes (should never happen, but helps debug)
+  defp handle_button_press(%State{} = _state, element_id, binding_info) do
+    Logger.warning(
+      "[ButtonController] Unknown button mode: element=#{element_id}, mode=#{inspect(binding_info.mode)}"
+    )
+
+    :skip
+  end
+
   # Handle button release based on mode
   defp handle_button_release(%State{} = state, element_id, %{mode: :simple} = binding_info) do
     sim_value = binding_info.off_value
@@ -458,12 +456,12 @@ defmodule TswIo.Train.ButtonController do
   end
 
   defp handle_button_release(%State{} = state, element_id, %{mode: :momentary} = binding_info) do
-    # Cancel the repeat timer
+    # Cancel the repeat loop
     state = cancel_active_button(state, element_id)
 
-    # Send off_value
+    # Send off_value with Interacting=false
     sim_value = binding_info.off_value
-    send_to_simulator(binding_info.endpoint, sim_value)
+    send_to_simulator_with_interacting(binding_info.endpoint, sim_value, false)
     broadcast_button_update(element_id, sim_value, false)
 
     state = %{state | last_sent_values: Map.put(state.last_sent_values, element_id, sim_value)}
@@ -576,19 +574,66 @@ defmodule TswIo.Train.ButtonController do
     case get_simulator_client() do
       {:ok, client} ->
         case TswIo.Simulator.Client.set(client, endpoint, value) do
-          {:ok, _response} ->
-            :ok
-
-          {:error, reason} ->
-            Logger.warning(
-              "[ButtonController] Failed to send value to simulator: #{inspect(reason)}"
-            )
-
-            :error
+          {:ok, _response} -> :ok
+          {:error, _reason} -> :error
         end
 
       :error ->
         :skip
+    end
+  end
+
+  # For momentary mode, we also need to set the Interacting property
+  # This tells the simulator the button is being held
+  defp send_to_simulator_with_interacting(endpoint, value, interacting) do
+    case get_simulator_client() do
+      {:ok, client} ->
+        # Derive the Interacting endpoint from the InputValue endpoint
+        interacting_endpoint = derive_interacting_endpoint(endpoint)
+
+        # Set Interacting first (before setting value for press, after for release)
+        if interacting do
+          # Press: set Interacting=true first, then InputValue
+          set_interacting(client, interacting_endpoint, true)
+          send_value(client, endpoint, value)
+        else
+          # Release: set InputValue first, then Interacting=false
+          send_value(client, endpoint, value)
+          set_interacting(client, interacting_endpoint, false)
+        end
+
+        :ok
+
+      :error ->
+        :skip
+    end
+  end
+
+  defp derive_interacting_endpoint(endpoint) do
+    # Convert "Path/Control.InputValue" to "Path/Control.Interacting"
+    endpoint
+    |> String.replace(~r/\.InputValue$/, ".Interacting")
+    |> then(fn ep ->
+      # If no .InputValue suffix, append .Interacting to the control path
+      if ep == endpoint do
+        String.replace(endpoint, ~r/\.[^.]+$/, ".Interacting")
+      else
+        ep
+      end
+    end)
+  end
+
+  defp set_interacting(client, endpoint, value) do
+    case TswIo.Simulator.Client.set(client, endpoint, value) do
+      {:ok, _response} -> :ok
+      {:error, _reason} -> :error
+    end
+  end
+
+  defp send_value(client, endpoint, value) do
+    case TswIo.Simulator.Client.set(client, endpoint, value) do
+      {:ok, _response} -> :ok
+      {:error, _reason} -> :error
     end
   end
 

@@ -149,11 +149,15 @@ defmodule TswIoWeb.ConfigurationWizardComponent do
     train_id = get_train_id(element)
     sequences = if train_id, do: Train.list_sequences(train_id), else: []
 
+    # Check if we have an existing complete binding (for edit mode)
+    {initial_step, detected_endpoints, mapping_complete} =
+      get_initial_wizard_state(element, mode)
+
     socket
-    |> assign(:wizard_step, :browsing)
-    |> assign(:detected_endpoints, nil)
+    |> assign(:wizard_step, initial_step)
+    |> assign(:detected_endpoints, detected_endpoints)
     |> assign(:manual_selections, %{})
-    |> assign(:mapping_complete, false)
+    |> assign(:mapping_complete, mapping_complete)
     |> assign(:test_state, nil)
     |> assign(:selected_input_id, get_existing_input_id(element, mode))
     |> assign(:on_value, get_existing_on_value(element, mode))
@@ -171,6 +175,32 @@ defmodule TswIoWeb.ConfigurationWizardComponent do
     |> assign(:calibration_error, nil)
     |> assign(:detecting_button, false)
     |> assign(:initialized, true)
+  end
+
+  # For buttons with existing complete bindings, skip to configure step
+  defp get_initial_wizard_state(%Element{button_binding: binding}, :button)
+       when not is_nil(binding) and not is_nil(binding.input_id) do
+    # Check if binding is complete (has endpoint for simple/momentary, or sequence for sequence mode)
+    is_complete =
+      case binding.mode do
+        :sequence -> not is_nil(binding.on_sequence_id)
+        _ -> not is_nil(binding.endpoint)
+      end
+
+    if is_complete do
+      # Skip to configure page with existing endpoint
+      detected_endpoints =
+        if binding.endpoint, do: %{endpoint: binding.endpoint}, else: %{}
+
+      {:testing, detected_endpoints, true}
+    else
+      {:browsing, nil, false}
+    end
+  end
+
+  # Default: start at browsing step
+  defp get_initial_wizard_state(_element, _mode) do
+    {:browsing, nil, false}
   end
 
   defp get_existing_input_id(%Element{button_binding: binding}, :button)
@@ -272,54 +302,79 @@ defmodule TswIoWeb.ConfigurationWizardComponent do
   end
 
   @impl true
-  def handle_event("update_binding_mode", %{"value" => mode_str}, socket) do
-    mode = String.to_existing_atom(mode_str)
-    {:noreply, assign(socket, :binding_mode, mode)}
-  end
-
-  @impl true
-  def handle_event("update_hardware_type", %{"value" => type_str}, socket) do
-    type = String.to_existing_atom(type_str)
-    {:noreply, assign(socket, :hardware_type, type)}
-  end
-
-  @impl true
-  def handle_event("update_repeat_interval", %{"value" => value_str}, socket) do
-    case Integer.parse(value_str) do
-      {value, _} when value > 0 and value <= 5000 ->
-        {:noreply, assign(socket, :repeat_interval_ms, value)}
-
-      _ ->
-        {:noreply, socket}
-    end
-  end
-
-  @impl true
-  def handle_event("update_on_sequence", %{"value" => value_str}, socket) do
-    sequence_id =
-      case Integer.parse(value_str) do
-        {id, _} -> id
-        :error -> nil
-      end
+  def handle_event("update_button_fields", params, socket) do
+    Logger.info("[ConfigWizard] update_button_fields: #{inspect(params)}")
 
     socket =
       socket
-      |> assign(:on_sequence_id, sequence_id)
+      |> maybe_update_binding_mode(params)
+      |> maybe_update_hardware_type(params)
+      |> maybe_update_on_sequence(params)
+      |> maybe_update_off_sequence(params)
+      |> maybe_update_on_value(params)
+      |> maybe_update_off_value(params)
       |> check_mapping_complete()
 
     {:noreply, socket}
   end
 
-  @impl true
-  def handle_event("update_off_sequence", %{"value" => value_str}, socket) do
+  defp maybe_update_binding_mode(socket, %{"binding_mode" => mode_str}) do
+    mode = String.to_existing_atom(mode_str)
+    Logger.info("[ConfigWizard] Setting binding_mode to: #{inspect(mode)}")
+    assign(socket, :binding_mode, mode)
+  end
+
+  defp maybe_update_binding_mode(socket, _params), do: socket
+
+  defp maybe_update_hardware_type(socket, %{"hardware_type" => type_str}) do
+    type = String.to_existing_atom(type_str)
+    assign(socket, :hardware_type, type)
+  end
+
+  defp maybe_update_hardware_type(socket, _params), do: socket
+
+
+  defp maybe_update_on_sequence(socket, %{"on_sequence_id" => value_str}) do
     sequence_id =
       case Integer.parse(value_str) do
         {id, _} -> id
         :error -> nil
       end
 
-    {:noreply, assign(socket, :off_sequence_id, sequence_id)}
+    assign(socket, :on_sequence_id, sequence_id)
   end
+
+  defp maybe_update_on_sequence(socket, _params), do: socket
+
+  defp maybe_update_off_sequence(socket, %{"off_sequence_id" => value_str}) do
+    sequence_id =
+      case Integer.parse(value_str) do
+        {id, _} -> id
+        :error -> nil
+      end
+
+    assign(socket, :off_sequence_id, sequence_id)
+  end
+
+  defp maybe_update_off_sequence(socket, _params), do: socket
+
+  defp maybe_update_on_value(socket, %{"on_value" => value_str}) do
+    case Float.parse(value_str) do
+      {value, _} -> assign(socket, :on_value, Float.round(value, 2))
+      :error -> socket
+    end
+  end
+
+  defp maybe_update_on_value(socket, _params), do: socket
+
+  defp maybe_update_off_value(socket, %{"off_value" => value_str}) do
+    case Float.parse(value_str) do
+      {value, _} -> assign(socket, :off_value, Float.round(value, 2))
+      :error -> socket
+    end
+  end
+
+  defp maybe_update_off_value(socket, _params), do: socket
 
   @impl true
   def handle_event("open_auto_detect", _params, socket) do
@@ -359,15 +414,6 @@ defmodule TswIoWeb.ConfigurationWizardComponent do
     end
   end
 
-  @impl true
-  def handle_event("proceed_to_confirm", _params, socket) do
-    {:noreply, assign(socket, :wizard_step, :confirming)}
-  end
-
-  @impl true
-  def handle_event("back_to_testing", _params, socket) do
-    {:noreply, assign(socket, :wizard_step, :testing)}
-  end
 
   @impl true
   def handle_event("back_to_browsing", _params, socket) do
@@ -382,21 +428,19 @@ defmodule TswIoWeb.ConfigurationWizardComponent do
 
   @impl true
   def handle_event("confirm_configuration", _params, socket) do
-    case socket.assigns.mode do
-      :lever ->
-        # For levers, go to calibration step
-        {:noreply, assign(socket, :wizard_step, :calibrating)}
+    # For levers, go to calibration step
+    {:noreply, assign(socket, :wizard_step, :calibrating)}
+  end
 
-      :button ->
-        # For buttons, save directly
-        case save_button_configuration(socket) do
-          {:ok, _config} ->
-            send(self(), {:configuration_complete, socket.assigns.element.id, :ok})
-            {:noreply, socket}
+  @impl true
+  def handle_event("save_button_config", _params, socket) do
+    case save_button_configuration(socket) do
+      {:ok, _config} ->
+        send(self(), {:configuration_complete, socket.assigns.element.id, :ok})
+        {:noreply, socket}
 
-          {:error, changeset} ->
-            {:noreply, put_flash(socket, :error, format_errors(changeset))}
-        end
+      {:error, changeset} ->
+        {:noreply, put_flash(socket, :error, format_errors(changeset))}
     end
   end
 
@@ -471,14 +515,15 @@ defmodule TswIoWeb.ConfigurationWizardComponent do
             <.step_indicator
               :if={@mode == :button}
               step={2}
-              label="Test Values"
+              label="Configure"
               active={@wizard_step == :testing}
-              completed={@wizard_step == :confirming}
+              completed={false}
             />
-            <div :if={@mode == :button} class="flex-1 h-px bg-base-300" />
+            <div :if={@mode == :lever} class="flex-1 h-px bg-base-300" />
             <.step_indicator
-              step={if @mode == :button, do: 3, else: 2}
-              label={if @mode == :lever, do: "Review", else: "Confirm"}
+              :if={@mode == :lever}
+              step={2}
+              label="Review"
               active={@wizard_step == :confirming}
               completed={@wizard_step == :calibrating}
             />
@@ -814,162 +859,139 @@ defmodule TswIoWeb.ConfigurationWizardComponent do
         </div>
       </div>
 
-      <div class="grid grid-cols-2 gap-4">
-        <div>
-          <label class="label">
-            <span class="label-text font-medium">Button Mode</span>
-          </label>
-          <select
-            phx-change="update_binding_mode"
-            phx-target={@myself}
-            class="select select-bordered w-full"
-          >
-            <option value="simple" selected={@binding_mode == :simple}>
-              Simple (send once)
-            </option>
-            <option value="momentary" selected={@binding_mode == :momentary}>
-              Momentary (repeat while held)
-            </option>
-            <option value="sequence" selected={@binding_mode == :sequence}>
-              Sequence (execute commands)
-            </option>
-          </select>
-          <p class="text-xs text-base-content/50 mt-1">
-            {mode_description(@binding_mode)}
-          </p>
-        </div>
-        <div>
-          <label class="label">
-            <span class="label-text font-medium">Hardware Type</span>
-          </label>
-          <select
-            phx-change="update_hardware_type"
-            phx-target={@myself}
-            class="select select-bordered w-full"
-          >
-            <option value="momentary" selected={@hardware_type == :momentary}>
-              Momentary (spring-loaded)
-            </option>
-            <option value="latching" selected={@hardware_type == :latching}>
-              Latching (toggle switch)
-            </option>
-          </select>
-          <p class="text-xs text-base-content/50 mt-1">
-            {hardware_type_description(@hardware_type)}
-          </p>
-        </div>
-      </div>
-
-      <div :if={@binding_mode == :momentary} class="bg-base-200/50 rounded-lg p-4">
-        <label class="label">
-          <span class="label-text font-medium">Repeat Interval (ms)</span>
-        </label>
-        <input
-          type="number"
-          min="10"
-          max="5000"
-          step="10"
-          value={@repeat_interval_ms}
-          phx-blur="update_repeat_interval"
-          phx-target={@myself}
-          class="input input-bordered w-full"
-        />
-        <p class="text-xs text-base-content/50 mt-1">
-          How often to repeat the ON value while button is held (10-5000ms)
-        </p>
-      </div>
-
-      <div :if={@binding_mode == :sequence} class="bg-base-200/50 rounded-lg p-4 space-y-4">
-        <div>
-          <label class="label">
-            <span class="label-text font-medium">Press Sequence</span>
-          </label>
-          <select
-            phx-change="update_on_sequence"
-            phx-target={@myself}
-            class="select select-bordered w-full"
-          >
-            <option value="" selected={@on_sequence_id == nil}>Select a sequence...</option>
-            <option
-              :for={seq <- @sequences}
-              value={seq.id}
-              selected={@on_sequence_id == seq.id}
-            >
-              {seq.name} ({length(seq.commands)} commands)
-            </option>
-          </select>
-          <p class="text-xs text-base-content/50 mt-1">
-            Sequence to execute when button is pressed
-          </p>
-        </div>
-
-        <div :if={@hardware_type == :latching}>
-          <label class="label">
-            <span class="label-text font-medium">Release Sequence (optional)</span>
-          </label>
-          <select
-            phx-change="update_off_sequence"
-            phx-target={@myself}
-            class="select select-bordered w-full"
-          >
-            <option value="" selected={@off_sequence_id == nil}>None</option>
-            <option
-              :for={seq <- @sequences}
-              value={seq.id}
-              selected={@off_sequence_id == seq.id}
-            >
-              {seq.name} ({length(seq.commands)} commands)
-            </option>
-          </select>
-          <p class="text-xs text-base-content/50 mt-1">
-            Sequence to execute when toggle is turned off (latching hardware only)
-          </p>
-        </div>
-
-        <div :if={Enum.empty?(@sequences)} class="alert alert-warning">
-          <.icon name="hero-exclamation-triangle" class="w-5 h-5" />
+      <form phx-change="update_button_fields" phx-target={@myself}>
+        <div class="grid grid-cols-2 gap-4">
           <div>
-            <span>No sequences defined.</span>
-            <a
-              href="#sequences"
-              phx-click="cancel"
-              phx-target={@myself}
-              class="link link-primary ml-1"
+            <label class="label">
+              <span class="label-text font-medium">Button Mode</span>
+            </label>
+            <select
+              name="binding_mode"
+              class="select select-bordered w-full"
             >
-              Create one in the Sequences section
-            </a>
+              <option value="simple" selected={@binding_mode == :simple}>
+                Simple (send once)
+              </option>
+              <option value="momentary" selected={@binding_mode == :momentary}>
+                Momentary (repeat while held)
+              </option>
+              <option value="sequence" selected={@binding_mode == :sequence}>
+                Sequence (execute commands)
+              </option>
+            </select>
+            <p class="text-xs text-base-content/50 mt-1">
+              {mode_description(@binding_mode)}
+            </p>
+          </div>
+          <div>
+            <label class="label">
+              <span class="label-text font-medium">Hardware Type</span>
+            </label>
+            <select
+              name="hardware_type"
+              class="select select-bordered w-full"
+            >
+              <option value="momentary" selected={@hardware_type == :momentary}>
+                Momentary (spring-loaded)
+              </option>
+              <option value="latching" selected={@hardware_type == :latching}>
+                Latching (toggle switch)
+              </option>
+            </select>
+            <p class="text-xs text-base-content/50 mt-1">
+              {hardware_type_description(@hardware_type)}
+            </p>
           </div>
         </div>
-      </div>
 
-      <div :if={@binding_mode != :sequence} class="grid grid-cols-2 gap-4">
-        <div>
-          <label class="label">
-            <span class="label-text font-medium">ON Value</span>
-          </label>
-          <input
-            type="number"
-            step="0.1"
-            value={@on_value}
-            phx-blur="update_on_value"
-            phx-target={@myself}
-            class="input input-bordered w-full"
-          />
+        <div :if={@binding_mode == :sequence} class="bg-base-200/50 rounded-lg p-4 space-y-4 mt-4">
+          <div>
+            <label class="label">
+              <span class="label-text font-medium">Press Sequence</span>
+            </label>
+            <select
+              name="on_sequence_id"
+              class="select select-bordered w-full"
+            >
+              <option value="" selected={@on_sequence_id == nil}>Select a sequence...</option>
+              <option
+                :for={seq <- @sequences}
+                value={seq.id}
+                selected={@on_sequence_id == seq.id}
+              >
+                {seq.name} ({length(seq.commands)} commands)
+              </option>
+            </select>
+            <p class="text-xs text-base-content/50 mt-1">
+              Sequence to execute when button is pressed
+            </p>
+          </div>
+
+          <div :if={@hardware_type == :latching}>
+            <label class="label">
+              <span class="label-text font-medium">Release Sequence (optional)</span>
+            </label>
+            <select
+              name="off_sequence_id"
+              class="select select-bordered w-full"
+            >
+              <option value="" selected={@off_sequence_id == nil}>None</option>
+              <option
+                :for={seq <- @sequences}
+                value={seq.id}
+                selected={@off_sequence_id == seq.id}
+              >
+                {seq.name} ({length(seq.commands)} commands)
+              </option>
+            </select>
+            <p class="text-xs text-base-content/50 mt-1">
+              Sequence to execute when toggle is turned off (latching hardware only)
+            </p>
+          </div>
+
+          <div :if={Enum.empty?(@sequences)} class="alert alert-warning">
+            <.icon name="hero-exclamation-triangle" class="w-5 h-5" />
+            <div>
+              <span>No sequences defined.</span>
+              <a
+                href="#sequences"
+                phx-click="cancel"
+                phx-target={@myself}
+                class="link link-primary ml-1"
+              >
+                Create one in the Sequences section
+              </a>
+            </div>
+          </div>
         </div>
-        <div>
-          <label class="label">
-            <span class="label-text font-medium">OFF Value</span>
-          </label>
-          <input
-            type="number"
-            step="0.1"
-            value={@off_value}
-            phx-blur="update_off_value"
-            phx-target={@myself}
-            class="input input-bordered w-full"
-          />
+
+        <div :if={@binding_mode != :sequence} class="grid grid-cols-2 gap-4 mt-4">
+          <div>
+            <label class="label">
+              <span class="label-text font-medium">ON Value</span>
+            </label>
+            <input
+              type="number"
+              name="on_value"
+              step="0.1"
+              value={@on_value}
+              class="input input-bordered w-full"
+            />
+          </div>
+          <div>
+            <label class="label">
+              <span class="label-text font-medium">OFF Value</span>
+            </label>
+            <input
+              type="number"
+              name="off_value"
+              step="0.1"
+              value={@off_value}
+              class="input input-bordered w-full"
+            />
+          </div>
         </div>
-      </div>
+      </form>
 
       <div>
         <h3 class="font-semibold mb-2">Test Connection</h3>
@@ -1013,12 +1035,12 @@ defmodule TswIoWeb.ConfigurationWizardComponent do
         </button>
         <button
           type="button"
-          phx-click="proceed_to_confirm"
+          phx-click="save_button_config"
           phx-target={@myself}
           disabled={not @mapping_complete}
           class="btn btn-primary"
         >
-          Continue <.icon name="hero-arrow-right" class="w-4 h-4" />
+          <.icon name="hero-check" class="w-4 h-4" /> Save
         </button>
       </div>
     </div>
@@ -1114,59 +1136,10 @@ defmodule TswIoWeb.ConfigurationWizardComponent do
         </div>
       </div>
 
-      <div :if={@mode == :button} class="space-y-3">
-        <h4 class="font-medium">Button Configuration</h4>
-        <div class="bg-base-200 rounded-lg p-4 space-y-2">
-          <div :if={@binding_mode != :sequence} class="flex justify-between">
-            <span class="text-base-content/60">Endpoint:</span>
-            <span class="font-mono text-sm">{@detected_endpoints[:endpoint]}</span>
-          </div>
-          <div class="flex justify-between">
-            <span class="text-base-content/60">Hardware Input:</span>
-            <span :if={@selected_input}>
-              {@selected_input.name || "Button #{@selected_input.pin}"} ({@selected_input.device.name})
-            </span>
-          </div>
-          <div class="flex justify-between">
-            <span class="text-base-content/60">Button Mode:</span>
-            <span>{format_binding_mode(@binding_mode)}</span>
-          </div>
-          <div class="flex justify-between">
-            <span class="text-base-content/60">Hardware Type:</span>
-            <span>{format_hardware_type(@hardware_type)}</span>
-          </div>
-          <div :if={@binding_mode == :momentary} class="flex justify-between">
-            <span class="text-base-content/60">Repeat Interval:</span>
-            <span>{@repeat_interval_ms}ms</span>
-          </div>
-          <div :if={@binding_mode == :sequence} class="flex justify-between">
-            <span class="text-base-content/60">Press Sequence:</span>
-            <span :if={@on_sequence}>{@on_sequence.name}</span>
-            <span :if={!@on_sequence} class="text-error">Not selected</span>
-          </div>
-          <div
-            :if={@binding_mode == :sequence && @hardware_type == :latching}
-            class="flex justify-between"
-          >
-            <span class="text-base-content/60">Release Sequence:</span>
-            <span :if={@off_sequence}>{@off_sequence.name}</span>
-            <span :if={!@off_sequence} class="text-base-content/50">None</span>
-          </div>
-          <div :if={@binding_mode != :sequence} class="flex justify-between">
-            <span class="text-base-content/60">ON Value:</span>
-            <span>{@on_value}</span>
-          </div>
-          <div :if={@binding_mode != :sequence} class="flex justify-between">
-            <span class="text-base-content/60">OFF Value:</span>
-            <span>{@off_value}</span>
-          </div>
-        </div>
-      </div>
-
       <div class="flex justify-between pt-4 border-t border-base-300">
         <button
           type="button"
-          phx-click={if @mode == :button, do: "back_to_testing", else: "back_to_browsing"}
+          phx-click="back_to_browsing"
           phx-target={@myself}
           class="btn btn-ghost"
         >
@@ -1178,19 +1151,12 @@ defmodule TswIoWeb.ConfigurationWizardComponent do
           phx-target={@myself}
           class="btn btn-primary"
         >
-          <.icon name="hero-check" class="w-4 h-4" /> Save Configuration
+          Continue to Calibration <.icon name="hero-arrow-right" class="w-4 h-4" />
         </button>
       </div>
     </div>
     """
   end
-
-  defp format_binding_mode(:simple), do: "Simple"
-  defp format_binding_mode(:momentary), do: "Momentary (repeat while held)"
-  defp format_binding_mode(:sequence), do: "Sequence"
-
-  defp format_hardware_type(:momentary), do: "Momentary (spring-loaded)"
-  defp format_hardware_type(:latching), do: "Latching (toggle switch)"
 
   # Helper functions
 
@@ -1344,13 +1310,19 @@ defmodule TswIoWeb.ConfigurationWizardComponent do
       off_sequence_id: assigns.off_sequence_id
     }
 
-    case element.button_binding do
-      nil ->
-        Train.create_button_binding(element.id, input_id, params)
+    Logger.info("[ConfigWizard] Saving button config: #{inspect(params)}")
 
-      existing ->
-        Train.update_button_binding(existing, Map.put(params, :input_id, input_id))
-    end
+    result =
+      case element.button_binding do
+        nil ->
+          Train.create_button_binding(element.id, input_id, params)
+
+        existing ->
+          Train.update_button_binding(existing, Map.put(params, :input_id, input_id))
+      end
+
+    Logger.info("[ConfigWizard] Save result: #{inspect(result)}")
+    result
   end
 
   defp maybe_put(map, _key, nil), do: map
