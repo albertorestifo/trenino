@@ -1,20 +1,20 @@
 defmodule TswIoWeb.ConfigurationWizardComponent do
   @moduledoc """
-  Unified configuration wizard for train elements.
+  Configuration wizard for button elements.
 
   Uses API explorer as the primary interface with auto-detection as default.
-  Handles both lever and button configuration with a consistent flow:
+  Flow:
   1. Browse API tree in explorer
   2. Auto-detect or manually select endpoints
-  3. Test configuration (buttons only)
-  4. Confirm and save
+  3. Select hardware input and configure button behavior
+  4. Test connection and save
 
   ## Usage
 
       <.live_component
         module={TswIoWeb.ConfigurationWizardComponent}
         id="config-wizard"
-        mode={:lever}
+        mode={:button}
         element={@element}
         client={@simulator_client}
         available_inputs={@available_inputs}
@@ -31,7 +31,6 @@ defmodule TswIoWeb.ConfigurationWizardComponent do
   require Logger
 
   alias TswIo.Simulator.Client
-  alias TswIo.Simulator.LeverAnalyzer
   alias TswIo.Train
   alias TswIo.Train.Element
 
@@ -145,13 +144,12 @@ defmodule TswIoWeb.ConfigurationWizardComponent do
 
   defp handle_explorer_event(_assigns, socket), do: socket
 
-  defp initialize_wizard(socket, element, mode) do
+  defp initialize_wizard(socket, element, _mode) do
     train_id = get_train_id(element)
     sequences = if train_id, do: Train.list_sequences(train_id), else: []
 
     # Check if we have an existing complete binding (for edit mode)
-    {initial_step, detected_endpoints, mapping_complete} =
-      get_initial_wizard_state(element, mode)
+    {initial_step, detected_endpoints, mapping_complete} = get_initial_wizard_state(element)
 
     socket
     |> assign(:wizard_step, initial_step)
@@ -159,26 +157,24 @@ defmodule TswIoWeb.ConfigurationWizardComponent do
     |> assign(:manual_selections, %{})
     |> assign(:mapping_complete, mapping_complete)
     |> assign(:test_state, nil)
-    |> assign(:selected_input_id, get_existing_input_id(element, mode))
-    |> assign(:on_value, get_existing_on_value(element, mode))
-    |> assign(:off_value, get_existing_off_value(element, mode))
-    |> assign(:binding_mode, get_existing_binding_mode(element, mode))
-    |> assign(:hardware_type, get_existing_hardware_type(element, mode))
-    |> assign(:repeat_interval_ms, get_existing_repeat_interval(element, mode))
+    |> assign(:selected_input_id, get_existing_input_id(element))
+    |> assign(:on_value, get_existing_on_value(element))
+    |> assign(:off_value, get_existing_off_value(element))
+    |> assign(:binding_mode, get_existing_binding_mode(element))
+    |> assign(:hardware_type, get_existing_hardware_type(element))
+    |> assign(:repeat_interval_ms, get_existing_repeat_interval(element))
     |> assign(:sequences, sequences)
-    |> assign(:on_sequence_id, get_existing_on_sequence_id(element, mode))
-    |> assign(:off_sequence_id, get_existing_off_sequence_id(element, mode))
+    |> assign(:on_sequence_id, get_existing_on_sequence_id(element))
+    |> assign(:off_sequence_id, get_existing_off_sequence_id(element))
     |> assign(:show_explorer, true)
     |> assign(:individual_selection_mode, false)
     |> assign(:show_auto_detect, false)
-    |> assign(:calibrating, false)
-    |> assign(:calibration_error, nil)
     |> assign(:detecting_button, false)
     |> assign(:initialized, true)
   end
 
   # For buttons with existing complete bindings, skip to configure step
-  defp get_initial_wizard_state(%Element{button_binding: binding}, :button)
+  defp get_initial_wizard_state(%Element{button_binding: binding})
        when not is_nil(binding) and not is_nil(binding.input_id) do
     # Check if binding is complete (has endpoint for simple/momentary, or sequence for sequence mode)
     is_complete =
@@ -199,65 +195,65 @@ defmodule TswIoWeb.ConfigurationWizardComponent do
   end
 
   # Default: start at browsing step
-  defp get_initial_wizard_state(_element, _mode) do
+  defp get_initial_wizard_state(_element) do
     {:browsing, nil, false}
   end
 
-  defp get_existing_input_id(%Element{button_binding: binding}, :button)
+  defp get_existing_input_id(%Element{button_binding: binding})
        when not is_nil(binding) do
     binding.input_id
   end
 
-  defp get_existing_input_id(_element, _mode), do: nil
+  defp get_existing_input_id(_element), do: nil
 
-  defp get_existing_on_value(%Element{button_binding: binding}, :button)
+  defp get_existing_on_value(%Element{button_binding: binding})
        when not is_nil(binding) do
     binding.on_value
   end
 
-  defp get_existing_on_value(_element, _mode), do: 1.0
+  defp get_existing_on_value(_element), do: 1.0
 
-  defp get_existing_off_value(%Element{button_binding: binding}, :button)
+  defp get_existing_off_value(%Element{button_binding: binding})
        when not is_nil(binding) do
     binding.off_value
   end
 
-  defp get_existing_off_value(_element, _mode), do: 0.0
+  defp get_existing_off_value(_element), do: 0.0
 
-  defp get_existing_binding_mode(%Element{button_binding: binding}, :button)
+  defp get_existing_binding_mode(%Element{button_binding: binding})
        when not is_nil(binding) do
     binding.mode
   end
 
-  defp get_existing_binding_mode(_element, _mode), do: :simple
+  defp get_existing_binding_mode(_element), do: :simple
 
-  defp get_existing_hardware_type(%Element{button_binding: binding}, :button)
+  defp get_existing_hardware_type(%Element{button_binding: binding})
        when not is_nil(binding) do
     binding.hardware_type
   end
 
-  defp get_existing_hardware_type(_element, _mode), do: :momentary
+  defp get_existing_hardware_type(_element), do: :momentary
 
-  defp get_existing_repeat_interval(%Element{button_binding: binding}, :button)
+  defp get_existing_repeat_interval(%Element{button_binding: binding})
        when not is_nil(binding) do
     binding.repeat_interval_ms
   end
 
-  defp get_existing_repeat_interval(_element, _mode), do: 100
+  defp get_existing_repeat_interval(_element), do: 100
 
-  defp get_existing_on_sequence_id(%Element{button_binding: binding}, :button)
+  defp get_existing_on_sequence_id(%Element{button_binding: binding})
        when not is_nil(binding) do
     binding.on_sequence_id
   end
 
-  defp get_existing_on_sequence_id(_element, _mode), do: nil
+  defp get_existing_on_sequence_id(_element), do: nil
 
-  defp get_existing_off_sequence_id(%Element{button_binding: binding}, :button)
+  defp get_existing_off_sequence_id(%Element{button_binding: binding})
        when not is_nil(binding) do
     binding.off_sequence_id
   end
 
-  defp get_existing_off_sequence_id(_element, _mode), do: nil
+  defp get_existing_off_sequence_id(_element), do: nil
 
   @impl true
   def handle_event("select_input", %{"input-id" => input_id_str}, socket) do
@@ -426,11 +422,6 @@ defmodule TswIoWeb.ConfigurationWizardComponent do
     {:noreply, socket}
   end
 
-  @impl true
-  def handle_event("confirm_configuration", _params, socket) do
-    # For levers, go to calibration step
-    {:noreply, assign(socket, :wizard_step, :calibrating)}
-  end
 
   @impl true
   def handle_event("save_button_config", _params, socket) do
@@ -444,35 +435,6 @@ defmodule TswIoWeb.ConfigurationWizardComponent do
     end
   end
 
-  @impl true
-  def handle_event("start_calibration", _params, socket) do
-    # Start calibration - run synchronously but with UI feedback
-    socket = assign(socket, :calibrating, true)
-
-    # Run calibration and save
-    result = save_lever_configuration(socket)
-
-    case result do
-      {:ok, _config} ->
-        send(self(), {:configuration_complete, socket.assigns.element.id, :ok})
-        {:noreply, socket}
-
-      {:error, reason} ->
-        {:noreply,
-         socket
-         |> assign(:calibrating, false)
-         |> assign(:calibration_error, format_calibration_error(reason))}
-    end
-  end
-
-  @impl true
-  def handle_event("back_to_confirm", _params, socket) do
-    {:noreply,
-     socket
-     |> assign(:wizard_step, :confirming)
-     |> assign(:calibrating, false)
-     |> assign(:calibration_error, nil)}
-  end
 
   @impl true
   def handle_event("cancel", _params, socket) do
@@ -489,9 +451,7 @@ defmodule TswIoWeb.ConfigurationWizardComponent do
         <div class="p-4 border-b border-base-300">
           <div class="flex items-center justify-between">
             <div>
-              <h2 class="text-lg font-semibold">
-                {if @mode == :lever, do: "Configure Lever", else: "Configure Button"}
-              </h2>
+              <h2 class="text-lg font-semibold">Configure Button</h2>
               <p class="text-sm text-base-content/60">{@element.name}</p>
             </div>
             <button
@@ -509,30 +469,13 @@ defmodule TswIoWeb.ConfigurationWizardComponent do
               step={1}
               label="Find in Simulator"
               active={@wizard_step == :browsing}
-              completed={@wizard_step in [:testing, :confirming, :calibrating]}
+              completed={@wizard_step == :testing}
             />
             <div class="flex-1 h-px bg-base-300" />
             <.step_indicator
-              :if={@mode == :button}
               step={2}
               label="Configure"
               active={@wizard_step == :testing}
-              completed={false}
-            />
-            <div :if={@mode == :lever} class="flex-1 h-px bg-base-300" />
-            <.step_indicator
-              :if={@mode == :lever}
-              step={2}
-              label="Review"
-              active={@wizard_step == :confirming}
-              completed={@wizard_step == :calibrating}
-            />
-            <div :if={@mode == :lever} class="flex-1 h-px bg-base-300" />
-            <.step_indicator
-              :if={@mode == :lever}
-              step={3}
-              label="Calibrate"
-              active={@wizard_step == :calibrating}
               completed={false}
             />
           </div>
@@ -540,7 +483,7 @@ defmodule TswIoWeb.ConfigurationWizardComponent do
 
         <div class="flex-1 overflow-hidden flex">
           <div :if={@wizard_step == :browsing && !@show_auto_detect} class="flex-1 flex flex-col">
-            <div :if={@mode == :button} class="p-4 border-b border-base-300 bg-base-200/50">
+            <div class="p-4 border-b border-base-300 bg-base-200/50">
               <div class="flex items-center justify-between">
                 <div class="flex items-center gap-2">
                   <.icon name="hero-sparkles" class="w-5 h-5 text-primary" />
@@ -564,7 +507,7 @@ defmodule TswIoWeb.ConfigurationWizardComponent do
               id="wizard-api-explorer"
               field={:endpoint}
               client={@client}
-              mode={@mode}
+              mode={:button}
               embedded={true}
             />
           </div>
@@ -576,7 +519,7 @@ defmodule TswIoWeb.ConfigurationWizardComponent do
             client={@client}
           />
 
-          <div :if={@wizard_step == :testing && @mode == :button} class="flex-1 p-6 overflow-y-auto">
+          <div :if={@wizard_step == :testing} class="flex-1 p-6 overflow-y-auto">
             <.button_test_panel
               myself={@myself}
               detected_endpoints={@detected_endpoints}
@@ -595,140 +538,6 @@ defmodule TswIoWeb.ConfigurationWizardComponent do
               detecting_button={@detecting_button}
             />
           </div>
-
-          <div :if={@wizard_step == :confirming} class="flex-1 p-6 overflow-y-auto">
-            <.confirmation_panel
-              myself={@myself}
-              mode={@mode}
-              element={@element}
-              detected_endpoints={@detected_endpoints}
-              manual_selections={@manual_selections}
-              selected_input_id={@selected_input_id}
-              available_inputs={@available_inputs}
-              on_value={@on_value}
-              off_value={@off_value}
-              binding_mode={@binding_mode}
-              hardware_type={@hardware_type}
-              repeat_interval_ms={@repeat_interval_ms}
-              sequences={@sequences}
-              on_sequence_id={@on_sequence_id}
-              off_sequence_id={@off_sequence_id}
-            />
-          </div>
-
-          <div :if={@wizard_step == :calibrating} class="flex-1 p-6 overflow-y-auto">
-            <.calibration_panel
-              myself={@myself}
-              calibrating={@calibrating}
-              calibration_error={@calibration_error}
-            />
-          </div>
-        </div>
-      </div>
-    </div>
-    """
-  end
-
-  # Calibration panel component for levers
-  attr :myself, :any, required: true
-  attr :calibrating, :boolean, required: true
-  attr :calibration_error, :string, default: nil
-
-  defp calibration_panel(assigns) do
-    ~H"""
-    <div class="space-y-6">
-      <div :if={!@calibrating && is_nil(@calibration_error)} class="space-y-4">
-        <div class="flex items-center gap-3 text-warning">
-          <.icon name="hero-exclamation-triangle" class="w-8 h-8" />
-          <div>
-            <h3 class="font-semibold text-lg">Prepare for Calibration</h3>
-            <p class="text-sm text-base-content/60">The lever will be moved automatically</p>
-          </div>
-        </div>
-
-        <div class="bg-base-200 rounded-lg p-4 space-y-3">
-          <p class="text-sm">
-            Before starting calibration, please ensure:
-          </p>
-          <ul class="text-sm space-y-2 ml-4">
-            <li class="flex items-start gap-2">
-              <.icon name="hero-check-circle" class="w-5 h-5 text-success flex-shrink-0 mt-0.5" />
-              <span>The train is stationary and brakes are applied</span>
-            </li>
-            <li class="flex items-start gap-2">
-              <.icon name="hero-check-circle" class="w-5 h-5 text-success flex-shrink-0 mt-0.5" />
-              <span>The lever can move freely through its full range</span>
-            </li>
-            <li class="flex items-start gap-2">
-              <.icon name="hero-check-circle" class="w-5 h-5 text-success flex-shrink-0 mt-0.5" />
-              <span>No safety systems will be triggered by lever movement</span>
-            </li>
-          </ul>
-          <p class="text-sm text-base-content/60 mt-3">
-            The calibration will sweep the lever from minimum to maximum to detect its behavior
-            and create the appropriate notch configuration.
-          </p>
-        </div>
-
-        <div class="flex justify-between pt-4 border-t border-base-300">
-          <button
-            type="button"
-            phx-click="back_to_confirm"
-            phx-target={@myself}
-            class="btn btn-ghost"
-          >
-            <.icon name="hero-arrow-left" class="w-4 h-4" /> Back
-          </button>
-          <button
-            type="button"
-            phx-click="start_calibration"
-            phx-target={@myself}
-            class="btn btn-primary"
-          >
-            <.icon name="hero-play" class="w-4 h-4" /> Start Calibration
-          </button>
-        </div>
-      </div>
-
-      <div :if={@calibrating} class="flex flex-col items-center justify-center py-12 space-y-4">
-        <span class="loading loading-spinner loading-lg text-primary"></span>
-        <div class="text-center">
-          <h3 class="font-semibold text-lg">Calibrating Lever</h3>
-          <p class="text-sm text-base-content/60">
-            Moving lever through its range to detect behavior...
-          </p>
-          <p class="text-xs text-base-content/40 mt-2">
-            This may take 10-15 seconds
-          </p>
-        </div>
-      </div>
-
-      <div :if={@calibration_error} class="space-y-4">
-        <div class="flex items-center gap-3 text-error">
-          <.icon name="hero-exclamation-circle" class="w-8 h-8" />
-          <div>
-            <h3 class="font-semibold text-lg">Calibration Failed</h3>
-            <p class="text-sm text-base-content/60">{@calibration_error}</p>
-          </div>
-        </div>
-
-        <div class="flex justify-between pt-4 border-t border-base-300">
-          <button
-            type="button"
-            phx-click="back_to_confirm"
-            phx-target={@myself}
-            class="btn btn-ghost"
-          >
-            <.icon name="hero-arrow-left" class="w-4 h-4" /> Back
-          </button>
-          <button
-            type="button"
-            phx-click="start_calibration"
-            phx-target={@myself}
-            class="btn btn-primary"
-          >
-            <.icon name="hero-arrow-path" class="w-4 h-4" /> Retry
-          </button>
         </div>
       </div>
     </div>
@@ -1062,128 +871,16 @@ defmodule TswIoWeb.ConfigurationWizardComponent do
   defp hardware_type_description(:latching),
     do: "Toggle switch that stays in position (like a light switch)"
 
-  # Confirmation panel component
-  attr :myself, :any, required: true
-  attr :mode, :atom, required: true
-  attr :element, Element, required: true
-  attr :detected_endpoints, :map, default: nil
-  attr :manual_selections, :map, default: %{}
-  attr :selected_input_id, :integer, default: nil
-  attr :available_inputs, :list, default: []
-  attr :on_value, :float, default: 1.0
-  attr :off_value, :float, default: 0.0
-  attr :binding_mode, :atom, default: :simple
-  attr :hardware_type, :atom, default: :momentary
-  attr :repeat_interval_ms, :integer, default: 100
-  attr :sequences, :list, default: []
-  attr :on_sequence_id, :integer, default: nil
-  attr :off_sequence_id, :integer, default: nil
-
-  defp confirmation_panel(assigns) do
-    selected_input = Enum.find(assigns.available_inputs, &(&1.id == assigns.selected_input_id))
-    on_sequence = Enum.find(assigns.sequences, &(&1.id == assigns.on_sequence_id))
-    off_sequence = Enum.find(assigns.sequences, &(&1.id == assigns.off_sequence_id))
-
-    assigns =
-      assigns
-      |> assign(:selected_input, selected_input)
-      |> assign(:on_sequence, on_sequence)
-      |> assign(:off_sequence, off_sequence)
-
-    ~H"""
-    <div class="space-y-6">
-      <div class="flex items-center gap-3 text-success">
-        <.icon name="hero-check-circle" class="w-8 h-8" />
-        <div>
-          <h3 class="font-semibold text-lg">Ready to Save</h3>
-          <p class="text-sm text-base-content/60">Review your configuration below</p>
-        </div>
-      </div>
-
-      <div :if={@mode == :lever} class="space-y-3">
-        <h4 class="font-medium">Lever Endpoints</h4>
-        <div class="bg-base-200 rounded-lg p-4 space-y-2 font-mono text-sm">
-          <div class="flex justify-between">
-            <span class="text-base-content/60">Min Value:</span>
-            <span>{get_endpoint(@detected_endpoints, @manual_selections, :min_endpoint)}</span>
-          </div>
-          <div class="flex justify-between">
-            <span class="text-base-content/60">Max Value:</span>
-            <span>{get_endpoint(@detected_endpoints, @manual_selections, :max_endpoint)}</span>
-          </div>
-          <div class="flex justify-between">
-            <span class="text-base-content/60">Current Value:</span>
-            <span>{get_endpoint(@detected_endpoints, @manual_selections, :value_endpoint)}</span>
-          </div>
-          <div
-            :if={get_endpoint(@detected_endpoints, @manual_selections, :notch_count_endpoint)}
-            class="flex justify-between"
-          >
-            <span class="text-base-content/60">Notch Count:</span>
-            <span>
-              {get_endpoint(@detected_endpoints, @manual_selections, :notch_count_endpoint)}
-            </span>
-          </div>
-          <div
-            :if={get_endpoint(@detected_endpoints, @manual_selections, :notch_index_endpoint)}
-            class="flex justify-between"
-          >
-            <span class="text-base-content/60">Notch Index:</span>
-            <span>
-              {get_endpoint(@detected_endpoints, @manual_selections, :notch_index_endpoint)}
-            </span>
-          </div>
-        </div>
-      </div>
-
-      <div class="flex justify-between pt-4 border-t border-base-300">
-        <button
-          type="button"
-          phx-click="back_to_browsing"
-          phx-target={@myself}
-          class="btn btn-ghost"
-        >
-          <.icon name="hero-arrow-left" class="w-4 h-4" /> Back
-        </button>
-        <button
-          type="button"
-          phx-click="confirm_configuration"
-          phx-target={@myself}
-          class="btn btn-primary"
-        >
-          Continue to Calibration <.icon name="hero-arrow-right" class="w-4 h-4" />
-        </button>
-      </div>
-    </div>
-    """
-  end
-
   # Helper functions
 
-  defp check_mapping_complete(%{assigns: %{mode: :lever}} = socket) do
-    manual = socket.assigns.manual_selections
-    detected = socket.assigns.detected_endpoints
-
-    required_fields = [:min_endpoint, :max_endpoint, :value_endpoint]
-
-    has_all_required =
-      if detected do
-        Enum.all?(required_fields, &Map.get(detected, &1))
-      else
-        Enum.all?(required_fields, &Map.get(manual, &1))
-      end
-
-    assign(socket, :mapping_complete, has_all_required)
-  end
-
-  defp check_mapping_complete(%{assigns: %{mode: :button, binding_mode: :sequence}} = socket) do
+  defp check_mapping_complete(%{assigns: %{binding_mode: :sequence}} = socket) do
     has_input = socket.assigns.selected_input_id != nil
     has_sequence = socket.assigns.on_sequence_id != nil
 
     assign(socket, :mapping_complete, has_input and has_sequence)
   end
 
-  defp check_mapping_complete(%{assigns: %{mode: :button}} = socket) do
+  defp check_mapping_complete(socket) do
     has_endpoint = socket.assigns.detected_endpoints[:endpoint] != nil
     has_input = socket.assigns.selected_input_id != nil
 
@@ -1210,83 +907,6 @@ defmodule TswIoWeb.ConfigurationWizardComponent do
   defp format_test_state({:off, _time}), do: "Sent OFF value"
   defp format_test_state({:error, _}), do: "Test failed"
   defp format_test_state(_), do: ""
-
-  defp get_endpoint(detected, manual, field) do
-    Map.get(manual, field) || Map.get(detected || %{}, field)
-  end
-
-  defp save_lever_configuration(%{assigns: assigns}) do
-    %{element: element, detected_endpoints: detected, manual_selections: manual, client: client} =
-      assigns
-
-    # Get the control path (node path) from detected endpoints
-    # The node_path is stored during detection, or we derive it from value_endpoint
-    value_endpoint = get_endpoint(detected, manual, :value_endpoint)
-    control_path = derive_control_path(detected, value_endpoint)
-
-    params =
-      %{}
-      |> maybe_put(:min_endpoint, get_endpoint(detected, manual, :min_endpoint))
-      |> maybe_put(:max_endpoint, get_endpoint(detected, manual, :max_endpoint))
-      |> maybe_put(:value_endpoint, value_endpoint)
-      |> maybe_put(:notch_count_endpoint, get_endpoint(detected, manual, :notch_count_endpoint))
-      |> maybe_put(:notch_index_endpoint, get_endpoint(detected, manual, :notch_index_endpoint))
-
-    # Run lever analysis to detect true behavior
-    case run_lever_analysis(client, control_path) do
-      {:ok, analysis_result} ->
-        Logger.info(
-          "[ConfigWizard] Lever analysis complete: type=#{analysis_result.lever_type}, " <>
-            "notches=#{length(analysis_result.suggested_notches)}"
-        )
-
-        # Save with analysis results
-        if element.lever_config do
-          Train.update_lever_config_with_analysis(element.lever_config, params, analysis_result)
-        else
-          Train.create_lever_config_with_analysis(element.id, params, analysis_result)
-        end
-
-      {:error, reason} ->
-        Logger.warning(
-          "[ConfigWizard] Lever analysis failed: #{inspect(reason)}, saving without analysis"
-        )
-
-        # Fallback to saving without analysis
-        if element.lever_config do
-          Train.update_lever_config(element.lever_config, params)
-        else
-          Train.create_lever_config(element.id, params)
-        end
-    end
-  end
-
-  # Derive the control path from detected endpoints or value_endpoint
-  defp derive_control_path(%{node_path: node_path}, _value_endpoint) when is_binary(node_path) do
-    node_path
-  end
-
-  defp derive_control_path(_detected, value_endpoint) when is_binary(value_endpoint) do
-    # Value endpoint is like "CurrentDrivableActor/MasterController.InputValue"
-    # Extract the control path by removing the ".InputValue" suffix
-    case String.split(value_endpoint, ".") do
-      [path | _rest] -> path
-      _ -> value_endpoint
-    end
-  end
-
-  defp derive_control_path(_detected, _value_endpoint), do: nil
-
-  # Run lever analysis with error handling
-  defp run_lever_analysis(nil, _control_path), do: {:error, :no_client}
-  defp run_lever_analysis(_client, nil), do: {:error, :no_control_path}
-
-  defp run_lever_analysis(%Client{} = client, control_path) do
-    Logger.info("[ConfigWizard] Running lever analysis on #{control_path}...")
-
-    # Run analysis with a restore position at the neutral point (0.5)
-    LeverAnalyzer.analyze(client, control_path, restore_position: 0.5)
-  end
 
   defp save_button_configuration(%{assigns: assigns}) do
     %{element: element, detected_endpoints: detected, selected_input_id: input_id} = assigns
@@ -1325,9 +945,6 @@ defmodule TswIoWeb.ConfigurationWizardComponent do
     result
   end
 
-  defp maybe_put(map, _key, nil), do: map
-  defp maybe_put(map, key, value), do: Map.put(map, key, value)
-
   defp format_errors(%Ecto.Changeset{} = changeset) do
     Ecto.Changeset.traverse_errors(changeset, fn {msg, opts} ->
       Regex.replace(~r"%{(\w+)}", msg, fn _, key ->
@@ -1339,12 +956,4 @@ defmodule TswIoWeb.ConfigurationWizardComponent do
   end
 
   defp format_errors(_), do: "An error occurred"
-
-  defp format_calibration_error(:no_client), do: "Simulator not connected"
-  defp format_calibration_error(:no_control_path), do: "Could not determine control path"
-  defp format_calibration_error(:insufficient_samples), do: "Could not collect enough samples"
-  defp format_calibration_error({:http_error, code, msg}), do: "Simulator error: #{code} - #{msg}"
-  defp format_calibration_error(%Ecto.Changeset{} = cs), do: format_errors(cs)
-  defp format_calibration_error(reason) when is_atom(reason), do: Atom.to_string(reason)
-  defp format_calibration_error(reason), do: inspect(reason)
 end

@@ -301,41 +301,18 @@ defmodule TswIoWeb.TrainEditLiveTest do
       %{conn: conn, train: train, element: element, lever_config: lever_config}
     end
 
-    test "opens notch mapping modal when clicking Map Notches button", %{
+    test "shows configure/edit button for lever elements", %{
       conn: conn,
       train: train,
       element: element
     } do
-      {:ok, view, _html} = live(conn, ~p"/trains/#{train.id}")
+      {:ok, _view, html} = live(conn, ~p"/trains/#{train.id}")
 
-      # Click Map Notches button - it should open the notch mapping modal
-      html =
-        view
-        |> element("[phx-click='open_notch_mapping'][phx-value-id='#{element.id}']")
-        |> render_click()
-
-      # Verify the notch mapping modal opened (not the wizard)
-      assert html =~ "Map Notches - Throttle"
-      assert html =~ "Define discrete notch positions"
-      # Should have an "Add Notch" button to add notches
-      assert html =~ "Add Notch"
-    end
-
-    test "does not require notches to already exist", %{
-      conn: conn,
-      train: train,
-      element: element
-    } do
-      {:ok, view, _html} = live(conn, ~p"/trains/#{train.id}")
-
-      # Click Map Notches - should work even without existing notches
-      html =
-        view
-        |> element("[phx-click='open_notch_mapping'][phx-value-id='#{element.id}']")
-        |> render_click()
-
-      # Verify the modal opened and shows empty notches count
-      assert html =~ "Notches (0)"
+      # Should have a configure_lever button since lever_config exists
+      assert html =~ "phx-click=\"configure_lever\""
+      assert html =~ "phx-value-id=\"#{element.id}\""
+      # Button shows "Edit" when lever_config exists
+      assert html =~ "Edit"
     end
   end
 

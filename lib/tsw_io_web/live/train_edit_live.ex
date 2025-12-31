@@ -13,7 +13,7 @@ defmodule TswIoWeb.TrainEditLive do
 
   alias TswIo.Hardware
   alias TswIo.Train, as: TrainContext
-  alias TswIo.Train.{Train, Element, LeverConfig, LeverInputBinding, Notch, Identifier}
+  alias TswIo.Train.{Train, Element, LeverConfig, LeverInputBinding, Identifier}
   alias TswIo.Train.LeverController
   alias TswIo.Serial.Connection
   alias TswIoWeb.SequenceManagerComponent
@@ -66,22 +66,17 @@ defmodule TswIoWeb.TrainEditLive do
      |> assign(:modal_open, false)
      |> assign(:element_form, to_form(Element.changeset(%Element{}, %{type: :lever})))
      |> assign(:show_delete_modal, false)
-     |> assign(:mapping_notches_element, nil)
-     |> assign(:notch_forms, [])
-     |> assign(:auto_detecting, false)
-     |> assign(:calibration_progress, nil)
      |> assign(:show_api_explorer, false)
      |> assign(:api_explorer_field, nil)
-     |> assign(:binding_element, nil)
-     |> assign(:available_inputs, [])
-     |> assign(:notch_mapping_wizard_element, nil)
-     |> assign(:notch_mapping_state, nil)
      |> assign(:binding_button_element, nil)
      |> assign(:available_button_inputs, [])
      |> assign(:show_config_wizard, false)
      |> assign(:config_wizard_element, nil)
      |> assign(:config_wizard_mode, nil)
      |> assign(:config_wizard_event, nil)
+     |> assign(:show_lever_setup_wizard, false)
+     |> assign(:lever_setup_element, nil)
+     |> assign(:lever_setup_event, nil)
      |> assign(:sequences, [])}
   end
 
@@ -112,22 +107,17 @@ defmodule TswIoWeb.TrainEditLive do
          |> assign(:modal_open, false)
          |> assign(:element_form, to_form(Element.changeset(%Element{}, %{type: :lever})))
          |> assign(:show_delete_modal, false)
-         |> assign(:mapping_notches_element, nil)
-         |> assign(:notch_forms, [])
-         |> assign(:auto_detecting, false)
-         |> assign(:calibration_progress, nil)
          |> assign(:show_api_explorer, false)
          |> assign(:api_explorer_field, nil)
-         |> assign(:binding_element, nil)
-         |> assign(:available_inputs, [])
-         |> assign(:notch_mapping_wizard_element, nil)
-         |> assign(:notch_mapping_state, nil)
          |> assign(:binding_button_element, nil)
          |> assign(:available_button_inputs, [])
          |> assign(:show_config_wizard, false)
          |> assign(:config_wizard_element, nil)
          |> assign(:config_wizard_mode, nil)
          |> assign(:config_wizard_event, nil)
+         |> assign(:show_lever_setup_wizard, false)
+         |> assign(:lever_setup_element, nil)
+         |> assign(:lever_setup_event, nil)
          |> assign(:sequences, sequences)}
 
       {:error, :not_found} ->
@@ -269,291 +259,6 @@ defmodule TswIoWeb.TrainEditLive do
     end
   end
 
-  # Input binding
-  @impl true
-  def handle_event("open_input_binding", %{"id" => id}, socket) do
-    element_id = String.to_integer(id)
-
-    case TrainContext.get_element(element_id, preload: [lever_config: [:notches, :input_binding]]) do
-      {:ok, element} ->
-        if element.lever_config do
-          available_inputs = Hardware.list_all_inputs()
-
-          {:noreply,
-           socket
-           |> assign(:binding_element, element)
-           |> assign(:available_inputs, available_inputs)}
-        else
-          {:noreply, put_flash(socket, :error, "Please configure lever endpoints first")}
-        end
-
-      {:error, :not_found} ->
-        {:noreply, put_flash(socket, :error, "Element not found")}
-    end
-  end
-
-  @impl true
-  def handle_event("close_input_binding", _params, socket) do
-    {:noreply,
-     socket
-     |> assign(:binding_element, nil)
-     |> assign(:available_inputs, [])
-     |> assign(:notch_mapping_wizard_element, nil)
-     |> assign(:notch_mapping_state, nil)}
-  end
-
-  @impl true
-  def handle_event("bind_input", %{"input_id" => input_id_str}, socket) do
-    input_id = String.to_integer(input_id_str)
-    element = socket.assigns.binding_element
-
-    case TrainContext.bind_input(element.lever_config.id, input_id) do
-      {:ok, _binding} ->
-        {:ok, elements} = TrainContext.list_elements(socket.assigns.train.id)
-        LeverController.reload_bindings()
-
-        {:noreply,
-         socket
-         |> assign(:elements, elements)
-         |> assign(:binding_element, nil)
-         |> assign(:available_inputs, [])
-         |> put_flash(:info, "Input bound successfully")}
-
-      {:error, changeset} ->
-        {:noreply,
-         put_flash(socket, :error, "Failed to bind input: #{inspect(changeset.errors)}")}
-    end
-  end
-
-  @impl true
-  def handle_event("unbind_input", _params, socket) do
-    element = socket.assigns.binding_element
-
-    case TrainContext.unbind_input(element.lever_config.id) do
-      :ok ->
-        {:ok, elements} = TrainContext.list_elements(socket.assigns.train.id)
-        LeverController.reload_bindings()
-
-        {:noreply,
-         socket
-         |> assign(:elements, elements)
-         |> assign(:binding_element, nil)
-         |> assign(:available_inputs, [])
-         |> put_flash(:info, "Input unbound")}
-
-      {:error, :not_found} ->
-        {:noreply, put_flash(socket, :error, "No binding found")}
-    end
-  end
-
-  # Guided notch mapping wizard
-  @impl true
-  def handle_event("open_guided_notch_mapping", %{"id" => id}, socket) do
-    element_id = String.to_integer(id)
-
-    case TrainContext.get_element(element_id,
-           preload: [
-             lever_config: [:notches, input_binding: [input: [device: [], calibration: []]]]
-           ]
-         ) do
-      {:ok, element} ->
-        cond do
-          is_nil(element.lever_config) ->
-            {:noreply, put_flash(socket, :error, "Please configure lever endpoints first")}
-
-          is_nil(get_input_binding(element.lever_config)) ->
-            {:noreply, put_flash(socket, :error, "Please bind an input first")}
-
-          is_nil(get_bound_input_calibration(element)) ->
-            {:noreply, put_flash(socket, :error, "The bound input is not calibrated")}
-
-          Enum.empty?(element.lever_config.notches) ->
-            {:noreply, put_flash(socket, :error, "Please add notches first (use Map Notches)")}
-
-          true ->
-            # Subscribe to notch mapping events
-            TrainContext.subscribe_notch_mapping(element.lever_config.id)
-
-            {:noreply,
-             socket
-             |> assign(:notch_mapping_wizard_element, element)
-             |> assign(:notch_mapping_state, nil)}
-        end
-
-      {:error, :not_found} ->
-        {:noreply, put_flash(socket, :error, "Element not found")}
-    end
-  end
-
-  @impl true
-  def handle_event("close_guided_notch_mapping", _params, socket) do
-    if socket.assigns.notch_mapping_wizard_element do
-      lever_config_id = socket.assigns.notch_mapping_wizard_element.lever_config.id
-      TrainContext.stop_notch_mapping(lever_config_id)
-    end
-
-    {:noreply,
-     socket
-     |> assign(:notch_mapping_wizard_element, nil)
-     |> assign(:notch_mapping_state, nil)}
-  end
-
-  @impl true
-  def handle_event("auto_distribute_ranges", _params, socket) do
-    element = socket.assigns.mapping_notches_element
-
-    case TrainContext.auto_distribute_input_ranges(element.lever_config.id) do
-      {:ok, updated_config} ->
-        notch_forms = build_notch_forms(updated_config.notches)
-        LeverController.reload_bindings()
-
-        {:noreply,
-         socket
-         |> assign(:notch_forms, notch_forms)
-         |> assign(:mapping_notches_element, %{element | lever_config: updated_config})
-         |> put_flash(:info, "Input ranges distributed evenly")}
-
-      {:error, reason} ->
-        {:noreply, put_flash(socket, :error, "Failed to distribute ranges: #{inspect(reason)}")}
-    end
-  end
-
-  # Notch mapping
-  @impl true
-  def handle_event("open_notch_mapping", %{"id" => id}, socket) do
-    element_id = String.to_integer(id)
-
-    case TrainContext.get_element(element_id, preload: [lever_config: :notches]) do
-      {:ok, element} ->
-        if element.lever_config do
-          notch_forms = build_notch_forms(element.lever_config.notches)
-
-          {:noreply,
-           socket
-           |> assign(:mapping_notches_element, element)
-           |> assign(:notch_forms, notch_forms)
-           |> assign(:auto_detecting, false)}
-        else
-          {:noreply, put_flash(socket, :error, "Please configure lever endpoints first")}
-        end
-
-      {:error, :not_found} ->
-        {:noreply, put_flash(socket, :error, "Element not found")}
-    end
-  end
-
-  @impl true
-  def handle_event("close_notch_mapping", _params, socket) do
-    {:noreply,
-     socket
-     |> assign(:mapping_notches_element, nil)
-     |> assign(:notch_forms, [])
-     |> assign(:auto_detecting, false)}
-  end
-
-  @impl true
-  def handle_event("auto_detect_notches", _params, socket) do
-    element = socket.assigns.mapping_notches_element
-    simulator_status = socket.assigns.nav_simulator_status
-
-    cond do
-      simulator_status.status != :connected ->
-        {:noreply, put_flash(socket, :error, "Simulator not connected")}
-
-      simulator_status.client == nil ->
-        {:noreply, put_flash(socket, :error, "No simulator client available")}
-
-      element.lever_config.notch_count_endpoint == nil ->
-        {:noreply,
-         put_flash(
-           socket,
-           :error,
-           "Notch count endpoint not configured. Configure notch endpoints first."
-         )}
-
-      true ->
-        # Subscribe to calibration events
-        TrainContext.subscribe_calibration(element.lever_config.id)
-
-        # Start the calibration session
-        case TrainContext.start_calibration(simulator_status.client, element.lever_config) do
-          {:ok, _pid} ->
-            {:noreply,
-             socket
-             |> assign(:auto_detecting, true)
-             |> assign(:calibration_progress, 0.0)}
-
-          {:error, :already_running} ->
-            {:noreply, put_flash(socket, :error, "Calibration already in progress")}
-
-          {:error, reason} ->
-            {:noreply,
-             put_flash(socket, :error, "Failed to start calibration: #{inspect(reason)}")}
-        end
-    end
-  end
-
-  @impl true
-  def handle_event("add_notch", _params, socket) do
-    new_notch_form =
-      Notch.changeset(%Notch{}, %{type: :gate, value: 0.0})
-      |> to_form()
-
-    notch_forms = socket.assigns.notch_forms ++ [new_notch_form]
-    {:noreply, assign(socket, :notch_forms, notch_forms)}
-  end
-
-  @impl true
-  def handle_event("remove_notch", %{"index" => index_str}, socket) do
-    index = String.to_integer(index_str)
-    notch_forms = List.delete_at(socket.assigns.notch_forms, index)
-    {:noreply, assign(socket, :notch_forms, notch_forms)}
-  end
-
-  @impl true
-  def handle_event("validate_notch", %{"index" => index_str, "notch" => params}, socket) do
-    index = String.to_integer(index_str)
-    notch_forms = socket.assigns.notch_forms
-
-    updated_form =
-      %Notch{}
-      |> Notch.changeset(params)
-      |> Map.put(:action, :validate)
-      |> to_form()
-
-    notch_forms = List.replace_at(notch_forms, index, updated_form)
-    {:noreply, assign(socket, :notch_forms, notch_forms)}
-  end
-
-  @impl true
-  def handle_event("save_notches", _params, socket) do
-    element = socket.assigns.mapping_notches_element
-    notch_forms = socket.assigns.notch_forms
-
-    # Extract params from all forms
-    notch_params =
-      Enum.map(notch_forms, fn form ->
-        form.params
-      end)
-
-    case TrainContext.save_notches(element.lever_config, notch_params) do
-      {:ok, _updated_config} ->
-        {:ok, elements} = TrainContext.list_elements(socket.assigns.train.id)
-
-        {:noreply,
-         socket
-         |> assign(:elements, elements)
-         |> assign(:mapping_notches_element, nil)
-         |> assign(:notch_forms, [])
-         |> put_flash(:info, "Notches saved successfully")}
-
-      {:error, reason} ->
-        {:noreply,
-         socket
-         |> put_flash(:error, "Failed to save notches: #{inspect(reason)}")}
-    end
-  end
-
   # Delete train
   @impl true
   def handle_event("show_delete_modal", _params, socket) do
@@ -653,93 +358,76 @@ defmodule TswIoWeb.TrainEditLive do
 
   @impl true
   def handle_info({:auto_detect_selected, change}, socket) do
-    # Forward to the configuration wizard
-    if Map.get(socket.assigns, :show_config_wizard) do
-      {:noreply,
-       socket
-       |> assign(:show_auto_detect, false)
-       |> assign(:auto_detect_status, nil)
-       |> assign(:config_wizard_event, {:auto_detect_result, change})}
-    else
-      {:noreply, assign(socket, :show_auto_detect, false)}
+    # Forward to appropriate wizard
+    cond do
+      socket.assigns.show_lever_setup_wizard ->
+        {:noreply,
+         socket
+         |> assign(:show_auto_detect, false)
+         |> assign(:auto_detect_status, nil)
+         |> assign(:lever_setup_event, {:auto_detect_result, change})}
+
+      socket.assigns.show_config_wizard ->
+        {:noreply,
+         socket
+         |> assign(:show_auto_detect, false)
+         |> assign(:auto_detect_status, nil)
+         |> assign(:config_wizard_event, {:auto_detect_result, change})}
+
+      true ->
+        {:noreply, assign(socket, :show_auto_detect, false)}
     end
   end
 
   @impl true
   def handle_info({:auto_detect_cancelled}, socket) do
-    if Map.get(socket.assigns, :show_config_wizard) do
-      {:noreply,
-       socket
-       |> assign(:show_auto_detect, false)
-       |> assign(:auto_detect_status, nil)
-       |> assign(:config_wizard_event, :auto_detect_cancelled)}
-    else
-      {:noreply,
-       socket
-       |> assign(:show_auto_detect, false)
-       |> assign(:auto_detect_status, nil)}
+    cond do
+      socket.assigns.show_lever_setup_wizard ->
+        {:noreply,
+         socket
+         |> assign(:show_auto_detect, false)
+         |> assign(:auto_detect_status, nil)
+         |> assign(:lever_setup_event, :auto_detect_cancelled)}
+
+      socket.assigns.show_config_wizard ->
+        {:noreply,
+         socket
+         |> assign(:show_auto_detect, false)
+         |> assign(:auto_detect_status, nil)
+         |> assign(:config_wizard_event, :auto_detect_cancelled)}
+
+      true ->
+        {:noreply,
+         socket
+         |> assign(:show_auto_detect, false)
+         |> assign(:auto_detect_status, nil)}
     end
   end
 
-  # Calibration events
-  @impl true
-  def handle_info({:calibration_progress, progress_state}, socket) do
-    {:noreply, assign(socket, :calibration_progress, progress_state.progress)}
-  end
-
-  @impl true
-  def handle_info({:calibration_result, {:ok, updated_config}}, socket) do
-    # Reload the element to get fresh notches
-    element = socket.assigns.mapping_notches_element
-    config_with_notches = TswIo.Repo.preload(updated_config, :notches)
-
-    notch_forms = build_notch_forms(config_with_notches.notches)
-
-    {:noreply,
-     socket
-     |> assign(:notch_forms, notch_forms)
-     |> assign(:auto_detecting, false)
-     |> assign(:calibration_progress, nil)
-     |> assign(:mapping_notches_element, %{element | lever_config: config_with_notches})
-     |> put_flash(
-       :info,
-       "Calibration complete! Detected #{length(config_with_notches.notches)} notches"
-     )}
-  end
-
-  @impl true
-  def handle_info({:calibration_result, {:error, reason}}, socket) do
-    {:noreply,
-     socket
-     |> assign(:auto_detecting, false)
-     |> assign(:calibration_progress, nil)
-     |> put_flash(:error, "Calibration failed: #{inspect(reason)}")}
-  end
-
-  # Notch mapping wizard events
+  # Notch mapping session events - forward to appropriate wizard
   @impl true
   def handle_info({:session_started, state}, socket) do
-    {:noreply, assign(socket, :notch_mapping_state, state)}
+    forward_mapping_state(socket, state)
   end
 
   @impl true
   def handle_info({:step_changed, state}, socket) do
-    {:noreply, assign(socket, :notch_mapping_state, state)}
+    forward_mapping_state(socket, state)
   end
 
   @impl true
   def handle_info({:sample_updated, state}, socket) do
-    {:noreply, assign(socket, :notch_mapping_state, state)}
+    forward_mapping_state(socket, state)
   end
 
   @impl true
   def handle_info({:capture_started, state}, socket) do
-    {:noreply, assign(socket, :notch_mapping_state, state)}
+    forward_mapping_state(socket, state)
   end
 
   @impl true
   def handle_info({:capture_stopped, state}, socket) do
-    {:noreply, assign(socket, :notch_mapping_state, state)}
+    forward_mapping_state(socket, state)
   end
 
   @impl true
@@ -747,72 +435,93 @@ defmodule TswIoWeb.TrainEditLive do
     {:ok, elements} = TrainContext.list_elements(socket.assigns.train.id)
     LeverController.reload_bindings()
 
-    # The wizard will show the success state, we just need to update the elements
-    {:noreply,
-     socket
-     |> assign(:elements, elements)}
+    {:noreply, assign(socket, :elements, elements)}
   end
 
   @impl true
   def handle_info({:mapping_result, {:error, _reason}}, socket) do
-    # Error is shown in the wizard, no action needed here
     {:noreply, socket}
   end
 
-  @impl true
-  def handle_info(:notch_mapping_cancelled, socket) do
-    {:noreply,
-     socket
-     |> assign(:notch_mapping_wizard_element, nil)
-     |> assign(:notch_mapping_state, nil)}
+  defp forward_mapping_state(socket, state) do
+    if socket.assigns.show_lever_setup_wizard do
+      send_update(TswIoWeb.LeverSetupWizard,
+        id: "lever-setup-wizard",
+        mapping_state_update: state
+      )
+
+      {:noreply, socket}
+    else
+      {:noreply, socket}
+    end
   end
 
-  # API Explorer component events - forward to wizard when open
+  # API Explorer component events - forward to appropriate wizard
   @impl true
   def handle_info({:api_explorer_select, field, path}, socket) do
-    if Map.get(socket.assigns, :show_config_wizard) do
-      {:noreply, assign(socket, :config_wizard_event, {:select, field, path})}
-    else
-      {:noreply,
-       socket
-       |> assign(:show_api_explorer, false)
-       |> assign(:api_explorer_field, nil)}
+    cond do
+      socket.assigns.show_lever_setup_wizard ->
+        {:noreply, assign(socket, :lever_setup_event, {:select, field, path})}
+
+      socket.assigns.show_config_wizard ->
+        {:noreply, assign(socket, :config_wizard_event, {:select, field, path})}
+
+      true ->
+        {:noreply,
+         socket
+         |> assign(:show_api_explorer, false)
+         |> assign(:api_explorer_field, nil)}
     end
   end
 
   @impl true
   def handle_info({:api_explorer_close}, socket) do
-    if Map.get(socket.assigns, :show_config_wizard) do
-      {:noreply, assign(socket, :config_wizard_event, :close)}
-    else
-      {:noreply,
-       socket
-       |> assign(:show_api_explorer, false)
-       |> assign(:api_explorer_field, nil)}
+    cond do
+      socket.assigns.show_lever_setup_wizard ->
+        {:noreply, assign(socket, :lever_setup_event, :close)}
+
+      socket.assigns.show_config_wizard ->
+        {:noreply, assign(socket, :config_wizard_event, :close)}
+
+      true ->
+        {:noreply,
+         socket
+         |> assign(:show_api_explorer, false)
+         |> assign(:api_explorer_field, nil)}
     end
   end
 
   @impl true
   def handle_info({:api_explorer_auto_configure, endpoints}, socket) do
-    if Map.get(socket.assigns, :show_config_wizard) do
-      {:noreply, assign(socket, :config_wizard_event, {:auto_configure, endpoints})}
-    else
-      {:noreply, socket}
+    cond do
+      socket.assigns.show_lever_setup_wizard ->
+        {:noreply, assign(socket, :lever_setup_event, {:auto_configure, endpoints})}
+
+      socket.assigns.show_config_wizard ->
+        {:noreply, assign(socket, :config_wizard_event, {:auto_configure, endpoints})}
+
+      true ->
+        {:noreply, socket}
     end
   end
 
   @impl true
   def handle_info({:api_explorer_individual_selection}, socket) do
-    if Map.get(socket.assigns, :show_config_wizard) do
-      {:noreply, assign(socket, :config_wizard_event, :individual_selection)}
-    else
-      {:noreply, socket}
+    cond do
+      socket.assigns.show_lever_setup_wizard ->
+        {:noreply, assign(socket, :lever_setup_event, :individual_selection)}
+
+      socket.assigns.show_config_wizard ->
+        {:noreply, assign(socket, :config_wizard_event, :individual_selection)}
+
+      true ->
+        {:noreply, socket}
     end
   end
 
   @impl true
   def handle_info({:api_explorer_button_detected, detection}, socket) do
-    if Map.get(socket.assigns, :show_config_wizard) do
+    if socket.assigns.show_config_wizard do
       {:noreply, assign(socket, :config_wizard_event, {:button_detected, detection})}
     else
       {:noreply, socket}
@@ -854,6 +563,31 @@ defmodule TswIoWeb.TrainEditLive do
      |> assign(:config_wizard_mode, nil)
      |> assign(:config_wizard_event, nil)
      |> assign(:button_detection_inputs, nil)}
+  end
+
+  # Lever setup wizard events
+  @impl true
+  def handle_info({:lever_setup_complete, element_id}, socket) do
+    {:ok, elements} = TrainContext.list_elements(socket.assigns.train.id)
+    TswIo.Train.LeverController.reload_bindings()
+
+    # Close the wizard and update element list
+    {:noreply,
+     socket
+     |> assign(:elements, elements)
+     |> assign(:show_lever_setup_wizard, false)
+     |> assign(:lever_setup_element, nil)
+     |> assign(:lever_setup_event, nil)
+     |> put_flash(:info, "Lever '#{get_element_name(elements, element_id)}' configured successfully")}
+  end
+
+  @impl true
+  def handle_info({:lever_setup_cancelled, _element_id}, socket) do
+    {:noreply,
+     socket
+     |> assign(:show_lever_setup_wizard, false)
+     |> assign(:lever_setup_element, nil)
+     |> assign(:lever_setup_event, nil)}
   end
 
   # Button detection for configuration wizard
@@ -932,15 +666,15 @@ defmodule TswIoWeb.TrainEditLive do
   end
 
   defp open_lever_config_wizard(socket, element_id) do
-    case TrainContext.get_element(element_id, preload: [lever_config: :notches]) do
+    case TrainContext.get_element(element_id,
+           preload: [lever_config: [:notches, input_binding: [input: [device: [], calibration: []]]]]
+         ) do
       {:ok, element} ->
         {:noreply,
          socket
-         |> assign(:show_api_explorer, false)
-         |> assign(:show_config_wizard, true)
-         |> assign(:config_wizard_element, element)
-         |> assign(:config_wizard_mode, :lever)
-         |> assign(:config_wizard_event, nil)}
+         |> assign(:show_lever_setup_wizard, true)
+         |> assign(:lever_setup_element, element)
+         |> assign(:lever_setup_event, nil)}
 
       {:error, _} ->
         {:noreply, socket}
@@ -971,11 +705,11 @@ defmodule TswIoWeb.TrainEditLive do
     end
   end
 
-  defp build_notch_forms(notches) when is_list(notches) do
-    Enum.map(notches, fn notch ->
-      Notch.changeset(notch, %{})
-      |> to_form()
-    end)
+  defp get_element_name(elements, element_id) do
+    case Enum.find(elements, &(&1.id == element_id)) do
+      nil -> "Element"
+      element -> element.name
+    end
   end
 
   defp save_train(%{assigns: %{new_mode: true}} = socket, params) do
@@ -1079,26 +813,12 @@ defmodule TswIoWeb.TrainEditLive do
       active_warning="This train is currently active in the simulator."
     />
 
-    <.notch_mapping_modal
-      :if={@mapping_notches_element}
-      element={@mapping_notches_element}
-      notch_forms={@notch_forms}
-      auto_detecting={@auto_detecting}
-      simulator_connected={@nav_simulator_status.status == :connected}
-    />
-
     <.live_component
       :if={@show_api_explorer}
       module={TswIoWeb.ApiExplorerComponent}
       id="api-explorer"
       field={@api_explorer_field}
       client={@nav_simulator_status.client}
-    />
-
-    <.input_binding_modal
-      :if={@binding_element}
-      element={@binding_element}
-      available_inputs={@available_inputs}
     />
 
     <.live_component
@@ -1112,16 +832,14 @@ defmodule TswIoWeb.TrainEditLive do
       explorer_event={@config_wizard_event}
     />
 
+
     <.live_component
-      :if={@notch_mapping_wizard_element}
-      module={TswIoWeb.NotchMappingWizard}
-      id="notch-mapping-wizard"
-      lever_config={@notch_mapping_wizard_element.lever_config}
-      element_name={@notch_mapping_wizard_element.name}
-      port={get_bound_input_port(@notch_mapping_wizard_element)}
-      pin={get_bound_input_pin(@notch_mapping_wizard_element)}
-      calibration={get_bound_input_calibration(@notch_mapping_wizard_element)}
-      session_state={@notch_mapping_state}
+      :if={@show_lever_setup_wizard and @nav_simulator_status.client != nil}
+      module={TswIoWeb.LeverSetupWizard}
+      id="lever-setup-wizard"
+      element={@lever_setup_element}
+      client={@nav_simulator_status.client}
+      explorer_event={@lever_setup_event}
     />
     """
   end
@@ -1312,49 +1030,23 @@ defmodule TswIoWeb.TrainEditLive do
           </div>
         </div>
 
-        <div class="flex flex-col items-end gap-2">
-          <%!-- Primary actions --%>
-          <div class="flex items-center gap-2">
-            <button
-              :if={@lever_config}
-              phx-click="open_input_binding"
-              phx-value-id={@element.id}
-              class={[
-                "btn btn-sm gap-1",
-                if(@input_binding, do: "btn-outline btn-info", else: "btn-outline")
-              ]}
-            >
-              <.icon name="hero-link" class="w-4 h-4" />
-              {if @input_binding, do: "Change", else: "Bind Input"}
-            </button>
-            <button
-              :if={@lever_config && @input_binding}
-              phx-click="open_notch_mapping"
-              phx-value-id={@element.id}
-              class="btn btn-sm btn-outline gap-1"
-            >
-              <.icon name="hero-queue-list" class="w-4 h-4" /> Map Notches
-            </button>
-          </div>
-          <%!-- Secondary actions --%>
-          <div class="flex items-center gap-1">
-            <button
-              phx-click="configure_lever"
-              phx-value-id={@element.id}
-              class="btn btn-ghost btn-xs text-base-content/60"
-              title="Configure Endpoints"
-            >
-              <.icon name="hero-cog-6-tooth" class="w-4 h-4" />
-            </button>
-            <button
-              phx-click="delete_element"
-              phx-value-id={@element.id}
-              class="btn btn-ghost btn-xs text-error"
-              title="Delete"
-            >
-              <.icon name="hero-trash" class="w-4 h-4" />
-            </button>
-          </div>
+        <div class="flex items-center gap-2">
+          <button
+            phx-click="configure_lever"
+            phx-value-id={@element.id}
+            class="btn btn-sm btn-primary gap-1"
+          >
+            <.icon name="hero-cog-6-tooth" class="w-4 h-4" />
+            {if @lever_config, do: "Edit", else: "Configure"}
+          </button>
+          <button
+            phx-click="delete_element"
+            phx-value-id={@element.id}
+            class="btn btn-ghost btn-sm text-error"
+            title="Delete"
+          >
+            <.icon name="hero-trash" class="w-4 h-4" />
+          </button>
         </div>
       </div>
     </div>
@@ -1384,43 +1076,6 @@ defmodule TswIoWeb.TrainEditLive do
   end
 
   defp has_notch_input_ranges?(_), do: false
-
-  defp get_bound_input_port(%Element{lever_config: lever_config}) do
-    case get_input_binding(lever_config) do
-      %LeverInputBinding{input: %{device: %{config_id: config_id}}} ->
-        find_port_for_device_config(config_id)
-
-      _ ->
-        nil
-    end
-  end
-
-  defp get_bound_input_pin(%Element{lever_config: lever_config}) do
-    case get_input_binding(lever_config) do
-      %LeverInputBinding{input: %{pin: pin}} -> pin
-      _ -> nil
-    end
-  end
-
-  defp get_bound_input_calibration(%Element{lever_config: lever_config}) do
-    case get_input_binding(lever_config) do
-      %LeverInputBinding{input: %{calibration: calibration}} -> calibration
-      _ -> nil
-    end
-  end
-
-  defp find_port_for_device_config(config_id) when is_integer(config_id) do
-    alias TswIo.Serial.Connection, as: SerialConnection
-
-    SerialConnection.list_devices()
-    |> Enum.find_value(fn device_conn ->
-      if device_conn.device_config_id == config_id and device_conn.status == :connected do
-        device_conn.port
-      end
-    end)
-  end
-
-  defp find_port_for_device_config(_), do: nil
 
   # Button element components
 
@@ -1568,338 +1223,6 @@ defmodule TswIoWeb.TrainEditLive do
             </button>
           </div>
         </.form>
-      </div>
-    </div>
-    """
-  end
-
-  attr :element, :map, required: true
-  attr :notch_forms, :list, required: true
-  attr :auto_detecting, :boolean, required: true
-  attr :simulator_connected, :boolean, required: true
-
-  defp notch_mapping_modal(assigns) do
-    has_notch_endpoints = assigns.element.lever_config.notch_count_endpoint != nil
-    assigns = assign(assigns, :has_notch_endpoints, has_notch_endpoints)
-
-    ~H"""
-    <div class="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div class="absolute inset-0 bg-black/50" phx-click="close_notch_mapping" />
-      <div class="relative bg-base-100 rounded-xl shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col">
-        <div class="p-6 border-b border-base-300">
-          <h2 class="text-xl font-semibold">Map Notches - {@element.name}</h2>
-          <p class="text-sm text-base-content/60 mt-1">
-            Define discrete notch positions and their simulator API values.
-          </p>
-        </div>
-
-        <div class="flex-1 overflow-y-auto p-6">
-          <div :if={@simulator_connected and @has_notch_endpoints} class="mb-6">
-            <div class="bg-primary/10 border border-primary/30 rounded-lg p-4">
-              <div class="flex items-start justify-between gap-4">
-                <div class="flex-1">
-                  <h3 class="text-sm font-semibold flex items-center gap-2">
-                    <.icon name="hero-sparkles" class="w-4 h-4" /> Auto-Detection Available
-                  </h3>
-                  <p class="text-xs text-base-content/70 mt-1">
-                    The simulator is connected and notch endpoints are configured.
-                    Click to automatically detect notch positions.
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  phx-click="auto_detect_notches"
-                  disabled={@auto_detecting}
-                  class="btn btn-primary btn-sm"
-                >
-                  <.icon :if={not @auto_detecting} name="hero-sparkles" class="w-4 h-4" />
-                  <span :if={@auto_detecting} class="loading loading-spinner loading-xs" />
-                  {if @auto_detecting, do: "Detecting...", else: "Auto-Detect"}
-                </button>
-              </div>
-            </div>
-          </div>
-
-          <div :if={not @has_notch_endpoints} class="mb-6">
-            <div class="alert alert-info">
-              <.icon name="hero-information-circle" class="w-5 h-5" />
-              <div class="text-sm">
-                <p class="font-medium">Optional: Configure notch endpoints for auto-detection</p>
-                <p class="text-base-content/70">
-                  To use auto-detection, add notch count and index endpoints in the lever configuration.
-                  Or add notches manually below.
-                </p>
-              </div>
-            </div>
-          </div>
-
-          <div class="space-y-4">
-            <div class="flex items-center justify-between">
-              <h3 class="text-sm font-semibold">
-                Notches ({length(@notch_forms)})
-              </h3>
-              <div class="flex items-center gap-2">
-                <button
-                  :if={not Enum.empty?(@notch_forms)}
-                  type="button"
-                  phx-click="auto_distribute_ranges"
-                  class="btn btn-ghost btn-xs text-info"
-                  title="Evenly distribute input ranges across all notches"
-                >
-                  <.icon name="hero-arrows-pointing-out" class="w-4 h-4" /> Auto-Distribute
-                </button>
-                <button
-                  type="button"
-                  phx-click="add_notch"
-                  class="btn btn-ghost btn-xs text-primary"
-                >
-                  <.icon name="hero-plus" class="w-4 h-4" /> Add Notch
-                </button>
-              </div>
-            </div>
-
-            <div :if={Enum.empty?(@notch_forms)} class="text-center py-8 text-base-content/50">
-              <.icon name="hero-queue-list" class="w-12 h-12 mx-auto mb-2 opacity-30" />
-              <p class="text-sm">No notches defined yet</p>
-              <p class="text-xs">Click "Add Notch" or use auto-detection to get started</p>
-            </div>
-
-            <div :if={not Enum.empty?(@notch_forms)} class="space-y-3">
-              <div
-                :for={{form, index} <- Enum.with_index(@notch_forms)}
-                class="bg-base-200/50 rounded-lg p-4"
-              >
-                <.form
-                  :let={f}
-                  for={form}
-                  phx-change="validate_notch"
-                  phx-value-index={index}
-                  id={"notch-form-#{index}"}
-                >
-                  <div class="flex items-start gap-3">
-                    <div class="flex-none w-12 pt-6 text-center">
-                      <span class="text-sm font-semibold text-base-content/50">#{index}</span>
-                    </div>
-
-                    <div class="flex-1 space-y-3">
-                      <div class="grid grid-cols-2 gap-3">
-                        <div>
-                          <label class="label py-1">
-                            <span class="label-text text-xs">Type</span>
-                          </label>
-                          <.input
-                            field={f[:type]}
-                            type="select"
-                            options={[{"Gate (Fixed)", :gate}, {"Linear (Range)", :linear}]}
-                            class="select select-bordered select-sm w-full"
-                          />
-                        </div>
-                        <div>
-                          <label class="label py-1">
-                            <span class="label-text text-xs">Description</span>
-                          </label>
-                          <.input
-                            field={f[:description]}
-                            type="text"
-                            placeholder="e.g., Idle, Notch 1, Full Power"
-                            class="input input-bordered input-sm w-full"
-                          />
-                        </div>
-                      </div>
-
-                      <div
-                        :if={f[:type].value == "gate" or f[:type].value == :gate}
-                        class="grid grid-cols-1"
-                      >
-                        <div>
-                          <label class="label py-1">
-                            <span class="label-text text-xs">Value</span>
-                          </label>
-                          <.input
-                            field={f[:value]}
-                            type="number"
-                            step="0.001"
-                            class="input input-bordered input-sm w-full font-mono"
-                          />
-                        </div>
-                      </div>
-
-                      <div
-                        :if={f[:type].value == "linear" or f[:type].value == :linear}
-                        class="grid grid-cols-2 gap-3"
-                      >
-                        <div>
-                          <label class="label py-1">
-                            <span class="label-text text-xs">Min Value</span>
-                          </label>
-                          <.input
-                            field={f[:min_value]}
-                            type="number"
-                            step="0.001"
-                            class="input input-bordered input-sm w-full font-mono"
-                          />
-                        </div>
-                        <div>
-                          <label class="label py-1">
-                            <span class="label-text text-xs">Max Value</span>
-                          </label>
-                          <.input
-                            field={f[:max_value]}
-                            type="number"
-                            step="0.001"
-                            class="input input-bordered input-sm w-full font-mono"
-                          />
-                        </div>
-                      </div>
-
-                      <div class="border-t border-base-300 pt-3 mt-3">
-                        <h4 class="text-xs font-medium text-base-content/60 mb-2">
-                          Input Range (0.0-1.0)
-                        </h4>
-                        <div class="grid grid-cols-2 gap-3">
-                          <div>
-                            <label class="label py-1">
-                              <span class="label-text text-xs">Input Min</span>
-                            </label>
-                            <.input
-                              field={f[:input_min]}
-                              type="number"
-                              step="0.01"
-                              min="0"
-                              max="1"
-                              placeholder="0.0"
-                              class="input input-bordered input-sm w-full font-mono"
-                            />
-                          </div>
-                          <div>
-                            <label class="label py-1">
-                              <span class="label-text text-xs">Input Max</span>
-                            </label>
-                            <.input
-                              field={f[:input_max]}
-                              type="number"
-                              step="0.01"
-                              min="0"
-                              max="1"
-                              placeholder="1.0"
-                              class="input input-bordered input-sm w-full font-mono"
-                            />
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div class="flex-none pt-6">
-                      <button
-                        type="button"
-                        phx-click="remove_notch"
-                        phx-value-index={index}
-                        class="btn btn-ghost btn-xs btn-circle text-error"
-                        title="Remove notch"
-                      >
-                        <.icon name="hero-x-mark" class="w-4 h-4" />
-                      </button>
-                    </div>
-                  </div>
-                </.form>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div class="p-6 border-t border-base-300 flex justify-end gap-2">
-          <button type="button" phx-click="close_notch_mapping" class="btn btn-ghost">
-            Cancel
-          </button>
-          <button
-            type="button"
-            phx-click="save_notches"
-            class="btn btn-primary"
-            disabled={Enum.empty?(@notch_forms)}
-          >
-            <.icon name="hero-check" class="w-4 h-4" /> Save Notches
-          </button>
-        </div>
-      </div>
-    </div>
-    """
-  end
-
-  attr :element, :map, required: true
-  attr :available_inputs, :list, required: true
-
-  defp input_binding_modal(assigns) do
-    current_binding = get_input_binding(assigns.element.lever_config)
-    assigns = assign(assigns, :current_binding, current_binding)
-
-    ~H"""
-    <div class="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div class="absolute inset-0 bg-black/50" phx-click="close_input_binding" />
-      <div class="relative bg-base-100 rounded-xl shadow-xl w-full max-w-md max-h-[90vh] flex flex-col">
-        <div class="p-6 border-b border-base-300">
-          <h2 class="text-xl font-semibold">Bind Hardware Input</h2>
-          <p class="text-sm text-base-content/60 mt-1">
-            Select a calibrated input to control <strong>{@element.name}</strong>
-          </p>
-        </div>
-
-        <div class="flex-1 overflow-y-auto p-6">
-          <div :if={@current_binding} class="mb-4">
-            <div class="bg-info/10 border border-info/30 rounded-lg p-4">
-              <div class="flex items-center justify-between">
-                <div>
-                  <h3 class="text-sm font-semibold">Currently Bound</h3>
-                  <p class="text-sm">
-                    {@current_binding.input.device.name} - Pin {@current_binding.input.pin}
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  phx-click="unbind_input"
-                  class="btn btn-ghost btn-sm text-error"
-                >
-                  <.icon name="hero-link-slash" class="w-4 h-4" /> Unbind
-                </button>
-              </div>
-            </div>
-          </div>
-
-          <div :if={Enum.empty?(@available_inputs)} class="text-center py-8 text-base-content/50">
-            <.icon name="hero-cpu-chip" class="w-12 h-12 mx-auto mb-2 opacity-30" />
-            <p class="text-sm">No calibrated inputs available</p>
-            <p class="text-xs">Calibrate a device input first</p>
-          </div>
-
-          <div :if={not Enum.empty?(@available_inputs)} class="space-y-2">
-            <h3 class="text-sm font-semibold mb-2">Available Inputs</h3>
-            <button
-              :for={input <- @available_inputs}
-              type="button"
-              phx-click="bind_input"
-              phx-value-input_id={input.id}
-              class={"w-full text-left p-3 rounded-lg border transition-colors " <>
-                if(@current_binding && @current_binding.input_id == input.id,
-                  do: "bg-info/10 border-info",
-                  else: "bg-base-200/50 border-base-300 hover:bg-base-200")}
-            >
-              <div class="flex items-center justify-between">
-                <div>
-                  <p class="font-medium">{input.device.name}</p>
-                  <p class="text-sm text-base-content/60">Pin {input.pin}</p>
-                </div>
-                <div :if={@current_binding && @current_binding.input_id == input.id}>
-                  <.icon name="hero-check-circle" class="w-5 h-5 text-info" />
-                </div>
-              </div>
-            </button>
-          </div>
-        </div>
-
-        <div class="p-6 border-t border-base-300 flex justify-end">
-          <button type="button" phx-click="close_input_binding" class="btn btn-ghost">
-            Close
-          </button>
-        </div>
       </div>
     </div>
     """

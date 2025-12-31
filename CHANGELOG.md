@@ -4,6 +4,30 @@ All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [Unreleased]
+
+### Changed
+
+- Unified lever configuration wizard
+  - Single 6-step wizard replaces previous 4-modal flow
+  - Step 1: Select calibrated hardware lever input
+  - Step 2: Find simulator endpoint via API explorer with auto-detect
+  - Step 3: Review calibration requirements
+  - Step 4: Auto-calibrate using LeverAnalyzer (detects discrete/continuous/hybrid behavior)
+  - Step 5: Map notch positions to hardware with visual wobble capture
+  - Step 6: Test live position indicator and complete
+- New horizontal bar visualization for lever notches
+  - Gates displayed as dots, linear notches as segments
+  - Small gaps between adjacent notches for visual distinction
+  - Live position indicator showing current hardware value
+- Simplified lever card UI with single Configure/Edit button
+
+### Removed
+
+- Old NotchMappingWizard component (replaced by unified wizard)
+- Separate "Bind Input" and "Map Notches" buttons for levers
+- Old input binding modal for levers
+
 ## [0.3.0]
 
 ### Added
