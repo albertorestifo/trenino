@@ -44,12 +44,15 @@ defmodule TswIo.Simulator.LeverAnalyzer do
   # Threshold for determining if an output range represents a gate (single value)
   # vs linear (range of values). Values rounded to 1 decimal place for comparison.
   @gate_range_threshold 0.1
-  # Threshold for detecting output discontinuities (jumps between zones)
-  # Must be larger than typical per-step change in linear zones (~0.6) but smaller
-  # than jumps between zones (typically 1.0+)
-  @output_discontinuity_threshold 0.8
+  # Threshold for rough detection of output discontinuities (jumps between zones)
+  # Use lower value (0.4) to over-detect boundaries, then verify with snap-back testing
+  @output_discontinuity_threshold 0.4
   # Threshold for merging adjacent gates with similar output values
   @gate_merge_threshold 0.2
+  # Boundary verification: step size for testing snap-back
+  @boundary_test_step 0.01
+  # Boundary verification: number of steps to test around boundary
+  @boundary_test_range 3
 
   defmodule Sample do
     @moduledoc "A single sample from the lever sweep"
@@ -168,9 +171,10 @@ defmodule TswIo.Simulator.LeverAnalyzer do
     restore_position = Keyword.get(opts, :restore_position, nil)
 
     Logger.info("[LeverAnalyzer] Starting analysis of #{control_path}")
+    value_endpoint = "#{control_path}.InputValue"
 
     with {:ok, samples} <- sweep_lever(client, control_path, sweep_step, settling_time),
-         {:ok, result} <- analyze_samples(samples) do
+         {:ok, result} <- analyze_samples_with_verification(client, value_endpoint, samples, settling_time) do
       # Restore lever position if requested
       if restore_position do
         Client.set(client, "#{control_path}.InputValue", restore_position)
@@ -303,8 +307,8 @@ defmodule TswIo.Simulator.LeverAnalyzer do
     |> Enum.filter(&(&1 <= 1.0))
   end
 
-  # Analyze collected samples to determine lever type and generate notch suggestions
-  defp analyze_samples(samples) do
+  # Analyze collected samples with boundary verification using snap-back testing
+  defp analyze_samples_with_verification(client, value_endpoint, samples, settling_time) do
     outputs = Enum.map(samples, & &1.output)
     unique_outputs = Enum.uniq(outputs) |> Enum.sort()
 
@@ -318,8 +322,15 @@ defmodule TswIo.Simulator.LeverAnalyzer do
 
     lever_type = classify_lever_type(unique_count, all_integers, snap_zones)
 
-    # Detect zones based on output discontinuities (not input snapping)
-    zones = detect_output_zones(samples)
+    # Step 1: Rough detection with low threshold (over-detect boundaries)
+    initial_zones = detect_output_zones(samples)
+
+    Logger.debug("[LeverAnalyzer] Initial detection found #{length(initial_zones)} zones")
+
+    # Step 2: Verify boundaries using snap-back testing and merge false boundaries
+    zones = verify_and_merge_zones(client, value_endpoint, initial_zones, settling_time)
+
+    Logger.debug("[LeverAnalyzer] After verification: #{length(zones)} zones")
 
     # Build notch suggestions from zones (with proper input mappings)
     suggested_notches = build_notches_from_zones(zones)
@@ -513,6 +524,136 @@ defmodule TswIo.Simulator.LeverAnalyzer do
         actual_input_max: Enum.max(actual_inputs)
       }
     end)
+  end
+
+  # ============================================================================
+  # Boundary verification using snap-back testing
+  #
+  # After rough zone detection, we verify each boundary by testing snap-back
+  # behavior. At a real boundary (e.g., gate→linear), the actual_input will
+  # snap back when we try to cross. At a false boundary (artifact from rough
+  # detection), the transition is continuous.
+  # ============================================================================
+
+  # Verify zone boundaries and merge zones that don't have real snap-back behavior
+  defp verify_and_merge_zones(_client, _value_endpoint, zones, _settling_time)
+       when length(zones) <= 1 do
+    zones
+  end
+
+  defp verify_and_merge_zones(client, value_endpoint, zones, settling_time) do
+    sorted_zones = Enum.sort_by(zones, & &1.set_input_min)
+
+    # Test each boundary between adjacent zones
+    sorted_zones
+    |> Enum.chunk_every(2, 1, :discard)
+    |> Enum.reduce([hd(sorted_zones)], fn [_zone1, zone2], acc ->
+      current_zone = hd(acc)
+
+      # Get the boundary point between zones
+      boundary_input = (current_zone.set_input_max + zone2.set_input_min) / 2
+
+      # Test if there's snap-back at this boundary
+      if has_snap_back?(client, value_endpoint, boundary_input, settling_time) do
+        # Real boundary - keep zones separate
+        [zone2 | acc]
+      else
+        # False boundary - merge zones
+        merged = merge_two_zones(current_zone, zone2)
+        [merged | tl(acc)]
+      end
+    end)
+    |> Enum.reverse()
+  end
+
+  # Test if there's a real boundary at a point.
+  # A real boundary exists if:
+  # 1. There's snap-back behavior (actual_input differs when approaching from different sides)
+  # 2. OR outputs differ significantly (even without snap-back, like discrete levers)
+  defp has_snap_back?(client, value_endpoint, boundary_input, settling_time) do
+    output_endpoint = String.replace(value_endpoint, ".InputValue", ".Function.GetCurrentOutputValue")
+
+    # Test approaching from below (lower input value moving up)
+    below_result = test_boundary_from_direction(client, value_endpoint, output_endpoint, boundary_input, settling_time, :below)
+
+    # Test approaching from above (higher input value moving down)
+    above_result = test_boundary_from_direction(client, value_endpoint, output_endpoint, boundary_input, settling_time, :above)
+
+    case {below_result, above_result} do
+      {{:ok, below_actual, below_output}, {:ok, above_actual, above_output}} ->
+        # Check for snap-back (actual_input differs significantly)
+        snap_detected = abs(below_actual - above_actual) > @snap_threshold
+
+        # Only use output difference as fallback for discrete levers (no snap zones)
+        # Use a high threshold (0.8) to avoid false positives in linear zones
+        output_diff = abs(below_output - above_output)
+        large_output_boundary = output_diff > 0.8
+
+        # A boundary is real if:
+        # 1. There's snap-back (primary detection for hybrid levers with snap zones)
+        # 2. OR there's a large output jump (fallback for discrete levers without snap zones)
+        is_real_boundary = snap_detected or large_output_boundary
+
+        Logger.debug(
+          "[LeverAnalyzer] Boundary at #{Float.round(boundary_input, 2)}: " <>
+            "snap=#{snap_detected}, output_diff=#{Float.round(output_diff, 2)}, real=#{is_real_boundary}"
+        )
+
+        is_real_boundary
+
+      _ ->
+        # If we can't test, assume it's a real boundary to be safe
+        Logger.warning("[LeverAnalyzer] Could not test boundary at #{boundary_input}, assuming real")
+        true
+    end
+  end
+
+  # Test boundary from a specific direction, returning both actual_input and output
+  defp test_boundary_from_direction(client, value_endpoint, output_endpoint, boundary_input, settling_time, direction) do
+    {start_input, test_input} =
+      case direction do
+        :below ->
+          # Start well below boundary, test just past
+          {max(0.0, boundary_input - @boundary_test_range * @boundary_test_step),
+           min(1.0, boundary_input + @boundary_test_step)}
+
+        :above ->
+          # Start well above boundary, test just before
+          {min(1.0, boundary_input + @boundary_test_range * @boundary_test_step),
+           max(0.0, boundary_input - @boundary_test_step)}
+      end
+
+    # First, position lever at starting point
+    Client.set(client, value_endpoint, start_input)
+    Process.sleep(settling_time)
+
+    # Now move to test position and read both actual_input and output
+    with {:ok, _} <- Client.set(client, value_endpoint, test_input),
+         :ok <- Process.sleep(settling_time),
+         {:ok, actual} <- Client.get_float(client, value_endpoint),
+         {:ok, output} <- Client.get_float(client, output_endpoint) do
+      {:ok, actual, output}
+    else
+      _ -> :error
+    end
+  end
+
+  # Merge two adjacent zones into one
+  defp merge_two_zones(%Zone{} = zone1, %Zone{} = zone2) do
+    output_min = min(zone1.output_min, zone2.output_min)
+    output_max = max(zone1.output_max, zone2.output_max)
+    zone_type = determine_notch_type(output_min, output_max)
+
+    %Zone{
+      type: zone_type,
+      value: if(zone_type == :gate, do: Float.round((output_min + output_max) / 2, 2), else: nil),
+      output_min: output_min,
+      output_max: output_max,
+      set_input_min: min(zone1.set_input_min, zone2.set_input_min),
+      set_input_max: max(zone1.set_input_max, zone2.set_input_max),
+      actual_input_min: min(zone1.actual_input_min, zone2.actual_input_min),
+      actual_input_max: max(zone1.actual_input_max, zone2.actual_input_max)
+    }
   end
 
   # Build notch suggestions from the detected zones.
