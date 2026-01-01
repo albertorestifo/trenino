@@ -297,7 +297,8 @@ defmodule TswIo.Train.ButtonControllerTest do
 
       state = ButtonController.get_state()
       assert Map.has_key?(state.active_buttons, element.id)
-      assert state.active_buttons[element.id].timer_ref != nil
+      # Current implementation uses self-messaging loop, not timers
+      assert state.active_buttons[element.id].element_id == element.id
     end
 
     test "clears active button when released", %{element: element} do
@@ -316,20 +317,21 @@ defmodule TswIo.Train.ButtonControllerTest do
       refute Map.has_key?(state.active_buttons, element.id)
     end
 
-    test "timer is cancelled on button release", %{element: element} do
+    test "button is removed from active_buttons on release", %{element: element} do
       # Press button
       send(Process.whereis(ButtonController), {:input_value_updated, "COM1", 5, 1})
       Process.sleep(20)
 
       state = ButtonController.get_state()
-      timer_ref = state.active_buttons[element.id].timer_ref
+      assert Map.has_key?(state.active_buttons, element.id)
 
       # Release button
       send(Process.whereis(ButtonController), {:input_value_updated, "COM1", 5, 0})
       Process.sleep(20)
 
-      # Timer should be cancelled (returns false if already cancelled)
-      assert Process.cancel_timer(timer_ref) == false
+      # Button should be removed from active_buttons (which stops the repeat loop)
+      state = ButtonController.get_state()
+      refute Map.has_key?(state.active_buttons, element.id)
     end
 
     test "cancels active buttons on train change", %{element: element} do
@@ -355,7 +357,6 @@ defmodule TswIo.Train.ButtonControllerTest do
 
       state = ButtonController.get_state()
       assert Map.has_key?(state.active_buttons, element.id)
-      timer_ref = state.active_buttons[element.id].timer_ref
 
       # Reload bindings
       ButtonController.reload_bindings()
@@ -364,8 +365,6 @@ defmodule TswIo.Train.ButtonControllerTest do
       state = ButtonController.get_state()
       # Active buttons should be cleared
       assert state.active_buttons == %{}
-      # Old timer should be cancelled
-      assert Process.cancel_timer(timer_ref) == false
       # Train should still be active
       assert state.active_train.id == train.id
     end
@@ -458,11 +457,11 @@ defmodule TswIo.Train.ButtonControllerTest do
       {:ok, input} =
         Hardware.create_input(device.id, %{pin: 15, input_type: :button, debounce: 20})
 
-      # Create sequences
+      # Create sequences - use longer delays for reliable task lifecycle testing
       {:ok, on_sequence} = TrainContext.create_sequence(train.id, %{name: "Door Open"})
 
       TrainContext.set_sequence_commands(on_sequence, [
-        %{endpoint: "DoorKey.InputValue", value: 1.0, delay_ms: 10},
+        %{endpoint: "DoorKey.InputValue", value: 1.0, delay_ms: 100},
         %{endpoint: "DoorOpen.InputValue", value: 1.0, delay_ms: 0}
       ])
 
@@ -559,8 +558,8 @@ defmodule TswIo.Train.ButtonControllerTest do
       # Press button
       send(Process.whereis(ButtonController), {:input_value_updated, "COM1", 15, 1})
 
-      # Wait for sequence to complete (10ms delay + buffer)
-      Process.sleep(50)
+      # Wait for sequence to complete (100ms delay + buffer)
+      Process.sleep(200)
 
       state = ButtonController.get_state()
       refute Map.has_key?(state.active_buttons, ctx.element.id)

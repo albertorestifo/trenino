@@ -314,6 +314,74 @@ defmodule TswIoWeb.ConfigurationWizardComponent do
     {:noreply, socket}
   end
 
+  @impl true
+  def handle_event("open_auto_detect", _params, socket) do
+    {:noreply, assign(socket, :show_auto_detect, true)}
+  end
+
+  @impl true
+  def handle_event("close_auto_detect", _params, socket) do
+    {:noreply, assign(socket, :show_auto_detect, false)}
+  end
+
+  @impl true
+  def handle_event("test_on", _params, socket) do
+    endpoint = get_configured_endpoint(socket)
+    on_value = socket.assigns.on_value
+
+    case send_test_value(socket.assigns.client, endpoint, on_value) do
+      {:ok, _body} ->
+        {:noreply, assign(socket, :test_state, {:on, DateTime.utc_now()})}
+
+      {:error, _reason} ->
+        {:noreply, assign(socket, :test_state, {:error, :on})}
+    end
+  end
+
+  @impl true
+  def handle_event("test_off", _params, socket) do
+    endpoint = get_configured_endpoint(socket)
+    off_value = socket.assigns.off_value
+
+    case send_test_value(socket.assigns.client, endpoint, off_value) do
+      {:ok, _body} ->
+        {:noreply, assign(socket, :test_state, {:off, DateTime.utc_now()})}
+
+      {:error, _reason} ->
+        {:noreply, assign(socket, :test_state, {:error, :off})}
+    end
+  end
+
+  @impl true
+  def handle_event("back_to_browsing", _params, socket) do
+    socket =
+      socket
+      |> assign(:wizard_step, :browsing)
+      |> assign(:detected_endpoints, nil)
+      |> assign(:mapping_complete, false)
+
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_event("save_button_config", _params, socket) do
+    case save_button_configuration(socket) do
+      {:ok, _config} ->
+        send(self(), {:configuration_complete, socket.assigns.element.id, :ok})
+        {:noreply, socket}
+
+      {:error, changeset} ->
+        {:noreply, put_flash(socket, :error, format_errors(changeset))}
+    end
+  end
+
+  @impl true
+  def handle_event("cancel", _params, socket) do
+    send(self(), {:configuration_cancelled, socket.assigns.element.id})
+    {:noreply, socket}
+  end
+
+  # Private helpers for update_button_fields
   defp maybe_update_binding_mode(socket, %{"binding_mode" => mode_str}) do
     mode = String.to_existing_atom(mode_str)
     Logger.info("[ConfigWizard] Setting binding_mode to: #{inspect(mode)}")
@@ -328,7 +396,6 @@ defmodule TswIoWeb.ConfigurationWizardComponent do
   end
 
   defp maybe_update_hardware_type(socket, _params), do: socket
-
 
   defp maybe_update_on_sequence(socket, %{"on_sequence_id" => value_str}) do
     sequence_id =
@@ -371,76 +438,6 @@ defmodule TswIoWeb.ConfigurationWizardComponent do
   end
 
   defp maybe_update_off_value(socket, _params), do: socket
-
-  @impl true
-  def handle_event("open_auto_detect", _params, socket) do
-    {:noreply, assign(socket, :show_auto_detect, true)}
-  end
-
-  @impl true
-  def handle_event("close_auto_detect", _params, socket) do
-    {:noreply, assign(socket, :show_auto_detect, false)}
-  end
-
-  @impl true
-  def handle_event("test_on", _params, socket) do
-    endpoint = get_configured_endpoint(socket)
-    on_value = socket.assigns.on_value
-
-    case send_test_value(socket.assigns.client, endpoint, on_value) do
-      {:ok, _body} ->
-        {:noreply, assign(socket, :test_state, {:on, DateTime.utc_now()})}
-
-      {:error, _reason} ->
-        {:noreply, assign(socket, :test_state, {:error, :on})}
-    end
-  end
-
-  @impl true
-  def handle_event("test_off", _params, socket) do
-    endpoint = get_configured_endpoint(socket)
-    off_value = socket.assigns.off_value
-
-    case send_test_value(socket.assigns.client, endpoint, off_value) do
-      {:ok, _body} ->
-        {:noreply, assign(socket, :test_state, {:off, DateTime.utc_now()})}
-
-      {:error, _reason} ->
-        {:noreply, assign(socket, :test_state, {:error, :off})}
-    end
-  end
-
-
-  @impl true
-  def handle_event("back_to_browsing", _params, socket) do
-    socket =
-      socket
-      |> assign(:wizard_step, :browsing)
-      |> assign(:detected_endpoints, nil)
-      |> assign(:mapping_complete, false)
-
-    {:noreply, socket}
-  end
-
-
-  @impl true
-  def handle_event("save_button_config", _params, socket) do
-    case save_button_configuration(socket) do
-      {:ok, _config} ->
-        send(self(), {:configuration_complete, socket.assigns.element.id, :ok})
-        {:noreply, socket}
-
-      {:error, changeset} ->
-        {:noreply, put_flash(socket, :error, format_errors(changeset))}
-    end
-  end
-
-
-  @impl true
-  def handle_event("cancel", _params, socket) do
-    send(self(), {:configuration_cancelled, socket.assigns.element.id})
-    {:noreply, socket}
-  end
 
   @impl true
   def render(assigns) do
@@ -612,11 +609,16 @@ defmodule TswIoWeb.ConfigurationWizardComponent do
           </p>
         </div>
 
-        <div :if={@available_inputs != [] && !@detecting_button && is_nil(@selected_input)} class="bg-base-200 rounded-lg p-4">
+        <div
+          :if={@available_inputs != [] && !@detecting_button && is_nil(@selected_input)}
+          class="bg-base-200 rounded-lg p-4"
+        >
           <div class="flex items-center justify-between">
             <div>
               <p class="text-sm text-base-content/70">No button selected</p>
-              <p class="text-xs text-base-content/50">Press "Detect" and then press a button on your device</p>
+              <p class="text-xs text-base-content/50">
+                Press "Detect" and then press a button on your device
+              </p>
             </div>
             <button
               type="button"
@@ -647,13 +649,18 @@ defmodule TswIoWeb.ConfigurationWizardComponent do
           </button>
         </div>
 
-        <div :if={@selected_input != nil && !@detecting_button} class="bg-success/10 border border-success rounded-lg p-4">
+        <div
+          :if={@selected_input != nil && !@detecting_button}
+          class="bg-success/10 border border-success rounded-lg p-4"
+        >
           <div class="flex items-center justify-between">
             <div class="flex items-center gap-3">
               <.icon name="hero-check-circle" class="w-6 h-6 text-success" />
               <div>
                 <p class="font-medium">{@selected_input.name || "Button #{@selected_input.pin}"}</p>
-                <p class="text-xs text-base-content/60">{@selected_input.device.name} - Pin {@selected_input.pin}</p>
+                <p class="text-xs text-base-content/60">
+                  {@selected_input.device.name} - Pin {@selected_input.pin}
+                </p>
               </div>
             </div>
             <button

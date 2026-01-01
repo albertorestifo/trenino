@@ -65,7 +65,7 @@ defmodule TswIoWeb.LeverVisualization do
             is_active={idx == @current_notch_index}
             is_captured={notch_data.is_captured}
             width_percent={notch_data.width}
-            myself={@myself}
+            event_target={assigns[:event_target]}
           />
         </div>
 
@@ -111,31 +111,39 @@ defmodule TswIoWeb.LeverVisualization do
   attr :is_active, :boolean, default: false
   attr :is_captured, :boolean, default: false
   attr :width_percent, :float, required: true
-  attr :myself, :any, required: true
+  attr :event_target, :any, default: nil
 
   defp notch_marker(assigns) do
     ~H"""
     <button
       type="button"
-      phx-click="go_to_notch"
+      phx-click={@event_target && "go_to_notch"}
       phx-value-index={@index}
-      phx-target={@myself}
+      phx-target={@event_target}
       class={[
-        "w-full h-full transition-all cursor-pointer",
-        "hover:opacity-80 focus:outline-none focus:ring-2 focus:ring-primary/50 rounded"
+        "w-full h-full transition-all",
+        @event_target &&
+          "cursor-pointer hover:opacity-80 focus:outline-none focus:ring-2 focus:ring-primary/50 rounded",
+        !@event_target && "cursor-default"
       ]}
     >
-      <div :if={@notch.type == :gate} class={[
-        "mx-auto w-4 h-4 rounded-full transition-all",
-        marker_color(@is_active, @is_captured),
-        @is_active && "ring-4 ring-primary/30 scale-110"
-      ]} />
+      <div
+        :if={@notch.type == :gate}
+        class={[
+          "mx-auto w-4 h-4 rounded-full transition-all",
+          marker_color(@is_active, @is_captured),
+          @is_active && "ring-4 ring-primary/30 scale-110"
+        ]}
+      />
 
-      <div :if={@notch.type == :linear} class={[
-        "w-full h-2 rounded transition-all",
-        marker_color(@is_active, @is_captured),
-        @is_active && "ring-2 ring-primary/30 scale-y-125"
-      ]} />
+      <div
+        :if={@notch.type == :linear}
+        class={[
+          "w-full h-2 rounded transition-all",
+          marker_color(@is_active, @is_captured),
+          @is_active && "ring-2 ring-primary/30 scale-y-125"
+        ]}
+      />
     </button>
     """
   end

@@ -41,6 +41,9 @@ defmodule TswIo.Simulator.LeverAnalyzer do
   # Analysis thresholds
   @max_discrete_outputs 15
   @min_continuous_unique_outputs 20
+  # Threshold for determining if an output range represents a gate (single value)
+  # vs linear (range of values). Values rounded to 1 decimal place for comparison.
+  @gate_range_threshold 0.1
 
   defmodule Sample do
     @moduledoc "A single sample from the lever sweep"
@@ -358,7 +361,7 @@ defmodule TswIo.Simulator.LeverAnalyzer do
     # Sort snap zones by input position
     sorted_zones = Enum.sort_by(snap_zones, & &1.snap_to)
 
-    # Create linear zones between snap points
+    # Create zones between snap points, determining type based on output range
     sorted_zones
     |> Enum.chunk_every(2, 1, :discard)
     |> Enum.with_index()
@@ -372,15 +375,7 @@ defmodule TswIo.Simulator.LeverAnalyzer do
       outputs = Enum.map(zone_samples, & &1.output)
 
       if length(outputs) > 0 do
-        %{
-          type: :linear,
-          index: idx,
-          min_value: Enum.min(outputs),
-          max_value: Enum.max(outputs),
-          input_min: zone1.snap_to,
-          input_max: zone2.snap_to,
-          description: "Zone #{idx}"
-        }
+        build_notch(outputs, zone1.snap_to, zone2.snap_to, idx, "Zone #{idx}")
       else
         nil
       end
@@ -400,17 +395,7 @@ defmodule TswIo.Simulator.LeverAnalyzer do
         outputs = Enum.map(before_samples, & &1.output)
 
         if length(outputs) > 0 do
-          [
-            %{
-              type: :linear,
-              index: -1,
-              min_value: Enum.min(outputs),
-              max_value: Enum.max(outputs),
-              input_min: 0.0,
-              input_max: first_zone.snap_to,
-              description: "Before first zone"
-            }
-          ]
+          [build_notch(outputs, 0.0, first_zone.snap_to, -1, "Before first zone")]
         else
           []
         end
@@ -425,17 +410,7 @@ defmodule TswIo.Simulator.LeverAnalyzer do
         outputs = Enum.map(after_samples, & &1.output)
 
         if length(outputs) > 0 do
-          [
-            %{
-              type: :linear,
-              index: 999,
-              min_value: Enum.min(outputs),
-              max_value: Enum.max(outputs),
-              input_min: last_zone.snap_to,
-              input_max: 1.0,
-              description: "After last zone"
-            }
-          ]
+          [build_notch(outputs, last_zone.snap_to, 1.0, 999, "After last zone")]
         else
           []
         end
@@ -486,15 +461,7 @@ defmodule TswIo.Simulator.LeverAnalyzer do
           outputs = Enum.map(zone_samples, & &1.output)
 
           if length(outputs) > 0 do
-            %{
-              type: :linear,
-              index: idx,
-              min_value: Enum.min(outputs),
-              max_value: Enum.max(outputs),
-              input_min: start_input,
-              input_max: end_input,
-              description: "Zone #{idx}"
-            }
+            build_notch(outputs, start_input, end_input, idx, "Zone #{idx}")
           else
             nil
           end
@@ -506,5 +473,51 @@ defmodule TswIo.Simulator.LeverAnalyzer do
   defp is_integer_value?(value) do
     rounded = Float.round(value, 0)
     abs(value - rounded) < @output_integer_tolerance
+  end
+
+  # Determines if an output range represents a gate (single value) or linear (range).
+  # Rounds to 1 decimal place for comparison to handle floating-point precision issues.
+  defp determine_notch_type(min_value, max_value) do
+    rounded_min = Float.round(min_value, 1)
+    rounded_max = Float.round(max_value, 1)
+
+    if abs(rounded_max - rounded_min) < @gate_range_threshold do
+      :gate
+    else
+      :linear
+    end
+  end
+
+  # Builds a notch map with the appropriate type based on output range
+  defp build_notch(outputs, input_min, input_max, index, description) do
+    min_value = Enum.min(outputs)
+    max_value = Enum.max(outputs)
+    notch_type = determine_notch_type(min_value, max_value)
+
+    case notch_type do
+      :gate ->
+        # For gates, use the average value as the single "value"
+        avg_value = Float.round((min_value + max_value) / 2, 2)
+
+        %{
+          type: :gate,
+          index: index,
+          value: avg_value,
+          input_min: input_min,
+          input_max: input_max,
+          description: description
+        }
+
+      :linear ->
+        %{
+          type: :linear,
+          index: index,
+          min_value: min_value,
+          max_value: max_value,
+          input_min: input_min,
+          input_max: input_max,
+          description: description
+        }
+    end
   end
 end

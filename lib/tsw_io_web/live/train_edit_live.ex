@@ -443,19 +443,6 @@ defmodule TswIoWeb.TrainEditLive do
     {:noreply, socket}
   end
 
-  defp forward_mapping_state(socket, state) do
-    if socket.assigns.show_lever_setup_wizard do
-      send_update(TswIoWeb.LeverSetupWizard,
-        id: "lever-setup-wizard",
-        mapping_state_update: state
-      )
-
-      {:noreply, socket}
-    else
-      {:noreply, socket}
-    end
-  end
-
   # API Explorer component events - forward to appropriate wizard
   @impl true
   def handle_info({:api_explorer_select, field, path}, socket) do
@@ -578,7 +565,10 @@ defmodule TswIoWeb.TrainEditLive do
      |> assign(:show_lever_setup_wizard, false)
      |> assign(:lever_setup_element, nil)
      |> assign(:lever_setup_event, nil)
-     |> put_flash(:info, "Lever '#{get_element_name(elements, element_id)}' configured successfully")}
+     |> put_flash(
+       :info,
+       "Lever '#{get_element_name(elements, element_id)}' configured successfully"
+     )}
   end
 
   @impl true
@@ -588,6 +578,27 @@ defmodule TswIoWeb.TrainEditLive do
      |> assign(:show_lever_setup_wizard, false)
      |> assign(:lever_setup_element, nil)
      |> assign(:lever_setup_event, nil)}
+  end
+
+  @impl true
+  def handle_info({:run_lever_calibration, element_id, control_path, config_params}, socket) do
+    # Run lever calibration and send result back to wizard
+    client = socket.assigns.nav_simulator_status.client
+    element = socket.assigns.lever_setup_element
+
+    result =
+      if client && element && element.id == element_id do
+        run_lever_calibration(client, control_path, element, config_params)
+      else
+        {:error, :invalid_state}
+      end
+
+    send_update(TswIoWeb.LeverSetupWizard,
+      id: "lever-setup-wizard",
+      calibration_result: result
+    )
+
+    {:noreply, socket}
   end
 
   # Button detection for configuration wizard
@@ -657,6 +668,40 @@ defmodule TswIoWeb.TrainEditLive do
 
   # Private functions
 
+  defp forward_mapping_state(socket, state) do
+    if socket.assigns.show_lever_setup_wizard do
+      send_update(TswIoWeb.LeverSetupWizard,
+        id: "lever-setup-wizard",
+        mapping_state_update: state
+      )
+
+      {:noreply, socket}
+    else
+      {:noreply, socket}
+    end
+  end
+
+  defp run_lever_calibration(client, control_path, element, config_params) do
+    alias TswIo.Simulator.LeverAnalyzer
+    alias TswIo.Train
+
+    case LeverAnalyzer.analyze(client, control_path, restore_position: 0.5) do
+      {:ok, analysis_result} ->
+        if element.lever_config do
+          Train.update_lever_config_with_analysis(
+            element.lever_config,
+            config_params,
+            analysis_result
+          )
+        else
+          Train.create_lever_config_with_analysis(element.id, config_params, analysis_result)
+        end
+
+      {:error, _reason} = error ->
+        error
+    end
+  end
+
   defp open_config_wizard_for_element(socket, %Element{type: :lever} = element) do
     open_lever_config_wizard(socket, element.id)
   end
@@ -667,7 +712,9 @@ defmodule TswIoWeb.TrainEditLive do
 
   defp open_lever_config_wizard(socket, element_id) do
     case TrainContext.get_element(element_id,
-           preload: [lever_config: [:notches, input_binding: [input: [device: [], calibration: []]]]]
+           preload: [
+             lever_config: [:notches, input_binding: [input: [device: [], calibration: []]]]
+           ]
          ) do
       {:ok, element} ->
         {:noreply,
@@ -831,7 +878,6 @@ defmodule TswIoWeb.TrainEditLive do
       available_inputs={@available_button_inputs}
       explorer_event={@config_wizard_event}
     />
-
 
     <.live_component
       :if={@show_lever_setup_wizard and @nav_simulator_status.client != nil}

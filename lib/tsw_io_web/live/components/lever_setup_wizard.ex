@@ -27,16 +27,19 @@ defmodule TswIoWeb.LeverSetupWizard do
 
   use TswIoWeb, :live_component
 
-  require Logger
-
   alias TswIo.Hardware
-  alias TswIo.Simulator.Client
-  alias TswIo.Simulator.LeverAnalyzer
   alias TswIo.Train
   alias TswIo.Train.Calibration.NotchMappingSession
   alias TswIo.Train.Element
 
-  @steps [:select_input, :find_endpoint, :explain_calibration, :run_calibration, :map_notches, :test]
+  @steps [
+    :select_input,
+    :find_endpoint,
+    :explain_calibration,
+    :run_calibration,
+    :map_notches,
+    :test
+  ]
 
   @impl true
   def mount(socket) do
@@ -67,6 +70,11 @@ defmodule TswIoWeb.LeverSetupWizard do
   def update(%{mapping_state_update: state}, socket) do
     # Forward mapping state updates from parent
     {:ok, assign(socket, :mapping_state, state)}
+  end
+
+  def update(%{calibration_result: result}, socket) do
+    # Handle calibration result from parent
+    {:ok, apply_calibration_result(socket, result)}
   end
 
   def update(assigns, socket) do
@@ -192,7 +200,8 @@ defmodule TswIoWeb.LeverSetupWizard do
     socket =
       case next_step do
         :run_calibration ->
-          start_calibration(socket)
+          # Set running state and request parent to run calibration
+          request_calibration(socket)
 
         :map_notches ->
           start_notch_mapping(socket)
@@ -339,9 +348,8 @@ defmodule TswIoWeb.LeverSetupWizard do
     Enum.at(@steps, max(current_index - 1, 0), current)
   end
 
-  defp start_calibration(socket) do
+  defp request_calibration(socket) do
     element = socket.assigns.element
-    client = socket.assigns.client
     endpoints = socket.assigns.detected_endpoints
 
     # Get the control path from detected endpoints
@@ -356,54 +364,26 @@ defmodule TswIoWeb.LeverSetupWizard do
       notch_index_endpoint: endpoints[:notch_index_endpoint]
     }
 
-    # Run calibration synchronously (shows spinner during analysis)
-    result = run_lever_analysis_and_save(client, control_path, element, config_params)
+    # Send message to parent to run calibration asynchronously
+    send(self(), {:run_lever_calibration, element.id, control_path, config_params})
 
-    case result do
-      {:ok, updated_config} ->
-        config_with_notches = TswIo.Repo.preload(updated_config, :notches)
-
-        socket
-        |> assign(:calibration_status, :complete)
-        |> assign(:notches, config_with_notches.notches)
-        |> assign(:lever_type, updated_config.lever_type)
-
-      {:error, reason} ->
-        socket
-        |> assign(:calibration_status, :error)
-        |> assign(:calibration_error, format_calibration_error(reason))
-    end
+    # Set running state immediately so UI shows loading spinner
+    assign(socket, :calibration_status, :running)
   end
 
-  defp run_lever_analysis_and_save(nil, _control_path, _element, _config_params) do
-    {:error, :no_client}
+  defp apply_calibration_result(socket, {:ok, updated_config}) do
+    config_with_notches = TswIo.Repo.preload(updated_config, :notches)
+
+    socket
+    |> assign(:calibration_status, :complete)
+    |> assign(:notches, config_with_notches.notches)
+    |> assign(:lever_type, updated_config.lever_type)
   end
 
-  defp run_lever_analysis_and_save(_client, nil, _element, _config_params) do
-    {:error, :no_control_path}
-  end
-
-  defp run_lever_analysis_and_save(%Client{} = client, control_path, element, config_params) do
-    Logger.info("[LeverSetupWizard] Running lever analysis on #{control_path}...")
-
-    case LeverAnalyzer.analyze(client, control_path, restore_position: 0.5) do
-      {:ok, analysis_result} ->
-        Logger.info(
-          "[LeverSetupWizard] Analysis complete: type=#{analysis_result.lever_type}, " <>
-            "notches=#{length(analysis_result.suggested_notches)}"
-        )
-
-        # Save with analysis results
-        if element.lever_config do
-          Train.update_lever_config_with_analysis(element.lever_config, config_params, analysis_result)
-        else
-          Train.create_lever_config_with_analysis(element.id, config_params, analysis_result)
-        end
-
-      {:error, reason} = error ->
-        Logger.warning("[LeverSetupWizard] Lever analysis failed: #{inspect(reason)}")
-        error
-    end
+  defp apply_calibration_result(socket, {:error, reason}) do
+    socket
+    |> assign(:calibration_status, :error)
+    |> assign(:calibration_error, format_calibration_error(reason))
   end
 
   # Derive the control path from detected endpoints or value_endpoint
@@ -450,6 +430,8 @@ defmodule TswIoWeb.LeverSetupWizard do
 
             case Train.start_notch_mapping(opts) do
               {:ok, pid} ->
+                # Start the mapping process (moves from :ready to first notch)
+                NotchMappingSession.start_mapping(pid)
                 state = NotchMappingSession.get_public_state(pid)
 
                 socket
@@ -505,6 +487,8 @@ defmodule TswIoWeb.LeverSetupWizard do
 
   defp find_port_for_device(_), do: nil
 
+  defp steps, do: @steps
+
   defp step_number(step) do
     Enum.find_index(@steps, &(&1 == step)) + 1
   end
@@ -516,10 +500,10 @@ defmodule TswIoWeb.LeverSetupWizard do
   defp step_label(:map_notches), do: "Map Positions"
   defp step_label(:test), do: "Test"
 
-  defp can_proceed_from?(:select_input, socket), do: socket.assigns.selected_input_id != nil
+  defp can_proceed_from?(:select_input, assigns), do: assigns.selected_input_id != nil
 
-  defp can_proceed_from?(:find_endpoint, socket) do
-    endpoints = socket.assigns.detected_endpoints
+  defp can_proceed_from?(:find_endpoint, assigns) do
+    endpoints = assigns.detected_endpoints
 
     endpoints != nil and
       endpoints[:min_endpoint] != nil and
@@ -527,15 +511,12 @@ defmodule TswIoWeb.LeverSetupWizard do
       endpoints[:value_endpoint] != nil
   end
 
-  defp can_proceed_from?(:explain_calibration, _socket), do: true
-  defp can_proceed_from?(:run_calibration, socket), do: socket.assigns.calibration_status == :complete
+  defp can_proceed_from?(:run_calibration, assigns), do: assigns.calibration_status == :complete
 
-  defp can_proceed_from?(:map_notches, socket) do
-    state = socket.assigns.mapping_state
+  defp can_proceed_from?(:map_notches, assigns) do
+    state = assigns.mapping_state
     state != nil and state[:all_captured] == true
   end
-
-  defp can_proceed_from?(:test, _socket), do: true
 
   # Render
 
@@ -548,6 +529,7 @@ defmodule TswIoWeb.LeverSetupWizard do
         <.wizard_header
           element={@element}
           current_step={@current_step}
+          steps={steps()}
           myself={@myself}
         />
 
@@ -566,6 +548,7 @@ defmodule TswIoWeb.LeverSetupWizard do
   # Header with step indicators
   attr :element, Element, required: true
   attr :current_step, :atom, required: true
+  attr :steps, :list, required: true
   attr :myself, :any, required: true
 
   defp wizard_header(assigns) do
@@ -620,7 +603,7 @@ defmodule TswIoWeb.LeverSetupWizard do
           "w-6 h-6 rounded-full flex items-center justify-center text-xs font-medium",
           @is_active && "bg-primary text-primary-content",
           @is_completed && "bg-success text-success-content",
-          not @is_active and not @is_completed && "bg-base-300 text-base-content/50"
+          (not @is_active and not @is_completed) && "bg-base-300 text-base-content/50"
         ]}>
           <.icon :if={@is_completed} name="hero-check" class="w-4 h-4" />
           <span :if={not @is_completed}>{@step_num}</span>
@@ -628,7 +611,7 @@ defmodule TswIoWeb.LeverSetupWizard do
         <span class={[
           "text-xs whitespace-nowrap",
           @is_active && "font-medium",
-          not @is_active and not @is_completed && "text-base-content/50"
+          (not @is_active and not @is_completed) && "text-base-content/50"
         ]}>
           {@label}
         </span>
@@ -802,6 +785,7 @@ defmodule TswIoWeb.LeverSetupWizard do
           field={:endpoint}
           client={@client}
           mode={:lever}
+          embedded={true}
         />
       </div>
 
@@ -815,7 +799,8 @@ defmodule TswIoWeb.LeverSetupWizard do
             <span class="text-base-content/60">Max:</span> {@detected_endpoints[:max_endpoint] || "—"}
           </div>
           <div class="truncate" title={@detected_endpoints[:value_endpoint]}>
-            <span class="text-base-content/60">Value:</span> {@detected_endpoints[:value_endpoint] || "—"}
+            <span class="text-base-content/60">Value:</span> {@detected_endpoints[:value_endpoint] ||
+              "—"}
           </div>
         </div>
       </div>
@@ -1031,6 +1016,7 @@ defmodule TswIoWeb.LeverSetupWizard do
           current_value={@mapping_state.current_value}
           total_travel={@mapping_state.total_travel}
           current_notch_index={@mapping_state.current_notch_index}
+          event_target={@myself}
         />
 
         <%!-- Current notch mapping panel --%>
@@ -1082,7 +1068,9 @@ defmodule TswIoWeb.LeverSetupWizard do
                 @mapping_state.sample_count < 10 && "text-base-content/50"
               ]}>
                 <.icon
-                  name={if @mapping_state.sample_count >= 10, do: "hero-check-circle", else: "hero-clock"}
+                  name={
+                    if @mapping_state.sample_count >= 10, do: "hero-check-circle", else: "hero-clock"
+                  }
                   class="w-4 h-4"
                 />
                 {@mapping_state.sample_count}/10 samples
@@ -1174,7 +1162,8 @@ defmodule TswIoWeb.LeverSetupWizard do
         </div>
 
         <div class="text-sm text-base-content/60">
-          Current position: <span class="font-mono font-bold text-primary">
+          Current position:
+          <span class="font-mono font-bold text-primary">
             {format_calibrated(@mapping_state && @mapping_state.current_value)}
           </span>
         </div>
