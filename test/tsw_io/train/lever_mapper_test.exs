@@ -3,9 +3,9 @@ defmodule TswIo.Train.LeverMapperTest do
 
   alias TswIo.Train.{LeverConfig, LeverMapper, Notch}
 
-  describe "map_input/2 with positive simulator values" do
+  describe "map_input/2 with full range linear notch" do
     setup do
-      # Create a simple throttle with one linear notch spanning 0.0-1.0
+      # Simple throttle: hardware 0-1 maps to simulator InputValue 0-1
       lever_config = %LeverConfig{
         id: 1,
         notches: [
@@ -15,7 +15,9 @@ defmodule TswIo.Train.LeverMapperTest do
             min_value: 0.0,
             max_value: 1.0,
             input_min: 0.0,
-            input_max: 1.0
+            input_max: 1.0,
+            sim_input_min: 0.0,
+            sim_input_max: 1.0
           }
         ]
       }
@@ -23,12 +25,11 @@ defmodule TswIo.Train.LeverMapperTest do
       %{lever_config: lever_config}
     end
 
-    test "maps minimum input to minimum simulator value", %{lever_config: config} do
-      assert {:ok, value} = LeverMapper.map_input(config, 0.0)
-      assert value == 0.0
+    test "maps minimum input to minimum simulator InputValue", %{lever_config: config} do
+      assert {:ok, 0.0} = LeverMapper.map_input(config, 0.0)
     end
 
-    test "maps maximum input to maximum simulator value", %{lever_config: config} do
+    test "maps maximum input to maximum simulator InputValue", %{lever_config: config} do
       assert {:ok, 1.0} = LeverMapper.map_input(config, 1.0)
     end
 
@@ -39,19 +40,21 @@ defmodule TswIo.Train.LeverMapperTest do
     end
   end
 
-  describe "map_input/2 with negative simulator values (reverser)" do
+  describe "map_input/2 with scaled simulator input range" do
     setup do
-      # Reverser: physical lever at 0.0 = -1.0, at 1.0 = +1.0
+      # Hardware 0-1 maps to simulator InputValue 0.2-0.8
       lever_config = %LeverConfig{
         id: 2,
         notches: [
           %Notch{
             index: 0,
             type: :linear,
-            min_value: -1.0,
+            min_value: 0.0,
             max_value: 1.0,
             input_min: 0.0,
-            input_max: 1.0
+            input_max: 1.0,
+            sim_input_min: 0.2,
+            sim_input_max: 0.8
           }
         ]
       }
@@ -59,84 +62,69 @@ defmodule TswIo.Train.LeverMapperTest do
       %{lever_config: lever_config}
     end
 
-    test "maps minimum input to negative simulator value", %{lever_config: config} do
-      assert {:ok, -1.0} = LeverMapper.map_input(config, 0.0)
+    test "maps minimum input to sim_input_min", %{lever_config: config} do
+      assert {:ok, 0.2} = LeverMapper.map_input(config, 0.0)
     end
 
-    test "maps maximum input to positive simulator value", %{lever_config: config} do
-      assert {:ok, 1.0} = LeverMapper.map_input(config, 1.0)
+    test "maps maximum input to sim_input_max", %{lever_config: config} do
+      assert {:ok, 0.8} = LeverMapper.map_input(config, 1.0)
     end
 
-    test "maps middle input to neutral (0.0)", %{lever_config: config} do
-      assert {:ok, value} = LeverMapper.map_input(config, 0.5)
-      assert value == 0.0
-    end
-
-    test "interpolates between negative and positive", %{lever_config: config} do
-      # 25% of travel: -1.0 + (0.25 * 2.0) = -0.5
-      assert {:ok, -0.5} = LeverMapper.map_input(config, 0.25)
-
-      # 75% of travel: -1.0 + (0.75 * 2.0) = 0.5
-      assert {:ok, 0.5} = LeverMapper.map_input(config, 0.75)
+    test "interpolates within simulator input range", %{lever_config: config} do
+      # 50% of hardware = 0.2 + 0.5 * (0.8 - 0.2) = 0.5
+      assert {:ok, 0.5} = LeverMapper.map_input(config, 0.5)
+      # 25% of hardware = 0.2 + 0.25 * 0.6 = 0.35
+      assert {:ok, 0.35} = LeverMapper.map_input(config, 0.25)
     end
   end
 
-  describe "map_input/2 with all-negative simulator values (dynamic brake)" do
+  describe "map_input/2 with MasterController-like notches" do
     setup do
-      # Dynamic brake: -0.45 (full) to 0.0 (off)
+      # Simulating MasterController: Gate - Linear - Gate - Linear
       lever_config = %LeverConfig{
         id: 3,
         notches: [
+          # Emergency brake gate at position 0-5%
           %Notch{
             index: 0,
-            type: :linear,
-            min_value: -0.45,
-            max_value: 0.0,
+            type: :gate,
+            value: -11.0,
             input_min: 0.0,
-            input_max: 1.0
-          }
-        ]
-      }
-
-      %{lever_config: lever_config}
-    end
-
-    test "maps minimum input to most negative value", %{lever_config: config} do
-      assert {:ok, -0.45} = LeverMapper.map_input(config, 0.0)
-    end
-
-    test "maps maximum input to zero", %{lever_config: config} do
-      assert {:ok, value} = LeverMapper.map_input(config, 1.0)
-      assert value == 0.0
-    end
-
-    test "interpolates in negative range", %{lever_config: config} do
-      # 50% of travel: -0.45 + (0.5 * 0.45) = -0.225 -> rounds to -0.23
-      assert {:ok, -0.23} = LeverMapper.map_input(config, 0.5)
-    end
-  end
-
-  describe "map_input/2 with multiple notches" do
-    setup do
-      # Throttle with idle notch (0.0-0.25) and power notch (0.25-1.0)
-      lever_config = %LeverConfig{
-        id: 4,
-        notches: [
-          %Notch{
-            index: 0,
-            type: :linear,
-            min_value: 0.0,
-            max_value: 0.3,
-            input_min: 0.0,
-            input_max: 0.25
+            input_max: 0.05,
+            sim_input_min: 0.0,
+            sim_input_max: 0.04
           },
+          # Braking linear zone 5%-45%
           %Notch{
             index: 1,
             type: :linear,
-            min_value: 0.3,
-            max_value: 1.0,
-            input_min: 0.25,
-            input_max: 1.0
+            min_value: -10.0,
+            max_value: -0.91,
+            input_min: 0.05,
+            input_max: 0.45,
+            sim_input_min: 0.05,
+            sim_input_max: 0.44
+          },
+          # Neutral gate at 45%-55%
+          %Notch{
+            index: 2,
+            type: :gate,
+            value: 0.0,
+            input_min: 0.45,
+            input_max: 0.55,
+            sim_input_min: 0.49,
+            sim_input_max: 0.51
+          },
+          # Power linear zone 55%-100%
+          %Notch{
+            index: 3,
+            type: :linear,
+            min_value: 1.0,
+            max_value: 10.0,
+            input_min: 0.55,
+            input_max: 1.0,
+            sim_input_min: 0.56,
+            sim_input_max: 1.0
           }
         ]
       }
@@ -144,36 +132,40 @@ defmodule TswIo.Train.LeverMapperTest do
       %{lever_config: lever_config}
     end
 
-    test "maps values in first notch range", %{lever_config: config} do
-      # At input 0.0, should be at min of first notch
-      assert {:ok, value} = LeverMapper.map_input(config, 0.0)
-      assert value == 0.0
-
-      # At input 0.125 (halfway through first notch), should be 0.15
-      # Position within notch: (0.125 - 0.0) / (0.25 - 0.0) = 0.5
-      # Value: 0.0 + (0.5 * 0.3) = 0.15
-      assert {:ok, 0.15} = LeverMapper.map_input(config, 0.125)
+    test "maps emergency gate to center of sim_input range", %{lever_config: config} do
+      # Center of 0.0-0.04 = 0.02
+      assert {:ok, 0.02} = LeverMapper.map_input(config, 0.0)
+      assert {:ok, 0.02} = LeverMapper.map_input(config, 0.02)
     end
 
-    test "maps values in second notch range", %{lever_config: config} do
-      # At input 0.25, should be at min of second notch
-      # Note: Boundary value goes to second notch since first is [0.0, 0.25)
-      assert {:ok, 0.3} = LeverMapper.map_input(config, 0.25)
+    test "maps braking zone with interpolation", %{lever_config: config} do
+      # At input 0.05 (start of braking), should be at sim_input_min 0.05
+      assert {:ok, 0.05} = LeverMapper.map_input(config, 0.05)
 
-      # At input 0.625 (halfway through second notch)
-      # Position: (0.625 - 0.25) / (1.0 - 0.25) = 0.5
-      # Value: 0.3 + (0.5 * 0.7) = 0.65
-      assert {:ok, 0.65} = LeverMapper.map_input(config, 0.625)
+      # At input 0.25 (halfway through braking)
+      # Position: (0.25 - 0.05) / (0.45 - 0.05) = 0.5
+      # Sim: 0.05 + 0.5 * (0.44 - 0.05) = 0.05 + 0.195 = 0.245
+      {:ok, value} = LeverMapper.map_input(config, 0.25)
+      assert_in_delta value, 0.25, 0.02
     end
 
-    test "maps maximum value to final notch max", %{lever_config: config} do
+    test "maps neutral gate to center of sim_input range", %{lever_config: config} do
+      # Center of 0.49-0.51 = 0.5
+      assert {:ok, 0.5} = LeverMapper.map_input(config, 0.5)
+    end
+
+    test "maps power zone with interpolation", %{lever_config: config} do
+      # At input 0.55 (start of power), should be at sim_input_min 0.56
+      assert {:ok, 0.56} = LeverMapper.map_input(config, 0.55)
+
+      # At input 1.0 (max power), should be at sim_input_max 1.0
       assert {:ok, 1.0} = LeverMapper.map_input(config, 1.0)
     end
   end
 
   describe "map_input/2 with gate notches" do
     setup do
-      # Reverser with three gate positions
+      # Discrete reverser with three gate positions
       lever_config = %LeverConfig{
         id: 5,
         notches: [
@@ -182,21 +174,27 @@ defmodule TswIo.Train.LeverMapperTest do
             type: :gate,
             value: -1.0,
             input_min: 0.0,
-            input_max: 0.33
+            input_max: 0.33,
+            sim_input_min: 0.0,
+            sim_input_max: 0.1
           },
           %Notch{
             index: 1,
             type: :gate,
             value: 0.0,
             input_min: 0.33,
-            input_max: 0.67
+            input_max: 0.67,
+            sim_input_min: 0.45,
+            sim_input_max: 0.55
           },
           %Notch{
             index: 2,
             type: :gate,
             value: 1.0,
             input_min: 0.67,
-            input_max: 1.0
+            input_max: 1.0,
+            sim_input_min: 0.9,
+            sim_input_max: 1.0
           }
         ]
       }
@@ -204,24 +202,19 @@ defmodule TswIo.Train.LeverMapperTest do
       %{lever_config: lever_config}
     end
 
-    test "returns fixed value for gate notches", %{lever_config: config} do
-      # First notch range
-      assert {:ok, -1.0} = LeverMapper.map_input(config, 0.0)
-      assert {:ok, -1.0} = LeverMapper.map_input(config, 0.16)
-      assert {:ok, -1.0} = LeverMapper.map_input(config, 0.32)
+    test "returns center of sim_input range for gate notches", %{lever_config: config} do
+      # First gate: center of 0.0-0.1 = 0.05
+      assert {:ok, 0.05} = LeverMapper.map_input(config, 0.0)
+      assert {:ok, 0.05} = LeverMapper.map_input(config, 0.16)
+      assert {:ok, 0.05} = LeverMapper.map_input(config, 0.32)
 
-      # Second notch range
-      assert {:ok, value1} = LeverMapper.map_input(config, 0.33)
-      assert value1 == 0.0
-      assert {:ok, value2} = LeverMapper.map_input(config, 0.5)
-      assert value2 == 0.0
-      assert {:ok, value3} = LeverMapper.map_input(config, 0.66)
-      assert value3 == 0.0
+      # Second gate: center of 0.45-0.55 = 0.5
+      assert {:ok, 0.5} = LeverMapper.map_input(config, 0.33)
+      assert {:ok, 0.5} = LeverMapper.map_input(config, 0.5)
 
-      # Third notch range
-      assert {:ok, 1.0} = LeverMapper.map_input(config, 0.67)
-      assert {:ok, 1.0} = LeverMapper.map_input(config, 0.84)
-      assert {:ok, 1.0} = LeverMapper.map_input(config, 1.0)
+      # Third gate: center of 0.9-1.0 = 0.95
+      assert {:ok, 0.95} = LeverMapper.map_input(config, 0.67)
+      assert {:ok, 0.95} = LeverMapper.map_input(config, 1.0)
     end
   end
 
@@ -237,7 +230,9 @@ defmodule TswIo.Train.LeverMapperTest do
             min_value: 0.0,
             max_value: 1.0,
             input_min: 0.2,
-            input_max: 0.8
+            input_max: 0.8,
+            sim_input_min: 0.0,
+            sim_input_max: 1.0
           }
         ]
       }
@@ -251,19 +246,15 @@ defmodule TswIo.Train.LeverMapperTest do
     end
 
     test "maps values within notch range", %{lever_config: config} do
-      assert {:ok, value1} = LeverMapper.map_input(config, 0.2)
-      assert value1 == 0.0
+      assert {:ok, 0.0} = LeverMapper.map_input(config, 0.2)
       assert {:ok, 0.5} = LeverMapper.map_input(config, 0.5)
-      # At 0.79 (near max), should be almost 1.0
-      # Position: (0.79 - 0.2) / (0.8 - 0.2) = 0.59 / 0.6 = 0.983...
-      {:ok, value2} = LeverMapper.map_input(config, 0.79)
-      assert value2 > 0.9
+      # At 0.79: position = (0.79-0.2)/(0.8-0.2) = 0.983, sim = 0.98
+      {:ok, value} = LeverMapper.map_input(config, 0.79)
+      assert value > 0.9
     end
 
     test "returns error for input at or after notch max", %{lever_config: config} do
-      # Notch range is [0.2, 0.8) - exclusive on upper bound unless it's 1.0
       assert {:error, :no_notch} = LeverMapper.map_input(config, 0.8)
-      assert {:error, :no_notch} = LeverMapper.map_input(config, 0.81)
       assert {:error, :no_notch} = LeverMapper.map_input(config, 1.0)
     end
   end
@@ -280,7 +271,9 @@ defmodule TswIo.Train.LeverMapperTest do
             min_value: 0.0,
             max_value: 1.0,
             input_min: nil,
-            input_max: nil
+            input_max: nil,
+            sim_input_min: 0.0,
+            sim_input_max: 1.0
           }
         ]
       }
@@ -288,15 +281,16 @@ defmodule TswIo.Train.LeverMapperTest do
       %{lever_config: lever_config}
     end
 
-    test "returns error when no notches have input mapping", %{lever_config: config} do
+    test "returns error when no notches have hardware input mapping", %{lever_config: config} do
       assert {:error, :no_notch} = LeverMapper.map_input(config, 0.0)
       assert {:error, :no_notch} = LeverMapper.map_input(config, 0.5)
       assert {:error, :no_notch} = LeverMapper.map_input(config, 1.0)
     end
   end
 
-  describe "map_input/2 edge cases" do
+  describe "map_input/2 with no sim_input_range" do
     setup do
+      # Notch has hardware input range but no sim_input range
       lever_config = %LeverConfig{
         id: 8,
         notches: [
@@ -306,7 +300,35 @@ defmodule TswIo.Train.LeverMapperTest do
             min_value: 0.0,
             max_value: 1.0,
             input_min: 0.0,
-            input_max: 1.0
+            input_max: 1.0,
+            sim_input_min: nil,
+            sim_input_max: nil
+          }
+        ]
+      }
+
+      %{lever_config: lever_config}
+    end
+
+    test "returns error when no sim_input_range", %{lever_config: config} do
+      assert {:error, :no_sim_input_range} = LeverMapper.map_input(config, 0.5)
+    end
+  end
+
+  describe "map_input/2 edge cases" do
+    setup do
+      lever_config = %LeverConfig{
+        id: 9,
+        notches: [
+          %Notch{
+            index: 0,
+            type: :linear,
+            min_value: 0.0,
+            max_value: 1.0,
+            input_min: 0.0,
+            input_max: 1.0,
+            sim_input_min: 0.0,
+            sim_input_max: 1.0
           }
         ]
       }
@@ -315,14 +337,11 @@ defmodule TswIo.Train.LeverMapperTest do
     end
 
     test "clamps out-of-range input values", %{lever_config: config} do
-      # Values outside 0.0-1.0 get clamped but return :no_notch
-      # This is expected behavior - hardware should never send these
       assert {:error, :no_notch} = LeverMapper.map_input(config, -0.5)
       assert {:error, :no_notch} = LeverMapper.map_input(config, 1.5)
     end
 
     test "handles very small differences in input values", %{lever_config: config} do
-      # Precision testing
       assert {:ok, 0.01} = LeverMapper.map_input(config, 0.01)
       assert {:ok, 0.99} = LeverMapper.map_input(config, 0.99)
     end
@@ -346,7 +365,6 @@ defmodule TswIo.Train.LeverMapperTest do
         %Notch{input_min: 0.0, input_max: 1.0}
       ]
 
-      # Exact 1.0 should match
       assert %Notch{} = LeverMapper.find_notch(notches, 1.0)
     end
 
@@ -370,59 +388,62 @@ defmodule TswIo.Train.LeverMapperTest do
     end
   end
 
-  describe "calculate_value/2" do
-    test "returns fixed value for gate notch" do
-      notch = %Notch{type: :gate, value: 0.5}
+  describe "calculate_sim_input/2" do
+    test "returns center of sim_input range for gate notch" do
+      notch = %Notch{type: :gate, value: 0.5, sim_input_min: 0.4, sim_input_max: 0.6}
 
-      assert {:ok, 0.5} = LeverMapper.calculate_value(notch, 0.0)
-      assert {:ok, 0.5} = LeverMapper.calculate_value(notch, 1.0)
+      # Center of 0.4-0.6 = 0.5
+      assert {:ok, 0.5} = LeverMapper.calculate_sim_input(notch, 0.0)
+      assert {:ok, 0.5} = LeverMapper.calculate_sim_input(notch, 1.0)
     end
 
-    test "interpolates value for linear notch" do
+    test "interpolates sim_input for linear notch" do
       notch = %Notch{
         type: :linear,
         min_value: 0.0,
         max_value: 1.0,
         input_min: 0.0,
-        input_max: 1.0
+        input_max: 1.0,
+        sim_input_min: 0.2,
+        sim_input_max: 0.8
       }
 
-      assert {:ok, value} = LeverMapper.calculate_value(notch, 0.0)
-      assert value == 0.0
-      assert {:ok, 0.5} = LeverMapper.calculate_value(notch, 0.5)
-      assert {:ok, 1.0} = LeverMapper.calculate_value(notch, 1.0)
+      assert {:ok, 0.2} = LeverMapper.calculate_sim_input(notch, 0.0)
+      assert {:ok, 0.5} = LeverMapper.calculate_sim_input(notch, 0.5)
+      assert {:ok, 0.8} = LeverMapper.calculate_sim_input(notch, 1.0)
     end
 
-    test "interpolates with negative values" do
+    test "returns error when notch lacks sim_input fields" do
+      # Gate notch without sim_input_min
+      notch = %Notch{type: :gate, value: 0.5, sim_input_min: nil, sim_input_max: 0.6}
+      assert {:error, :no_sim_input_range} = LeverMapper.calculate_sim_input(notch, 0.5)
+
+      # Linear notch without sim_input_max
       notch = %Notch{
         type: :linear,
-        min_value: -1.0,
+        min_value: 0.0,
         max_value: 1.0,
         input_min: 0.0,
-        input_max: 1.0
+        input_max: 1.0,
+        sim_input_min: 0.0,
+        sim_input_max: nil
       }
 
-      assert {:ok, -1.0} = LeverMapper.calculate_value(notch, 0.0)
-      assert {:ok, value} = LeverMapper.calculate_value(notch, 0.5)
-      assert value == 0.0
-      assert {:ok, 1.0} = LeverMapper.calculate_value(notch, 1.0)
+      assert {:error, :no_sim_input_range} = LeverMapper.calculate_sim_input(notch, 0.5)
     end
 
-    test "returns error when notch lacks required fields" do
-      # Gate notch without value
-      notch = %Notch{type: :gate, value: nil}
-      assert {:error, :unmapped_notch} = LeverMapper.calculate_value(notch, 0.5)
-
-      # Linear notch without min_value
+    test "returns error when notch lacks input_min/max fields" do
       notch = %Notch{
         type: :linear,
-        min_value: nil,
+        min_value: 0.0,
         max_value: 1.0,
-        input_min: 0.0,
-        input_max: 1.0
+        input_min: nil,
+        input_max: 1.0,
+        sim_input_min: 0.0,
+        sim_input_max: 1.0
       }
 
-      assert {:error, :unmapped_notch} = LeverMapper.calculate_value(notch, 0.5)
+      assert {:error, :unmapped_notch} = LeverMapper.calculate_sim_input(notch, 0.5)
     end
   end
 end

@@ -1,9 +1,9 @@
 defmodule TswIo.Train.LeverMapper do
   @moduledoc """
-  Maps calibrated hardware input values to simulator lever values.
+  Maps calibrated hardware input values to simulator lever InputValue.
 
-  This module handles the conversion from normalized input values (0.0-1.0)
-  to appropriate simulator values based on the lever's notch configuration.
+  This module handles the conversion from normalized hardware input values (0.0-1.0)
+  to the simulator's InputValue (also 0.0-1.0) based on the lever's notch configuration.
 
   ## Data Flow
 
@@ -13,47 +13,39 @@ defmodule TswIo.Train.LeverMapper do
   2. **Calibration**: `Hardware.Calibration.Calculator.normalize/2` converts to
      calibrated integer (0 to total_travel, e.g., 0-800)
   3. **Normalization**: `LeverController` divides by total_travel to get 0.0-1.0 float
-  4. **Mapping** (this module): Converts 0.0-1.0 to simulator value using notch configuration
-  5. **Simulator**: Final value sent to simulator (can be any float, including negative)
+  4. **Mapping** (this module): Converts hardware 0.0-1.0 to simulator InputValue 0.0-1.0
+  5. **Simulator**: InputValue is sent to simulator, which produces output values
+
+  ## Notch Fields
+
+  Each notch has two input ranges:
+  - `input_min/input_max`: Hardware position range (where physical lever is)
+  - `sim_input_min/sim_input_max`: Simulator InputValue range (what to send)
 
   ## Mapping Algorithm
 
-  1. Receive normalized input value (0.0-1.0) representing physical lever position
-  2. Find matching notch based on input_min/input_max ranges
-  3. Convert to simulator value:
-     - **Gate notch**: Return the fixed `value` (e.g., -1.0, 0.0, 1.0 for reverser)
-     - **Linear notch**: Interpolate between `min_value` and `max_value`
+  1. Receive normalized hardware input value (0.0-1.0)
+  2. Find matching notch based on input_min/input_max (hardware position)
+  3. Calculate position within the notch's hardware range
+  4. Map to simulator InputValue using sim_input_min/sim_input_max:
+     - **Gate notch**: Return center of sim_input range
+     - **Linear notch**: Interpolate within sim_input range
 
-  ## Example: Reverser Configuration
+  ## Example: MasterController Braking
 
-  Physical lever position (normalized 0.0-1.0) to simulator value (-1.0 to 1.0):
+      %Notch{
+        type: :linear,
+        input_min: 0.1,        # Hardware: 10% of lever travel
+        input_max: 0.4,        # Hardware: 40% of lever travel
+        sim_input_min: 0.05,   # Simulator: sends InputValue 0.05
+        sim_input_max: 0.45,   # Simulator: sends InputValue 0.45
+        min_value: -10.0,      # Output: full braking (informational)
+        max_value: -0.91       # Output: light braking (informational)
+      }
 
-      notches = [
-        %Notch{
-          type: :linear,
-          min_value: -1.0,   # Simulator: full reverse
-          max_value: 1.0,    # Simulator: full forward
-          input_min: 0.0,    # Physical: lever all the way back
-          input_max: 1.0     # Physical: lever all the way forward
-        }
-      ]
-
-  When physical lever is at 25% position (input 0.25):
-  - Position within notch: (0.25 - 0.0) / (1.0 - 0.0) = 0.25
-  - Simulator value: -1.0 + (0.25 * 2.0) = -0.5
-
-  ## Interactive Calibration Workflow
-
-  When binding a physical input to a lever via the UI:
-
-  1. User moves physical lever to desired position for notch boundary
-  2. System samples current normalized input value (0.0-1.0)
-  3. User assigns this position as `input_min` or `input_max` for the notch
-  4. Repeat for all notch boundaries
-  5. System validates that notches cover the full 0.0-1.0 range (or partial range with dead zones)
-
-  The normalization abstraction (0.0-1.0) makes configurations portable across
-  different hardware inputs with varying physical characteristics.
+  When physical lever is at 25% (input 0.25):
+  - Position within notch: (0.25 - 0.1) / (0.4 - 0.1) = 0.5
+  - Simulator InputValue: 0.05 + (0.5 * (0.45 - 0.05)) = 0.25
   """
 
   alias TswIo.Train.{LeverConfig, Notch}
@@ -62,40 +54,42 @@ defmodule TswIo.Train.LeverMapper do
           {:ok, float()}
           | {:error, :no_notch}
           | {:error, :unmapped_notch}
+          | {:error, :no_sim_input_range}
 
   @doc """
-  Map a normalized input value to a simulator value for a lever.
+  Map a normalized hardware input value to a simulator InputValue.
 
-  Takes a calibrated input value (0.0-1.0) and returns the appropriate
-  simulator value based on the lever's notch configuration.
+  Takes a calibrated hardware input value (0.0-1.0) and returns the appropriate
+  simulator InputValue (0.0-1.0) based on the lever's notch configuration.
 
   ## Parameters
 
     * `lever_config` - The lever config with preloaded notches
-    * `input_value` - Normalized input value from 0.0 to 1.0
+    * `input_value` - Normalized hardware input value from 0.0 to 1.0
 
   ## Returns
 
-    * `{:ok, value}` - The simulator value to send
-    * `{:error, :no_notch}` - No notch matches the input value
-    * `{:error, :unmapped_notch}` - Notch found but has no input range mapping
+    * `{:ok, sim_input}` - The simulator InputValue to send (0.0-1.0)
+    * `{:error, :no_notch}` - No notch matches the hardware input value
+    * `{:error, :unmapped_notch}` - Notch found but has no hardware input range
+    * `{:error, :no_sim_input_range}` - Notch has no simulator input range
 
   ## Examples
 
-      iex> LeverMapper.map_input(lever_config, 0.5)
-      {:ok, 0.75}
+      iex> LeverMapper.map_input(lever_config, 0.25)
+      {:ok, 0.25}
 
   """
   @spec map_input(LeverConfig.t(), float()) :: map_result()
   def map_input(%LeverConfig{notches: notches}, input_value)
       when is_float(input_value) and input_value >= 0.0 and input_value <= 1.0 do
-    # Find the notch that contains this input value
+    # Find the notch that contains this hardware input value
     case find_notch(notches, input_value) do
       nil ->
         {:error, :no_notch}
 
       notch ->
-        calculate_value(notch, input_value)
+        calculate_sim_input(notch, input_value)
     end
   end
 
@@ -108,7 +102,7 @@ defmodule TswIo.Train.LeverMapper do
   defp map_input_clamped(_value), do: {:error, :no_notch}
 
   @doc """
-  Find which notch contains a given input value.
+  Find which notch contains a given hardware input value.
 
   Returns the notch whose input_min/input_max range contains the value,
   or nil if no notch matches.
@@ -137,41 +131,68 @@ defmodule TswIo.Train.LeverMapper do
   end
 
   @doc """
-  Calculate the simulator value for a notch given an input value.
+  Calculate the simulator InputValue for a notch given a hardware input value.
 
-  For gate notches, returns the fixed value.
-  For linear notches, interpolates between min_value and max_value.
+  For gate notches, returns the center of the sim_input range.
+  For linear notches, interpolates within the sim_input range.
   """
-  @spec calculate_value(Notch.t(), float()) :: {:ok, float()} | {:error, :unmapped_notch}
-  def calculate_value(%Notch{type: :gate, value: value}, _input_value) when is_float(value) do
-    {:ok, value}
+  @spec calculate_sim_input(Notch.t(), float()) :: {:ok, float()} | {:error, atom()}
+  def calculate_sim_input(
+        %Notch{type: :gate, sim_input_min: sim_min, sim_input_max: sim_max},
+        _input_value
+      )
+      when is_float(sim_min) and is_float(sim_max) do
+    # For gates, return center of the simulator input range
+    center = (sim_min + sim_max) / 2
+    {:ok, Float.round(center, 2)}
   end
 
-  def calculate_value(
+  def calculate_sim_input(
         %Notch{
           type: :linear,
-          min_value: min_val,
-          max_value: max_val,
           input_min: input_min,
-          input_max: input_max
+          input_max: input_max,
+          sim_input_min: sim_min,
+          sim_input_max: sim_max
         },
         input_value
       )
-      when is_float(min_val) and is_float(max_val) and
-             is_float(input_min) and is_float(input_max) do
-    # Calculate position within the notch's input range (0.0 to 1.0)
+      when is_float(input_min) and is_float(input_max) and
+             is_float(sim_min) and is_float(sim_max) do
+    # Calculate position within the notch's hardware input range (0.0 to 1.0)
     input_range = input_max - input_min
     position = (input_value - input_min) / input_range
 
-    # Interpolate within the notch's output range
-    output_range = max_val - min_val
-    output_value = min_val + position * output_range
+    # Interpolate within the notch's simulator input range
+    sim_range = sim_max - sim_min
+    sim_value = sim_min + position * sim_range
 
     # Round to 2 decimal places
-    {:ok, Float.round(output_value, 2)}
+    {:ok, Float.round(sim_value, 2)}
   end
 
-  def calculate_value(%Notch{}, _input_value) do
+  def calculate_sim_input(%Notch{sim_input_min: nil}, _input_value) do
+    {:error, :no_sim_input_range}
+  end
+
+  def calculate_sim_input(%Notch{sim_input_max: nil}, _input_value) do
+    {:error, :no_sim_input_range}
+  end
+
+  def calculate_sim_input(%Notch{input_min: nil}, _input_value) do
     {:error, :unmapped_notch}
   end
+
+  def calculate_sim_input(%Notch{input_max: nil}, _input_value) do
+    {:error, :unmapped_notch}
+  end
+
+  def calculate_sim_input(%Notch{}, _input_value) do
+    {:error, :unmapped_notch}
+  end
+
+  # Legacy function for backwards compatibility
+  @doc false
+  @spec calculate_value(Notch.t(), float()) :: {:ok, float()} | {:error, :unmapped_notch}
+  def calculate_value(notch, input_value), do: calculate_sim_input(notch, input_value)
 end

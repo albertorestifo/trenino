@@ -282,17 +282,19 @@ defmodule TswIo.Train do
   defp create_notches_from_suggestions(lever_config_id, suggested_notches) do
     results =
       Enum.map(suggested_notches, fn notch ->
-        # Note: We do NOT copy input_min/input_max from analyzer suggestions.
-        # The analyzer's values represent simulator positions (where each notch
-        # is in the simulator's 0.0-1.0 input range).
+        # The analyzer's input_min/input_max represent the simulator's InputValue range
+        # for this notch. We save these to sim_input_min/sim_input_max.
         # The Notch schema's input_min/input_max are for hardware input mapping,
-        # which must be done separately via NotchMappingSession.
+        # which is set separately via NotchMappingSession.
         attrs = %{
           index: notch[:index] || 0,
           type: notch[:type],
           value: notch[:value],
           min_value: notch[:min_value],
           max_value: notch[:max_value],
+          # Simulator input ranges from analyzer
+          sim_input_min: notch[:input_min],
+          sim_input_max: notch[:input_max],
           description: notch[:description]
         }
 
