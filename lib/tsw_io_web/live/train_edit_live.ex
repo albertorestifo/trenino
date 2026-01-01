@@ -687,14 +687,18 @@ defmodule TswIoWeb.TrainEditLive do
 
     case LeverAnalyzer.analyze(client, control_path, restore_position: 0.5) do
       {:ok, analysis_result} ->
-        if element.lever_config do
-          Train.update_lever_config_with_analysis(
-            element.lever_config,
-            config_params,
-            analysis_result
-          )
-        else
-          Train.create_lever_config_with_analysis(element.id, config_params, analysis_result)
+        # Check database for existing config (not the stale preloaded data)
+        # This handles re-calibration within the same wizard session
+        case Train.get_lever_config(element.id) do
+          {:ok, existing_config} ->
+            Train.update_lever_config_with_analysis(
+              existing_config,
+              config_params,
+              analysis_result
+            )
+
+          {:error, :not_found} ->
+            Train.create_lever_config_with_analysis(element.id, config_params, analysis_result)
         end
 
       {:error, _reason} = error ->
