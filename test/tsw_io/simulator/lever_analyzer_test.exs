@@ -16,15 +16,20 @@ defmodule TswIo.Simulator.LeverAnalyzerTest do
       client = Client.new(@base_url, @api_key)
 
       # Mock a discrete lever (reverser) with outputs -1, 0, 1
+      # Each notch_index corresponds to a different gate
+      # Key: actual_input SNAPS to fixed positions (differs from set_input)
       stub_sweep_responses(fn input ->
-        output =
+        {actual_input, output, notch_index} =
           cond do
-            input < 0.33 -> -1.0
-            input < 0.66 -> 0.0
-            true -> 1.0
+            # Snap zone 0: snaps to 0.0
+            input < 0.33 -> {0.0, -1.0, 0}
+            # Snap zone 1: snaps to 0.5
+            input < 0.66 -> {0.5, 0.0, 1}
+            # Snap zone 2: snaps to 1.0
+            true -> {1.0, 1.0, 2}
           end
 
-        %{actual_input: input, output: output}
+        %{actual_input: actual_input, output: output, notch_index: notch_index}
       end)
 
       assert {:ok, %AnalysisResult{} = result} =
@@ -42,8 +47,9 @@ defmodule TswIo.Simulator.LeverAnalyzerTest do
       client = Client.new(@base_url, @api_key)
 
       # Mock a continuous lever (throttle) with outputs 0.0 to 1.0
+      # All positions have the same notch_index (no snapping)
       stub_sweep_responses(fn input ->
-        %{actual_input: input, output: input}
+        %{actual_input: input, output: input, notch_index: 0}
       end)
 
       assert {:ok, %AnalysisResult{} = result} =
@@ -62,34 +68,37 @@ defmodule TswIo.Simulator.LeverAnalyzerTest do
       client = Client.new(@base_url, @api_key)
 
       # Mock a hybrid lever (like MasterController) with snap zones
-      # Zone 0: snap to 0.0, output -11 (gate - single value)
-      # Zone 1: snap to 0.1, output range -10 to -1 (linear - range)
-      # Zone 2: snap to 0.4, output -0.9 (gate - single value)
-      # Zone 3: snap to 0.5, output 0.0 (gate - single value)
-      # Zone 4: snap to 0.6, output range 1 to 10 (linear - range)
+      # Zone 0: snap to 0.0, output -11 (gate - single value), notch 0
+      # Zone 1: linear braking -10 to -1, notches 1-3 merged (no snap between)
+      # Zone 2: snap to 0.4, output -0.9 (gate), notch 4
+      # Zone 3: snap to 0.5, output 0.0 (gate - neutral), notch 5
+      # Zone 4: linear power 1 to 10, notch 6
       stub_sweep_responses(fn input ->
-        {actual_input, output} =
+        {actual_input, output, notch_index} =
           cond do
-            # Zone 0 (snaps to 0.0)
-            input < 0.08 -> {0.0, -11.0}
-            # Zone 1 (snaps to 0.1, linear output)
-            input < 0.35 -> {0.1, -10.0 + input * 30}
-            # Zone 2 (snaps to 0.4)
-            input < 0.45 -> {0.4, -0.9}
-            # Zone 3 (snaps to 0.5)
-            input < 0.55 -> {0.5, 0.0}
-            # Zone 4 (snaps to 0.6, linear output)
-            true -> {0.6, 1.0 + (input - 0.6) * 22.5}
+            # Zone 0 (snaps to 0.0) - gate
+            input < 0.08 -> {0.0, -11.0, 0}
+            # Zone 1 (linear braking) - 3 notches that should merge
+            input < 0.15 -> {0.1, -10.0, 1}
+            input < 0.25 -> {0.2, -6.0, 2}
+            input < 0.35 -> {0.3, -2.0, 3}
+            # Zone 2 (snaps to 0.4) - gate
+            input < 0.45 -> {0.4, -0.9, 4}
+            # Zone 3 (snaps to 0.5) - neutral gate
+            input < 0.55 -> {0.5, 0.0, 5}
+            # Zone 4 (linear power)
+            true -> {0.6 + (input - 0.56) * 0.5, 1.0 + (input - 0.56) * 20, 6}
           end
 
-        %{actual_input: actual_input, output: Float.round(output, 2)}
+        %{actual_input: actual_input, output: Float.round(output, 2), notch_index: notch_index}
       end)
 
       assert {:ok, %AnalysisResult{} = result} =
                LeverAnalyzer.analyze(client, "CurrentDrivableActor/MasterController")
 
       assert result.lever_type == :hybrid
-      assert length(result.snap_zones) >= 2
+      # After merging, should have gate zones and linear zones
+      assert length(result.zones) >= 2
 
       # Check that notches have appropriate types
       gates = Enum.filter(result.suggested_notches, &(&1[:type] == :gate))
@@ -120,15 +129,15 @@ defmodule TswIo.Simulator.LeverAnalyzerTest do
 
       # Mock a lever where one zone has identical min/max outputs
       stub_sweep_responses(fn input ->
-        {actual_input, output} =
+        {actual_input, output, notch_index} =
           cond do
             # Zone with identical outputs (should be gate)
-            input < 0.5 -> {0.0, -5.0}
+            input < 0.5 -> {0.0, -5.0, 0}
             # Zone with range (should be linear)
-            true -> {0.5, input * 10}
+            true -> {0.5, input * 10, 1}
           end
 
-        %{actual_input: actual_input, output: Float.round(output, 2)}
+        %{actual_input: actual_input, output: Float.round(output, 2), notch_index: notch_index}
       end)
 
       assert {:ok, %AnalysisResult{} = result} =
@@ -149,17 +158,17 @@ defmodule TswIo.Simulator.LeverAnalyzerTest do
       # Mock a lever where outputs are very close (e.g., -0.91 to -0.93)
       # After rounding to 1 decimal, both become -0.9, so it's a gate
       stub_sweep_responses(fn input ->
-        {actual_input, output} =
+        {actual_input, output, notch_index} =
           cond do
             input < 0.5 ->
               # Outputs vary between -0.91 and -0.93 (same when rounded to 1 decimal)
-              {0.0, -0.91 - input * 0.04}
+              {0.0, -0.91 - input * 0.04, 0}
 
             true ->
-              {0.5, input * 10}
+              {0.5, input * 10, 1}
           end
 
-        %{actual_input: actual_input, output: Float.round(output, 2)}
+        %{actual_input: actual_input, output: Float.round(output, 2), notch_index: notch_index}
       end)
 
       assert {:ok, %AnalysisResult{} = result} =
@@ -274,6 +283,16 @@ defmodule TswIo.Simulator.LeverAnalyzerTest do
                  body: %{
                    "Result" => "Success",
                    "Values" => %{"ReturnValue" => response.output}
+                 }
+               }}
+
+            String.contains?(url, "GetCurrentNotchIndex") ->
+              {:ok,
+               %Req.Response{
+                 status: 200,
+                 body: %{
+                   "Result" => "Success",
+                   "Values" => %{"ReturnValue" => response[:notch_index] || 0}
                  }
                }}
 
