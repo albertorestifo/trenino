@@ -44,6 +44,12 @@ defmodule TswIo.Simulator.LeverAnalyzer do
   # Threshold for determining if an output range represents a gate (single value)
   # vs linear (range of values). Values rounded to 1 decimal place for comparison.
   @gate_range_threshold 0.1
+  # Threshold for detecting output discontinuities (jumps between zones)
+  # Must be larger than typical per-step change in linear zones (~0.6) but smaller
+  # than jumps between zones (typically 1.0+)
+  @output_discontinuity_threshold 0.8
+  # Threshold for merging adjacent gates with similar output values
+  @gate_merge_threshold 0.2
 
   defmodule Sample do
     @moduledoc "A single sample from the lever sweep"
@@ -68,6 +74,44 @@ defmodule TswIo.Simulator.LeverAnalyzer do
     defstruct [:snap_to, :input_min, :input_max]
   end
 
+  defmodule Zone do
+    @moduledoc """
+    A detected output zone with its associated input range.
+
+    Zones are detected by output discontinuities, not by input snapping.
+    This properly handles snap-back artifacts where the lever briefly visits
+    an intermediate position before snapping to the target.
+    """
+    @type zone_type :: :gate | :linear
+
+    @type t :: %__MODULE__{
+            type: zone_type(),
+            # For gates: the single output value
+            # For linear: ignored (use output_min/output_max)
+            value: float() | nil,
+            # Output value range in this zone
+            output_min: float(),
+            output_max: float(),
+            # The set_input range that reliably produces this zone
+            set_input_min: float(),
+            set_input_max: float(),
+            # The actual_input range observed in this zone
+            actual_input_min: float(),
+            actual_input_max: float()
+          }
+
+    defstruct [
+      :type,
+      :value,
+      :output_min,
+      :output_max,
+      :set_input_min,
+      :set_input_max,
+      :actual_input_min,
+      :actual_input_max
+    ]
+  end
+
   defmodule AnalysisResult do
     @moduledoc "The result of lever analysis"
     @type lever_type :: :discrete | :continuous | :hybrid
@@ -76,6 +120,7 @@ defmodule TswIo.Simulator.LeverAnalyzer do
             lever_type: lever_type(),
             samples: [Sample.t()],
             snap_zones: [SnapZone.t()],
+            zones: [Zone.t()],
             suggested_notches: [map()],
             min_output: float(),
             max_output: float(),
@@ -87,6 +132,7 @@ defmodule TswIo.Simulator.LeverAnalyzer do
       :lever_type,
       :samples,
       :snap_zones,
+      :zones,
       :suggested_notches,
       :min_output,
       :max_output,
@@ -175,11 +221,19 @@ defmodule TswIo.Simulator.LeverAnalyzer do
     end
   end
 
+  # Number of rapid commands to push past snap points when initializing
+  @push_attempts 5
+  # Short delay between push attempts (ms)
+  @push_delay_ms 30
+
   # Sweep the lever from 0.0 to 1.0 and collect samples
   defp sweep_lever(%Client{} = client, control_path, step, settling_time) do
     input_values = generate_sweep_values(step)
     value_endpoint = "#{control_path}.InputValue"
     output_endpoint = "#{control_path}.Function.GetCurrentOutputValue"
+
+    # Initialize lever to 0.0, pushing past any snap points
+    initialize_lever_position(client, value_endpoint, settling_time)
 
     Logger.debug("[LeverAnalyzer] Sweeping #{length(input_values)} positions...")
 
@@ -206,6 +260,22 @@ defmodule TswIo.Simulator.LeverAnalyzer do
       error ->
         error
     end
+  end
+
+  # Push the lever to 0.0 position, using rapid commands to overcome snap points.
+  # Some levers (like the BR430 MasterController) have snap zones that "catch" the
+  # lever when moving smoothly from neutral. Rapid-fire commands can push past these.
+  defp initialize_lever_position(%Client{} = client, value_endpoint, settling_time) do
+    Logger.debug("[LeverAnalyzer] Initializing lever to 0.0 position...")
+
+    # Send multiple rapid commands to push past snap points
+    for _ <- 1..@push_attempts do
+      Client.set(client, value_endpoint, 0.0)
+      Process.sleep(@push_delay_ms)
+    end
+
+    # Wait for lever to fully settle
+    Process.sleep(settling_time)
   end
 
   defp sample_position(client, value_endpoint, output_endpoint, set_input, settling_time) do
@@ -248,13 +318,18 @@ defmodule TswIo.Simulator.LeverAnalyzer do
 
     lever_type = classify_lever_type(unique_count, all_integers, snap_zones)
 
-    suggested_notches = build_notch_suggestions(samples, lever_type, snap_zones)
+    # Detect zones based on output discontinuities (not input snapping)
+    zones = detect_output_zones(samples)
+
+    # Build notch suggestions from zones (with proper input mappings)
+    suggested_notches = build_notches_from_zones(zones)
 
     {:ok,
      %AnalysisResult{
        lever_type: lever_type,
        samples: samples,
        snap_zones: snap_zones,
+       zones: zones,
        suggested_notches: suggested_notches,
        min_output: min_output,
        max_output: max_output,
@@ -309,166 +384,9 @@ defmodule TswIo.Simulator.LeverAnalyzer do
     |> Enum.sort_by(& &1.snap_to)
   end
 
-  defp build_notch_suggestions(samples, :discrete, _snap_zones) do
-    # For discrete levers, each unique output is a gate notch
-    samples
-    |> Enum.group_by(& &1.output)
-    |> Enum.map(fn {output, group} ->
-      inputs = Enum.map(group, & &1.actual_input)
-
-      %{
-        type: :gate,
-        value: output,
-        input_min: Enum.min(inputs),
-        input_max: Enum.max(inputs),
-        description: "Output #{output}"
-      }
-    end)
-    |> Enum.sort_by(& &1.input_min)
-    |> Enum.with_index()
-    |> Enum.map(fn {notch, idx} -> Map.put(notch, :index, idx) end)
-  end
-
-  defp build_notch_suggestions(samples, :continuous, _snap_zones) do
-    # For continuous levers, create a single linear notch
-    outputs = Enum.map(samples, & &1.output)
-
-    [
-      %{
-        type: :linear,
-        index: 0,
-        min_value: Enum.min(outputs),
-        max_value: Enum.max(outputs),
-        input_min: 0.0,
-        input_max: 1.0,
-        description: "Full range"
-      }
-    ]
-  end
-
-  defp build_notch_suggestions(samples, :hybrid, snap_zones) do
-    # For hybrid levers, create linear zones based on snap boundaries
-    # or output discontinuities
-
-    if length(snap_zones) >= 2 do
-      build_notches_from_snap_zones(samples, snap_zones)
-    else
-      build_notches_from_output_changes(samples)
-    end
-  end
-
-  defp build_notches_from_snap_zones(samples, snap_zones) do
-    # Sort snap zones by input position
-    sorted_zones = Enum.sort_by(snap_zones, & &1.snap_to)
-
-    # Create zones between snap points, determining type based on output range
-    sorted_zones
-    |> Enum.chunk_every(2, 1, :discard)
-    |> Enum.with_index()
-    |> Enum.map(fn {[zone1, zone2], idx} ->
-      # Find samples in this zone
-      zone_samples =
-        Enum.filter(samples, fn s ->
-          s.actual_input >= zone1.snap_to and s.actual_input < zone2.snap_to
-        end)
-
-      outputs = Enum.map(zone_samples, & &1.output)
-
-      if length(outputs) > 0 do
-        build_notch(outputs, zone1.snap_to, zone2.snap_to, idx, "Zone #{idx}")
-      else
-        nil
-      end
-    end)
-    |> Enum.reject(&is_nil/1)
-    |> add_boundary_notches(samples, sorted_zones)
-  end
-
-  defp add_boundary_notches(notches, samples, snap_zones) do
-    first_zone = List.first(snap_zones)
-    last_zone = List.last(snap_zones)
-
-    # Add notch before first snap zone if there's range
-    before_first =
-      if first_zone && first_zone.snap_to > 0.02 do
-        before_samples = Enum.filter(samples, &(&1.actual_input < first_zone.snap_to))
-        outputs = Enum.map(before_samples, & &1.output)
-
-        if length(outputs) > 0 do
-          [build_notch(outputs, 0.0, first_zone.snap_to, -1, "Before first zone")]
-        else
-          []
-        end
-      else
-        []
-      end
-
-    # Add notch after last snap zone if there's range
-    after_last =
-      if last_zone && last_zone.snap_to < 0.98 do
-        after_samples = Enum.filter(samples, &(&1.actual_input >= last_zone.snap_to))
-        outputs = Enum.map(after_samples, & &1.output)
-
-        if length(outputs) > 0 do
-          [build_notch(outputs, last_zone.snap_to, 1.0, 999, "After last zone")]
-        else
-          []
-        end
-      else
-        []
-      end
-
-    (before_first ++ notches ++ after_last)
-    |> Enum.sort_by(& &1.input_min)
-    |> Enum.with_index()
-    |> Enum.map(fn {notch, idx} -> %{notch | index: idx} end)
-  end
-
-  defp build_notches_from_output_changes(samples) do
-    # Detect significant output changes to find zone boundaries
-    samples
-    |> Enum.chunk_every(2, 1, :discard)
-    |> Enum.reduce({[], nil}, fn [s1, s2], {boundaries, _prev} ->
-      output_change = abs(s2.output - s1.output)
-
-      # Significant change threshold - depends on output range
-      if output_change > 1.0 do
-        {[s1.actual_input | boundaries], s2}
-      else
-        {boundaries, s2}
-      end
-    end)
-    |> elem(0)
-    |> Enum.reverse()
-    |> case do
-      [] ->
-        # No significant boundaries found, treat as continuous
-        build_notch_suggestions(samples, :continuous, [])
-
-      boundaries ->
-        # Create zones from boundaries
-        all_boundaries = [0.0 | boundaries] ++ [1.0]
-
-        all_boundaries
-        |> Enum.chunk_every(2, 1, :discard)
-        |> Enum.with_index()
-        |> Enum.map(fn {[start_input, end_input], idx} ->
-          zone_samples =
-            Enum.filter(samples, fn s ->
-              s.actual_input >= start_input and s.actual_input < end_input
-            end)
-
-          outputs = Enum.map(zone_samples, & &1.output)
-
-          if length(outputs) > 0 do
-            build_notch(outputs, start_input, end_input, idx, "Zone #{idx}")
-          else
-            nil
-          end
-        end)
-        |> Enum.reject(&is_nil/1)
-    end
-  end
+  # NOTE: The old build_notch_suggestions functions have been replaced by
+  # the output-based zone detection below. Keeping is_integer_value? and
+  # determine_notch_type as they are still used.
 
   defp is_integer_value?(value) do
     rounded = Float.round(value, 0)
@@ -488,36 +406,148 @@ defmodule TswIo.Simulator.LeverAnalyzer do
     end
   end
 
-  # Builds a notch map with the appropriate type based on output range
-  defp build_notch(outputs, input_min, input_max, index, description) do
-    min_value = Enum.min(outputs)
-    max_value = Enum.max(outputs)
-    notch_type = determine_notch_type(min_value, max_value)
+  # ============================================================================
+  # Output-based zone detection
+  #
+  # This approach detects zones by looking at output value discontinuities,
+  # not by input snapping. This properly handles:
+  # - Snap-back artifacts (lever briefly visits intermediate position)
+  # - Adjacent gates with similar values that should be merged
+  # ============================================================================
 
-    case notch_type do
-      :gate ->
-        # For gates, use the average value as the single "value"
-        avg_value = Float.round((min_value + max_value) / 2, 2)
+  @doc false
+  # Detect zones by finding output discontinuities in the sweep samples.
+  # Returns a list of Zone structs with proper input mappings.
+  defp detect_output_zones(samples) do
+    samples
+    |> group_by_output_continuity()
+    |> merge_similar_gates()
+    |> convert_to_zones()
+    |> Enum.sort_by(& &1.set_input_min)
+  end
 
-        %{
-          type: :gate,
-          index: index,
-          value: avg_value,
-          input_min: input_min,
-          input_max: input_max,
-          description: description
-        }
+  # Group consecutive samples that have continuous output values (no jumps)
+  defp group_by_output_continuity(samples) do
+    samples
+    |> Enum.reduce([], fn sample, acc ->
+      case acc do
+        [] ->
+          [[sample]]
 
-      :linear ->
-        %{
-          type: :linear,
-          index: index,
-          min_value: min_value,
-          max_value: max_value,
-          input_min: input_min,
-          input_max: input_max,
-          description: description
-        }
-    end
+        [current_group | rest] ->
+          # Get the most recent sample (head since we prepend)
+          last_sample = hd(current_group)
+
+          # Check if this sample is continuous with the previous one
+          if continuous_output?(last_sample, sample) do
+            [[sample | current_group] | rest]
+          else
+            # Start a new group
+            [[sample], current_group | rest]
+          end
+      end
+    end)
+    |> Enum.map(&Enum.reverse/1)
+    |> Enum.reverse()
+  end
+
+  # Two samples are continuous if their outputs don't jump significantly
+  defp continuous_output?(sample1, sample2) do
+    abs(sample2.output - sample1.output) < @output_discontinuity_threshold
+  end
+
+  # Merge adjacent groups that are both gates with similar output values.
+  # This handles the snap-back artifact where we get two tiny groups
+  # around a gate position.
+  defp merge_similar_gates(groups) do
+    groups
+    |> Enum.reduce([], fn group, acc ->
+      case acc do
+        [] ->
+          [group]
+
+        [prev_group | rest] ->
+          prev_outputs = Enum.map(prev_group, & &1.output)
+          curr_outputs = Enum.map(group, & &1.output)
+
+          prev_min = Enum.min(prev_outputs)
+          prev_max = Enum.max(prev_outputs)
+          curr_min = Enum.min(curr_outputs)
+          curr_max = Enum.max(curr_outputs)
+
+          prev_is_gate = abs(prev_max - prev_min) < @gate_range_threshold
+          curr_is_gate = abs(curr_max - curr_min) < @gate_range_threshold
+
+          # Merge if both are gates with similar values
+          if prev_is_gate and curr_is_gate and
+               abs(prev_min - curr_min) < @gate_merge_threshold do
+            [prev_group ++ group | rest]
+          else
+            [group, prev_group | rest]
+          end
+      end
+    end)
+    |> Enum.reverse()
+  end
+
+  # Convert sample groups to Zone structs
+  defp convert_to_zones(groups) do
+    Enum.map(groups, fn samples ->
+      outputs = Enum.map(samples, & &1.output)
+      set_inputs = Enum.map(samples, & &1.set_input)
+      actual_inputs = Enum.map(samples, & &1.actual_input)
+
+      output_min = Enum.min(outputs)
+      output_max = Enum.max(outputs)
+
+      zone_type = determine_notch_type(output_min, output_max)
+
+      %Zone{
+        type: zone_type,
+        value: if(zone_type == :gate, do: Float.round((output_min + output_max) / 2, 2), else: nil),
+        output_min: output_min,
+        output_max: output_max,
+        set_input_min: Enum.min(set_inputs),
+        set_input_max: Enum.max(set_inputs),
+        actual_input_min: Enum.min(actual_inputs),
+        actual_input_max: Enum.max(actual_inputs)
+      }
+    end)
+  end
+
+  # Build notch suggestions from the detected zones.
+  # This provides the legacy format expected by the calibration system.
+  defp build_notches_from_zones(zones) do
+    zones
+    |> Enum.sort_by(& &1.set_input_min)
+    |> Enum.with_index()
+    |> Enum.map(fn {zone, idx} ->
+      case zone.type do
+        :gate ->
+          %{
+            type: :gate,
+            index: idx,
+            value: zone.value,
+            input_min: zone.set_input_min,
+            input_max: zone.set_input_max,
+            actual_input_min: zone.actual_input_min,
+            actual_input_max: zone.actual_input_max,
+            description: "Gate at output #{zone.value}"
+          }
+
+        :linear ->
+          %{
+            type: :linear,
+            index: idx,
+            min_value: zone.output_min,
+            max_value: zone.output_max,
+            input_min: zone.set_input_min,
+            input_max: zone.set_input_max,
+            actual_input_min: zone.actual_input_min,
+            actual_input_max: zone.actual_input_max,
+            description: "Linear #{zone.output_min} to #{zone.output_max}"
+          }
+      end
+    end)
   end
 end
