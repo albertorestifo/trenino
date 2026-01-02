@@ -18,17 +18,18 @@ defmodule TswIoWeb.MatrixTestWizardTest do
       # Open the add matrix modal
       view |> element("button[phx-click='open_add_matrix_modal']") |> render_click()
 
-      # Fill in row and column pins
+      # Fill in row and column pins using form change event
       view
-      |> element("input[name='row_pins']")
-      |> render_change(%{"row_pins" => "2,3,4"})
+      |> form("form[phx-change='validate_matrix_pins']", %{
+        "row_pins" => "2,3,4",
+        "col_pins" => "8,9,10"
+      })
+      |> render_change()
 
+      # Submit the form
       view
-      |> element("input[name='col_pins']")
-      |> render_change(%{"col_pins" => "8,9,10"})
-
-      # Click add button in modal
-      view |> element("button[phx-click='add_matrix']") |> render_click()
+      |> form("form[phx-submit='add_matrix']")
+      |> render_submit()
 
       # Matrix should be visible in the matrices section
       {:ok, _view, html} = live(conn, "/configurations/#{device.config_id}")

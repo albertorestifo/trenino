@@ -224,7 +224,14 @@ defmodule TswIo.Simulator.LeverAnalyzer do
 
     samples =
       Enum.reduce_while(input_values, {:ok, []}, fn set_input, {:ok, acc} ->
-        case sample_position(client, value_endpoint, output_endpoint, notch_endpoint, set_input, settling_time) do
+        case sample_position(
+               client,
+               value_endpoint,
+               output_endpoint,
+               notch_endpoint,
+               set_input,
+               settling_time
+             ) do
           {:ok, sample} ->
             {:cont, {:ok, [sample | acc]}}
 
@@ -257,7 +264,14 @@ defmodule TswIo.Simulator.LeverAnalyzer do
     Process.sleep(settling_time)
   end
 
-  defp sample_position(client, value_endpoint, output_endpoint, notch_endpoint, set_input, settling_time) do
+  defp sample_position(
+         client,
+         value_endpoint,
+         output_endpoint,
+         notch_endpoint,
+         set_input,
+         settling_time
+       ) do
     with {:ok, _} <- Client.set(client, value_endpoint, set_input),
          :ok <- Process.sleep(settling_time),
          {:ok, actual_input} <- Client.get_float(client, value_endpoint),
@@ -288,7 +302,29 @@ defmodule TswIo.Simulator.LeverAnalyzer do
   # Sample Analysis - Notch-Based Zone Detection
   # ===========================================================================
 
-  defp analyze_samples(samples) do
+  @doc """
+  Analyzes pre-collected samples to determine lever type and zones.
+
+  This function is useful for testing the analysis logic directly without
+  performing I/O operations (HTTP requests and sleeps).
+
+  Returns `{:ok, AnalysisResult.t()}`.
+
+  ## Parameters
+
+  - `samples` - List of `Sample.t()` structs representing lever positions
+
+  ## Examples
+
+      samples = [
+        %Sample{set_input: 0.0, actual_input: 0.0, output: -1.0, notch_index: 0, snapped: true},
+        %Sample{set_input: 0.5, actual_input: 0.5, output: 0.0, notch_index: 1, snapped: true},
+        %Sample{set_input: 1.0, actual_input: 1.0, output: 1.0, notch_index: 2, snapped: true}
+      ]
+      {:ok, result} = LeverAnalyzer.analyze_samples(samples)
+  """
+  @spec analyze_samples([Sample.t()]) :: {:ok, AnalysisResult.t()}
+  def analyze_samples(samples) when is_list(samples) do
     outputs = Enum.map(samples, & &1.output)
     unique_outputs = Enum.uniq(outputs) |> Enum.sort()
 

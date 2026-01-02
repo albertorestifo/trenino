@@ -26,7 +26,7 @@ defmodule TswIo.Train.LeverMapperTest do
     end
 
     test "maps minimum input to minimum simulator InputValue", %{lever_config: config} do
-      assert {:ok, 0.0} = LeverMapper.map_input(config, 0.0)
+      assert {:ok, +0.0} = LeverMapper.map_input(config, 0.0)
     end
 
     test "maps maximum input to maximum simulator InputValue", %{lever_config: config} do
@@ -246,7 +246,7 @@ defmodule TswIo.Train.LeverMapperTest do
     end
 
     test "maps values within notch range", %{lever_config: config} do
-      assert {:ok, 0.0} = LeverMapper.map_input(config, 0.2)
+      assert {:ok, +0.0} = LeverMapper.map_input(config, 0.2)
       assert {:ok, 0.5} = LeverMapper.map_input(config, 0.5)
       # At 0.79: position = (0.79-0.2)/(0.8-0.2) = 0.983, sim = 0.98
       {:ok, value} = LeverMapper.map_input(config, 0.79)
