@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.3.1]
+
 ### Changed
 
 - Unified lever configuration wizard
@@ -21,6 +23,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   - Small gaps between adjacent notches for visual distinction
   - Live position indicator showing current hardware value
 - Simplified lever card UI with single Configure/Edit button
+
+### Fixed
+
+- Lever mapping using incorrect simulator InputValue range
+- Lever recalibration failing with "element_id already taken" error
+- Momentary button mode not working correctly
+- Overlapping modals during configuration wizard
 
 ### Removed
 
