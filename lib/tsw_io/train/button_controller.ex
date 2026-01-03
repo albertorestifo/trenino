@@ -35,6 +35,7 @@ defmodule TswIo.Train.ButtonController do
   alias TswIo.Hardware
   alias TswIo.Hardware.ConfigurationManager
   alias TswIo.Hardware.Input
+  alias TswIo.Keyboard
   alias TswIo.Serial.Connection, as: SerialConnection
   alias TswIo.Simulator.Connection, as: SimulatorConnection
   alias TswIo.Simulator.ConnectionState
@@ -61,6 +62,7 @@ defmodule TswIo.Train.ButtonController do
             mode: ButtonInputBinding.mode(),
             hardware_type: ButtonInputBinding.hardware_type(),
             repeat_interval_ms: integer(),
+            keystroke: String.t() | nil,
             on_sequence: sequence_info() | nil,
             off_sequence: sequence_info() | nil
           }
@@ -310,6 +312,7 @@ defmodule TswIo.Train.ButtonController do
       mode: binding.mode,
       hardware_type: binding.hardware_type,
       repeat_interval_ms: binding.repeat_interval_ms,
+      keystroke: binding.keystroke,
       on_sequence: load_sequence_info(binding.on_sequence_id),
       off_sequence: load_sequence_info(binding.off_sequence_id)
     }
@@ -432,6 +435,21 @@ defmodule TswIo.Train.ButtonController do
     end
   end
 
+  defp handle_button_press(%State{} = state, element_id, %{mode: :keystroke} = binding_info) do
+    keystroke = binding_info.keystroke
+
+    case Keyboard.key_down(keystroke) do
+      :ok ->
+        Logger.debug("[ButtonController] Keystroke down: #{keystroke}")
+        broadcast_button_update(element_id, 1.0, true)
+        {:ok, %{state | last_sent_values: Map.put(state.last_sent_values, element_id, 1.0)}}
+
+      {:error, reason} ->
+        Logger.warning("[ButtonController] Keystroke failed: #{inspect(reason)}")
+        :skip
+    end
+  end
+
   # Catch-all for unexpected modes (should never happen, but helps debug)
   defp handle_button_press(%State{} = _state, element_id, binding_info) do
     Logger.warning(
@@ -539,6 +557,21 @@ defmodule TswIo.Train.ButtonController do
 
             {:ok, state}
         end
+    end
+  end
+
+  defp handle_button_release(%State{} = state, element_id, %{mode: :keystroke} = binding_info) do
+    keystroke = binding_info.keystroke
+
+    case Keyboard.key_up(keystroke) do
+      :ok ->
+        Logger.debug("[ButtonController] Keystroke up: #{keystroke}")
+        broadcast_button_update(element_id, 0.0, false)
+        {:ok, %{state | last_sent_values: Map.put(state.last_sent_values, element_id, 0.0)}}
+
+      {:error, reason} ->
+        Logger.warning("[ButtonController] Keystroke release failed: #{inspect(reason)}")
+        :skip
     end
   end
 

@@ -1,0 +1,22 @@
+[package]
+name = "keystroke"
+version = "0.1.0"
+edition = "2021"
+description = "Keystroke simulation utility for TSW IO"
+authors = ["Alberto Restifo"]
+license = "CC-BY-NC-4.0"
+
+[dependencies]
+enigo = "0.2"
+clap = { version = "4", features = ["derive"] }
+
+[[bin]]
+name = "keystroke"
+path = "src/main.rs"
+
+[profile.release]
+panic = "abort"
+codegen-units = 1
+lto = true
+opt-level = "s"
+strip = true

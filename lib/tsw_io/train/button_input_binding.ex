@@ -17,6 +17,8 @@ defmodule TswIo.Train.ButtonInputBinding do
     Useful for controls like horn that need continuous "pressed" signals.
   - **`:sequence`** - Executes a sequence of commands when button is pressed.
     Commands are sent in order with configurable delays.
+  - **`:keystroke`** - Simulates keyboard input. Holds key down while button pressed,
+    releases when button released. Supports modifier combinations (Ctrl, Shift, Alt).
 
   ## Hardware Types
 
@@ -31,7 +33,7 @@ defmodule TswIo.Train.ButtonInputBinding do
   alias TswIo.Train.Element
   alias TswIo.Train.Sequence
 
-  @type mode :: :simple | :momentary | :sequence
+  @type mode :: :simple | :momentary | :sequence | :keystroke
   @type hardware_type :: :momentary | :latching
 
   @type t :: %__MODULE__{
@@ -45,6 +47,7 @@ defmodule TswIo.Train.ButtonInputBinding do
           mode: mode(),
           hardware_type: hardware_type(),
           repeat_interval_ms: integer(),
+          keystroke: String.t() | nil,
           on_sequence_id: integer() | nil,
           off_sequence_id: integer() | nil,
           element: Element.t() | Ecto.Association.NotLoaded.t(),
@@ -60,8 +63,10 @@ defmodule TswIo.Train.ButtonInputBinding do
     field :on_value, :float, default: 1.0
     field :off_value, :float, default: 0.0
     field :enabled, :boolean, default: true
-    # Mode: :simple (send once), :momentary (repeat while held), :sequence (execute sequence)
-    field :mode, Ecto.Enum, values: [:simple, :momentary, :sequence], default: :simple
+    # Mode: :simple (send once), :momentary (repeat while held), :sequence (execute sequence), :keystroke (simulate key)
+    field :mode, Ecto.Enum, values: [:simple, :momentary, :sequence, :keystroke], default: :simple
+    # Keystroke to simulate (e.g., "W", "CTRL+S", "SHIFT+F1") - only used in :keystroke mode
+    field :keystroke, :string
     # Hardware type: :momentary (spring-loaded), :latching (stays in position)
     field :hardware_type, Ecto.Enum, values: [:momentary, :latching], default: :momentary
     # Repeat interval for momentary mode (ms)
@@ -88,6 +93,7 @@ defmodule TswIo.Train.ButtonInputBinding do
       :mode,
       :hardware_type,
       :repeat_interval_ms,
+      :keystroke,
       :on_sequence_id,
       :off_sequence_id
     ])
@@ -118,6 +124,10 @@ defmodule TswIo.Train.ButtonInputBinding do
       :sequence ->
         # Sequence mode requires on_sequence_id
         validate_required(changeset, [:on_sequence_id])
+
+      :keystroke ->
+        # Keystroke mode requires keystroke field
+        validate_required(changeset, [:keystroke])
 
       nil ->
         changeset
