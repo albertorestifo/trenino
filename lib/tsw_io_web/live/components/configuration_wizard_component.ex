@@ -2,12 +2,13 @@ defmodule TswIoWeb.ConfigurationWizardComponent do
   @moduledoc """
   Configuration wizard for button elements.
 
-  Uses API explorer as the primary interface with auto-detection as default.
   Flow:
-  1. Browse API tree in explorer
-  2. Auto-detect or manually select endpoints
+  1. Choose binding type (Simulator Control or Keyboard Key)
+  2. Configure the binding:
+     - Simulator: Browse API tree or auto-detect endpoint
+     - Keystroke: Capture keyboard key combination
   3. Select hardware input and configure button behavior
-  4. Test connection and save
+  4. Test and save
 
   ## Usage
 
@@ -200,9 +201,9 @@ defmodule TswIoWeb.ConfigurationWizardComponent do
     end
   end
 
-  # Default: start at browsing step
+  # Default: start at type selection step for new buttons
   defp get_initial_wizard_state(_element) do
-    {:browsing, nil, false}
+    {:choosing_type, nil, false}
   end
 
   defp get_existing_input_id(%Element{button_binding: binding})
@@ -338,6 +339,25 @@ defmodule TswIoWeb.ConfigurationWizardComponent do
   end
 
   @impl true
+  def handle_event("choose_simulator_binding", _params, socket) do
+    # User chose to bind to simulator API endpoint
+    {:noreply, assign(socket, :wizard_step, :browsing)}
+  end
+
+  @impl true
+  def handle_event("choose_keystroke_binding", _params, socket) do
+    # User chose to bind to a keyboard key
+    socket =
+      socket
+      |> assign(:wizard_step, :testing)
+      |> assign(:binding_mode, :keystroke)
+      |> assign(:detected_endpoints, %{})
+      |> check_mapping_complete()
+
+    {:noreply, socket}
+  end
+
+  @impl true
   def handle_event("start_keystroke_capture", _params, socket) do
     {:noreply, assign(socket, :capturing_keystroke, true)}
   end
@@ -398,9 +418,18 @@ defmodule TswIoWeb.ConfigurationWizardComponent do
 
   @impl true
   def handle_event("back_to_browsing", _params, socket) do
+    # For keystroke mode, go back to type selection since there's no browsing step
+    # For simulator mode, go back to browsing
+    next_step =
+      if socket.assigns.binding_mode == :keystroke do
+        :choosing_type
+      else
+        :browsing
+      end
+
     socket =
       socket
-      |> assign(:wizard_step, :browsing)
+      |> assign(:wizard_step, next_step)
       |> assign(:detected_endpoints, nil)
       |> assign(:mapping_complete, false)
 
@@ -508,21 +537,84 @@ defmodule TswIoWeb.ConfigurationWizardComponent do
           <div class="flex items-center gap-2 mt-4">
             <.step_indicator
               step={1}
-              label="Find in Simulator"
-              active={@wizard_step == :browsing}
-              completed={@wizard_step == :testing}
+              label="Choose Type"
+              active={@wizard_step == :choosing_type}
+              completed={@wizard_step in [:browsing, :testing]}
             />
             <div class="flex-1 h-px bg-base-300" />
-            <.step_indicator
-              step={2}
-              label="Configure"
-              active={@wizard_step == :testing}
-              completed={false}
-            />
+            <%= if @binding_mode == :keystroke do %>
+              <.step_indicator
+                step={2}
+                label="Configure"
+                active={@wizard_step == :testing}
+                completed={false}
+              />
+            <% else %>
+              <.step_indicator
+                step={2}
+                label="Find Control"
+                active={@wizard_step == :browsing}
+                completed={@wizard_step == :testing}
+              />
+              <div class="flex-1 h-px bg-base-300" />
+              <.step_indicator
+                step={3}
+                label="Configure"
+                active={@wizard_step == :testing}
+                completed={false}
+              />
+            <% end %>
           </div>
         </div>
 
         <div class="flex-1 overflow-hidden flex">
+          <div :if={@wizard_step == :choosing_type} class="flex-1 p-8">
+            <div class="max-w-lg mx-auto space-y-6">
+              <div class="text-center mb-8">
+                <h3 class="text-xl font-semibold mb-2">What should this button do?</h3>
+                <p class="text-base-content/60">Choose how the hardware button will control the simulator</p>
+              </div>
+
+              <button
+                type="button"
+                phx-click="choose_simulator_binding"
+                phx-target={@myself}
+                class="w-full p-6 rounded-xl border-2 border-base-300 hover:border-primary hover:bg-primary/5 transition-all text-left group"
+              >
+                <div class="flex items-start gap-4">
+                  <div class="p-3 rounded-lg bg-primary/10 text-primary group-hover:bg-primary group-hover:text-primary-content transition-colors">
+                    <.icon name="hero-cpu-chip" class="w-8 h-8" />
+                  </div>
+                  <div>
+                    <h4 class="font-semibold text-lg">Simulator Control</h4>
+                    <p class="text-base-content/60 mt-1">
+                      Control a simulator function via the API. Use for throttle, brakes, lights, doors, and other train controls.
+                    </p>
+                  </div>
+                </div>
+              </button>
+
+              <button
+                type="button"
+                phx-click="choose_keystroke_binding"
+                phx-target={@myself}
+                class="w-full p-6 rounded-xl border-2 border-base-300 hover:border-secondary hover:bg-secondary/5 transition-all text-left group"
+              >
+                <div class="flex items-start gap-4">
+                  <div class="p-3 rounded-lg bg-secondary/10 text-secondary group-hover:bg-secondary group-hover:text-secondary-content transition-colors">
+                    <.icon name="hero-cursor-arrow-ripple" class="w-8 h-8" />
+                  </div>
+                  <div>
+                    <h4 class="font-semibold text-lg">Keyboard Key</h4>
+                    <p class="text-base-content/60 mt-1">
+                      Simulate a keyboard press. Use when the simulator responds better to keyboard input, or for custom key bindings.
+                    </p>
+                  </div>
+                </div>
+              </button>
+            </div>
+          </div>
+
           <div :if={@wizard_step == :browsing && !@show_auto_detect} class="flex-1 flex flex-col">
             <div class="p-4 border-b border-base-300 bg-base-200/50">
               <div class="flex items-center justify-between">
