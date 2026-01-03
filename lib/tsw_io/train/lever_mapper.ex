@@ -92,7 +92,8 @@ defmodule TswIo.Train.LeverMapper do
         {:error, :no_notch}
 
       notch ->
-        calculate_sim_input(notch, effective_value)
+        # Pass inverted flag to also invert interpolation within linear notches
+        calculate_sim_input(notch, effective_value, inverted)
     end
   end
 
@@ -135,13 +136,19 @@ defmodule TswIo.Train.LeverMapper do
 
   For gate notches, returns the center of the sim_input range.
   For linear notches, interpolates within the sim_input range.
+
+  When `inverted` is true, linear interpolation is reversed so that higher
+  effective input values map to lower sim_input values.
   """
-  @spec calculate_sim_input(Notch.t(), float()) :: {:ok, float()} | {:error, atom()}
+  @spec calculate_sim_input(Notch.t(), float(), boolean()) :: {:ok, float()} | {:error, atom()}
+  def calculate_sim_input(notch, input_value, inverted \\ false)
+
   def calculate_sim_input(
         %Notch{type: :gate, sim_input_min: sim_min, sim_input_max: sim_max},
-        _input_value
+        _input_value,
+        _inverted
       )
-      when is_float(sim_min) and is_float(sim_max) do
+      when is_number(sim_min) and is_number(sim_max) do
     # For gates, return center of the simulator input range
     center = (sim_min + sim_max) / 2
     {:ok, Float.round(center, 2)}
@@ -155,39 +162,48 @@ defmodule TswIo.Train.LeverMapper do
           sim_input_min: sim_min,
           sim_input_max: sim_max
         },
-        input_value
+        input_value,
+        inverted
       )
-      when is_float(input_min) and is_float(input_max) and
-             is_float(sim_min) and is_float(sim_max) do
+      when is_number(input_min) and is_number(input_max) and
+             is_number(sim_min) and is_number(sim_max) do
     # Calculate position within the notch's hardware input range (0.0 to 1.0)
     input_range = input_max - input_min
     position = (input_value - input_min) / input_range
 
+    # For partial-range notches (in multi-notch levers), also invert the position
+    # when the lever is inverted. Full-range notches (0.0-1.0) already get
+    # correct inversion from the input value transformation.
+    is_partial_range = input_min > 0.001 or input_max < 0.999
+
+    effective_position =
+      if inverted == true and is_partial_range, do: 1.0 - position, else: position
+
     # Interpolate within the notch's simulator input range
     sim_range = sim_max - sim_min
-    sim_value = sim_min + position * sim_range
+    sim_value = sim_min + effective_position * sim_range
 
     # Round to 2 decimal places
     {:ok, Float.round(sim_value, 2)}
   end
 
-  def calculate_sim_input(%Notch{sim_input_min: nil}, _input_value) do
+  def calculate_sim_input(%Notch{sim_input_min: nil}, _input_value, _inverted) do
     {:error, :no_sim_input_range}
   end
 
-  def calculate_sim_input(%Notch{sim_input_max: nil}, _input_value) do
+  def calculate_sim_input(%Notch{sim_input_max: nil}, _input_value, _inverted) do
     {:error, :no_sim_input_range}
   end
 
-  def calculate_sim_input(%Notch{input_min: nil}, _input_value) do
+  def calculate_sim_input(%Notch{input_min: nil}, _input_value, _inverted) do
     {:error, :unmapped_notch}
   end
 
-  def calculate_sim_input(%Notch{input_max: nil}, _input_value) do
+  def calculate_sim_input(%Notch{input_max: nil}, _input_value, _inverted) do
     {:error, :unmapped_notch}
   end
 
-  def calculate_sim_input(%Notch{}, _input_value) do
+  def calculate_sim_input(%Notch{}, _input_value, _inverted) do
     {:error, :unmapped_notch}
   end
 

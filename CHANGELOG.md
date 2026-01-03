@@ -13,6 +13,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Fixed
 
 - New trains not being set as active until app restart
+- Lever inversion not fully applied within linear notch ranges (multi-notch levers)
+- Gate notches with sim_input_min=0 failing to match due to integer/float type mismatch
 
 ### Removed
 
