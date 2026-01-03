@@ -120,7 +120,8 @@ defmodule TswIo.Train.Detection do
 
   @impl true
   def handle_cast(:sync, %State{} = state) do
-    new_state = detect_train(state)
+    # Clear current_identifier to force a full re-detection with database lookup
+    new_state = detect_train(%{state | current_identifier: nil})
     {:noreply, new_state}
   end
 
