@@ -11,6 +11,23 @@ Guide for developers contributing to TWS IO.
 - Node.js (for asset compilation)
 - SQLite3
 
+### Optional: Keystroke Simulation Support
+
+To use the keystroke button binding mode during development, you need to build the keystroke utility:
+
+```bash
+# Requires Rust toolchain (https://rustup.rs/)
+mix keystroke
+```
+
+This builds a small Rust executable that simulates keyboard input via the Windows SendInput API. The `TswIo.Keyboard` module automatically finds it at `tauri/keystroke/target/release/keystroke.exe`.
+
+Verify it's working:
+```elixir
+iex> TswIo.Keyboard.available?()
+true
+```
+
 ### Optional: Firmware Upload Support
 
 To use the firmware upload feature during development, you need to install avrdude:
@@ -307,6 +324,7 @@ The desktop app bundles:
 - **tsw_io_backend** - The Elixir application (Burrito release)
 - **avrdude** - AVR programmer for firmware uploads
 - **avrdude.conf** - Configuration file for avrdude
+- **keystroke** - Keyboard input simulator for keystroke button bindings
 
 ## Deployment
 
