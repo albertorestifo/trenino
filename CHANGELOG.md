@@ -8,23 +8,36 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
-- Keystroke simulation mode for button bindings
+### Changed
+
+### Fixed
+
+### Removed
+
+## [0.4.0] - 2026-01-03
+
+### Added
+
+- **Keystroke simulation mode** for button bindings
   - Map hardware buttons to keyboard keystrokes instead of API endpoints
   - Hold mode: Key is held while button is pressed, released when button is released
   - Support for modifier combinations (Ctrl, Shift, Alt)
-  - Interactive key capture UI for recording keystrokes
-- Lever direction inversion option
+  - Interactive key capture UI for intuitive keystroke recording
+- **Lever direction inversion** option
   - Toggle in Map Notches step to invert hardware-to-simulator mapping
   - Use when physical lever direction is opposite to simulator expectation
   - Visual indicator reflects inverted position for immediate feedback
 
+### Changed
+
+- Button configuration wizard now includes a type selection step for better workflow
+
 ### Fixed
 
-- Train detection now uses drivable actor's ObjectClass instead of common prefix
-  - Fixes detection for freight trains where locomotive and wagons have different class prefixes
-  - Uses `CurrentFormation.DrivableIndex` to identify the actual driven vehicle
+- Train detection now correctly identifies freight trains where locomotive and wagons have different class prefixes (uses drivable actor's ObjectClass)
 - API Explorer list not scrolling in lever setup wizard
 - Control auto-detection failing due to incorrect API response format
+- SQLite "Database busy" errors under heavy load (added performance optimizations)
 
 ## [0.3.1]
 
