@@ -81,25 +81,25 @@ defmodule TswIo.Train.LeverMapper do
 
   """
   @spec map_input(LeverConfig.t(), float()) :: map_result()
-  def map_input(%LeverConfig{notches: notches}, input_value)
+  def map_input(%LeverConfig{notches: notches, inverted: inverted}, input_value)
       when is_float(input_value) and input_value >= 0.0 and input_value <= 1.0 do
+    # Apply inversion if configured (hardware direction opposite to simulator)
+    effective_value = if inverted, do: Float.round(1.0 - input_value, 2), else: input_value
+
     # Find the notch that contains this hardware input value
-    case find_notch(notches, input_value) do
+    case find_notch(notches, effective_value) do
       nil ->
         {:error, :no_notch}
 
       notch ->
-        calculate_sim_input(notch, input_value)
+        calculate_sim_input(notch, effective_value)
     end
   end
 
   def map_input(%LeverConfig{}, input_value) when is_float(input_value) do
-    # Clamp out-of-range values
-    clamped = max(0.0, min(1.0, input_value))
-    map_input_clamped(clamped)
+    # Out-of-range values (below 0.0 or above 1.0) - return error
+    {:error, :no_notch}
   end
-
-  defp map_input_clamped(_value), do: {:error, :no_notch}
 
   @doc """
   Find which notch contains a given hardware input value.

@@ -22,10 +22,33 @@ defmodule TswIo.Simulator.ControlDetectionSessionTest do
                status: 200,
                body: %{
                  "Result" => "Success",
-                 "Children" => [
-                   %{"Name" => "Horn", "Type" => "Node"},
-                   %{"Name" => "Throttle(Lever)", "Type" => "Node"}
-                 ]
+                 "Nodes" => [
+                   %{"NodeName" => "Horn"},
+                   %{"NodeName" => "Throttle(Lever)"}
+                 ],
+                 "Endpoints" => []
+               }
+             }}
+
+          path == "/list/CurrentDrivableActor/Horn" ->
+            {:ok,
+             %Req.Response{
+               status: 200,
+               body: %{
+                 "Result" => "Success",
+                 "Nodes" => [],
+                 "Endpoints" => [%{"Name" => "InputValue", "Writable" => true}]
+               }
+             }}
+
+          path == "/list/CurrentDrivableActor/Throttle(Lever)" ->
+            {:ok,
+             %Req.Response{
+               status: 200,
+               body: %{
+                 "Result" => "Success",
+                 "Nodes" => [],
+                 "Endpoints" => [%{"Name" => "InputValue", "Writable" => true}]
                }
              }}
 
@@ -113,7 +136,19 @@ defmodule TswIo.Simulator.ControlDetectionSessionTest do
                status: 200,
                body: %{
                  "Result" => "Success",
-                 "Children" => [%{"Name" => "Horn", "Type" => "Node"}]
+                 "Nodes" => [%{"NodeName" => "Horn"}],
+                 "Endpoints" => []
+               }
+             }}
+
+          path == "/list/CurrentDrivableActor/Horn" ->
+            {:ok,
+             %Req.Response{
+               status: 200,
+               body: %{
+                 "Result" => "Success",
+                 "Nodes" => [],
+                 "Endpoints" => [%{"Name" => "InputValue", "Writable" => true}]
                }
              }}
 
@@ -195,10 +230,33 @@ defmodule TswIo.Simulator.ControlDetectionSessionTest do
                status: 200,
                body: %{
                  "Result" => "Success",
-                 "Children" => [
-                   %{"Name" => "Horn", "Type" => "Node"},
-                   %{"Name" => "Light", "Type" => "Node"}
-                 ]
+                 "Nodes" => [
+                   %{"NodeName" => "Horn"},
+                   %{"NodeName" => "Light"}
+                 ],
+                 "Endpoints" => []
+               }
+             }}
+
+          path == "/list/CurrentDrivableActor/Horn" ->
+            {:ok,
+             %Req.Response{
+               status: 200,
+               body: %{
+                 "Result" => "Success",
+                 "Nodes" => [],
+                 "Endpoints" => [%{"Name" => "InputValue", "Writable" => true}]
+               }
+             }}
+
+          path == "/list/CurrentDrivableActor/Light" ->
+            {:ok,
+             %Req.Response{
+               status: 200,
+               body: %{
+                 "Result" => "Success",
+                 "Nodes" => [],
+                 "Endpoints" => [%{"Name" => "InputValue", "Writable" => true}]
                }
              }}
 
@@ -276,7 +334,19 @@ defmodule TswIo.Simulator.ControlDetectionSessionTest do
                status: 200,
                body: %{
                  "Result" => "Success",
-                 "Children" => [%{"Name" => "Horn", "Type" => "Node"}]
+                 "Nodes" => [%{"NodeName" => "Horn"}],
+                 "Endpoints" => []
+               }
+             }}
+
+          path == "/list/CurrentDrivableActor/Horn" ->
+            {:ok,
+             %Req.Response{
+               status: 200,
+               body: %{
+                 "Result" => "Success",
+                 "Nodes" => [],
+                 "Endpoints" => [%{"Name" => "InputValue", "Writable" => true}]
                }
              }}
 
@@ -340,7 +410,19 @@ defmodule TswIo.Simulator.ControlDetectionSessionTest do
                status: 200,
                body: %{
                  "Result" => "Success",
-                 "Children" => [%{"Name" => "Horn", "Type" => "Node"}]
+                 "Nodes" => [%{"NodeName" => "Horn"}],
+                 "Endpoints" => []
+               }
+             }}
+
+          path == "/list/CurrentDrivableActor/Horn" ->
+            {:ok,
+             %Req.Response{
+               status: 200,
+               body: %{
+                 "Result" => "Success",
+                 "Nodes" => [],
+                 "Endpoints" => [%{"Name" => "InputValue", "Writable" => true}]
                }
              }}
 
@@ -400,7 +482,19 @@ defmodule TswIo.Simulator.ControlDetectionSessionTest do
                status: 200,
                body: %{
                  "Result" => "Success",
-                 "Children" => [%{"Name" => "Throttle(Lever)", "Type" => "Node"}]
+                 "Nodes" => [%{"NodeName" => "Throttle(Lever)"}],
+                 "Endpoints" => []
+               }
+             }}
+
+          path == "/list/CurrentDrivableActor/Throttle(Lever)" ->
+            {:ok,
+             %Req.Response{
+               status: 200,
+               body: %{
+                 "Result" => "Success",
+                 "Nodes" => [],
+                 "Endpoints" => [%{"Name" => "InputValue", "Writable" => true}]
                }
              }}
 

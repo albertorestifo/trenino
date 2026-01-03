@@ -25,6 +25,7 @@ defmodule TswIo.Train.LeverConfig do
           notch_count_endpoint: String.t() | nil,
           notch_index_endpoint: String.t() | nil,
           lever_type: lever_type(),
+          inverted: boolean(),
           calibrated_at: DateTime.t() | nil,
           element: Element.t() | Ecto.Association.NotLoaded.t(),
           notches: [Notch.t()] | Ecto.Association.NotLoaded.t(),
@@ -40,6 +41,7 @@ defmodule TswIo.Train.LeverConfig do
     field :notch_count_endpoint, :string
     field :notch_index_endpoint, :string
     field :lever_type, Ecto.Enum, values: [:discrete, :continuous, :hybrid]
+    field :inverted, :boolean, default: false
     field :calibrated_at, :utc_datetime
 
     belongs_to :element, Element
@@ -59,6 +61,7 @@ defmodule TswIo.Train.LeverConfig do
       :notch_count_endpoint,
       :notch_index_endpoint,
       :lever_type,
+      :inverted,
       :calibrated_at,
       :element_id
     ])

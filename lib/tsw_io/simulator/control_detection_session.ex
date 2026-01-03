@@ -171,9 +171,12 @@ defmodule TswIo.Simulator.ControlDetectionSession do
 
   defp discover_input_endpoints(%Client{} = client) do
     case Client.list(client, "CurrentDrivableActor") do
-      {:ok, %{"Children" => children}} when is_list(children) ->
-        # Find all nodes that have InputValue endpoints
-        endpoints = find_input_value_endpoints(children, "CurrentDrivableActor")
+      {:ok, response} when is_map(response) ->
+        # Response format: %{"Nodes" => [...], "Endpoints" => [...]}
+        nodes = Map.get(response, "Nodes", [])
+
+        # Recursively find all nodes with writable InputValue endpoints
+        endpoints = find_input_value_endpoints(client, nodes, "CurrentDrivableActor")
 
         Logger.debug(
           "[ControlDetectionSession] Discovered #{length(endpoints)} InputValue endpoints"
@@ -181,38 +184,43 @@ defmodule TswIo.Simulator.ControlDetectionSession do
 
         {:ok, endpoints}
 
-      {:ok, response} ->
-        Logger.error("[ControlDetectionSession] Unexpected list response: #{inspect(response)}")
-        {:error, :invalid_response}
-
       {:error, reason} ->
         {:error, {:list_failed, reason}}
     end
   end
 
-  defp find_input_value_endpoints(children, parent_path) do
-    children
-    |> Enum.flat_map(fn child ->
-      case child do
-        %{"Name" => name, "Children" => sub_children} when is_list(sub_children) ->
-          # It's a node with children, recurse
-          child_path = "#{parent_path}/#{name}"
-          find_input_value_endpoints(sub_children, child_path)
+  defp find_input_value_endpoints(client, nodes, parent_path) when is_list(nodes) do
+    nodes
+    |> Enum.flat_map(fn node ->
+      # Node format: %{"NodeName" => "...", "Name" => "..."}
+      name = Map.get(node, "NodeName") || Map.get(node, "Name", "")
+      node_path = "#{parent_path}/#{name}"
 
-        %{"Name" => "InputValue", "Type" => "Endpoint"} ->
-          # Found an InputValue endpoint
-          ["#{parent_path}.InputValue"]
+      # List this node to check for InputValue endpoint
+      case Client.list(client, node_path) do
+        {:ok, response} when is_map(response) ->
+          endpoints = Map.get(response, "Endpoints", [])
+          sub_nodes = Map.get(response, "Nodes", [])
 
-        %{"Name" => name, "Type" => "Node"} ->
-          # Node without children loaded, could have InputValue
-          # We'll try to subscribe directly
-          ["#{parent_path}/#{name}.InputValue"]
+          # Check if this node has a writable InputValue endpoint
+          has_writable_input =
+            Enum.any?(endpoints, fn ep ->
+              Map.get(ep, "Name") == "InputValue" and Map.get(ep, "Writable", false)
+            end)
 
-        _ ->
+          # Collect this endpoint if writable, plus recurse into child nodes
+          this_endpoint = if has_writable_input, do: ["#{node_path}.InputValue"], else: []
+          child_endpoints = find_input_value_endpoints(client, sub_nodes, node_path)
+
+          this_endpoint ++ child_endpoints
+
+        {:error, _} ->
           []
       end
     end)
   end
+
+  defp find_input_value_endpoints(_client, _nodes, _parent_path), do: []
 
   defp create_subscriptions(%Client{} = client, endpoints) do
     # First clear any existing subscription with this ID

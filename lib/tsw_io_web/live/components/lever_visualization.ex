@@ -231,10 +231,16 @@ defmodule TswIoWeb.LeverVisualization do
   defp calculate_indicator_position(assigns) do
     current_value = assigns[:current_value]
     total_travel = assigns[:total_travel] || 1
+    inverted = assigns[:inverted] || false
 
     if current_value && total_travel > 0 do
       # Normalize to 0-100%
-      min(100.0, max(0.0, current_value / total_travel * 100.0))
+      position = current_value / total_travel * 100.0
+
+      # Apply inversion if enabled (so user sees "logical" position)
+      position = if inverted, do: 100.0 - position, else: position
+
+      min(100.0, max(0.0, position))
     else
       nil
     end

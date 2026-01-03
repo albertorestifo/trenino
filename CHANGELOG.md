@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- Lever direction inversion option
+  - Toggle in Map Notches step to invert hardware-to-simulator mapping
+  - Use when physical lever direction is opposite to simulator expectation
+  - Visual indicator reflects inverted position for immediate feedback
+
+### Fixed
+
+- API Explorer list not scrolling in lever setup wizard
+- Control auto-detection failing due to incorrect API response format
+
 ## [0.3.1]
 
 ### Changed

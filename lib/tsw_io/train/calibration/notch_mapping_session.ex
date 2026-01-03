@@ -544,28 +544,46 @@ defmodule TswIo.Train.Calibration.NotchMappingSession do
   end
 
   defp save_notch_ranges(%State{} = state) do
+    inverted = state.lever_config.inverted || false
+
     # Convert calibrated values to normalized 0.0-1.0
+    # Apply inversion if configured (hardware direction opposite to simulator)
     notch_updates =
       state.notches
       |> Enum.with_index()
       |> Enum.map(fn {notch, idx} ->
         range = Enum.at(state.captured_ranges, idx)
 
+        {norm_min, norm_max} =
+          calibrated_to_normalized(range.min, range.max, state.total_travel, inverted)
+
         %{
           id: notch.id,
-          input_min: calibrated_to_normalized(range.min, state.total_travel),
-          input_max: calibrated_to_normalized(range.max, state.total_travel)
+          input_min: norm_min,
+          input_max: norm_max
         }
       end)
 
     Train.update_notch_input_ranges(state.lever_config_id, notch_updates)
   end
 
-  defp calibrated_to_normalized(calibrated, total_travel) when total_travel > 0 do
-    Float.round(calibrated / total_travel, 4)
+  defp calibrated_to_normalized(min_cal, max_cal, total_travel, inverted)
+       when total_travel > 0 do
+    norm_min = Float.round(min_cal / total_travel, 4)
+    norm_max = Float.round(max_cal / total_travel, 4)
+
+    if inverted do
+      # Invert: 0.0 becomes 1.0 and vice versa
+      # Also swap min/max since inversion reverses the order
+      inv_min = Float.round(1.0 - norm_max, 4)
+      inv_max = Float.round(1.0 - norm_min, 4)
+      {inv_min, inv_max}
+    else
+      {norm_min, norm_max}
+    end
   end
 
-  defp calibrated_to_normalized(_calibrated, _total_travel), do: 0.0
+  defp calibrated_to_normalized(_min, _max, _total_travel, _inverted), do: {0.0, 0.0}
 
   defp broadcast_event(%State{} = state, event) do
     Phoenix.PubSub.broadcast(

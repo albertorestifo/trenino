@@ -446,4 +446,89 @@ defmodule TswIo.Train.LeverMapperTest do
       assert {:error, :unmapped_notch} = LeverMapper.calculate_sim_input(notch, 0.5)
     end
   end
+
+  describe "map_input/2 with inverted lever" do
+    setup do
+      # Lever covers full range with inversion enabled
+      # Hardware 0.0 should map like hardware 1.0 would normally
+      lever_config = %LeverConfig{
+        id: 10,
+        inverted: true,
+        notches: [
+          %Notch{
+            index: 0,
+            type: :linear,
+            min_value: 0.0,
+            max_value: 1.0,
+            input_min: 0.0,
+            input_max: 1.0,
+            sim_input_min: 0.0,
+            sim_input_max: 1.0
+          }
+        ]
+      }
+
+      %{lever_config: lever_config}
+    end
+
+    test "inverts hardware input before mapping", %{lever_config: config} do
+      # Hardware 0.0 -> inverted to 1.0 -> maps to sim 1.0
+      assert {:ok, 1.0} = LeverMapper.map_input(config, 0.0)
+      # Hardware 1.0 -> inverted to 0.0 -> maps to sim 0.0
+      assert {:ok, +0.0} = LeverMapper.map_input(config, 1.0)
+    end
+
+    test "inverts mid-range values correctly", %{lever_config: config} do
+      # Hardware 0.25 -> inverted to 0.75 -> maps to sim 0.75
+      assert {:ok, 0.75} = LeverMapper.map_input(config, 0.25)
+      # Hardware 0.5 -> inverted to 0.5 -> maps to sim 0.5 (midpoint unchanged)
+      assert {:ok, 0.5} = LeverMapper.map_input(config, 0.5)
+      # Hardware 0.75 -> inverted to 0.25 -> maps to sim 0.25
+      assert {:ok, 0.25} = LeverMapper.map_input(config, 0.75)
+    end
+  end
+
+  describe "map_input/2 with inverted false (default)" do
+    test "does not invert when inverted is false" do
+      config = %LeverConfig{
+        id: 11,
+        inverted: false,
+        notches: [
+          %Notch{
+            index: 0,
+            type: :linear,
+            input_min: 0.0,
+            input_max: 1.0,
+            sim_input_min: 0.0,
+            sim_input_max: 1.0
+          }
+        ]
+      }
+
+      # Hardware 0.0 -> maps to sim 0.0 (no inversion)
+      assert {:ok, +0.0} = LeverMapper.map_input(config, 0.0)
+      # Hardware 1.0 -> maps to sim 1.0 (no inversion)
+      assert {:ok, 1.0} = LeverMapper.map_input(config, 1.0)
+    end
+
+    test "does not invert when inverted is nil" do
+      config = %LeverConfig{
+        id: 12,
+        inverted: nil,
+        notches: [
+          %Notch{
+            index: 0,
+            type: :linear,
+            input_min: 0.0,
+            input_max: 1.0,
+            sim_input_min: 0.0,
+            sim_input_max: 1.0
+          }
+        ]
+      }
+
+      # Hardware 0.0 -> maps to sim 0.0 (no inversion)
+      assert {:ok, +0.0} = LeverMapper.map_input(config, 0.0)
+    end
+  end
 end

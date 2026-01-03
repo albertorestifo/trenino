@@ -104,6 +104,7 @@ defmodule TswIoWeb.LeverSetupWizard do
     |> assign(:calibration_progress, 0.0)
     |> assign(:calibration_error, nil)
     |> assign(:lever_type, get_existing_lever_type(existing_config))
+    |> assign(:inverted, get_existing_inverted(existing_config))
     |> assign(:notches, get_existing_notches(existing_config))
     |> assign(:mapping_session_pid, nil)
     |> assign(:mapping_state, nil)
@@ -112,6 +113,9 @@ defmodule TswIoWeb.LeverSetupWizard do
 
   defp get_existing_lever_type(nil), do: nil
   defp get_existing_lever_type(%{lever_type: lever_type}), do: lever_type
+
+  defp get_existing_inverted(nil), do: false
+  defp get_existing_inverted(%{inverted: inverted}), do: inverted || false
 
   defp get_existing_input_binding(nil), do: nil
   defp get_existing_input_binding(%{input_binding: %Ecto.Association.NotLoaded{}}), do: nil
@@ -244,6 +248,20 @@ defmodule TswIoWeb.LeverSetupWizard do
   def handle_event("skip_calibration", _params, socket) do
     # Skip to map_notches step, user will add notches manually
     {:noreply, assign(socket, :current_step, :map_notches)}
+  end
+
+  @impl true
+  def handle_event("toggle_inverted", _params, socket) do
+    new_inverted = not socket.assigns.inverted
+
+    # Save to database immediately
+    element = socket.assigns.element
+
+    if element.lever_config do
+      Train.update_lever_config(element.lever_config, %{inverted: new_inverted})
+    end
+
+    {:noreply, assign(socket, :inverted, new_inverted)}
   end
 
   @impl true
@@ -673,6 +691,7 @@ defmodule TswIoWeb.LeverSetupWizard do
     ~H"""
     <.step_map_notches
       mapping_state={@socket_assigns.mapping_state}
+      inverted={@socket_assigns.inverted}
       can_proceed={can_proceed_from?(:map_notches, @socket_assigns)}
       myself={@myself}
     />
@@ -683,6 +702,7 @@ defmodule TswIoWeb.LeverSetupWizard do
     ~H"""
     <.step_test
       mapping_state={@socket_assigns.mapping_state}
+      inverted={@socket_assigns.inverted}
       myself={@myself}
     />
     """
@@ -778,7 +798,7 @@ defmodule TswIoWeb.LeverSetupWizard do
         </p>
       </div>
 
-      <div class="flex-1 overflow-hidden">
+      <div class="flex-1 overflow-hidden flex flex-col">
         <.live_component
           module={TswIoWeb.ApiExplorerComponent}
           id="lever-wizard-api-explorer"
@@ -991,6 +1011,7 @@ defmodule TswIoWeb.LeverSetupWizard do
 
   # Step 5: Map Notches
   attr :mapping_state, :map, default: nil
+  attr :inverted, :boolean, default: false
   attr :can_proceed, :boolean, required: true
   attr :myself, :any, required: true
 
@@ -1007,6 +1028,24 @@ defmodule TswIoWeb.LeverSetupWizard do
           Move your physical lever to capture the range for each notch.
         </p>
 
+        <div class="mb-4 p-3 bg-base-200 rounded-lg">
+          <label class="flex items-center gap-3 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={@inverted}
+              phx-click="toggle_inverted"
+              phx-target={@myself}
+              class="toggle toggle-primary"
+            />
+            <div>
+              <span class="font-medium">Invert lever direction</span>
+              <p class="text-xs text-base-content/60">
+                Enable if your hardware lever moves opposite to the simulator
+              </p>
+            </div>
+          </label>
+        </div>
+
         <%!-- Lever Visualization will go here --%>
         <.live_component
           module={TswIoWeb.LeverVisualization}
@@ -1016,6 +1055,7 @@ defmodule TswIoWeb.LeverSetupWizard do
           current_value={@mapping_state.current_value}
           total_travel={@mapping_state.total_travel}
           current_notch_index={@mapping_state.current_notch_index}
+          inverted={@inverted}
           event_target={@myself}
         />
 
@@ -1133,6 +1173,7 @@ defmodule TswIoWeb.LeverSetupWizard do
 
   # Step 6: Test
   attr :mapping_state, :map, default: nil
+  attr :inverted, :boolean, default: false
   attr :myself, :any, required: true
 
   defp step_test(assigns) do
@@ -1157,6 +1198,7 @@ defmodule TswIoWeb.LeverSetupWizard do
             current_value={@mapping_state.current_value}
             total_travel={@mapping_state.total_travel}
             current_notch_index={nil}
+            inverted={@inverted}
             show_live_indicator={true}
           />
         </div>
