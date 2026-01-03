@@ -766,6 +766,9 @@ defmodule TswIoWeb.TrainEditLive do
   defp save_train(%{assigns: %{new_mode: true}} = socket, params) do
     case TrainContext.create_train(params) do
       {:ok, train} ->
+        # Sync detection to check if the new train matches current simulator state
+        TrainContext.sync()
+
         {:noreply,
          socket
          |> put_flash(:info, "Train created")

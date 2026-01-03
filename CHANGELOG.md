@@ -12,6 +12,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- New trains not being set as active until app restart
+
 ### Removed
 
 ## [0.4.0] - 2026-01-03
