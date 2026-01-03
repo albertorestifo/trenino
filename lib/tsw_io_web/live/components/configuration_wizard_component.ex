@@ -166,6 +166,8 @@ defmodule TswIoWeb.ConfigurationWizardComponent do
     |> assign(:sequences, sequences)
     |> assign(:on_sequence_id, get_existing_on_sequence_id(element))
     |> assign(:off_sequence_id, get_existing_off_sequence_id(element))
+    |> assign(:keystroke, get_existing_keystroke(element))
+    |> assign(:capturing_keystroke, false)
     |> assign(:show_explorer, true)
     |> assign(:individual_selection_mode, false)
     |> assign(:show_auto_detect, false)
@@ -176,10 +178,14 @@ defmodule TswIoWeb.ConfigurationWizardComponent do
   # For buttons with existing complete bindings, skip to configure step
   defp get_initial_wizard_state(%Element{button_binding: binding})
        when not is_nil(binding) and not is_nil(binding.input_id) do
-    # Check if binding is complete (has endpoint for simple/momentary, or sequence for sequence mode)
+    # Check if binding is complete based on mode:
+    # - sequence: requires on_sequence_id
+    # - keystroke: requires keystroke string
+    # - simple/momentary: requires endpoint
     is_complete =
       case binding.mode do
         :sequence -> not is_nil(binding.on_sequence_id)
+        :keystroke -> not is_nil(binding.keystroke) and binding.keystroke != ""
         _ -> not is_nil(binding.endpoint)
       end
 
@@ -255,6 +261,13 @@ defmodule TswIoWeb.ConfigurationWizardComponent do
 
   defp get_existing_off_sequence_id(_element), do: nil
 
+  defp get_existing_keystroke(%Element{button_binding: binding})
+       when not is_nil(binding) do
+    binding.keystroke
+  end
+
+  defp get_existing_keystroke(_element), do: nil
+
   @impl true
   def handle_event("select_input", %{"input-id" => input_id_str}, socket) do
     input_id = String.to_integer(input_id_str)
@@ -322,6 +335,37 @@ defmodule TswIoWeb.ConfigurationWizardComponent do
   @impl true
   def handle_event("close_auto_detect", _params, socket) do
     {:noreply, assign(socket, :show_auto_detect, false)}
+  end
+
+  @impl true
+  def handle_event("start_keystroke_capture", _params, socket) do
+    {:noreply, assign(socket, :capturing_keystroke, true)}
+  end
+
+  @impl true
+  def handle_event("cancel_keystroke_capture", _params, socket) do
+    {:noreply, assign(socket, :capturing_keystroke, false)}
+  end
+
+  @impl true
+  def handle_event("keystroke_captured", %{"keystroke" => keystroke}, socket) do
+    socket =
+      socket
+      |> assign(:keystroke, keystroke)
+      |> assign(:capturing_keystroke, false)
+      |> check_mapping_complete()
+
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_event("clear_keystroke", _params, socket) do
+    socket =
+      socket
+      |> assign(:keystroke, nil)
+      |> check_mapping_complete()
+
+    {:noreply, socket}
   end
 
   @impl true
@@ -530,6 +574,8 @@ defmodule TswIoWeb.ConfigurationWizardComponent do
               sequences={@sequences}
               on_sequence_id={@on_sequence_id}
               off_sequence_id={@off_sequence_id}
+              keystroke={@keystroke}
+              capturing_keystroke={@capturing_keystroke}
               test_state={@test_state}
               mapping_complete={@mapping_complete}
               detecting_button={@detecting_button}
@@ -583,6 +629,8 @@ defmodule TswIoWeb.ConfigurationWizardComponent do
   attr :sequences, :list, default: []
   attr :on_sequence_id, :integer, default: nil
   attr :off_sequence_id, :integer, default: nil
+  attr :keystroke, :string, default: nil
+  attr :capturing_keystroke, :boolean, default: false
   attr :test_state, :any, default: nil
   attr :mapping_complete, :boolean, required: true
   attr :detecting_button, :boolean, default: false
@@ -593,7 +641,7 @@ defmodule TswIoWeb.ConfigurationWizardComponent do
 
     ~H"""
     <div class="space-y-6">
-      <div>
+      <div :if={@binding_mode != :keystroke}>
         <h3 class="font-semibold mb-2">Selected Endpoint</h3>
         <div class="bg-base-200 rounded-lg p-3 font-mono text-sm">
           {@detected_endpoints[:endpoint]}
@@ -694,6 +742,9 @@ defmodule TswIoWeb.ConfigurationWizardComponent do
               <option value="sequence" selected={@binding_mode == :sequence}>
                 Sequence (execute commands)
               </option>
+              <option value="keystroke" selected={@binding_mode == :keystroke}>
+                Keystroke (keyboard key)
+              </option>
             </select>
             <p class="text-xs text-base-content/50 mt-1">
               {mode_description(@binding_mode)}
@@ -781,7 +832,85 @@ defmodule TswIoWeb.ConfigurationWizardComponent do
           </div>
         </div>
 
-        <div :if={@binding_mode != :sequence} class="grid grid-cols-2 gap-4 mt-4">
+        <div :if={@binding_mode == :keystroke} class="bg-base-200/50 rounded-lg p-4 mt-4">
+          <label class="label">
+            <span class="label-text font-medium">Keystroke</span>
+          </label>
+
+          <div :if={!@capturing_keystroke && is_nil(@keystroke)} class="bg-base-200 rounded-lg p-4">
+            <div class="flex items-center justify-between">
+              <div>
+                <p class="text-sm text-base-content/70">No keystroke configured</p>
+                <p class="text-xs text-base-content/50">
+                  Click "Capture" and press the key combination
+                </p>
+              </div>
+              <button
+                type="button"
+                phx-click="start_keystroke_capture"
+                phx-target={@myself}
+                class="btn btn-primary btn-sm"
+              >
+                <.icon name="hero-cursor-arrow-ripple" class="w-4 h-4" /> Capture
+              </button>
+            </div>
+          </div>
+
+          <div
+            :if={@capturing_keystroke}
+            id="keystroke-capture"
+            phx-hook="KeystrokeCapture"
+            phx-target={@myself}
+            tabindex="0"
+            class="bg-primary/10 border-2 border-primary rounded-lg p-6 text-center cursor-pointer focus:ring-2 focus:ring-primary"
+          >
+            <div class="flex flex-col items-center gap-2">
+              <.icon name="hero-cursor-arrow-ripple" class="w-8 h-8 text-primary animate-pulse" />
+              <p class="font-medium text-primary">Press any key combination...</p>
+              <p class="text-xs text-base-content/60">e.g., W, Ctrl+S, Shift+F1</p>
+            </div>
+            <button
+              type="button"
+              phx-click="cancel_keystroke_capture"
+              phx-target={@myself}
+              class="btn btn-ghost btn-xs mt-3"
+            >
+              Cancel
+            </button>
+          </div>
+
+          <div :if={!@capturing_keystroke && @keystroke != nil} class="bg-success/10 border border-success rounded-lg p-4">
+            <div class="flex items-center justify-between">
+              <div class="flex items-center gap-3">
+                <.icon name="hero-check-circle" class="w-6 h-6 text-success" />
+                <div>
+                  <p class="font-medium font-mono text-lg">{@keystroke}</p>
+                  <p class="text-xs text-base-content/60">Key will be held while button is pressed</p>
+                </div>
+              </div>
+              <div class="flex gap-2">
+                <button
+                  type="button"
+                  phx-click="start_keystroke_capture"
+                  phx-target={@myself}
+                  class="btn btn-ghost btn-sm"
+                >
+                  Change
+                </button>
+                <button
+                  type="button"
+                  phx-click="clear_keystroke"
+                  phx-target={@myself}
+                  class="btn btn-ghost btn-sm text-error"
+                >
+                  Clear
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div :if={@binding_mode not in [:sequence, :keystroke]} class="grid grid-cols-2 gap-4 mt-4">
           <div>
             <label class="label">
               <span class="label-text font-medium">ON Value</span>
@@ -809,7 +938,7 @@ defmodule TswIoWeb.ConfigurationWizardComponent do
         </div>
       </form>
 
-      <div>
+      <div :if={@binding_mode not in [:sequence, :keystroke]}>
         <h3 class="font-semibold mb-2">Test Connection</h3>
         <div class="flex items-center gap-3">
           <button
@@ -872,6 +1001,9 @@ defmodule TswIoWeb.ConfigurationWizardComponent do
   defp mode_description(:sequence),
     do: "Executes a command sequence. Use for: startup procedures, multi-step operations"
 
+  defp mode_description(:keystroke),
+    do: "Simulates a keyboard key. Use for: controls that respond better to keyboard input"
+
   defp hardware_type_description(:momentary),
     do: "Button returns when released (like a keyboard key or doorbell)"
 
@@ -885,6 +1017,13 @@ defmodule TswIoWeb.ConfigurationWizardComponent do
     has_sequence = socket.assigns.on_sequence_id != nil
 
     assign(socket, :mapping_complete, has_input and has_sequence)
+  end
+
+  defp check_mapping_complete(%{assigns: %{binding_mode: :keystroke}} = socket) do
+    has_input = socket.assigns.selected_input_id != nil
+    has_keystroke = socket.assigns.keystroke != nil and socket.assigns.keystroke != ""
+
+    assign(socket, :mapping_complete, has_input and has_keystroke)
   end
 
   defp check_mapping_complete(socket) do
@@ -918,9 +1057,9 @@ defmodule TswIoWeb.ConfigurationWizardComponent do
   defp save_button_configuration(%{assigns: assigns}) do
     %{element: element, detected_endpoints: detected, selected_input_id: input_id} = assigns
 
-    # For sequence mode, endpoint is nil (sequences define their own endpoints)
+    # For sequence and keystroke modes, endpoint is nil
     endpoint =
-      if assigns.binding_mode == :sequence do
+      if assigns.binding_mode in [:sequence, :keystroke] do
         nil
       else
         detected[:endpoint]
@@ -933,6 +1072,7 @@ defmodule TswIoWeb.ConfigurationWizardComponent do
       mode: assigns.binding_mode,
       hardware_type: assigns.hardware_type,
       repeat_interval_ms: assigns.repeat_interval_ms,
+      keystroke: assigns.keystroke,
       on_sequence_id: assigns.on_sequence_id,
       off_sequence_id: assigns.off_sequence_id
     }

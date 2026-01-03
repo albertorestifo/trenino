@@ -25,11 +25,100 @@ import {LiveSocket} from "phoenix_live_view"
 import {hooks as colocatedHooks} from "phoenix-colocated/tsw_io"
 import topbar from "../vendor/topbar"
 
+// Normalize key codes to human-readable format for keystroke capture
+function normalizeKey(code) {
+  // Single letter keys
+  if (code.startsWith("Key")) {
+    return code.slice(3) // "KeyW" -> "W"
+  }
+  // Digit keys
+  if (code.startsWith("Digit")) {
+    return code.slice(5) // "Digit1" -> "1"
+  }
+  // Numpad keys
+  if (code.startsWith("Numpad")) {
+    const num = code.slice(6)
+    if (num.match(/^\d$/)) {
+      return "NUMPAD" + num
+    }
+    return "NUMPAD" + num.toUpperCase()
+  }
+  // Function keys (F1-F12)
+  if (code.match(/^F\d+$/)) {
+    return code
+  }
+  // Special keys
+  const specialKeys = {
+    "Space": "SPACE",
+    "Enter": "ENTER",
+    "Tab": "TAB",
+    "Escape": "ESC",
+    "Backspace": "BACKSPACE",
+    "Delete": "DELETE",
+    "Insert": "INSERT",
+    "Home": "HOME",
+    "End": "END",
+    "PageUp": "PAGEUP",
+    "PageDown": "PAGEDOWN",
+    "ArrowUp": "UP",
+    "ArrowDown": "DOWN",
+    "ArrowLeft": "LEFT",
+    "ArrowRight": "RIGHT",
+    "CapsLock": "CAPSLOCK",
+    "NumLock": "NUMLOCK",
+    "ScrollLock": "SCROLLLOCK",
+    "PrintScreen": "PRINTSCREEN",
+    "Pause": "PAUSE",
+  }
+  return specialKeys[code] || code.toUpperCase()
+}
+
+// Custom hooks for LiveView
+const Hooks = {
+  KeystrokeCapture: {
+    mounted() {
+      // Focus the element immediately when mounted
+      this.el.focus()
+
+      this.handleKeydown = (e) => {
+        // Prevent default browser actions
+        e.preventDefault()
+        e.stopPropagation()
+
+        // Ignore modifier-only key presses (wait for actual key)
+        if (["Control", "Shift", "Alt", "Meta"].includes(e.key)) {
+          return
+        }
+
+        // Build the keystroke string
+        const modifiers = []
+        if (e.ctrlKey) modifiers.push("CTRL")
+        if (e.shiftKey) modifiers.push("SHIFT")
+        if (e.altKey) modifiers.push("ALT")
+
+        const key = normalizeKey(e.code)
+        const keystroke = [...modifiers, key].join("+")
+
+        // Send to LiveView
+        this.pushEventTo(this.el.getAttribute("phx-target"), "keystroke_captured", {
+          keystroke: keystroke
+        })
+      }
+
+      this.el.addEventListener("keydown", this.handleKeydown)
+    },
+
+    destroyed() {
+      this.el.removeEventListener("keydown", this.handleKeydown)
+    }
+  }
+}
+
 const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
 const liveSocket = new LiveSocket("/live", Socket, {
   longPollFallbackMs: 2500,
   params: {_csrf_token: csrfToken},
-  hooks: {...colocatedHooks},
+  hooks: {...colocatedHooks, ...Hooks},
 })
 
 // Show progress bar on live navigation and form submits
