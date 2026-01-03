@@ -65,7 +65,18 @@ if config_env() == :prod do
 
   config :tsw_io, TswIo.Repo,
     database: database_path,
-    pool_size: String.to_integer(System.get_env("POOL_SIZE") || "5")
+    pool_size: String.to_integer(System.get_env("POOL_SIZE") || "5"),
+    # SQLite optimizations for desktop application:
+    # - WAL mode: Better concurrent reads while writing (GenServers + LiveView)
+    # - busy_timeout: Wait for locks instead of failing immediately
+    # - cache_size: Larger cache for better read performance (-64MB)
+    # - synchronous normal: Good durability/speed trade-off for desktop app
+    # - temp_store memory: Keep temp tables in RAM
+    journal_mode: :wal,
+    busy_timeout: 5000,
+    cache_size: -64000,
+    synchronous: :normal,
+    temp_store: :memory
 
   # The secret key base is used to sign/encrypt cookies and other secrets.
   # For desktop releases, we generate a stable key based on machine identity.
