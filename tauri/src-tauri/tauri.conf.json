@@ -25,7 +25,8 @@
     ],
     "externalBin": [
       "binaries/tsw_io_backend",
-      "binaries/avrdude"
+      "binaries/avrdude",
+      "binaries/keystroke"
     ],
     "resources": [
       "binaries/avrdude.conf"

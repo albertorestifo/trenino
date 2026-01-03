@@ -8,6 +8,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- Keystroke simulation mode for button bindings
+  - Map hardware buttons to keyboard keystrokes instead of API endpoints
+  - Hold mode: Key is held while button is pressed, released when button is released
+  - Support for modifier combinations (Ctrl, Shift, Alt)
+  - Interactive key capture UI for recording keystrokes
 - Lever direction inversion option
   - Toggle in Map Notches step to invert hardware-to-simulator mapping
   - Use when physical lever direction is opposite to simulator expectation

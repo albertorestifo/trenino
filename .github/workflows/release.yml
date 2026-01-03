@@ -131,6 +131,53 @@ jobs:
           path: burrito_out/${{ matrix.binary_name }}
           retention-days: 1
 
+  build-keystroke:
+    name: Build Keystroke (${{ matrix.target }})
+    needs: [verify-version]
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-2022
+            target: windows_x86_64
+            tauri_target: x86_64-pc-windows-msvc
+            binary_ext: ".exe"
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.tauri_target }}
+
+      - name: Cache Rust
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: tauri/keystroke -> target
+
+      - name: Build keystroke utility
+        working-directory: tauri/keystroke
+        run: cargo build --release
+
+      - name: Upload keystroke binary (Windows)
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@v6
+        with:
+          name: keystroke-${{ matrix.target }}
+          path: tauri/keystroke/target/release/keystroke.exe
+          retention-days: 1
+
+      - name: Upload keystroke binary (Unix)
+        if: runner.os != 'Windows'
+        uses: actions/upload-artifact@v6
+        with:
+          name: keystroke-${{ matrix.target }}
+          path: tauri/keystroke/target/release/keystroke
+          retention-days: 1
+
   download-avrdude:
     name: Download avrdude (${{ matrix.target }})
     runs-on: ubuntu-latest
@@ -165,7 +212,7 @@ jobs:
 
   build-tauri:
     name: Build Tauri (${{ matrix.target }})
-    needs: [verify-version, build-elixir, download-avrdude]
+    needs: [verify-version, build-elixir, build-keystroke, download-avrdude]
     runs-on: ${{ matrix.os }}
     permissions:
       contents: write
@@ -196,6 +243,12 @@ jobs:
           name: avrdude-${{ matrix.target }}
           path: tauri/src-tauri/binaries/avrdude-download
 
+      - name: Download keystroke
+        uses: actions/download-artifact@v7
+        with:
+          name: keystroke-${{ matrix.target }}
+          path: tauri/src-tauri/binaries/keystroke-download
+
       - name: Prepare binaries (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
@@ -214,8 +267,13 @@ jobs:
                       -Destination "tauri/src-tauri/binaries/"
           }
 
-          # Clean up download folder
+          # Prepare keystroke binary
+          Move-Item -Path "tauri/src-tauri/binaries/keystroke-download/keystroke.exe" `
+                    -Destination "tauri/src-tauri/binaries/keystroke-${{ matrix.tauri_target }}.exe"
+
+          # Clean up download folders
           Remove-Item -Recurse -Force "tauri/src-tauri/binaries/avrdude-download"
+          Remove-Item -Recurse -Force "tauri/src-tauri/binaries/keystroke-download"
 
           Get-ChildItem tauri/src-tauri/binaries/
 
@@ -238,8 +296,14 @@ jobs:
                "tauri/src-tauri/binaries/"
           fi
 
-          # Clean up download folder
+          # Prepare keystroke binary
+          mv "tauri/src-tauri/binaries/keystroke-download/keystroke" \
+             "tauri/src-tauri/binaries/keystroke-${{ matrix.tauri_target }}"
+          chmod +x "tauri/src-tauri/binaries/keystroke-${{ matrix.tauri_target }}"
+
+          # Clean up download folders
           rm -rf "tauri/src-tauri/binaries/avrdude-download"
+          rm -rf "tauri/src-tauri/binaries/keystroke-download"
 
           ls -la tauri/src-tauri/binaries/
 

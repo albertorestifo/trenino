@@ -63,7 +63,18 @@ else
     exit 1
 fi
 
-# Step 4: Build Tauri application
+# Step 4: Build keystroke utility
+echo "==> Building keystroke utility..."
+cd "$PROJECT_DIR/tauri/keystroke"
+cargo build --release
+if [ "$PLATFORM" = "x86_64-pc-windows-msvc" ]; then
+    cp "target/release/keystroke.exe" "$BINARIES_DIR/keystroke-$PLATFORM.exe"
+else
+    cp "target/release/keystroke" "$BINARIES_DIR/keystroke-$PLATFORM"
+fi
+echo "Copied keystroke to: $BINARIES_DIR/keystroke-$PLATFORM"
+
+# Step 5: Build Tauri application
 echo "==> Building Tauri application..."
 cd "$TAURI_DIR"
 cargo tauri build

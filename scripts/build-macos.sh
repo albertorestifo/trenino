@@ -121,6 +121,24 @@ prepare_tauri_binary() {
     log_info "Binary prepared at: $dest"
 }
 
+build_keystroke_utility() {
+    log_info "Building keystroke utility..."
+
+    cd "$PROJECT_ROOT/tauri/keystroke"
+
+    mise exec -- cargo build --release
+
+    local src="$PROJECT_ROOT/tauri/keystroke/target/release/keystroke"
+    local dest_dir="$PROJECT_ROOT/tauri/src-tauri/binaries"
+    local dest="$dest_dir/keystroke-${TAURI_TARGET}"
+
+    mkdir -p "$dest_dir"
+    cp "$src" "$dest"
+    chmod +x "$dest"
+
+    log_info "keystroke utility prepared at: $dest"
+}
+
 download_avrdude() {
     log_info "Downloading avrdude ${AVRDUDE_VERSION} for macOS ARM64..."
 
@@ -178,6 +196,7 @@ main() {
     check_dependencies
     build_elixir_backend
     prepare_tauri_binary
+    build_keystroke_utility
     download_avrdude
     build_tauri_app
 
