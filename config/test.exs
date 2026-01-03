@@ -7,10 +7,16 @@ import Config
 # Run `mix help test` for more information.
 config :tsw_io, TswIo.Repo,
   database: Path.expand("../tsw_io_test.db", __DIR__),
-  pool_size: 5,
+  pool_size: 10,
   pool: Ecto.Adapters.SQL.Sandbox,
-  # Prevent "Database busy" errors in CI by waiting for write lock
-  busy_timeout: 5000
+  # Prevent "Database busy" errors with async tests
+  busy_timeout: 10000,
+  # Enable WAL mode for better concurrent access (reduces lock contention)
+  journal_mode: :wal,
+  cache_size: -64000,
+  temp_store: :memory,
+  # Use normal sync for speed in tests (durability not critical)
+  synchronous: :normal
 
 # We don't run a server during test. If one is required,
 # you can enable the server option below.
