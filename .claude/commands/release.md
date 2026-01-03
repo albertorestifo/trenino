@@ -1,17 +1,12 @@
 ---
 description: Create a new release (major/minor/patch)
 argument-hint: [major|minor|patch]
-allowed-tools: Bash(git *), Bash(gh *), Bash(mix version *), Read, Edit, Grep, Glob
+allowed-tools: Bash(git *), Bash(gh *), Bash(gh --version), Bash(mix version *), Read, Edit, Grep, Glob
 ---
 
 # Release Process
 
 Create a new release by bumping the version ($ARGUMENTS).
-
-## Context
-
-- Current version tag: !`git describe --tags --abbrev=0 2>/dev/null || echo "no tags"`
-- GitHub CLI available: !`gh --version | head -1`
 
 ## Instructions
 
