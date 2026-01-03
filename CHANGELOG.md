@@ -15,6 +15,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- Train detection now uses drivable actor's ObjectClass instead of common prefix
+  - Fixes detection for freight trains where locomotive and wagons have different class prefixes
+  - Uses `CurrentFormation.DrivableIndex` to identify the actual driven vehicle
 - API Explorer list not scrolling in lever setup wizard
 - Control auto-detection failing due to incorrect API response format
 

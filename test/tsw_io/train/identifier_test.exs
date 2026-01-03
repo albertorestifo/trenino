@@ -66,87 +66,97 @@ defmodule TswIo.Train.IdentifierTest do
   end
 
   describe "derive_from_formation/1" do
-    test "returns identifier from formation with multiple cars" do
+    test "returns identifier from drivable actor ObjectClass" do
       client = Client.new(@base_url, @api_key)
 
-      # Mock formation length
+      # Mock drivable index
       expect(Req, :request, fn _req, opts ->
-        assert opts[:url] == "/get/CurrentFormation.FormationLength"
+        assert opts[:url] == "/get/CurrentFormation.DrivableIndex"
 
         {:ok,
          %Req.Response{
            status: 200,
-           body: %{"Result" => "Success", "Values" => %{"FormationLength" => 3}}
+           body: %{"Result" => "Success", "Values" => %{"DrivableIndex" => 0}}
          }}
       end)
 
-      # Mock object classes - these are called async so we need to expect multiple times
-      expect(Req, :request, 3, fn _req, opts ->
-        cond do
-          opts[:url] == "/get/CurrentFormation/0.ObjectClass" ->
-            {:ok,
-             %Req.Response{
-               status: 200,
-               body: %{"Result" => "Success", "Values" => %{"ObjectClass" => "BR_Class_66_Loco"}}
-             }}
+      # Mock object class at drivable index
+      expect(Req, :request, fn _req, opts ->
+        assert opts[:url] == "/get/CurrentFormation/0.ObjectClass"
 
-          opts[:url] == "/get/CurrentFormation/1.ObjectClass" ->
-            {:ok,
-             %Req.Response{
-               status: 200,
-               body: %{
-                 "Result" => "Success",
-                 "Values" => %{"ObjectClass" => "BR_Class_66_Wagon1"}
-               }
-             }}
-
-          opts[:url] == "/get/CurrentFormation/2.ObjectClass" ->
-            {:ok,
-             %Req.Response{
-               status: 200,
-               body: %{
-                 "Result" => "Success",
-                 "Values" => %{"ObjectClass" => "BR_Class_66_Wagon2"}
-               }
-             }}
-        end
+        {:ok,
+         %Req.Response{
+           status: 200,
+           body: %{"Result" => "Success", "Values" => %{"ObjectClass" => "RVM_SBN_OBB_1116_C"}}
+         }}
       end)
 
       assert {:ok, identifier} = Identifier.derive_from_formation(client)
-      assert identifier == "BR_Class_66"
+      assert identifier == "RVM_SBN_OBB_1116"
     end
 
-    test "returns error for empty formation" do
+    test "uses correct drivable index when not 0" do
       client = Client.new(@base_url, @api_key)
 
-      expect(Req, :request, fn _req, _opts ->
+      # Mock drivable index at position 2
+      expect(Req, :request, fn _req, opts ->
+        assert opts[:url] == "/get/CurrentFormation.DrivableIndex"
+
         {:ok,
          %Req.Response{
            status: 200,
-           body: %{"Result" => "Success", "Values" => %{"FormationLength" => 0}}
+           body: %{"Result" => "Success", "Values" => %{"DrivableIndex" => 2}}
          }}
       end)
 
-      assert {:error, :empty_formation} = Identifier.derive_from_formation(client)
-    end
+      # Mock object class at drivable index 2
+      expect(Req, :request, fn _req, opts ->
+        assert opts[:url] == "/get/CurrentFormation/2.ObjectClass"
 
-    test "returns error for single car formation" do
-      client = Client.new(@base_url, @api_key)
-
-      expect(Req, :request, fn _req, _opts ->
         {:ok,
          %Req.Response{
            status: 200,
-           body: %{"Result" => "Success", "Values" => %{"FormationLength" => 1}}
+           body: %{"Result" => "Success", "Values" => %{"ObjectClass" => "RVM_FSN_DB_BR430_C"}}
          }}
       end)
 
-      assert {:error, :single_car_formation} = Identifier.derive_from_formation(client)
+      assert {:ok, identifier} = Identifier.derive_from_formation(client)
+      assert identifier == "RVM_FSN_DB_BR430"
     end
 
-    test "returns error when formation length request fails" do
+    test "falls back to index 0 when DrivableIndex request fails" do
       client = Client.new(@base_url, @api_key)
 
+      # Mock failing drivable index request
+      expect(Req, :request, fn _req, opts ->
+        assert opts[:url] == "/get/CurrentFormation.DrivableIndex"
+        {:ok, %Req.Response{status: 500, body: %{"error" => "Internal error"}}}
+      end)
+
+      # Should fall back to index 0
+      expect(Req, :request, fn _req, opts ->
+        assert opts[:url] == "/get/CurrentFormation/0.ObjectClass"
+
+        {:ok,
+         %Req.Response{
+           status: 200,
+           body: %{"Result" => "Success", "Values" => %{"ObjectClass" => "RVM_Train_Class_C"}}
+         }}
+      end)
+
+      assert {:ok, identifier} = Identifier.derive_from_formation(client)
+      assert identifier == "RVM_Train_Class"
+    end
+
+    test "returns error when all requests fail" do
+      client = Client.new(@base_url, @api_key)
+
+      # Mock failing drivable index request
+      expect(Req, :request, fn _req, _opts ->
+        {:ok, %Req.Response{status: 500, body: %{"error" => "Internal error"}}}
+      end)
+
+      # Mock failing fallback request
       expect(Req, :request, fn _req, _opts ->
         {:ok, %Req.Response{status: 500, body: %{"error" => "Internal error"}}}
       end)
@@ -154,77 +164,27 @@ defmodule TswIo.Train.IdentifierTest do
       assert {:error, {:http_error, 500, _}} = Identifier.derive_from_formation(client)
     end
 
-    test "succeeds with partial results if at least 2 object classes retrieved" do
+    test "strips _C suffix and trailing non-alphanumeric from ObjectClass" do
       client = Client.new(@base_url, @api_key)
 
-      expect(Req, :request, fn _req, opts ->
-        assert opts[:url] == "/get/CurrentFormation.FormationLength"
-
+      expect(Req, :request, fn _req, _opts ->
         {:ok,
          %Req.Response{
            status: 200,
-           body: %{"Result" => "Success", "Values" => %{"FormationLength" => 3}}
+           body: %{"Result" => "Success", "Values" => %{"DrivableIndex" => 0}}
          }}
       end)
 
-      # One request fails, two succeed - should still work
-      expect(Req, :request, 3, fn _req, opts ->
-        cond do
-          opts[:url] == "/get/CurrentFormation/0.ObjectClass" ->
-            {:ok,
-             %Req.Response{
-               status: 200,
-               body: %{"Result" => "Success", "Values" => %{"ObjectClass" => "Train_Type_A1"}}
-             }}
-
-          opts[:url] == "/get/CurrentFormation/1.ObjectClass" ->
-            {:error, %Mint.TransportError{reason: :timeout}}
-
-          opts[:url] == "/get/CurrentFormation/2.ObjectClass" ->
-            {:ok,
-             %Req.Response{
-               status: 200,
-               body: %{"Result" => "Success", "Values" => %{"ObjectClass" => "Train_Type_A2"}}
-             }}
-        end
+      expect(Req, :request, fn _req, _opts ->
+        {:ok,
+         %Req.Response{
+           status: 200,
+           body: %{"Result" => "Success", "Values" => %{"ObjectClass" => "RVM_PBO_Class142_DMSL_C"}}
+         }}
       end)
 
       assert {:ok, identifier} = Identifier.derive_from_formation(client)
-      assert identifier == "Train_Type_A"
-    end
-
-    test "returns error when fewer than 2 object classes retrieved" do
-      client = Client.new(@base_url, @api_key)
-
-      expect(Req, :request, fn _req, opts ->
-        assert opts[:url] == "/get/CurrentFormation.FormationLength"
-
-        {:ok,
-         %Req.Response{
-           status: 200,
-           body: %{"Result" => "Success", "Values" => %{"FormationLength" => 3}}
-         }}
-      end)
-
-      # Two requests fail, only one succeeds - should fail
-      expect(Req, :request, 3, fn _req, opts ->
-        cond do
-          opts[:url] == "/get/CurrentFormation/0.ObjectClass" ->
-            {:ok,
-             %Req.Response{
-               status: 200,
-               body: %{"Result" => "Success", "Values" => %{"ObjectClass" => "Train_Type_A1"}}
-             }}
-
-          opts[:url] == "/get/CurrentFormation/1.ObjectClass" ->
-            {:error, %Mint.TransportError{reason: :timeout}}
-
-          opts[:url] == "/get/CurrentFormation/2.ObjectClass" ->
-            {:error, %Mint.TransportError{reason: :timeout}}
-        end
-      end)
-
-      assert {:error, :insufficient_formation_data} = Identifier.derive_from_formation(client)
+      assert identifier == "RVM_PBO_Class142_DMSL"
     end
   end
 end

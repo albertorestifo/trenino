@@ -12,15 +12,37 @@ defmodule TswIo.Train.Identifier do
   @doc """
   Derives train identifier from the current formation in the simulator.
 
-  Returns the common prefix of all ObjectClass values as a string.
-  Fetches object classes in parallel using async tasks.
+  Uses the ObjectClass of the drivable actor (the vehicle the player is driving).
+  This is more reliable than common prefix for freight trains where locomotives
+  and wagons have different class prefixes.
+
+  Falls back to common prefix for formations without a clear drivable index.
   """
   @spec derive_from_formation(Client.t()) :: {:ok, String.t()} | {:error, term()}
   def derive_from_formation(%Client{} = client) do
-    with {:ok, length} <- Client.get_int(client, "CurrentFormation.FormationLength"),
-         {:ok, object_classes} <- get_object_classes(client, length) do
-      {:ok, common_prefix(object_classes)}
+    with {:ok, drivable_class} <- get_drivable_object_class(client) do
+      {:ok, normalize_object_class(drivable_class)}
     end
+  end
+
+  # Get the ObjectClass of the currently driven vehicle
+  defp get_drivable_object_class(%Client{} = client) do
+    with {:ok, drivable_index} <- Client.get_int(client, "CurrentFormation.DrivableIndex"),
+         {:ok, object_class} <-
+           Client.get_string(client, "CurrentFormation/#{drivable_index}.ObjectClass") do
+      {:ok, object_class}
+    else
+      # Fallback to index 0 if DrivableIndex is not available
+      {:error, _} ->
+        Client.get_string(client, "CurrentFormation/0.ObjectClass")
+    end
+  end
+
+  # Normalize the object class by removing the trailing _C suffix
+  defp normalize_object_class(object_class) do
+    object_class
+    |> String.replace_suffix("_C", "")
+    |> strip_trailing_non_alphanumeric()
   end
 
   @doc """
@@ -169,34 +191,6 @@ defmodule TswIo.Train.Identifier do
         String.match?(part, ~r/\d/) and
         String.match?(part, ~r/[A-Z]/i)
     end)
-  end
-
-  defp get_object_classes(_client, 0), do: {:error, :empty_formation}
-  defp get_object_classes(_client, 1), do: {:error, :single_car_formation}
-
-  defp get_object_classes(%Client{} = client, length) when length > 1 do
-    # Fetch all object classes in parallel using async tasks
-    tasks =
-      0..(length - 1)
-      |> Enum.map(fn index ->
-        Task.async(fn ->
-          Client.get_string(client, "CurrentFormation/#{index}.ObjectClass")
-        end)
-      end)
-
-    # Collect results, filtering out errors
-    results =
-      tasks
-      |> Task.await_many(:timer.seconds(5))
-      |> Enum.filter(&match?({:ok, _}, &1))
-      |> Enum.map(fn {:ok, class} -> class end)
-
-    # We need at least 2 results to compute a meaningful common prefix
-    if length(results) >= 2 do
-      {:ok, results}
-    else
-      {:error, :insufficient_formation_data}
-    end
   end
 
   defp find_common_prefix(s1, s2) do

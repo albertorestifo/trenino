@@ -74,7 +74,7 @@ defmodule TswIo.Train do
   @doc """
   Get a train by its identifier.
 
-  The identifier is the common prefix derived from the train's ObjectClass values.
+  The identifier is the ObjectClass of the drivable actor (locomotive).
   """
   @spec get_train_by_identifier(String.t()) :: {:ok, Train.t()} | {:error, :not_found}
   def get_train_by_identifier(identifier) do
