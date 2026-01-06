@@ -262,7 +262,11 @@ defmodule TswIo.Simulator.Client do
   @spec subscribe(t(), String.t(), integer()) :: {:ok, response()} | error()
   def subscribe(%__MODULE__{} = client, path, subscription_id)
       when is_binary(path) and is_integer(subscription_id) do
-    request(client, :post, "/subscription/#{path}", params: [Subscription: subscription_id])
+    # POST requests require Content-Length header, so we pass an empty body
+    request(client, :post, "/subscription/#{path}",
+      params: [Subscription: subscription_id],
+      body: ""
+    )
   end
 
   @doc """
@@ -307,12 +311,20 @@ defmodule TswIo.Simulator.Client do
 
   defp request(%__MODULE__{req: req}, method, url, opts \\ []) do
     params = Keyword.get(opts, :params, [])
+    body = Keyword.get(opts, :body)
 
     request_opts = [method: method, url: url]
 
     request_opts =
       if params != [] do
         Keyword.put(request_opts, :params, params)
+      else
+        request_opts
+      end
+
+    request_opts =
+      if body do
+        Keyword.put(request_opts, :body, body)
       else
         request_opts
       end

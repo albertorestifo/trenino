@@ -31,7 +31,6 @@ defmodule TswIoWeb.ConfigurationWizardComponent do
 
   require Logger
 
-  alias TswIo.Simulator.Client
   alias TswIo.Train
   alias TswIo.Train.Element
 
@@ -67,6 +66,11 @@ defmodule TswIoWeb.ConfigurationWizardComponent do
       |> check_mapping_complete()
 
     {:ok, socket}
+  end
+
+  def update(%{value_polling_result: value}, socket) do
+    # Handle polled endpoint value from parent
+    {:ok, process_polled_value(socket, value)}
   end
 
   def update(assigns, socket) do
@@ -129,8 +133,8 @@ defmodule TswIoWeb.ConfigurationWizardComponent do
 
     socket
     |> assign(:detected_endpoints, %{endpoint: change.endpoint})
-    |> assign(:on_value, Float.round(on_value, 2))
-    |> assign(:off_value, Float.round(off_value, 2))
+    |> assign(:on_value, Float.round(on_value * 1.0, 2))
+    |> assign(:off_value, Float.round(off_value * 1.0, 2))
     |> assign(:show_auto_detect, false)
     |> assign(:wizard_step, :testing)
     |> check_mapping_complete()
@@ -157,7 +161,6 @@ defmodule TswIoWeb.ConfigurationWizardComponent do
     |> assign(:detected_endpoints, detected_endpoints)
     |> assign(:manual_selections, %{})
     |> assign(:mapping_complete, mapping_complete)
-    |> assign(:test_state, nil)
     |> assign(:selected_input_id, get_existing_input_id(element))
     |> assign(:on_value, get_existing_on_value(element))
     |> assign(:off_value, get_existing_off_value(element))
@@ -173,6 +176,11 @@ defmodule TswIoWeb.ConfigurationWizardComponent do
     |> assign(:individual_selection_mode, false)
     |> assign(:show_auto_detect, false)
     |> assign(:detecting_button, false)
+    # Value detection state
+    |> assign(:value_config_mode, :auto)
+    |> assign(:value_detection_status, :idle)
+    |> assign(:detected_off_value, nil)
+    |> assign(:detected_on_value, nil)
     |> assign(:initialized, true)
   end
 
@@ -389,31 +397,50 @@ defmodule TswIoWeb.ConfigurationWizardComponent do
   end
 
   @impl true
-  def handle_event("test_on", _params, socket) do
-    endpoint = get_configured_endpoint(socket)
-    on_value = socket.assigns.on_value
-
-    case send_test_value(socket.assigns.client, endpoint, on_value) do
-      {:ok, _body} ->
-        {:noreply, assign(socket, :test_state, {:on, DateTime.utc_now()})}
-
-      {:error, _reason} ->
-        {:noreply, assign(socket, :test_state, {:error, :on})}
-    end
+  def handle_event("set_value_config_mode", %{"mode" => mode}, socket) do
+    {:noreply, assign(socket, :value_config_mode, String.to_existing_atom(mode))}
   end
 
   @impl true
-  def handle_event("test_off", _params, socket) do
-    endpoint = get_configured_endpoint(socket)
-    off_value = socket.assigns.off_value
+  def handle_event("start_value_detection", _params, socket) do
+    endpoint = socket.assigns.detected_endpoints[:endpoint]
+    send(self(), {:start_value_polling, endpoint})
 
-    case send_test_value(socket.assigns.client, endpoint, off_value) do
-      {:ok, _body} ->
-        {:noreply, assign(socket, :test_state, {:off, DateTime.utc_now()})}
+    {:noreply,
+     socket
+     |> assign(:value_detection_status, :waiting)
+     |> assign(:detected_off_value, nil)
+     |> assign(:detected_on_value, nil)}
+  end
 
-      {:error, _reason} ->
-        {:noreply, assign(socket, :test_state, {:error, :off})}
-    end
+  @impl true
+  def handle_event("cancel_value_detection", _params, socket) do
+    send(self(), :stop_value_polling)
+    {:noreply, assign(socket, :value_detection_status, :idle)}
+  end
+
+  @impl true
+  def handle_event("confirm_detected_values", _params, socket) do
+    send(self(), :stop_value_polling)
+
+    {:noreply,
+     socket
+     |> assign(:on_value, socket.assigns.detected_on_value)
+     |> assign(:off_value, socket.assigns.detected_off_value)
+     |> assign(:value_detection_status, :idle)
+     |> check_mapping_complete()}
+  end
+
+  @impl true
+  def handle_event("retry_value_detection", _params, socket) do
+    endpoint = socket.assigns.detected_endpoints[:endpoint]
+    send(self(), {:start_value_polling, endpoint})
+
+    {:noreply,
+     socket
+     |> assign(:value_detection_status, :waiting)
+     |> assign(:detected_off_value, nil)
+     |> assign(:detected_on_value, nil)}
   end
 
   @impl true
@@ -511,6 +538,33 @@ defmodule TswIoWeb.ConfigurationWizardComponent do
   end
 
   defp maybe_update_off_value(socket, _params), do: socket
+
+  # Process polled endpoint value for ON/OFF detection
+  defp process_polled_value(%{assigns: %{value_detection_status: :waiting}} = socket, value) do
+    off_value = socket.assigns.detected_off_value
+    rounded_value = Float.round(value * 1.0, 2)
+
+    cond do
+      # First sample: set as OFF value (baseline/resting state)
+      is_nil(off_value) ->
+        socket
+        |> assign(:detected_off_value, rounded_value)
+
+      # Significant change detected: set as ON value
+      abs(rounded_value - off_value) > 0.05 ->
+        send(self(), :stop_value_polling)
+
+        socket
+        |> assign(:detected_on_value, rounded_value)
+        |> assign(:value_detection_status, :detected)
+
+      # No significant change yet - keep waiting
+      true ->
+        socket
+    end
+  end
+
+  defp process_polled_value(socket, _value), do: socket
 
   @impl true
   def render(assigns) do
@@ -668,9 +722,12 @@ defmodule TswIoWeb.ConfigurationWizardComponent do
               off_sequence_id={@off_sequence_id}
               keystroke={@keystroke}
               capturing_keystroke={@capturing_keystroke}
-              test_state={@test_state}
               mapping_complete={@mapping_complete}
               detecting_button={@detecting_button}
+              value_config_mode={@value_config_mode}
+              value_detection_status={@value_detection_status}
+              detected_off_value={@detected_off_value}
+              detected_on_value={@detected_on_value}
             />
           </div>
         </div>
@@ -723,9 +780,12 @@ defmodule TswIoWeb.ConfigurationWizardComponent do
   attr :off_sequence_id, :integer, default: nil
   attr :keystroke, :string, default: nil
   attr :capturing_keystroke, :boolean, default: false
-  attr :test_state, :any, default: nil
   attr :mapping_complete, :boolean, required: true
   attr :detecting_button, :boolean, default: false
+  attr :value_config_mode, :atom, default: :auto
+  attr :value_detection_status, :atom, default: :idle
+  attr :detected_off_value, :float, default: nil
+  attr :detected_on_value, :float, default: nil
 
   defp button_test_panel(assigns) do
     selected_input = Enum.find(assigns.available_inputs, &(&1.id == assigns.selected_input_id))
@@ -1002,62 +1062,157 @@ defmodule TswIoWeb.ConfigurationWizardComponent do
           </div>
         </div>
 
-        <div :if={@binding_mode not in [:sequence, :keystroke]} class="grid grid-cols-2 gap-4 mt-4">
+      </form>
+
+      <div :if={@binding_mode not in [:sequence, :keystroke]} class="mt-4">
+        <div class="flex items-center justify-between mb-3">
+          <h3 class="font-semibold">ON/OFF Values</h3>
+          <div class="flex items-center gap-2">
+            <span class={[
+              "text-xs",
+              @value_config_mode == :auto && "text-primary font-medium"
+            ]}>
+              Auto-Detect
+            </span>
+            <input
+              type="checkbox"
+              class="toggle toggle-sm"
+              checked={@value_config_mode == :manual}
+              phx-click="set_value_config_mode"
+              phx-value-mode={if @value_config_mode == :manual, do: "auto", else: "manual"}
+              phx-target={@myself}
+            />
+            <span class={["text-xs", @value_config_mode == :manual && "font-medium"]}>
+              Manual
+            </span>
+          </div>
+        </div>
+
+        <div :if={@value_config_mode == :manual} class="grid grid-cols-2 gap-4">
           <div>
-            <label class="label">
-              <span class="label-text font-medium">ON Value</span>
-            </label>
+            <label class="label"><span class="label-text">ON Value</span></label>
             <input
               type="number"
               name="on_value"
               step="0.1"
               value={@on_value}
+              phx-change="update_button_fields"
+              phx-target={@myself}
               class="input input-bordered w-full"
             />
           </div>
           <div>
-            <label class="label">
-              <span class="label-text font-medium">OFF Value</span>
-            </label>
+            <label class="label"><span class="label-text">OFF Value</span></label>
             <input
               type="number"
               name="off_value"
               step="0.1"
               value={@off_value}
+              phx-change="update_button_fields"
+              phx-target={@myself}
               class="input input-bordered w-full"
             />
           </div>
         </div>
-      </form>
 
-      <div :if={@binding_mode not in [:sequence, :keystroke]}>
-        <h3 class="font-semibold mb-2">Test Connection</h3>
-        <div class="flex items-center gap-3">
-          <button
-            type="button"
-            phx-click="test_on"
-            phx-target={@myself}
-            class={[
-              "btn btn-sm",
-              test_button_class(@test_state, :on)
-            ]}
+        <div :if={@value_config_mode == :auto}>
+          <div :if={@value_detection_status == :idle} class="bg-base-200 rounded-lg p-4">
+            <div class="flex items-center justify-between">
+              <div>
+                <p class="font-medium">Detect ON/OFF Values</p>
+                <p class="text-xs text-base-content/60">
+                  Interact with the control in the simulator to detect values
+                </p>
+              </div>
+              <button
+                type="button"
+                phx-click="start_value_detection"
+                phx-target={@myself}
+                class="btn btn-primary btn-sm"
+              >
+                <.icon name="hero-play" class="w-4 h-4" /> Start Detection
+              </button>
+            </div>
+          </div>
+
+          <div
+            :if={@value_detection_status == :waiting}
+            class="bg-primary/10 border border-primary rounded-lg p-4"
           >
-            <.icon name="hero-play" class="w-4 h-4" /> Test ON
-          </button>
-          <button
-            type="button"
-            phx-click="test_off"
-            phx-target={@myself}
-            class={[
-              "btn btn-sm",
-              test_button_class(@test_state, :off)
-            ]}
+            <div class="flex items-center gap-3 mb-3">
+              <span class="loading loading-dots loading-md text-primary"></span>
+              <div>
+                <p class="font-medium text-primary">Detecting values...</p>
+                <p class="text-xs text-base-content/60">
+                  Interact with the control in the simulator
+                </p>
+              </div>
+            </div>
+
+            <div class="grid grid-cols-2 gap-4 mb-3">
+              <div class="bg-base-100 rounded p-2 text-center">
+                <p class="text-xs text-base-content/60">OFF (resting)</p>
+                <p class="font-mono text-lg">
+                  {if @detected_off_value, do: @detected_off_value, else: "..."}
+                </p>
+              </div>
+              <div class="bg-base-100 rounded p-2 text-center">
+                <p class="text-xs text-base-content/60">ON (active)</p>
+                <p class="font-mono text-lg">
+                  {if @detected_on_value, do: @detected_on_value, else: "..."}
+                </p>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              phx-click="cancel_value_detection"
+              phx-target={@myself}
+              class="btn btn-ghost btn-xs"
+            >
+              Cancel
+            </button>
+          </div>
+
+          <div
+            :if={@value_detection_status == :detected}
+            class="bg-success/10 border border-success rounded-lg p-4"
           >
-            <.icon name="hero-stop" class="w-4 h-4" /> Test OFF
-          </button>
-          <span :if={@test_state} class="text-sm text-base-content/60">
-            {format_test_state(@test_state)}
-          </span>
+            <div class="flex items-center gap-2 mb-3">
+              <.icon name="hero-check-circle" class="w-5 h-5 text-success" />
+              <p class="font-medium text-success">Values Detected</p>
+            </div>
+
+            <div class="grid grid-cols-2 gap-4 mb-4">
+              <div class="bg-base-100 rounded p-3 text-center">
+                <p class="text-xs text-base-content/60">OFF Value</p>
+                <p class="font-mono text-2xl">{@detected_off_value}</p>
+              </div>
+              <div class="bg-base-100 rounded p-3 text-center">
+                <p class="text-xs text-base-content/60">ON Value</p>
+                <p class="font-mono text-2xl">{@detected_on_value}</p>
+              </div>
+            </div>
+
+            <div class="flex gap-2 justify-end">
+              <button
+                type="button"
+                phx-click="retry_value_detection"
+                phx-target={@myself}
+                class="btn btn-ghost btn-sm"
+              >
+                Retry
+              </button>
+              <button
+                type="button"
+                phx-click="confirm_detected_values"
+                phx-target={@myself}
+                class="btn btn-success btn-sm"
+              >
+                <.icon name="hero-check" class="w-4 h-4" /> Confirm
+              </button>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -1124,27 +1279,6 @@ defmodule TswIoWeb.ConfigurationWizardComponent do
 
     assign(socket, :mapping_complete, has_endpoint and has_input)
   end
-
-  defp get_configured_endpoint(socket) do
-    socket.assigns.detected_endpoints[:endpoint]
-  end
-
-  defp send_test_value(%Client{} = client, endpoint, value) when is_binary(endpoint) do
-    Client.set(client, endpoint, value)
-  end
-
-  defp send_test_value(_client, _endpoint, _value), do: {:error, :invalid_endpoint}
-
-  defp test_button_class({:on, _}, :on), do: "btn-success"
-  defp test_button_class({:off, _}, :off), do: "btn-warning"
-  defp test_button_class({:error, :on}, :on), do: "btn-error"
-  defp test_button_class({:error, :off}, :off), do: "btn-error"
-  defp test_button_class(_, _), do: "btn-outline"
-
-  defp format_test_state({:on, _time}), do: "Sent ON value"
-  defp format_test_state({:off, _time}), do: "Sent OFF value"
-  defp format_test_state({:error, _}), do: "Test failed"
-  defp format_test_state(_), do: ""
 
   defp save_button_configuration(%{assigns: assigns}) do
     %{element: element, detected_endpoints: detected, selected_input_id: input_id} = assigns

@@ -201,6 +201,83 @@ defmodule TswIoWeb.ConfigurationWizardComponentTest do
     end
   end
 
+  describe "auto-detect result handling" do
+    test "handles auto-detect results with integer values", %{
+      conn: conn,
+      train: train,
+      button_element: button_element,
+      client: client
+    } do
+      stub(Simulator, :get_status, fn ->
+        %ConnectionState{status: :connected, client: client}
+      end)
+
+      stub(Client, :list, fn _client ->
+        {:ok, %{"NodeName" => "Root", "NodePath" => "Root", "Nodes" => []}}
+      end)
+
+      {:ok, view, _html} = live(conn, ~p"/trains/#{train.id}")
+
+      # Open button configuration wizard
+      view
+      |> element("[phx-click='configure_button'][phx-value-id='#{button_element.id}']")
+      |> render_click()
+
+      assert render(view) =~ "Configure Button"
+
+      # Simulate auto-detect result with integer values (as returned by the detection session)
+      auto_detect_result = %{
+        endpoint: "CurrentDrivableActor/AWS_ResetButton.InputValue",
+        control_name: "AWS_ResetButton",
+        current_value: 1,
+        previous_value: 0
+      }
+
+      # Send the auto-detect result to the wizard via parent
+      send(view.pid, {:auto_detect_selected, auto_detect_result})
+
+      # Should not crash and should show the endpoint
+      html = render(view)
+      assert html =~ "AWS_ResetButton.InputValue"
+    end
+
+    test "handles auto-detect results with float values", %{
+      conn: conn,
+      train: train,
+      button_element: button_element,
+      client: client
+    } do
+      stub(Simulator, :get_status, fn ->
+        %ConnectionState{status: :connected, client: client}
+      end)
+
+      stub(Client, :list, fn _client ->
+        {:ok, %{"NodeName" => "Root", "NodePath" => "Root", "Nodes" => []}}
+      end)
+
+      {:ok, view, _html} = live(conn, ~p"/trains/#{train.id}")
+
+      # Open button configuration wizard
+      view
+      |> element("[phx-click='configure_button'][phx-value-id='#{button_element.id}']")
+      |> render_click()
+
+      # Simulate auto-detect result with float values
+      auto_detect_result = %{
+        endpoint: "CurrentDrivableActor/Throttle.InputValue",
+        control_name: "Throttle",
+        current_value: 0.5,
+        previous_value: 0.0
+      }
+
+      send(view.pid, {:auto_detect_selected, auto_detect_result})
+
+      # Should not crash and should show the endpoint
+      html = render(view)
+      assert html =~ "Throttle.InputValue"
+    end
+  end
+
   describe "wizard cancellation" do
     test "closes wizard when cancel button is clicked", %{
       conn: conn,

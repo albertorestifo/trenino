@@ -43,6 +43,49 @@ defmodule TswIoWeb.AutoDetectComponent do
   end
 
   @impl true
+  def update(%{detection_result: {:detected, changes}}, socket) do
+    # Received detection results from parent
+    {:ok,
+     assign(socket,
+       status: :detected,
+       detected_changes: changes,
+       selected_index: 0
+     )}
+  end
+
+  def update(%{detection_result: :timeout}, socket) do
+    {:ok, assign(socket, status: :timeout)}
+  end
+
+  def update(%{detection_result: {:error, reason}}, socket) do
+    {:ok,
+     assign(socket,
+       status: :error,
+       error_message: format_error(reason)
+     )}
+  end
+
+  def update(%{countdown_tick: remaining}, socket) do
+    {:ok, assign(socket, timeout_remaining: remaining)}
+  end
+
+  def update(%{session_started: {:ok, pid}}, socket) do
+    # Session started successfully, now listening
+    {:ok,
+     assign(socket,
+       status: :listening,
+       session_pid: pid
+     )}
+  end
+
+  def update(%{session_started: {:error, reason}}, socket) do
+    {:ok,
+     assign(socket,
+       status: :error,
+       error_message: format_error(reason)
+     )}
+  end
+
   def update(assigns, socket) do
     socket =
       socket
@@ -54,26 +97,17 @@ defmodule TswIoWeb.AutoDetectComponent do
 
   @impl true
   def handle_event("start_detection", _params, socket) do
-    case start_detection_session(socket) do
-      {:ok, pid} ->
-        # Start countdown timer
-        send(self(), {:tick_countdown, socket.assigns.id})
+    # Show loading state immediately, start session async
+    component_id = socket.assigns.id
+    client = socket.assigns.client
+    send(self(), {:start_detection_session, component_id, client})
 
-        {:noreply,
-         assign(socket,
-           status: :listening,
-           session_pid: pid,
-           timeout_remaining: 30,
-           error_message: nil
-         )}
-
-      {:error, reason} ->
-        {:noreply,
-         assign(socket,
-           status: :error,
-           error_message: format_error(reason)
-         )}
-    end
+    {:noreply,
+     assign(socket,
+       status: :starting,
+       timeout_remaining: 30,
+       error_message: nil
+     )}
   end
 
   def handle_event("cancel", _params, socket) do
@@ -123,6 +157,7 @@ defmodule TswIoWeb.AutoDetectComponent do
 
         <div class="p-6">
           <.idle_state :if={@status == :idle} myself={@myself} />
+          <.starting_state :if={@status == :starting} />
           <.listening_state :if={@status == :listening} timeout_remaining={@timeout_remaining} />
           <.detected_state
             :if={@status == :detected}
@@ -155,6 +190,22 @@ defmodule TswIoWeb.AutoDetectComponent do
       <button type="button" phx-click="start_detection" phx-target={@myself} class="btn btn-primary">
         <.icon name="hero-play" class="w-4 h-4" /> Start Detection
       </button>
+    </div>
+    """
+  end
+
+  defp starting_state(assigns) do
+    ~H"""
+    <div class="text-center space-y-4">
+      <div class="relative">
+        <span class="loading loading-spinner loading-lg text-primary"></span>
+      </div>
+      <div>
+        <h3 class="font-semibold text-lg">Setting Up...</h3>
+        <p class="text-sm text-base-content/60 mt-1">
+          Discovering controls in the simulator
+        </p>
+      </div>
     </div>
     """
   end
@@ -228,8 +279,8 @@ defmodule TswIoWeb.AutoDetectComponent do
             <div class="font-medium">{change.control_name}</div>
             <div class="text-xs text-base-content/60 font-mono">{change.endpoint}</div>
             <div class="text-xs text-base-content/50 mt-1">
-              Value changed: {Float.round(change.previous_value, 2)} -> {Float.round(
-                change.current_value,
+              Value changed: {Float.round(change.previous_value * 1.0, 2)} -> {Float.round(
+                change.current_value * 1.0,
                 2
               )}
             </div>
@@ -311,16 +362,6 @@ defmodule TswIoWeb.AutoDetectComponent do
   end
 
   # Private functions
-
-  defp start_detection_session(socket) do
-    case socket.assigns.client do
-      nil ->
-        {:error, :no_client}
-
-      client ->
-        ControlDetectionSession.start(client, self())
-    end
-  end
 
   defp format_error(:no_client), do: "Simulator not connected"
   defp format_error({:list_failed, _}), do: "Failed to query simulator controls"

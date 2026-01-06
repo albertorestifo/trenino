@@ -8,6 +8,8 @@ defmodule TswIoWeb.TrainEditLive do
 
   use TswIoWeb, :live_view
 
+  require Logger
+
   import TswIoWeb.NavComponents
   import TswIoWeb.SharedComponents
 
@@ -326,30 +328,82 @@ defmodule TswIoWeb.TrainEditLive do
   end
 
   @impl true
-  def handle_info({:detection_error, _reason}, socket) do
+  def handle_info({:detection_error, reason}, socket) do
+    component_id = socket.assigns[:auto_detect_component_id]
+
+    if component_id do
+      send_update(TswIoWeb.AutoDetectComponent,
+        id: component_id,
+        detection_result: {:error, reason}
+      )
+    end
+
+    {:noreply, socket}
+  end
+
+  # Auto-detect: start session asynchronously
+  @impl true
+  def handle_info({:start_detection_session, component_id, client}, socket) do
+    result = TswIo.Simulator.ControlDetectionSession.start(client, self())
+
+    send_update(TswIoWeb.AutoDetectComponent,
+      id: component_id,
+      session_started: result
+    )
+
+    # Start countdown timer if session started successfully
+    # Also store the component ID for later updates
+    socket =
+      if match?({:ok, _}, result) do
+        Process.send_after(self(), {:tick_countdown, component_id}, 1000)
+        assign(socket, :auto_detect_component_id, component_id)
+      else
+        socket
+      end
+
     {:noreply, socket}
   end
 
   # Auto-detect control messages from ControlDetectionSession
   @impl true
   def handle_info({:control_detected, changes}, socket) do
-    {:noreply,
-     socket
-     |> assign(:auto_detect_status, :detected)
-     |> assign(:auto_detect_changes, changes)}
+    component_id = socket.assigns[:auto_detect_component_id]
+
+    if component_id do
+      send_update(TswIoWeb.AutoDetectComponent,
+        id: component_id,
+        detection_result: {:detected, changes}
+      )
+    end
+
+    {:noreply, socket}
   end
 
   @impl true
   def handle_info({:detection_timeout}, socket) do
-    {:noreply, assign(socket, :auto_detect_status, :timeout)}
+    component_id = socket.assigns[:auto_detect_component_id]
+
+    if component_id do
+      send_update(TswIoWeb.AutoDetectComponent,
+        id: component_id,
+        detection_result: :timeout
+      )
+    end
+
+    {:noreply, socket}
   end
 
   @impl true
-  def handle_info({:tick_countdown, _component_id}, socket) do
+  def handle_info({:tick_countdown, component_id}, socket) do
     remaining = Map.get(socket.assigns, :auto_detect_countdown, 30) - 1
 
-    if remaining > 0 and Map.get(socket.assigns, :auto_detect_status) == :listening do
-      Process.send_after(self(), {:tick_countdown, nil}, 1000)
+    if remaining > 0 and socket.assigns[:show_auto_detect] do
+      send_update(TswIoWeb.AutoDetectComponent,
+        id: component_id,
+        countdown_tick: remaining
+      )
+
+      Process.send_after(self(), {:tick_countdown, component_id}, 1000)
       {:noreply, assign(socket, :auto_detect_countdown, remaining)}
     else
       {:noreply, socket}
@@ -543,13 +597,92 @@ defmodule TswIoWeb.TrainEditLive do
 
   @impl true
   def handle_info({:configuration_cancelled, _element_id}, socket) do
+    cancel_value_polling(socket)
+
     {:noreply,
      socket
      |> assign(:show_config_wizard, false)
      |> assign(:config_wizard_element, nil)
      |> assign(:config_wizard_mode, nil)
      |> assign(:config_wizard_event, nil)
-     |> assign(:button_detection_inputs, nil)}
+     |> assign(:button_detection_inputs, nil)
+     |> assign(:value_polling_timer, nil)}
+  end
+
+  # Value polling for button ON/OFF detection using API subscriptions
+  # Subscription ID 999 is reserved for button value detection
+  @value_detection_subscription_id 999
+
+  @impl true
+  def handle_info({:start_value_polling, endpoint}, socket) do
+    client = socket.assigns.nav_simulator_status.client
+    cancel_value_polling(socket)
+
+    Logger.debug("[ValuePolling] Attempting to subscribe to: #{inspect(endpoint)}")
+
+    if client && endpoint do
+      # Clean up any existing subscription and create a new one
+      TswIo.Simulator.Client.unsubscribe(client, @value_detection_subscription_id)
+
+      case TswIo.Simulator.Client.subscribe(client, endpoint, @value_detection_subscription_id) do
+        {:ok, _} ->
+          Logger.info("[ValuePolling] Subscribed to #{endpoint}")
+          # Start polling the subscription (every 200ms)
+          {:ok, timer_ref} = :timer.send_interval(200, :poll_value_subscription)
+          {:noreply, assign(socket, :value_polling_timer, timer_ref)}
+
+        {:error, reason} ->
+          Logger.warning("[ValuePolling] Failed to subscribe: #{inspect(reason)}")
+          {:noreply, socket}
+      end
+    else
+      Logger.warning("[ValuePolling] Missing client or endpoint")
+      {:noreply, socket}
+    end
+  end
+
+  @impl true
+  def handle_info(:stop_value_polling, socket) do
+    client = socket.assigns.nav_simulator_status.client
+    cancel_value_polling(socket)
+
+    # Clean up subscription
+    if client do
+      TswIo.Simulator.Client.unsubscribe(client, @value_detection_subscription_id)
+    end
+
+    {:noreply, assign(socket, :value_polling_timer, nil)}
+  end
+
+  @impl true
+  def handle_info(:poll_value_subscription, socket) do
+    client = socket.assigns.nav_simulator_status.client
+
+    if client do
+      case TswIo.Simulator.Client.get_subscription(client, @value_detection_subscription_id) do
+        {:ok, %{"Entries" => [%{"Values" => values} | _]}} when map_size(values) > 0 ->
+          # Extract the first value from the Values map
+          value =
+            values
+            |> Map.values()
+            |> List.first()
+            |> then(&Float.round(&1 * 1.0, 2))
+
+          send_update(TswIoWeb.ConfigurationWizardComponent,
+            id: "config-wizard",
+            value_polling_result: value
+          )
+
+        {:ok, response} ->
+          Logger.debug("[ValuePolling] Unexpected response: #{inspect(response)}")
+          :ok
+
+        {:error, _reason} ->
+          :ok
+      end
+    end
+
+    {:noreply, socket}
   end
 
   # Lever setup wizard events
@@ -760,6 +893,12 @@ defmodule TswIoWeb.TrainEditLive do
     case Enum.find(elements, &(&1.id == element_id)) do
       nil -> "Element"
       element -> element.name
+    end
+  end
+
+  defp cancel_value_polling(socket) do
+    if timer_ref = socket.assigns[:value_polling_timer] do
+      :timer.cancel(timer_ref)
     end
   end
 
