@@ -8,8 +8,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **Button ON/OFF value auto-detection**
+  - New "Detect Values" mode (default) replaces manual "Test ON/OFF" buttons
+  - Automatically captures OFF value (resting state) and ON value (when control changes)
+  - Toggle between "Auto-Detect" and "Manual" mode for direct value entry
+  - Uses API subscriptions for efficient value monitoring
+
 ### Changed
 
+- **Improved button endpoint detection UI**
+  - Changed "Button Endpoint Found" icon from stop sign to checkmark for clarity
+  - Removed "suggested values" text from detected endpoint display
 - **Train identifier prefix matching**
   - Train identifiers now act as prefixes - a stored identifier "RVM_LIRREX_M9" will match detected trains "RVM_LIRREX_M9-A", "RVM_LIRREX_M9-B", etc.
   - Shows error if multiple train configurations match the same detected identifier
