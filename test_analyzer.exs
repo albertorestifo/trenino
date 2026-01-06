@@ -3,7 +3,9 @@ alias TswIo.Simulator.Client
 alias TswIo.Simulator.LeverAnalyzer
 
 # Read API key
-api_key = File.read!("C:/Users/Alberto/Documents/My Games/TrainSimWorld6/Saved/Config/CommAPIKey.txt") |> String.trim()
+api_key =
+  File.read!("C:/Users/Alberto/Documents/My Games/TrainSimWorld6/Saved/Config/CommAPIKey.txt")
+  |> String.trim()
 
 # Create client
 client = Client.new("http://localhost:31270", api_key)
@@ -18,7 +20,7 @@ case LeverAnalyzer.analyze(client, "CurrentDrivableActor/MasterController") do
     IO.puts("Unique outputs: #{result.unique_output_count}")
     IO.puts("\nDetected Zones (#{length(result.zones)}):")
     IO.puts("-" |> String.duplicate(60))
-    
+
     result.zones
     |> Enum.sort_by(& &1.set_input_min)
     |> Enum.with_index()
@@ -28,16 +30,19 @@ case LeverAnalyzer.analyze(client, "CurrentDrivableActor/MasterController") do
           IO.puts("Zone #{idx}: GATE at output #{zone.value}")
           IO.puts("         set_input: #{zone.set_input_min} - #{zone.set_input_max}")
           IO.puts("         actual_input: #{zone.actual_input_min} - #{zone.actual_input_max}")
+
         :linear ->
           IO.puts("Zone #{idx}: LINEAR from #{zone.output_min} to #{zone.output_max}")
           IO.puts("         set_input: #{zone.set_input_min} - #{zone.set_input_max}")
           IO.puts("         actual_input: #{zone.actual_input_min} - #{zone.actual_input_max}")
       end
+
       IO.puts("")
     end)
-    
+
     IO.puts("\nSuggested Notches (#{length(result.suggested_notches)}):")
     IO.puts("-" |> String.duplicate(60))
+
     Enum.each(result.suggested_notches, fn notch ->
       case notch.type do
         :gate -> IO.puts("  #{notch.index}: GATE value=#{notch.value}")

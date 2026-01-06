@@ -179,7 +179,10 @@ defmodule TswIo.Train.IdentifierTest do
         {:ok,
          %Req.Response{
            status: 200,
-           body: %{"Result" => "Success", "Values" => %{"ObjectClass" => "RVM_PBO_Class142_DMSL_C"}}
+           body: %{
+             "Result" => "Success",
+             "Values" => %{"ObjectClass" => "RVM_PBO_Class142_DMSL_C"}
+           }
          }}
       end)
 

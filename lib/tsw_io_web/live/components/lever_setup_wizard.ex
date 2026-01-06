@@ -198,7 +198,8 @@ defmodule TswIoWeb.LeverSetupWizard do
     steps = if config.lever_type != nil, do: MapSet.put(steps, :run_calibration), else: steps
 
     # Step 5: map_notches - configured if notches have input ranges
-    steps = if has_mapped_notches?(config.notches), do: MapSet.put(steps, :map_notches), else: steps
+    steps =
+      if has_mapped_notches?(config.notches), do: MapSet.put(steps, :map_notches), else: steps
 
     steps
   end

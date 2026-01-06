@@ -626,7 +626,9 @@ defmodule TswIoWeb.ConfigurationWizardComponent do
             <div class="max-w-lg mx-auto space-y-6">
               <div class="text-center mb-8">
                 <h3 class="text-xl font-semibold mb-2">What should this button do?</h3>
-                <p class="text-base-content/60">Choose how the hardware button will control the simulator</p>
+                <p class="text-base-content/60">
+                  Choose how the hardware button will control the simulator
+                </p>
               </div>
 
               <button
@@ -1031,7 +1033,10 @@ defmodule TswIoWeb.ConfigurationWizardComponent do
             </button>
           </div>
 
-          <div :if={!@capturing_keystroke && @keystroke != nil} class="bg-success/10 border border-success rounded-lg p-4">
+          <div
+            :if={!@capturing_keystroke && @keystroke != nil}
+            class="bg-success/10 border border-success rounded-lg p-4"
+          >
             <div class="flex items-center justify-between">
               <div class="flex items-center gap-3">
                 <.icon name="hero-check-circle" class="w-6 h-6 text-success" />
@@ -1061,7 +1066,6 @@ defmodule TswIoWeb.ConfigurationWizardComponent do
             </div>
           </div>
         </div>
-
       </form>
 
       <div :if={@binding_mode not in [:sequence, :keystroke]} class="mt-4">

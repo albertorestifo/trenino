@@ -63,6 +63,7 @@ defmodule TswIo.Train.ButtonInputBinding do
     field :on_value, :float, default: 1.0
     field :off_value, :float, default: 0.0
     field :enabled, :boolean, default: true
+
     # Mode: :simple (send once), :momentary (repeat while held), :sequence (execute sequence), :keystroke (simulate key)
     field :mode, Ecto.Enum, values: [:simple, :momentary, :sequence, :keystroke], default: :simple
     # Keystroke to simulate (e.g., "W", "CTRL+S", "SHIFT+F1") - only used in :keystroke mode
