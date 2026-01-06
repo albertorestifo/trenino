@@ -117,8 +117,8 @@ defmodule TswIoWeb.ConfigurationWizardComponentTest do
 
       # Should show wizard
       assert html =~ "Configure Button"
-      # Button wizard has browsing step (Find in Simulator)
-      assert html =~ "Find in Simulator"
+      # Button wizard has type selection step (Simulator Control vs Keyboard Key)
+      assert html =~ "Simulator Control"
     end
 
     test "does not open wizard when simulator is not connected", %{

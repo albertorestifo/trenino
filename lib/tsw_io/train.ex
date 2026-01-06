@@ -477,9 +477,12 @@ defmodule TswIo.Train do
     * `{:ok, LeverConfig.t()}` - Updated lever config with reloaded notches
     * `{:error, term()}` - Error if any update fails
   """
-  @spec update_notch_input_ranges(integer(), [map()]) ::
+  @spec update_notch_input_ranges(integer(), [map()], keyword()) ::
           {:ok, LeverConfig.t()} | {:error, term()}
-  def update_notch_input_ranges(lever_config_id, notch_updates) when is_list(notch_updates) do
+  def update_notch_input_ranges(lever_config_id, notch_updates, opts \\ [])
+      when is_list(notch_updates) do
+    inverted = Keyword.get(opts, :inverted)
+
     Repo.transaction(fn ->
       results =
         Enum.map(notch_updates, fn %{id: notch_id, input_min: input_min, input_max: input_max} ->
@@ -505,6 +508,13 @@ defmodule TswIo.Train do
             Repo.rollback(:lever_config_not_found)
 
           lever_config ->
+            # Update inverted flag if provided (auto-detected during notch mapping)
+            if is_boolean(inverted) do
+              lever_config
+              |> LeverConfig.changeset(%{inverted: inverted})
+              |> Repo.update!()
+            end
+
             case get_lever_config(lever_config.element_id) do
               {:ok, reloaded} -> reloaded
               {:error, reason} -> Repo.rollback(reason)

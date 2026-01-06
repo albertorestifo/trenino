@@ -92,8 +92,11 @@ defmodule TswIo.Train.LeverMapper do
         {:error, :no_notch}
 
       notch ->
-        # Pass inverted flag to also invert interpolation within linear notches
-        calculate_sim_input(notch, effective_value, inverted)
+        # For inverted levers with reversed notch layouts, we need to also invert
+        # the position within linear notches. A "reversed" layout is when high input
+        # values correspond to low sim values (e.g., emergency at input 1.0, power at input 0).
+        invert_position = inverted == true and reversed_layout?(notches)
+        calculate_sim_input(notch, effective_value, invert_position)
     end
   end
 
@@ -132,21 +135,67 @@ defmodule TswIo.Train.LeverMapper do
   end
 
   @doc """
+  Detect if a notch layout is "reversed" - where higher input values correspond
+  to lower sim values.
+
+  A reversed layout occurs when the notch with the lowest input range has a higher
+  sim_input range than the notch with the highest input range. This is common in
+  MasterController-style levers where Emergency is at one physical extreme and
+  Power is at the other.
+
+  ## Examples
+
+  Forward layout (standard): input 0→1 maps to sim 0→1
+      Braking notch: input 0.0-0.45, sim 0.0-0.45
+      Power notch:   input 0.55-1.0, sim 0.55-1.0
+
+  Reversed layout (M9-A style): input 0→1 maps to sim 1→0
+      Power notch:     input 0.0-0.45,  sim 0.56-1.0
+      Emergency notch: input 0.99-1.0,  sim 0.0-0.04
+  """
+  @spec reversed_layout?([Notch.t()]) :: boolean()
+  def reversed_layout?(notches) do
+    # Get mapped notches (those with input ranges)
+    mapped_notches =
+      Enum.filter(notches, fn n ->
+        n.input_min != nil and n.input_max != nil and
+          n.sim_input_min != nil and n.sim_input_max != nil
+      end)
+
+    case mapped_notches do
+      [] ->
+        false
+
+      [_single] ->
+        false
+
+      notches ->
+        # Find notch with lowest input_min and highest input_max
+        first_notch = Enum.min_by(notches, & &1.input_min)
+        last_notch = Enum.max_by(notches, & &1.input_max)
+
+        # Reversed if first notch has higher sim values than last notch
+        first_notch.sim_input_min > last_notch.sim_input_max
+    end
+  end
+
+  @doc """
   Calculate the simulator InputValue for a notch given a hardware input value.
 
   For gate notches, returns the center of the sim_input range.
   For linear notches, interpolates within the sim_input range.
 
-  When `inverted` is true, linear interpolation is reversed so that higher
-  effective input values map to lower sim_input values.
+  When `invert_position` is true, linear interpolation is reversed so that lower
+  effective input values map to higher sim_input values. This is needed for inverted
+  levers with reversed notch layouts.
   """
   @spec calculate_sim_input(Notch.t(), float(), boolean()) :: {:ok, float()} | {:error, atom()}
-  def calculate_sim_input(notch, input_value, inverted \\ false)
+  def calculate_sim_input(notch, input_value, invert_position \\ false)
 
   def calculate_sim_input(
         %Notch{type: :gate, sim_input_min: sim_min, sim_input_max: sim_max},
         _input_value,
-        _inverted
+        _invert_position
       )
       when is_number(sim_min) and is_number(sim_max) do
     # For gates, return center of the simulator input range
@@ -163,7 +212,7 @@ defmodule TswIo.Train.LeverMapper do
           sim_input_max: sim_max
         },
         input_value,
-        inverted
+        invert_position
       )
       when is_number(input_min) and is_number(input_max) and
              is_number(sim_min) and is_number(sim_max) do
@@ -171,13 +220,9 @@ defmodule TswIo.Train.LeverMapper do
     input_range = input_max - input_min
     position = (input_value - input_min) / input_range
 
-    # For partial-range notches (in multi-notch levers), also invert the position
-    # when the lever is inverted. Full-range notches (0.0-1.0) already get
-    # correct inversion from the input value transformation.
-    is_partial_range = input_min > 0.001 or input_max < 0.999
-
-    effective_position =
-      if inverted == true and is_partial_range, do: 1.0 - position, else: position
+    # For inverted levers with reversed layouts, invert the position so that
+    # lower effective values (user's physical "max" position) map to higher sim values
+    effective_position = if invert_position, do: 1.0 - position, else: position
 
     # Interpolate within the notch's simulator input range
     sim_range = sim_max - sim_min
@@ -187,23 +232,23 @@ defmodule TswIo.Train.LeverMapper do
     {:ok, Float.round(sim_value, 2)}
   end
 
-  def calculate_sim_input(%Notch{sim_input_min: nil}, _input_value, _inverted) do
+  def calculate_sim_input(%Notch{sim_input_min: nil}, _input_value, _invert_position) do
     {:error, :no_sim_input_range}
   end
 
-  def calculate_sim_input(%Notch{sim_input_max: nil}, _input_value, _inverted) do
+  def calculate_sim_input(%Notch{sim_input_max: nil}, _input_value, _invert_position) do
     {:error, :no_sim_input_range}
   end
 
-  def calculate_sim_input(%Notch{input_min: nil}, _input_value, _inverted) do
+  def calculate_sim_input(%Notch{input_min: nil}, _input_value, _invert_position) do
     {:error, :unmapped_notch}
   end
 
-  def calculate_sim_input(%Notch{input_max: nil}, _input_value, _inverted) do
+  def calculate_sim_input(%Notch{input_max: nil}, _input_value, _invert_position) do
     {:error, :unmapped_notch}
   end
 
-  def calculate_sim_input(%Notch{}, _input_value, _inverted) do
+  def calculate_sim_input(%Notch{}, _input_value, _invert_position) do
     {:error, :unmapped_notch}
   end
 

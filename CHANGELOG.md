@@ -10,11 +10,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- **Automatic lever direction detection** during notch mapping
+  - System now auto-detects if hardware lever direction is opposite to simulator expectation
+  - No longer requires manual "Invert lever direction" toggle in the Map Notches step
+  - Works correctly for both standard layouts (low→low, high→high) and reversed layouts (M9-A style where Emergency is at high input)
+
 ### Fixed
 
 - New trains not being set as active until app restart
-- Lever inversion not fully applied within linear notch ranges (multi-notch levers)
-- Gate notches with sim_input_min=0 failing to match due to integer/float type mismatch
+- Notches with sim_input_min=0 failing to match due to integer/float type mismatch from SQLite
+- Lever inversion not working correctly for reversed notch layouts (now auto-detected)
 
 ### Removed
 

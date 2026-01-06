@@ -531,4 +531,218 @@ defmodule TswIo.Train.LeverMapperTest do
       assert {:ok, +0.0} = LeverMapper.map_input(config, 0.0)
     end
   end
+
+  describe "map_input/2 with inverted forward-layout multi-notch lever" do
+    setup do
+      # Forward layout: low input = low sim, high input = high sim
+      # Braking (0.0-0.45), Neutral gate (0.45-0.55), Power (0.55-1.0)
+      lever_config = %LeverConfig{
+        id: 13,
+        inverted: true,
+        notches: [
+          %Notch{
+            index: 0,
+            type: :linear,
+            min_value: -10.0,
+            max_value: 0.0,
+            input_min: 0.0,
+            input_max: 0.45,
+            sim_input_min: 0.0,
+            sim_input_max: 0.45
+          },
+          %Notch{
+            index: 1,
+            type: :gate,
+            value: 0.0,
+            input_min: 0.45,
+            input_max: 0.55,
+            sim_input_min: 0.45,
+            sim_input_max: 0.55
+          },
+          %Notch{
+            index: 2,
+            type: :linear,
+            min_value: 0.0,
+            max_value: 10.0,
+            input_min: 0.55,
+            input_max: 1.0,
+            sim_input_min: 0.55,
+            sim_input_max: 1.0
+          }
+        ]
+      }
+
+      %{lever_config: lever_config}
+    end
+
+    test "forward layout is not reversed", %{lever_config: config} do
+      refute LeverMapper.reversed_layout?(config.notches)
+    end
+
+    test "hardware 0.0 maps to full power (sim 1.0) when inverted", %{lever_config: config} do
+      # Hardware 0.0 -> effective 1.0 -> power notch -> sim 1.0
+      assert {:ok, 1.0} = LeverMapper.map_input(config, 0.0)
+    end
+
+    test "hardware 1.0 maps to start of braking (sim 0.0) when inverted", %{lever_config: config} do
+      # Hardware 1.0 -> effective 0.0 -> braking notch -> sim 0.0
+      assert {:ok, +0.0} = LeverMapper.map_input(config, 1.0)
+    end
+
+    test "hardware at neutral position maps correctly when inverted", %{lever_config: config} do
+      # Hardware 0.5 -> effective 0.5 -> neutral gate -> sim 0.5
+      assert {:ok, 0.5} = LeverMapper.map_input(config, 0.5)
+    end
+
+    test "interpolates correctly within braking notch when inverted", %{lever_config: config} do
+      # Hardware 0.78 -> effective 0.22 -> braking notch
+      # Position in braking: (0.22 - 0.0) / 0.45 = 0.489
+      # Sim: 0.0 + 0.489 * 0.45 = 0.22
+      {:ok, value} = LeverMapper.map_input(config, 0.78)
+      assert_in_delta value, 0.22, 0.01
+    end
+
+    test "interpolates correctly within power notch when inverted", %{lever_config: config} do
+      # Hardware 0.22 -> effective 0.78 -> power notch
+      # Position in power: (0.78 - 0.55) / 0.45 = 0.511
+      # Sim: 0.55 + 0.511 * 0.45 = 0.78
+      {:ok, value} = LeverMapper.map_input(config, 0.22)
+      assert_in_delta value, 0.78, 0.01
+    end
+
+    test "start of power notch maps correctly when inverted", %{lever_config: config} do
+      # Hardware 0.45 -> effective 0.55 -> power notch start -> sim 0.55
+      assert {:ok, 0.55} = LeverMapper.map_input(config, 0.45)
+    end
+
+    test "end of braking notch maps correctly when inverted", %{lever_config: config} do
+      # Hardware 0.55 -> effective 0.45 -> neutral gate -> sim 0.5
+      assert {:ok, 0.5} = LeverMapper.map_input(config, 0.55)
+    end
+  end
+
+  describe "map_input/2 with inverted reversed-layout multi-notch lever (M9-A style)" do
+    setup do
+      # Reversed layout: high input = low sim (Emergency), low input = high sim (Power)
+      # This is like the M9-A MasterController
+      lever_config = %LeverConfig{
+        id: 14,
+        inverted: true,
+        notches: [
+          # Emergency at high input (0.99-1.0) -> low sim (0.0-0.04)
+          %Notch{
+            index: 0,
+            type: :gate,
+            value: -2,
+            input_min: 0.99,
+            input_max: 1.0,
+            sim_input_min: 0.0,
+            sim_input_max: 0.04
+          },
+          # Braking linear (0.56-0.96) -> sim (0.06-0.44)
+          %Notch{
+            index: 1,
+            type: :linear,
+            min_value: -1,
+            max_value: -0.25,
+            input_min: 0.56,
+            input_max: 0.96,
+            sim_input_min: 0.06,
+            sim_input_max: 0.44
+          },
+          # Cut-out gate (0.5-0.51) -> sim (0.46-0.54)
+          %Notch{
+            index: 2,
+            type: :gate,
+            value: 0,
+            input_min: 0.5,
+            input_max: 0.51,
+            sim_input_min: 0.46,
+            sim_input_max: 0.54
+          },
+          # Power at low input (0.0-0.45) -> high sim (0.56-1.0)
+          %Notch{
+            index: 3,
+            type: :linear,
+            min_value: 0.25,
+            max_value: 1,
+            input_min: 0.0,
+            input_max: 0.45,
+            sim_input_min: 0.56,
+            sim_input_max: 1.0
+          }
+        ]
+      }
+
+      %{lever_config: lever_config}
+    end
+
+    test "reversed layout is detected correctly", %{lever_config: config} do
+      assert LeverMapper.reversed_layout?(config.notches)
+    end
+
+    test "hardware 0.0 (physical Emergency) maps to Emergency gate", %{lever_config: config} do
+      # Hardware 0.0 -> effective 1.0 -> Emergency gate (0.99-1.0) -> sim ~0.02
+      assert {:ok, 0.02} = LeverMapper.map_input(config, 0.0)
+    end
+
+    test "hardware 0.5 (physical Cut-out) maps to Cut-out gate", %{lever_config: config} do
+      # Hardware 0.5 -> effective 0.5 -> Cut-out gate -> sim 0.5
+      assert {:ok, 0.5} = LeverMapper.map_input(config, 0.5)
+    end
+
+    test "hardware 1.0 (physical Max Power) maps to max power", %{lever_config: config} do
+      # Hardware 1.0 -> effective 0.0 -> Power notch, with position inversion -> sim 1.0
+      assert {:ok, 1.0} = LeverMapper.map_input(config, 1.0)
+    end
+
+    test "power increases as user moves from Cut-out toward Max Power", %{lever_config: config} do
+      # User moves physical lever from Cut-out (hw 0.5) toward Max Power (hw 1.0)
+      # Power should steadily increase from ~0.56 to 1.0
+      {:ok, sim_at_cutout} = LeverMapper.map_input(config, 0.5)
+      {:ok, sim_mid_power} = LeverMapper.map_input(config, 0.75)
+      {:ok, sim_max_power} = LeverMapper.map_input(config, 1.0)
+
+      assert sim_at_cutout == 0.5
+      assert sim_mid_power > sim_at_cutout
+      assert sim_max_power > sim_mid_power
+      assert sim_max_power == 1.0
+    end
+
+    test "braking increases as user moves from Cut-out toward Emergency", %{lever_config: config} do
+      # User moves physical lever from Cut-out (hw 0.5) toward Emergency (hw 0.0)
+      # Braking should increase (sim should decrease toward 0)
+      {:ok, sim_at_cutout} = LeverMapper.map_input(config, 0.5)
+      {:ok, sim_mid_braking} = LeverMapper.map_input(config, 0.25)
+      {:ok, sim_emergency} = LeverMapper.map_input(config, 0.0)
+
+      assert sim_at_cutout == 0.5
+      assert sim_mid_braking < sim_at_cutout
+      assert sim_emergency < sim_mid_braking
+      assert sim_emergency == 0.02
+    end
+  end
+
+  describe "calculate_sim_input/2 with integer values from SQLite" do
+    test "handles integer sim_input values for gate notch" do
+      # SQLite may return 0 instead of 0.0
+      notch = %Notch{type: :gate, value: 0.5, sim_input_min: 0, sim_input_max: 1}
+
+      assert {:ok, 0.5} = LeverMapper.calculate_sim_input(notch, 0.5)
+    end
+
+    test "handles integer input values for linear notch" do
+      notch = %Notch{
+        type: :linear,
+        min_value: 0.0,
+        max_value: 1.0,
+        input_min: 0,
+        input_max: 1,
+        sim_input_min: 0,
+        sim_input_max: 1
+      }
+
+      assert {:ok, 0.5} = LeverMapper.calculate_sim_input(notch, 0.5)
+    end
+  end
 end

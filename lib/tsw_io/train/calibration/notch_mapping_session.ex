@@ -249,7 +249,10 @@ defmodule TswIo.Train.Calibration.NotchMappingSession do
           id: notch.id,
           index: notch.index,
           type: notch.type,
-          description: notch.description || "Notch #{notch.index}"
+          description: notch.description || "Notch #{notch.index}",
+          # Include sim_input ranges for inversion auto-detection
+          sim_input_min: notch.sim_input_min,
+          sim_input_max: notch.sim_input_max
         }
       end)
 
@@ -543,11 +546,77 @@ defmodule TswIo.Train.Calibration.NotchMappingSession do
     Enum.all?(ranges, &(&1 != nil))
   end
 
+  # Auto-detect if lever inversion is needed by comparing captured hardware ranges
+  # with the expected sim_input ranges.
+  #
+  # The logic: If the notch with the lowest hardware position has a higher sim_input
+  # than the notch with the highest hardware position, then inversion is needed.
+  #
+  # Example (no inversion needed):
+  #   - Notch at hardware 0-10%:  sim_input 0.0-0.1  (low → low)
+  #   - Notch at hardware 90-100%: sim_input 0.9-1.0 (high → high)
+  #
+  # Example (inversion needed - M9-A style):
+  #   - Notch at hardware 0-10%:  sim_input 0.9-1.0  (low → high)
+  #   - Notch at hardware 90-100%: sim_input 0.0-0.1 (high → low)
+  defp detect_inversion(notches, captured_ranges, total_travel) when total_travel > 0 do
+    # Pair notches with their captured ranges, filtering out any without sim_input data
+    paired =
+      notches
+      |> Enum.with_index()
+      |> Enum.map(fn {notch, idx} ->
+        range = Enum.at(captured_ranges, idx)
+        {notch, range}
+      end)
+      |> Enum.filter(fn {notch, range} ->
+        range != nil and notch.sim_input_min != nil and notch.sim_input_max != nil
+      end)
+
+    case paired do
+      [] ->
+        # No sim_input data available, can't auto-detect
+        false
+
+      [_single] ->
+        # Only one notch, can't determine orientation
+        false
+
+      paired_list ->
+        # Find notch with lowest hardware position (by center of captured range)
+        first =
+          Enum.min_by(paired_list, fn {_notch, range} ->
+            (range.min + range.max) / 2
+          end)
+
+        # Find notch with highest hardware position
+        last =
+          Enum.max_by(paired_list, fn {_notch, range} ->
+            (range.min + range.max) / 2
+          end)
+
+        {first_notch, _first_range} = first
+        {last_notch, _last_range} = last
+
+        # Compare sim_input centers
+        first_sim_center = (first_notch.sim_input_min + first_notch.sim_input_max) / 2
+        last_sim_center = (last_notch.sim_input_min + last_notch.sim_input_max) / 2
+
+        # If notch at low hardware has higher sim value than notch at high hardware,
+        # inversion is needed
+        first_sim_center > last_sim_center
+    end
+  end
+
+  defp detect_inversion(_notches, _captured_ranges, _total_travel), do: false
+
   defp save_notch_ranges(%State{} = state) do
-    inverted = state.lever_config.inverted || false
+    # Auto-detect if inversion is needed by comparing captured hardware ranges with sim_input ranges
+    inverted = detect_inversion(state.notches, state.captured_ranges, state.total_travel)
+
+    Logger.debug("Auto-detected inversion: #{inverted}")
 
     # Convert calibrated values to normalized 0.0-1.0
-    # Apply inversion if configured (hardware direction opposite to simulator)
+    # Apply inversion if detected (hardware direction opposite to simulator)
     notch_updates =
       state.notches
       |> Enum.with_index()
@@ -564,7 +633,8 @@ defmodule TswIo.Train.Calibration.NotchMappingSession do
         }
       end)
 
-    Train.update_notch_input_ranges(state.lever_config_id, notch_updates)
+    # Save the auto-detected inverted flag along with notch ranges
+    Train.update_notch_input_ranges(state.lever_config_id, notch_updates, inverted: inverted)
   end
 
   defp calibrated_to_normalized(min_cal, max_cal, total_travel, inverted)
