@@ -225,6 +225,103 @@ defmodule TswIoWeb.LeverSetupWizardTest do
       # Should now be showing the Find Endpoint step content
       assert html =~ "Auto-Detect Control"
     end
+
+    test "configured steps show green checkmarks in edit mode", %{
+      conn: conn,
+      train: train,
+      lever_element: lever_element,
+      client: client
+    } do
+      # Create a fully configured lever
+      {:ok, lever_config} =
+        TswIo.Repo.insert(%LeverConfig{
+          element_id: lever_element.id,
+          min_endpoint: "CurrentDrivableActor/MasterController.InputMin",
+          max_endpoint: "CurrentDrivableActor/MasterController.InputMax",
+          value_endpoint: "CurrentDrivableActor/MasterController.InputValue",
+          lever_type: :discrete
+        })
+
+      # Add a notch with input mapping (fully configured)
+      alias TswIo.Train.Notch
+
+      {:ok, _notch} =
+        TswIo.Repo.insert(%Notch{
+          lever_config_id: lever_config.id,
+          index: 0,
+          type: :gate,
+          description: "Off",
+          sim_input_min: 0.0,
+          sim_input_max: 0.0,
+          input_min: 0.0,
+          input_max: 50.0
+        })
+
+      stub(Simulator, :get_status, fn ->
+        %ConnectionState{status: :connected, client: client}
+      end)
+
+      stub(Client, :list, fn _client ->
+        {:ok, %{"NodeName" => "Root", "NodePath" => "Root", "Nodes" => []}}
+      end)
+
+      {:ok, view, _html} = live(conn, ~p"/trains/#{train.id}")
+
+      view
+      |> element("[phx-click='configure_lever'][phx-value-id='#{lever_element.id}']")
+      |> render_click()
+
+      html = render(view)
+
+      # Configured steps should show checkmark icons (hero-check)
+      # The Find Endpoint step (step 2) should be marked as configured since endpoints are set
+      # Looking for the success styling that indicates configuration
+      assert html =~ "bg-success"
+
+      # The current step (Select Input) should show primary styling
+      assert html =~ "bg-primary"
+    end
+
+    test "unconfigured steps show step number (not checkmark)", %{
+      conn: conn,
+      train: train,
+      lever_element: lever_element,
+      client: client
+    } do
+      # Create a lever config with only endpoints (calibration not done)
+      {:ok, _lever_config} =
+        TswIo.Repo.insert(%LeverConfig{
+          element_id: lever_element.id,
+          min_endpoint: "CurrentDrivableActor/MasterController.InputMin",
+          max_endpoint: "CurrentDrivableActor/MasterController.InputMax",
+          value_endpoint: "CurrentDrivableActor/MasterController.InputValue"
+          # lever_type is nil (no calibration)
+        })
+
+      stub(Simulator, :get_status, fn ->
+        %ConnectionState{status: :connected, client: client}
+      end)
+
+      stub(Client, :list, fn _client ->
+        {:ok, %{"NodeName" => "Root", "NodePath" => "Root", "Nodes" => []}}
+      end)
+
+      {:ok, view, _html} = live(conn, ~p"/trains/#{train.id}")
+
+      view
+      |> element("[phx-click='configure_lever'][phx-value-id='#{lever_element.id}']")
+      |> render_click()
+
+      html = render(view)
+
+      # Find in Simulator (step 2) should be configured (green) since endpoints are set
+      assert html =~ "bg-success"
+
+      # Detect Notches (step 3) should NOT be configured (no lever_type)
+      # Map Positions (step 4) should NOT be configured
+      # These should show as base-300 (gray/inactive)
+      assert html =~ "bg-base-300"
+    end
   end
 
   describe "dependency tracking" do

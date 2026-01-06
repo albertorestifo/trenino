@@ -127,6 +127,7 @@ defmodule TswIoWeb.LeverSetupWizard do
     |> assign(:original_input_id, existing_input_id)
     |> assign(:original_endpoints, existing_endpoints)
     |> assign(:needs_redo, MapSet.new())
+    |> assign(:steps_configured, compute_configured_steps(existing_config, existing_input_id))
     |> assign(:initialized, true)
   end
 
@@ -175,6 +176,39 @@ defmodule TswIoWeb.LeverSetupWizard do
     # - Endpoints have been configured (value_endpoint set), OR
     # - Calibration has been done (lever_type set)
     config.value_endpoint != nil or config.lever_type != nil
+  end
+
+  # Compute which steps are already configured when entering edit mode
+  defp compute_configured_steps(nil, _input_id), do: MapSet.new()
+  defp compute_configured_steps(%Ecto.Association.NotLoaded{}, _input_id), do: MapSet.new()
+
+  defp compute_configured_steps(config, input_id) do
+    steps = MapSet.new()
+
+    # Step 1: select_input - configured if we have an input bound
+    steps = if input_id != nil, do: MapSet.put(steps, :select_input), else: steps
+
+    # Step 2: find_endpoint - configured if we have value_endpoint
+    steps = if config.value_endpoint != nil, do: MapSet.put(steps, :find_endpoint), else: steps
+
+    # Step 3: explain_calibration - always configured (it's informational)
+    steps = MapSet.put(steps, :explain_calibration)
+
+    # Step 4: run_calibration - configured if lever_type is set
+    steps = if config.lever_type != nil, do: MapSet.put(steps, :run_calibration), else: steps
+
+    # Step 5: map_notches - configured if notches have input ranges
+    steps = if has_mapped_notches?(config.notches), do: MapSet.put(steps, :map_notches), else: steps
+
+    steps
+  end
+
+  defp has_mapped_notches?(%Ecto.Association.NotLoaded{}), do: false
+  defp has_mapped_notches?(nil), do: false
+  defp has_mapped_notches?([]), do: false
+
+  defp has_mapped_notches?(notches) when is_list(notches) do
+    Enum.all?(notches, fn n -> n.input_min != nil and n.input_max != nil end)
   end
 
   # Check if navigation to a step is allowed
@@ -667,6 +701,7 @@ defmodule TswIoWeb.LeverSetupWizard do
           steps={@steps}
           editing_mode={@editing_mode}
           needs_redo={@needs_redo}
+          steps_configured={@steps_configured}
           myself={@myself}
         />
 
@@ -688,6 +723,7 @@ defmodule TswIoWeb.LeverSetupWizard do
   attr :steps, :list, required: true
   attr :editing_mode, :boolean, required: true
   attr :needs_redo, :any, required: true
+  attr :steps_configured, :any, required: true
   attr :myself, :any, required: true
 
   defp wizard_header(assigns) do
@@ -716,6 +752,7 @@ defmodule TswIoWeb.LeverSetupWizard do
           current_step={@current_step}
           editing_mode={@editing_mode}
           needs_redo={@needs_redo}
+          steps_configured={@steps_configured}
           myself={@myself}
         />
       </div>
@@ -728,16 +765,25 @@ defmodule TswIoWeb.LeverSetupWizard do
   attr :current_step, :atom, required: true
   attr :editing_mode, :boolean, required: true
   attr :needs_redo, :any, required: true
+  attr :steps_configured, :any, required: true
   attr :myself, :any, required: true
 
   defp step_indicator(assigns) do
     steps = assigns.steps
     step_num = step_number(assigns.step, steps)
-    current_num = step_number(assigns.current_step, steps)
     total_steps = length(steps)
     is_active = assigns.step == assigns.current_step
-    is_completed = step_num < current_num
     needs_redo = MapSet.member?(assigns.needs_redo, assigns.step)
+
+    # In edit mode, use steps_configured to show completion status
+    # In new mode, only show completed for steps before current
+    is_configured =
+      if assigns.editing_mode do
+        MapSet.member?(assigns.steps_configured, assigns.step)
+      else
+        current_num = step_number(assigns.current_step, steps)
+        step_num < current_num
+      end
 
     # In edit mode, check if this step is navigable
     is_navigable =
@@ -750,7 +796,7 @@ defmodule TswIoWeb.LeverSetupWizard do
       |> assign(:step_num, step_num)
       |> assign(:total_steps, total_steps)
       |> assign(:is_active, is_active)
-      |> assign(:is_completed, is_completed)
+      |> assign(:is_configured, is_configured)
       |> assign(:needs_redo, needs_redo)
       |> assign(:is_navigable, is_navigable)
       |> assign(:label, step_label(assigns.step))
@@ -769,20 +815,25 @@ defmodule TswIoWeb.LeverSetupWizard do
         <div class={[
           "w-6 h-6 rounded-full flex items-center justify-center text-xs font-medium transition-colors",
           @is_active && "bg-primary text-primary-content",
-          @is_completed && not @needs_redo && "bg-success text-success-content",
+          @is_configured && not @is_active && not @needs_redo && "bg-success text-success-content",
           @needs_redo && "bg-warning text-warning-content",
-          (not @is_active and not @is_completed and not @needs_redo) &&
+          (not @is_active and not @is_configured and not @needs_redo) &&
             "bg-base-300 text-base-content/50"
         ]}>
-          <.icon :if={@is_completed and not @needs_redo} name="hero-check" class="w-4 h-4" />
+          <.icon
+            :if={@is_configured and not @is_active and not @needs_redo}
+            name="hero-check"
+            class="w-4 h-4"
+          />
           <.icon :if={@needs_redo} name="hero-exclamation-triangle" class="w-4 h-4" />
-          <span :if={not @is_completed and not @needs_redo}>{@step_num}</span>
+          <span :if={@is_active or (not @is_configured and not @needs_redo)}>{@step_num}</span>
         </div>
         <span class={[
           "text-xs whitespace-nowrap",
           @is_active && "font-medium",
+          @is_configured && not @is_active && not @needs_redo && "text-success",
           @needs_redo && "text-warning font-medium",
-          (not @is_active and not @is_completed and not @needs_redo) && "text-base-content/50"
+          (not @is_active and not @is_configured and not @needs_redo) && "text-base-content/50"
         ]}>
           {@label}
         </span>
