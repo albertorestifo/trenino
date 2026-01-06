@@ -20,6 +20,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **Streamlined lever configuration wizard**
   - Removed unused "Test" step - wizard closes after saving notch mappings
   - Removed confusing live position indicator from notch mapping visualization (numerical values are still shown)
+- **Notch mapping sample requirement**
+  - Capture button now available as soon as any samples are collected (previously required 10 samples)
+  - Allows users with low sensitivity hardware to map notch positions more easily
 
 ### Fixed
 

@@ -163,13 +163,13 @@ defmodule TswIo.Train.Calibration.NotchMappingSessionTest do
       NotchMappingSession.cancel(pid)
     end
 
-    test "cannot capture range without enough samples", context do
+    test "cannot capture range without any samples", context do
       pid = start_session(context)
 
       assert :ok = NotchMappingSession.start_mapping(pid)
 
       # Try to capture without any samples
-      assert {:error, :not_enough_samples} = NotchMappingSession.capture_range(pid)
+      assert {:error, :no_samples} = NotchMappingSession.capture_range(pid)
 
       NotchMappingSession.cancel(pid)
     end

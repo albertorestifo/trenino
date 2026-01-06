@@ -528,8 +528,8 @@ defmodule TswIo.Train.Calibration.NotchMappingSession do
 
   defp validate_capture(%State{current_samples: samples, current_min: min, current_max: max}) do
     cond do
-      length(samples) < @min_sample_count ->
-        {:error, :not_enough_samples}
+      length(samples) == 0 ->
+        {:error, :no_samples}
 
       is_nil(min) or is_nil(max) ->
         {:error, :no_range_detected}
@@ -682,7 +682,8 @@ defmodule TswIo.Train.Calibration.NotchMappingSession do
   defp current_notch_index(_), do: nil
 
   defp can_capture?(%State{current_step: {:mapping_notch, _}} = state) do
-    length(state.current_samples) >= @min_sample_count and
+    # Allow capture as long as we have at least one sample with a valid range
+    length(state.current_samples) > 0 and
       state.current_min != nil and
       state.current_max != nil and
       state.current_min != state.current_max

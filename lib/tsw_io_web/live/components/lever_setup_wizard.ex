@@ -270,8 +270,8 @@ defmodule TswIoWeb.LeverSetupWizard do
         :ok ->
           {:noreply, socket}
 
-        {:error, :not_enough_samples} ->
-          {:noreply, put_flash(socket, :error, "Need more samples. Keep moving the lever.")}
+        {:error, :no_samples} ->
+          {:noreply, put_flash(socket, :error, "No samples collected. Move the lever first.")}
 
         {:error, :no_range_detected} ->
           {:noreply, put_flash(socket, :error, "No range detected. Move the lever.")}
@@ -1052,20 +1052,8 @@ defmodule TswIoWeb.LeverSetupWizard do
               </div>
             </div>
 
-            <div class="flex items-center justify-center gap-4 text-sm">
-              <span class={[
-                "flex items-center gap-1",
-                @mapping_state.sample_count >= 10 && "text-success",
-                @mapping_state.sample_count < 10 && "text-base-content/50"
-              ]}>
-                <.icon
-                  name={
-                    if @mapping_state.sample_count >= 10, do: "hero-check-circle", else: "hero-clock"
-                  }
-                  class="w-4 h-4"
-                />
-                {@mapping_state.sample_count}/10 samples
-              </span>
+            <div class="flex items-center justify-center gap-4 text-sm text-base-content/60">
+              {@mapping_state.sample_count} samples collected
             </div>
 
             <div class="flex justify-center gap-2">
