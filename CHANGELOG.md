@@ -8,6 +8,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **LED output test toggle button**
+  - Single toggle button in the outputs table replaces separate ON/OFF buttons
+  - Button shows current state (ON/OFF) and changes appearance when active
+  - State is tracked per-output for visual feedback
 - **Button ON/OFF value auto-detection**
   - New "Detect Values" mode (default) replaces manual "Test ON/OFF" buttons
   - Automatically captures OFF value (resting state) and ON value (when control changes)

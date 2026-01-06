@@ -63,6 +63,7 @@ defmodule TreninoWeb.ConfigurationEditLive do
      |> assign(:matrix_tested_buttons, MapSet.new())
      |> assign(:output_modal_open, false)
      |> assign(:output_form, to_form(Output.changeset(%Output{}, %{})))
+     |> assign(:output_states, %{})
      |> assign(:applying, false)
      |> assign(:calibrating_input, nil)
      |> assign(:calibration_session_state, nil)
@@ -114,6 +115,7 @@ defmodule TreninoWeb.ConfigurationEditLive do
          |> assign(:matrix_tested_buttons, MapSet.new())
          |> assign(:output_modal_open, false)
          |> assign(:output_form, to_form(Output.changeset(%Output{}, %{})))
+         |> assign(:output_states, %{})
          |> assign(:applying, false)
          |> assign(:calibrating_input, nil)
          |> assign(:calibration_session_state, nil)
@@ -327,15 +329,25 @@ defmodule TreninoWeb.ConfigurationEditLive do
   end
 
   @impl true
-  def handle_event("test_output", %{"id" => id, "action" => action}, socket) do
-    output = Enum.find(socket.assigns.outputs, &(&1.id == String.to_integer(id)))
+  def handle_event("toggle_output", %{"id" => id}, socket) do
+    output_id = String.to_integer(id)
+    output = Enum.find(socket.assigns.outputs, &(&1.id == output_id))
 
     if output && socket.assigns.active_port do
-      value = if action == "on", do: :high, else: :low
-      Hardware.set_output(socket.assigns.active_port, output.pin, value)
-    end
+      # Get current state (default to false/off)
+      current_state = Map.get(socket.assigns.output_states, output_id, false)
+      new_state = !current_state
 
-    {:noreply, socket}
+      # Send the command to the device
+      value = if new_state, do: :high, else: :low
+      Hardware.set_output(socket.assigns.active_port, output.pin, value)
+
+      # Update the state
+      output_states = Map.put(socket.assigns.output_states, output_id, new_state)
+      {:noreply, assign(socket, :output_states, output_states)}
+    else
+      {:noreply, socket}
+    end
   end
 
   # Apply configuration
@@ -780,7 +792,11 @@ defmodule TreninoWeb.ConfigurationEditLive do
         </div>
 
         <div class="bg-base-200/50 rounded-xl p-6 mt-6">
-          <.outputs_section outputs={@outputs} active_port={@active_port} />
+          <.outputs_section
+            outputs={@outputs}
+            active_port={@active_port}
+            output_states={@output_states}
+          />
         </div>
 
         <.danger_zone
@@ -1157,6 +1173,7 @@ defmodule TreninoWeb.ConfigurationEditLive do
 
   attr :outputs, :list, required: true
   attr :active_port, :string, default: nil
+  attr :output_states, :map, default: %{}
 
   defp outputs_section(assigns) do
     ~H"""
@@ -1170,13 +1187,19 @@ defmodule TreninoWeb.ConfigurationEditLive do
         submessage="Add LEDs or indicators to control"
       />
 
-      <.outputs_table :if={length(@outputs) > 0} outputs={@outputs} active_port={@active_port} />
+      <.outputs_table
+        :if={length(@outputs) > 0}
+        outputs={@outputs}
+        active_port={@active_port}
+        output_states={@output_states}
+      />
     </div>
     """
   end
 
   attr :outputs, :list, required: true
   attr :active_port, :string, default: nil
+  attr :output_states, :map, default: %{}
 
   defp outputs_table(assigns) do
     ~H"""
@@ -1198,26 +1221,30 @@ defmodule TreninoWeb.ConfigurationEditLive do
               <span :if={!output.name} class="text-sm text-base-content/50 italic">Unnamed</span>
             </td>
             <td :if={@active_port} class="text-center">
-              <div class="flex justify-center gap-1">
-                <button
-                  phx-click="test_output"
-                  phx-value-id={output.id}
-                  phx-value-action="on"
-                  class="btn btn-xs btn-success btn-outline"
-                  title="Turn on"
-                >
-                  <.icon name="hero-bolt" class="w-3 h-3" />
-                </button>
-                <button
-                  phx-click="test_output"
-                  phx-value-id={output.id}
-                  phx-value-action="off"
-                  class="btn btn-xs btn-ghost"
-                  title="Turn off"
-                >
-                  <.icon name="hero-bolt-slash" class="w-3 h-3" />
-                </button>
-              </div>
+              <button
+                phx-click="toggle_output"
+                phx-value-id={output.id}
+                class={[
+                  "btn btn-xs",
+                  if(Map.get(@output_states, output.id, false),
+                    do: "btn-success",
+                    else: "btn-ghost"
+                  )
+                ]}
+                title={if Map.get(@output_states, output.id, false), do: "Turn off", else: "Turn on"}
+              >
+                <.icon
+                  name={
+                    if Map.get(@output_states, output.id, false),
+                      do: "hero-bolt-solid",
+                      else: "hero-bolt"
+                  }
+                  class="w-3 h-3"
+                />
+                <span class="text-xs">
+                  {if Map.get(@output_states, output.id, false), do: "ON", else: "OFF"}
+                </span>
+              </button>
             </td>
             <td>
               <button
