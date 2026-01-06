@@ -27,7 +27,8 @@ defmodule TswIoWeb.TrainListLive do
      socket
      |> assign(:trains, trains)
      |> assign(:current_identifier, current_identifier)
-     |> assign(:active_train, active_train)}
+     |> assign(:active_train, active_train)
+     |> assign(:multiple_matches, nil)}
   end
 
   @impl true
@@ -45,7 +46,17 @@ defmodule TswIoWeb.TrainListLive do
     {:noreply,
      socket
      |> assign(:current_identifier, identifier)
-     |> assign(:active_train, train)}
+     |> assign(:active_train, train)
+     |> assign(:multiple_matches, nil)}
+  end
+
+  @impl true
+  def handle_info({:multiple_trains_match, %{identifier: identifier, trains: trains}}, socket) do
+    {:noreply,
+     socket
+     |> assign(:current_identifier, identifier)
+     |> assign(:active_train, nil)
+     |> assign(:multiple_matches, trains)}
   end
 
   @impl true
@@ -100,8 +111,14 @@ defmodule TswIoWeb.TrainListLive do
           action_text="New Train"
         />
 
+        <.multiple_matches_banner
+          :if={@multiple_matches != nil}
+          identifier={@current_identifier}
+          trains={@multiple_matches}
+        />
+
         <.unconfigured_banner
-          :if={@current_identifier && @active_train == nil}
+          :if={@current_identifier && @active_train == nil && @multiple_matches == nil}
           identifier={@current_identifier}
         />
 
@@ -126,6 +143,30 @@ defmodule TswIoWeb.TrainListLive do
         </div>
       </div>
     </main>
+    """
+  end
+
+  attr :identifier, :string, required: true
+  attr :trains, :list, required: true
+
+  defp multiple_matches_banner(assigns) do
+    ~H"""
+    <div class="alert alert-error mb-6">
+      <.icon name="hero-exclamation-triangle" class="w-5 h-5" />
+      <div class="flex-1">
+        <h3 class="font-semibold">Multiple Trains Match</h3>
+        <p class="text-sm">
+          The detected identifier "<span class="font-mono">{@identifier}</span>" matches multiple train configurations.
+          Each train identifier must be a unique prefix.
+        </p>
+        <ul class="text-sm mt-2 list-disc list-inside">
+          <li :for={train <- @trains}>
+            <span class="font-semibold">{train.name}</span>
+            <span class="text-base-content/60">({train.identifier})</span>
+          </li>
+        </ul>
+      </div>
+    </div>
     """
   end
 

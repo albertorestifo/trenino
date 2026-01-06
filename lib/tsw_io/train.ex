@@ -72,15 +72,40 @@ defmodule TswIo.Train do
   end
 
   @doc """
-  Get a train by its identifier.
+  Find a train whose identifier is a prefix of the detected identifier.
 
-  The identifier is the ObjectClass of the drivable actor (locomotive).
+  The stored identifier acts as a prefix matcher - any detected ObjectClass
+  that starts with the stored identifier will match that train.
+
+  ## Returns
+
+    * `{:ok, train}` - Exactly one train matches
+    * `{:error, :not_found}` - No trains match
+    * `{:error, {:multiple_matches, trains}}` - Multiple trains match (ambiguous)
+
+  ## Examples
+
+      # Stored: "RVM_LIRREX_M9"
+      # Detected: "RVM_LIRREX_M9-A" -> matches
+      # Detected: "RVM_LIRREX_M9-B" -> matches
+      # Detected: "RVM_LIRREX_M7" -> no match
   """
-  @spec get_train_by_identifier(String.t()) :: {:ok, Train.t()} | {:error, :not_found}
-  def get_train_by_identifier(identifier) do
-    case Repo.get_by(Train, identifier: identifier) do
-      nil -> {:error, :not_found}
-      train -> {:ok, Repo.preload(train, elements: :lever_config)}
+  @spec get_train_by_identifier(String.t()) ::
+          {:ok, Train.t()} | {:error, :not_found} | {:error, {:multiple_matches, [Train.t()]}}
+  def get_train_by_identifier(detected_identifier) do
+    # Find all trains whose identifier is a prefix of the detected identifier
+    matching_trains =
+      Train
+      |> Repo.all()
+      |> Enum.filter(fn train ->
+        String.starts_with?(detected_identifier, train.identifier)
+      end)
+      |> Enum.map(fn train -> Repo.preload(train, elements: :lever_config) end)
+
+    case matching_trains do
+      [] -> {:error, :not_found}
+      [train] -> {:ok, train}
+      trains -> {:error, {:multiple_matches, trains}}
     end
   end
 

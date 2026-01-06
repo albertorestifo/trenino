@@ -10,6 +10,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- **Train identifier prefix matching**
+  - Train identifiers now act as prefixes - a stored identifier "RVM_LIRREX_M9" will match detected trains "RVM_LIRREX_M9-A", "RVM_LIRREX_M9-B", etc.
+  - Shows error if multiple train configurations match the same detected identifier
 - **Automatic lever direction detection** during notch mapping
   - System now auto-detects if hardware lever direction is opposite to simulator expectation
   - No longer requires manual "Invert lever direction" toggle in the Map Notches step

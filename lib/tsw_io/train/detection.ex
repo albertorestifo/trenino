@@ -13,6 +13,7 @@ defmodule TswIo.Train.Detection do
   Subscribers receive messages on "train:detection":
   - `{:train_detected, %{identifier: String.t(), train: Train.t() | nil}}`
   - `{:train_changed, Train.t() | nil}`
+  - `{:multiple_trains_match, %{identifier: String.t(), trains: [Train.t()]}}`
   - `{:detection_error, term()}`
   """
 
@@ -31,17 +32,21 @@ defmodule TswIo.Train.Detection do
   defmodule State do
     @moduledoc false
 
+    @type detection_error :: {:multiple_matches, [Train.Train.t()]} | nil
+
     @type t :: %__MODULE__{
             active_train: Train.Train.t() | nil,
             current_identifier: String.t() | nil,
             last_check: DateTime.t() | nil,
-            polling_enabled: boolean()
+            polling_enabled: boolean(),
+            detection_error: detection_error()
           }
 
     defstruct active_train: nil,
               current_identifier: nil,
               last_check: nil,
-              polling_enabled: false
+              polling_enabled: false,
+              detection_error: nil
   end
 
   # Client API
@@ -165,7 +170,15 @@ defmodule TswIo.Train.Detection do
   @impl true
   def handle_info({:simulator_status_changed, %ConnectionState{}}, %State{} = state) do
     Logger.info("Simulator disconnected, disabling train detection polling")
-    new_state = %{state | polling_enabled: false, active_train: nil, current_identifier: nil}
+
+    new_state = %{
+      state
+      | polling_enabled: false,
+        active_train: nil,
+        current_identifier: nil,
+        detection_error: nil
+    }
+
     broadcast({:train_changed, nil})
     {:noreply, new_state}
   end
@@ -203,19 +216,57 @@ defmodule TswIo.Train.Detection do
     # Different train detected
     Logger.info("Train identifier changed: #{identifier}")
 
-    train =
-      case Train.get_train_by_identifier(identifier) do
-        {:ok, train} -> train
-        {:error, :not_found} -> nil
-      end
+    case Train.get_train_by_identifier(identifier) do
+      {:ok, train} ->
+        broadcast({:train_detected, %{identifier: identifier, train: train}})
 
-    broadcast({:train_detected, %{identifier: identifier, train: train}})
+        if state.active_train != train do
+          broadcast({:train_changed, train})
+        end
 
-    if state.active_train != train do
-      broadcast({:train_changed, train})
+        %{
+          state
+          | current_identifier: identifier,
+            active_train: train,
+            detection_error: nil,
+            last_check: DateTime.utc_now()
+        }
+
+      {:error, :not_found} ->
+        broadcast({:train_detected, %{identifier: identifier, train: nil}})
+
+        if state.active_train != nil do
+          broadcast({:train_changed, nil})
+        end
+
+        %{
+          state
+          | current_identifier: identifier,
+            active_train: nil,
+            detection_error: nil,
+            last_check: DateTime.utc_now()
+        }
+
+      {:error, {:multiple_matches, trains}} ->
+        Logger.warning(
+          "Multiple trains match identifier #{identifier}: #{Enum.map_join(trains, ", ", & &1.name)}"
+        )
+
+        broadcast({:train_detected, %{identifier: identifier, train: nil}})
+        broadcast({:multiple_trains_match, %{identifier: identifier, trains: trains}})
+
+        if state.active_train != nil do
+          broadcast({:train_changed, nil})
+        end
+
+        %{
+          state
+          | current_identifier: identifier,
+            active_train: nil,
+            detection_error: {:multiple_matches, trains},
+            last_check: DateTime.utc_now()
+        }
     end
-
-    %{state | current_identifier: identifier, active_train: train, last_check: DateTime.utc_now()}
   end
 
   defp schedule_poll do
