@@ -32,10 +32,19 @@ defmodule TswIoWeb.LeverSetupWizard do
   alias TswIo.Train.Calibration.NotchMappingSession
   alias TswIo.Train.Element
 
-  @steps [
+  # Steps for new lever setup (includes explanation step)
+  @steps_new [
     :select_input,
     :find_endpoint,
     :explain_calibration,
+    :run_calibration,
+    :map_notches
+  ]
+
+  # Steps for editing existing lever (skips explanation step)
+  @steps_edit [
+    :select_input,
+    :find_endpoint,
     :run_calibration,
     :map_notches
   ]
@@ -91,13 +100,19 @@ defmodule TswIoWeb.LeverSetupWizard do
     # Check for existing lever config
     existing_config = element.lever_config
     existing_binding = get_existing_input_binding(existing_config)
+    existing_input_id = get_existing_input_id(existing_binding)
+    existing_endpoints = get_existing_endpoints(existing_config)
+
+    # Determine if we're in editing mode (existing config allows non-linear navigation)
+    editing_mode = has_existing_config?(existing_config)
+    steps = if editing_mode, do: @steps_edit, else: @steps_new
 
     socket
     |> assign(:current_step, :select_input)
     |> assign(:available_inputs, available_inputs)
-    |> assign(:selected_input_id, get_existing_input_id(existing_binding))
+    |> assign(:selected_input_id, existing_input_id)
     |> assign(:selected_input, get_existing_input(existing_binding, available_inputs))
-    |> assign(:detected_endpoints, get_existing_endpoints(existing_config))
+    |> assign(:detected_endpoints, existing_endpoints)
     |> assign(:show_auto_detect, false)
     |> assign(:calibration_status, :idle)
     |> assign(:calibration_progress, 0.0)
@@ -106,6 +121,12 @@ defmodule TswIoWeb.LeverSetupWizard do
     |> assign(:notches, get_existing_notches(existing_config))
     |> assign(:mapping_session_pid, nil)
     |> assign(:mapping_state, nil)
+    # Edit mode tracking
+    |> assign(:editing_mode, editing_mode)
+    |> assign(:steps, steps)
+    |> assign(:original_input_id, existing_input_id)
+    |> assign(:original_endpoints, existing_endpoints)
+    |> assign(:needs_redo, MapSet.new())
     |> assign(:initialized, true)
   end
 
@@ -143,10 +164,40 @@ defmodule TswIoWeb.LeverSetupWizard do
   defp get_existing_notches(%{notches: notches}) when is_list(notches), do: notches
   defp get_existing_notches(_), do: []
 
+  # Check if lever has an existing configuration (editing mode)
+  # Edit mode is enabled when the lever has been at least partially configured
+  # (endpoints set OR calibration done), allowing non-linear navigation
+  defp has_existing_config?(nil), do: false
+  defp has_existing_config?(%Ecto.Association.NotLoaded{}), do: false
+
+  defp has_existing_config?(config) do
+    # Consider it "existing" if either:
+    # - Endpoints have been configured (value_endpoint set), OR
+    # - Calibration has been done (lever_type set)
+    config.value_endpoint != nil or config.lever_type != nil
+  end
+
+  # Check if navigation to a step is allowed
+  # Can navigate to a step if no earlier step needs redo (can't skip over steps that need work)
+  defp can_navigate_to?(assigns, target_step) do
+    steps = assigns.steps
+    needs_redo = assigns.needs_redo
+    target_idx = Enum.find_index(steps, &(&1 == target_step))
+
+    if target_idx do
+      steps
+      |> Enum.take(target_idx)
+      |> Enum.all?(fn step -> not MapSet.member?(needs_redo, step) end)
+    else
+      false
+    end
+  end
+
   # Handle forwarded events from parent
   defp handle_explorer_event(%{explorer_event: {:auto_configure, endpoints}}, socket) do
     socket
     |> assign(:detected_endpoints, endpoints)
+    |> maybe_invalidate_for_endpoint_change(endpoints)
     |> assign(:explorer_event, nil)
   end
 
@@ -156,6 +207,7 @@ defmodule TswIoWeb.LeverSetupWizard do
 
     socket
     |> assign(:detected_endpoints, updated_endpoints)
+    |> maybe_invalidate_for_endpoint_change(updated_endpoints)
     |> assign(:explorer_event, nil)
   end
 
@@ -178,12 +230,54 @@ defmodule TswIoWeb.LeverSetupWizard do
 
   defp handle_explorer_event(_assigns, socket), do: socket
 
+  # Invalidate downstream steps when endpoints change
+  defp maybe_invalidate_for_endpoint_change(socket, new_endpoints) do
+    if socket.assigns.editing_mode and
+         endpoints_changed?(socket.assigns.original_endpoints, new_endpoints) do
+      socket
+      |> update(:needs_redo, &MapSet.put(&1, :run_calibration))
+      |> update(:needs_redo, &MapSet.put(&1, :map_notches))
+    else
+      # If reverting back to original endpoints, clear the invalidations
+      if socket.assigns.editing_mode and
+           not endpoints_changed?(socket.assigns.original_endpoints, new_endpoints) do
+        socket
+        |> update(:needs_redo, &MapSet.delete(&1, :run_calibration))
+        |> update(:needs_redo, &MapSet.delete(&1, :map_notches))
+      else
+        socket
+      end
+    end
+  end
+
+  defp endpoints_changed?(nil, _new), do: true
+  defp endpoints_changed?(_old, nil), do: true
+
+  defp endpoints_changed?(old, new) do
+    old[:min_endpoint] != new[:min_endpoint] or
+      old[:max_endpoint] != new[:max_endpoint] or
+      old[:value_endpoint] != new[:value_endpoint]
+  end
+
   # Event handlers
 
   @impl true
   def handle_event("select_input", %{"input-id" => input_id_str}, socket) do
     input_id = String.to_integer(input_id_str)
     selected_input = Enum.find(socket.assigns.available_inputs, &(&1.id == input_id))
+
+    # In edit mode, if input changed from original, invalidate mapping step
+    socket =
+      if socket.assigns.editing_mode and input_id != socket.assigns.original_input_id do
+        update(socket, :needs_redo, &MapSet.put(&1, :map_notches))
+      else
+        # If reverting back to original input, clear the invalidation
+        if socket.assigns.editing_mode and input_id == socket.assigns.original_input_id do
+          update(socket, :needs_redo, &MapSet.delete(&1, :map_notches))
+        else
+          socket
+        end
+      end
 
     {:noreply,
      socket
@@ -194,7 +288,8 @@ defmodule TswIoWeb.LeverSetupWizard do
   @impl true
   def handle_event("next_step", _params, socket) do
     current_step = socket.assigns.current_step
-    next_step = get_next_step(current_step)
+    steps = socket.assigns.steps
+    next_step = get_next_step(current_step, steps)
 
     socket =
       case next_step do
@@ -215,7 +310,8 @@ defmodule TswIoWeb.LeverSetupWizard do
   @impl true
   def handle_event("prev_step", _params, socket) do
     current_step = socket.assigns.current_step
-    prev_step = get_prev_step(current_step)
+    steps = socket.assigns.steps
+    prev_step = get_prev_step(current_step, steps)
 
     socket =
       case current_step do
@@ -243,6 +339,23 @@ defmodule TswIoWeb.LeverSetupWizard do
   def handle_event("skip_calibration", _params, socket) do
     # Skip to map_notches step, user will add notches manually
     {:noreply, assign(socket, :current_step, :map_notches)}
+  end
+
+  @impl true
+  def handle_event("go_to_step", %{"step" => step_name}, socket) do
+    step = String.to_existing_atom(step_name)
+
+    if socket.assigns.editing_mode and can_navigate_to?(socket.assigns, step) do
+      socket =
+        socket
+        |> maybe_stop_mapping_session_if_leaving()
+        |> assign(:current_step, step)
+        |> maybe_start_step_resources(step)
+
+      {:noreply, socket}
+    else
+      {:noreply, socket}
+    end
   end
 
   @impl true
@@ -339,14 +452,36 @@ defmodule TswIoWeb.LeverSetupWizard do
 
   # Private helpers
 
-  defp get_next_step(current) do
-    current_index = Enum.find_index(@steps, &(&1 == current))
-    Enum.at(@steps, current_index + 1, current)
+  # Stop mapping session if leaving :map_notches step
+  defp maybe_stop_mapping_session_if_leaving(socket) do
+    if socket.assigns.current_step == :map_notches do
+      stop_notch_mapping(socket)
+    else
+      socket
+    end
   end
 
-  defp get_prev_step(current) do
-    current_index = Enum.find_index(@steps, &(&1 == current))
-    Enum.at(@steps, max(current_index - 1, 0), current)
+  # Start resources needed for a step when navigating to it
+  defp maybe_start_step_resources(socket, :run_calibration) do
+    # When navigating to calibration step, start calibration
+    request_calibration(socket)
+  end
+
+  defp maybe_start_step_resources(socket, :map_notches) do
+    # When navigating to mapping step, start the mapping session
+    start_notch_mapping(socket)
+  end
+
+  defp maybe_start_step_resources(socket, _step), do: socket
+
+  defp get_next_step(current, steps) do
+    current_index = Enum.find_index(steps, &(&1 == current))
+    Enum.at(steps, current_index + 1, current)
+  end
+
+  defp get_prev_step(current, steps) do
+    current_index = Enum.find_index(steps, &(&1 == current))
+    Enum.at(steps, max(current_index - 1, 0), current)
   end
 
   defp request_calibration(socket) do
@@ -379,6 +514,8 @@ defmodule TswIoWeb.LeverSetupWizard do
     |> assign(:calibration_status, :complete)
     |> assign(:notches, config_with_notches.notches)
     |> assign(:lever_type, updated_config.lever_type)
+    # Clear run_calibration from needs_redo since calibration completed
+    |> update(:needs_redo, &MapSet.delete(&1, :run_calibration))
   end
 
   defp apply_calibration_result(socket, {:error, reason}) do
@@ -488,10 +625,8 @@ defmodule TswIoWeb.LeverSetupWizard do
 
   defp find_port_for_device(_), do: nil
 
-  defp steps, do: @steps
-
-  defp step_number(step) do
-    Enum.find_index(@steps, &(&1 == step)) + 1
+  defp step_number(step, steps) do
+    Enum.find_index(steps, &(&1 == step)) + 1
   end
 
   defp step_label(:select_input), do: "Select Input"
@@ -529,7 +664,9 @@ defmodule TswIoWeb.LeverSetupWizard do
         <.wizard_header
           element={@element}
           current_step={@current_step}
-          steps={steps()}
+          steps={@steps}
+          editing_mode={@editing_mode}
+          needs_redo={@needs_redo}
           myself={@myself}
         />
 
@@ -549,6 +686,8 @@ defmodule TswIoWeb.LeverSetupWizard do
   attr :element, Element, required: true
   attr :current_step, :atom, required: true
   attr :steps, :list, required: true
+  attr :editing_mode, :boolean, required: true
+  attr :needs_redo, :any, required: true
   attr :myself, :any, required: true
 
   defp wizard_header(assigns) do
@@ -573,7 +712,11 @@ defmodule TswIoWeb.LeverSetupWizard do
         <.step_indicator
           :for={step <- @steps}
           step={step}
+          steps={@steps}
           current_step={@current_step}
+          editing_mode={@editing_mode}
+          needs_redo={@needs_redo}
+          myself={@myself}
         />
       </div>
     </div>
@@ -581,42 +724,70 @@ defmodule TswIoWeb.LeverSetupWizard do
   end
 
   attr :step, :atom, required: true
+  attr :steps, :list, required: true
   attr :current_step, :atom, required: true
+  attr :editing_mode, :boolean, required: true
+  attr :needs_redo, :any, required: true
+  attr :myself, :any, required: true
 
   defp step_indicator(assigns) do
-    step_num = step_number(assigns.step)
-    current_num = step_number(assigns.current_step)
+    steps = assigns.steps
+    step_num = step_number(assigns.step, steps)
+    current_num = step_number(assigns.current_step, steps)
+    total_steps = length(steps)
     is_active = assigns.step == assigns.current_step
     is_completed = step_num < current_num
+    needs_redo = MapSet.member?(assigns.needs_redo, assigns.step)
+
+    # In edit mode, check if this step is navigable
+    is_navigable =
+      assigns.editing_mode and
+        assigns.step != assigns.current_step and
+        can_navigate_to?(assigns, assigns.step)
 
     assigns =
       assigns
       |> assign(:step_num, step_num)
+      |> assign(:total_steps, total_steps)
       |> assign(:is_active, is_active)
       |> assign(:is_completed, is_completed)
+      |> assign(:needs_redo, needs_redo)
+      |> assign(:is_navigable, is_navigable)
       |> assign(:label, step_label(assigns.step))
 
     ~H"""
     <div class="flex items-center">
-      <div class="flex items-center gap-1.5">
+      <div
+        class={[
+          "flex items-center gap-1.5",
+          @is_navigable && "cursor-pointer hover:opacity-80"
+        ]}
+        phx-click={@is_navigable && "go_to_step"}
+        phx-value-step={@is_navigable && @step}
+        phx-target={@is_navigable && @myself}
+      >
         <div class={[
-          "w-6 h-6 rounded-full flex items-center justify-center text-xs font-medium",
+          "w-6 h-6 rounded-full flex items-center justify-center text-xs font-medium transition-colors",
           @is_active && "bg-primary text-primary-content",
-          @is_completed && "bg-success text-success-content",
-          (not @is_active and not @is_completed) && "bg-base-300 text-base-content/50"
+          @is_completed && not @needs_redo && "bg-success text-success-content",
+          @needs_redo && "bg-warning text-warning-content",
+          (not @is_active and not @is_completed and not @needs_redo) &&
+            "bg-base-300 text-base-content/50"
         ]}>
-          <.icon :if={@is_completed} name="hero-check" class="w-4 h-4" />
-          <span :if={not @is_completed}>{@step_num}</span>
+          <.icon :if={@is_completed and not @needs_redo} name="hero-check" class="w-4 h-4" />
+          <.icon :if={@needs_redo} name="hero-exclamation-triangle" class="w-4 h-4" />
+          <span :if={not @is_completed and not @needs_redo}>{@step_num}</span>
         </div>
         <span class={[
           "text-xs whitespace-nowrap",
           @is_active && "font-medium",
-          (not @is_active and not @is_completed) && "text-base-content/50"
+          @needs_redo && "text-warning font-medium",
+          (not @is_active and not @is_completed and not @needs_redo) && "text-base-content/50"
         ]}>
           {@label}
         </span>
       </div>
-      <div :if={@step_num < 6} class="w-4 h-px bg-base-300 mx-1" />
+      <div :if={@step_num < @total_steps} class="w-4 h-px bg-base-300 mx-1" />
     </div>
     """
   end

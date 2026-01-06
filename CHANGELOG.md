@@ -20,6 +20,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **Streamlined lever configuration wizard**
   - Removed unused "Test" step - wizard closes after saving notch mappings
   - Removed confusing live position indicator from notch mapping visualization (numerical values are still shown)
+- **Non-linear navigation in lever wizard edit mode**
+  - When editing an existing lever configuration, step indicators are now clickable
+  - Jump directly to any step without stepping through the entire flow
+  - Automatic dependency tracking: changing the input invalidates notch mapping; changing the endpoint invalidates calibration and mapping
+  - Steps that need to be redone show a warning indicator (orange badge)
+  - Skip the "Calibration Info" step entirely in edit mode
 - **Notch mapping sample requirement**
   - Capture button now available as soon as any samples are collected (previously required 10 samples)
   - Allows users with low sensitivity hardware to map notch positions more easily
