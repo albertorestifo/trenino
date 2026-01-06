@@ -37,8 +37,7 @@ defmodule TswIoWeb.LeverSetupWizard do
     :find_endpoint,
     :explain_calibration,
     :run_calibration,
-    :map_notches,
-    :test
+    :map_notches
   ]
 
   @impl true
@@ -310,6 +309,8 @@ defmodule TswIoWeb.LeverSetupWizard do
     if socket.assigns.mapping_session_pid do
       case NotchMappingSession.save_mapping(socket.assigns.mapping_session_pid) do
         :ok ->
+          # Save succeeded, close the wizard
+          send(self(), {:lever_setup_complete, socket.assigns.element.id})
           {:noreply, socket}
 
         {:error, reason} ->
@@ -498,7 +499,6 @@ defmodule TswIoWeb.LeverSetupWizard do
   defp step_label(:explain_calibration), do: "Calibration Info"
   defp step_label(:run_calibration), do: "Detect Notches"
   defp step_label(:map_notches), do: "Map Positions"
-  defp step_label(:test), do: "Test"
 
   defp can_proceed_from?(:select_input, assigns), do: assigns.selected_input_id != nil
 
@@ -676,12 +676,6 @@ defmodule TswIoWeb.LeverSetupWizard do
       can_proceed={can_proceed_from?(:map_notches, @socket_assigns)}
       myself={@myself}
     />
-    """
-  end
-
-  defp step_content(%{current_step: :test} = assigns) do
-    ~H"""
-    <.step_test mapping_state={@socket_assigns.mapping_state} myself={@myself} />
     """
   end
 
@@ -1005,16 +999,14 @@ defmodule TswIoWeb.LeverSetupWizard do
           Lever direction will be automatically detected when you save.
         </p>
 
-        <%!-- Lever Visualization --%>
+        <%!-- Lever Visualization (no live indicator - just shows notch positions) --%>
         <.live_component
           module={TswIoWeb.LeverVisualization}
           id="lever-viz"
           notches={@mapping_state.notches}
           captured_ranges={@mapping_state.captured_ranges}
-          current_value={@mapping_state.current_value}
           total_travel={@mapping_state.total_travel}
           current_notch_index={@mapping_state.current_notch_index}
-          inverted={false}
           event_target={@myself}
         />
 
@@ -1129,54 +1121,6 @@ defmodule TswIoWeb.LeverSetupWizard do
 
   defp format_calibrated(value) when is_float(value),
     do: :erlang.float_to_binary(value, decimals: 0)
-
-  # Step 6: Test
-  attr :mapping_state, :map, default: nil
-  attr :myself, :any, required: true
-
-  defp step_test(assigns) do
-    ~H"""
-    <div class="flex-1 overflow-y-auto p-6">
-      <div class="max-w-2xl mx-auto text-center">
-        <div class="w-16 h-16 mx-auto mb-4 rounded-full bg-success/10 flex items-center justify-center">
-          <.icon name="hero-check-circle" class="w-8 h-8 text-success" />
-        </div>
-
-        <h3 class="text-lg font-semibold mb-2">Setup Complete!</h3>
-        <p class="text-base-content/70 mb-6">
-          Test your lever mapping below. The position should update as you move the hardware.
-        </p>
-
-        <div :if={@mapping_state} class="mb-6">
-          <.live_component
-            module={TswIoWeb.LeverVisualization}
-            id="lever-viz-test"
-            notches={@mapping_state.notches}
-            captured_ranges={@mapping_state.captured_ranges}
-            current_value={@mapping_state.current_value}
-            total_travel={@mapping_state.total_travel}
-            current_notch_index={nil}
-            inverted={false}
-            show_live_indicator={true}
-          />
-        </div>
-
-        <div class="text-sm text-base-content/60">
-          Current position:
-          <span class="font-mono font-bold text-primary">
-            {format_calibrated(@mapping_state && @mapping_state.current_value)}
-          </span>
-        </div>
-      </div>
-    </div>
-
-    <div class="p-4 border-t border-base-300 flex justify-end">
-      <button phx-click="finish" phx-target={@myself} class="btn btn-primary">
-        <.icon name="hero-check" class="w-4 h-4" /> Done
-      </button>
-    </div>
-    """
-  end
 
   # Step footer
   attr :can_proceed, :boolean, required: true

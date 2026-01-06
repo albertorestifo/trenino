@@ -156,26 +156,22 @@ defmodule TswIo.Train.LeverMapper do
   @spec reversed_layout?([Notch.t()]) :: boolean()
   def reversed_layout?(notches) do
     # Get mapped notches (those with input ranges)
-    mapped_notches =
+    mapped =
       Enum.filter(notches, fn n ->
         n.input_min != nil and n.input_max != nil and
           n.sim_input_min != nil and n.sim_input_max != nil
       end)
 
-    case mapped_notches do
-      [] ->
-        false
+    # Need at least 2 notches to determine orientation
+    if length(mapped) < 2 do
+      false
+    else
+      # Find notch with lowest input_min and highest input_max
+      first_notch = Enum.min_by(mapped, & &1.input_min)
+      last_notch = Enum.max_by(mapped, & &1.input_max)
 
-      [_single] ->
-        false
-
-      notches ->
-        # Find notch with lowest input_min and highest input_max
-        first_notch = Enum.min_by(notches, & &1.input_min)
-        last_notch = Enum.max_by(notches, & &1.input_max)
-
-        # Reversed if first notch has higher sim values than last notch
-        first_notch.sim_input_min > last_notch.sim_input_max
+      # Reversed if first notch has higher sim values than last notch
+      first_notch.sim_input_min > last_notch.sim_input_max
     end
   end
 

@@ -14,6 +14,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   - System now auto-detects if hardware lever direction is opposite to simulator expectation
   - No longer requires manual "Invert lever direction" toggle in the Map Notches step
   - Works correctly for both standard layouts (low→low, high→high) and reversed layouts (M9-A style where Emergency is at high input)
+- **Streamlined lever configuration wizard**
+  - Removed unused "Test" step - wizard closes after saving notch mappings
+  - Removed confusing live position indicator from notch mapping visualization (numerical values are still shown)
 
 ### Fixed
 
