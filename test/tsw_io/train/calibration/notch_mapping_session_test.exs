@@ -174,21 +174,50 @@ defmodule TswIo.Train.Calibration.NotchMappingSessionTest do
       NotchMappingSession.cancel(pid)
     end
 
-    test "cannot capture range without movement (min == max)", context do
+    test "can capture single point (min == max) for gate notches", context do
       pid = start_session(context)
 
       assert :ok = NotchMappingSession.start_mapping(pid)
       assert :ok = NotchMappingSession.start_capturing(pid)
 
-      # Send 10 samples all with same value
-      for _ <- 1..10 do
+      # Send samples all with same value (single point capture)
+      for _ <- 1..3 do
         send(pid, {:input_value_updated, "/dev/test", 5, 500})
       end
 
       :timer.sleep(20)
 
-      # Should fail because min == max (no range detected)
-      assert {:error, :no_range_detected} = NotchMappingSession.capture_range(pid)
+      # Single point capture should succeed (valid for gate notches)
+      assert :ok = NotchMappingSession.capture_range(pid)
+
+      state = NotchMappingSession.get_public_state(pid)
+      # Should have moved to next notch
+      assert state.current_step == {:mapping_notch, 1}
+      # The captured range should have min == max
+      range = hd(state.captured_ranges)
+      assert range.min == range.max
+
+      NotchMappingSession.cancel(pid)
+    end
+
+    test "can_capture is true as soon as one sample is collected", context do
+      pid = start_session(context)
+
+      assert :ok = NotchMappingSession.start_mapping(pid)
+      assert :ok = NotchMappingSession.start_capturing(pid)
+
+      # Before any samples, can_capture should be false
+      state = NotchMappingSession.get_public_state(pid)
+      assert state.can_capture == false
+
+      # Send a single sample
+      send(pid, {:input_value_updated, "/dev/test", 5, 500})
+      :timer.sleep(20)
+
+      # After one sample, can_capture should be true
+      state = NotchMappingSession.get_public_state(pid)
+      assert state.can_capture == true
+      assert state.sample_count == 1
 
       NotchMappingSession.cancel(pid)
     end

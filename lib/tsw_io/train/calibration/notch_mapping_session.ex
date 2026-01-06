@@ -534,9 +534,7 @@ defmodule TswIo.Train.Calibration.NotchMappingSession do
       is_nil(min) or is_nil(max) ->
         {:error, :no_range_detected}
 
-      min == max ->
-        {:error, :no_range_detected}
-
+      # Allow single-point captures (min == max) for gate notches
       true ->
         :ok
     end
@@ -682,11 +680,11 @@ defmodule TswIo.Train.Calibration.NotchMappingSession do
   defp current_notch_index(_), do: nil
 
   defp can_capture?(%State{current_step: {:mapping_notch, _}} = state) do
-    # Allow capture as long as we have at least one sample with a valid range
+    # Allow capture as soon as we have at least one sample
+    # Single-point captures (min == max) are valid for gate notches
     length(state.current_samples) > 0 and
       state.current_min != nil and
-      state.current_max != nil and
-      state.current_min != state.current_max
+      state.current_max != nil
   end
 
   defp can_capture?(_state), do: false
