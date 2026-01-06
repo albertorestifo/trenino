@@ -1,4 +1,4 @@
-defmodule TswIo.Repo.Migrations.AddVirtualPinToButtonBindings do
+defmodule Trenino.Repo.Migrations.AddVirtualPinToButtonBindings do
   use Ecto.Migration
 
   def change do

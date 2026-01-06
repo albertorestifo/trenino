@@ -1,4 +1,4 @@
-defmodule TswIo.Repo.Migrations.RemoveFirmwareDownloadTracking do
+defmodule Trenino.Repo.Migrations.RemoveFirmwareDownloadTracking do
   use Ecto.Migration
 
   def change do

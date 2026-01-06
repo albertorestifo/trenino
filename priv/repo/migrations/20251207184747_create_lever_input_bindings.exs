@@ -1,4 +1,4 @@
-defmodule TswIo.Repo.Migrations.CreateLeverInputBindings do
+defmodule Trenino.Repo.Migrations.CreateLeverInputBindings do
   use Ecto.Migration
 
   def change do

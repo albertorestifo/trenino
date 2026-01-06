@@ -14,7 +14,7 @@ defmodule Mix.Tasks.Keystroke do
   1. Build the keystroke utility using Cargo (release mode)
   2. The binary will be placed in `tauri/keystroke/target/release/`
 
-  The `TswIo.Keyboard` module automatically detects this location when
+  The `Trenino.Keyboard` module automatically detects this location when
   running with `mix phx.server`.
 
   ## Options
@@ -60,7 +60,7 @@ defmodule Mix.Tasks.Keystroke do
         Mix.shell().info("Success! Built: #{binary_path}")
         Mix.shell().info("")
         Mix.shell().info("The keystroke utility is now available for local development.")
-        Mix.shell().info("Verify with: iex -S mix -e 'IO.inspect(TswIo.Keyboard.available?())'")
+        Mix.shell().info("Verify with: iex -S mix -e 'IO.inspect(Trenino.Keyboard.available?())'")
 
       {_, exit_code} ->
         Mix.shell().error("Cargo build failed with exit code #{exit_code}")

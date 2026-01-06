@@ -36,12 +36,12 @@ The Control Auto-Suggestion feature automatically detects and suggests Train Sim
 
 ### Key Modules
 
-1. **TswIo.Simulator.ControlDetector** (`lib/tsw_io/simulator/control_detector.ex`)
+1. **Trenino.Simulator.ControlDetector** (`lib/trenino/simulator/control_detector.ex`)
    - Core detection and matching logic
    - Communicates with TSW API via Client
    - Implements fuzzy string matching
 
-2. **TswIoWeb.TrainEditLive** (`lib/tsw_io_web/live/train_edit_live.ex`)
+2. **TreninoWeb.TrainEditLive** (`lib/trenino_web/live/train_edit_live.ex`)
    - UI integration
    - Event handlers for applying suggestions
    - Modal components with suggestion UI
@@ -231,11 +231,11 @@ Suggests a button control matching the given element name.
 
 ### Unit Tests
 
-Located in `test/tsw_io/simulator/control_detector_test.exs`
+Located in `test/trenino/simulator/control_detector_test.exs`
 
 Run tests:
 ```bash
-mix test test/tsw_io/simulator/control_detector_test.exs
+mix test test/trenino/simulator/control_detector_test.exs
 ```
 
 ### Integration Tests
@@ -364,5 +364,5 @@ Uses `{:ok, result} | {:error, reason}` tuples consistently throughout.
 ## Related Documentation
 
 - [TSW6 API Documentation](../tsw_api.md)
-- [Simulator Client Module](../lib/tsw_io/simulator/client.ex)
+- [Simulator Client Module](../lib/trenino/simulator/client.ex)
 - [Train Configuration Guide](../train_configuration.md)

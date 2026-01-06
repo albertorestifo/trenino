@@ -26,7 +26,7 @@ TWS IO is built with Elixir and Phoenix LiveView, providing real-time hardware-t
 
 ## Core Domains
 
-### Hardware Domain (`lib/tsw_io/hardware/`)
+### Hardware Domain (`lib/trenino/hardware/`)
 
 Manages physical device connections and input calibration.
 
@@ -35,7 +35,7 @@ Manages physical device connections and input calibration.
 - **ConfigurationManager** - GenServer broadcasting input value changes
 - **Calibration** - Multi-step wizard for input calibration
 
-### Train Domain (`lib/tsw_io/train/`)
+### Train Domain (`lib/trenino/train/`)
 
 Handles train configurations and input-to-lever mappings.
 
@@ -47,7 +47,7 @@ Handles train configurations and input-to-lever mappings.
 - **LeverController** - GenServer that sends values to simulator
 - **Detection** - GenServer polling simulator for active train
 
-### Simulator Domain (`lib/tsw_io/simulator/`)
+### Simulator Domain (`lib/trenino/simulator/`)
 
 Communicates with Train Sim World's External Interface API.
 
@@ -55,7 +55,7 @@ Communicates with Train Sim World's External Interface API.
 - **Connection** - GenServer managing connection health
 - **AutoConfig** - Windows auto-detection of API key
 
-### Serial Domain (`lib/tsw_io/serial/`)
+### Serial Domain (`lib/trenino/serial/`)
 
 Low-level USB/UART communication with hardware devices.
 
@@ -106,16 +106,16 @@ Low-level USB/UART communication with hardware devices.
 
 ```
 Application
-├── TswIo.Repo (Ecto)
-├── TswIoWeb.Endpoint (Phoenix)
-├── TswIo.Serial.Connection (device management)
-├── TswIo.Simulator.Connection (API health)
-├── TswIo.Train.Detection (train polling)
-├── TswIo.Train.LeverController (value mapping)
-├── TswIo.Hardware.ConfigurationManager (input broadcasts)
+├── Trenino.Repo (Ecto)
+├── TreninoWeb.Endpoint (Phoenix)
+├── Trenino.Serial.Connection (device management)
+├── Trenino.Simulator.Connection (API health)
+├── Trenino.Train.Detection (train polling)
+├── Trenino.Train.LeverController (value mapping)
+├── Trenino.Hardware.ConfigurationManager (input broadcasts)
 └── Calibration Supervisors
-    ├── TswIo.Hardware.Calibration.SessionSupervisor
-    └── TswIo.Train.Calibration.SessionSupervisor
+    ├── Trenino.Hardware.Calibration.SessionSupervisor
+    └── Trenino.Train.Calibration.SessionSupervisor
 ```
 
 ## Database Schema

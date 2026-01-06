@@ -1,4 +1,4 @@
-defmodule TswIo.Repo.Migrations.AddSimInputRangeToNotches do
+defmodule Trenino.Repo.Migrations.AddSimInputRangeToNotches do
   use Ecto.Migration
 
   def change do

@@ -1,4 +1,4 @@
-defmodule TswIo.Repo.Migrations.MakeConfigIdRequiredAddDescription do
+defmodule Trenino.Repo.Migrations.MakeConfigIdRequiredAddDescription do
   use Ecto.Migration
 
   def change do

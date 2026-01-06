@@ -84,7 +84,7 @@ jobs:
         include:
           - os: windows-2022
             target: windows_x86_64
-            binary_name: tsw_io_desktop_windows_x86_64.exe
+            binary_name: trenino_desktop_windows_x86_64.exe
             tauri_target: x86_64-pc-windows-msvc
 
     steps:
@@ -120,7 +120,7 @@ jobs:
         run: mix assets.deploy
 
       - name: Build Elixir release
-        run: mix release tsw_io_desktop
+        run: mix release trenino_desktop
         env:
           BURRITO_TARGET: ${{ matrix.target }}
 
@@ -222,7 +222,7 @@ jobs:
         include:
           - os: windows-2022
             target: windows_x86_64
-            elixir_binary: tsw_io_desktop_windows_x86_64.exe
+            elixir_binary: trenino_desktop_windows_x86_64.exe
             tauri_target: x86_64-pc-windows-msvc
             tauri_args: ""
             avrdude_ext: ".exe"
@@ -255,7 +255,7 @@ jobs:
         run: |
           # Prepare Elixir backend binary
           Move-Item -Path "tauri/src-tauri/binaries/${{ matrix.elixir_binary }}" `
-                    -Destination "tauri/src-tauri/binaries/tsw_io_backend-${{ matrix.tauri_target }}.exe"
+                    -Destination "tauri/src-tauri/binaries/trenino_backend-${{ matrix.tauri_target }}.exe"
 
           # Prepare avrdude binary
           Move-Item -Path "tauri/src-tauri/binaries/avrdude-download/avrdude-binary" `
@@ -282,8 +282,8 @@ jobs:
         run: |
           # Prepare Elixir backend binary
           mv "tauri/src-tauri/binaries/${{ matrix.elixir_binary }}" \
-             "tauri/src-tauri/binaries/tsw_io_backend-${{ matrix.tauri_target }}"
-          chmod +x "tauri/src-tauri/binaries/tsw_io_backend-${{ matrix.tauri_target }}"
+             "tauri/src-tauri/binaries/trenino_backend-${{ matrix.tauri_target }}"
+          chmod +x "tauri/src-tauri/binaries/trenino_backend-${{ matrix.tauri_target }}"
 
           # Prepare avrdude binary
           mv "tauri/src-tauri/binaries/avrdude-download/avrdude-binary" \
@@ -337,7 +337,7 @@ jobs:
           tauriScript: npx tauri
           args: ${{ matrix.tauri_args }}
           tagName: v${{ needs.verify-version.outputs.version }}
-          releaseName: "tsw_io v${{ needs.verify-version.outputs.version }}"
+          releaseName: "trenino v${{ needs.verify-version.outputs.version }}"
           releaseBody: "See the release notes for details."
           releaseDraft: false
           prerelease: false

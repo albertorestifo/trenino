@@ -1,14 +1,14 @@
 # Hardware Setup Guide
 
-This guide covers connecting and configuring physical hardware devices with tsw_io.
+This guide covers connecting and configuring physical hardware devices with trenino.
 
 ## Firmware
 
-Your hardware device needs the tsw_board firmware installed. See the [tsw_board repository](https://github.com/albertorestifo/tsw_board) for installation instructions.
+Your hardware device needs the trenino_firmware firmware installed. See the [trenino_firmware repository](https://github.com/albertorestifo/trenino_firmware) for installation instructions.
 
 ## Supported Hardware
 
-tsw_io communicates with microcontroller-based devices via USB serial running the tsw_board firmware.
+trenino communicates with microcontroller-based devices via USB serial running the trenino_firmware firmware.
 
 ### Compatible Microcontrollers
 
@@ -59,7 +59,7 @@ The sensitivity value determines how much the input must change before sending a
 
 ### Automatic Discovery
 
-tsw_io automatically scans for devices every 60 seconds. Connected devices appear in the sidebar navigation.
+trenino automatically scans for devices every 60 seconds. Connected devices appear in the sidebar navigation.
 
 ### Manual Scan
 
@@ -143,7 +143,7 @@ After calibration, you'll see:
 
 ## Hardware Protocol Reference
 
-For firmware developers implementing the tsw_io protocol:
+For firmware developers implementing the trenino protocol:
 
 ### Message Format
 

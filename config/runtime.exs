@@ -12,14 +12,14 @@ import Config
 # If you use `mix release`, you need to explicitly enable the server
 # by passing the PHX_SERVER=true when you start it:
 #
-#     PHX_SERVER=true bin/tsw_io start
+#     PHX_SERVER=true bin/trenino start
 #
 # Alternatively, you can use `mix phx.gen.release` to generate a `bin/server`
 # script that automatically sets the env var above.
 #
 # For desktop releases (Burrito), server is always enabled.
 if System.get_env("PHX_SERVER") || System.get_env("BURRITO") do
-  config :tsw_io, TswIoWeb.Endpoint, server: true
+  config :trenino, TreninoWeb.Endpoint, server: true
 end
 
 if config_env() == :prod do
@@ -28,23 +28,23 @@ if config_env() == :prod do
   database_path =
     System.get_env("DATABASE_PATH") ||
       (fn ->
-         app_name = "TswIo"
-         app_name_lower = "tsw_io"
+         app_name = "Trenino"
+         app_name_lower = "trenino"
 
          data_dir =
            case :os.type() do
              {:unix, :darwin} ->
-               # macOS: ~/Library/Application Support/TswIo
+               # macOS: ~/Library/Application Support/Trenino
                home = System.get_env("HOME") || "~"
                Path.join([home, "Library", "Application Support", app_name])
 
              {:win32, _} ->
-               # Windows: %APPDATA%/TswIo
+               # Windows: %APPDATA%/Trenino
                appdata = System.get_env("APPDATA") || System.get_env("LOCALAPPDATA") || "."
                Path.join(appdata, app_name)
 
              {:unix, _} ->
-               # Linux/BSD: $XDG_DATA_HOME/tsw_io or ~/.local/share/tsw_io
+               # Linux/BSD: $XDG_DATA_HOME/trenino or ~/.local/share/trenino
                xdg_data = System.get_env("XDG_DATA_HOME")
 
                base_dir =
@@ -63,7 +63,7 @@ if config_env() == :prod do
          Path.join(data_dir, "#{app_name_lower}.db")
        end).()
 
-  config :tsw_io, TswIo.Repo,
+  config :trenino, Trenino.Repo,
     database: database_path,
     pool_size: String.to_integer(System.get_env("POOL_SIZE") || "5"),
     # SQLite optimizations for desktop application:
@@ -94,9 +94,9 @@ if config_env() == :prod do
   host = System.get_env("PHX_HOST") || "localhost"
   port = String.to_integer(System.get_env("PORT") || "4000")
 
-  config :tsw_io, :dns_cluster_query, System.get_env("DNS_CLUSTER_QUERY")
+  config :trenino, :dns_cluster_query, System.get_env("DNS_CLUSTER_QUERY")
 
-  config :tsw_io, TswIoWeb.Endpoint,
+  config :trenino, TreninoWeb.Endpoint,
     url: [host: host, port: port, scheme: "http"],
     http: [
       ip: {127, 0, 0, 1},
@@ -111,7 +111,7 @@ if config_env() == :prod do
   # To get SSL working, you will need to add the `https` key
   # to your endpoint configuration:
   #
-  #     config :tsw_io, TswIoWeb.Endpoint,
+  #     config :trenino, TreninoWeb.Endpoint,
   #       https: [
   #         ...,
   #         port: 443,
@@ -133,7 +133,7 @@ if config_env() == :prod do
   # We also recommend setting `force_ssl` in your config/prod.exs,
   # ensuring no data is ever sent via http, always redirecting to https:
   #
-  #     config :tsw_io, TswIoWeb.Endpoint,
+  #     config :trenino, TreninoWeb.Endpoint,
   #       force_ssl: [hsts: true]
   #
   # Check `Plug.SSL` for all available options in `force_ssl`.

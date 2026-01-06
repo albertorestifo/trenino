@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# Build tsw_io desktop application for macOS (Apple Silicon)
+# Build Trenino desktop application for macOS (Apple Silicon)
 #
 # Usage: ./scripts/build-macos.sh
 #
@@ -96,9 +96,9 @@ build_elixir_backend() {
     mise exec -- mix assets.deploy
 
     log_info "Building release with Burrito..."
-    mise exec -- mix release tsw_io_desktop --overwrite
+    mise exec -- mix release trenino_desktop --overwrite
 
-    local binary_path="$PROJECT_ROOT/burrito_out/tsw_io_desktop_${BURRITO_TARGET}"
+    local binary_path="$PROJECT_ROOT/burrito_out/trenino_desktop_${BURRITO_TARGET}"
     if [[ ! -f "$binary_path" ]]; then
         log_error "Expected binary not found at: $binary_path"
         exit 1
@@ -110,9 +110,9 @@ build_elixir_backend() {
 prepare_tauri_binary() {
     log_info "Preparing binary for Tauri..."
 
-    local src="$PROJECT_ROOT/burrito_out/tsw_io_desktop_${BURRITO_TARGET}"
+    local src="$PROJECT_ROOT/burrito_out/trenino_desktop_${BURRITO_TARGET}"
     local dest_dir="$PROJECT_ROOT/tauri/src-tauri/binaries"
-    local dest="$dest_dir/tsw_io_backend-${TAURI_TARGET}"
+    local dest="$dest_dir/trenino_backend-${TAURI_TARGET}"
 
     mkdir -p "$dest_dir"
     cp "$src" "$dest"
@@ -191,7 +191,7 @@ build_tauri_app() {
 }
 
 main() {
-    log_info "Starting macOS build for tsw_io..."
+    log_info "Starting macOS build for Trenino..."
 
     check_dependencies
     build_elixir_backend
@@ -205,7 +205,7 @@ main() {
     log_info "Build complete!"
     echo ""
     echo "Output:"
-    echo "  App: ${bundle_dir}/macos/tsw_io.app"
+    echo "  App: ${bundle_dir}/macos/trenino.app"
 }
 
 main "$@"

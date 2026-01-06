@@ -52,7 +52,7 @@ perl -pi -e "s/>v[0-9]+\.[0-9]+\.[0-9]+</>v$VERSION</" tauri/src-tauri/splash.ht
 # 6. Update Cargo.lock if cargo is available
 if command -v cargo &> /dev/null && [ -f "tauri/src-tauri/Cargo.lock" ]; then
   echo "  - tauri/src-tauri/Cargo.lock (via cargo update)"
-  (cd tauri/src-tauri && cargo update --package tsw-io 2>/dev/null) || true
+  (cd tauri/src-tauri && cargo update --package trenino 2>/dev/null) || true
 fi
 
 echo ""

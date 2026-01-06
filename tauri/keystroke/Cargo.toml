@@ -2,7 +2,7 @@
 name = "keystroke"
 version = "0.1.0"
 edition = "2021"
-description = "Keystroke simulation utility for TSW IO"
+description = "Keystroke simulation utility for Trenino"
 authors = ["Alberto Restifo"]
 license = "CC-BY-NC-4.0"
 

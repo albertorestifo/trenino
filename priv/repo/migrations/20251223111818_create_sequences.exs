@@ -1,4 +1,4 @@
-defmodule TswIo.Repo.Migrations.CreateSequences do
+defmodule Trenino.Repo.Migrations.CreateSequences do
   use Ecto.Migration
 
   def change do

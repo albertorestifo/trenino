@@ -1,9 +1,9 @@
-defmodule TswIo.MixProject do
+defmodule Trenino.MixProject do
   use Mix.Project
 
   def project do
     [
-      app: :tsw_io,
+      app: :trenino,
       version: "0.4.0",
       elixir: "~> 1.15",
       elixirc_paths: elixirc_paths(Mix.env()),
@@ -18,10 +18,10 @@ defmodule TswIo.MixProject do
 
   defp releases do
     [
-      tsw_io: [
+      trenino: [
         # Standard release
       ],
-      tsw_io_desktop: [
+      trenino_desktop: [
         steps: [:assemble, &Burrito.wrap/1],
         burrito: [
           targets: [
@@ -38,7 +38,7 @@ defmodule TswIo.MixProject do
   # Type `mix help compile.app` for more information.
   def application do
     [
-      mod: {TswIo.Application, []},
+      mod: {Trenino.Application, []},
       extra_applications: [:logger, :runtime_tools]
     ]
   end
@@ -103,11 +103,11 @@ defmodule TswIo.MixProject do
       "ecto.reset": ["ecto.drop", "ecto.setup"],
       test: ["ecto.create --quiet", "ecto.migrate --quiet", "test"],
       "assets.setup": ["tailwind.install --if-missing", "esbuild.install --if-missing"],
-      "assets.build": ["compile", "tailwind tsw_io", "esbuild tsw_io"],
+      "assets.build": ["compile", "tailwind trenino", "esbuild trenino"],
       "assets.deploy": [
         "compile",
-        "tailwind tsw_io --minify",
-        "esbuild tsw_io --minify",
+        "tailwind trenino --minify",
+        "esbuild trenino --minify",
         "phx.digest"
       ],
       precommit: ["compile --warning-as-errors", "deps.unlock --unused", "format", "test"],

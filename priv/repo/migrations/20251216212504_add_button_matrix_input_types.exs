@@ -1,4 +1,4 @@
-defmodule TswIo.Repo.Migrations.AddButtonMatrixInputTypes do
+defmodule Trenino.Repo.Migrations.AddButtonMatrixInputTypes do
   use Ecto.Migration
 
   def change do

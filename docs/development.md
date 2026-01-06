@@ -20,11 +20,11 @@ To use the keystroke button binding mode during development, you need to build t
 mix keystroke
 ```
 
-This builds a small Rust executable that simulates keyboard input via the Windows SendInput API. The `TswIo.Keyboard` module automatically finds it at `tauri/keystroke/target/release/keystroke.exe`.
+This builds a small Rust executable that simulates keyboard input via the Windows SendInput API. The `Trenino.Keyboard` module automatically finds it at `tauri/keystroke/target/release/keystroke.exe`.
 
 Verify it's working:
 ```elixir
-iex> TswIo.Keyboard.available?()
+iex> Trenino.Keyboard.available?()
 true
 ```
 
@@ -75,7 +75,7 @@ mix phx.server
 
 ```
 lib/
-├── tsw_io/                    # Core business logic
+├── trenino/                    # Core business logic
 │   ├── application.ex         # OTP application
 │   ├── repo.ex                # Ecto repository
 │   ├── hardware.ex            # Hardware context
@@ -86,7 +86,7 @@ lib/
 │   ├── simulator/             # Simulator domain modules
 │   └── serial/                # Serial communication
 │
-├── tsw_io_web/                # Web layer
+├── trenino_web/                # Web layer
 │   ├── router.ex              # Routes
 │   ├── endpoint.ex            # Phoenix endpoint
 │   ├── live/                  # LiveView modules
@@ -150,7 +150,7 @@ end
 mix test
 
 # Run specific test file
-mix test test/tsw_io/train_test.exs
+mix test test/trenino/train_test.exs
 
 # Run with coverage
 mix test --cover
@@ -166,7 +166,7 @@ use Mimic
 setup :verify_on_exit!
 
 test "my test" do
-  expect(TswIo.Simulator.Client, :get, fn _path -> {:ok, %{}} end)
+  expect(Trenino.Simulator.Client, :get, fn _path -> {:ok, %{}} end)
   # ...
 end
 ```
@@ -231,19 +231,19 @@ Components communicate via Phoenix.PubSub:
 
 ```elixir
 # Subscribe
-Phoenix.PubSub.subscribe(TswIo.PubSub, "topic")
+Phoenix.PubSub.subscribe(Trenino.PubSub, "topic")
 
 # Broadcast
-Phoenix.PubSub.broadcast(TswIo.PubSub, "topic", {:event, data})
+Phoenix.PubSub.broadcast(Trenino.PubSub, "topic", {:event, data})
 ```
 
 ### Contexts
 
 Business logic is organized into contexts:
 
-- `TswIo.Hardware` - Device and input management
-- `TswIo.Train` - Train configuration and bindings
-- `TswIo.Simulator` - TSW API communication
+- `Trenino.Hardware` - Device and input management
+- `Trenino.Train` - Train configuration and bindings
+- `Trenino.Simulator` - TSW API communication
 
 ## Adding New Features
 
@@ -263,8 +263,8 @@ Business logic is organized into contexts:
 
 ### New Protocol Message
 
-1. Create module in `lib/tsw_io/serial/protocol/`
-2. Implement `TswIo.Serial.Protocol.Message` behaviour
+1. Create module in `lib/trenino/serial/protocol/`
+2. Implement `Trenino.Serial.Protocol.Message` behaviour
 3. Register in message type registry
 4. Handle in `Serial.Connection`
 
@@ -284,7 +284,7 @@ Enable verbose serial logging:
 
 ```elixir
 # In config/dev.exs
-config :tsw_io, :serial_debug, true
+config :trenino, :serial_debug, true
 ```
 
 ## Building the Desktop App
@@ -321,7 +321,7 @@ The built `.dmg` and `.app` will be in `tauri/src-tauri/target/aarch64-apple-dar
 ### Bundled Components
 
 The desktop app bundles:
-- **tsw_io_backend** - The Elixir application (Burrito release)
+- **trenino_backend** - The Elixir application (Burrito release)
 - **avrdude** - AVR programmer for firmware uploads
 - **avrdude.conf** - Configuration file for avrdude
 - **keystroke** - Keyboard input simulator for keystroke button bindings
@@ -337,7 +337,7 @@ MIX_ENV=prod mix release
 ### Running in Production
 
 ```bash
-_build/prod/rel/tsw_io/bin/tsw_io start
+_build/prod/rel/trenino/bin/trenino start
 ```
 
 ### Configuration

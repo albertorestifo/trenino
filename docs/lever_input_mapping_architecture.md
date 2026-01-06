@@ -105,7 +105,7 @@ We could have stored raw calibrated integers (0 to total_travel) in notches, but
 ### Notch Schema Fields
 
 ```elixir
-defmodule TswIo.Train.Notch do
+defmodule Trenino.Train.Notch do
   schema "train_lever_notches" do
     field :index, :integer           # Position in lever sequence
     field :type, Ecto.Enum          # :gate or :linear
@@ -332,7 +332,7 @@ When a user binds a physical input to a lever, they need to map physical positio
 ### Sample Implementation Sketch
 
 ```elixir
-defmodule TswIo.Train.InputCalibration do
+defmodule Trenino.Train.InputCalibration do
   @moduledoc """
   Interactive calibration session for binding inputs to levers.
   """

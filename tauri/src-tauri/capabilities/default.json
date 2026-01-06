@@ -1,7 +1,7 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "identifier": "default",
-  "description": "Default capabilities for tsw_io",
+  "description": "Default capabilities for trenino",
   "windows": ["main"],
   "permissions": [
     "core:default",
@@ -10,7 +10,7 @@
       "identifier": "shell:allow-spawn",
       "allow": [
         {
-          "name": "binaries/tsw_io_backend",
+          "name": "binaries/trenino_backend",
           "sidecar": true
         }
       ]

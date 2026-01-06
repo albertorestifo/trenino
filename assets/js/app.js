@@ -22,7 +22,7 @@ import "phoenix_html"
 // Establish Phoenix Socket and LiveView configuration.
 import {Socket} from "phoenix"
 import {LiveSocket} from "phoenix_live_view"
-import {hooks as colocatedHooks} from "phoenix-colocated/tsw_io"
+import {hooks as colocatedHooks} from "phoenix-colocated/trenino"
 import topbar from "../vendor/topbar"
 
 // Normalize key codes to human-readable format for keystroke capture

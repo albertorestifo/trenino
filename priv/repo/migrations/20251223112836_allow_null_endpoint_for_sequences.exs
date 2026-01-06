@@ -1,4 +1,4 @@
-defmodule TswIo.Repo.Migrations.AllowNullEndpointForSequences do
+defmodule Trenino.Repo.Migrations.AllowNullEndpointForSequences do
   use Ecto.Migration
 
   @doc """

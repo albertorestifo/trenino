@@ -1,4 +1,4 @@
-defmodule TswIo.Repo.Migrations.PopulateMissingConfigIds do
+defmodule Trenino.Repo.Migrations.PopulateMissingConfigIds do
   use Ecto.Migration
 
   @max_i32 2_147_483_647

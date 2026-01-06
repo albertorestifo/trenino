@@ -1,4 +1,4 @@
-defmodule TswIo.Repo.Migrations.RefactorMatrixToSeparateEntity do
+defmodule Trenino.Repo.Migrations.RefactorMatrixToSeparateEntity do
   @moduledoc """
   Refactors matrix inputs to be a separate entity.
 

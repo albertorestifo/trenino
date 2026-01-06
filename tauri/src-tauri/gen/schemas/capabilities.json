@@ -1,1 +1,1 @@
-{"default":{"identifier":"default","description":"Default capabilities for tsw_io","local":true,"windows":["main"],"permissions":["core:default","opener:default",{"identifier":"shell:allow-spawn","allow":[{"name":"binaries/tsw_io_backend","sidecar":true}]}]}}
+{"default":{"identifier":"default","description":"Default capabilities for trenino","local":true,"windows":["main"],"permissions":["core:default","opener:default",{"identifier":"shell:allow-spawn","allow":[{"name":"binaries/trenino_backend","sidecar":true}]}]}}

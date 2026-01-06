@@ -1,4 +1,4 @@
-defmodule TswIo.Repo.Migrations.CreateTrainLeverNotches do
+defmodule Trenino.Repo.Migrations.CreateTrainLeverNotches do
   use Ecto.Migration
 
   def change do

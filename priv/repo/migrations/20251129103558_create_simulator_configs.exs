@@ -1,4 +1,4 @@
-defmodule TswIo.Repo.Migrations.CreateSimulatorConfigs do
+defmodule Trenino.Repo.Migrations.CreateSimulatorConfigs do
   use Ecto.Migration
 
   def change do

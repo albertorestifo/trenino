@@ -1,4 +1,4 @@
-defmodule TswIo.Repo.Migrations.CreateTrainElements do
+defmodule Trenino.Repo.Migrations.CreateTrainElements do
   use Ecto.Migration
 
   def change do

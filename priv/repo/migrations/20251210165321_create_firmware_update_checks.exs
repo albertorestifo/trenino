@@ -1,4 +1,4 @@
-defmodule TswIo.Repo.Migrations.CreateFirmwareUpdateChecks do
+defmodule Trenino.Repo.Migrations.CreateFirmwareUpdateChecks do
   use Ecto.Migration
 
   def change do

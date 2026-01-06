@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "tsw_io",
+  "productName": "trenino",
   "version": "0.4.0",
   "identifier": "dev.restifo.tws-io",
   "build": {
@@ -24,7 +24,7 @@
       "icons/icon.ico"
     ],
     "externalBin": [
-      "binaries/tsw_io_backend",
+      "binaries/trenino_backend",
       "binaries/avrdude",
       "binaries/keystroke"
     ],

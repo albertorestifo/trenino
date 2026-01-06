@@ -1,4 +1,4 @@
-defmodule TswIo.Repo.Migrations.AddConfigIdToDevices do
+defmodule Trenino.Repo.Migrations.AddConfigIdToDevices do
   use Ecto.Migration
 
   def change do

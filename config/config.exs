@@ -7,25 +7,25 @@
 # General application configuration
 import Config
 
-config :tsw_io,
-  ecto_repos: [TswIo.Repo],
+config :trenino,
+  ecto_repos: [Trenino.Repo],
   generators: [timestamp_type: :utc_datetime]
 
 # Configures the endpoint
-config :tsw_io, TswIoWeb.Endpoint,
+config :trenino, TreninoWeb.Endpoint,
   url: [host: "localhost"],
   adapter: Bandit.PhoenixAdapter,
   render_errors: [
-    formats: [html: TswIoWeb.ErrorHTML, json: TswIoWeb.ErrorJSON],
+    formats: [html: TreninoWeb.ErrorHTML, json: TreninoWeb.ErrorJSON],
     layout: false
   ],
-  pubsub_server: TswIo.PubSub,
+  pubsub_server: Trenino.PubSub,
   live_view: [signing_salt: "zLxA4/mQ"]
 
 # Configure esbuild (the version is required)
 config :esbuild,
   version: "0.25.4",
-  tsw_io: [
+  trenino: [
     args:
       ~w(js/app.js --bundle --target=es2022 --outdir=../priv/static/assets/js --external:/fonts/* --external:/images/* --alias:@=.),
     cd: Path.expand("../assets", __DIR__),
@@ -35,7 +35,7 @@ config :esbuild,
 # Configure tailwind (the version is required)
 config :tailwind,
   version: "4.1.7",
-  tsw_io: [
+  trenino: [
     args: ~w(
       --input=assets/css/app.css
       --output=priv/static/assets/css/app.css

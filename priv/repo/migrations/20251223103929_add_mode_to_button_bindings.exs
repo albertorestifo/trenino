@@ -1,4 +1,4 @@
-defmodule TswIo.Repo.Migrations.AddModeToButtonBindings do
+defmodule Trenino.Repo.Migrations.AddModeToButtonBindings do
   use Ecto.Migration
 
   def change do

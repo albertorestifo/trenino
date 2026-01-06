@@ -1,4 +1,4 @@
-defmodule TswIoWeb.ConnCase do
+defmodule TreninoWeb.ConnCase do
   @moduledoc """
   This module defines the test case to be used by
   tests that require setting up a connection.
@@ -11,7 +11,7 @@ defmodule TswIoWeb.ConnCase do
   we enable the SQL sandbox, so changes done to the database
   are reverted at the end of every test. If you are using
   PostgreSQL, you can even run database tests asynchronously
-  by setting `use TswIoWeb.ConnCase, async: true`, although
+  by setting `use TreninoWeb.ConnCase, async: true`, although
   this option is not recommended for other databases.
   """
 
@@ -20,19 +20,19 @@ defmodule TswIoWeb.ConnCase do
   using do
     quote do
       # The default endpoint for testing
-      @endpoint TswIoWeb.Endpoint
+      @endpoint TreninoWeb.Endpoint
 
-      use TswIoWeb, :verified_routes
+      use TreninoWeb, :verified_routes
 
       # Import conveniences for testing with connections
       import Plug.Conn
       import Phoenix.ConnTest
-      import TswIoWeb.ConnCase
+      import TreninoWeb.ConnCase
     end
   end
 
   setup tags do
-    TswIo.DataCase.setup_sandbox(tags)
+    Trenino.DataCase.setup_sandbox(tags)
     {:ok, conn: Phoenix.ConnTest.build_conn()}
   end
 end

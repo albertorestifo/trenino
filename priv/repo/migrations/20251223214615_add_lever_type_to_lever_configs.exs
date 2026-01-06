@@ -1,4 +1,4 @@
-defmodule TswIo.Repo.Migrations.AddLeverTypeToLeverConfigs do
+defmodule Trenino.Repo.Migrations.AddLeverTypeToLeverConfigs do
   use Ecto.Migration
 
   def change do

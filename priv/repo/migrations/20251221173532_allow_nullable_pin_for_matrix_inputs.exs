@@ -1,4 +1,4 @@
-defmodule TswIo.Repo.Migrations.AllowNullablePinForMatrixInputs do
+defmodule Trenino.Repo.Migrations.AllowNullablePinForMatrixInputs do
   use Ecto.Migration
 
   def up do

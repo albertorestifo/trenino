@@ -86,7 +86,7 @@ pub fn run() {
                 "splash",
                 WebviewUrl::External(splash_url.parse().unwrap()),
             )
-            .title("TSW IO")
+            .title("Trenino")
             .inner_size(400.0, 300.0)
             .resizable(false)
             .decorations(false)
@@ -95,7 +95,7 @@ pub fn run() {
             .expect("Failed to create splash window");
 
             // Spawn the Elixir backend as a sidecar process
-            let sidecar = match handle.shell().sidecar("tsw_io_backend") {
+            let sidecar = match handle.shell().sidecar("trenino_backend") {
                 Ok(cmd) => cmd,
                 Err(e) => {
                     eprintln!("Failed to create sidecar command: {}", e);
@@ -132,7 +132,7 @@ pub fn run() {
                         "main",
                         WebviewUrl::External(url.parse().unwrap()),
                     )
-                    .title("TSW IO")
+                    .title("Trenino")
                     .inner_size(1200.0, 800.0)
                     .min_inner_size(800.0, 600.0)
                     .build()
@@ -156,7 +156,7 @@ pub fn run() {
             Ok(())
         })
         .build(tauri::generate_context!())
-        .expect("Error while building tsw_io")
+        .expect("Error while building trenino")
         .run(|app_handle, event| {
             if let tauri::RunEvent::ExitRequested { .. } = event {
                 // Gracefully shut down the backend by calling the shutdown endpoint

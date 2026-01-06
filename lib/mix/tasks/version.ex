@@ -167,7 +167,7 @@ defmodule Mix.Tasks.Version do
       Mix.shell().info("  - tauri/src-tauri/Cargo.lock (via cargo update)")
 
       unless dry_run do
-        System.cmd("cargo", ["update", "--package", "tsw-io"],
+        System.cmd("cargo", ["update", "--package", "trenino"],
           cd: cargo_dir,
           stderr_to_stdout: true
         )

@@ -1,11 +1,11 @@
-defmodule TswIo.SerialTestHelpers do
+defmodule Trenino.SerialTestHelpers do
   @moduledoc """
   Test helpers and builders for serial connection testing.
   """
 
-  alias TswIo.Serial.Connection.DeviceConnection
-  alias TswIo.Serial.Connection.State
-  alias TswIo.Serial.Protocol.IdentityResponse
+  alias Trenino.Serial.Connection.DeviceConnection
+  alias Trenino.Serial.Connection.State
+  alias Trenino.Serial.Protocol.IdentityResponse
 
   @doc """
   Creates a DeviceConnection in :connecting state.

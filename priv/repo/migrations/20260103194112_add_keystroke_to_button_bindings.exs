@@ -1,4 +1,4 @@
-defmodule TswIo.Repo.Migrations.AddKeystrokeToButtonBindings do
+defmodule Trenino.Repo.Migrations.AddKeystrokeToButtonBindings do
   use Ecto.Migration
 
   def change do

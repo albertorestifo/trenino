@@ -1,4 +1,4 @@
-defmodule TswIo.Repo.Migrations.CreateFirmwareTables do
+defmodule Trenino.Repo.Migrations.CreateFirmwareTables do
   use Ecto.Migration
 
   def change do

@@ -1,4 +1,4 @@
-defmodule TswIo.Repo.Migrations.AddInvertedToLeverConfigs do
+defmodule Trenino.Repo.Migrations.AddInvertedToLeverConfigs do
   use Ecto.Migration
 
   def change do

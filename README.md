@@ -1,8 +1,9 @@
 <p align="center">
-  <img src="icon.png" alt="tsw_io" width="128" height="128">
+  <img src="icon.png" alt="trenino" width="128" height="128">
 </p>
 
-<h1 align="center">tsw_io</h1>
+<h1 align="center">Trenino</h1>
+<p align="center"><em>Train Sim World + Arduino • "Model train" in Italian</em></p>
 
 <p align="center">
   <strong>Bridge your custom hardware to Train Sim World</strong>
@@ -23,7 +24,7 @@
 
 ## What You Can Do
 
-tsw_io lets you integrate standard Arduino-based hardware controls to Train Sim World.
+Trenino lets you integrate standard Arduino-based hardware controls to Train Sim World.
 Build your own train cab with actual throttle levers, brake handles, and switches, without worrying about the programming.
 
 - **Flash Arduino boards** directly from the app with pre-built firmware
@@ -42,7 +43,7 @@ Build your own train cab with actual throttle levers, brake handles, and switche
 
 ### Installation
 
-Download the latest release for Windows from the [Releases page](https://github.com/albertorestifo/tsw_io/releases).
+Download the latest release for Windows from the [Releases page](https://github.com/albertorestifo/trenino/releases).
 
 ### Setup and usage
 
@@ -54,8 +55,8 @@ See the video tutorial (WIP).
 
 ```bash
 # Clone and setup
-git clone https://github.com/albertorestifo/tsw_io.git
-cd tsw_io
+git clone https://github.com/albertorestifo/trenino.git
+cd trenino
 mix deps.get
 mix ecto.setup
 
@@ -83,13 +84,13 @@ Train Sim World 6 includes an External Interface API that allows third-party app
 ### 2. Launch the game
 
 The game must be launched to generate the API key for the first time.
-tws_io will automatically detect the API key when started.
+Trenino will automatically detect the API key when started.
 
 ---
 
 ## Supported Hardware
 
-tsw_io supports the following Arduino-compatible boards:
+Trenino supports the following Arduino-compatible boards:
 
 | Board                         | MCU        | Analog Inputs | Digital I/O |
 | ----------------------------- | ---------- | ------------- | ----------- |
@@ -107,7 +108,7 @@ tsw_io supports the following Arduino-compatible boards:
 - **Arduino Mega 2560** - Best for complex builds with many inputs
 - **SparkFun Pro Micro** - Small form factor with native USB
 
-All boards can be flashed directly from tsw_io without any additional software.
+All boards can be flashed directly from Trenino without any additional software.
 
 ---
 

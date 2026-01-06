@@ -1,34 +1,34 @@
 # Getting Started
 
-Get TWS IO up and running in minutes.
+Get Trenino up and running in minutes.
 
 ## Prerequisites
 
 - **Train Sim World** (with External Interface API enabled)
 - **Elixir 1.15+** and **Erlang/OTP 26+**
-- **Hardware device** - Arduino or compatible microcontroller with [TWS Board firmware](https://github.com/albertorestifo/tws_board)
+- **Hardware device** - Arduino or compatible microcontroller with [Trenino Firmware](https://github.com/albertorestifo/trenino_firmware)
 
 ## Firmware Installation
 
-Before using TWS IO, you need to flash the TWS Board firmware to your microcontroller.
+Before using Trenino, you need to flash the Trenino Firmware to your microcontroller.
 
-1. Visit the [TWS Board repository](https://github.com/albertorestifo/tws_board)
+1. Visit the [Trenino Firmware repository](https://github.com/albertorestifo/trenino_firmware)
 2. Follow the installation instructions for your hardware
 3. Flash the firmware to your device
 4. Connect the device via USB
 
 The firmware handles:
 - Reading analog inputs (potentiometers, sliders)
-- Communicating with TWS IO over USB serial
+- Communicating with Trenino over USB serial
 - Storing device configuration
 
-## TWS IO Installation
+## Trenino Installation
 
 ### Clone the Repository
 
 ```bash
-git clone https://github.com/albertorestifo/tws_io.git
-cd tws_io
+git clone https://github.com/albertorestifo/trenino.git
+cd trenino
 ```
 
 ### Install Dependencies
@@ -56,7 +56,7 @@ Visit [http://localhost:4000](http://localhost:4000) in your browser.
 ### Step 1: Configure Simulator Connection
 
 1. Start Train Sim World
-2. In TWS IO, click **Simulator** in the sidebar
+2. In Trenino, click **Simulator** in the sidebar
 3. The default URL is `http://localhost:31270`
 4. Click **Auto-Detect API Key** (Windows) or enter manually
 5. Click **Save** and verify connection status shows "Connected"
@@ -84,7 +84,7 @@ Visit [http://localhost:4000](http://localhost:4000) in your browser.
 ### Step 4: Create Train Configuration
 
 1. Load a train in Train Sim World
-2. In TWS IO, click **Trains**
+2. In Trenino, click **Trains**
 3. The detected train appears - click **Create Configuration**
 4. Add elements:
    - Click **Add Element**

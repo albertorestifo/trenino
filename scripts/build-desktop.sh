@@ -1,7 +1,7 @@
 #!/bin/bash
 set -e
 
-# Build script for TWS IO desktop application
+# Build script for Trenino desktop application
 # This script builds the Elixir backend and packages it with Tauri
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -38,7 +38,7 @@ MIX_ENV=prod mix assets.deploy
 
 # Step 2: Build Elixir release with Burrito
 echo "==> Building Elixir release..."
-MIX_ENV=prod mix release tsw_io_desktop
+MIX_ENV=prod mix release trenino_desktop
 
 # Step 3: Copy binary to Tauri binaries folder with platform suffix
 echo "==> Copying binary to Tauri..."
@@ -48,9 +48,9 @@ mkdir -p "$BINARIES_DIR"
 BURRITO_OUTPUT="$PROJECT_DIR/burrito_out"
 if [ -d "$BURRITO_OUTPUT" ]; then
     # Find the built binary (name varies by platform)
-    BINARY=$(find "$BURRITO_OUTPUT" -type f -name "tsw_io_desktop*" | head -1)
+    BINARY=$(find "$BURRITO_OUTPUT" -type f -name "trenino_desktop*" | head -1)
     if [ -n "$BINARY" ]; then
-        TARGET="$BINARIES_DIR/tsw_io_backend-$PLATFORM"
+        TARGET="$BINARIES_DIR/trenino_backend-$PLATFORM"
         cp "$BINARY" "$TARGET"
         chmod +x "$TARGET"
         echo "Copied: $TARGET"

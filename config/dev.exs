@@ -1,8 +1,8 @@
 import Config
 
 # Configure your database
-config :tsw_io, TswIo.Repo,
-  database: Path.expand("../tsw_io_dev.db", __DIR__),
+config :trenino, Trenino.Repo,
+  database: Path.expand("../trenino_dev.db", __DIR__),
   pool_size: 5,
   stacktrace: true,
   show_sensitive_data_on_connection_error: true
@@ -13,7 +13,7 @@ config :tsw_io, TswIo.Repo,
 # The watchers configuration can be used to run external
 # watchers to your application. For example, we can use it
 # to bundle .js and .css sources.
-config :tsw_io, TswIoWeb.Endpoint,
+config :trenino, TreninoWeb.Endpoint,
   # Binding to loopback ipv4 address prevents access from other machines.
   # Change to `ip: {0, 0, 0, 0}` to allow access from other machines.
   http: [ip: {127, 0, 0, 1}, port: String.to_integer(System.get_env("PORT") || "4000")],
@@ -22,8 +22,8 @@ config :tsw_io, TswIoWeb.Endpoint,
   debug_errors: true,
   secret_key_base: "lOAE6mFXHklNCARuy9zwE0KLGMgEvgaQL7CQBrw2LVLVScqCsJRG3397/ISO16dC",
   watchers: [
-    esbuild: {Esbuild, :install_and_run, [:tsw_io, ~w(--sourcemap=inline --watch)]},
-    tailwind: {Tailwind, :install_and_run, [:tsw_io, ~w(--watch)]}
+    esbuild: {Esbuild, :install_and_run, [:trenino, ~w(--sourcemap=inline --watch)]},
+    tailwind: {Tailwind, :install_and_run, [:trenino, ~w(--watch)]}
   ]
 
 # ## SSL Support
@@ -50,18 +50,18 @@ config :tsw_io, TswIoWeb.Endpoint,
 # different ports.
 
 # Watch static and templates for browser reloading.
-config :tsw_io, TswIoWeb.Endpoint,
+config :trenino, TreninoWeb.Endpoint,
   live_reload: [
     web_console_logger: true,
     patterns: [
       ~r"priv/static/(?!uploads/).*(js|css|png|jpeg|jpg|gif|svg)$",
       ~r"priv/gettext/.*(po)$",
-      ~r"lib/tsw_io_web/(?:controllers|live|components|router)/?.*\.(ex|heex)$"
+      ~r"lib/trenino_web/(?:controllers|live|components|router)/?.*\.(ex|heex)$"
     ]
   ]
 
 # Enable dev routes for dashboard and mailbox
-config :tsw_io, dev_routes: true
+config :trenino, dev_routes: true
 
 # Do not include metadata nor timestamps in development logs
 config :logger, :default_formatter, format: "[$level] $message\n"
