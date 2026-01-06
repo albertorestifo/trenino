@@ -453,16 +453,12 @@ defmodule TswIoWeb.ApiExplorerComponent do
           class="mx-4 mt-4 p-4 bg-success/10 border border-success/30 rounded-lg"
         >
           <div class="flex items-start gap-3">
-            <.icon name="hero-hand-raised" class="w-5 h-5 text-success flex-shrink-0 mt-0.5" />
+            <.icon name="hero-check-circle" class="w-5 h-5 text-success flex-shrink-0 mt-0.5" />
             <div class="flex-1 min-w-0">
               <h3 class="font-semibold text-sm">Button Endpoint Found</h3>
               <p class="text-xs text-base-content/70 mt-1 font-mono">
                 {@button_detection.endpoint}
               </p>
-              <div :if={@button_detection.has_min_max} class="mt-2 text-xs text-base-content/60">
-                <span class="font-medium">Suggested values:</span>
-                ON = {@button_detection.suggested_on}, OFF = {@button_detection.suggested_off}
-              </div>
               <button
                 type="button"
                 phx-click="select_button_endpoint"
