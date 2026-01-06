@@ -41,11 +41,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- Arduino Nano firmware upload failing with "programmer not responding" - now uses correct 115200 baud rate for new bootloader/clones
 - New trains not being set as active until app restart
 - Notches with sim_input_min=0 failing to match due to integer/float type mismatch from SQLite
 - Lever inversion not working correctly for reversed notch layouts (now auto-detected)
 
 ### Removed
+
+- Arduino Nano (Old Bootloader) board option - only new bootloader/clones are now supported
 
 ## [0.4.0] - 2026-01-03
 

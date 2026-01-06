@@ -9,12 +9,11 @@ defmodule Trenino.Firmware.BoardConfigTest do
 
       assert :uno in types
       assert :nano in types
-      assert :nano_old_bootloader in types
       assert :leonardo in types
       assert :micro in types
       assert :mega2560 in types
       assert :sparkfun_pro_micro in types
-      assert length(types) == 7
+      assert length(types) == 6
     end
   end
 
@@ -33,17 +32,8 @@ defmodule Trenino.Firmware.BoardConfigTest do
       assert config.name == "Arduino Nano"
       assert config.mcu == "m328p"
       assert config.programmer == "arduino"
-      assert config.baud_rate == 57_600
+      assert config.baud_rate == 115_200
       assert config.hex_filename == "tws-io-arduino-nano.hex"
-    end
-
-    test "returns config for Arduino Nano (old bootloader)" do
-      assert {:ok, config} = BoardConfig.get_config(:nano_old_bootloader)
-      assert config.name == "Arduino Nano (Old Bootloader)"
-      assert config.mcu == "m328p"
-      assert config.programmer == "arduino"
-      assert config.baud_rate == 57_600
-      assert config.hex_filename == "tws-io-arduino-nano-old-bootloader.hex"
     end
 
     test "returns config for Arduino Leonardo" do
@@ -104,7 +94,7 @@ defmodule Trenino.Firmware.BoardConfigTest do
     test "returns all board configurations" do
       configs = BoardConfig.all_configs()
 
-      assert length(configs) == 7
+      assert length(configs) == 6
 
       assert Enum.all?(configs, fn {type, config} ->
                is_atom(type) and is_map(config) and Map.has_key?(config, :name)
@@ -127,7 +117,7 @@ defmodule Trenino.Firmware.BoardConfigTest do
     test "returns options suitable for form select" do
       options = BoardConfig.select_options()
 
-      assert length(options) == 7
+      assert length(options) == 6
 
       assert Enum.all?(options, fn {name, type} ->
                is_binary(name) and is_atom(type)
@@ -158,11 +148,6 @@ defmodule Trenino.Firmware.BoardConfigTest do
 
     test "detects Arduino Nano from filename" do
       assert {:ok, :nano} = BoardConfig.detect_board_type("tws-io-arduino-nano.hex")
-    end
-
-    test "detects Arduino Nano (old bootloader) from filename" do
-      assert {:ok, :nano_old_bootloader} =
-               BoardConfig.detect_board_type("tws-io-arduino-nano-old-bootloader.hex")
     end
 
     test "detects Arduino Leonardo from filename" do

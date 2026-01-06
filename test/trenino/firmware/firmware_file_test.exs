@@ -98,7 +98,6 @@ defmodule Trenino.Firmware.FirmwareFileTest do
       board_types = [
         :uno,
         :nano,
-        :nano_old_bootloader,
         :leonardo,
         :micro,
         :mega2560,

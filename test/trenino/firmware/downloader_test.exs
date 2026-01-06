@@ -37,12 +37,6 @@ defmodule Trenino.Firmware.DownloaderTest do
             "https://github.com/albertorestifo/trenino_firmware/releases/download/v1.0.0/tws-io-arduino-micro.hex"
         },
         %{
-          "name" => "tws-io-arduino-nano-old-bootloader.hex",
-          "size" => 17113,
-          "browser_download_url" =>
-            "https://github.com/albertorestifo/trenino_firmware/releases/download/v1.0.0/tws-io-arduino-nano-old-bootloader.hex"
-        },
-        %{
           "name" => "tws-io-arduino-nano.hex",
           "size" => 17113,
           "browser_download_url" =>
@@ -86,8 +80,8 @@ defmodule Trenino.Firmware.DownloaderTest do
 
       assert release.release_notes == "Initial release with support for Arduino boards"
 
-      # Should have created firmware files for all 7 board types
-      assert length(release.firmware_files) == 7
+      # Should have created firmware files for all 6 board types
+      assert length(release.firmware_files) == 6
 
       # Verify specific board types
       board_types = Enum.map(release.firmware_files, & &1.board_type) |> Enum.sort()
@@ -96,7 +90,6 @@ defmodule Trenino.Firmware.DownloaderTest do
       assert :mega2560 in board_types
       assert :micro in board_types
       assert :nano in board_types
-      assert :nano_old_bootloader in board_types
       assert :uno in board_types
       assert :sparkfun_pro_micro in board_types
     end

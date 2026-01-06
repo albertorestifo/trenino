@@ -9,7 +9,6 @@ defmodule Trenino.Firmware.BoardConfig do
   @type board_type ::
           :uno
           | :nano
-          | :nano_old_bootloader
           | :leonardo
           | :micro
           | :mega2560
@@ -37,16 +36,8 @@ defmodule Trenino.Firmware.BoardConfig do
       name: "Arduino Nano",
       mcu: "m328p",
       programmer: "arduino",
-      baud_rate: 57_600,
+      baud_rate: 115_200,
       hex_filename: "tws-io-arduino-nano.hex",
-      use_1200bps_touch: false
-    },
-    nano_old_bootloader: %{
-      name: "Arduino Nano (Old Bootloader)",
-      mcu: "m328p",
-      programmer: "arduino",
-      baud_rate: 57_600,
-      hex_filename: "tws-io-arduino-nano-old-bootloader.hex",
       use_1200bps_touch: false
     },
     leonardo: %{
