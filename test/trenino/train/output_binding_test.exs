@@ -80,6 +80,40 @@ defmodule Trenino.Train.OutputBindingTest do
       end
     end
 
+    test "valid changeset with eq_true boolean operator (no value_a required)", %{
+      output: output,
+      train: train
+    } do
+      attrs = %{
+        train_id: train.id,
+        output_id: output.id,
+        name: "Warning Active",
+        endpoint: "CurrentDrivableActor.SIFA.Property.WarningStateVisual",
+        operator: :eq_true
+      }
+
+      changeset = OutputBinding.changeset(%OutputBinding{}, attrs)
+
+      assert changeset.valid?
+    end
+
+    test "valid changeset with eq_false boolean operator (no value_a required)", %{
+      output: output,
+      train: train
+    } do
+      attrs = %{
+        train_id: train.id,
+        output_id: output.id,
+        name: "Warning Inactive",
+        endpoint: "CurrentDrivableActor.SIFA.Property.WarningStateVisual",
+        operator: :eq_false
+      }
+
+      changeset = OutputBinding.changeset(%OutputBinding{}, attrs)
+
+      assert changeset.valid?
+    end
+
     test "defaults output_type to :led", %{output: output, train: train} do
       attrs = %{
         train_id: train.id,

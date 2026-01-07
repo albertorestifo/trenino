@@ -225,6 +225,37 @@ defmodule Trenino.Train.OutputControllerTest do
       assert evaluate_condition(binding, 0.01) == false
       assert evaluate_condition(binding, 0.0) == false
     end
+
+    test "eq_true operator: true when value is true", %{train: train, output: output} do
+      binding = create_binding_boolean(train, output, :eq_true)
+
+      assert evaluate_condition(binding, true) == true
+      assert evaluate_condition(binding, false) == false
+    end
+
+    test "eq_false operator: true when value is false", %{train: train, output: output} do
+      binding = create_binding_boolean(train, output, :eq_false)
+
+      assert evaluate_condition(binding, false) == true
+      assert evaluate_condition(binding, true) == false
+    end
+
+    test "boolean operators return false for non-boolean values", %{train: train, output: output} do
+      binding = create_binding_boolean(train, output, :eq_true)
+
+      # Numeric values should not match boolean operators
+      assert evaluate_condition(binding, 1) == false
+      assert evaluate_condition(binding, 0) == false
+      assert evaluate_condition(binding, 1.0) == false
+    end
+
+    test "numeric operators return false for boolean values", %{train: train, output: output} do
+      binding = create_binding(train, output, :gt, 0.5)
+
+      # Boolean values should not match numeric operators
+      assert evaluate_condition(binding, true) == false
+      assert evaluate_condition(binding, false) == false
+    end
   end
 
   # Helper functions to create bindings and evaluate conditions
@@ -260,28 +291,59 @@ defmodule Trenino.Train.OutputControllerTest do
     binding_with_preloads
   end
 
+  defp create_binding_boolean(train, output, operator) do
+    {:ok, binding} =
+      TrainContext.create_output_binding(train.id, %{
+        output_id: output.id,
+        name: "Test Binding #{:rand.uniform(10000)}",
+        endpoint: "TestEndpoint",
+        operator: operator,
+        enabled: true
+      })
+
+    {:ok, binding_with_preloads} = TrainContext.get_output_binding(binding.id)
+    binding_with_preloads
+  end
+
   # Reimplements the private evaluate_condition logic for testing
   # This ensures our tests match the expected behavior
-  defp evaluate_condition(%OutputBinding{operator: :gt, value_a: threshold}, value) do
+  defp evaluate_condition(%OutputBinding{operator: :gt, value_a: threshold}, value)
+       when is_number(value) do
     value > threshold
   end
 
-  defp evaluate_condition(%OutputBinding{operator: :gte, value_a: threshold}, value) do
+  defp evaluate_condition(%OutputBinding{operator: :gte, value_a: threshold}, value)
+       when is_number(value) do
     value >= threshold
   end
 
-  defp evaluate_condition(%OutputBinding{operator: :lt, value_a: threshold}, value) do
+  defp evaluate_condition(%OutputBinding{operator: :lt, value_a: threshold}, value)
+       when is_number(value) do
     value < threshold
   end
 
-  defp evaluate_condition(%OutputBinding{operator: :lte, value_a: threshold}, value) do
+  defp evaluate_condition(%OutputBinding{operator: :lte, value_a: threshold}, value)
+       when is_number(value) do
     value <= threshold
   end
 
   defp evaluate_condition(
          %OutputBinding{operator: :between, value_a: min, value_b: max},
          value
-       ) do
+       )
+       when is_number(value) do
     value >= min and value <= max
   end
+
+  # Boolean operators
+  defp evaluate_condition(%OutputBinding{operator: :eq_true}, value) when is_boolean(value) do
+    value == true
+  end
+
+  defp evaluate_condition(%OutputBinding{operator: :eq_false}, value) when is_boolean(value) do
+    value == false
+  end
+
+  # Fallback for type mismatches
+  defp evaluate_condition(_binding, _value), do: false
 end

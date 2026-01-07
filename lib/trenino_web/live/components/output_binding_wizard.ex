@@ -233,12 +233,22 @@ defmodule TreninoWeb.OutputBindingWizard do
 
   defp format_errors(_), do: "An error occurred"
 
+  @boolean_operators [:eq_true, :eq_false]
+
   defp can_save?(assigns) do
-    assigns.name != "" and
-      assigns.endpoint != nil and
-      assigns.selected_output_id != nil and
-      assigns.value_a != nil and
-      (assigns.operator != :between or assigns.value_b != nil)
+    base_valid =
+      assigns.name != "" and
+        assigns.endpoint != nil and
+        assigns.selected_output_id != nil
+
+    operator_valid =
+      cond do
+        assigns.operator in @boolean_operators -> true
+        assigns.operator == :between -> assigns.value_a != nil and assigns.value_b != nil
+        true -> assigns.value_a != nil
+      end
+
+    base_valid and operator_valid
   end
 
   @impl true
@@ -536,16 +546,25 @@ defmodule TreninoWeb.OutputBindingWizard do
           <div class="flex items-center gap-3">
             <span class="text-base-content/70">Value</span>
             <select name="operator" class="select select-bordered">
-              <option value="gt" selected={@operator == :gt}>&gt; (greater than)</option>
-              <option value="gte" selected={@operator == :gte}>&ge; (greater or equal)</option>
-              <option value="lt" selected={@operator == :lt}>&lt; (less than)</option>
-              <option value="lte" selected={@operator == :lte}>&le; (less or equal)</option>
-              <option value="between" selected={@operator == :between}>between</option>
+              <optgroup label="Boolean">
+                <option value="eq_true" selected={@operator == :eq_true}>= true</option>
+                <option value="eq_false" selected={@operator == :eq_false}>= false</option>
+              </optgroup>
+              <optgroup label="Numeric">
+                <option value="gt" selected={@operator == :gt}>&gt; (greater than)</option>
+                <option value="gte" selected={@operator == :gte}>&ge; (greater or equal)</option>
+                <option value="lt" selected={@operator == :lt}>&lt; (less than)</option>
+                <option value="lte" selected={@operator == :lte}>&le; (less or equal)</option>
+                <option value="between" selected={@operator == :between}>between</option>
+              </optgroup>
             </select>
           </div>
 
-          <div class={["mt-3", @operator != :between && "max-w-xs"]}>
-            <div :if={@operator != :between} class="flex items-center gap-2">
+          <div
+            :if={@operator not in [:eq_true, :eq_false]}
+            class={["mt-3", @operator != :between && "max-w-xs"]}
+          >
+            <div :if={@operator not in [:between, :eq_true, :eq_false]} class="flex items-center gap-2">
               <input
                 type="number"
                 name="value_a"
@@ -608,6 +627,8 @@ defmodule TreninoWeb.OutputBindingWizard do
     """
   end
 
+  defp condition_preview(:eq_true, _, _), do: "LED turns ON when value is true"
+  defp condition_preview(:eq_false, _, _), do: "LED turns ON when value is false"
   defp condition_preview(:gt, value_a, _), do: "LED turns ON when value > #{value_a}"
   defp condition_preview(:gte, value_a, _), do: "LED turns ON when value >= #{value_a}"
   defp condition_preview(:lt, value_a, _), do: "LED turns ON when value < #{value_a}"

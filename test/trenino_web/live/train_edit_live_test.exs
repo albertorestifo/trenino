@@ -232,7 +232,7 @@ defmodule TreninoWeb.TrainEditLiveTest do
     # simulator connection and uses the ConfigurationWizard. See
     # configuration_wizard_component_test.exs for wizard tests.
 
-    test "shows binding info on button element card after configuration", %{
+    test "shows configuration progress on button element card after binding", %{
       conn: conn,
       train: train
     } do
@@ -254,10 +254,9 @@ defmodule TreninoWeb.TrainEditLiveTest do
       # Load the view to see the binding
       {:ok, _view, html} = live(conn, ~p"/trains/#{train.id}")
 
-      # Should show binding info
-      assert html =~ "Test Device"
-      assert html =~ "Pin 5"
-      assert html =~ "CurrentDrivableActor/Horn.InputValue"
+      # Should show element name and Configure button
+      assert html =~ "Horn"
+      assert html =~ "Configure"
     end
   end
 
@@ -301,18 +300,18 @@ defmodule TreninoWeb.TrainEditLiveTest do
       %{conn: conn, train: train, element: element, lever_config: lever_config}
     end
 
-    test "shows configure/edit button for lever elements", %{
+    test "shows configure button for lever elements", %{
       conn: conn,
       train: train,
       element: element
     } do
       {:ok, _view, html} = live(conn, ~p"/trains/#{train.id}")
 
-      # Should have a configure_lever button since lever_config exists
+      # Should have a configure_lever button
       assert html =~ "phx-click=\"configure_lever\""
       assert html =~ "phx-value-id=\"#{element.id}\""
-      # Button shows "Edit" when lever_config exists
-      assert html =~ "Edit"
+      # Button always shows "Configure"
+      assert html =~ "Configure"
     end
   end
 

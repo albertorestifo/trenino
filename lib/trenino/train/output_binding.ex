@@ -7,11 +7,16 @@ defmodule Trenino.Train.OutputBinding do
 
   ## Supported Operators
 
+  Numeric operators:
   - `:gt` - Greater than (value > threshold)
   - `:gte` - Greater than or equal (value >= threshold)
   - `:lt` - Less than (value < threshold)
   - `:lte` - Less than or equal (value <= threshold)
   - `:between` - Between two values inclusive (value_a <= value <= value_b)
+
+  Boolean operators:
+  - `:eq_true` - Value equals true (LED on when true)
+  - `:eq_false` - Value equals false (LED on when false)
 
   ## Output Types
 
@@ -25,7 +30,7 @@ defmodule Trenino.Train.OutputBinding do
   alias Trenino.Hardware.Output
   alias Trenino.Train.Train
 
-  @type operator :: :gt | :gte | :lt | :lte | :between
+  @type operator :: :gt | :gte | :lt | :lte | :between | :eq_true | :eq_false
   @type output_type :: :led
 
   @type t :: %__MODULE__{
@@ -49,7 +54,7 @@ defmodule Trenino.Train.OutputBinding do
     field :name, :string
     field :output_type, Ecto.Enum, values: [:led], default: :led
     field :endpoint, :string
-    field :operator, Ecto.Enum, values: [:gt, :gte, :lt, :lte, :between]
+    field :operator, Ecto.Enum, values: [:gt, :gte, :lt, :lte, :between, :eq_true, :eq_false]
     field :value_a, :float
     field :value_b, :float
     field :enabled, :boolean, default: true
@@ -74,12 +79,25 @@ defmodule Trenino.Train.OutputBinding do
       :value_b,
       :enabled
     ])
-    |> validate_required([:train_id, :name, :output_id, :endpoint, :operator, :value_a])
+    |> validate_required([:train_id, :name, :output_id, :endpoint, :operator])
+    |> validate_numeric_operator_requires_value_a()
     |> validate_between_requires_value_b()
     |> round_float_fields([:value_a, :value_b])
     |> foreign_key_constraint(:train_id)
     |> foreign_key_constraint(:output_id)
     |> unique_constraint([:train_id, :output_id])
+  end
+
+  @boolean_operators [:eq_true, :eq_false]
+
+  defp validate_numeric_operator_requires_value_a(changeset) do
+    operator = get_field(changeset, :operator)
+
+    if operator not in @boolean_operators do
+      validate_required(changeset, [:value_a])
+    else
+      changeset
+    end
   end
 
   defp validate_between_requires_value_b(changeset) do

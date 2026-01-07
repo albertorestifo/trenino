@@ -286,28 +286,46 @@ defmodule Trenino.Train.OutputController do
     end)
   end
 
-  defp evaluate_condition(%OutputBinding{operator: :gt, value_a: threshold}, value) do
+  # Numeric operators
+  defp evaluate_condition(%OutputBinding{operator: :gt, value_a: threshold}, value)
+       when is_number(value) do
     value > threshold
   end
 
-  defp evaluate_condition(%OutputBinding{operator: :gte, value_a: threshold}, value) do
+  defp evaluate_condition(%OutputBinding{operator: :gte, value_a: threshold}, value)
+       when is_number(value) do
     value >= threshold
   end
 
-  defp evaluate_condition(%OutputBinding{operator: :lt, value_a: threshold}, value) do
+  defp evaluate_condition(%OutputBinding{operator: :lt, value_a: threshold}, value)
+       when is_number(value) do
     value < threshold
   end
 
-  defp evaluate_condition(%OutputBinding{operator: :lte, value_a: threshold}, value) do
+  defp evaluate_condition(%OutputBinding{operator: :lte, value_a: threshold}, value)
+       when is_number(value) do
     value <= threshold
   end
 
   defp evaluate_condition(
          %OutputBinding{operator: :between, value_a: min, value_b: max},
          value
-       ) do
+       )
+       when is_number(value) do
     value >= min and value <= max
   end
+
+  # Boolean operators
+  defp evaluate_condition(%OutputBinding{operator: :eq_true}, value) when is_boolean(value) do
+    value == true
+  end
+
+  defp evaluate_condition(%OutputBinding{operator: :eq_false}, value) when is_boolean(value) do
+    value == false
+  end
+
+  # Fallback for type mismatches (e.g., boolean value with numeric operator)
+  defp evaluate_condition(_binding, _value), do: false
 
   defp set_output_state(%OutputBinding{output: output}, state) do
     port = ConfigurationManager.config_id_to_port(output.device.config_id)
