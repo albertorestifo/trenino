@@ -12,8 +12,11 @@ defmodule Trenino.Serial.Discovery do
   alias Circuits.UART
   alias Trenino.Serial.Protocol
 
-  # Small delay to let the device settle after port opens (Windows needs this)
-  @settle_delay_ms 100
+  require Logger
+
+  # Delay to let the device settle after port opens (Windows needs this)
+  # Device may send startup messages before being ready for identity requests
+  @settle_delay_ms 200
 
   @spec discover(pid()) :: {:ok, Protocol.IdentityResponse.t()} | {:error, term()}
   def discover(uart_pid) do
@@ -23,30 +26,50 @@ defmodule Trenino.Serial.Discovery do
     # Flush any garbage data in the receive buffer
     UART.flush(uart_pid, :receive)
 
+    send_and_wait_for_response(uart_pid, 0)
+  end
+
+  defp send_and_wait_for_response(_uart_pid, 5), do: {:error, :no_valid_response}
+
+  defp send_and_wait_for_response(uart_pid, attempt) do
     identity_request = %Protocol.IdentityRequest{request_id: :erlang.unique_integer([:positive])}
+    Logger.debug("[Discovery] Attempt #{attempt + 1}: Sending identity request")
 
     with {:ok, encoded_request} <- Protocol.IdentityRequest.encode(identity_request),
          :ok <- UART.write(uart_pid, encoded_request),
          :ok <- UART.drain(uart_pid) do
-      read_response(uart_pid)
+      read_response(uart_pid, attempt)
     end
   end
 
   @spec read_response(pid(), non_neg_integer()) ::
           {:ok, Protocol.IdentityResponse.t()} | {:error, term()}
-  defp read_response(uart_pid, attempt \\ 0)
-
-  defp read_response(_pid, 3), do: {:error, :no_valid_response}
-
   defp read_response(uart_pid, attempt) do
-    with {:ok, data} <- UART.read(uart_pid, 1_000),
-         {:ok, %Protocol.IdentityResponse{} = response} <- Protocol.Message.decode(data) do
-      {:ok, response}
-    else
-      # Retry on unexpected messages or insufficient data (partial reads)
-      {:ok, _other} -> read_response(uart_pid, attempt + 1)
-      {:error, :insufficient_data} -> read_response(uart_pid, attempt + 1)
-      {:error, reason} -> {:error, reason}
+    case UART.read(uart_pid, 1_000) do
+      {:ok, <<>>} ->
+        Logger.debug("[Discovery] Attempt #{attempt + 1}: timeout (no data), will retry")
+        send_and_wait_for_response(uart_pid, attempt + 1)
+
+      {:ok, data} ->
+        Logger.debug("[Discovery] Attempt #{attempt + 1}: received #{byte_size(data)} bytes: #{inspect(data, limit: 50)}")
+
+        case Protocol.Message.decode(data) do
+          {:ok, %Protocol.IdentityResponse{} = response} ->
+            Logger.debug("[Discovery] Success: #{inspect(response)}")
+            {:ok, response}
+
+          {:ok, other} ->
+            Logger.debug("[Discovery] Got unexpected message: #{inspect(other)}, will retry")
+            send_and_wait_for_response(uart_pid, attempt + 1)
+
+          {:error, reason} ->
+            Logger.debug("[Discovery] Decode failed: #{inspect(reason)}, will retry")
+            send_and_wait_for_response(uart_pid, attempt + 1)
+        end
+
+      {:error, reason} ->
+        Logger.debug("[Discovery] Read error: #{inspect(reason)}")
+        {:error, reason}
     end
   end
 end

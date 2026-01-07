@@ -45,6 +45,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- Device reconnection failing after cable disconnect/reconnect
+  - Manual "Scan for devices" now bypasses the 30-second backoff for failed ports
+  - Discovery now re-sends identity request on each retry attempt (device may miss first request)
+  - Increased settle delay and retry count for more reliable handshake
 - Arduino Nano firmware upload failing with "programmer not responding" - now uses correct 115200 baud rate for new bootloader/clones
 - New trains not being set as active until app restart
 - Notches with sim_input_min=0 failing to match due to integer/float type mismatch from SQLite

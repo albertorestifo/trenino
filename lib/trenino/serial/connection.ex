@@ -23,8 +23,8 @@ defmodule Trenino.Serial.Connection do
   @discovery_interval_ms 60_000
   # Timeout for cleanup operations (failsafe if task crashes)
   @cleanup_timeout_ms 5_000
-  # Timeout for discovery operations
-  @discovery_timeout_ms 5_000
+  # Timeout for discovery operations (5 retries × 1s each + buffer)
+  @discovery_timeout_ms 7_000
   # Port name patterns to ignore (Bluetooth, debug consoles, etc.)
   @ignored_port_patterns [
     ~r/Bluetooth/i,
@@ -248,9 +248,11 @@ defmodule Trenino.Serial.Connection do
 
   @impl true
   def handle_cast(:scan, state) do
-    discover_new_ports(state)
+    # Clear failed ports so manual scan bypasses backoff
+    cleared_state = clear_failed_ports(state)
+    discover_new_ports(cleared_state)
     broadcast_scan_complete()
-    {:noreply, state}
+    {:noreply, cleared_state}
   end
 
   @impl true
@@ -456,6 +458,15 @@ defmodule Trenino.Serial.Connection do
       {port, _conn} -> port
       nil -> nil
     end
+  end
+
+  defp clear_failed_ports(%State{ports: ports} = state) do
+    failed_ports =
+      ports
+      |> Enum.filter(fn {_port, conn} -> conn.status == :failed end)
+      |> Enum.map(fn {port, _conn} -> port end)
+
+    Enum.reduce(failed_ports, state, &State.delete(&2, &1))
   end
 
   defp do_connect(port, state) do
