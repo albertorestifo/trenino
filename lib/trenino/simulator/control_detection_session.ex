@@ -190,37 +190,39 @@ defmodule Trenino.Simulator.ControlDetectionSession do
   end
 
   defp find_input_value_endpoints(client, nodes, parent_path) when is_list(nodes) do
-    nodes
-    |> Enum.flat_map(fn node ->
-      # Node format: %{"NodeName" => "...", "Name" => "..."}
-      name = Map.get(node, "NodeName") || Map.get(node, "Name", "")
-      node_path = "#{parent_path}/#{name}"
-
-      # List this node to check for InputValue endpoint
-      case Client.list(client, node_path) do
-        {:ok, response} when is_map(response) ->
-          endpoints = Map.get(response, "Endpoints", [])
-          sub_nodes = Map.get(response, "Nodes", [])
-
-          # Check if this node has a writable InputValue endpoint
-          has_writable_input =
-            Enum.any?(endpoints, fn ep ->
-              Map.get(ep, "Name") == "InputValue" and Map.get(ep, "Writable", false)
-            end)
-
-          # Collect this endpoint if writable, plus recurse into child nodes
-          this_endpoint = if has_writable_input, do: ["#{node_path}.InputValue"], else: []
-          child_endpoints = find_input_value_endpoints(client, sub_nodes, node_path)
-
-          this_endpoint ++ child_endpoints
-
-        {:error, _} ->
-          []
-      end
-    end)
+    Enum.flat_map(nodes, &find_node_input_endpoints(client, &1, parent_path))
   end
 
   defp find_input_value_endpoints(_client, _nodes, _parent_path), do: []
+
+  defp find_node_input_endpoints(client, node, parent_path) do
+    name = Map.get(node, "NodeName") || Map.get(node, "Name", "")
+    node_path = "#{parent_path}/#{name}"
+
+    case Client.list(client, node_path) do
+      {:ok, response} when is_map(response) ->
+        collect_endpoints_from_response(client, response, node_path)
+
+      {:error, _} ->
+        []
+    end
+  end
+
+  defp collect_endpoints_from_response(client, response, node_path) do
+    endpoints = Map.get(response, "Endpoints", [])
+    sub_nodes = Map.get(response, "Nodes", [])
+
+    this_endpoint = if has_writable_input_value?(endpoints), do: ["#{node_path}.InputValue"], else: []
+    child_endpoints = find_input_value_endpoints(client, sub_nodes, node_path)
+
+    this_endpoint ++ child_endpoints
+  end
+
+  defp has_writable_input_value?(endpoints) do
+    Enum.any?(endpoints, fn ep ->
+      Map.get(ep, "Name") == "InputValue" and Map.get(ep, "Writable", false)
+    end)
+  end
 
   defp create_subscriptions(%Client{} = client, endpoints) do
     # First clear any existing subscription with this ID
@@ -247,18 +249,7 @@ defmodule Trenino.Simulator.ControlDetectionSession do
   defp take_baseline_snapshot(%Client{} = client) do
     case Client.get_subscription(client, @subscription_id) do
       {:ok, %{"Entries" => entries}} when is_list(entries) ->
-        baseline =
-          entries
-          |> Enum.reduce(%{}, fn entry, acc ->
-            case extract_path_and_value(entry) do
-              {path, value} when is_number(value) ->
-                Map.put(acc, path, value)
-
-              _ ->
-                acc
-            end
-          end)
-
+        baseline = Enum.reduce(entries, %{}, &accumulate_baseline_value/2)
         Logger.debug("[ControlDetectionSession] Baseline snapshot: #{map_size(baseline)} values")
         {:ok, baseline}
 
@@ -274,37 +265,17 @@ defmodule Trenino.Simulator.ControlDetectionSession do
     end
   end
 
+  defp accumulate_baseline_value(entry, acc) do
+    case extract_path_and_value(entry) do
+      {path, value} when is_number(value) -> Map.put(acc, path, value)
+      _ -> acc
+    end
+  end
+
   defp poll_for_changes(%State{} = state) do
     case Client.get_subscription(state.client, @subscription_id) do
       {:ok, %{"Entries" => entries}} when is_list(entries) ->
-        changes =
-          entries
-          |> Enum.filter(fn entry ->
-            case extract_path_and_value(entry) do
-              {path, current} when is_number(current) ->
-                baseline = Map.get(state.baseline_values, path)
-                baseline != nil and abs(current - baseline) > @detection_threshold
-
-              _ ->
-                false
-            end
-          end)
-          |> Enum.map(fn entry ->
-            {path, current} = extract_path_and_value(entry)
-
-            %{
-              endpoint: path,
-              control_name: extract_control_name(path),
-              previous_value: Map.get(state.baseline_values, path),
-              current_value: current
-            }
-          end)
-
-        if changes != [] do
-          {:changes_detected, changes}
-        else
-          :no_changes
-        end
+        detect_changes(entries, state.baseline_values)
 
       {:ok, _response} ->
         :no_changes
@@ -312,6 +283,37 @@ defmodule Trenino.Simulator.ControlDetectionSession do
       {:error, reason} ->
         {:error, reason}
     end
+  end
+
+  defp detect_changes(entries, baseline_values) do
+    changes =
+      entries
+      |> Enum.filter(&entry_changed?(&1, baseline_values))
+      |> Enum.map(&build_change(&1, baseline_values))
+
+    if changes != [], do: {:changes_detected, changes}, else: :no_changes
+  end
+
+  defp entry_changed?(entry, baseline_values) do
+    case extract_path_and_value(entry) do
+      {path, current} when is_number(current) ->
+        baseline = Map.get(baseline_values, path)
+        baseline != nil and abs(current - baseline) > @detection_threshold
+
+      _ ->
+        false
+    end
+  end
+
+  defp build_change(entry, baseline_values) do
+    {path, current} = extract_path_and_value(entry)
+
+    %{
+      endpoint: path,
+      control_name: extract_control_name(path),
+      previous_value: Map.get(baseline_values, path),
+      current_value: current
+    }
   end
 
   defp extract_path_and_value(%{"Path" => path, "Values" => values}) when is_map(values) do
