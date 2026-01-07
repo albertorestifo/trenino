@@ -74,16 +74,7 @@ defmodule TreninoWeb.ConfigurationEditLive do
   defp mount_existing(socket, config_id) do
     case Hardware.get_device_by_config_id(config_id) do
       {:ok, device} ->
-        if connected?(socket) do
-          Hardware.subscribe_configuration()
-
-          # Subscribe to input values for active port
-          active_port = find_active_port(config_id)
-
-          if active_port do
-            Hardware.subscribe_input_values(active_port)
-          end
-        end
+        maybe_subscribe_on_connect(socket, config_id)
 
         {:ok, inputs} = Hardware.list_inputs(device.id)
         {:ok, matrices} = Hardware.list_matrices(device.id)
@@ -137,6 +128,14 @@ defmodule TreninoWeb.ConfigurationEditLive do
       nil -> nil
       device -> device.port
     end)
+  end
+
+  defp maybe_subscribe_on_connect(socket, config_id) do
+    if connected?(socket) do
+      Hardware.subscribe_configuration()
+      active_port = find_active_port(config_id)
+      if active_port, do: Hardware.subscribe_input_values(active_port)
+    end
   end
 
   # Nav component events
@@ -513,81 +512,58 @@ defmodule TreninoWeb.ConfigurationEditLive do
            |> assign(:matrix_errors, %{})}
 
         {:error, changeset} ->
-          # Extract a user-friendly error message from the changeset
-          error_message =
-            changeset.errors
-            |> Enum.map_join(", ", fn {field, {msg, _opts}} -> "#{field}: #{msg}" end)
-            |> case do
-              "" -> "Failed to create matrix"
-              errors -> errors
-            end
-
+          error_message = format_changeset_errors(changeset)
           {:noreply, assign(socket, :matrix_errors, %{general: error_message})}
       end
     end
   end
 
-  defp validate_matrix_pins(row_pins_str, col_pins_str) do
-    errors = %{}
+  defp format_changeset_errors(changeset) do
+    message =
+      Enum.map_join(changeset.errors, ", ", fn {field, {msg, _opts}} ->
+        "#{field}: #{msg}"
+      end)
 
+    if message == "", do: "Failed to create matrix", else: message
+  end
+
+  defp validate_matrix_pins(row_pins_str, col_pins_str) do
     row_pins = parse_pins(row_pins_str)
     col_pins = parse_pins(col_pins_str)
 
-    errors =
-      if Enum.empty?(row_pins) do
-        Map.put(errors, :row_pins, "At least one row pin is required")
-      else
-        errors
-      end
+    %{}
+    |> validate_pins_required(:row_pins, row_pins, "At least one row pin is required")
+    |> validate_pins_required(:col_pins, col_pins, "At least one column pin is required")
+    |> validate_pins_range(:row_pins, row_pins)
+    |> validate_pins_range(:col_pins, col_pins)
+    |> validate_pins_unique(:row_pins, row_pins)
+    |> validate_pins_unique(:col_pins, col_pins)
+    |> validate_pins_no_overlap(row_pins, col_pins)
+  end
 
-    errors =
-      if Enum.empty?(col_pins) do
-        Map.put(errors, :col_pins, "At least one column pin is required")
-      else
-        errors
-      end
+  defp validate_pins_required(errors, key, pins, message) do
+    if Enum.empty?(pins), do: Map.put(errors, key, message), else: errors
+  end
 
-    # Check pin range (0-127)
-    invalid_row_pins = Enum.filter(row_pins, &(&1 < 0 or &1 > 127))
-    invalid_col_pins = Enum.filter(col_pins, &(&1 < 0 or &1 > 127))
-
-    errors =
-      if Enum.empty?(invalid_row_pins) do
-        errors
-      else
-        Map.put(errors, :row_pins, "Pins must be between 0 and 127")
-      end
-
-    errors =
-      if Enum.empty?(invalid_col_pins) do
-        errors
-      else
-        Map.put(errors, :col_pins, "Pins must be between 0 and 127")
-      end
-
-    # Check for duplicates within each list
-    errors =
-      if length(row_pins) != length(Enum.uniq(row_pins)) do
-        Map.put(errors, :row_pins, "Duplicate pins are not allowed")
-      else
-        errors
-      end
-
-    errors =
-      if length(col_pins) != length(Enum.uniq(col_pins)) do
-        Map.put(errors, :col_pins, "Duplicate pins are not allowed")
-      else
-        errors
-      end
-
-    # Check for overlap between rows and columns
-    overlap = MapSet.intersection(MapSet.new(row_pins), MapSet.new(col_pins))
-
-    if MapSet.size(overlap) > 0 do
-      Map.put(errors, :general, "Row and column pins cannot overlap")
+  defp validate_pins_range(errors, key, pins) do
+    if Enum.any?(pins, &(&1 < 0 or &1 > 127)) do
+      Map.put(errors, key, "Pins must be between 0 and 127")
     else
       errors
     end
+  end
+
+  defp validate_pins_unique(errors, key, pins) do
+    if length(pins) != length(Enum.uniq(pins)) do
+      Map.put(errors, key, "Duplicate pins are not allowed")
+    else
+      errors
+    end
+  end
+
+  defp validate_pins_no_overlap(errors, row_pins, col_pins) do
+    overlap = MapSet.intersection(MapSet.new(row_pins), MapSet.new(col_pins))
+    if MapSet.size(overlap) > 0, do: Map.put(errors, :general, "Row and column pins cannot overlap"), else: errors
   end
 
   defp parse_pins(pins_str) when is_binary(pins_str) do
