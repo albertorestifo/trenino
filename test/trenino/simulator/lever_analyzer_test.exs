@@ -159,21 +159,29 @@ defmodule Trenino.Simulator.LeverAnalyzerTest do
     {:ok, agent} = Agent.start_link(fn -> 0.0 end)
 
     stub(Req, :request, fn _req, opts ->
-      case opts[:method] do
-        :patch ->
-          # Extract the input value from params (keyword list like [Value: 0.5])
-          params = opts[:params] || []
-          input_value = Keyword.get(params, :Value, 0.0)
-          Agent.update(agent, fn _ -> input_value end)
-          {:ok, %Req.Response{status: 200, body: %{"Result" => "Success"}}}
-
-        :get ->
-          url = opts[:url]
-          last_input = Agent.get(agent, & &1)
-          response = response_fn.(last_input)
-          build_get_response(url, response)
-      end
+      handle_stubbed_request(opts, agent, response_fn)
     end)
+  end
+
+  defp handle_stubbed_request(opts, agent, response_fn) do
+    case opts[:method] do
+      :patch -> handle_patch_request(opts, agent)
+      :get -> handle_get_request(opts, agent, response_fn)
+    end
+  end
+
+  defp handle_patch_request(opts, agent) do
+    params = opts[:params] || []
+    input_value = Keyword.get(params, :Value, 0.0)
+    Agent.update(agent, fn _ -> input_value end)
+    {:ok, %Req.Response{status: 200, body: %{"Result" => "Success"}}}
+  end
+
+  defp handle_get_request(opts, agent, response_fn) do
+    url = opts[:url]
+    last_input = Agent.get(agent, & &1)
+    response = response_fn.(last_input)
+    build_get_response(url, response)
   end
 
   defp build_get_response(url, response) do
