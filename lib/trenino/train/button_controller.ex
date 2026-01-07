@@ -236,32 +236,13 @@ defmodule Trenino.Train.ButtonController do
   # Private Functions
 
   defp rebuild_input_lookup(%State{subscribed_ports: old_ports} = state) do
-    # Get all connected devices
     devices = SerialConnection.list_devices()
 
-    # Build mapping from (port, pin) -> input_id for button inputs
-    # This includes both physical buttons and virtual buttons from matrices
     {input_lookup, new_ports} =
       devices
       |> Enum.filter(&(&1.status == :connected and &1.device_config_id != nil))
-      |> Enum.reduce({%{}, MapSet.new()}, fn device_conn, {lookup, ports} ->
-        case find_device_by_config_id(device_conn.device_config_id) do
-          nil ->
-            {lookup, ports}
-
-          device ->
-            # Get all button inputs including virtual buttons from matrices
-            {:ok, inputs} = Hardware.list_inputs(device.id, include_virtual_buttons: true)
-
-            button_inputs = Enum.filter(inputs, &(&1.input_type == :button))
-
-            updated_lookup =
-              Enum.reduce(button_inputs, lookup, fn %Input{} = input, acc ->
-                Map.put(acc, {device_conn.port, input.pin}, input.id)
-              end)
-
-            {updated_lookup, MapSet.put(ports, device_conn.port)}
-        end
+      |> Enum.reduce({%{}, MapSet.new()}, fn device_conn, acc ->
+        add_device_button_inputs(device_conn, acc)
       end)
 
     # Subscribe to new ports
@@ -270,6 +251,24 @@ defmodule Trenino.Train.ButtonController do
     |> Enum.each(&ConfigurationManager.subscribe_input_values/1)
 
     %{state | input_lookup: input_lookup, subscribed_ports: new_ports}
+  end
+
+  defp add_device_button_inputs(device_conn, {lookup, ports}) do
+    case find_device_by_config_id(device_conn.device_config_id) do
+      nil ->
+        {lookup, ports}
+
+      device ->
+        {:ok, inputs} = Hardware.list_inputs(device.id, include_virtual_buttons: true)
+        button_inputs = Enum.filter(inputs, &(&1.input_type == :button))
+
+        updated_lookup =
+          Enum.reduce(button_inputs, lookup, fn %Input{} = input, acc ->
+            Map.put(acc, {device_conn.port, input.pin}, input.id)
+          end)
+
+        {updated_lookup, MapSet.put(ports, device_conn.port)}
+    end
   end
 
   defp find_device_by_config_id(config_id) do
@@ -488,76 +487,8 @@ defmodule Trenino.Train.ButtonController do
   end
 
   defp handle_button_release(%State{} = state, element_id, %{mode: :sequence} = binding_info) do
-    # Cancel any running sequence for momentary hardware
     state = cancel_active_button(state, element_id)
-
-    case binding_info.hardware_type do
-      :momentary ->
-        # For momentary hardware, just cancel the running sequence (done above)
-        broadcast_button_update(element_id, binding_info.off_value, false)
-
-        state = %{
-          state
-          | last_sent_values: Map.put(state.last_sent_values, element_id, binding_info.off_value)
-        }
-
-        {:ok, state}
-
-      :latching ->
-        # For latching hardware, execute off_sequence if defined
-        case binding_info.off_sequence do
-          nil ->
-            # No off_sequence, just update state
-            broadcast_button_update(element_id, binding_info.off_value, false)
-
-            state = %{
-              state
-              | last_sent_values:
-                  Map.put(state.last_sent_values, element_id, binding_info.off_value)
-            }
-
-            {:ok, state}
-
-          %{commands: commands} when commands == [] ->
-            broadcast_button_update(element_id, binding_info.off_value, false)
-
-            state = %{
-              state
-              | last_sent_values:
-                  Map.put(state.last_sent_values, element_id, binding_info.off_value)
-            }
-
-            {:ok, state}
-
-          %{commands: commands} ->
-            # Execute off_sequence
-            controller_pid = self()
-
-            task_pid =
-              spawn(fn ->
-                execute_sequence_commands(commands, controller_pid, element_id)
-              end)
-
-            broadcast_button_update(element_id, binding_info.off_value, false)
-
-            # Track for potential future cancellation
-            active_button = %{
-              element_id: element_id,
-              binding_info: binding_info,
-              timer_ref: nil,
-              sequence_task: task_pid
-            }
-
-            state = %{
-              state
-              | last_sent_values:
-                  Map.put(state.last_sent_values, element_id, binding_info.off_value),
-                active_buttons: Map.put(state.active_buttons, element_id, active_button)
-            }
-
-            {:ok, state}
-        end
-    end
+    handle_sequence_release(state, element_id, binding_info)
   end
 
   defp handle_button_release(%State{} = state, element_id, %{mode: :keystroke} = binding_info) do
@@ -573,6 +504,46 @@ defmodule Trenino.Train.ButtonController do
         Logger.warning("[ButtonController] Keystroke release failed: #{inspect(reason)}")
         :skip
     end
+  end
+
+  defp handle_sequence_release(state, element_id, %{hardware_type: :momentary} = binding_info) do
+    broadcast_button_update(element_id, binding_info.off_value, false)
+    state = %{state | last_sent_values: Map.put(state.last_sent_values, element_id, binding_info.off_value)}
+    {:ok, state}
+  end
+
+  defp handle_sequence_release(state, element_id, %{hardware_type: :latching, off_sequence: nil} = binding_info) do
+    broadcast_button_update(element_id, binding_info.off_value, false)
+    state = %{state | last_sent_values: Map.put(state.last_sent_values, element_id, binding_info.off_value)}
+    {:ok, state}
+  end
+
+  defp handle_sequence_release(state, element_id, %{hardware_type: :latching, off_sequence: %{commands: []}} = binding_info) do
+    broadcast_button_update(element_id, binding_info.off_value, false)
+    state = %{state | last_sent_values: Map.put(state.last_sent_values, element_id, binding_info.off_value)}
+    {:ok, state}
+  end
+
+  defp handle_sequence_release(state, element_id, %{hardware_type: :latching, off_sequence: %{commands: commands}} = binding_info) do
+    controller_pid = self()
+    task_pid = spawn(fn -> execute_sequence_commands(commands, controller_pid, element_id) end)
+
+    broadcast_button_update(element_id, binding_info.off_value, false)
+
+    active_button = %{
+      element_id: element_id,
+      binding_info: binding_info,
+      timer_ref: nil,
+      sequence_task: task_pid
+    }
+
+    state = %{
+      state
+      | last_sent_values: Map.put(state.last_sent_values, element_id, binding_info.off_value),
+        active_buttons: Map.put(state.active_buttons, element_id, active_button)
+    }
+
+    {:ok, state}
   end
 
   defp cancel_active_button(%State{} = state, element_id) do
