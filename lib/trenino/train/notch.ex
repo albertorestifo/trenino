@@ -127,68 +127,48 @@ defmodule Trenino.Train.Notch do
   end
 
   defp validate_input_range(changeset) do
-    input_min = get_field(changeset, :input_min)
-    input_max = get_field(changeset, :input_max)
-
-    cond do
-      # Both nil is valid (no input mapping yet)
-      is_nil(input_min) and is_nil(input_max) ->
-        changeset
-
-      # One set but not the other
-      is_nil(input_min) or is_nil(input_max) ->
-        changeset
-        |> add_error(:input_min, "both input_min and input_max must be set together")
-
-      # Min must be less than or equal to max (equal is valid for gate notches with narrow detent)
-      input_min > input_max ->
-        changeset
-        |> add_error(:input_min, "must be less than or equal to input_max")
-
-      # Values must be in 0.0-1.0 range
-      input_min < 0.0 or input_min > 1.0 ->
-        changeset
-        |> add_error(:input_min, "must be between 0.0 and 1.0")
-
-      input_max < 0.0 or input_max > 1.0 ->
-        changeset
-        |> add_error(:input_max, "must be between 0.0 and 1.0")
-
-      true ->
-        changeset
-    end
+    validate_range_pair(changeset, :input_min, :input_max)
   end
 
   defp validate_sim_input_range(changeset) do
-    sim_input_min = get_field(changeset, :sim_input_min)
-    sim_input_max = get_field(changeset, :sim_input_max)
+    validate_range_pair(changeset, :sim_input_min, :sim_input_max)
+  end
 
+  # Validates a min/max field pair for normalized 0.0-1.0 ranges
+  defp validate_range_pair(changeset, min_field, max_field) do
+    min_val = get_field(changeset, min_field)
+    max_val = get_field(changeset, max_field)
+
+    changeset
+    |> validate_both_set(min_field, max_field, min_val, max_val)
+    |> validate_min_lte_max(min_field, max_field, min_val, max_val)
+    |> validate_in_range(min_field, min_val)
+    |> validate_in_range(max_field, max_val)
+  end
+
+  defp validate_both_set(changeset, min_field, max_field, min_val, max_val) do
     cond do
-      # Both nil is valid (no sim input mapping yet)
-      is_nil(sim_input_min) and is_nil(sim_input_max) ->
-        changeset
+      is_nil(min_val) and is_nil(max_val) -> changeset
+      is_nil(min_val) or is_nil(max_val) -> add_error(changeset, min_field, "both #{min_field} and #{max_field} must be set together")
+      true -> changeset
+    end
+  end
 
-      # One set but not the other
-      is_nil(sim_input_min) or is_nil(sim_input_max) ->
-        changeset
-        |> add_error(:sim_input_min, "both sim_input_min and sim_input_max must be set together")
+  defp validate_min_lte_max(changeset, min_field, max_field, min_val, max_val) do
+    if not is_nil(min_val) and not is_nil(max_val) and min_val > max_val do
+      add_error(changeset, min_field, "must be less than or equal to #{max_field}")
+    else
+      changeset
+    end
+  end
 
-      # Min must be less than or equal to max
-      sim_input_min > sim_input_max ->
-        changeset
-        |> add_error(:sim_input_min, "must be less than or equal to sim_input_max")
+  defp validate_in_range(changeset, _field, nil), do: changeset
 
-      # Values must be in 0.0-1.0 range (simulator InputValue range)
-      sim_input_min < 0.0 or sim_input_min > 1.0 ->
-        changeset
-        |> add_error(:sim_input_min, "must be between 0.0 and 1.0")
-
-      sim_input_max < 0.0 or sim_input_max > 1.0 ->
-        changeset
-        |> add_error(:sim_input_max, "must be between 0.0 and 1.0")
-
-      true ->
-        changeset
+  defp validate_in_range(changeset, field, value) do
+    if value < 0.0 or value > 1.0 do
+      add_error(changeset, field, "must be between 0.0 and 1.0")
+    else
+      changeset
     end
   end
 
