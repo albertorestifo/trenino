@@ -241,33 +241,35 @@ defmodule TreninoWeb.FirmwareLive do
   end
 
   defp find_or_download_file(release, board_type) do
+    case Enum.find(release.firmware_files, &(&1.board_type == board_type)) do
+      nil -> {:error, :no_firmware_for_board}
+      file -> ensure_file_downloaded(%{file | firmware_release: release})
+    end
+  end
+
+  defp ensure_file_downloaded(file) do
     require Logger
 
-    case Enum.find(release.firmware_files, &(&1.board_type == board_type)) do
-      nil ->
-        {:error, :no_firmware_for_board}
+    if FirmwareFile.downloaded?(file) do
+      Logger.debug("Firmware already downloaded")
+      {:ok, file}
+    else
+      download_firmware_file(file)
+    end
+  end
 
-      file ->
-        # Set release association for file path calculation
-        file = %{file | firmware_release: release}
+  defp download_firmware_file(file) do
+    require Logger
+    Logger.info("Downloading firmware file #{file.id}...")
 
-        # Check if file exists on disk
-        if FirmwareFile.downloaded?(file) do
-          Logger.debug("Firmware already downloaded")
-          {:ok, file}
-        else
-          Logger.info("Downloading firmware file #{file.id}...")
+    case Firmware.download_firmware(file.id) do
+      {:ok, downloaded_file} ->
+        Logger.info("Firmware downloaded successfully")
+        {:ok, downloaded_file}
 
-          case Firmware.download_firmware(file.id) do
-            {:ok, downloaded_file} ->
-              Logger.info("Firmware downloaded successfully")
-              {:ok, downloaded_file}
-
-            {:error, reason} = error ->
-              Logger.error("Failed to download firmware: #{inspect(reason)}")
-              error
-          end
-        end
+      {:error, reason} = error ->
+        Logger.error("Failed to download firmware: #{inspect(reason)}")
+        error
     end
   end
 

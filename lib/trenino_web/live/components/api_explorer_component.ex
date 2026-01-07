@@ -80,94 +80,66 @@ defmodule TreninoWeb.ApiExplorerComponent do
 
   @impl true
   def handle_event("navigate", %{"node" => node, "type" => "node"}, socket) do
-    # Nodes are containers - navigate into them
     %{client: client, path: path} = socket.assigns
-
     new_path = path ++ [node]
     full_path = Enum.join(new_path, "/")
 
-    # Set loading state
-    socket = assign(socket, :loading, true)
-    socket = assign(socket, :error, nil)
+    socket = socket |> assign(:loading, true) |> assign(:error, nil)
 
-    # Fetch child nodes
     case Client.list(client, full_path) do
       {:ok, response} ->
-        # Extract both Nodes and Endpoints from response
-        nodes = Map.get(response, "Nodes", [])
-        endpoints = Map.get(response, "Endpoints", [])
-
-        # Build items with type information for display
-        node_items = build_node_items(nodes)
-        endpoint_items = build_endpoint_items(endpoints)
-
-        all_items = Enum.sort_by(node_items ++ endpoint_items, & &1.name)
-
-        if all_items == [] do
-          # No children - this is a leaf node, show its value
-          case Client.get(client, full_path) do
-            {:ok, value_response} ->
-              {:noreply,
-               socket
-               |> assign(:path, new_path)
-               |> assign(:items, [])
-               |> assign(:filtered_items, [])
-               |> assign(:search, "")
-               |> assign(:loading, false)
-               |> assign(:preview, %{path: full_path, value: value_response})}
-
-            {:error, _reason} ->
-              {:noreply,
-               socket
-               |> assign(:path, new_path)
-               |> assign(:items, [])
-               |> assign(:filtered_items, [])
-               |> assign(:search, "")
-               |> assign(:loading, false)
-               |> assign(:preview, nil)}
-          end
-        else
-          # Check if this node has standard lever or button endpoints
-          # Detection is filtered by mode if set
-          detection_mode = socket.assigns[:detection_mode]
-          lever_detection = detect_lever_endpoints(endpoint_items, full_path, detection_mode)
-
-          button_detection =
-            detect_button_endpoints(
-              endpoint_items,
-              full_path,
-              detection_mode,
-              socket.assigns.client
-            )
-
-          {:noreply,
-           socket
-           |> assign(:path, new_path)
-           |> assign(:items, all_items)
-           |> assign(:filtered_items, all_items)
-           |> assign(:search, "")
-           |> assign(:loading, false)
-           |> assign(:preview, nil)
-           |> assign(:lever_detection, lever_detection)
-           |> assign(:button_detection, button_detection)}
-        end
+        handle_navigation_response(socket, client, new_path, full_path, response)
 
       {:error, _reason} ->
-        # This might be a leaf node (something that looks like a node but has no children)
-        # Try to get its value as a fallback
-        case Client.get(client, full_path) do
-          {:ok, response} ->
-            {:noreply,
-             socket
-             |> assign(:loading, false)
-             |> assign(:preview, %{path: full_path, value: response})}
+        handle_navigation_error(socket, client, full_path)
+    end
+  end
 
-          {:error, reason} ->
-            {:noreply,
-             socket
-             |> assign(:loading, false)
-             |> assign(:error, "Failed to access: #{inspect(reason)}")}
-        end
+  defp handle_navigation_response(socket, client, new_path, full_path, response) do
+    nodes = Map.get(response, "Nodes", [])
+    endpoints = Map.get(response, "Endpoints", [])
+    node_items = build_node_items(nodes)
+    endpoint_items = build_endpoint_items(endpoints)
+    all_items = Enum.sort_by(node_items ++ endpoint_items, & &1.name)
+
+    if all_items == [] do
+      {:noreply, handle_leaf_node(socket, client, new_path, full_path)}
+    else
+      {:noreply, navigate_to_node(socket, new_path, all_items, endpoint_items, full_path)}
+    end
+  end
+
+  defp navigate_to_node(socket, new_path, all_items, endpoint_items, full_path) do
+    detection_mode = socket.assigns[:detection_mode]
+    lever_detection = detect_lever_endpoints(endpoint_items, full_path, detection_mode)
+
+    button_detection =
+      detect_button_endpoints(endpoint_items, full_path, detection_mode, socket.assigns.client)
+
+    socket
+    |> assign(:path, new_path)
+    |> assign(:items, all_items)
+    |> assign(:filtered_items, all_items)
+    |> assign(:search, "")
+    |> assign(:loading, false)
+    |> assign(:preview, nil)
+    |> assign(:lever_detection, lever_detection)
+    |> assign(:button_detection, button_detection)
+  end
+
+  defp handle_navigation_error(socket, client, full_path) do
+    case Client.get(client, full_path) do
+      {:ok, response} ->
+        {:noreply,
+         socket
+         |> assign(:loading, false)
+         |> assign(:preview, %{path: full_path, value: response})}
+
+      {:error, reason} ->
+        {:noreply,
+         socket
+         |> assign(:loading, false)
+         |> assign(:error, "Failed to access: #{inspect(reason)}")}
     end
   end
 
@@ -611,6 +583,22 @@ defmodule TreninoWeb.ApiExplorerComponent do
         |> assign(:button_detection, nil)
         |> assign(:initialized, true)
     end
+  end
+
+  defp handle_leaf_node(socket, client, new_path, full_path) do
+    preview =
+      case Client.get(client, full_path) do
+        {:ok, value_response} -> %{path: full_path, value: value_response}
+        {:error, _reason} -> nil
+      end
+
+    socket
+    |> assign(:path, new_path)
+    |> assign(:items, [])
+    |> assign(:filtered_items, [])
+    |> assign(:search, "")
+    |> assign(:loading, false)
+    |> assign(:preview, preview)
   end
 
   # Builds item maps for nodes (folders/containers)

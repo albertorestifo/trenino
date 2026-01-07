@@ -197,36 +197,30 @@ defmodule TreninoWeb.LeverVisualization do
       notches
       |> Enum.with_index()
       |> Enum.map(fn {notch, idx} ->
-        left = idx * (notch_width + @gap_percent)
-
-        # Adjust width for gates (make them narrower)
-        width =
-          if notch.type == :gate do
-            @gate_width_percent
-          else
-            notch_width
-          end
-
-        # Adjust left position for gates to center them
-        left =
-          if notch.type == :gate do
-            left + (notch_width - @gate_width_percent) / 2
-          else
-            left
-          end
-
-        captured_range = Enum.at(captured_ranges, idx)
-
-        %{
-          notch: notch,
-          left: left,
-          width: width,
-          is_captured: captured_range != nil,
-          captured_range: captured_range
-        }
+        build_notch_position(notch, idx, notch_width, captured_ranges)
       end)
     end
   end
+
+  defp build_notch_position(notch, idx, notch_width, captured_ranges) do
+    base_left = idx * (notch_width + @gap_percent)
+    {left, width} = notch_dimensions(notch.type, base_left, notch_width)
+    captured_range = Enum.at(captured_ranges, idx)
+
+    %{
+      notch: notch,
+      left: left,
+      width: width,
+      is_captured: captured_range != nil,
+      captured_range: captured_range
+    }
+  end
+
+  defp notch_dimensions(:gate, base_left, notch_width) do
+    {base_left + (notch_width - @gate_width_percent) / 2, @gate_width_percent}
+  end
+
+  defp notch_dimensions(_type, base_left, notch_width), do: {base_left, notch_width}
 
   defp calculate_indicator_position(assigns) do
     current_value = assigns[:current_value]

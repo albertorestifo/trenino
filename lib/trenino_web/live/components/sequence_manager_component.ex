@@ -200,21 +200,21 @@ defmodule TreninoWeb.SequenceManagerComponent do
 
     case TrainContext.get_sequence(id) do
       {:ok, sequence} ->
-        commands = sequence.commands || []
-
-        if Enum.empty?(commands) do
-          {:noreply, put_flash(socket, :error, "Sequence has no commands to test")}
-        else
-          # Execute sequence commands in a spawned task
-          spawn(fn ->
-            execute_test_sequence(commands)
-          end)
-
-          {:noreply, put_flash(socket, :info, "Testing sequence: #{sequence.name}")}
-        end
+        {:noreply, run_sequence_test(socket, sequence)}
 
       {:error, _} ->
         {:noreply, put_flash(socket, :error, "Could not find sequence")}
+    end
+  end
+
+  defp run_sequence_test(socket, sequence) do
+    commands = sequence.commands || []
+
+    if Enum.empty?(commands) do
+      put_flash(socket, :error, "Sequence has no commands to test")
+    else
+      spawn(fn -> execute_test_sequence(commands) end)
+      put_flash(socket, :info, "Testing sequence: #{sequence.name}")
     end
   end
 
