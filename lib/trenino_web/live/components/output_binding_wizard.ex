@@ -300,7 +300,7 @@ defmodule TreninoWeb.OutputBindingWizard do
               id="output-wizard-api-explorer"
               field={:endpoint}
               client={@client}
-              mode={nil}
+              mode={:none}
               embedded={true}
             />
           </div>
