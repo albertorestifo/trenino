@@ -8,8 +8,8 @@ defmodule Trenino.Firmware do
 
   import Ecto.Query
 
-  alias Trenino.Repo
   alias Trenino.Firmware.{BoardConfig, FirmwareFile, FirmwareRelease, UploadHistory}
+  alias Trenino.Repo
 
   # Delegate upload operations to UploadManager
   defdelegate start_upload(port, board_type, firmware_file_id), to: Trenino.Firmware.UploadManager

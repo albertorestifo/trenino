@@ -4,12 +4,12 @@ defmodule TreninoWeb.LeverSetupWizardTest do
 
   import Phoenix.LiveViewTest
 
+  alias Trenino.Hardware
+  alias Trenino.Simulator
   alias Trenino.Simulator.Client
   alias Trenino.Simulator.ConnectionState
-  alias Trenino.Simulator
   alias Trenino.Train, as: TrainContext
   alias Trenino.Train.LeverConfig
-  alias Trenino.Hardware
 
   setup :verify_on_exit!
   setup :set_mimic_global

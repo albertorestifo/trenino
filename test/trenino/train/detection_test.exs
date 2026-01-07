@@ -2,12 +2,12 @@ defmodule Trenino.Train.DetectionTest do
   use Trenino.DataCase, async: false
   use Mimic
 
-  alias Trenino.Simulator.ConnectionState
   alias Trenino.Simulator.Client
+  alias Trenino.Simulator.ConnectionState
+  alias Trenino.Train, as: TrainContext
   alias Trenino.Train.Detection
   alias Trenino.Train.Detection.State
   alias Trenino.Train.Identifier
-  alias Trenino.Train, as: TrainContext
 
   setup :verify_on_exit!
 

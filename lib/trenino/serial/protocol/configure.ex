@@ -42,7 +42,7 @@ defmodule Trenino.Serial.Protocol.Configure do
   ]
 
   @impl Message
-  def type(), do: 0x02
+  def type, do: 0x02
 
   # Encode - Analog (input_type = 0x00)
   @impl Message

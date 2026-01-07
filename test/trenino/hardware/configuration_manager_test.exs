@@ -3,8 +3,8 @@ defmodule Trenino.Hardware.ConfigurationManagerTest do
 
   alias Trenino.Hardware
   alias Trenino.Hardware.ConfigurationManager
-  alias Trenino.Serial.Protocol.ConfigurationStored
   alias Trenino.Serial.Protocol.ConfigurationError
+  alias Trenino.Serial.Protocol.ConfigurationStored
   alias Trenino.Serial.Protocol.InputValue
 
   @config_topic "hardware:configuration"

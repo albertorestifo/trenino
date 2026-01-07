@@ -10,8 +10,8 @@ defmodule TreninoWeb.TrainListLive do
 
   import TreninoWeb.SharedComponents
 
-  alias Trenino.Train, as: TrainContext
   alias Trenino.Serial.Connection
+  alias Trenino.Train, as: TrainContext
 
   @impl true
   def mount(_params, _session, socket) do

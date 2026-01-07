@@ -12,8 +12,8 @@ defmodule Trenino.Hardware.ConfigId do
 
   import Ecto.Query
 
-  alias Trenino.Repo
   alias Trenino.Hardware.Device
+  alias Trenino.Repo
 
   @max_i32 2_147_483_647
   @min_id 1

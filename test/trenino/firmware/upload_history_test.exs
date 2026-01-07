@@ -1,9 +1,9 @@
 defmodule Trenino.Firmware.UploadHistoryTest do
   use Trenino.DataCase, async: false
 
-  alias Trenino.Firmware.UploadHistory
-  alias Trenino.Firmware.FirmwareRelease
   alias Trenino.Firmware.FirmwareFile
+  alias Trenino.Firmware.FirmwareRelease
+  alias Trenino.Firmware.UploadHistory
 
   defp create_firmware_file do
     {:ok, release} =

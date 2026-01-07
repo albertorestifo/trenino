@@ -20,9 +20,9 @@ defmodule Trenino.Train.Detection do
   use GenServer
   require Logger
 
+  alias Trenino.Simulator.Client
   alias Trenino.Simulator.Connection, as: SimulatorConnection
   alias Trenino.Simulator.ConnectionState
-  alias Trenino.Simulator.Client
   alias Trenino.Train
   alias Trenino.Train.Identifier
 

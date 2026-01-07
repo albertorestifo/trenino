@@ -9,19 +9,19 @@ defmodule Trenino.Train do
   import Ecto.Query
 
   alias Trenino.Repo
+  alias Trenino.Simulator.Client
 
   alias Trenino.Train.{
-    Train,
+    ButtonInputBinding,
     Element,
+    Identifier,
     LeverConfig,
     LeverInputBinding,
-    ButtonInputBinding,
     Notch,
-    Identifier
+    Train
   }
 
-  alias Trenino.Train.Calibration.{SessionSupervisor, LeverSession}
-  alias Trenino.Simulator.Client
+  alias Trenino.Train.Calibration.{LeverSession, SessionSupervisor}
 
   # Detection delegation
   defdelegate subscribe(), to: Trenino.Train.Detection

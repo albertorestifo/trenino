@@ -9,9 +9,9 @@ defmodule Trenino.Train.Element do
   use Ecto.Schema
   import Ecto.Changeset
 
-  alias Trenino.Train.Train
-  alias Trenino.Train.LeverConfig
   alias Trenino.Train.ButtonInputBinding
+  alias Trenino.Train.LeverConfig
+  alias Trenino.Train.Train
 
   @type element_type :: :lever | :button
 

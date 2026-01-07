@@ -12,8 +12,8 @@ defmodule TreninoWeb.ConfigurationEditLive do
   import TreninoWeb.SharedComponents
 
   alias Trenino.Hardware
-  alias Trenino.Hardware.{ConfigId, Device, Input, Output}
   alias Trenino.Hardware.Calibration.Session
+  alias Trenino.Hardware.{ConfigId, Device, Input, Output}
   alias Trenino.Serial.Connection
 
   @impl true

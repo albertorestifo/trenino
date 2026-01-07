@@ -17,9 +17,10 @@ defmodule Trenino.Hardware.ConfigurationManager do
   alias Trenino.Hardware
   alias Trenino.Hardware.Input
   alias Trenino.Serial.Connection
-  alias Trenino.Serial.Protocol.Configure
-  alias Trenino.Serial.Protocol.ConfigurationStored
+
   alias Trenino.Serial.Protocol.ConfigurationError
+  alias Trenino.Serial.Protocol.ConfigurationStored
+  alias Trenino.Serial.Protocol.Configure
   alias Trenino.Serial.Protocol.InputValue
 
   require Logger

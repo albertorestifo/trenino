@@ -14,10 +14,10 @@ defmodule TreninoWeb.TrainEditLive do
   import TreninoWeb.SharedComponents
 
   alias Trenino.Hardware
-  alias Trenino.Train, as: TrainContext
-  alias Trenino.Train.{Train, Element, LeverConfig, LeverInputBinding, Identifier}
-  alias Trenino.Train.LeverController
   alias Trenino.Serial.Connection
+  alias Trenino.Train, as: TrainContext
+  alias Trenino.Train.{Element, Identifier, LeverConfig, LeverInputBinding, Train}
+  alias Trenino.Train.LeverController
   alias TreninoWeb.SequenceManagerComponent
 
   @impl true

@@ -1,9 +1,9 @@
 defmodule Trenino.Train.ButtonInputBindingTest do
   use Trenino.DataCase, async: false
 
-  alias Trenino.Train.ButtonInputBinding
   alias Trenino.Hardware
   alias Trenino.Train, as: TrainContext
+  alias Trenino.Train.ButtonInputBinding
 
   describe "changeset/2" do
     setup do

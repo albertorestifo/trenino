@@ -12,10 +12,10 @@ defmodule Trenino.Train.Calibration.SessionSupervisor do
 
   use DynamicSupervisor
 
+  alias Trenino.Simulator.Client
   alias Trenino.Train.Calibration.LeverSession
   alias Trenino.Train.Calibration.NotchMappingSession
   alias Trenino.Train.LeverConfig
-  alias Trenino.Simulator.Client
 
   def start_link(init_arg) do
     DynamicSupervisor.start_link(__MODULE__, init_arg, name: __MODULE__)

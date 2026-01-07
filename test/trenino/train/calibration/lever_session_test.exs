@@ -2,10 +2,10 @@ defmodule Trenino.Train.Calibration.LeverSessionTest do
   use Trenino.DataCase, async: false
   use Mimic
 
-  alias Trenino.Train.Calibration.LeverSession
-  alias Trenino.Train.Calibration.SessionSupervisor
   alias Trenino.Simulator.Client
   alias Trenino.Train
+  alias Trenino.Train.Calibration.LeverSession
+  alias Trenino.Train.Calibration.SessionSupervisor
 
   setup :verify_on_exit!
   setup :set_mimic_global

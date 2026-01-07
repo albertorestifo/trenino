@@ -12,7 +12,7 @@ defmodule Trenino.Serial.Protocol.ConfigurationStored do
   defstruct [:config_id]
 
   @impl Message
-  def type(), do: 0x03
+  def type, do: 0x03
 
   @impl Message
   def encode(%__MODULE__{config_id: config_id}) do

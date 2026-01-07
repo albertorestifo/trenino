@@ -14,7 +14,7 @@ defmodule Trenino.Serial.Protocol.IdentityResponse do
   defstruct [:request_id, :version, :config_id]
 
   @impl Message
-  def type(), do: 0x01
+  def type, do: 0x01
 
   @impl Message
   def encode(%__MODULE__{

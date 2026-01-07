@@ -8,7 +8,7 @@ defmodule Trenino.Serial.Protocol.Heartbeat do
   defstruct []
 
   @impl Message
-  def type(), do: 0x06
+  def type, do: 0x06
 
   @impl Message
   def encode(%__MODULE__{}) do

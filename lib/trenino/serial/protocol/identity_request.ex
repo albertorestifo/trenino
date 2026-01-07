@@ -12,7 +12,7 @@ defmodule Trenino.Serial.Protocol.IdentityRequest do
   defstruct [:request_id]
 
   @impl Message
-  def type(), do: 0x00
+  def type, do: 0x00
 
   @impl Message
   def encode(%__MODULE__{request_id: request_id}) do

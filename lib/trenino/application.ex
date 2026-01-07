@@ -46,7 +46,7 @@ defmodule Trenino.Application do
     :ok
   end
 
-  defp skip_migrations?() do
+  defp skip_migrations? do
     # Skip migrations in dev/test (when not in a release).
     # Run migrations automatically when using a release (including Burrito desktop builds).
     # RELEASE_NAME is set by Mix releases, BURRITO is set by the Tauri sidecar launcher.

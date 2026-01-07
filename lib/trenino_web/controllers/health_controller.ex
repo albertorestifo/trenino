@@ -47,22 +47,17 @@ defmodule TreninoWeb.HealthController do
   end
 
   defp check_database_ready do
-    # Try to query a table that exists after migrations
-    # Using Ecto query to check if the database is accessible
-    # and migrations have run (firmware_releases table should exist)
-    try do
-      # Simple existence check - just see if we can query the table
-      Repo.exists?(from(r in FirmwareRelease, limit: 1))
-      :ok
-    rescue
-      Ecto.QueryError ->
-        {:error, "migrations_pending"}
+    # Simple existence check - just see if we can query the table
+    Repo.exists?(from(r in FirmwareRelease, limit: 1))
+    :ok
+  rescue
+    Ecto.QueryError ->
+      {:error, "migrations_pending"}
 
-      DBConnection.ConnectionError ->
-        {:error, "database_unavailable"}
+    DBConnection.ConnectionError ->
+      {:error, "database_unavailable"}
 
-      _ ->
-        {:error, "unknown"}
-    end
+    _ ->
+      {:error, "unknown"}
   end
 end

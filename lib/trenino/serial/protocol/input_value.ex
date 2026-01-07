@@ -13,7 +13,7 @@ defmodule Trenino.Serial.Protocol.InputValue do
   defstruct [:pin, :value]
 
   @impl Message
-  def type(), do: 0x05
+  def type, do: 0x05
 
   @impl Message
   def encode(%__MODULE__{pin: pin, value: value}) do

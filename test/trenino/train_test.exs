@@ -3,7 +3,7 @@ defmodule Trenino.TrainTest do
 
   alias Trenino.Hardware
   alias Trenino.Train, as: TrainContext
-  alias Trenino.Train.{Train, Element, LeverConfig, ButtonInputBinding, Notch}
+  alias Trenino.Train.{ButtonInputBinding, Element, LeverConfig, Notch, Train}
 
   describe "create_train/1" do
     test "creates a train with valid attributes" do

@@ -2,13 +2,13 @@ defmodule Trenino.Serial.ProtocolTest do
   use ExUnit.Case, async: true
 
   alias Trenino.Serial.Protocol.{
+    ConfigurationError,
+    ConfigurationStored,
+    Configure,
+    Heartbeat,
     IdentityRequest,
     IdentityResponse,
-    Configure,
-    ConfigurationStored,
-    ConfigurationError,
     InputValue,
-    Heartbeat,
     SetOutput
   }
 
@@ -121,7 +121,7 @@ defmodule Trenino.Serial.ProtocolTest do
 
       {:ok, encoded} = Configure.encode(configure)
 
-      # Type (0x02) + config_id (little endian) + total_parts + part_number + input_type (0x00 = analog) + pin + sensitivity
+      # Type + config_id (LE) + total_parts + part_number + input_type + pin + sensitivity
       assert encoded == <<0x02, 0x78, 0x56, 0x34, 0x12, 0x05, 0x02, 0x00, 0x0A, 0x64>>
     end
 

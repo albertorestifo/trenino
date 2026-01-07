@@ -5,11 +5,11 @@ defmodule Trenino.Hardware do
 
   import Ecto.Query
 
-  alias Trenino.Repo
+  alias Trenino.Hardware.Calibration.{Calculator, SessionSupervisor}
   alias Trenino.Hardware.{ConfigId, Device, Input, Matrix, Output}
   alias Trenino.Hardware.Input.Calibration
   alias Trenino.Hardware.Input.MatrixPin
-  alias Trenino.Hardware.Calibration.{Calculator, SessionSupervisor}
+  alias Trenino.Repo
   alias Trenino.Serial.Connection
   alias Trenino.Serial.Protocol.SetOutput
 

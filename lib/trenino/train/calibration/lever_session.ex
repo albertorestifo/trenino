@@ -30,9 +30,9 @@ defmodule Trenino.Train.Calibration.LeverSession do
   require Logger
 
   alias Trenino.Simulator.Client
+  alias Trenino.Train
   alias Trenino.Train.LeverConfig
   alias Trenino.Train.Notch
-  alias Trenino.Train
 
   # Step size for calibration sweep (0.025 = 2.5% of range per step = ~40 steps)
   # Larger steps speed up calibration while still detecting notch boundaries accurately

@@ -22,7 +22,7 @@ defmodule Trenino.Serial.Protocol.SetOutput do
   defstruct [:pin, :value]
 
   @impl Message
-  def type(), do: 0x07
+  def type, do: 0x07
 
   @impl Message
   def encode(%__MODULE__{pin: pin, value: :low}) do
