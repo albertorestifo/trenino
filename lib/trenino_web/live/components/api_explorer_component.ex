@@ -95,54 +95,6 @@ defmodule TreninoWeb.ApiExplorerComponent do
     end
   end
 
-  defp handle_navigation_response(socket, client, new_path, full_path, response) do
-    nodes = Map.get(response, "Nodes", [])
-    endpoints = Map.get(response, "Endpoints", [])
-    node_items = build_node_items(nodes)
-    endpoint_items = build_endpoint_items(endpoints)
-    all_items = Enum.sort_by(node_items ++ endpoint_items, & &1.name)
-
-    if all_items == [] do
-      {:noreply, handle_leaf_node(socket, client, new_path, full_path)}
-    else
-      {:noreply, navigate_to_node(socket, new_path, all_items, endpoint_items, full_path)}
-    end
-  end
-
-  defp navigate_to_node(socket, new_path, all_items, endpoint_items, full_path) do
-    detection_mode = socket.assigns[:detection_mode]
-    lever_detection = detect_lever_endpoints(endpoint_items, full_path, detection_mode)
-
-    button_detection =
-      detect_button_endpoints(endpoint_items, full_path, detection_mode, socket.assigns.client)
-
-    socket
-    |> assign(:path, new_path)
-    |> assign(:items, all_items)
-    |> assign(:filtered_items, all_items)
-    |> assign(:search, "")
-    |> assign(:loading, false)
-    |> assign(:preview, nil)
-    |> assign(:lever_detection, lever_detection)
-    |> assign(:button_detection, button_detection)
-  end
-
-  defp handle_navigation_error(socket, client, full_path) do
-    case Client.get(client, full_path) do
-      {:ok, response} ->
-        {:noreply,
-         socket
-         |> assign(:loading, false)
-         |> assign(:preview, %{path: full_path, value: response})}
-
-      {:error, reason} ->
-        {:noreply,
-         socket
-         |> assign(:loading, false)
-         |> assign(:error, "Failed to access: #{inspect(reason)}")}
-    end
-  end
-
   @impl true
   def handle_event("go_back", %{"index" => index_str}, socket) do
     %{client: client} = socket.assigns
@@ -276,6 +228,56 @@ defmodule TreninoWeb.ApiExplorerComponent do
     detection = socket.assigns.button_detection
     send(self(), {:api_explorer_button_detected, detection})
     {:noreply, socket}
+  end
+
+  # Private helper functions
+
+  defp handle_navigation_response(socket, client, new_path, full_path, response) do
+    nodes = Map.get(response, "Nodes", [])
+    endpoints = Map.get(response, "Endpoints", [])
+    node_items = build_node_items(nodes)
+    endpoint_items = build_endpoint_items(endpoints)
+    all_items = Enum.sort_by(node_items ++ endpoint_items, & &1.name)
+
+    if all_items == [] do
+      {:noreply, handle_leaf_node(socket, client, new_path, full_path)}
+    else
+      {:noreply, navigate_to_node(socket, new_path, all_items, endpoint_items, full_path)}
+    end
+  end
+
+  defp navigate_to_node(socket, new_path, all_items, endpoint_items, full_path) do
+    detection_mode = socket.assigns[:detection_mode]
+    lever_detection = detect_lever_endpoints(endpoint_items, full_path, detection_mode)
+
+    button_detection =
+      detect_button_endpoints(endpoint_items, full_path, detection_mode, socket.assigns.client)
+
+    socket
+    |> assign(:path, new_path)
+    |> assign(:items, all_items)
+    |> assign(:filtered_items, all_items)
+    |> assign(:search, "")
+    |> assign(:loading, false)
+    |> assign(:preview, nil)
+    |> assign(:lever_detection, lever_detection)
+    |> assign(:button_detection, button_detection)
+  end
+
+  defp handle_navigation_error(socket, client, full_path) do
+    case Client.get(client, full_path) do
+      {:ok, response} ->
+        {:noreply,
+         socket
+         |> assign(:loading, false)
+         |> assign(:preview, %{path: full_path, value: response})}
+
+      {:error, reason} ->
+        {:noreply,
+         socket
+         |> assign(:loading, false)
+         |> assign(:error, "Failed to access: #{inspect(reason)}")}
+    end
   end
 
   @impl true
