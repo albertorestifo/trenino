@@ -1350,13 +1350,17 @@ defmodule TreninoWeb.TrainEditLive do
   end
 
   attr :operator, :atom, required: true
-  attr :value_a, :float, required: true
+  attr :value_a, :float, default: nil
   attr :value_b, :float, default: nil
 
   defp condition_display(assigns) do
     ~H"""
     <span class="font-mono">
       <%= case @operator do %>
+        <% :eq_true -> %>
+          = true
+        <% :eq_false -> %>
+          = false
         <% :gt -> %>
           &gt; {@value_a}
         <% :gte -> %>
@@ -1471,8 +1475,7 @@ defmodule TreninoWeb.TrainEditLive do
             phx-value-id={@element.id}
             class="btn btn-sm btn-outline gap-1"
           >
-            <.icon name="hero-cog-6-tooth" class="w-4 h-4" />
-            Configure
+            <.icon name="hero-cog-6-tooth" class="w-4 h-4" /> Configure
           </button>
           <button
             phx-click="delete_element"
@@ -1574,8 +1577,7 @@ defmodule TreninoWeb.TrainEditLive do
             phx-value-id={@element.id}
             class="btn btn-sm btn-outline gap-1"
           >
-            <.icon name="hero-cog-6-tooth" class="w-4 h-4" />
-            Configure
+            <.icon name="hero-cog-6-tooth" class="w-4 h-4" /> Configure
           </button>
           <button
             phx-click="delete_element"

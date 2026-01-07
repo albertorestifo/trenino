@@ -93,10 +93,10 @@ defmodule Trenino.Train.OutputBinding do
   defp validate_numeric_operator_requires_value_a(changeset) do
     operator = get_field(changeset, :operator)
 
-    if operator not in @boolean_operators do
-      validate_required(changeset, [:value_a])
-    else
+    if operator in @boolean_operators do
       changeset
+    else
+      validate_required(changeset, [:value_a])
     end
   end
 

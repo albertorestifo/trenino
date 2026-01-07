@@ -248,7 +248,7 @@ defmodule Trenino.Train.OutputController do
       {:ok, %{"Entries" => [%{"Values" => values, "NodeValid" => true} | _]}}
       when map_size(values) > 0 ->
         raw_value = values |> Map.values() |> List.first()
-        value = Float.round(raw_value * 1.0, 2)
+        value = normalize_value(raw_value)
         update_bindings_with_value(state, binding_entries, value)
 
       {:ok, %{"Entries" => [%{"NodeValid" => false} | _]}} ->
@@ -266,6 +266,11 @@ defmodule Trenino.Train.OutputController do
         state
     end
   end
+
+  # Normalize subscription values: round floats to 2 decimals, pass booleans through
+  defp normalize_value(value) when is_boolean(value), do: value
+  defp normalize_value(value) when is_number(value), do: Float.round(value * 1.0, 2)
+  defp normalize_value(value), do: value
 
   defp update_bindings_with_value(state, binding_entries, value) do
     Enum.reduce(binding_entries, state, fn {id, info}, acc ->

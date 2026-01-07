@@ -564,7 +564,10 @@ defmodule TreninoWeb.OutputBindingWizard do
             :if={@operator not in [:eq_true, :eq_false]}
             class={["mt-3", @operator != :between && "max-w-xs"]}
           >
-            <div :if={@operator not in [:between, :eq_true, :eq_false]} class="flex items-center gap-2">
+            <div
+              :if={@operator not in [:between, :eq_true, :eq_false]}
+              class="flex items-center gap-2"
+            >
               <input
                 type="number"
                 name="value_a"

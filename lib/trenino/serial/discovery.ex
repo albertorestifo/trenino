@@ -51,7 +51,9 @@ defmodule Trenino.Serial.Discovery do
         send_and_wait_for_response(uart_pid, attempt + 1)
 
       {:ok, data} ->
-        Logger.debug("[Discovery] Attempt #{attempt + 1}: received #{byte_size(data)} bytes: #{inspect(data, limit: 50)}")
+        Logger.debug(
+          "[Discovery] Attempt #{attempt + 1}: received #{byte_size(data)} bytes: #{inspect(data, limit: 50)}"
+        )
 
         case Protocol.Message.decode(data) do
           {:ok, %Protocol.IdentityResponse{} = response} ->
