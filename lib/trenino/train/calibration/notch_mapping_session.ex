@@ -474,39 +474,8 @@ defmodule Trenino.Train.Calibration.NotchMappingSession do
   def handle_info({:input_value_updated, _port, pin, raw_value}, %State{pin: pin} = state) do
     case state.current_step do
       {:mapping_notch, _idx} ->
-        # Convert to calibrated value (integer 0 to total_travel)
         calibrated = Calculator.normalize(raw_value, state.calibration)
-
-        # Always update current_value so user can see lever position during positioning
-        # Only collect samples and update min/max when actively capturing
-        new_state =
-          if state.is_capturing do
-            new_samples = [calibrated | state.current_samples]
-
-            new_min =
-              case state.current_min do
-                nil -> calibrated
-                current -> min(current, calibrated)
-              end
-
-            new_max =
-              case state.current_max do
-                nil -> calibrated
-                current -> max(current, calibrated)
-              end
-
-            %{
-              state
-              | current_samples: new_samples,
-                current_value: calibrated,
-                current_min: new_min,
-                current_max: new_max
-            }
-          else
-            # Positioning mode: only update current value for display
-            %{state | current_value: calibrated}
-          end
-
+        new_state = update_mapping_sample(state, calibrated)
         broadcast_event(new_state, :sample_updated)
         {:noreply, new_state}
 
@@ -519,6 +488,26 @@ defmodule Trenino.Train.Calibration.NotchMappingSession do
   def handle_info({:input_value_updated, _port, _other_pin, _value}, %State{} = state) do
     {:noreply, state}
   end
+
+  defp update_mapping_sample(%State{is_capturing: true} = state, calibrated) do
+    %{
+      state
+      | current_samples: [calibrated | state.current_samples],
+        current_value: calibrated,
+        current_min: min_value(state.current_min, calibrated),
+        current_max: max_value(state.current_max, calibrated)
+    }
+  end
+
+  defp update_mapping_sample(%State{is_capturing: false} = state, calibrated) do
+    %{state | current_value: calibrated}
+  end
+
+  defp min_value(nil, value), do: value
+  defp min_value(current, value), do: min(current, value)
+
+  defp max_value(nil, value), do: value
+  defp max_value(current, value), do: max(current, value)
 
   # Private helpers
 

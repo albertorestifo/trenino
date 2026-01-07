@@ -176,39 +176,40 @@ defmodule Trenino.Train.LeverController do
   # Private Functions
 
   defp rebuild_input_lookup(%State{subscribed_ports: old_ports} = state) do
-    # Get all connected devices
     devices = SerialConnection.list_devices()
 
-    # Build mapping from (port, pin) -> input info
     {input_lookup, new_ports} =
       devices
       |> Enum.filter(&(&1.status == :connected and &1.device_config_id != nil))
-      |> Enum.reduce({%{}, MapSet.new()}, fn device_conn, {lookup, ports} ->
-        case find_device_by_config_id(device_conn.device_config_id) do
-          nil ->
-            {lookup, ports}
-
-          device ->
-            {:ok, inputs} = Hardware.list_inputs(device.id)
-
-            updated_lookup =
-              Enum.reduce(inputs, lookup, fn input, acc ->
-                Map.put(acc, {device_conn.port, input.pin}, %{
-                  input_id: input.id,
-                  calibration: input.calibration
-                })
-              end)
-
-            {updated_lookup, MapSet.put(ports, device_conn.port)}
-        end
+      |> Enum.reduce({%{}, MapSet.new()}, fn device_conn, acc ->
+        add_device_inputs(device_conn, acc)
       end)
 
-    # Subscribe to new ports
     new_ports
     |> MapSet.difference(old_ports)
     |> Enum.each(&ConfigurationManager.subscribe_input_values/1)
 
     %{state | input_lookup: input_lookup, subscribed_ports: new_ports}
+  end
+
+  defp add_device_inputs(device_conn, {lookup, ports}) do
+    case find_device_by_config_id(device_conn.device_config_id) do
+      nil ->
+        {lookup, ports}
+
+      device ->
+        {:ok, inputs} = Hardware.list_inputs(device.id)
+
+        updated_lookup =
+          Enum.reduce(inputs, lookup, fn input, acc ->
+            Map.put(acc, {device_conn.port, input.pin}, %{
+              input_id: input.id,
+              calibration: input.calibration
+            })
+          end)
+
+        {updated_lookup, MapSet.put(ports, device_conn.port)}
+    end
   end
 
   defp find_device_by_config_id(config_id) do
