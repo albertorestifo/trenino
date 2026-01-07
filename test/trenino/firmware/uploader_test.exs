@@ -123,7 +123,7 @@ defmodule Trenino.Firmware.UploaderTest do
     end
 
     test "detects permission denied" do
-      output = "avrdude: ser_open(): can't open device: permission denied"
+      output = "avrdude: ser_open(): permission denied accessing /dev/ttyUSB0"
       assert Uploader.parse_error_output(output) == :permission_denied
     end
 
