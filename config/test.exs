@@ -46,6 +46,9 @@ config :trenino, :start_lever_controller, false
 # Disable ButtonController GenServer in tests to avoid pubsub conflicts.
 config :trenino, :start_button_controller, false
 
+# Disable OutputController GenServer in tests to avoid pubsub conflicts.
+config :trenino, :start_output_controller, false
+
 # Disable UpdateChecker GenServer in tests to avoid state pollution across tests.
 # The GenServer performs automatic periodic checks and retains state, making it
 # difficult to test in isolation. Tests can start it manually if needed.

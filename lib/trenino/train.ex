@@ -18,6 +18,7 @@ defmodule Trenino.Train do
     LeverConfig,
     LeverInputBinding,
     Notch,
+    OutputBinding,
     Train
   }
 
@@ -1057,5 +1058,78 @@ defmodule Trenino.Train do
           {:ok, SequenceCommand.t()} | {:error, Ecto.Changeset.t()}
   def delete_sequence_command(%SequenceCommand{} = command) do
     Repo.delete(command)
+  end
+
+  # =============================================================================
+  # Output Binding functions
+  # =============================================================================
+
+  @doc """
+  List all output bindings for a train.
+
+  Returns bindings with their associated outputs preloaded.
+  """
+  @spec list_output_bindings(integer()) :: [OutputBinding.t()]
+  def list_output_bindings(train_id) do
+    OutputBinding
+    |> where([o], o.train_id == ^train_id)
+    |> order_by([o], o.name)
+    |> preload(output: :device)
+    |> Repo.all()
+  end
+
+  @doc """
+  List all enabled output bindings for a train.
+
+  Used by OutputController to get active bindings for subscription.
+  """
+  @spec list_enabled_output_bindings(integer()) :: [OutputBinding.t()]
+  def list_enabled_output_bindings(train_id) do
+    OutputBinding
+    |> where([o], o.train_id == ^train_id and o.enabled == true)
+    |> preload(output: :device)
+    |> Repo.all()
+  end
+
+  @doc """
+  Get an output binding by ID.
+  """
+  @spec get_output_binding(integer()) :: {:ok, OutputBinding.t()} | {:error, :not_found}
+  def get_output_binding(id) do
+    case Repo.get(OutputBinding, id) do
+      nil -> {:error, :not_found}
+      binding -> {:ok, Repo.preload(binding, output: :device)}
+    end
+  end
+
+  @doc """
+  Create an output binding for a train.
+  """
+  @spec create_output_binding(integer(), map()) ::
+          {:ok, OutputBinding.t()} | {:error, Ecto.Changeset.t()}
+  def create_output_binding(train_id, attrs) do
+    %OutputBinding{train_id: train_id}
+    |> OutputBinding.changeset(attrs)
+    |> Repo.insert()
+  end
+
+  @doc """
+  Update an output binding.
+  """
+  @spec update_output_binding(OutputBinding.t(), map()) ::
+          {:ok, OutputBinding.t()} | {:error, Ecto.Changeset.t()}
+  def update_output_binding(%OutputBinding{} = binding, attrs) do
+    binding
+    |> OutputBinding.changeset(attrs)
+    |> Repo.update()
+  end
+
+  @doc """
+  Delete an output binding.
+  """
+  @spec delete_output_binding(OutputBinding.t()) ::
+          {:ok, OutputBinding.t()} | {:error, Ecto.Changeset.t()}
+  def delete_output_binding(%OutputBinding{} = binding) do
+    Repo.delete(binding)
   end
 end

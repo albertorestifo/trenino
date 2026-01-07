@@ -26,6 +26,7 @@ defmodule TreninoWeb.TrainEditLive do
     Identifier,
     LeverConfig,
     LeverInputBinding,
+    OutputController,
     Train
   }
 
@@ -91,7 +92,12 @@ defmodule TreninoWeb.TrainEditLive do
      |> assign(:show_lever_setup_wizard, false)
      |> assign(:lever_setup_element, nil)
      |> assign(:lever_setup_event, nil)
-     |> assign(:sequences, [])}
+     |> assign(:sequences, [])
+     |> assign(:output_bindings, [])
+     |> assign(:show_output_wizard, false)
+     |> assign(:output_wizard_binding, nil)
+     |> assign(:output_wizard_event, nil)
+     |> assign(:available_outputs, [])}
   end
 
   defp mount_existing(socket, train_id) do
@@ -110,6 +116,8 @@ defmodule TreninoWeb.TrainEditLive do
 
         changeset = Train.changeset(train, %{})
         sequences = TrainContext.list_sequences(train.id)
+        output_bindings = TrainContext.list_output_bindings(train.id)
+        available_outputs = load_available_outputs()
 
         {:ok,
          socket
@@ -132,7 +140,12 @@ defmodule TreninoWeb.TrainEditLive do
          |> assign(:show_lever_setup_wizard, false)
          |> assign(:lever_setup_element, nil)
          |> assign(:lever_setup_event, nil)
-         |> assign(:sequences, sequences)}
+         |> assign(:sequences, sequences)
+         |> assign(:output_bindings, output_bindings)
+         |> assign(:show_output_wizard, false)
+         |> assign(:output_wizard_binding, nil)
+         |> assign(:output_wizard_event, nil)
+         |> assign(:available_outputs, available_outputs)}
 
       {:error, :not_found} ->
         {:ok,
@@ -315,6 +328,66 @@ defmodule TreninoWeb.TrainEditLive do
        |> assign(:api_explorer_field, String.to_existing_atom(field))}
     else
       {:noreply, put_flash(socket, :error, "Simulator not connected")}
+    end
+  end
+
+  # Output binding events
+  @impl true
+  def handle_event("open_add_output_binding", _params, socket) do
+    simulator_status = socket.assigns.nav_simulator_status
+
+    if simulator_status.status != :connected or simulator_status.client == nil do
+      {:noreply, put_flash(socket, :error, "Connect to the simulator to add output bindings")}
+    else
+      if Enum.empty?(socket.assigns.available_outputs) do
+        {:noreply,
+         put_flash(socket, :error, "No outputs configured. Add outputs to a device first.")}
+      else
+        {:noreply,
+         socket
+         |> assign(:show_output_wizard, true)
+         |> assign(:output_wizard_binding, nil)}
+      end
+    end
+  end
+
+  @impl true
+  def handle_event("configure_output_binding", %{"id" => id_str}, socket) do
+    simulator_status = socket.assigns.nav_simulator_status
+
+    if simulator_status.status != :connected or simulator_status.client == nil do
+      {:noreply,
+       put_flash(socket, :error, "Connect to the simulator to configure output bindings")}
+    else
+      case TrainContext.get_output_binding(String.to_integer(id_str)) do
+        {:ok, binding} ->
+          {:noreply,
+           socket
+           |> assign(:show_output_wizard, true)
+           |> assign(:output_wizard_binding, binding)}
+
+        {:error, :not_found} ->
+          {:noreply, put_flash(socket, :error, "Output binding not found")}
+      end
+    end
+  end
+
+  @impl true
+  def handle_event("delete_output_binding", %{"id" => id_str}, socket) do
+    case TrainContext.get_output_binding(String.to_integer(id_str)) do
+      {:ok, binding} ->
+        case TrainContext.delete_output_binding(binding) do
+          {:ok, _} ->
+            OutputController.reload_bindings()
+            output_bindings = TrainContext.list_output_bindings(socket.assigns.train.id)
+            {:noreply, assign(socket, :output_bindings, output_bindings)}
+
+          {:error, _reason} ->
+            {:noreply, put_flash(socket, :error, "Failed to delete output binding")}
+        end
+
+      {:error, :not_found} ->
+        {:noreply, put_flash(socket, :error, "Output binding not found")}
     end
   end
 
@@ -519,6 +592,9 @@ defmodule TreninoWeb.TrainEditLive do
       socket.assigns.show_config_wizard ->
         {:noreply, assign(socket, :config_wizard_event, {:select, field, path})}
 
+      socket.assigns.show_output_wizard ->
+        {:noreply, assign(socket, :output_wizard_event, {:select, field, path})}
+
       true ->
         {:noreply,
          socket
@@ -535,6 +611,9 @@ defmodule TreninoWeb.TrainEditLive do
 
       socket.assigns.show_config_wizard ->
         {:noreply, assign(socket, :config_wizard_event, :close)}
+
+      socket.assigns.show_output_wizard ->
+        {:noreply, assign(socket, :output_wizard_event, :close)}
 
       true ->
         {:noreply,
@@ -619,6 +698,29 @@ defmodule TreninoWeb.TrainEditLive do
      |> assign(:config_wizard_event, nil)
      |> assign(:button_detection_inputs, nil)
      |> assign(:value_polling_timer, nil)}
+  end
+
+  # Output binding wizard events
+  @impl true
+  def handle_info({:output_binding_saved, _binding}, socket) do
+    output_bindings = TrainContext.list_output_bindings(socket.assigns.train.id)
+
+    {:noreply,
+     socket
+     |> assign(:output_bindings, output_bindings)
+     |> assign(:show_output_wizard, false)
+     |> assign(:output_wizard_binding, nil)
+     |> assign(:output_wizard_event, nil)
+     |> put_flash(:info, "Output binding saved")}
+  end
+
+  @impl true
+  def handle_info(:output_binding_cancelled, socket) do
+    {:noreply,
+     socket
+     |> assign(:show_output_wizard, false)
+     |> assign(:output_wizard_binding, nil)
+     |> assign(:output_wizard_event, nil)}
   end
 
   # Value polling for button ON/OFF detection using API subscriptions
@@ -946,6 +1048,17 @@ defmodule TreninoWeb.TrainEditLive do
     end
   end
 
+  defp load_available_outputs do
+    devices = Hardware.list_configurations(preload: :outputs)
+
+    devices
+    |> Enum.flat_map(fn device ->
+      Enum.map(device.outputs, fn output ->
+        %{output | device: device}
+      end)
+    end)
+  end
+
   # Render
 
   @impl true
@@ -993,6 +1106,13 @@ defmodule TreninoWeb.TrainEditLive do
           train_id={@train.id}
           sequences={@sequences}
         />
+
+        <div :if={not @new_mode} class="bg-base-200/50 rounded-xl p-6 mt-6">
+          <.output_bindings_section
+            output_bindings={@output_bindings}
+            simulator_connected={@nav_simulator_status.status == :connected}
+          />
+        </div>
 
         <.danger_zone
           :if={not @new_mode}
@@ -1044,6 +1164,17 @@ defmodule TreninoWeb.TrainEditLive do
       element={@lever_setup_element}
       client={@nav_simulator_status.client}
       explorer_event={@lever_setup_event}
+    />
+
+    <.live_component
+      :if={@show_output_wizard and @nav_simulator_status.client != nil}
+      module={TreninoWeb.OutputBindingWizard}
+      id="output-binding-wizard"
+      train_id={@train.id}
+      client={@nav_simulator_status.client}
+      available_outputs={@available_outputs}
+      binding={@output_wizard_binding}
+      explorer_event={@output_wizard_event}
     />
     """
   end
@@ -1138,6 +1269,106 @@ defmodule TreninoWeb.TrainEditLive do
         />
       </div>
     </div>
+    """
+  end
+
+  attr :output_bindings, :list, required: true
+  attr :simulator_connected, :boolean, required: true
+
+  defp output_bindings_section(assigns) do
+    ~H"""
+    <div>
+      <.section_header
+        title="Outputs"
+        action_label="Add Output Binding"
+        on_action="open_add_output_binding"
+      />
+
+      <.empty_collection_state
+        :if={Enum.empty?(@output_bindings)}
+        icon="hero-light-bulb"
+        message="No output bindings configured"
+        submessage="Bind outputs to API values to control LEDs based on simulator data"
+      />
+
+      <div :if={not Enum.empty?(@output_bindings)} class="overflow-x-auto">
+        <table class="table table-sm bg-base-100 rounded-lg">
+          <thead>
+            <tr class="bg-base-200">
+              <th>Name</th>
+              <th>Endpoint</th>
+              <th>Condition</th>
+              <th>Output</th>
+              <th class="w-24"></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr :for={binding <- @output_bindings} class="hover:bg-base-200/50">
+              <td class="font-medium">{binding.name}</td>
+              <td class="font-mono text-xs max-w-[200px] truncate" title={binding.endpoint}>
+                {binding.endpoint}
+              </td>
+              <td class="text-sm">
+                <.condition_display
+                  operator={binding.operator}
+                  value_a={binding.value_a}
+                  value_b={binding.value_b}
+                />
+              </td>
+              <td class="text-sm">
+                <span class="badge badge-info badge-sm">{binding.output_type}</span>
+                <span class="text-base-content/60 ml-1">
+                  {binding.output.name || "Pin #{binding.output.pin}"}
+                </span>
+              </td>
+              <td>
+                <div class="flex gap-1">
+                  <button
+                    phx-click="configure_output_binding"
+                    phx-value-id={binding.id}
+                    class="btn btn-ghost btn-xs"
+                    title="Configure"
+                  >
+                    <.icon name="hero-cog-6-tooth" class="w-4 h-4" />
+                  </button>
+                  <button
+                    phx-click="delete_output_binding"
+                    phx-value-id={binding.id}
+                    class="btn btn-ghost btn-xs text-error"
+                    title="Delete"
+                  >
+                    <.icon name="hero-trash" class="w-4 h-4" />
+                  </button>
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    """
+  end
+
+  attr :operator, :atom, required: true
+  attr :value_a, :float, required: true
+  attr :value_b, :float, default: nil
+
+  defp condition_display(assigns) do
+    ~H"""
+    <span class="font-mono">
+      <%= case @operator do %>
+        <% :gt -> %>
+          &gt; {@value_a}
+        <% :gte -> %>
+          &ge; {@value_a}
+        <% :lt -> %>
+          &lt; {@value_a}
+        <% :lte -> %>
+          &le; {@value_a}
+        <% :between -> %>
+          {@value_a} - {@value_b}
+      <% end %>
+    </span>
     """
   end
 
