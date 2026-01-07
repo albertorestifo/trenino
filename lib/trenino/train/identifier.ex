@@ -103,7 +103,7 @@ defmodule Trenino.Train.Identifier do
   end
 
   # Skip route code (usually 3-6 char abbreviation) and process remaining parts
-  defp extract_name_from_parts([_route | rest]) when length(rest) > 0 do
+  defp extract_name_from_parts([_route | rest]) when rest != [] do
     candidate = find_train_name_pattern(rest)
 
     if candidate != "", do: candidate, else: fallback_name(rest)
@@ -166,7 +166,7 @@ defmodule Trenino.Train.Identifier do
     |> Enum.chunk_every(2, 1, :discard)
     |> Enum.find_value("", fn
       [company, model] ->
-        if is_company_name?(company) and String.match?(model, ~r/^[A-Z0-9]+/i) do
+        if company_name?(company) and String.match?(model, ~r/^[A-Z0-9]+/i) do
           "#{company} #{model}"
         else
           nil
@@ -177,7 +177,7 @@ defmodule Trenino.Train.Identifier do
     end)
   end
 
-  defp is_company_name?(part) do
+  defp company_name?(part) do
     # Common railway company abbreviations
     part in ["BNSF", "UP", "NS", "CSX", "DB", "SNCF", "LIRR", "MBTA", "NJT", "AMTK"]
   end
@@ -200,8 +200,7 @@ defmodule Trenino.Train.Identifier do
     s1_chars
     |> Enum.zip(s2_chars)
     |> Enum.take_while(fn {a, b} -> a == b end)
-    |> Enum.map(fn {a, _} -> a end)
-    |> Enum.join()
+    |> Enum.map_join(fn {a, _} -> a end)
   end
 
   defp strip_trailing_non_alphanumeric(string) do

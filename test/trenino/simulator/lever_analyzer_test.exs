@@ -88,8 +88,8 @@ defmodule Trenino.Simulator.LeverAnalyzerTest do
       gates = Enum.filter(result.suggested_notches, &(&1[:type] == :gate))
       linears = Enum.filter(result.suggested_notches, &(&1[:type] == :linear))
 
-      assert length(gates) >= 1
-      assert length(linears) >= 1
+      assert gates != []
+      assert linears != []
     end
 
     test "returns error when insufficient samples are collected" do
@@ -171,46 +171,49 @@ defmodule Trenino.Simulator.LeverAnalyzerTest do
           url = opts[:url]
           last_input = Agent.get(agent, & &1)
           response = response_fn.(last_input)
-
-          cond do
-            String.contains?(url, "InputValue") ->
-              {:ok,
-               %Req.Response{
-                 status: 200,
-                 body: %{
-                   "Result" => "Success",
-                   "Values" => %{"InputValue" => response.actual_input}
-                 }
-               }}
-
-            String.contains?(url, "GetCurrentOutputValue") ->
-              {:ok,
-               %Req.Response{
-                 status: 200,
-                 body: %{
-                   "Result" => "Success",
-                   "Values" => %{"ReturnValue" => response.output}
-                 }
-               }}
-
-            String.contains?(url, "GetCurrentNotchIndex") ->
-              {:ok,
-               %Req.Response{
-                 status: 200,
-                 body: %{
-                   "Result" => "Success",
-                   "Values" => %{"ReturnValue" => response[:notch_index] || 0}
-                 }
-               }}
-
-            true ->
-              {:ok,
-               %Req.Response{
-                 status: 200,
-                 body: %{"Result" => "Success", "Values" => %{"Value" => 0.0}}
-               }}
-          end
+          build_get_response(url, response)
       end
     end)
+  end
+
+  defp build_get_response(url, response) do
+    cond do
+      String.contains?(url, "InputValue") ->
+        {:ok,
+         %Req.Response{
+           status: 200,
+           body: %{
+             "Result" => "Success",
+             "Values" => %{"InputValue" => response.actual_input}
+           }
+         }}
+
+      String.contains?(url, "GetCurrentOutputValue") ->
+        {:ok,
+         %Req.Response{
+           status: 200,
+           body: %{
+             "Result" => "Success",
+             "Values" => %{"ReturnValue" => response.output}
+           }
+         }}
+
+      String.contains?(url, "GetCurrentNotchIndex") ->
+        {:ok,
+         %Req.Response{
+           status: 200,
+           body: %{
+             "Result" => "Success",
+             "Values" => %{"ReturnValue" => response[:notch_index] || 0}
+           }
+         }}
+
+      true ->
+        {:ok,
+         %Req.Response{
+           status: 200,
+           body: %{"Result" => "Success", "Values" => %{"Value" => 0.0}}
+         }}
+    end
   end
 end

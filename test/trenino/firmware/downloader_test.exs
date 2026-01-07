@@ -20,37 +20,37 @@ defmodule Trenino.Firmware.DownloaderTest do
       "assets" => [
         %{
           "name" => "tws-io-arduino-leonardo.hex",
-          "size" => 22890,
+          "size" => 22_890,
           "browser_download_url" =>
             "https://github.com/albertorestifo/trenino_firmware/releases/download/v1.0.0/tws-io-arduino-leonardo.hex"
         },
         %{
           "name" => "tws-io-arduino-mega-2560.hex",
-          "size" => 18582,
+          "size" => 18_582,
           "browser_download_url" =>
             "https://github.com/albertorestifo/trenino_firmware/releases/download/v1.0.0/tws-io-arduino-mega-2560.hex"
         },
         %{
           "name" => "tws-io-arduino-micro.hex",
-          "size" => 22890,
+          "size" => 22_890,
           "browser_download_url" =>
             "https://github.com/albertorestifo/trenino_firmware/releases/download/v1.0.0/tws-io-arduino-micro.hex"
         },
         %{
           "name" => "tws-io-arduino-nano.hex",
-          "size" => 17113,
+          "size" => 17_113,
           "browser_download_url" =>
             "https://github.com/albertorestifo/trenino_firmware/releases/download/v1.0.0/tws-io-arduino-nano.hex"
         },
         %{
           "name" => "tws-io-arduino-uno.hex",
-          "size" => 17113,
+          "size" => 17_113,
           "browser_download_url" =>
             "https://github.com/albertorestifo/trenino_firmware/releases/download/v1.0.0/tws-io-arduino-uno.hex"
         },
         %{
           "name" => "tws-io-sparkfun-pro-micro.hex",
-          "size" => 22890,
+          "size" => 22_890,
           "browser_download_url" =>
             "https://github.com/albertorestifo/trenino_firmware/releases/download/v1.0.0/tws-io-sparkfun-pro-micro.hex"
         }
@@ -105,7 +105,7 @@ defmodule Trenino.Firmware.DownloaderTest do
           "assets" => [
             %{
               "name" => "tws-io-arduino-uno.hex",
-              "size" => 17200,
+              "size" => 17_200,
               "browser_download_url" => "https://github.com/releases/v1.1.0/uno.hex"
             }
           ]
@@ -166,7 +166,7 @@ defmodule Trenino.Firmware.DownloaderTest do
           "assets" => [
             %{
               "name" => "tws-io-arduino-uno.hex",
-              "size" => 17113,
+              "size" => 17_113,
               "browser_download_url" => "https://github.com/releases/uno.hex"
             },
             %{
@@ -176,7 +176,7 @@ defmodule Trenino.Firmware.DownloaderTest do
             },
             %{
               "name" => "firmware.bin",
-              "size" => 50000,
+              "size" => 50_000,
               "browser_download_url" => "https://github.com/releases/firmware.bin"
             }
           ]
@@ -207,12 +207,12 @@ defmodule Trenino.Firmware.DownloaderTest do
           "assets" => [
             %{
               "name" => "tws-io-arduino-uno.hex",
-              "size" => 17113,
+              "size" => 17_113,
               "browser_download_url" => "https://github.com/releases/uno.hex"
             },
             %{
               "name" => "tws-io-unknown-board.hex",
-              "size" => 10000,
+              "size" => 10_000,
               "browser_download_url" => "https://github.com/releases/unknown.hex"
             }
           ]

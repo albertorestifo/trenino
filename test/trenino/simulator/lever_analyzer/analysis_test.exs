@@ -86,8 +86,8 @@ defmodule Trenino.Simulator.LeverAnalyzer.AnalysisTest do
       gates = Enum.filter(result.suggested_notches, &(&1[:type] == :gate))
       linears = Enum.filter(result.suggested_notches, &(&1[:type] == :linear))
 
-      assert length(gates) >= 1
-      assert length(linears) >= 1
+      assert gates != []
+      assert linears != []
     end
 
     test "gates have :value field, linears have :min_value and :max_value" do

@@ -37,14 +37,14 @@ defmodule Trenino.Firmware.FirmwareFileTest do
         firmware_release_id: release.id,
         board_type: :leonardo,
         download_url: "https://github.com/releases/download/v1.0.0/tws-io-arduino-leonardo.hex",
-        file_size: 22890,
+        file_size: 22_890,
         checksum_sha256: "454b80bcf9612335dc07cff088ea909c232c3c960a15ff640e62eafdc8afcf47"
       }
 
       changeset = FirmwareFile.changeset(%FirmwareFile{}, attrs)
 
       assert changeset.valid?
-      assert get_change(changeset, :file_size) == 22890
+      assert get_change(changeset, :file_size) == 22_890
       assert get_change(changeset, :checksum_sha256) =~ "454b80"
     end
 

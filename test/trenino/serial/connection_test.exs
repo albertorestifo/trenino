@@ -196,7 +196,7 @@ defmodule Trenino.Serial.ConnectionTest do
       assert final_conn.status == :failed
       assert final_conn.pid == nil
       assert is_integer(final_conn.failed_at)
-      assert length(State.connected_devices(state_failed)) == 0
+      assert State.connected_devices(state_failed) == []
     end
   end
 

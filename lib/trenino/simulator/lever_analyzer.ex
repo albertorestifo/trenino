@@ -185,10 +185,8 @@ defmodule Trenino.Simulator.LeverAnalyzer do
     results =
       Enum.map(test_points, fn input ->
         with {:ok, _} <- Client.set(client, "#{control_path}.InputValue", input),
-             :ok <- Process.sleep(100),
-             {:ok, output} <-
-               Client.get_float(client, "#{control_path}.Function.GetCurrentOutputValue") do
-          {:ok, output}
+             :ok <- Process.sleep(100) do
+          Client.get_float(client, "#{control_path}.Function.GetCurrentOutputValue")
         end
       end)
 
@@ -196,7 +194,7 @@ defmodule Trenino.Simulator.LeverAnalyzer do
       {:error, :sample_failed}
     else
       outputs = Enum.map(results, fn {:ok, v} -> v end)
-      all_integers = Enum.all?(outputs, &is_integer_value?/1)
+      all_integers = Enum.all?(outputs, &integer_value?/1)
 
       cond do
         all_integers and length(Enum.uniq(outputs)) <= 5 -> {:ok, :discrete}
@@ -328,7 +326,7 @@ defmodule Trenino.Simulator.LeverAnalyzer do
     outputs = Enum.map(samples, & &1.output)
     unique_outputs = Enum.uniq(outputs) |> Enum.sort()
 
-    all_integers = Enum.all?(unique_outputs, &is_integer_value?/1)
+    all_integers = Enum.all?(unique_outputs, &integer_value?/1)
     unique_count = length(unique_outputs)
 
     min_output = Enum.min(outputs)
@@ -510,7 +508,7 @@ defmodule Trenino.Simulator.LeverAnalyzer do
     end
   end
 
-  defp is_integer_value?(value) do
+  defp integer_value?(value) do
     rounded = Float.round(value, 0)
     abs(value - rounded) < @output_integer_tolerance
   end

@@ -302,7 +302,7 @@ defmodule Trenino.Firmware.UpdateChecker do
     # Get latest release to compare versions
     case Firmware.get_latest_release() do
       {:ok, latest_release} ->
-        update_available = length(new_releases) > 0
+        update_available = new_releases != []
 
         # Record check in database
         record_check(checked_at, update_available, latest_release.version, nil)

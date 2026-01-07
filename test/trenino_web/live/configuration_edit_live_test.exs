@@ -228,10 +228,10 @@ defmodule TreninoWeb.ConfigurationEditLiveTest do
   describe "PubSub event handling" do
     test "configuration_applied event updates device" do
       {:ok, device} = Hardware.create_device(%{name: "Test Device"})
-      {:ok, updated_device} = Hardware.update_device(device, %{config_id: 12345})
+      {:ok, updated_device} = Hardware.update_device(device, %{config_id: 12_345})
 
       # Verify the device was updated
-      {:ok, found} = Hardware.get_device_by_config_id(12345)
+      {:ok, found} = Hardware.get_device_by_config_id(12_345)
       assert found.id == updated_device.id
     end
 

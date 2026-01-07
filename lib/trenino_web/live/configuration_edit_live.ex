@@ -516,8 +516,7 @@ defmodule TreninoWeb.ConfigurationEditLive do
           # Extract a user-friendly error message from the changeset
           error_message =
             changeset.errors
-            |> Enum.map(fn {field, {msg, _opts}} -> "#{field}: #{msg}" end)
-            |> Enum.join(", ")
+            |> Enum.map_join(", ", fn {field, {msg, _opts}} -> "#{field}: #{msg}" end)
             |> case do
               "" -> "Failed to create matrix"
               errors -> errors
@@ -553,17 +552,17 @@ defmodule TreninoWeb.ConfigurationEditLive do
     invalid_col_pins = Enum.filter(col_pins, &(&1 < 0 or &1 > 127))
 
     errors =
-      if not Enum.empty?(invalid_row_pins) do
-        Map.put(errors, :row_pins, "Pins must be between 0 and 127")
-      else
+      if Enum.empty?(invalid_row_pins) do
         errors
+      else
+        Map.put(errors, :row_pins, "Pins must be between 0 and 127")
       end
 
     errors =
-      if not Enum.empty?(invalid_col_pins) do
-        Map.put(errors, :col_pins, "Pins must be between 0 and 127")
-      else
+      if Enum.empty?(invalid_col_pins) do
         errors
+      else
+        Map.put(errors, :col_pins, "Pins must be between 0 and 127")
       end
 
     # Check for duplicates within each list

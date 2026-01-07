@@ -23,21 +23,21 @@ defmodule Trenino.FirmwareTest do
       Firmware.create_firmware_file(release.id, %{
         board_type: :uno,
         download_url: "https://github.com/releases/download/v1.0.0/tws-io-arduino-uno.hex",
-        file_size: 17113
+        file_size: 17_113
       })
 
     {:ok, nano_file} =
       Firmware.create_firmware_file(release.id, %{
         board_type: :nano,
         download_url: "https://github.com/releases/download/v1.0.0/tws-io-arduino-nano.hex",
-        file_size: 17113
+        file_size: 17_113
       })
 
     {:ok, leonardo_file} =
       Firmware.create_firmware_file(release.id, %{
         board_type: :leonardo,
         download_url: "https://github.com/releases/download/v1.0.0/tws-io-arduino-leonardo.hex",
-        file_size: 22890
+        file_size: 22_890
       })
 
     # Preload the firmware_release association for file path calculation
@@ -246,7 +246,7 @@ defmodule Trenino.FirmwareTest do
       attrs = %{
         board_type: :micro,
         download_url: "https://example.com/micro.hex",
-        file_size: 22890
+        file_size: 22_890
       }
 
       assert {:ok, file} = Firmware.create_firmware_file(release.id, attrs)
@@ -260,12 +260,12 @@ defmodule Trenino.FirmwareTest do
       {_release, [uno_file | _rest]} = create_release_with_files()
 
       attrs = %{
-        file_size: 12345,
+        file_size: 12_345,
         checksum_sha256: "abc123"
       }
 
       assert {:ok, updated} = Firmware.update_firmware_file(uno_file, attrs)
-      assert updated.file_size == 12345
+      assert updated.file_size == 12_345
       assert updated.checksum_sha256 == "abc123"
     end
   end

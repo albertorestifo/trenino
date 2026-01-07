@@ -664,10 +664,7 @@ defmodule TreninoWeb.ApiExplorerComponent do
   defp item_icon(%{type: :endpoint}), do: "hero-adjustments-horizontal"
 
   defp item_icon(%{type: :node, name: name}) do
-    cond do
-      String.contains?(name, "(") -> "hero-cube"
-      true -> "hero-folder"
-    end
+    if String.contains?(name, "("), do: "hero-cube", else: "hero-folder"
   end
 
   # Returns the full path for an item, using dot notation for endpoints

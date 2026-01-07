@@ -413,7 +413,7 @@ defmodule Trenino.Serial.ProtocolTest do
     end
 
     test "roundtrip encode/decode with negative value" do
-      original = %InputValue{pin: 0x0A, value: -32768}
+      original = %InputValue{pin: 0x0A, value: -32_768}
       {:ok, encoded} = InputValue.encode(original)
       {:ok, decoded} = InputValue.decode(encoded)
 

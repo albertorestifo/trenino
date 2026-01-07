@@ -142,16 +142,20 @@ defmodule Trenino.Simulator.Client do
   """
   @spec get_int(t(), String.t()) :: {:ok, integer()} | error()
   def get_int(%__MODULE__{} = client, path) when is_binary(path) do
-    with {:ok, %{"Values" => values}} when map_size(values) > 0 <- get(client, path) do
-      case Map.values(values) do
-        [value | _] when is_integer(value) -> {:ok, value}
-        [value | _] when is_float(value) -> {:ok, trunc(value)}
-        [value | _] when is_binary(value) -> parse_int(value)
-        _ -> {:error, :invalid_value}
-      end
-    else
-      {:ok, _} -> {:error, :invalid_value}
-      error -> error
+    case get(client, path) do
+      {:ok, %{"Values" => values}} when map_size(values) > 0 ->
+        case Map.values(values) do
+          [value | _] when is_integer(value) -> {:ok, value}
+          [value | _] when is_float(value) -> {:ok, trunc(value)}
+          [value | _] when is_binary(value) -> parse_int(value)
+          _ -> {:error, :invalid_value}
+        end
+
+      {:ok, _} ->
+        {:error, :invalid_value}
+
+      error ->
+        error
     end
   end
 
@@ -167,16 +171,20 @@ defmodule Trenino.Simulator.Client do
   """
   @spec get_float(t(), String.t()) :: {:ok, float()} | error()
   def get_float(%__MODULE__{} = client, path) when is_binary(path) do
-    with {:ok, %{"Values" => values}} when map_size(values) > 0 <- get(client, path) do
-      case Map.values(values) do
-        [value | _] when is_float(value) -> {:ok, Float.round(value, 2)}
-        [value | _] when is_integer(value) -> {:ok, Float.round(value * 1.0, 2)}
-        [value | _] when is_binary(value) -> parse_float_rounded(value)
-        _ -> {:error, :invalid_value}
-      end
-    else
-      {:ok, _} -> {:error, :invalid_value}
-      error -> error
+    case get(client, path) do
+      {:ok, %{"Values" => values}} when map_size(values) > 0 ->
+        case Map.values(values) do
+          [value | _] when is_float(value) -> {:ok, Float.round(value, 2)}
+          [value | _] when is_integer(value) -> {:ok, Float.round(value * 1.0, 2)}
+          [value | _] when is_binary(value) -> parse_float_rounded(value)
+          _ -> {:error, :invalid_value}
+        end
+
+      {:ok, _} ->
+        {:error, :invalid_value}
+
+      error ->
+        error
     end
   end
 
@@ -192,15 +200,19 @@ defmodule Trenino.Simulator.Client do
   """
   @spec get_string(t(), String.t()) :: {:ok, String.t()} | error()
   def get_string(%__MODULE__{} = client, path) when is_binary(path) do
-    with {:ok, %{"Values" => values}} when map_size(values) > 0 <- get(client, path) do
-      case Map.values(values) do
-        [value | _] when is_binary(value) -> {:ok, value}
-        [value | _] -> {:ok, to_string(value)}
-        _ -> {:error, :invalid_value}
-      end
-    else
-      {:ok, _} -> {:error, :invalid_value}
-      error -> error
+    case get(client, path) do
+      {:ok, %{"Values" => values}} when map_size(values) > 0 ->
+        case Map.values(values) do
+          [value | _] when is_binary(value) -> {:ok, value}
+          [value | _] -> {:ok, to_string(value)}
+          _ -> {:error, :invalid_value}
+        end
+
+      {:ok, _} ->
+        {:error, :invalid_value}
+
+      error ->
+        error
     end
   end
 

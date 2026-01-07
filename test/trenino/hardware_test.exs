@@ -50,9 +50,9 @@ defmodule Trenino.HardwareTest do
   describe "get_device_by_config_id/1" do
     test "returns device with matching config_id" do
       {:ok, device} = Hardware.create_device(%{name: "Test Device"})
-      {:ok, device} = Hardware.update_device(device, %{config_id: 12345})
+      {:ok, device} = Hardware.update_device(device, %{config_id: 12_345})
 
-      assert {:ok, %Device{} = found} = Hardware.get_device_by_config_id(12345)
+      assert {:ok, %Device{} = found} = Hardware.get_device_by_config_id(12_345)
       assert found.id == device.id
     end
 
@@ -62,12 +62,12 @@ defmodule Trenino.HardwareTest do
 
     test "preloads inputs automatically" do
       {:ok, device} = Hardware.create_device(%{name: "Test Device"})
-      {:ok, device} = Hardware.update_device(device, %{config_id: 12345})
+      {:ok, device} = Hardware.update_device(device, %{config_id: 12_345})
 
       {:ok, _input} =
         Hardware.create_input(device.id, %{pin: 1, input_type: :analog, sensitivity: 5})
 
-      {:ok, found} = Hardware.get_device_by_config_id(12345)
+      {:ok, found} = Hardware.get_device_by_config_id(12_345)
 
       assert length(found.inputs) == 1
     end
@@ -84,8 +84,8 @@ defmodule Trenino.HardwareTest do
     test "updates config_id" do
       {:ok, device} = Hardware.create_device(%{name: "Test Device"})
 
-      assert {:ok, %Device{} = updated} = Hardware.update_device(device, %{config_id: 54321})
-      assert updated.config_id == 54321
+      assert {:ok, %Device{} = updated} = Hardware.update_device(device, %{config_id: 54_321})
+      assert updated.config_id == 54_321
     end
   end
 
@@ -93,12 +93,12 @@ defmodule Trenino.HardwareTest do
     test "sets config_id on device" do
       {:ok, device} = Hardware.create_device(%{name: "Test Device"})
 
-      assert {:ok, %Device{} = updated} = Hardware.confirm_configuration(device.id, 98765)
-      assert updated.config_id == 98765
+      assert {:ok, %Device{} = updated} = Hardware.confirm_configuration(device.id, 98_765)
+      assert updated.config_id == 98_765
     end
 
     test "returns error when device not found" do
-      assert {:error, :not_found} = Hardware.confirm_configuration(999_999, 12345)
+      assert {:error, :not_found} = Hardware.confirm_configuration(999_999, 12_345)
     end
   end
 
@@ -364,7 +364,7 @@ defmodule Trenino.HardwareTest do
 
       # Verify buttons are deleted
       {:ok, inputs} = Hardware.list_inputs(device.id, include_virtual_buttons: true)
-      assert length(inputs) == 0
+      assert inputs == []
     end
   end
 

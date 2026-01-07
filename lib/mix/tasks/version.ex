@@ -99,23 +99,23 @@ defmodule Mix.Tasks.Version do
     if File.exists?(path) do
       content = File.read!(path)
       new_content = updater.(content, version)
-
-      if content != new_content do
-        Mix.shell().info("  - #{relative_path}")
-
-        unless dry_run do
-          File.write!(path, new_content)
-        end
-
-        true
-      else
-        Mix.shell().info("  - #{relative_path} (no change)")
-        true
-      end
+      write_if_changed(path, relative_path, content, new_content, dry_run)
     else
       Mix.shell().error("  - #{relative_path} (not found)")
       false
     end
+  end
+
+  defp write_if_changed(_path, relative_path, content, new_content, _dry_run)
+       when content == new_content do
+    Mix.shell().info("  - #{relative_path} (no change)")
+    true
+  end
+
+  defp write_if_changed(path, relative_path, _content, new_content, dry_run) do
+    Mix.shell().info("  - #{relative_path}")
+    unless dry_run, do: File.write!(path, new_content)
+    true
   end
 
   defp update_mix_exs(content, version) do

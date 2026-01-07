@@ -1,4 +1,6 @@
 defmodule Trenino.Hardware.Input.Calibration do
+  @moduledoc false
+
   use Ecto.Schema
   import Ecto.Changeset
 

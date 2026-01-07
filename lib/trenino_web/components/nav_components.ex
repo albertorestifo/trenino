@@ -367,9 +367,9 @@ defmodule TreninoWeb.NavComponents do
 
     cond do
       Enum.empty?(devices) -> "bg-base-content/20"
-      length(connected) > 0 and Enum.empty?(discovering) -> "bg-success"
-      length(discovering) > 0 -> "bg-info animate-pulse"
-      length(failed) > 0 -> "bg-warning"
+      connected != [] and Enum.empty?(discovering) -> "bg-success"
+      discovering != [] -> "bg-info animate-pulse"
+      failed != [] -> "bg-warning"
       true -> "bg-base-content/40"
     end
   end

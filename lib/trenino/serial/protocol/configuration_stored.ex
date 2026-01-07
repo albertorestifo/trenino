@@ -1,4 +1,6 @@
 defmodule Trenino.Serial.Protocol.ConfigurationStored do
+  @moduledoc false
+
   alias Trenino.Serial.Protocol.Message
 
   @behaviour Message

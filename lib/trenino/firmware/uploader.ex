@@ -142,12 +142,12 @@ defmodule Trenino.Firmware.Uploader do
       original_port in ports_after ->
         {:ok, original_port}
 
-      length(new_ports) >= 1 ->
+      new_ports != [] ->
         new_port = Enum.max(new_ports)
         Logger.info("Bootloader appeared on port #{new_port}")
         {:ok, new_port}
 
-      length(ports_after) > 0 ->
+      ports_after != [] ->
         # Use any available port as a last resort
         new_port = Enum.max(ports_after)
         Logger.warning("Could not detect bootloader port, trying #{new_port}")

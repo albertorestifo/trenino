@@ -528,7 +528,7 @@ defmodule Trenino.Train.Calibration.NotchMappingSession do
 
   defp validate_capture(%State{current_samples: samples, current_min: min, current_max: max}) do
     cond do
-      length(samples) == 0 ->
+      samples == [] ->
         {:error, :no_samples}
 
       is_nil(min) or is_nil(max) ->
@@ -682,7 +682,7 @@ defmodule Trenino.Train.Calibration.NotchMappingSession do
   defp can_capture?(%State{current_step: {:mapping_notch, _}} = state) do
     # Allow capture as soon as we have at least one sample
     # Single-point captures (min == max) are valid for gate notches
-    length(state.current_samples) > 0 and
+    state.current_samples != [] and
       state.current_min != nil and
       state.current_max != nil
   end
