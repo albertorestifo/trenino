@@ -348,7 +348,8 @@ defmodule Trenino.Train do
       |> Repo.delete_all()
 
       with :ok <- insert_notches(lever_config.id, notches),
-           {:ok, updated_config} <- update_lever_config(lever_config, %{calibrated_at: DateTime.utc_now()}) do
+           {:ok, updated_config} <-
+             update_lever_config(lever_config, %{calibrated_at: DateTime.utc_now()}) do
         Repo.preload(updated_config, :notches)
       else
         {:error, reason} -> Repo.rollback(reason)
@@ -481,8 +482,13 @@ defmodule Trenino.Train do
     results =
       Enum.map(notch_updates, fn %{id: notch_id, input_min: input_min, input_max: input_max} ->
         case Repo.get(Notch, notch_id) do
-          nil -> {:error, {:not_found, notch_id}}
-          notch -> notch |> Notch.changeset(%{input_min: input_min, input_max: input_max}) |> Repo.update()
+          nil ->
+            {:error, {:not_found, notch_id}}
+
+          notch ->
+            notch
+            |> Notch.changeset(%{input_min: input_min, input_max: input_max})
+            |> Repo.update()
         end
       end)
 

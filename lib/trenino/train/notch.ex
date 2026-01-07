@@ -148,9 +148,14 @@ defmodule Trenino.Train.Notch do
 
   defp validate_both_set(changeset, min_field, max_field, min_val, max_val) do
     cond do
-      is_nil(min_val) and is_nil(max_val) -> changeset
-      is_nil(min_val) or is_nil(max_val) -> add_error(changeset, min_field, "both #{min_field} and #{max_field} must be set together")
-      true -> changeset
+      is_nil(min_val) and is_nil(max_val) ->
+        changeset
+
+      is_nil(min_val) or is_nil(max_val) ->
+        add_error(changeset, min_field, "both #{min_field} and #{max_field} must be set together")
+
+      true ->
+        changeset
     end
   end
 

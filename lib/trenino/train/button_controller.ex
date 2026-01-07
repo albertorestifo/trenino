@@ -509,23 +509,50 @@ defmodule Trenino.Train.ButtonController do
 
   defp handle_sequence_release(state, element_id, %{hardware_type: :momentary} = binding_info) do
     broadcast_button_update(element_id, binding_info.off_value, false)
-    state = %{state | last_sent_values: Map.put(state.last_sent_values, element_id, binding_info.off_value)}
+
+    state = %{
+      state
+      | last_sent_values: Map.put(state.last_sent_values, element_id, binding_info.off_value)
+    }
+
     {:ok, state}
   end
 
-  defp handle_sequence_release(state, element_id, %{hardware_type: :latching, off_sequence: nil} = binding_info) do
+  defp handle_sequence_release(
+         state,
+         element_id,
+         %{hardware_type: :latching, off_sequence: nil} = binding_info
+       ) do
     broadcast_button_update(element_id, binding_info.off_value, false)
-    state = %{state | last_sent_values: Map.put(state.last_sent_values, element_id, binding_info.off_value)}
+
+    state = %{
+      state
+      | last_sent_values: Map.put(state.last_sent_values, element_id, binding_info.off_value)
+    }
+
     {:ok, state}
   end
 
-  defp handle_sequence_release(state, element_id, %{hardware_type: :latching, off_sequence: %{commands: []}} = binding_info) do
+  defp handle_sequence_release(
+         state,
+         element_id,
+         %{hardware_type: :latching, off_sequence: %{commands: []}} = binding_info
+       ) do
     broadcast_button_update(element_id, binding_info.off_value, false)
-    state = %{state | last_sent_values: Map.put(state.last_sent_values, element_id, binding_info.off_value)}
+
+    state = %{
+      state
+      | last_sent_values: Map.put(state.last_sent_values, element_id, binding_info.off_value)
+    }
+
     {:ok, state}
   end
 
-  defp handle_sequence_release(state, element_id, %{hardware_type: :latching, off_sequence: %{commands: commands}} = binding_info) do
+  defp handle_sequence_release(
+         state,
+         element_id,
+         %{hardware_type: :latching, off_sequence: %{commands: commands}} = binding_info
+       ) do
     controller_pid = self()
     task_pid = spawn(fn -> execute_sequence_commands(commands, controller_pid, element_id) end)
 

@@ -202,5 +202,4 @@ defmodule Trenino.Train.NotchTest do
       assert "must be between 0.0 and 1.0" in errors_on(changeset).sim_input_max
     end
   end
-
 end

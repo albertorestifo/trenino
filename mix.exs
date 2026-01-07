@@ -111,7 +111,13 @@ defmodule Trenino.MixProject do
         "esbuild trenino --minify",
         "phx.digest"
       ],
-      precommit: ["compile --warning-as-errors", "deps.unlock --unused", "format", "test"],
+      precommit: [
+        "compile --warning-as-errors",
+        "deps.unlock --unused",
+        "format",
+        "credo --strict",
+        "test"
+      ],
       usage: ["usage_rules.sync AGENTS.md --all --inline usage_rules:all --link-to-folder deps"]
     ]
   end

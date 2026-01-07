@@ -19,7 +19,16 @@ defmodule TreninoWeb.TrainEditLive do
   alias Trenino.Simulator.Client, as: SimulatorClient
   alias Trenino.Simulator.ControlDetectionSession
   alias Trenino.Train, as: TrainContext
-  alias Trenino.Train.{ButtonController, Element, Identifier, LeverConfig, LeverInputBinding, Train}
+
+  alias Trenino.Train.{
+    ButtonController,
+    Element,
+    Identifier,
+    LeverConfig,
+    LeverInputBinding,
+    Train
+  }
+
   alias Trenino.Train.LeverController
   alias TreninoWeb.SequenceManagerComponent
 

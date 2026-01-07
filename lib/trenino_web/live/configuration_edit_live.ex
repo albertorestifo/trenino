@@ -563,7 +563,10 @@ defmodule TreninoWeb.ConfigurationEditLive do
 
   defp validate_pins_no_overlap(errors, row_pins, col_pins) do
     overlap = MapSet.intersection(MapSet.new(row_pins), MapSet.new(col_pins))
-    if MapSet.size(overlap) > 0, do: Map.put(errors, :general, "Row and column pins cannot overlap"), else: errors
+
+    if MapSet.size(overlap) > 0,
+      do: Map.put(errors, :general, "Row and column pins cannot overlap"),
+      else: errors
   end
 
   defp parse_pins(pins_str) when is_binary(pins_str) do

@@ -212,7 +212,9 @@ defmodule Trenino.Simulator.ControlDetectionSession do
     endpoints = Map.get(response, "Endpoints", [])
     sub_nodes = Map.get(response, "Nodes", [])
 
-    this_endpoint = if has_writable_input_value?(endpoints), do: ["#{node_path}.InputValue"], else: []
+    this_endpoint =
+      if has_writable_input_value?(endpoints), do: ["#{node_path}.InputValue"], else: []
+
     child_endpoints = find_input_value_endpoints(client, sub_nodes, node_path)
 
     this_endpoint ++ child_endpoints

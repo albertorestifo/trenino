@@ -8,7 +8,14 @@ defmodule Trenino.Firmware do
 
   import Ecto.Query
 
-  alias Trenino.Firmware.{BoardConfig, FirmwareFile, FirmwareRelease, UpdateChecker, UploadHistory}
+  alias Trenino.Firmware.{
+    BoardConfig,
+    FirmwareFile,
+    FirmwareRelease,
+    UpdateChecker,
+    UploadHistory
+  }
+
   alias Trenino.Repo
 
   # Delegate upload operations to UploadManager
