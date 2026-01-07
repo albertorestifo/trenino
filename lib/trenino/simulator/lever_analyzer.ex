@@ -381,23 +381,24 @@ defmodule Trenino.Simulator.LeverAnalyzer do
     # Process notches, merging those without snap boundaries
     sorted_notches
     |> Enum.reduce([], fn {notch_index, samples, _min_input}, acc ->
-      case acc do
-        [] ->
-          [create_zone_from_samples(samples, [notch_index])]
-
-        [current_zone | rest] ->
-          # Check if there's a snap boundary between current zone and this notch
-          if has_snap_boundary?(current_zone, samples) do
-            # Real boundary - create new zone
-            [create_zone_from_samples(samples, [notch_index]), current_zone | rest]
-          else
-            # No snap - merge into current zone
-            merged = merge_zone_with_samples(current_zone, samples, notch_index)
-            [merged | rest]
-          end
-      end
+      merge_or_create_zone(acc, notch_index, samples)
     end)
     |> Enum.reverse()
+  end
+
+  defp merge_or_create_zone([], notch_index, samples) do
+    [create_zone_from_samples(samples, [notch_index])]
+  end
+
+  defp merge_or_create_zone([current_zone | rest], notch_index, samples) do
+    if has_snap_boundary?(current_zone, samples) do
+      # Real boundary - create new zone
+      [create_zone_from_samples(samples, [notch_index]), current_zone | rest]
+    else
+      # No snap - merge into current zone
+      merged = merge_zone_with_samples(current_zone, samples, notch_index)
+      [merged | rest]
+    end
   end
 
   # Check if there's a snap boundary between a zone and the next samples
@@ -485,28 +486,24 @@ defmodule Trenino.Simulator.LeverAnalyzer do
     has_snap_zones = Enum.any?(zones, fn z -> z.type == :gate end)
     has_linear_zones = Enum.any?(zones, fn z -> z.type == :linear end)
 
-    cond do
-      # Discrete: few unique integer outputs, all gates
-      all_integers and unique_count <= @max_discrete_outputs and not has_linear_zones ->
-        :discrete
-
-      # Continuous: many unique outputs, no gates
-      unique_count >= @min_continuous_unique_outputs and not has_snap_zones ->
-        :continuous
-
-      # Hybrid: mix of gates and linear zones
-      has_snap_zones and has_linear_zones ->
-        :hybrid
-
-      # Default to continuous if many unique values
-      unique_count >= @min_continuous_unique_outputs ->
-        :continuous
-
-      # Otherwise treat as discrete
-      true ->
-        :discrete
-    end
+    do_classify_lever_type(unique_count, all_integers, has_snap_zones, has_linear_zones)
   end
+
+  defp do_classify_lever_type(unique_count, all_integers, _has_snap, has_linear)
+       when all_integers and unique_count <= @max_discrete_outputs and not has_linear,
+       do: :discrete
+
+  defp do_classify_lever_type(unique_count, _all_integers, has_snap, _has_linear)
+       when unique_count >= @min_continuous_unique_outputs and not has_snap,
+       do: :continuous
+
+  defp do_classify_lever_type(_unique_count, _all_integers, true, true), do: :hybrid
+
+  defp do_classify_lever_type(unique_count, _all_integers, _has_snap, _has_linear)
+       when unique_count >= @min_continuous_unique_outputs,
+       do: :continuous
+
+  defp do_classify_lever_type(_unique_count, _all_integers, _has_snap, _has_linear), do: :discrete
 
   defp integer_value?(value) do
     rounded = Float.round(value, 0)
