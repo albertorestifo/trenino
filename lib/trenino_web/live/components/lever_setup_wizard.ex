@@ -578,51 +578,45 @@ defmodule TreninoWeb.LeverSetupWizard do
   defp start_notch_mapping(socket) do
     element = socket.assigns.element
     selected_input = socket.assigns.selected_input
-
-    # Need to bind the input first if not already bound
     lever_config = get_fresh_lever_config(element.id)
+    port = selected_input && find_port_for_device(selected_input.device.config_id)
+    calibration = selected_input && selected_input.calibration
 
-    if lever_config && selected_input do
-      # Bind input if needed
-      case ensure_input_bound(lever_config.id, selected_input.id) do
-        {:ok, _} ->
-          # Subscribe to mapping events
-          Train.subscribe_notch_mapping(lever_config.id)
-
-          # Find port for the device
-          port = find_port_for_device(selected_input.device.config_id)
-          calibration = selected_input.calibration
-
-          if port && calibration do
-            opts = [
-              lever_config: Trenino.Repo.preload(lever_config, :notches),
-              port: port,
-              pin: selected_input.pin,
-              calibration: calibration
-            ]
-
-            case Train.start_notch_mapping(opts) do
-              {:ok, pid} ->
-                # Start the mapping process (moves from :ready to first notch)
-                NotchMappingSession.start_mapping(pid)
-                state = NotchMappingSession.get_public_state(pid)
-
-                socket
-                |> assign(:mapping_session_pid, pid)
-                |> assign(:mapping_state, state)
-
-              {:error, reason} ->
-                put_flash(socket, :error, "Failed to start mapping: #{inspect(reason)}")
-            end
-          else
-            put_flash(socket, :error, "Device not connected or input not calibrated")
-          end
-
-        {:error, reason} ->
-          put_flash(socket, :error, "Failed to bind input: #{inspect(reason)}")
-      end
+    with {:config, config} when not is_nil(config) <- {:config, lever_config},
+         {:input, input} when not is_nil(input) <- {:input, selected_input},
+         {:port, p} when not is_nil(p) <- {:port, port},
+         {:calibration, cal} when not is_nil(cal) <- {:calibration, calibration},
+         {:ok, _} <- ensure_input_bound(lever_config.id, selected_input.id) do
+      Train.subscribe_notch_mapping(lever_config.id)
+      start_mapping_session(socket, lever_config, selected_input, port)
     else
-      put_flash(socket, :error, "Missing lever config or selected input")
+      {:config, nil} -> put_flash(socket, :error, "Missing lever config")
+      {:input, nil} -> put_flash(socket, :error, "Missing selected input")
+      {:port, nil} -> put_flash(socket, :error, "Device not connected")
+      {:calibration, nil} -> put_flash(socket, :error, "Input not calibrated")
+      {:error, reason} -> put_flash(socket, :error, "Failed to bind input: #{inspect(reason)}")
+    end
+  end
+
+  defp start_mapping_session(socket, lever_config, selected_input, port) do
+    opts = [
+      lever_config: Trenino.Repo.preload(lever_config, :notches),
+      port: port,
+      pin: selected_input.pin,
+      calibration: selected_input.calibration
+    ]
+
+    case Train.start_notch_mapping(opts) do
+      {:ok, pid} ->
+        NotchMappingSession.start_mapping(pid)
+        state = NotchMappingSession.get_public_state(pid)
+
+        socket
+        |> assign(:mapping_session_pid, pid)
+        |> assign(:mapping_state, state)
+
+      {:error, reason} ->
+        put_flash(socket, :error, "Failed to start mapping: #{inspect(reason)}")
     end
   end
 
