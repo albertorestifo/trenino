@@ -1469,10 +1469,10 @@ defmodule TreninoWeb.TrainEditLive do
           <button
             phx-click="configure_lever"
             phx-value-id={@element.id}
-            class="btn btn-sm btn-primary gap-1"
+            class="btn btn-sm btn-outline gap-1"
           >
             <.icon name="hero-cog-6-tooth" class="w-4 h-4" />
-            {if @lever_config, do: "Edit", else: "Configure"}
+            Configure
           </button>
           <button
             phx-click="delete_element"
@@ -1533,10 +1533,10 @@ defmodule TreninoWeb.TrainEditLive do
           <div class="flex items-center gap-2">
             <.icon name="hero-finger-print" class="w-5 h-5 text-base-content/50" />
             <h4 class="font-medium">{@element.name}</h4>
-            <span class="badge badge-warning badge-sm capitalize">{@element.type}</span>
+            <span class="badge badge-ghost badge-sm capitalize">{@element.type}</span>
           </div>
 
-          <%!-- Configuration Progress --%>
+          <%!-- Configuration Progress Stepper --%>
           <div class="mt-3 flex items-center gap-2 text-xs">
             <div class={[
               "flex items-center gap-1 px-2 py-1 rounded",
@@ -1549,7 +1549,7 @@ defmodule TreninoWeb.TrainEditLive do
                 name={if @button_binding, do: "hero-check-circle", else: "hero-link"}
                 class="w-3.5 h-3.5"
               />
-              <span>Bound</span>
+              <span>Input</span>
             </div>
             <.icon name="hero-chevron-right" class="w-3 h-3 text-base-content/30" />
             <div class={[
@@ -1563,43 +1563,28 @@ defmodule TreninoWeb.TrainEditLive do
                 name={if @has_endpoint, do: "hero-check-circle", else: "hero-cog-6-tooth"}
                 class="w-3.5 h-3.5"
               />
-              <span>Configured</span>
+              <span>Endpoint</span>
             </div>
-          </div>
-
-          <%!-- Show binding info --%>
-          <div :if={@button_binding} class="mt-2 text-xs text-base-content/60">
-            <span class="font-medium">Input:</span>
-            {@button_binding.input.device.name} / Pin {@button_binding.input.pin}
-          </div>
-          <div :if={@has_endpoint} class="mt-1 text-xs text-base-content/60 font-mono truncate">
-            {@button_binding.endpoint}
           </div>
         </div>
 
-        <div class="flex flex-col items-end gap-2">
-          <%!-- Primary actions --%>
-          <div class="flex items-center gap-2">
-            <button
-              phx-click="configure_button"
-              phx-value-id={@element.id}
-              class="btn btn-sm btn-outline gap-1"
-            >
-              <.icon name="hero-cog-6-tooth" class="w-4 h-4" />
-              {if @button_binding, do: "Configure", else: "Set Up"}
-            </button>
-          </div>
-          <%!-- Secondary actions --%>
-          <div class="flex items-center gap-1">
-            <button
-              phx-click="delete_element"
-              phx-value-id={@element.id}
-              class="btn btn-ghost btn-xs text-error"
-              title="Delete"
-            >
-              <.icon name="hero-trash" class="w-4 h-4" />
-            </button>
-          </div>
+        <div class="flex items-center gap-2">
+          <button
+            phx-click="configure_button"
+            phx-value-id={@element.id}
+            class="btn btn-sm btn-outline gap-1"
+          >
+            <.icon name="hero-cog-6-tooth" class="w-4 h-4" />
+            Configure
+          </button>
+          <button
+            phx-click="delete_element"
+            phx-value-id={@element.id}
+            class="btn btn-ghost btn-sm text-error"
+            title="Delete"
+          >
+            <.icon name="hero-trash" class="w-4 h-4" />
+          </button>
         </div>
       </div>
     </div>
