@@ -120,6 +120,68 @@ defmodule Trenino.HardwareTest do
     end
   end
 
+  describe "delete_device/1" do
+    test "deletes device with no inputs" do
+      {:ok, device} = Hardware.create_device(%{name: "Test Device"})
+
+      assert {:ok, deleted} = Hardware.delete_device(device)
+      assert deleted.id == device.id
+
+      assert {:error, :not_found} = Hardware.get_device(device.id)
+    end
+
+    test "deletes device and its inputs" do
+      {:ok, device} = Hardware.create_device(%{name: "Test Device"})
+
+      {:ok, _input1} =
+        Hardware.create_input(device.id, %{pin: 1, input_type: :analog, sensitivity: 5})
+
+      {:ok, _input2} =
+        Hardware.create_input(device.id, %{pin: 2, input_type: :button, debounce: 50})
+
+      assert {:ok, _deleted} = Hardware.delete_device(device)
+
+      # Device and inputs should be deleted
+      assert {:error, :not_found} = Hardware.get_device(device.id)
+    end
+
+    test "deletes device with input calibrations" do
+      {:ok, device} = Hardware.create_device(%{name: "Test Device"})
+
+      {:ok, input} =
+        Hardware.create_input(device.id, %{pin: 1, input_type: :analog, sensitivity: 5})
+
+      # Add calibration
+      {:ok, _calibration} =
+        Hardware.save_calibration(input.id, %{
+          min_value: 0,
+          max_value: 1023,
+          max_hardware_value: 1023
+        })
+
+      assert {:ok, _deleted} = Hardware.delete_device(device)
+      assert {:error, :not_found} = Hardware.get_device(device.id)
+    end
+
+    test "deletes device with matrices" do
+      {:ok, device} = Hardware.create_device(%{name: "Test Device"})
+
+      {:ok, _matrix} =
+        Hardware.create_matrix(device.id, %{
+          name: "Test Matrix",
+          row_pins: [1, 2],
+          col_pins: [3, 4]
+        })
+
+      assert {:ok, _deleted} = Hardware.delete_device(device)
+      assert {:error, :not_found} = Hardware.get_device(device.id)
+
+      # Matrix should also be deleted
+      {:ok, matrices} = Hardware.list_matrices(device.id)
+      assert matrices == []
+    end
+  end
+
   describe "create_input/2" do
     test "creates input with valid attributes" do
       {:ok, device} = Hardware.create_device(%{name: "Test Device"})

@@ -149,25 +149,31 @@ defmodule Trenino.Hardware do
     if configuration_active?(device.config_id) do
       {:error, :configuration_active}
     else
-      # Delete inputs and their calibrations first (cascade)
-      {:ok, inputs} = list_inputs(device.id, include_virtual_buttons: true)
-
-      Enum.each(inputs, fn input ->
-        # Delete calibration if exists
-        if calibration = Repo.get_by(Calibration, input_id: input.id) do
-          Repo.delete(calibration)
-        end
-
-        Repo.delete(input)
-      end)
-
-      # Delete matrices (will cascade delete matrix pins)
-      {:ok, matrices} = list_matrices(device.id)
-      Enum.each(matrices, &Repo.delete/1)
-
-      # Delete the device
-      Repo.delete(device)
+      delete_device_cascade(device)
     end
+  end
+
+  defp delete_device_cascade(%Device{} = device) do
+    # Delete inputs and their calibrations first (cascade)
+    {:ok, inputs} = list_inputs(device.id, include_virtual_buttons: true)
+    Enum.each(inputs, &delete_input_with_calibration/1)
+
+    # Delete matrices (will cascade delete matrix pins)
+    {:ok, matrices} = list_matrices(device.id)
+    Enum.each(matrices, &Repo.delete/1)
+
+    # Delete the device
+    Repo.delete(device)
+  end
+
+  defp delete_input_with_calibration(%Input{} = input) do
+    # Delete calibration if exists
+    case Repo.get_by(Calibration, input_id: input.id) do
+      nil -> :ok
+      calibration -> Repo.delete(calibration)
+    end
+
+    Repo.delete(input)
   end
 
   defp configuration_active?(config_id) when is_nil(config_id), do: false
