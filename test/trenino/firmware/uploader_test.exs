@@ -71,53 +71,65 @@ defmodule Trenino.Firmware.UploaderTest do
   # Testing parse_error indirectly through behavior - these would be tested
   # via integration tests with actual avrdude output, but we can test the
   # error classification logic patterns
-  describe "error classification (via upload/4 error handling)" do
-    test "port_not_found error contains expected text patterns" do
-      # These are the patterns that parse_error looks for
-      assert String.contains?("can't open device /dev/ttyUSB0", "can't open device")
+  describe "parse_error_output/1" do
+    test "detects port not found from 'can't open device'" do
+      output = "avrdude: can't open device /dev/ttyUSB0: No such file"
+      assert Uploader.parse_error_output(output) == :port_not_found
     end
 
-    test "bootloader_not_responding error contains expected text patterns" do
-      patterns = [
-        "programmer is not responding",
-        "not in sync: resp=0x00",
-        "stk500v2_recv(): not responding"
-      ]
-
-      Enum.each(patterns, fn pattern ->
-        assert String.contains?(pattern, "not responding") or
-                 String.contains?(pattern, "not in sync"),
-               "Pattern should trigger bootloader_not_responding: #{pattern}"
-      end)
+    test "detects port not found from 'cannot open port'" do
+      output = "error: cannot open port /dev/ttyUSB0"
+      assert Uploader.parse_error_output(output) == :port_not_found
     end
 
-    test "wrong_board_type error contains expected text patterns" do
-      # avrdude outputs "device signature = 0x1e950f" when there's a signature mismatch
-      assert String.contains?(
-               "avrdude: device signature = 0x1e950f",
-               "device signature"
-             )
+    test "detects bootloader not responding from 'programmer is not responding'" do
+      output = "avrdude: stk500_recv(): programmer is not responding"
+      assert Uploader.parse_error_output(output) == :bootloader_not_responding
     end
 
-    test "verification_failed error contains expected text patterns" do
-      assert String.contains?(
-               "avrdude: verification error, first mismatch at byte 0x0100",
-               "verification error"
-             )
+    test "detects bootloader not responding from 'not in sync'" do
+      output = "avrdude: stk500_getsync(): not in sync: resp=0x00"
+      assert Uploader.parse_error_output(output) == :bootloader_not_responding
     end
 
-    test "timeout error contains expected text patterns" do
-      assert String.contains?(
-               "[Timeout: avrdude did not respond within 2 minutes]",
-               "Timeout"
-             )
+    test "detects bootloader not responding from stk500 not responding" do
+      output = "avrdude: stk500v2_recv(): not responding"
+      assert Uploader.parse_error_output(output) == :bootloader_not_responding
     end
 
-    test "permission_denied error contains expected text patterns" do
-      assert String.contains?(
-               "avrdude: ser_open(): can't open device: permission denied",
-               "permission denied"
-             )
+    test "detects bootloader not responding from 'initialization failed'" do
+      output = "avrdude: initialization failed, rc=-1"
+      assert Uploader.parse_error_output(output) == :bootloader_not_responding
+    end
+
+    test "detects bootloader not responding from butterfly/AVR910 protocol" do
+      output = "butterfly and AVR910 mode"
+      assert Uploader.parse_error_output(output) == :bootloader_not_responding
+    end
+
+    test "detects wrong board type from device signature" do
+      output = "avrdude: device signature = 0x1e950f"
+      assert Uploader.parse_error_output(output) == :wrong_board_type
+    end
+
+    test "detects verification failed" do
+      output = "avrdude: verification error, first mismatch at byte 0x0100"
+      assert Uploader.parse_error_output(output) == :verification_failed
+    end
+
+    test "detects timeout" do
+      output = "[Timeout: avrdude did not respond within 2 minutes]"
+      assert Uploader.parse_error_output(output) == :timeout
+    end
+
+    test "detects permission denied" do
+      output = "avrdude: ser_open(): can't open device: permission denied"
+      assert Uploader.parse_error_output(output) == :permission_denied
+    end
+
+    test "returns unknown_error for unrecognized output" do
+      output = "some random error that doesn't match patterns"
+      assert Uploader.parse_error_output(output) == :unknown_error
     end
   end
 

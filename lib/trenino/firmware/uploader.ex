@@ -253,46 +253,39 @@ defmodule Trenino.Firmware.Uploader do
   defp format_operation("Writing", percent), do: "Writing flash (#{percent}%)"
   defp format_operation("Verifying", percent), do: "Verifying (#{percent}%)"
 
-  # Parse avrdude error output to determine the error type
-  defp parse_error(output) do
-    cond do
-      String.contains?(output, "can't open device") ->
-        :port_not_found
+  # Error patterns mapped to error atoms
+  # Each pattern is either a string or a list of strings (all must match)
+  # Order matters: more specific patterns should come before general ones
+  @error_patterns [
+    {"permission denied", :permission_denied},
+    {"can't open device", :port_not_found},
+    {"cannot open port", :port_not_found},
+    {"programmer is not responding", :bootloader_not_responding},
+    {"not in sync", :bootloader_not_responding},
+    {["stk500", "not responding"], :bootloader_not_responding},
+    {"initialization failed", :bootloader_not_responding},
+    {["butterfly", "AVR910"], :bootloader_not_responding},
+    {"device signature", :wrong_board_type},
+    {"verification error", :verification_failed},
+    {"Timeout", :timeout}
+  ]
 
-      String.contains?(output, "cannot open port") ->
-        :port_not_found
+  @doc """
+  Parse avrdude error output to determine the error type.
+  """
+  @spec parse_error_output(String.t()) :: atom()
+  def parse_error_output(output) do
+    Enum.find_value(@error_patterns, :unknown_error, fn
+      {patterns, error} when is_list(patterns) ->
+        if Enum.all?(patterns, &String.contains?(output, &1)), do: error
 
-      String.contains?(output, "programmer is not responding") ->
-        :bootloader_not_responding
-
-      String.contains?(output, "not in sync") ->
-        :bootloader_not_responding
-
-      String.contains?(output, "stk500") and String.contains?(output, "not responding") ->
-        :bootloader_not_responding
-
-      String.contains?(output, "initialization failed") ->
-        :bootloader_not_responding
-
-      String.contains?(output, "butterfly") and String.contains?(output, "AVR910") ->
-        :bootloader_not_responding
-
-      String.contains?(output, "device signature") ->
-        :wrong_board_type
-
-      String.contains?(output, "verification error") ->
-        :verification_failed
-
-      String.contains?(output, "Timeout") ->
-        :timeout
-
-      String.contains?(output, "permission denied") ->
-        :permission_denied
-
-      true ->
-        :unknown_error
-    end
+      {pattern, error} ->
+        if String.contains?(output, pattern), do: error
+    end)
   end
+
+  # Keep private alias for internal use
+  defp parse_error(output), do: parse_error_output(output)
 
   @doc """
   Returns a user-friendly error message for an error atom.
