@@ -6,6 +6,7 @@ defmodule Trenino.Firmware.DownloaderTest do
 
   alias Trenino.Firmware
   alias Trenino.Firmware.Downloader
+  alias Trenino.Firmware.FilePath
 
   setup :verify_on_exit!
 
@@ -319,7 +320,7 @@ defmodule Trenino.Firmware.DownloaderTest do
       assert {:ok, downloaded_file} = Downloader.download_firmware(uno_file.id)
 
       # Verify the file exists on disk (not in DB)
-      assert Trenino.Firmware.FilePath.downloaded?(downloaded_file)
+      assert FilePath.downloaded?(downloaded_file)
     end
 
     test "returns error for non-existent firmware file" do

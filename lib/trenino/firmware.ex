@@ -8,7 +8,7 @@ defmodule Trenino.Firmware do
 
   import Ecto.Query
 
-  alias Trenino.Firmware.{BoardConfig, FirmwareFile, FirmwareRelease, UploadHistory}
+  alias Trenino.Firmware.{BoardConfig, FirmwareFile, FirmwareRelease, UpdateChecker, UploadHistory}
   alias Trenino.Repo
 
   # Delegate upload operations to UploadManager
@@ -30,7 +30,7 @@ defmodule Trenino.Firmware do
   """
   @spec check_update_status() :: {:update_available, String.t()} | :no_update
   def check_update_status do
-    Trenino.Firmware.UpdateChecker.get_update_status()
+    UpdateChecker.get_update_status()
   catch
     :exit, {:noproc, _} -> :no_update
   end
@@ -42,7 +42,7 @@ defmodule Trenino.Firmware do
   """
   @spec dismiss_update_notification() :: :ok
   def dismiss_update_notification do
-    Trenino.Firmware.UpdateChecker.dismiss_notification()
+    UpdateChecker.dismiss_notification()
   catch
     :exit, {:noproc, _} -> :ok
   end
@@ -54,7 +54,7 @@ defmodule Trenino.Firmware do
   """
   @spec subscribe_update_notifications() :: :ok | {:error, term()}
   def subscribe_update_notifications do
-    Trenino.Firmware.UpdateChecker.subscribe()
+    UpdateChecker.subscribe()
   end
 
   @doc """
@@ -64,7 +64,7 @@ defmodule Trenino.Firmware do
   """
   @spec trigger_update_check() :: :ok
   def trigger_update_check do
-    Trenino.Firmware.UpdateChecker.check_now()
+    UpdateChecker.check_now()
   catch
     :exit, {:noproc, _} -> :ok
   end

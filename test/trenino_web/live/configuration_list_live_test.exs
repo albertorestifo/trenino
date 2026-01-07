@@ -4,12 +4,13 @@ defmodule TreninoWeb.ConfigurationListLiveTest do
 
   import Phoenix.LiveViewTest
 
+  alias Ecto.Adapters.SQL.Sandbox
   alias Trenino.Hardware
   alias Trenino.Simulator.ConnectionState
 
   # Allow the Connection GenServer to access the database sandbox
   setup do
-    Ecto.Adapters.SQL.Sandbox.mode(Trenino.Repo, {:shared, self()})
+    Sandbox.mode(Trenino.Repo, {:shared, self()})
     :ok
   end
 

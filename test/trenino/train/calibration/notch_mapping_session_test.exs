@@ -1,6 +1,7 @@
 defmodule Trenino.Train.Calibration.NotchMappingSessionTest do
   use Trenino.DataCase, async: false
 
+  alias Ecto.Adapters.SQL.Sandbox
   alias Trenino.Hardware
   alias Trenino.Train
   alias Trenino.Train.Calibration.NotchMappingSession
@@ -464,7 +465,7 @@ defmodule Trenino.Train.Calibration.NotchMappingSessionTest do
       pid = start_session(context)
 
       # Allow database access for the session process
-      Ecto.Adapters.SQL.Sandbox.allow(Trenino.Repo, self(), pid)
+      Sandbox.allow(Trenino.Repo, self(), pid)
 
       assert :ok = NotchMappingSession.start_mapping(pid)
 
@@ -496,7 +497,7 @@ defmodule Trenino.Train.Calibration.NotchMappingSessionTest do
       pid = start_session(context)
 
       # Allow database access for the session process
-      Ecto.Adapters.SQL.Sandbox.allow(Trenino.Repo, self(), pid)
+      Sandbox.allow(Trenino.Repo, self(), pid)
 
       assert :ok = NotchMappingSession.start_mapping(pid)
 
@@ -599,7 +600,7 @@ defmodule Trenino.Train.Calibration.NotchMappingSessionTest do
       pid = start_session(context)
 
       # Allow database access
-      Ecto.Adapters.SQL.Sandbox.allow(Trenino.Repo, self(), pid)
+      Sandbox.allow(Trenino.Repo, self(), pid)
 
       # Clear initial messages
       flush_mailbox()

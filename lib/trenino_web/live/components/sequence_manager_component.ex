@@ -219,13 +219,14 @@ defmodule TreninoWeb.SequenceManagerComponent do
   end
 
   defp execute_test_sequence(commands) do
+    alias Trenino.Simulator.Client, as: SimulatorClient
     alias Trenino.Simulator.Connection, as: SimulatorConnection
     alias Trenino.Simulator.ConnectionState
 
     Enum.each(commands, fn cmd ->
       case SimulatorConnection.get_status() do
         %ConnectionState{status: :connected, client: client} when client != nil ->
-          Trenino.Simulator.Client.set(client, cmd.endpoint, cmd.value)
+          SimulatorClient.set(client, cmd.endpoint, cmd.value)
 
         _ ->
           :ok

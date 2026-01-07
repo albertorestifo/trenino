@@ -6,6 +6,8 @@ defmodule Trenino.AppVersion do
   comparing against the current version.
   """
 
+  alias Trenino.AppVersion.UpdateChecker
+
   @github_repo "albertorestifo/trenino"
 
   @doc """
@@ -25,7 +27,7 @@ defmodule Trenino.AppVersion do
   """
   @spec check_update_status() :: {:update_available, String.t()} | :no_update
   def check_update_status do
-    Trenino.AppVersion.UpdateChecker.get_update_status()
+    UpdateChecker.get_update_status()
   catch
     :exit, {:noproc, _} -> :no_update
   end
@@ -37,7 +39,7 @@ defmodule Trenino.AppVersion do
   """
   @spec dismiss_update_notification() :: :ok
   def dismiss_update_notification do
-    Trenino.AppVersion.UpdateChecker.dismiss_notification()
+    UpdateChecker.dismiss_notification()
   catch
     :exit, {:noproc, _} -> :ok
   end
@@ -47,7 +49,7 @@ defmodule Trenino.AppVersion do
   """
   @spec subscribe_update_notifications() :: :ok | {:error, term()}
   def subscribe_update_notifications do
-    Trenino.AppVersion.UpdateChecker.subscribe()
+    UpdateChecker.subscribe()
   end
 
   @doc """
@@ -57,7 +59,7 @@ defmodule Trenino.AppVersion do
   """
   @spec trigger_update_check() :: :ok
   def trigger_update_check do
-    Trenino.AppVersion.UpdateChecker.check_now()
+    UpdateChecker.check_now()
   catch
     :exit, {:noproc, _} -> :ok
   end

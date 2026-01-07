@@ -14,9 +14,12 @@ defmodule TreninoWeb.TrainEditLive do
   import TreninoWeb.SharedComponents
 
   alias Trenino.Hardware
+  alias Trenino.Hardware.ConfigurationManager
   alias Trenino.Serial.Connection
+  alias Trenino.Simulator.Client, as: SimulatorClient
+  alias Trenino.Simulator.ControlDetectionSession
   alias Trenino.Train, as: TrainContext
-  alias Trenino.Train.{Element, Identifier, LeverConfig, LeverInputBinding, Train}
+  alias Trenino.Train.{ButtonController, Element, Identifier, LeverConfig, LeverInputBinding, Train}
   alias Trenino.Train.LeverController
   alias TreninoWeb.SequenceManagerComponent
 
@@ -344,7 +347,7 @@ defmodule TreninoWeb.TrainEditLive do
   # Auto-detect: start session asynchronously
   @impl true
   def handle_info({:start_detection_session, component_id, client}, socket) do
-    result = Trenino.Simulator.ControlDetectionSession.start(client, self())
+    result = ControlDetectionSession.start(client, self())
 
     send_update(TreninoWeb.AutoDetectComponent,
       id: component_id,
@@ -579,8 +582,8 @@ defmodule TreninoWeb.TrainEditLive do
 
     if element do
       case element.type do
-        :lever -> Trenino.Train.LeverController.reload_bindings()
-        :button -> Trenino.Train.ButtonController.reload_bindings()
+        :lever -> LeverController.reload_bindings()
+        :button -> ButtonController.reload_bindings()
         _ -> :ok
       end
     end
@@ -622,9 +625,9 @@ defmodule TreninoWeb.TrainEditLive do
 
     if client && endpoint do
       # Clean up any existing subscription and create a new one
-      Trenino.Simulator.Client.unsubscribe(client, @value_detection_subscription_id)
+      SimulatorClient.unsubscribe(client, @value_detection_subscription_id)
 
-      case Trenino.Simulator.Client.subscribe(client, endpoint, @value_detection_subscription_id) do
+      case SimulatorClient.subscribe(client, endpoint, @value_detection_subscription_id) do
         {:ok, _} ->
           Logger.info("[ValuePolling] Subscribed to #{endpoint}")
           # Start polling the subscription (every 200ms)
@@ -648,7 +651,7 @@ defmodule TreninoWeb.TrainEditLive do
 
     # Clean up subscription
     if client do
-      Trenino.Simulator.Client.unsubscribe(client, @value_detection_subscription_id)
+      SimulatorClient.unsubscribe(client, @value_detection_subscription_id)
     end
 
     {:noreply, assign(socket, :value_polling_timer, nil)}
@@ -659,7 +662,7 @@ defmodule TreninoWeb.TrainEditLive do
     client = socket.assigns.nav_simulator_status.client
 
     if client do
-      case Trenino.Simulator.Client.get_subscription(client, @value_detection_subscription_id) do
+      case SimulatorClient.get_subscription(client, @value_detection_subscription_id) do
         {:ok, %{"Entries" => [%{"Values" => values} | _]}} when map_size(values) > 0 ->
           # Extract the first value from the Values map
           value =
@@ -689,7 +692,7 @@ defmodule TreninoWeb.TrainEditLive do
   @impl true
   def handle_info({:lever_setup_complete, element_id}, socket) do
     {:ok, elements} = TrainContext.list_elements(socket.assigns.train.id)
-    Trenino.Train.LeverController.reload_bindings()
+    LeverController.reload_bindings()
 
     # Close the wizard and update element list
     {:noreply,
@@ -743,10 +746,10 @@ defmodule TreninoWeb.TrainEditLive do
       available_inputs
       |> Enum.map(& &1.device.config_id)
       |> Enum.uniq()
-      |> Enum.map(&Trenino.Hardware.ConfigurationManager.config_id_to_port/1)
+      |> Enum.map(&ConfigurationManager.config_id_to_port/1)
       |> Enum.reject(&is_nil/1)
 
-    Enum.each(ports, &Trenino.Hardware.subscribe_input_values/1)
+    Enum.each(ports, &Hardware.subscribe_input_values/1)
 
     # Build a lookup map: {config_id, pin} -> input_id
     input_lookup =
@@ -769,7 +772,7 @@ defmodule TreninoWeb.TrainEditLive do
     # Check if we're in button detection mode and a button was pressed
     if socket.assigns[:button_detection_inputs] && value == 1 do
       # Look up which input this corresponds to
-      config_id = Trenino.Hardware.ConfigurationManager.port_to_config_id(port)
+      config_id = ConfigurationManager.port_to_config_id(port)
 
       case Map.get(socket.assigns.button_detection_inputs, {config_id, pin}) do
         nil ->

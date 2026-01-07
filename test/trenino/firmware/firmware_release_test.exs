@@ -1,6 +1,7 @@
 defmodule Trenino.Firmware.FirmwareReleaseTest do
   use Trenino.DataCase, async: false
 
+  alias Trenino.Firmware.FirmwareFile
   alias Trenino.Firmware.FirmwareRelease
 
   describe "changeset/2" do
@@ -80,8 +81,8 @@ defmodule Trenino.Firmware.FirmwareReleaseTest do
 
       # Insert a firmware file for this release
       {:ok, _file} =
-        %Trenino.Firmware.FirmwareFile{}
-        |> Trenino.Firmware.FirmwareFile.changeset(%{
+        %FirmwareFile{}
+        |> FirmwareFile.changeset(%{
           firmware_release_id: release.id,
           board_type: :uno,
           download_url: "https://example.com/uno.hex"

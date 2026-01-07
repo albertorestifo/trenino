@@ -1,6 +1,7 @@
 defmodule Trenino.Firmware.UploaderTest do
   use ExUnit.Case, async: true
 
+  alias Trenino.Firmware.Avrdude
   alias Trenino.Firmware.Uploader
 
   describe "error_message/1" do
@@ -167,7 +168,7 @@ defmodule Trenino.Firmware.UploaderTest do
     @tag :skip_without_avrdude
     test "returns error when hex file doesn't exist" do
       # Skip this test if avrdude is not available
-      case Trenino.Firmware.Avrdude.executable_path() do
+      case Avrdude.executable_path() do
         {:ok, _} ->
           result = Uploader.upload("/dev/ttyUSB0", :uno, "/nonexistent/firmware.hex")
 

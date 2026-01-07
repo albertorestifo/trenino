@@ -4,6 +4,7 @@ defmodule TreninoWeb.ConfigurationEditLiveTest do
   import Phoenix.LiveViewTest
 
   alias Trenino.Hardware
+  alias Trenino.Hardware.Calibration.Session, as: CalibrationSession
   alias Trenino.Hardware.Input
 
   describe "mount/3 with invalid config_id" do
@@ -330,7 +331,7 @@ defmodule TreninoWeb.ConfigurationEditLiveTest do
       assert Process.alive?(pid)
 
       # Clean up
-      Trenino.Hardware.Calibration.Session.cancel(pid)
+      CalibrationSession.cancel(pid)
     end
 
     test "get_input retrieves input with preloads", %{input: input} do
@@ -412,7 +413,7 @@ defmodule TreninoWeb.ConfigurationEditLiveTest do
         Hardware.create_input(device.id, %{pin: 5, input_type: :analog, sensitivity: 5})
 
       # Subscribe before starting session
-      Trenino.Hardware.Calibration.Session.subscribe(input.id)
+      CalibrationSession.subscribe(input.id)
 
       {:ok, pid} = Hardware.start_calibration_session(input, "/dev/test")
 
@@ -420,7 +421,7 @@ defmodule TreninoWeb.ConfigurationEditLiveTest do
       assert_receive {:session_started, state}
       assert state.input_id == input.id
 
-      Trenino.Hardware.Calibration.Session.cancel(pid)
+      CalibrationSession.cancel(pid)
     end
   end
 

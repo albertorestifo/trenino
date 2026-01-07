@@ -37,6 +37,7 @@ defmodule Trenino.Train.ButtonController do
   alias Trenino.Hardware.Input
   alias Trenino.Keyboard
   alias Trenino.Serial.Connection, as: SerialConnection
+  alias Trenino.Simulator.Client, as: SimulatorClient
   alias Trenino.Simulator.Connection, as: SimulatorConnection
   alias Trenino.Simulator.ConnectionState
   alias Trenino.Train
@@ -577,7 +578,7 @@ defmodule Trenino.Train.ButtonController do
   defp send_to_simulator(endpoint, value) do
     case get_simulator_client() do
       {:ok, client} ->
-        case Trenino.Simulator.Client.set(client, endpoint, value) do
+        case SimulatorClient.set(client, endpoint, value) do
           {:ok, _response} -> :ok
           {:error, _reason} -> :error
         end
@@ -628,14 +629,14 @@ defmodule Trenino.Train.ButtonController do
   end
 
   defp set_interacting(client, endpoint, value) do
-    case Trenino.Simulator.Client.set(client, endpoint, value) do
+    case SimulatorClient.set(client, endpoint, value) do
       {:ok, _response} -> :ok
       {:error, _reason} -> :error
     end
   end
 
   defp send_value(client, endpoint, value) do
-    case Trenino.Simulator.Client.set(client, endpoint, value) do
+    case SimulatorClient.set(client, endpoint, value) do
       {:ok, _response} -> :ok
       {:error, _reason} -> :error
     end
@@ -700,7 +701,7 @@ defmodule Trenino.Train.ButtonController do
         # Send value to simulator
         case get_simulator_client() do
           {:ok, client} ->
-            case Trenino.Simulator.Client.set(client, endpoint, value) do
+            case SimulatorClient.set(client, endpoint, value) do
               {:ok, _} ->
                 Logger.debug("[ButtonController] Sequence command: #{endpoint} = #{value}")
 

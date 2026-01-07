@@ -1,6 +1,7 @@
 defmodule TreninoWeb.CalibrationWizardTest do
   use TreninoWeb.ConnCase, async: false
 
+  alias Ecto.Adapters.SQL.Sandbox
   alias Trenino.Hardware
   alias Trenino.Hardware.Calibration.Session
 
@@ -16,7 +17,7 @@ defmodule TreninoWeb.CalibrationWizardTest do
 
   # Helper to allow spawned processes to access the database
   defp allow_session_db_access(pid) do
-    Ecto.Adapters.SQL.Sandbox.allow(Trenino.Repo, self(), pid)
+    Sandbox.allow(Trenino.Repo, self(), pid)
   end
 
   describe "CalibrationWizard rendering" do

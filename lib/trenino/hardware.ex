@@ -179,7 +179,7 @@ defmodule Trenino.Hardware do
   defp configuration_active?(config_id) when is_nil(config_id), do: false
 
   defp configuration_active?(config_id) do
-    Trenino.Serial.Connection.list_devices()
+    Connection.list_devices()
     |> Enum.any?(fn device ->
       device.status == :connected and device.device_config_id == config_id
     end)

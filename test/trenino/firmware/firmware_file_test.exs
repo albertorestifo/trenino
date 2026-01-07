@@ -1,6 +1,7 @@
 defmodule Trenino.Firmware.FirmwareFileTest do
   use Trenino.DataCase, async: false
 
+  alias Trenino.Firmware.FilePath
   alias Trenino.Firmware.FirmwareFile
   alias Trenino.Firmware.FirmwareRelease
 
@@ -177,7 +178,7 @@ defmodule Trenino.Firmware.FirmwareFileTest do
       }
 
       # Create the actual file on disk
-      path = Trenino.Firmware.FilePath.firmware_path(file)
+      path = FilePath.firmware_path(file)
       File.mkdir_p!(Path.dirname(path))
       File.write!(path, "test content")
 

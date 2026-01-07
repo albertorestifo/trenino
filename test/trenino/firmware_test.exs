@@ -2,6 +2,7 @@ defmodule Trenino.FirmwareTest do
   use Trenino.DataCase, async: false
 
   alias Trenino.Firmware
+  alias Trenino.Firmware.FilePath
 
   # Helper to create a release with files
   defp create_release_with_files(attrs \\ %{}) do
@@ -281,7 +282,7 @@ defmodule Trenino.FirmwareTest do
       {_release, [uno_file | _rest]} = create_release_with_files()
 
       # Create the actual file on disk
-      path = Trenino.Firmware.FilePath.firmware_path(uno_file)
+      path = FilePath.firmware_path(uno_file)
       File.mkdir_p!(Path.dirname(path))
       File.write!(path, "test content")
 

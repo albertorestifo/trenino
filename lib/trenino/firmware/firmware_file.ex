@@ -10,6 +10,7 @@ defmodule Trenino.Firmware.FirmwareFile do
   import Ecto.Changeset
 
   alias Trenino.Firmware.BoardConfig
+  alias Trenino.Firmware.FilePath
   alias Trenino.Firmware.FirmwareRelease
 
   @type t :: %__MODULE__{
@@ -60,6 +61,6 @@ defmodule Trenino.Firmware.FirmwareFile do
   """
   @spec downloaded?(t()) :: boolean()
   def downloaded?(%__MODULE__{} = file) do
-    Trenino.Firmware.FilePath.downloaded?(file)
+    FilePath.downloaded?(file)
   end
 end

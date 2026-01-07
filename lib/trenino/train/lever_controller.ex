@@ -31,6 +31,7 @@ defmodule Trenino.Train.LeverController do
   alias Trenino.Hardware.ConfigurationManager
   alias Trenino.Hardware.Input.Calibration
   alias Trenino.Serial.Connection, as: SerialConnection
+  alias Trenino.Simulator.Client, as: SimulatorClient
   alias Trenino.Simulator.Connection, as: SimulatorConnection
   alias Trenino.Simulator.ConnectionState
   alias Trenino.Train
@@ -292,7 +293,7 @@ defmodule Trenino.Train.LeverController do
   defp send_to_simulator(%LeverConfig{value_endpoint: endpoint}, value) do
     case get_simulator_client() do
       {:ok, client} ->
-        case Trenino.Simulator.Client.set(client, endpoint, value) do
+        case SimulatorClient.set(client, endpoint, value) do
           {:ok, _response} ->
             :ok
 

@@ -2,12 +2,13 @@ defmodule Trenino.SimulatorTest do
   # Non-async because the Simulator.Connection GenServer needs database access
   use Trenino.DataCase, async: false
 
+  alias Ecto.Adapters.SQL.Sandbox
   alias Trenino.Simulator
   alias Trenino.Simulator.Config
 
   # Allow the Connection GenServer to access the database sandbox
   setup do
-    Ecto.Adapters.SQL.Sandbox.mode(Trenino.Repo, {:shared, self()})
+    Sandbox.mode(Trenino.Repo, {:shared, self()})
     :ok
   end
 
