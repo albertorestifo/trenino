@@ -22,9 +22,6 @@ defmodule Trenino.Serial.Protocol.SetOutput do
   defstruct [:pin, :value]
 
   @impl Message
-  def type, do: 0x07
-
-  @impl Message
   def encode(%__MODULE__{pin: pin, value: :low}) do
     {:ok, <<0x07, pin::8-unsigned, 0x00>>}
   end
@@ -36,16 +33,13 @@ defmodule Trenino.Serial.Protocol.SetOutput do
   def encode(%__MODULE__{}), do: {:error, :invalid_value}
 
   @impl Message
-  def decode(<<0x07, pin::8-unsigned, 0x00>>) do
+  def decode_body(<<pin::8-unsigned, 0x00>>) do
     {:ok, %__MODULE__{pin: pin, value: :low}}
   end
 
-  def decode(<<0x07, pin::8-unsigned, 0x01>>) do
+  def decode_body(<<pin::8-unsigned, 0x01>>) do
     {:ok, %__MODULE__{pin: pin, value: :high}}
   end
 
-  @impl Message
-  def decode(_) do
-    {:error, :invalid_message}
-  end
+  def decode_body(_), do: {:error, :invalid_message}
 end

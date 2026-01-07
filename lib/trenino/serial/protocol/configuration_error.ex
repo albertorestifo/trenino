@@ -12,20 +12,14 @@ defmodule Trenino.Serial.Protocol.ConfigurationError do
   defstruct [:config_id]
 
   @impl Message
-  def type, do: 0x04
-
-  @impl Message
   def encode(%__MODULE__{config_id: config_id}) do
     {:ok, <<0x04, config_id::little-32-unsigned>>}
   end
 
   @impl Message
-  def decode(<<0x04, config_id::little-32-unsigned>>) do
+  def decode_body(<<config_id::little-32-unsigned>>) do
     {:ok, %__MODULE__{config_id: config_id}}
   end
 
-  @impl Message
-  def decode(_) do
-    {:error, :invalid_message}
-  end
+  def decode_body(_), do: {:error, :invalid_message}
 end

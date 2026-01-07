@@ -14,9 +14,6 @@ defmodule Trenino.Serial.Protocol.IdentityResponse do
   defstruct [:request_id, :version, :config_id]
 
   @impl Message
-  def type, do: 0x01
-
-  @impl Message
   def encode(%__MODULE__{
         request_id: request_id,
         version: version,
@@ -30,9 +27,9 @@ defmodule Trenino.Serial.Protocol.IdentityResponse do
   end
 
   @impl Message
-  def decode(
-        <<0x01, request_id::little-32-unsigned, major::8-unsigned, minor::8-unsigned,
-          patch::8-unsigned, config_id::little-32-unsigned>>
+  def decode_body(
+        <<request_id::little-32-unsigned, major::8-unsigned, minor::8-unsigned, patch::8-unsigned,
+          config_id::little-32-unsigned>>
       ) do
     {:ok,
      %__MODULE__{
@@ -42,10 +39,7 @@ defmodule Trenino.Serial.Protocol.IdentityResponse do
      }}
   end
 
-  @impl Message
-  def decode(_) do
-    {:error, :invalid_message}
-  end
+  def decode_body(_), do: {:error, :invalid_message}
 
   defp parse_version(version) when is_binary(version) do
     [major, minor, patch] =

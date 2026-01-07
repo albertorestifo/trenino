@@ -41,9 +41,6 @@ defmodule Trenino.Serial.Protocol.Configure do
     :col_pins
   ]
 
-  @impl Message
-  def type, do: 0x02
-
   # Encode - Analog (input_type = 0x00)
   @impl Message
   def encode(%__MODULE__{
@@ -94,11 +91,11 @@ defmodule Trenino.Serial.Protocol.Configure do
        row_pins_binary::binary, col_pins_binary::binary>>}
   end
 
-  # Decode - Analog (input_type = 0x00)
+  # Decode body - Analog (input_type = 0x00)
   @impl Message
-  def decode(
-        <<0x02, config_id::little-32-unsigned, total_parts::8-unsigned, part_number::8-unsigned,
-          0x00, pin::8-unsigned, sensitivity::8-unsigned>>
+  def decode_body(
+        <<config_id::little-32-unsigned, total_parts::8-unsigned, part_number::8-unsigned, 0x00,
+          pin::8-unsigned, sensitivity::8-unsigned>>
       ) do
     {:ok,
      %__MODULE__{
@@ -111,10 +108,10 @@ defmodule Trenino.Serial.Protocol.Configure do
      }}
   end
 
-  # Decode - Button (input_type = 0x01)
-  def decode(
-        <<0x02, config_id::little-32-unsigned, total_parts::8-unsigned, part_number::8-unsigned,
-          0x01, pin::8-unsigned, debounce::8-unsigned>>
+  # Decode body - Button (input_type = 0x01)
+  def decode_body(
+        <<config_id::little-32-unsigned, total_parts::8-unsigned, part_number::8-unsigned, 0x01,
+          pin::8-unsigned, debounce::8-unsigned>>
       ) do
     {:ok,
      %__MODULE__{
@@ -127,10 +124,10 @@ defmodule Trenino.Serial.Protocol.Configure do
      }}
   end
 
-  # Decode - Matrix (input_type = 0x02)
-  def decode(
-        <<0x02, config_id::little-32-unsigned, total_parts::8-unsigned, part_number::8-unsigned,
-          0x02, num_row_pins::8-unsigned, num_col_pins::8-unsigned, rest::binary>>
+  # Decode body - Matrix (input_type = 0x02)
+  def decode_body(
+        <<config_id::little-32-unsigned, total_parts::8-unsigned, part_number::8-unsigned, 0x02,
+          num_row_pins::8-unsigned, num_col_pins::8-unsigned, rest::binary>>
       ) do
     expected_size = num_row_pins + num_col_pins
 
@@ -155,8 +152,5 @@ defmodule Trenino.Serial.Protocol.Configure do
     end
   end
 
-  @impl Message
-  def decode(_) do
-    {:error, :invalid_message}
-  end
+  def decode_body(_), do: {:error, :invalid_message}
 end
