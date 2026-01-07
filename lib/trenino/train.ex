@@ -246,23 +246,14 @@ defmodule Trenino.Train do
         lever_type: lever_type,
         suggested_notches: suggested_notches
       }) do
+    config_attrs = Map.put(attrs, :lever_type, lever_type)
+
     Repo.transaction(fn ->
-      # Create the lever config with lever_type
-      config_attrs = Map.put(attrs, :lever_type, lever_type)
-
-      case create_lever_config(element_id, config_attrs) do
-        {:ok, lever_config} ->
-          # Create notches from analysis results
-          case create_notches_from_suggestions(lever_config.id, suggested_notches) do
-            :ok ->
-              Repo.preload(lever_config, :notches)
-
-            {:error, reason} ->
-              Repo.rollback(reason)
-          end
-
-        {:error, changeset} ->
-          Repo.rollback(changeset)
+      with {:ok, lever_config} <- create_lever_config(element_id, config_attrs),
+           :ok <- create_notches_from_suggestions(lever_config.id, suggested_notches) do
+        Repo.preload(lever_config, :notches)
+      else
+        {:error, reason} -> Repo.rollback(reason)
       end
     end)
   end
@@ -278,30 +269,24 @@ defmodule Trenino.Train do
         lever_type: lever_type,
         suggested_notches: suggested_notches
       }) do
+    config_attrs = Map.put(attrs, :lever_type, lever_type)
+
     Repo.transaction(fn ->
-      # Update the lever config with lever_type
-      config_attrs = Map.put(attrs, :lever_type, lever_type)
-
-      case update_lever_config(config, config_attrs) do
-        {:ok, updated_config} ->
-          # Delete existing notches
-          Notch
-          |> where([n], n.lever_config_id == ^updated_config.id)
-          |> Repo.delete_all()
-
-          # Create notches from analysis results
-          case create_notches_from_suggestions(updated_config.id, suggested_notches) do
-            :ok ->
-              Repo.preload(updated_config, :notches)
-
-            {:error, reason} ->
-              Repo.rollback(reason)
-          end
-
-        {:error, changeset} ->
-          Repo.rollback(changeset)
+      with {:ok, updated_config} <- update_lever_config(config, config_attrs),
+           :ok <- replace_notches(updated_config.id, suggested_notches) do
+        Repo.preload(updated_config, :notches)
+      else
+        {:error, reason} -> Repo.rollback(reason)
       end
     end)
+  end
+
+  defp replace_notches(lever_config_id, suggested_notches) do
+    Notch
+    |> where([n], n.lever_config_id == ^lever_config_id)
+    |> Repo.delete_all()
+
+    create_notches_from_suggestions(lever_config_id, suggested_notches)
   end
 
   defp create_notches_from_suggestions(lever_config_id, suggested_notches) do
@@ -358,43 +343,38 @@ defmodule Trenino.Train do
           {:ok, LeverConfig.t()} | {:error, term()}
   def save_calibration(%LeverConfig{} = lever_config, notches) when is_list(notches) do
     Repo.transaction(fn ->
-      # Delete existing notches
       Notch
       |> where([n], n.lever_config_id == ^lever_config.id)
       |> Repo.delete_all()
 
-      # Create new notches
-      notch_results =
-        notches
-        |> Enum.with_index()
-        |> Enum.map(fn {notch_attrs, index} ->
-          # Ensure all keys are strings to avoid mixed key types
-          attrs_with_index =
-            notch_attrs
-            |> Map.new(fn {k, v} -> {to_string(k), v} end)
-            |> Map.put("index", index)
-
-          %Notch{lever_config_id: lever_config.id}
-          |> Notch.changeset(attrs_with_index)
-          |> Repo.insert()
-        end)
-
-      # Check for errors
-      errors = Enum.filter(notch_results, &match?({:error, _}, &1))
-
-      if errors != [] do
-        Repo.rollback({:notch_errors, errors})
+      with :ok <- insert_notches(lever_config.id, notches),
+           {:ok, updated_config} <- update_lever_config(lever_config, %{calibrated_at: DateTime.utc_now()}) do
+        Repo.preload(updated_config, :notches)
       else
-        # Update calibrated_at timestamp
-        case update_lever_config(lever_config, %{calibrated_at: DateTime.utc_now()}) do
-          {:ok, updated_config} ->
-            Repo.preload(updated_config, :notches)
-
-          {:error, changeset} ->
-            Repo.rollback(changeset)
-        end
+        {:error, reason} -> Repo.rollback(reason)
       end
     end)
+  end
+
+  defp insert_notches(lever_config_id, notches) do
+    results =
+      notches
+      |> Enum.with_index()
+      |> Enum.map(fn {notch_attrs, index} ->
+        attrs_with_index =
+          notch_attrs
+          |> Map.new(fn {k, v} -> {to_string(k), v} end)
+          |> Map.put("index", index)
+
+        %Notch{lever_config_id: lever_config_id}
+        |> Notch.changeset(attrs_with_index)
+        |> Repo.insert()
+      end)
+
+    case Enum.filter(results, &match?({:error, _}, &1)) do
+      [] -> :ok
+      errors -> {:error, {:notch_errors, errors}}
+    end
   end
 
   # ===================
@@ -450,38 +430,15 @@ defmodule Trenino.Train do
           {:ok, LeverConfig.t()} | {:error, term()}
   def save_notches(%LeverConfig{} = lever_config, notches) when is_list(notches) do
     Repo.transaction(fn ->
-      # Delete existing notches
       Notch
       |> where([n], n.lever_config_id == ^lever_config.id)
       |> Repo.delete_all()
 
-      # Create new notches
-      notch_results =
-        notches
-        |> Enum.with_index()
-        |> Enum.map(fn {notch_attrs, index} ->
-          # Ensure all keys are strings to avoid mixed key types
-          attrs_with_index =
-            notch_attrs
-            |> Map.new(fn {k, v} -> {to_string(k), v} end)
-            |> Map.put("index", index)
-
-          %Notch{lever_config_id: lever_config.id}
-          |> Notch.changeset(attrs_with_index)
-          |> Repo.insert()
-        end)
-
-      # Check for errors
-      errors = Enum.filter(notch_results, &match?({:error, _}, &1))
-
-      if errors != [] do
-        Repo.rollback({:notch_errors, errors})
+      with :ok <- insert_notches(lever_config.id, notches),
+           {:ok, reloaded} <- get_lever_config(lever_config.element_id) do
+        reloaded
       else
-        # Reload the config with notches
-        case get_lever_config(lever_config.element_id) do
-          {:ok, reloaded} -> reloaded
-          {:error, reason} -> Repo.rollback(reason)
-        end
+        {:error, reason} -> Repo.rollback(reason)
       end
     end)
   end
@@ -509,45 +466,45 @@ defmodule Trenino.Train do
     inverted = Keyword.get(opts, :inverted)
 
     Repo.transaction(fn ->
-      results =
-        Enum.map(notch_updates, fn %{id: notch_id, input_min: input_min, input_max: input_max} ->
-          case Repo.get(Notch, notch_id) do
-            nil ->
-              {:error, {:not_found, notch_id}}
-
-            notch ->
-              notch
-              |> Notch.changeset(%{input_min: input_min, input_max: input_max})
-              |> Repo.update()
-          end
-        end)
-
-      errors = Enum.filter(results, &match?({:error, _}, &1))
-
-      if errors != [] do
-        Repo.rollback({:update_errors, errors})
+      with :ok <- do_update_notches(notch_updates),
+           {:ok, lever_config} <- fetch_lever_config(lever_config_id),
+           :ok <- maybe_update_inverted(lever_config, inverted),
+           {:ok, reloaded} <- get_lever_config(lever_config.element_id) do
+        reloaded
       else
-        # Find the element_id from the lever config
-        case Repo.get(LeverConfig, lever_config_id) do
-          nil ->
-            Repo.rollback(:lever_config_not_found)
-
-          lever_config ->
-            # Update inverted flag if provided (auto-detected during notch mapping)
-            if is_boolean(inverted) do
-              lever_config
-              |> LeverConfig.changeset(%{inverted: inverted})
-              |> Repo.update!()
-            end
-
-            case get_lever_config(lever_config.element_id) do
-              {:ok, reloaded} -> reloaded
-              {:error, reason} -> Repo.rollback(reason)
-            end
-        end
+        {:error, reason} -> Repo.rollback(reason)
       end
     end)
   end
+
+  defp do_update_notches(notch_updates) do
+    results =
+      Enum.map(notch_updates, fn %{id: notch_id, input_min: input_min, input_max: input_max} ->
+        case Repo.get(Notch, notch_id) do
+          nil -> {:error, {:not_found, notch_id}}
+          notch -> notch |> Notch.changeset(%{input_min: input_min, input_max: input_max}) |> Repo.update()
+        end
+      end)
+
+    case Enum.filter(results, &match?({:error, _}, &1)) do
+      [] -> :ok
+      errors -> {:error, {:update_errors, errors}}
+    end
+  end
+
+  defp fetch_lever_config(lever_config_id) do
+    case Repo.get(LeverConfig, lever_config_id) do
+      nil -> {:error, :lever_config_not_found}
+      lever_config -> {:ok, lever_config}
+    end
+  end
+
+  defp maybe_update_inverted(lever_config, inverted) when is_boolean(inverted) do
+    lever_config |> LeverConfig.changeset(%{inverted: inverted}) |> Repo.update!()
+    :ok
+  end
+
+  defp maybe_update_inverted(_lever_config, _inverted), do: :ok
 
   # ===================
   # Identifier Operations
@@ -754,39 +711,31 @@ defmodule Trenino.Train do
   @spec auto_distribute_input_ranges(integer()) ::
           {:ok, LeverConfig.t()} | {:error, :not_found} | {:error, term()}
   def auto_distribute_input_ranges(lever_config_id) do
-    case get_lever_config(lever_config_id) do
-      {:error, :not_found} ->
-        {:error, :not_found}
-
-      {:ok, config} ->
-        notches = config.notches |> Enum.sort_by(& &1.index)
-        count = length(notches)
-
-        if count == 0 do
-          {:ok, config}
-        else
-          step = 1.0 / count
-
-          Repo.transaction(fn ->
-            notches
-            |> Enum.with_index()
-            |> Enum.each(fn {notch, idx} ->
-              input_min = Float.round(idx * step, 2)
-              input_max = Float.round((idx + 1) * step, 2)
-
-              notch
-              |> Notch.changeset(%{input_min: input_min, input_max: input_max})
-              |> Repo.update!()
-            end)
-
-            # Reload the config with updated notches
-            case get_lever_config(lever_config_id) do
-              {:ok, reloaded} -> reloaded
-              {:error, reason} -> Repo.rollback(reason)
-            end
-          end)
-        end
+    with {:ok, config} <- get_lever_config(lever_config_id) do
+      do_auto_distribute(config)
     end
+  end
+
+  defp do_auto_distribute(%LeverConfig{notches: []} = config), do: {:ok, config}
+
+  defp do_auto_distribute(%LeverConfig{id: lever_config_id, notches: notches}) do
+    sorted_notches = Enum.sort_by(notches, & &1.index)
+    count = length(sorted_notches)
+    step = 1.0 / count
+
+    Repo.transaction(fn ->
+      Enum.each(sorted_notches, fn notch ->
+        idx = notch.index
+        input_min = Float.round(idx * step, 2)
+        input_max = Float.round((idx + 1) * step, 2)
+        notch |> Notch.changeset(%{input_min: input_min, input_max: input_max}) |> Repo.update!()
+      end)
+
+      case get_lever_config(lever_config_id) do
+        {:ok, reloaded} -> reloaded
+        {:error, reason} -> Repo.rollback(reason)
+      end
+    end)
   end
 
   @doc """
@@ -1046,38 +995,30 @@ defmodule Trenino.Train do
           {:ok, [SequenceCommand.t()]} | {:error, term()}
   def set_sequence_commands(%Sequence{id: sequence_id}, commands) when is_list(commands) do
     Repo.transaction(fn ->
-      # Delete existing commands
       SequenceCommand
       |> where([c], c.sequence_id == ^sequence_id)
       |> Repo.delete_all()
 
-      # Insert new commands with positions
-      results =
-        commands
-        |> Enum.with_index()
-        |> Enum.map(fn {attrs, position} ->
-          params =
-            attrs
-            |> Map.put(:sequence_id, sequence_id)
-            |> Map.put(:position, position)
-
-          %SequenceCommand{}
-          |> SequenceCommand.changeset(params)
-          |> Repo.insert()
-        end)
-
-      # Check for errors
-      case Enum.find(results, fn
-             {:error, _} -> true
-             _ -> false
-           end) do
-        {:error, changeset} ->
-          Repo.rollback(changeset)
-
-        nil ->
-          Enum.map(results, fn {:ok, cmd} -> cmd end)
+      case insert_sequence_commands(sequence_id, commands) do
+        {:ok, cmds} -> cmds
+        {:error, changeset} -> Repo.rollback(changeset)
       end
     end)
+  end
+
+  defp insert_sequence_commands(sequence_id, commands) do
+    results =
+      commands
+      |> Enum.with_index()
+      |> Enum.map(fn {attrs, position} ->
+        params = attrs |> Map.put(:sequence_id, sequence_id) |> Map.put(:position, position)
+        %SequenceCommand{} |> SequenceCommand.changeset(params) |> Repo.insert()
+      end)
+
+    case Enum.find(results, &match?({:error, _}, &1)) do
+      {:error, changeset} -> {:error, changeset}
+      nil -> {:ok, Enum.map(results, fn {:ok, cmd} -> cmd end)}
+    end
   end
 
   @doc """
