@@ -406,6 +406,62 @@ defmodule Trenino.HardwareTest do
     end
   end
 
+  describe "update_matrix/2" do
+    test "updates matrix name only" do
+      {:ok, device} = Hardware.create_device(%{name: "Test Device"})
+
+      {:ok, matrix} =
+        Hardware.create_matrix(device.id, %{
+          name: "Original Name",
+          row_pins: [2, 3],
+          col_pins: [8, 9]
+        })
+
+      assert {:ok, updated} = Hardware.update_matrix(matrix, %{name: "New Name"})
+      assert updated.name == "New Name"
+
+      # Pins should be unchanged
+      assert length(updated.row_pins) == 2
+      assert length(updated.col_pins) == 2
+    end
+
+    test "updates pins and recreates virtual buttons" do
+      {:ok, device} = Hardware.create_device(%{name: "Test Device"})
+
+      {:ok, matrix} =
+        Hardware.create_matrix(device.id, %{
+          name: "Test Matrix",
+          row_pins: [2, 3],
+          col_pins: [8, 9]
+        })
+
+      # Original: 2x2 = 4 buttons
+      assert length(matrix.buttons) == 4
+
+      # Update to 3x2 = 6 buttons
+      assert {:ok, updated} =
+               Hardware.update_matrix(matrix, %{row_pins: [2, 3, 4], col_pins: [8, 9]})
+
+      assert length(updated.buttons) == 6
+      assert length(updated.row_pins) == 3
+      assert length(updated.col_pins) == 2
+    end
+
+    test "does not change matrix when no attrs provided" do
+      {:ok, device} = Hardware.create_device(%{name: "Test Device"})
+
+      {:ok, matrix} =
+        Hardware.create_matrix(device.id, %{
+          name: "Test Matrix",
+          row_pins: [2, 3],
+          col_pins: [8, 9]
+        })
+
+      assert {:ok, unchanged} = Hardware.update_matrix(matrix, %{})
+      assert unchanged.name == matrix.name
+    end
+  end
+
   describe "delete_matrix/1" do
     test "deletes matrix and cascades to virtual buttons" do
       {:ok, device} = Hardware.create_device(%{name: "Test Device"})

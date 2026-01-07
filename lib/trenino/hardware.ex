@@ -385,34 +385,19 @@ defmodule Trenino.Hardware do
     col_pins = Map.get(attrs, :col_pins, [])
 
     Repo.transaction(fn ->
-      # Create matrix
-      matrix_result =
-        %Matrix{device_id: device_id}
-        |> Matrix.changeset(Map.take(attrs, [:name]))
-        |> Repo.insert()
-
-      case matrix_result do
-        {:ok, matrix} ->
-          # Create matrix pins
-          case create_matrix_pins(matrix.id, row_pins, col_pins) do
-            {:ok, _pins} ->
-              # Create virtual button inputs
-              case create_virtual_buttons(device_id, matrix.id, row_pins, col_pins) do
-                {:ok, _buttons} ->
-                  Repo.preload(matrix, [:row_pins, :col_pins, :buttons])
-
-                {:error, reason} ->
-                  Repo.rollback(reason)
-              end
-
-            {:error, reason} ->
-              Repo.rollback(reason)
-          end
-
-        {:error, changeset} ->
-          Repo.rollback(changeset)
+      with {:ok, matrix} <- insert_matrix(device_id, attrs),
+           :ok <- setup_matrix_pins_and_buttons(device_id, matrix.id, row_pins, col_pins) do
+        Repo.preload(matrix, [:row_pins, :col_pins, :buttons])
+      else
+        {:error, reason} -> Repo.rollback(reason)
       end
     end)
+  end
+
+  defp insert_matrix(device_id, attrs) do
+    %Matrix{device_id: device_id}
+    |> Matrix.changeset(Map.take(attrs, [:name]))
+    |> Repo.insert()
   end
 
   @doc """
@@ -427,46 +412,46 @@ defmodule Trenino.Hardware do
     col_pins = Map.get(attrs, :col_pins)
 
     Repo.transaction(fn ->
-      # Update matrix name if provided
-      matrix =
-        if Map.has_key?(attrs, :name) do
-          case matrix |> Matrix.changeset(Map.take(attrs, [:name])) |> Repo.update() do
-            {:ok, updated} -> updated
-            {:error, changeset} -> Repo.rollback(changeset)
-          end
-        else
-          matrix
-        end
-
-      # Update pins if provided
-      if row_pins && col_pins do
-        # Delete old virtual buttons
-        from(i in Input, where: i.matrix_id == ^matrix.id)
-        |> Repo.delete_all()
-
-        # Delete old matrix pins
-        from(mp in MatrixPin, where: mp.matrix_id == ^matrix.id)
-        |> Repo.delete_all()
-
-        # Create new matrix pins
-        case create_matrix_pins(matrix.id, row_pins, col_pins) do
-          {:ok, _pins} ->
-            # Create new virtual buttons
-            case create_virtual_buttons(matrix.device_id, matrix.id, row_pins, col_pins) do
-              {:ok, _buttons} ->
-                Repo.preload(matrix, [:row_pins, :col_pins, :buttons], force: true)
-
-              {:error, reason} ->
-                Repo.rollback(reason)
-            end
-
-          {:error, reason} ->
-            Repo.rollback(reason)
-        end
-      else
+      with {:ok, matrix} <- maybe_update_name(matrix, attrs),
+           {:ok, matrix} <- maybe_update_pins(matrix, row_pins, col_pins) do
         matrix
+      else
+        {:error, reason} -> Repo.rollback(reason)
       end
     end)
+  end
+
+  defp maybe_update_name(matrix, attrs) do
+    if Map.has_key?(attrs, :name) do
+      matrix
+      |> Matrix.changeset(Map.take(attrs, [:name]))
+      |> Repo.update()
+    else
+      {:ok, matrix}
+    end
+  end
+
+  defp maybe_update_pins(matrix, nil, _col_pins), do: {:ok, matrix}
+  defp maybe_update_pins(matrix, _row_pins, nil), do: {:ok, matrix}
+
+  defp maybe_update_pins(matrix, row_pins, col_pins) do
+    delete_matrix_children(matrix.id)
+
+    with :ok <- setup_matrix_pins_and_buttons(matrix.device_id, matrix.id, row_pins, col_pins) do
+      {:ok, Repo.preload(matrix, [:row_pins, :col_pins, :buttons], force: true)}
+    end
+  end
+
+  defp delete_matrix_children(matrix_id) do
+    from(i in Input, where: i.matrix_id == ^matrix_id) |> Repo.delete_all()
+    from(mp in MatrixPin, where: mp.matrix_id == ^matrix_id) |> Repo.delete_all()
+  end
+
+  defp setup_matrix_pins_and_buttons(device_id, matrix_id, row_pins, col_pins) do
+    with {:ok, _pins} <- create_matrix_pins(matrix_id, row_pins, col_pins),
+         {:ok, _buttons} <- create_virtual_buttons(device_id, matrix_id, row_pins, col_pins) do
+      :ok
+    end
   end
 
   @doc """
