@@ -35,30 +35,41 @@ defmodule Trenino.Paths do
 
   defp get_data_dir do
     case :os.type() do
-      {:unix, :darwin} ->
-        # macOS: ~/Library/Application Support/Trenino
-        home = System.get_env("HOME") || "~"
-        Path.join([home, "Library", "Application Support", @app_name])
-
-      {:win32, _} ->
-        # Windows: %APPDATA%/Trenino
-        appdata = System.get_env("APPDATA") || System.get_env("LOCALAPPDATA") || "."
-        Path.join(appdata, @app_name)
-
-      {:unix, _} ->
-        # Linux/BSD: $XDG_DATA_HOME/trenino or ~/.local/share/trenino
-        xdg_data = System.get_env("XDG_DATA_HOME")
-
-        base_dir =
-          if xdg_data && xdg_data != "" do
-            xdg_data
-          else
-            home = System.get_env("HOME") || "~"
-            Path.join([home, ".local", "share"])
-          end
-
-        Path.join(base_dir, @app_name_lower)
+      {:unix, :darwin} -> get_macos_data_dir()
+      {:win32, _} -> get_windows_data_dir()
+      {:unix, _} -> get_linux_data_dir()
     end
+  end
+
+  # macOS: ~/Library/Application Support/Trenino
+  defp get_macos_data_dir do
+    home = System.get_env("HOME") || "~"
+    Path.join([home, "Library", "Application Support", @app_name])
+  end
+
+  # Windows: %APPDATA%/Trenino
+  defp get_windows_data_dir do
+    appdata = System.get_env("APPDATA") || System.get_env("LOCALAPPDATA") || "."
+    Path.join(appdata, @app_name)
+  end
+
+  # Linux/BSD: $XDG_DATA_HOME/trenino or ~/.local/share/trenino
+  defp get_linux_data_dir do
+    base_dir = get_xdg_data_home()
+    Path.join(base_dir, @app_name_lower)
+  end
+
+  defp get_xdg_data_home do
+    case System.get_env("XDG_DATA_HOME") do
+      nil -> default_linux_data_home()
+      "" -> default_linux_data_home()
+      xdg_data -> xdg_data
+    end
+  end
+
+  defp default_linux_data_home do
+    home = System.get_env("HOME") || "~"
+    Path.join([home, ".local", "share"])
   end
 
   defp ensure_dir_exists(dir) do
