@@ -459,6 +459,61 @@ defmodule TreninoWeb.ConfigurationEditLive do
     end
   end
 
+  # Inline name editing
+  @impl true
+  def handle_event("update_input_name", %{"id" => id, "value" => name}, socket) do
+    input = Enum.find(socket.assigns.inputs, &(&1.id == String.to_integer(id)))
+
+    if input do
+      case Hardware.update_input(input, %{name: name}) do
+        {:ok, _updated} ->
+          {:ok, inputs} = Hardware.list_inputs(socket.assigns.device.id)
+          {:noreply, assign(socket, :inputs, inputs)}
+
+        {:error, _changeset} ->
+          {:noreply, put_flash(socket, :error, "Failed to update input name")}
+      end
+    else
+      {:noreply, socket}
+    end
+  end
+
+  @impl true
+  def handle_event("update_output_name", %{"id" => id, "value" => name}, socket) do
+    output = Enum.find(socket.assigns.outputs, &(&1.id == String.to_integer(id)))
+
+    if output do
+      case Hardware.update_output(output, %{name: name}) do
+        {:ok, _updated} ->
+          {:ok, outputs} = Hardware.list_outputs(socket.assigns.device.id)
+          {:noreply, assign(socket, :outputs, outputs)}
+
+        {:error, _changeset} ->
+          {:noreply, put_flash(socket, :error, "Failed to update output name")}
+      end
+    else
+      {:noreply, socket}
+    end
+  end
+
+  @impl true
+  def handle_event("update_matrix_name", %{"id" => id, "value" => name}, socket) do
+    matrix = Enum.find(socket.assigns.matrices, &(&1.id == String.to_integer(id)))
+
+    if matrix do
+      case Hardware.update_matrix(matrix, %{name: name}) do
+        {:ok, _updated} ->
+          {:ok, matrices} = Hardware.list_matrices(socket.assigns.device.id)
+          {:noreply, assign(socket, :matrices, matrices)}
+
+        {:error, _changeset} ->
+          {:noreply, put_flash(socket, :error, "Failed to update matrix name")}
+      end
+    else
+      {:noreply, socket}
+    end
+  end
+
   # Private helpers for input creation
 
   defp add_regular_input(socket, params) do
@@ -932,16 +987,25 @@ defmodule TreninoWeb.ConfigurationEditLive do
         <thead>
           <tr class="bg-base-200">
             <th class="text-center">Pin</th>
+            <th>Name</th>
             <th>Type</th>
-            <th>Settings</th>
-            <th>Raw</th>
-            <th>Calibrated</th>
+            <th>Value</th>
             <th class="w-32"></th>
           </tr>
         </thead>
         <tbody>
           <tr :for={input <- @inputs} class="hover:bg-base-200/50">
             <td class="text-center font-mono">{input.pin}</td>
+            <td>
+              <input
+                type="text"
+                value={input.name || ""}
+                placeholder="Unnamed"
+                phx-blur="update_input_name"
+                phx-value-id={input.id}
+                class="input input-ghost input-xs w-full max-w-32 placeholder:italic placeholder:text-base-content/50"
+              />
+            </td>
             <td>
               <span class={[
                 "badge badge-sm capitalize",
@@ -951,19 +1015,8 @@ defmodule TreninoWeb.ConfigurationEditLive do
                 {input.input_type}
               </span>
             </td>
-            <td class="font-mono text-sm">
-              <span :if={input.input_type == :analog}>Sens: {input.sensitivity}</span>
-              <span :if={input.input_type == :button}>Deb: {input.debounce || 0}ms</span>
-            </td>
-            <td>
-              <.raw_value
-                value={Map.get(@input_values, input.pin)}
-                active={@active_port != nil}
-                input_type={input.input_type}
-              />
-            </td>
-            <td>
-              <.calibrated_value
+            <td class="min-w-24">
+              <.input_value
                 raw_value={Map.get(@input_values, input.pin)}
                 calibration={input.calibration}
                 active={@active_port != nil}
@@ -1041,7 +1094,16 @@ defmodule TreninoWeb.ConfigurationEditLive do
         </thead>
         <tbody>
           <tr :for={matrix <- @matrices} class="hover:bg-base-200/50">
-            <td class="font-medium">{matrix.name}</td>
+            <td>
+              <input
+                type="text"
+                value={matrix.name || ""}
+                placeholder="Unnamed"
+                phx-blur="update_matrix_name"
+                phx-value-id={matrix.id}
+                class="input input-ghost input-xs w-full max-w-32 font-medium placeholder:italic placeholder:text-base-content/50 placeholder:font-normal"
+              />
+            </td>
             <td class="font-mono text-sm">
               {length(matrix.row_pins)}x{length(matrix.col_pins)}
             </td>
@@ -1073,36 +1135,12 @@ defmodule TreninoWeb.ConfigurationEditLive do
     """
   end
 
-  attr :value, :integer, default: nil
-  attr :active, :boolean, required: true
-  attr :input_type, :atom, default: :analog
-
-  defp raw_value(assigns) do
-    ~H"""
-    <span :if={!@active} class="text-base-content/50 italic text-sm">
-      <.icon name="hero-lock-closed" class="w-3 h-3 inline mr-1" /> N/A
-    </span>
-    <span :if={@active && is_nil(@value)} class="text-base-content/50">
-      &mdash;
-    </span>
-    <%!-- Analog: show numeric value --%>
-    <span :if={@active && !is_nil(@value) && @input_type == :analog} class="font-mono">
-      {@value}
-    </span>
-    <%!-- Button: show Pressed/Released badge --%>
-    <span :if={@active && !is_nil(@value) && @input_type == :button}>
-      <span :if={@value == 1} class="badge badge-success badge-xs">Pressed</span>
-      <span :if={@value == 0} class="badge badge-ghost badge-xs">Released</span>
-    </span>
-    """
-  end
-
   attr :raw_value, :integer, default: nil
   attr :calibration, :map, default: nil
   attr :active, :boolean, required: true
   attr :input_type, :atom, default: :analog
 
-  defp calibrated_value(assigns) do
+  defp input_value(assigns) do
     calibration = loaded_calibration(assigns.calibration)
 
     calibrated =
@@ -1118,29 +1156,40 @@ defmodule TreninoWeb.ConfigurationEditLive do
       |> assign(:calibrated, calibrated)
 
     ~H"""
-    <%!-- Button inputs don't need calibration --%>
-    <span :if={@input_type == :button} class="text-base-content/50 text-sm">N/A</span>
-    <%!-- Analog inputs --%>
-    <span :if={@input_type == :analog && !@active} class="text-base-content/50 italic text-sm">
-      N/A
+    <%!-- Not active --%>
+    <span :if={!@active} class="text-base-content/50 italic text-sm">
+      <.icon name="hero-lock-closed" class="w-3 h-3 inline mr-1" /> N/A
     </span>
-    <span
-      :if={@input_type == :analog && @active && is_nil(@calibration)}
-      class="text-base-content/50 text-sm"
-    >
-      Not calibrated
-    </span>
-    <span
-      :if={@input_type == :analog && @active && @calibration && is_nil(@raw_value)}
-      class="text-base-content/50"
-    >
+    <%!-- Button inputs --%>
+    <span :if={@active && @input_type == :button && is_nil(@raw_value)} class="text-base-content/50">
       &mdash;
     </span>
     <span
-      :if={@input_type == :analog && @active && @calibration && !is_nil(@calibrated)}
-      class="font-mono"
+      :if={@active && @input_type == :button && @raw_value == 1}
+      class="badge badge-success badge-xs"
     >
-      {@calibrated}
+      Pressed
+    </span>
+    <span
+      :if={@active && @input_type == :button && @raw_value == 0}
+      class="badge badge-ghost badge-xs"
+    >
+      Released
+    </span>
+    <%!-- Analog inputs --%>
+    <span :if={@active && @input_type == :analog && is_nil(@raw_value)} class="text-base-content/50">
+      &mdash;
+    </span>
+    <span
+      :if={@active && @input_type == :analog && !is_nil(@raw_value)}
+      class="font-mono tabular-nums"
+    >
+      <span class="text-base-content/40 text-xs">{@raw_value}</span>
+      <span :if={@calibrated} class="text-base-content/40 text-xs">/</span>
+      <span :if={@calibrated}>{@calibrated}</span>
+      <span :if={is_nil(@calibration)} class="text-base-content/50 text-xs italic ml-1">
+        (uncalibrated)
+      </span>
     </span>
     """
   end
@@ -1195,8 +1244,14 @@ defmodule TreninoWeb.ConfigurationEditLive do
           <tr :for={output <- @outputs} class="hover:bg-base-200/50">
             <td class="text-center font-mono">{output.pin}</td>
             <td>
-              <span :if={output.name} class="text-sm">{output.name}</span>
-              <span :if={!output.name} class="text-sm text-base-content/50 italic">Unnamed</span>
+              <input
+                type="text"
+                value={output.name || ""}
+                placeholder="Unnamed"
+                phx-blur="update_output_name"
+                phx-value-id={output.id}
+                class="input input-ghost input-xs w-full max-w-40 placeholder:italic placeholder:text-base-content/50"
+              />
             </td>
             <td :if={@active_port} class="text-center">
               <button
@@ -1252,6 +1307,18 @@ defmodule TreninoWeb.ConfigurationEditLive do
 
         <.form for={@form} phx-change="validate_input" phx-submit="add_input">
           <div class="space-y-4">
+            <div>
+              <label class="label">
+                <span class="label-text">Name (optional)</span>
+              </label>
+              <.input
+                field={@form[:name]}
+                type="text"
+                placeholder="e.g., Horn Button, Throttle"
+                class="input input-bordered w-full"
+              />
+            </div>
+
             <div>
               <label class="label">
                 <span class="label-text">Input Type</span>

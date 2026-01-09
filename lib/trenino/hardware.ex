@@ -309,6 +309,16 @@ defmodule Trenino.Hardware do
   end
 
   @doc """
+  Update an input.
+  """
+  @spec update_input(Input.t(), map()) :: {:ok, Input.t()} | {:error, Ecto.Changeset.t()}
+  def update_input(%Input{} = input, attrs) do
+    input
+    |> Input.changeset(attrs)
+    |> Repo.update()
+  end
+
+  @doc """
   Get an input by ID.
 
   ## Options
@@ -591,6 +601,16 @@ defmodule Trenino.Hardware do
 
   def delete_output(%Output{} = output) do
     Repo.delete(output)
+  end
+
+  @doc """
+  Update an output.
+  """
+  @spec update_output(Output.t(), map()) :: {:ok, Output.t()} | {:error, Ecto.Changeset.t()}
+  def update_output(%Output{} = output, attrs) do
+    output
+    |> Output.changeset(attrs)
+    |> Repo.update()
   end
 
   # Calibration operations
