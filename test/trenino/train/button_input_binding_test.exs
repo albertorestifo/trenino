@@ -223,4 +223,140 @@ defmodule Trenino.Train.ButtonInputBindingTest do
       assert Repo.get(ButtonInputBinding, binding.id) == nil
     end
   end
+
+  describe "sequence mode validation" do
+    setup do
+      {:ok, device} = Hardware.create_device(%{name: "Test Device"})
+
+      {:ok, input} =
+        Hardware.create_input(device.id, %{pin: 5, input_type: :button, debounce: 20})
+
+      {:ok, train} = TrainContext.create_train(%{name: "Test Train", identifier: "seq_test"})
+      {:ok, element} = TrainContext.create_element(train.id, %{name: "Door", type: :button})
+      {:ok, sequence} = TrainContext.create_sequence(train.id, %{name: "Open Door"})
+      {:ok, sequence2} = TrainContext.create_sequence(train.id, %{name: "Close Door"})
+
+      %{input: input, element: element, sequence: sequence, sequence2: sequence2}
+    end
+
+    test "valid with on_sequence_id only (momentary hardware)", %{
+      input: input,
+      element: element,
+      sequence: sequence
+    } do
+      attrs = %{
+        element_id: element.id,
+        input_id: input.id,
+        mode: :sequence,
+        hardware_type: :momentary,
+        on_sequence_id: sequence.id
+      }
+
+      changeset = ButtonInputBinding.changeset(%ButtonInputBinding{}, attrs)
+      assert changeset.valid?
+    end
+
+    test "valid with on_sequence_id only (latching hardware)", %{
+      input: input,
+      element: element,
+      sequence: sequence
+    } do
+      attrs = %{
+        element_id: element.id,
+        input_id: input.id,
+        mode: :sequence,
+        hardware_type: :latching,
+        on_sequence_id: sequence.id
+      }
+
+      changeset = ButtonInputBinding.changeset(%ButtonInputBinding{}, attrs)
+      assert changeset.valid?
+    end
+
+    test "valid with off_sequence_id only (latching hardware)", %{
+      input: input,
+      element: element,
+      sequence: sequence
+    } do
+      attrs = %{
+        element_id: element.id,
+        input_id: input.id,
+        mode: :sequence,
+        hardware_type: :latching,
+        off_sequence_id: sequence.id
+      }
+
+      changeset = ButtonInputBinding.changeset(%ButtonInputBinding{}, attrs)
+      assert changeset.valid?
+    end
+
+    test "valid with both sequences (latching hardware)", %{
+      input: input,
+      element: element,
+      sequence: sequence,
+      sequence2: sequence2
+    } do
+      attrs = %{
+        element_id: element.id,
+        input_id: input.id,
+        mode: :sequence,
+        hardware_type: :latching,
+        on_sequence_id: sequence.id,
+        off_sequence_id: sequence2.id
+      }
+
+      changeset = ButtonInputBinding.changeset(%ButtonInputBinding{}, attrs)
+      assert changeset.valid?
+    end
+
+    test "invalid without any sequence", %{input: input, element: element} do
+      attrs = %{
+        element_id: element.id,
+        input_id: input.id,
+        mode: :sequence,
+        hardware_type: :momentary
+      }
+
+      changeset = ButtonInputBinding.changeset(%ButtonInputBinding{}, attrs)
+      refute changeset.valid?
+      assert %{on_sequence_id: ["at least one sequence is required"]} = errors_on(changeset)
+    end
+
+    test "invalid with off_sequence_id on momentary hardware", %{
+      input: input,
+      element: element,
+      sequence: sequence
+    } do
+      attrs = %{
+        element_id: element.id,
+        input_id: input.id,
+        mode: :sequence,
+        hardware_type: :momentary,
+        on_sequence_id: sequence.id,
+        off_sequence_id: sequence.id
+      }
+
+      changeset = ButtonInputBinding.changeset(%ButtonInputBinding{}, attrs)
+      refute changeset.valid?
+      assert %{off_sequence_id: ["is only valid for latching hardware"]} = errors_on(changeset)
+    end
+
+    test "invalid with off_sequence_id when mode is not sequence", %{
+      input: input,
+      element: element,
+      sequence: sequence
+    } do
+      attrs = %{
+        element_id: element.id,
+        input_id: input.id,
+        mode: :simple,
+        endpoint: "Test.Endpoint",
+        off_sequence_id: sequence.id
+      }
+
+      changeset = ButtonInputBinding.changeset(%ButtonInputBinding{}, attrs)
+      refute changeset.valid?
+      assert %{off_sequence_id: ["is only valid in sequence mode"]} = errors_on(changeset)
+    end
+  end
 end

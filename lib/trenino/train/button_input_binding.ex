@@ -123,8 +123,8 @@ defmodule Trenino.Train.ButtonInputBinding do
         |> validate_required([:endpoint, :repeat_interval_ms])
 
       :sequence ->
-        # Sequence mode requires on_sequence_id
-        validate_required(changeset, [:on_sequence_id])
+        # Sequence mode requires at least one sequence (on or off)
+        validate_at_least_one_sequence(changeset)
 
       :keystroke ->
         # Keystroke mode requires keystroke field
@@ -132,6 +132,18 @@ defmodule Trenino.Train.ButtonInputBinding do
 
       nil ->
         changeset
+    end
+  end
+
+  # Validate that at least one sequence is selected in sequence mode
+  defp validate_at_least_one_sequence(changeset) do
+    on_seq = get_field(changeset, :on_sequence_id)
+    off_seq = get_field(changeset, :off_sequence_id)
+
+    if is_nil(on_seq) and is_nil(off_seq) do
+      add_error(changeset, :on_sequence_id, "at least one sequence is required")
+    else
+      changeset
     end
   end
 

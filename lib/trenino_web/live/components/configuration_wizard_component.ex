@@ -193,7 +193,7 @@ defmodule TreninoWeb.ConfigurationWizardComponent do
     # - simple/momentary: requires endpoint
     is_complete =
       case binding.mode do
-        :sequence -> not is_nil(binding.on_sequence_id)
+        :sequence -> not is_nil(binding.on_sequence_id) or not is_nil(binding.off_sequence_id)
         :keystroke -> not is_nil(binding.keystroke) and binding.keystroke != ""
         _ -> not is_nil(binding.endpoint)
       end
@@ -366,6 +366,19 @@ defmodule TreninoWeb.ConfigurationWizardComponent do
   end
 
   @impl true
+  def handle_event("choose_sequence_binding", _params, socket) do
+    # User chose to trigger a sequence
+    socket =
+      socket
+      |> assign(:wizard_step, :testing)
+      |> assign(:binding_mode, :sequence)
+      |> assign(:detected_endpoints, %{})
+      |> check_mapping_complete()
+
+    {:noreply, socket}
+  end
+
+  @impl true
   def handle_event("start_keystroke_capture", _params, socket) do
     {:noreply, assign(socket, :capturing_keystroke, true)}
   end
@@ -445,10 +458,10 @@ defmodule TreninoWeb.ConfigurationWizardComponent do
 
   @impl true
   def handle_event("back_to_browsing", _params, socket) do
-    # For keystroke mode, go back to type selection since there's no browsing step
+    # For keystroke/sequence mode, go back to type selection since there's no browsing step
     # For simulator mode, go back to browsing
     next_step =
-      if socket.assigns.binding_mode == :keystroke do
+      if socket.assigns.binding_mode in [:keystroke, :sequence] do
         :choosing_type
       else
         :browsing
@@ -596,7 +609,7 @@ defmodule TreninoWeb.ConfigurationWizardComponent do
               completed={@wizard_step in [:browsing, :testing]}
             />
             <div class="flex-1 h-px bg-base-300" />
-            <%= if @binding_mode == :keystroke do %>
+            <%= if @binding_mode in [:keystroke, :sequence] do %>
               <.step_indicator
                 step={2}
                 label="Configure"
@@ -622,52 +635,82 @@ defmodule TreninoWeb.ConfigurationWizardComponent do
         </div>
 
         <div class="flex-1 overflow-hidden flex">
-          <div :if={@wizard_step == :choosing_type} class="flex-1 p-8">
-            <div class="max-w-lg mx-auto space-y-6">
-              <div class="text-center mb-8">
-                <h3 class="text-xl font-semibold mb-2">What should this button do?</h3>
-                <p class="text-base-content/60">
-                  Choose how the hardware button will control the simulator
-                </p>
+          <div :if={@wizard_step == :choosing_type} class="flex-1 p-6">
+            <div class="max-w-xl mx-auto">
+              <div class="text-center mb-6">
+                <h3 class="text-lg font-semibold">What should this button do?</h3>
               </div>
 
-              <button
-                type="button"
-                phx-click="choose_simulator_binding"
-                phx-target={@myself}
-                class="w-full p-6 rounded-xl border-2 border-base-300 hover:border-primary hover:bg-primary/5 transition-all text-left group"
-              >
-                <div class="flex items-start gap-4">
-                  <div class="p-3 rounded-lg bg-primary/10 text-primary group-hover:bg-primary group-hover:text-primary-content transition-colors">
-                    <.icon name="hero-cpu-chip" class="w-8 h-8" />
+              <div class="space-y-3">
+                <button
+                  type="button"
+                  phx-click="choose_simulator_binding"
+                  phx-target={@myself}
+                  class="w-full p-4 rounded-lg border border-base-300 hover:border-primary hover:bg-primary/5 transition-all text-left group"
+                >
+                  <div class="flex items-center gap-3">
+                    <div class="p-2 rounded-lg bg-primary/10 text-primary group-hover:bg-primary group-hover:text-primary-content transition-colors">
+                      <.icon name="hero-cpu-chip" class="w-5 h-5" />
+                    </div>
+                    <div class="flex-1 min-w-0">
+                      <h4 class="font-medium">Simulator Control</h4>
+                      <p class="text-sm text-base-content/60">
+                        Control a function via the simulator API
+                      </p>
+                    </div>
+                    <.icon
+                      name="hero-chevron-right"
+                      class="w-5 h-5 text-base-content/30 group-hover:text-primary transition-colors"
+                    />
                   </div>
-                  <div>
-                    <h4 class="font-semibold text-lg">Simulator Control</h4>
-                    <p class="text-base-content/60 mt-1">
-                      Control a simulator function via the API. Use for throttle, brakes, lights, doors, and other train controls.
-                    </p>
-                  </div>
-                </div>
-              </button>
+                </button>
 
-              <button
-                type="button"
-                phx-click="choose_keystroke_binding"
-                phx-target={@myself}
-                class="w-full p-6 rounded-xl border-2 border-base-300 hover:border-secondary hover:bg-secondary/5 transition-all text-left group"
-              >
-                <div class="flex items-start gap-4">
-                  <div class="p-3 rounded-lg bg-secondary/10 text-secondary group-hover:bg-secondary group-hover:text-secondary-content transition-colors">
-                    <.icon name="hero-cursor-arrow-ripple" class="w-8 h-8" />
+                <button
+                  type="button"
+                  phx-click="choose_sequence_binding"
+                  phx-target={@myself}
+                  class="w-full p-4 rounded-lg border border-base-300 hover:border-accent hover:bg-accent/5 transition-all text-left group"
+                >
+                  <div class="flex items-center gap-3">
+                    <div class="p-2 rounded-lg bg-accent/10 text-accent group-hover:bg-accent group-hover:text-accent-content transition-colors">
+                      <.icon name="hero-list-bullet" class="w-5 h-5" />
+                    </div>
+                    <div class="flex-1 min-w-0">
+                      <h4 class="font-medium">Trigger Sequence</h4>
+                      <p class="text-sm text-base-content/60">
+                        Execute a sequence of commands
+                      </p>
+                    </div>
+                    <.icon
+                      name="hero-chevron-right"
+                      class="w-5 h-5 text-base-content/30 group-hover:text-accent transition-colors"
+                    />
                   </div>
-                  <div>
-                    <h4 class="font-semibold text-lg">Keyboard Key</h4>
-                    <p class="text-base-content/60 mt-1">
-                      Simulate a keyboard press. Use when the simulator responds better to keyboard input, or for custom key bindings.
-                    </p>
+                </button>
+
+                <button
+                  type="button"
+                  phx-click="choose_keystroke_binding"
+                  phx-target={@myself}
+                  class="w-full p-4 rounded-lg border border-base-300 hover:border-secondary hover:bg-secondary/5 transition-all text-left group"
+                >
+                  <div class="flex items-center gap-3">
+                    <div class="p-2 rounded-lg bg-secondary/10 text-secondary group-hover:bg-secondary group-hover:text-secondary-content transition-colors">
+                      <.icon name="hero-cursor-arrow-ripple" class="w-5 h-5" />
+                    </div>
+                    <div class="flex-1 min-w-0">
+                      <h4 class="font-medium">Keyboard Key</h4>
+                      <p class="text-sm text-base-content/60">
+                        Simulate a keyboard press
+                      </p>
+                    </div>
+                    <.icon
+                      name="hero-chevron-right"
+                      class="w-5 h-5 text-base-content/30 group-hover:text-secondary transition-colors"
+                    />
                   </div>
-                </div>
-              </button>
+                </button>
+              </div>
             </div>
           </div>
 
@@ -795,7 +838,7 @@ defmodule TreninoWeb.ConfigurationWizardComponent do
 
     ~H"""
     <div class="space-y-6">
-      <div :if={@binding_mode != :keystroke}>
+      <div :if={@binding_mode not in [:keystroke, :sequence]}>
         <h3 class="font-semibold mb-2">Selected Endpoint</h3>
         <div class="bg-base-200 rounded-lg p-3 font-mono text-sm">
           {@detected_endpoints[:endpoint]}
@@ -878,7 +921,26 @@ defmodule TreninoWeb.ConfigurationWizardComponent do
       </div>
 
       <form phx-change="update_button_fields" phx-target={@myself}>
-        <div class="grid grid-cols-2 gap-4">
+        <!-- For sequence mode: only show Hardware Type -->
+        <div :if={@binding_mode == :sequence}>
+          <label class="label">
+            <span class="label-text font-medium">Hardware Type</span>
+          </label>
+          <select name="hardware_type" class="select select-bordered w-full">
+            <option value="momentary" selected={@hardware_type == :momentary}>
+              Momentary (spring-loaded)
+            </option>
+            <option value="latching" selected={@hardware_type == :latching}>
+              Latching (toggle switch)
+            </option>
+          </select>
+          <p class="text-xs text-base-content/50 mt-1">
+            {hardware_type_description(@hardware_type)}
+          </p>
+        </div>
+        
+    <!-- For other modes: show Button Mode + Hardware Type side by side -->
+        <div :if={@binding_mode != :sequence} class="grid grid-cols-2 gap-4">
           <div>
             <label class="label">
               <span class="label-text font-medium">Button Mode</span>
@@ -926,15 +988,30 @@ defmodule TreninoWeb.ConfigurationWizardComponent do
         </div>
 
         <div :if={@binding_mode == :sequence} class="bg-base-200/50 rounded-lg p-4 space-y-4 mt-4">
-          <div>
+          <div :if={Enum.empty?(@sequences)} class="alert alert-warning">
+            <.icon name="hero-exclamation-triangle" class="w-5 h-5" />
+            <div>
+              <span>No sequences defined.</span>
+              <a
+                href="#sequences"
+                phx-click="cancel"
+                phx-target={@myself}
+                class="link link-primary ml-1"
+              >
+                Create one in the Sequences section
+              </a>
+            </div>
+          </div>
+
+          <div :if={not Enum.empty?(@sequences)}>
             <label class="label">
-              <span class="label-text font-medium">Press Sequence</span>
+              <span class="label-text font-medium">On Press</span>
             </label>
             <select
               name="on_sequence_id"
               class="select select-bordered w-full"
             >
-              <option value="" selected={@on_sequence_id == nil}>Select a sequence...</option>
+              <option value="" selected={@on_sequence_id == nil}>None</option>
               <option
                 :for={seq <- @sequences}
                 value={seq.id}
@@ -948,9 +1025,9 @@ defmodule TreninoWeb.ConfigurationWizardComponent do
             </p>
           </div>
 
-          <div :if={@hardware_type == :latching}>
+          <div :if={@hardware_type == :latching and not Enum.empty?(@sequences)}>
             <label class="label">
-              <span class="label-text font-medium">Release Sequence (optional)</span>
+              <span class="label-text font-medium">On Release</span>
             </label>
             <select
               name="off_sequence_id"
@@ -966,24 +1043,16 @@ defmodule TreninoWeb.ConfigurationWizardComponent do
               </option>
             </select>
             <p class="text-xs text-base-content/50 mt-1">
-              Sequence to execute when toggle is turned off (latching hardware only)
+              Sequence to execute when toggle is turned off
             </p>
           </div>
 
-          <div :if={Enum.empty?(@sequences)} class="alert alert-warning">
-            <.icon name="hero-exclamation-triangle" class="w-5 h-5" />
-            <div>
-              <span>No sequences defined.</span>
-              <a
-                href="#sequences"
-                phx-click="cancel"
-                phx-target={@myself}
-                class="link link-primary ml-1"
-              >
-                Create one in the Sequences section
-              </a>
-            </div>
-          </div>
+          <p
+            :if={not Enum.empty?(@sequences) and @on_sequence_id == nil and @off_sequence_id == nil}
+            class="text-xs text-warning"
+          >
+            Select at least one sequence
+          </p>
         </div>
 
         <div :if={@binding_mode == :keystroke} class="bg-base-200/50 rounded-lg p-4 mt-4">
@@ -1265,9 +1334,11 @@ defmodule TreninoWeb.ConfigurationWizardComponent do
 
   defp check_mapping_complete(%{assigns: %{binding_mode: :sequence}} = socket) do
     has_input = socket.assigns.selected_input_id != nil
-    has_sequence = socket.assigns.on_sequence_id != nil
+    has_on_sequence = socket.assigns.on_sequence_id != nil
+    has_off_sequence = socket.assigns.off_sequence_id != nil
+    has_any_sequence = has_on_sequence or has_off_sequence
 
-    assign(socket, :mapping_complete, has_input and has_sequence)
+    assign(socket, :mapping_complete, has_input and has_any_sequence)
   end
 
   defp check_mapping_complete(%{assigns: %{binding_mode: :keystroke}} = socket) do
