@@ -97,7 +97,9 @@ defmodule TreninoWeb.TrainEditLive do
      |> assign(:show_output_wizard, false)
      |> assign(:output_wizard_binding, nil)
      |> assign(:output_wizard_event, nil)
-     |> assign(:available_outputs, [])}
+     |> assign(:available_outputs, [])
+     |> assign(:sequence_manager_event, nil)
+     |> assign(:value_polling_target, nil)}
   end
 
   defp mount_existing(socket, train_id) do
@@ -145,7 +147,9 @@ defmodule TreninoWeb.TrainEditLive do
          |> assign(:show_output_wizard, false)
          |> assign(:output_wizard_binding, nil)
          |> assign(:output_wizard_event, nil)
-         |> assign(:available_outputs, available_outputs)}
+         |> assign(:available_outputs, available_outputs)
+         |> assign(:sequence_manager_event, nil)
+         |> assign(:value_polling_target, nil)}
 
       {:error, :not_found} ->
         {:ok,
@@ -514,6 +518,12 @@ defmodule TreninoWeb.TrainEditLive do
          |> assign(:config_wizard_event, {:auto_detect_result, change})}
 
       true ->
+        # Try forwarding to EndpointSelectorComponent (used by SequenceManagerComponent)
+        send_update(TreninoWeb.EndpointSelectorComponent,
+          id: "sequence-command-endpoint-selector",
+          explorer_event: {:auto_detect_result, change}
+        )
+
         {:noreply, assign(socket, :show_auto_detect, false)}
     end
   end
@@ -536,6 +546,12 @@ defmodule TreninoWeb.TrainEditLive do
          |> assign(:config_wizard_event, :auto_detect_cancelled)}
 
       true ->
+        # Try forwarding to EndpointSelectorComponent (used by SequenceManagerComponent)
+        send_update(TreninoWeb.EndpointSelectorComponent,
+          id: "sequence-command-endpoint-selector",
+          explorer_event: :auto_detect_cancelled
+        )
+
         {:noreply,
          socket
          |> assign(:show_auto_detect, false)
@@ -596,6 +612,12 @@ defmodule TreninoWeb.TrainEditLive do
         {:noreply, assign(socket, :output_wizard_event, {:select, field, path})}
 
       true ->
+        # Try forwarding to EndpointSelectorComponent (used by SequenceManagerComponent)
+        send_update(TreninoWeb.EndpointSelectorComponent,
+          id: "sequence-command-endpoint-selector",
+          explorer_event: {:select, field, path}
+        )
+
         {:noreply,
          socket
          |> assign(:show_api_explorer, false)
@@ -616,6 +638,12 @@ defmodule TreninoWeb.TrainEditLive do
         {:noreply, assign(socket, :output_wizard_event, :close)}
 
       true ->
+        # Try forwarding to EndpointSelectorComponent (used by SequenceManagerComponent)
+        send_update(TreninoWeb.EndpointSelectorComponent,
+          id: "sequence-command-endpoint-selector",
+          explorer_event: :close
+        )
+
         {:noreply,
          socket
          |> assign(:show_api_explorer, false)
@@ -734,6 +762,10 @@ defmodule TreninoWeb.TrainEditLive do
 
     Logger.debug("[ValuePolling] Attempting to subscribe to: #{inspect(endpoint)}")
 
+    # Determine polling target based on which component is active
+    polling_target =
+      if socket.assigns.show_config_wizard, do: :config_wizard, else: :endpoint_selector
+
     if client && endpoint do
       # Clean up any existing subscription and create a new one
       SimulatorClient.unsubscribe(client, @value_detection_subscription_id)
@@ -743,7 +775,11 @@ defmodule TreninoWeb.TrainEditLive do
           Logger.info("[ValuePolling] Subscribed to #{endpoint}")
           # Start polling the subscription (every 200ms)
           {:ok, timer_ref} = :timer.send_interval(200, :poll_value_subscription)
-          {:noreply, assign(socket, :value_polling_timer, timer_ref)}
+
+          {:noreply,
+           socket
+           |> assign(:value_polling_timer, timer_ref)
+           |> assign(:value_polling_target, polling_target)}
 
         {:error, reason} ->
           Logger.warning("[ValuePolling] Failed to subscribe: #{inspect(reason)}")
@@ -771,21 +807,18 @@ defmodule TreninoWeb.TrainEditLive do
   @impl true
   def handle_info(:poll_value_subscription, socket) do
     client = socket.assigns.nav_simulator_status.client
+    polling_target = socket.assigns[:value_polling_target] || :config_wizard
 
     if client do
       case SimulatorClient.get_subscription(client, @value_detection_subscription_id) do
         {:ok, %{"Entries" => [%{"Values" => values} | _]}} when map_size(values) > 0 ->
-          # Extract the first value from the Values map
           value =
             values
             |> Map.values()
             |> List.first()
             |> then(&Float.round(&1 * 1.0, 2))
 
-          send_update(TreninoWeb.ConfigurationWizardComponent,
-            id: "config-wizard",
-            value_polling_result: value
-          )
+          send_polled_value_to_component(polling_target, value)
 
         {:ok, response} ->
           Logger.debug("[ValuePolling] Unexpected response: #{inspect(response)}")
@@ -910,10 +943,33 @@ defmodule TreninoWeb.TrainEditLive do
     {:noreply, assign(socket, :sequences, sequences)}
   end
 
+  # EndpointSelectorComponent events - forward to SequenceManagerComponent
+  @impl true
+  def handle_info(
+        {:endpoint_selector, "sequence-command-endpoint-selector", _event} = full_event,
+        socket
+      ) do
+    {:noreply, assign(socket, :sequence_manager_event, full_event)}
+  end
+
   @impl true
   def handle_info(_msg, socket), do: {:noreply, socket}
 
   # Private functions
+
+  defp send_polled_value_to_component(:config_wizard, value) do
+    send_update(TreninoWeb.ConfigurationWizardComponent,
+      id: "config-wizard",
+      value_polling_result: value
+    )
+  end
+
+  defp send_polled_value_to_component(:endpoint_selector, value) do
+    send_update(TreninoWeb.EndpointSelectorComponent,
+      id: "sequence-command-endpoint-selector",
+      value_polling_result: value
+    )
+  end
 
   defp forward_mapping_state(socket, state) do
     if socket.assigns.show_lever_setup_wizard do
@@ -1105,6 +1161,8 @@ defmodule TreninoWeb.TrainEditLive do
           id="sequence-manager"
           train_id={@train.id}
           sequences={@sequences}
+          client={@nav_simulator_status.client}
+          explorer_event={@sequence_manager_event}
         />
 
         <div :if={not @new_mode} class="bg-base-200/50 rounded-xl p-6 mt-6">

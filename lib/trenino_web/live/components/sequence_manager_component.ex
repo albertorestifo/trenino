@@ -7,6 +7,7 @@ defmodule TreninoWeb.SequenceManagerComponent do
   - Creating new sequences
   - Editing sequence commands (add/remove/reorder)
   - Deleting sequences
+  - Configuring command endpoints using EndpointSelectorComponent
   """
 
   use TreninoWeb, :live_component
@@ -22,7 +23,8 @@ defmodule TreninoWeb.SequenceManagerComponent do
      |> assign(:editing_sequence, nil)
      |> assign(:editing_commands, [])
      |> assign(:show_add_modal, false)
-     |> assign(:new_sequence_name, "")}
+     |> assign(:new_sequence_name, "")
+     |> assign(:configuring_command_index, nil)}
   end
 
   @impl true
@@ -31,9 +33,69 @@ defmodule TreninoWeb.SequenceManagerComponent do
       socket
       |> assign(:train_id, assigns.train_id)
       |> assign(:sequences, assigns.sequences || [])
+      |> assign(:client, Map.get(assigns, :client))
+      |> handle_explorer_event(Map.get(assigns, :explorer_event))
 
     {:ok, socket}
   end
+
+  defp handle_explorer_event(socket, nil), do: socket
+
+  defp handle_explorer_event(
+         socket,
+         {:endpoint_selector, "sequence-command-endpoint-selector",
+          {:completed, %{endpoint: endpoint, value: value}}}
+       ) do
+    # Combined event with both endpoint and value - update command and close selector
+    if socket.assigns.configuring_command_index != nil do
+      index = socket.assigns.configuring_command_index
+      commands = socket.assigns.editing_commands
+
+      updated_command =
+        commands
+        |> Enum.at(index)
+        |> Map.put(:endpoint, endpoint)
+        |> Map.put(:value, value)
+
+      socket
+      |> assign(:editing_commands, List.replace_at(commands, index, updated_command))
+      |> assign(:configuring_command_index, nil)
+    else
+      socket
+    end
+  end
+
+  defp handle_explorer_event(
+         socket,
+         {:endpoint_selector, "sequence-command-endpoint-selector",
+          {:endpoint_selected, endpoint}}
+       ) do
+    # Single endpoint selection (when value detection is disabled)
+    if socket.assigns.configuring_command_index != nil do
+      index = socket.assigns.configuring_command_index
+      commands = socket.assigns.editing_commands
+
+      updated_command =
+        commands
+        |> Enum.at(index)
+        |> Map.put(:endpoint, endpoint)
+
+      socket
+      |> assign(:editing_commands, List.replace_at(commands, index, updated_command))
+      |> assign(:configuring_command_index, nil)
+    else
+      socket
+    end
+  end
+
+  defp handle_explorer_event(
+         socket,
+         {:endpoint_selector, "sequence-command-endpoint-selector", :cancelled}
+       ) do
+    assign(socket, :configuring_command_index, nil)
+  end
+
+  defp handle_explorer_event(socket, _event), do: socket
 
   @impl true
   def handle_event("open_add_modal", _params, socket) do
@@ -106,7 +168,19 @@ defmodule TreninoWeb.SequenceManagerComponent do
     {:noreply,
      socket
      |> assign(:editing_sequence, nil)
-     |> assign(:editing_commands, [])}
+     |> assign(:editing_commands, [])
+     |> assign(:configuring_command_index, nil)}
+  end
+
+  @impl true
+  def handle_event("configure_command", %{"index" => index_str}, socket) do
+    index = String.to_integer(index_str)
+    {:noreply, assign(socket, :configuring_command_index, index)}
+  end
+
+  @impl true
+  def handle_event("close_command_config", _params, socket) do
+    {:noreply, assign(socket, :configuring_command_index, nil)}
   end
 
   @impl true
@@ -167,7 +241,8 @@ defmodule TreninoWeb.SequenceManagerComponent do
         {:noreply,
          socket
          |> assign(:editing_sequence, nil)
-         |> assign(:editing_commands, [])}
+         |> assign(:editing_commands, [])
+         |> assign(:configuring_command_index, nil)}
 
       {:error, _reason} ->
         {:noreply, socket}
@@ -305,7 +380,20 @@ defmodule TreninoWeb.SequenceManagerComponent do
         :if={@editing_sequence}
         sequence={@editing_sequence}
         commands={@editing_commands}
+        client={@client}
+        configuring_command_index={@configuring_command_index}
         myself={@myself}
+      />
+
+      <.live_component
+        :if={@configuring_command_index != nil && @client != nil}
+        module={TreninoWeb.EndpointSelectorComponent}
+        id="sequence-command-endpoint-selector"
+        client={@client}
+        mode={:sequence}
+        include_value_detection={true}
+        selected_endpoint={Enum.at(@editing_commands, @configuring_command_index)[:endpoint]}
+        selected_value={Enum.at(@editing_commands, @configuring_command_index)[:value]}
       />
     </div>
     """
@@ -415,6 +503,8 @@ defmodule TreninoWeb.SequenceManagerComponent do
 
   attr :sequence, :map, required: true
   attr :commands, :list, required: true
+  attr :client, :any, default: nil
+  attr :configuring_command_index, :integer, default: nil
   attr :myself, :any, required: true
 
   defp edit_sequence_modal(assigns) do
@@ -445,16 +535,15 @@ defmodule TreninoWeb.SequenceManagerComponent do
                     <label class="label py-1">
                       <span class="label-text text-xs">Endpoint</span>
                     </label>
-                    <input
-                      type="text"
-                      value={cmd.endpoint}
-                      phx-keyup="update_command"
+                    <button
+                      type="button"
+                      phx-click="configure_command"
                       phx-value-index={index}
-                      phx-value-field="endpoint"
                       phx-target={@myself}
-                      placeholder="CurrentDrivableActor/..."
-                      class="input input-bordered input-sm w-full font-mono"
-                    />
+                      class="input input-bordered input-sm w-full font-mono text-left truncate"
+                    >
+                      {if cmd.endpoint == "", do: "Click to select endpoint...", else: cmd.endpoint}
+                    </button>
                   </div>
                   <div>
                     <label class="label py-1">
