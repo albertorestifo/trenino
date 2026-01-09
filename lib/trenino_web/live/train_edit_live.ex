@@ -1321,17 +1321,24 @@ defmodule TreninoWeb.TrainEditLive do
         submessage="Add elements to control train functions"
       />
 
-      <div :if={not Enum.empty?(@elements)} class="space-y-3">
-        <.lever_element_card
-          :for={element <- Enum.filter(@elements, &(&1.type == :lever))}
-          element={element}
-          is_active={@is_active}
-        />
-        <.button_element_card
-          :for={element <- Enum.filter(@elements, &(&1.type == :button))}
-          element={element}
-          is_active={@is_active}
-        />
+      <div :if={not Enum.empty?(@elements)} class="overflow-x-auto">
+        <table class="table table-sm bg-base-100 rounded-lg">
+          <thead>
+            <tr class="bg-base-200">
+              <th>Name</th>
+              <th>Type</th>
+              <th>Status</th>
+              <th class="w-24"></th>
+            </tr>
+          </thead>
+          <tbody>
+            <.element_row
+              :for={element <- @elements}
+              element={element}
+              is_active={@is_active}
+            />
+          </tbody>
+        </table>
       </div>
     </div>
     """
@@ -1441,6 +1448,123 @@ defmodule TreninoWeb.TrainEditLive do
     """
   end
 
+  attr :element, :map, required: true
+  attr :is_active, :boolean, required: true
+
+  defp element_row(assigns) do
+    {status_badges, configure_action} =
+      case assigns.element.type do
+        :lever ->
+          lever_config = get_lever_config(assigns.element)
+          input_binding = get_input_binding(lever_config)
+          has_input_ranges = has_notch_input_ranges?(lever_config)
+
+          badges =
+            cond do
+              has_input_ranges -> [{:success, "Ready"}]
+              input_binding -> [{:info, "Needs mapping"}]
+              lever_config -> [{:warning, "Needs input"}]
+              true -> [{:ghost, "Not configured"}]
+            end
+
+          {badges, "configure_lever"}
+
+        :button ->
+          button_binding = get_button_binding(assigns.element)
+
+          badges =
+            cond do
+              button_binding && is_button_fully_configured?(button_binding) ->
+                [{:success, "Ready"}]
+
+              button_binding ->
+                [{:info, "Partial"}]
+
+              true ->
+                [{:ghost, "Not configured"}]
+            end
+
+          {badges, "configure_button"}
+
+        _ ->
+          {[{:ghost, "Unknown"}], nil}
+      end
+
+    assigns =
+      assigns
+      |> assign(:status_badges, status_badges)
+      |> assign(:configure_action, configure_action)
+
+    ~H"""
+    <tr class="hover:bg-base-200/50">
+      <td class="font-medium">
+        <div class="flex items-center gap-2">
+          <.icon
+            name={element_type_icon(@element.type)}
+            class="w-4 h-4 text-base-content/50"
+          />
+          {@element.name}
+        </div>
+      </td>
+      <td>
+        <span class="badge badge-ghost badge-sm capitalize">{@element.type}</span>
+      </td>
+      <td>
+        <span
+          :for={{variant, label} <- @status_badges}
+          class={["badge badge-sm", badge_variant_class(variant)]}
+        >
+          {label}
+        </span>
+      </td>
+      <td>
+        <div class="flex gap-1">
+          <button
+            :if={@configure_action}
+            phx-click={@configure_action}
+            phx-value-id={@element.id}
+            class="btn btn-ghost btn-xs"
+            title="Configure"
+          >
+            <.icon name="hero-cog-6-tooth" class="w-4 h-4" />
+          </button>
+          <button
+            phx-click="delete_element"
+            phx-value-id={@element.id}
+            class="btn btn-ghost btn-xs text-error"
+            title="Delete"
+          >
+            <.icon name="hero-trash" class="w-4 h-4" />
+          </button>
+        </div>
+      </td>
+    </tr>
+    """
+  end
+
+  defp element_type_icon(:lever), do: "hero-adjustments-vertical"
+  defp element_type_icon(:button), do: "hero-cursor-arrow-rays"
+  defp element_type_icon(_), do: "hero-cube"
+
+  defp badge_variant_class(:success), do: "badge-success"
+  defp badge_variant_class(:warning), do: "badge-warning"
+  defp badge_variant_class(:info), do: "badge-info"
+  defp badge_variant_class(:error), do: "badge-error"
+  defp badge_variant_class(_), do: "badge-ghost"
+
+  defp is_button_fully_configured?(%{mode: :sequence} = binding) do
+    binding.on_sequence_id != nil or binding.off_sequence_id != nil
+  end
+
+  defp is_button_fully_configured?(%{mode: :keystroke} = binding) do
+    binding.keystroke != nil and binding.keystroke != ""
+  end
+
+  defp is_button_fully_configured?(binding) do
+    binding.endpoint != nil
+  end
+
+  # Keep lever_element_card for reference but not used in table view
   attr :element, :map, required: true
   attr :is_active, :boolean, required: true
 

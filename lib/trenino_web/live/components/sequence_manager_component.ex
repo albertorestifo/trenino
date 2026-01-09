@@ -362,12 +362,23 @@ defmodule TreninoWeb.SequenceManagerComponent do
         submessage="Execute multiple commands from a single button press"
       />
 
-      <div :if={not Enum.empty?(@sequences)} class="space-y-2">
-        <.sequence_card
-          :for={sequence <- @sequences}
-          sequence={sequence}
-          myself={@myself}
-        />
+      <div :if={not Enum.empty?(@sequences)} class="overflow-x-auto">
+        <table class="table table-sm bg-base-100 rounded-lg">
+          <thead>
+            <tr class="bg-base-200">
+              <th>Name</th>
+              <th>Commands</th>
+              <th class="w-32"></th>
+            </tr>
+          </thead>
+          <tbody>
+            <.sequence_row
+              :for={sequence <- @sequences}
+              sequence={sequence}
+              myself={@myself}
+            />
+          </tbody>
+        </table>
       </div>
 
       <.add_sequence_modal
@@ -402,23 +413,25 @@ defmodule TreninoWeb.SequenceManagerComponent do
   attr :sequence, :map, required: true
   attr :myself, :any, required: true
 
-  defp sequence_card(assigns) do
+  defp sequence_row(assigns) do
     command_count = length(assigns.sequence.commands || [])
     assigns = assign(assigns, :command_count, command_count)
 
     ~H"""
-    <div class="bg-base-100 rounded-lg border border-base-300 p-3">
-      <div class="flex items-center justify-between">
-        <div class="flex items-center gap-3">
-          <.icon name="hero-list-bullet" class="w-5 h-5 text-base-content/50" />
-          <div>
-            <h4 class="font-medium text-sm">{@sequence.name}</h4>
-            <p class="text-xs text-base-content/60">
-              {@command_count} command{if @command_count != 1, do: "s"}
-            </p>
-          </div>
+    <tr class="hover:bg-base-200/50">
+      <td class="font-medium">
+        <div class="flex items-center gap-2">
+          <.icon name="hero-list-bullet" class="w-4 h-4 text-base-content/50" />
+          {@sequence.name}
         </div>
-        <div class="flex items-center gap-1">
+      </td>
+      <td>
+        <span class="text-sm text-base-content/60">
+          {@command_count} command{if @command_count != 1, do: "s"}
+        </span>
+      </td>
+      <td>
+        <div class="flex gap-1">
           <button
             phx-click="test_sequence"
             phx-value-id={@sequence.id}
@@ -434,6 +447,7 @@ defmodule TreninoWeb.SequenceManagerComponent do
             phx-value-id={@sequence.id}
             phx-target={@myself}
             class="btn btn-ghost btn-xs"
+            title="Edit"
           >
             <.icon name="hero-pencil" class="w-4 h-4" />
           </button>
@@ -442,13 +456,14 @@ defmodule TreninoWeb.SequenceManagerComponent do
             phx-value-id={@sequence.id}
             phx-target={@myself}
             class="btn btn-ghost btn-xs text-error"
+            title="Delete"
             data-confirm="Delete this sequence?"
           >
             <.icon name="hero-trash" class="w-4 h-4" />
           </button>
         </div>
-      </div>
-    </div>
+      </td>
+    </tr>
     """
   end
 
