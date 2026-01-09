@@ -39,6 +39,7 @@ defmodule TreninoWeb.EndpointSelectorComponent do
   @impl true
   def update(
         %{
+          id: id,
           client: %Client{} = client,
           mode: mode,
           include_value_detection: include_value_detection
@@ -47,6 +48,7 @@ defmodule TreninoWeb.EndpointSelectorComponent do
       ) do
     socket =
       socket
+      |> assign(:id, id)
       |> assign(:client, client)
       |> assign(:mode, mode)
       |> assign(:include_value_detection, include_value_detection)

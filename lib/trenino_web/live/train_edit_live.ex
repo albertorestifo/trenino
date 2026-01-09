@@ -681,10 +681,19 @@ defmodule TreninoWeb.TrainEditLive do
 
   @impl true
   def handle_info({:api_explorer_button_detected, detection}, socket) do
-    if socket.assigns.show_config_wizard do
-      {:noreply, assign(socket, :config_wizard_event, {:button_detected, detection})}
-    else
-      {:noreply, socket}
+    cond do
+      socket.assigns.show_config_wizard ->
+        {:noreply, assign(socket, :config_wizard_event, {:button_detected, detection})}
+
+      true ->
+        # Forward to EndpointSelectorComponent (used by SequenceManagerComponent)
+        # Convert button detection to a select event with the endpoint path
+        send_update(TreninoWeb.EndpointSelectorComponent,
+          id: "sequence-command-endpoint-selector",
+          explorer_event: {:select, :endpoint, detection.endpoint}
+        )
+
+        {:noreply, socket}
     end
   end
 

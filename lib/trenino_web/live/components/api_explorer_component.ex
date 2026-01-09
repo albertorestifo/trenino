@@ -742,6 +742,7 @@ defmodule TreninoWeb.ApiExplorerComponent do
   # Optional: Function.GetNotchCount, Function.GetCurrentNotchIndex
   # Only detected when mode is :lever or nil (auto-detect)
   defp detect_lever_endpoints(_endpoint_items, _node_path, :button), do: nil
+  defp detect_lever_endpoints(_endpoint_items, _node_path, :sequence), do: nil
   defp detect_lever_endpoints(_endpoint_items, _node_path, :none), do: nil
 
   defp detect_lever_endpoints(endpoint_items, node_path, _mode) do
