@@ -171,21 +171,30 @@ defmodule Trenino.Simulator.LeverAnalyzer do
     end
   end
 
+  @quick_check_delay_ms 100
+
   @doc """
   Quick check to determine if a lever appears to be discrete or continuous
   without doing a full sweep. Samples at strategic positions.
 
   Returns `{:ok, :discrete | :continuous | :unknown}` or `{:error, reason}`.
+
+  ## Options
+
+    * `:delay_ms` - Delay between setting input and reading output (default: #{@quick_check_delay_ms}ms).
+      Use 0 in tests to speed up execution.
   """
-  @spec quick_check(Client.t(), String.t()) :: {:ok, atom()} | {:error, term()}
-  def quick_check(%Client{} = client, control_path) do
+  @spec quick_check(Client.t(), String.t(), keyword()) :: {:ok, atom()} | {:error, term()}
+  def quick_check(%Client{} = client, control_path, opts \\ []) do
+    delay_ms = Keyword.get(opts, :delay_ms, @quick_check_delay_ms)
+
     # Sample at strategic positions
     test_points = [0.0, 0.25, 0.5, 0.75, 1.0]
 
     results =
       Enum.map(test_points, fn input ->
         with {:ok, _} <- Client.set(client, "#{control_path}.InputValue", input),
-             :ok <- Process.sleep(100) do
+             :ok <- sleep(delay_ms) do
           Client.get_float(client, "#{control_path}.Function.GetCurrentOutputValue")
         end
       end)
@@ -544,4 +553,8 @@ defmodule Trenino.Simulator.LeverAnalyzer do
       end
     end)
   end
+
+  # Conditionally sleep - allows tests to use delay_ms: 0 for fast execution
+  defp sleep(0), do: :ok
+  defp sleep(ms), do: Process.sleep(ms)
 end

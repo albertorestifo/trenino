@@ -10,7 +10,8 @@ config :trenino, Trenino.Repo,
   pool_size: 10,
   pool: Ecto.Adapters.SQL.Sandbox,
   # Prevent "Database busy" errors with async tests
-  busy_timeout: 10000,
+  # SQLite has limited write concurrency; increase timeout to handle heavy load
+  busy_timeout: 30_000,
   # Enable WAL mode for better concurrent access (reduces lock contention)
   journal_mode: :wal,
   cache_size: -64000,

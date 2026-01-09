@@ -123,7 +123,8 @@ defmodule Trenino.Simulator.LeverAnalyzerTest do
         end
       end)
 
-      assert {:ok, :discrete} = LeverAnalyzer.quick_check(client, "CurrentDrivableActor/Reverser")
+      assert {:ok, :discrete} =
+               LeverAnalyzer.quick_check(client, "CurrentDrivableActor/Reverser", delay_ms: 0)
     end
 
     test "returns :continuous for fractional outputs" do
@@ -149,7 +150,7 @@ defmodule Trenino.Simulator.LeverAnalyzerTest do
       end)
 
       assert {:ok, :continuous} =
-               LeverAnalyzer.quick_check(client, "CurrentDrivableActor/Throttle")
+               LeverAnalyzer.quick_check(client, "CurrentDrivableActor/Throttle", delay_ms: 0)
     end
   end
 
