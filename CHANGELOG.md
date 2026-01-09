@@ -8,55 +8,73 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
-- **LED output test toggle button**
-  - Single toggle button in the outputs table replaces separate ON/OFF buttons
-  - Button shows current state (ON/OFF) and changes appearance when active
-  - State is tracked per-output for visual feedback
+### Changed
+
+### Fixed
+
+### Removed
+
+## [0.5.0] - 2026-01-09
+
+### Added
+
+- **LED output bindings** - Bind hardware LEDs to simulator state
+  - Create output bindings that control LEDs based on API values
+  - Boolean operators: equals, not equals, greater than, less than, and/or combinations
+  - LED automatically updates when simulator value changes
+- **Editable names for hardware elements**
+  - Name field when creating inputs, outputs, and matrices
+  - Inline name editing directly in the configuration tables
+  - Names are used in train configuration selectors for easier identification
+- **Button sequence triggering**
+  - New "Trigger Sequence" option in button configuration
+  - Configure different sequences for button press (ON) and release (OFF)
+  - Works with both momentary and latching button types
 - **Button ON/OFF value auto-detection**
-  - New "Detect Values" mode (default) replaces manual "Test ON/OFF" buttons
   - Automatically captures OFF value (resting state) and ON value (when control changes)
-  - Toggle between "Auto-Detect" and "Manual" mode for direct value entry
-  - Uses API subscriptions for efficient value monitoring
+  - "Detect Again" button to re-detect after confirmation
+  - Toggle between auto-detect and manual entry modes
+- **API explorer for sequence commands**
+  - Browse and select endpoints when configuring sequence commands
+  - Auto-detection support for discovering InputValue endpoints
 
 ### Changed
 
-- **Improved button endpoint detection UI**
-  - Changed "Button Endpoint Found" icon from stop sign to checkmark for clarity
-  - Removed "suggested values" text from detected endpoint display
+- **Redesigned device configuration UI**
+  - Inputs table now shows Pin, Name, Type, and Value columns
+  - Value column combines raw and calibrated readings (e.g., "512/0.5")
+  - Removed Settings column for cleaner appearance
+  - Consistent table design across inputs, outputs, and matrices
+- **Redesigned train elements UI**
+  - Compact table layout replaces large card design
+  - Separate tables for levers and buttons with status indicators
+  - Sequences section with matching table design
+- **Improved button configuration wizard**
+  - "Trigger Sequence" as top-level option alongside Keystroke and API Call
+  - Hardware type selection (Momentary/Latching) shown before mode selection
+  - Both ON and OFF sequences are optional (at least one required)
 - **Train identifier prefix matching**
-  - Train identifiers now act as prefixes - a stored identifier "RVM_LIRREX_M9" will match detected trains "RVM_LIRREX_M9-A", "RVM_LIRREX_M9-B", etc.
-  - Shows error if multiple train configurations match the same detected identifier
+  - Train identifiers now act as prefixes - "RVM_LIRREX_M9" matches "RVM_LIRREX_M9-A", "RVM_LIRREX_M9-B", etc.
 - **Automatic lever direction detection** during notch mapping
-  - System now auto-detects if hardware lever direction is opposite to simulator expectation
-  - No longer requires manual "Invert lever direction" toggle in the Map Notches step
-  - Works correctly for both standard layouts (low→low, high→high) and reversed layouts (M9-A style where Emergency is at high input)
+  - No longer requires manual "Invert lever direction" toggle
+  - Works for both standard and reversed notch layouts
 - **Streamlined lever configuration wizard**
-  - Removed unused "Test" step - wizard closes after saving notch mappings
-  - Removed confusing live position indicator from notch mapping visualization (numerical values are still shown)
-- **Non-linear navigation in lever wizard edit mode**
-  - When editing an existing lever configuration, step indicators are now clickable
-  - Jump directly to any step without stepping through the entire flow
-  - Automatic dependency tracking: changing the input invalidates notch mapping; changing the endpoint invalidates calibration and mapping
-  - Steps that need to be redone show a warning indicator (orange badge)
-  - Skip the "Calibration Info" step entirely in edit mode
-- **Notch mapping sample requirement**
-  - Capture button now available as soon as any samples are collected (previously required 10 samples)
-  - Allows users with low sensitivity hardware to map notch positions more easily
+  - Non-linear navigation in edit mode - click any step to jump directly
+  - Dependency tracking shows which steps need to be redone after changes
+  - Removed unused "Test" step
 
 ### Fixed
 
 - Device reconnection failing after cable disconnect/reconnect
-  - Manual "Scan for devices" now bypasses the 30-second backoff for failed ports
-  - Discovery now re-sends identity request on each retry attempt (device may miss first request)
-  - Increased settle delay and retry count for more reliable handshake
-- Arduino Nano firmware upload failing with "programmer not responding" - now uses correct 115200 baud rate for new bootloader/clones
+- Sequence endpoint selector not preserving ID when confirming detected values
+- "Use endpoint" button not working in API explorer for sequences
+- Boolean output binding operators causing runtime errors
+- Lever auto-detect incorrectly showing for sequence configuration
 - New trains not being set as active until app restart
-- Notches with sim_input_min=0 failing to match due to integer/float type mismatch from SQLite
-- Lever inversion not working correctly for reversed notch layouts (now auto-detected)
 
 ### Removed
 
-- Arduino Nano (Old Bootloader) board option - only new bootloader/clones are now supported
+- Arduino Nano (Old Bootloader) board option - only new bootloader/clones supported
 
 ## [0.4.0] - 2026-01-03
 
