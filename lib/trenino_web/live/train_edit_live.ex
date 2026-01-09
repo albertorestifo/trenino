@@ -1452,43 +1452,7 @@ defmodule TreninoWeb.TrainEditLive do
   attr :is_active, :boolean, required: true
 
   defp element_row(assigns) do
-    {status_badges, configure_action} =
-      case assigns.element.type do
-        :lever ->
-          lever_config = get_lever_config(assigns.element)
-          input_binding = get_input_binding(lever_config)
-          has_input_ranges = has_notch_input_ranges?(lever_config)
-
-          badges =
-            cond do
-              has_input_ranges -> [{:success, "Ready"}]
-              input_binding -> [{:info, "Needs mapping"}]
-              lever_config -> [{:warning, "Needs input"}]
-              true -> [{:ghost, "Not configured"}]
-            end
-
-          {badges, "configure_lever"}
-
-        :button ->
-          button_binding = get_button_binding(assigns.element)
-
-          badges =
-            cond do
-              button_binding && is_button_fully_configured?(button_binding) ->
-                [{:success, "Ready"}]
-
-              button_binding ->
-                [{:info, "Partial"}]
-
-              true ->
-                [{:ghost, "Not configured"}]
-            end
-
-          {badges, "configure_button"}
-
-        _ ->
-          {[{:ghost, "Unknown"}], nil}
-      end
+    {status_badges, configure_action} = element_status(assigns.element)
 
     assigns =
       assigns
@@ -1542,6 +1506,41 @@ defmodule TreninoWeb.TrainEditLive do
     """
   end
 
+  defp element_status(%{type: :lever} = element) do
+    {lever_status_badge(element), "configure_lever"}
+  end
+
+  defp element_status(%{type: :button} = element) do
+    {button_status_badge(element), "configure_button"}
+  end
+
+  defp element_status(_element) do
+    {[{:ghost, "Unknown"}], nil}
+  end
+
+  defp lever_status_badge(element) do
+    lever_config = get_lever_config(element)
+    input_binding = get_input_binding(lever_config)
+    has_input_ranges = has_notch_input_ranges?(lever_config)
+
+    cond do
+      has_input_ranges -> [{:success, "Ready"}]
+      input_binding -> [{:info, "Needs mapping"}]
+      lever_config -> [{:warning, "Needs input"}]
+      true -> [{:ghost, "Not configured"}]
+    end
+  end
+
+  defp button_status_badge(element) do
+    button_binding = get_button_binding(element)
+
+    cond do
+      button_binding && button_fully_configured?(button_binding) -> [{:success, "Ready"}]
+      button_binding -> [{:info, "Partial"}]
+      true -> [{:ghost, "Not configured"}]
+    end
+  end
+
   defp element_type_icon(:lever), do: "hero-adjustments-vertical"
   defp element_type_icon(:button), do: "hero-cursor-arrow-rays"
   defp element_type_icon(_), do: "hero-cube"
@@ -1552,15 +1551,15 @@ defmodule TreninoWeb.TrainEditLive do
   defp badge_variant_class(:error), do: "badge-error"
   defp badge_variant_class(_), do: "badge-ghost"
 
-  defp is_button_fully_configured?(%{mode: :sequence} = binding) do
+  defp button_fully_configured?(%{mode: :sequence} = binding) do
     binding.on_sequence_id != nil or binding.off_sequence_id != nil
   end
 
-  defp is_button_fully_configured?(%{mode: :keystroke} = binding) do
+  defp button_fully_configured?(%{mode: :keystroke} = binding) do
     binding.keystroke != nil and binding.keystroke != ""
   end
 
-  defp is_button_fully_configured?(binding) do
+  defp button_fully_configured?(binding) do
     binding.endpoint != nil
   end
 

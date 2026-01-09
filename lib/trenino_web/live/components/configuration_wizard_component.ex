@@ -178,11 +178,19 @@ defmodule TreninoWeb.ConfigurationWizardComponent do
     |> assign(:detecting_button, false)
     # Value detection state
     |> assign(:value_config_mode, :auto)
-    |> assign(:value_detection_status, :idle)
+    |> assign(:value_detection_status, get_initial_value_detection_status(element))
     |> assign(:detected_off_value, nil)
     |> assign(:detected_on_value, nil)
     |> assign(:initialized, true)
   end
+
+  # If editing an existing binding with endpoint (not sequence/keystroke), show values as confirmed
+  defp get_initial_value_detection_status(%Element{button_binding: binding})
+       when not is_nil(binding) and not is_nil(binding.endpoint) do
+    :confirmed
+  end
+
+  defp get_initial_value_detection_status(_element), do: :idle
 
   # For buttons with existing complete bindings, skip to configure step
   defp get_initial_wizard_state(%Element{button_binding: binding})
@@ -440,7 +448,7 @@ defmodule TreninoWeb.ConfigurationWizardComponent do
      socket
      |> assign(:on_value, socket.assigns.detected_on_value)
      |> assign(:off_value, socket.assigns.detected_off_value)
-     |> assign(:value_detection_status, :idle)
+     |> assign(:value_detection_status, :confirmed)
      |> check_mapping_complete()}
   end
 
@@ -1283,6 +1291,33 @@ defmodule TreninoWeb.ConfigurationWizardComponent do
                 class="btn btn-success btn-sm"
               >
                 <.icon name="hero-check" class="w-4 h-4" /> Confirm
+              </button>
+            </div>
+          </div>
+
+          <div
+            :if={@value_detection_status == :confirmed}
+            class="bg-base-200 rounded-lg p-4"
+          >
+            <div class="flex items-center justify-between">
+              <div class="flex items-center gap-4">
+                <div class="text-center">
+                  <p class="text-xs text-base-content/60">OFF</p>
+                  <p class="font-mono font-medium">{@off_value}</p>
+                </div>
+                <.icon name="hero-arrow-right" class="w-4 h-4 text-base-content/30" />
+                <div class="text-center">
+                  <p class="text-xs text-base-content/60">ON</p>
+                  <p class="font-mono font-medium">{@on_value}</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                phx-click="start_value_detection"
+                phx-target={@myself}
+                class="btn btn-ghost btn-sm"
+              >
+                <.icon name="hero-arrow-path" class="w-4 h-4" /> Detect Again
               </button>
             </div>
           </div>
