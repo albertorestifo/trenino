@@ -24,6 +24,8 @@
 
 ## What You Can Do
 
+**[See Trenino in action!](https://www.youtube.com/watch?v=FcnUJaJU0Wo)**
+
 Trenino lets you integrate standard Arduino-based hardware controls to Train Sim World.
 Build your own train cab with actual throttle levers, brake handles, and switches, without worrying about the programming.
 
