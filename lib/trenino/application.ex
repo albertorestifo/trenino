@@ -13,6 +13,7 @@ defmodule Trenino.Application do
         Trenino.Repo,
         {Ecto.Migrator,
          repos: Application.fetch_env!(:trenino, :ecto_repos), skip: skip_migrations?()},
+        Trenino.Firmware.DeviceRegistry,
         {DNSCluster, query: Application.get_env(:trenino, :dns_cluster_query) || :ignore},
         {Phoenix.PubSub, name: Trenino.PubSub},
         {Registry, keys: :unique, name: Trenino.Registry},

@@ -8,7 +8,7 @@ defmodule Trenino.Firmware.Uploader do
 
   require Logger
 
-  alias Trenino.Firmware.{Avrdude, BoardConfig}
+  alias Trenino.Firmware.{Avrdude, DeviceRegistry}
 
   @type progress_callback :: (integer(), String.t() -> any())
 
@@ -22,7 +22,7 @@ defmodule Trenino.Firmware.Uploader do
   ## Parameters
 
     * `port` - Serial port (e.g., "/dev/cu.usbmodem14201")
-    * `board_type` - Board type atom (e.g., :uno, :leonardo)
+    * `environment` - PlatformIO environment name (e.g., "uno", "leonardo")
     * `hex_file_path` - Path to the .hex firmware file
     * `progress_callback` - Optional function called with (percent, message)
 
@@ -31,13 +31,16 @@ defmodule Trenino.Firmware.Uploader do
     * `{:ok, %{duration_ms: integer, output: String.t()}}` on success
     * `{:error, reason_atom, avrdude_output}` on failure
   """
-  @spec upload(String.t(), BoardConfig.board_type(), String.t(), progress_callback() | nil) ::
+  @spec upload(String.t(), String.t() | atom(), String.t(), progress_callback() | nil) ::
           upload_result()
-  def upload(port, board_type, hex_file_path, progress_callback \\ nil) do
+  def upload(port, environment, hex_file_path, progress_callback \\ nil)
+
+  def upload(port, environment, hex_file_path, progress_callback)
+      when is_binary(environment) do
     start_time = System.monotonic_time(:millisecond)
 
     with {:ok, avrdude_path} <- Avrdude.executable_path(),
-         {:ok, config} <- BoardConfig.get_config(board_type),
+         {:ok, config} <- DeviceRegistry.get_device_config(environment),
          :ok <- verify_hex_file(hex_file_path),
          {:ok, upload_port} <- maybe_trigger_bootloader(port, config) do
       args = build_args(config, upload_port, hex_file_path)
@@ -56,6 +59,31 @@ defmodule Trenino.Firmware.Uploader do
           Logger.error("Avrdude output:\n#{output}")
           {:error, error_type, output}
       end
+    else
+      {:error, :unknown_device} ->
+        {:error, :unknown_device, "Unknown device environment: #{environment}"}
+
+      error ->
+        error
+    end
+  end
+
+  # Legacy support for board_type atoms - converts to environment string
+  def upload(port, board_type, hex_file_path, progress_callback)
+      when is_atom(board_type) do
+    environment = board_type_to_environment(board_type)
+    upload(port, environment, hex_file_path, progress_callback)
+  end
+
+  defp board_type_to_environment(board_type) do
+    case board_type do
+      :uno -> "uno"
+      :nano -> "nanoatmega328"
+      :leonardo -> "leonardo"
+      :micro -> "micro"
+      :mega2560 -> "megaatmega2560"
+      :sparkfun_pro_micro -> "sparkfun_promicro16"
+      _ -> to_string(board_type)
     end
   end
 
@@ -372,6 +400,13 @@ defmodule Trenino.Firmware.Uploader do
     - Double-tap the reset button to manually enter bootloader mode
     - Start the upload within 8 seconds
     - Try a different USB port
+    """
+  end
+
+  def error_message(:unknown_device) do
+    """
+    Unknown device type. The selected device is not recognized.
+    Please check for updates or try selecting a different board type.
     """
   end
 

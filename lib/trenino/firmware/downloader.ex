@@ -9,7 +9,7 @@ defmodule Trenino.Firmware.Downloader do
   require Logger
 
   alias Trenino.Firmware
-  alias Trenino.Firmware.{BoardConfig, FilePath, FirmwareFile}
+  alias Trenino.Firmware.{BoardConfig, DeviceRegistry, FilePath, FirmwareFile}
 
   @github_repo "albertorestifo/trenino_firmware"
   @github_api_url "https://api.github.com/repos/#{@github_repo}/releases"
@@ -89,13 +89,18 @@ defmodule Trenino.Firmware.Downloader do
   # Release parsing
 
   defp parse_release(release) do
+    assets = release["assets"] || []
+    manifest_data = fetch_and_parse_manifest(release["tag_name"], assets)
+
     %{
       version: parse_version(release["tag_name"]),
       tag_name: release["tag_name"],
       release_url: release["html_url"],
       release_notes: release["body"],
       published_at: parse_datetime(release["published_at"]),
-      assets: parse_assets(release["assets"] || [])
+      manifest_json: manifest_data && Jason.encode!(manifest_data),
+      manifest: manifest_data,
+      assets: parse_assets(assets, manifest_data)
     }
   end
 
@@ -111,10 +116,146 @@ defmodule Trenino.Firmware.Downloader do
     end
   end
 
-  defp parse_assets(assets) do
+  # Manifest handling
+
+  defp fetch_and_parse_manifest(tag_name, assets) do
+    case find_manifest_asset(assets) do
+      nil ->
+        Logger.info("No release.json found for #{tag_name}")
+        nil
+
+      asset ->
+        case download_manifest(asset["browser_download_url"]) do
+          {:ok, manifest} ->
+            Logger.info("Successfully fetched manifest for #{tag_name}")
+            manifest
+
+          {:error, reason} ->
+            Logger.error("Failed to fetch manifest for #{tag_name}: #{inspect(reason)}")
+            nil
+        end
+    end
+  end
+
+  defp find_manifest_asset(assets) do
+    Enum.find(assets, fn asset ->
+      asset["name"] == "release.json"
+    end)
+  end
+
+  defp download_manifest(url) do
+    case Req.get(url) do
+      {:ok, %{status: 200, body: body}} ->
+        validate_manifest(body)
+
+      {:ok, %{status: status}} ->
+        {:error, {:http_error, status}}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  defp validate_manifest(data) when is_map(data) do
+    required_fields = ["version", "project", "devices"]
+    device_required_fields = ["environment", "displayName", "firmwareFile"]
+
+    with :ok <- check_required_fields(data, required_fields),
+         :ok <- validate_devices(data["devices"], device_required_fields) do
+      {:ok, data}
+    else
+      {:error, reason} ->
+        Logger.warning("Invalid manifest structure: #{inspect(reason)}")
+        {:error, reason}
+    end
+  end
+
+  defp validate_manifest(_), do: {:error, :not_a_map}
+
+  defp check_required_fields(data, fields) do
+    missing = Enum.filter(fields, fn field -> not Map.has_key?(data, field) end)
+
+    if missing == [] do
+      :ok
+    else
+      {:error, {:missing_fields, missing}}
+    end
+  end
+
+  defp validate_devices(devices, required_fields) when is_list(devices) do
+    invalid =
+      Enum.filter(devices, fn device ->
+        not is_map(device) or
+          Enum.any?(required_fields, fn field -> not Map.has_key?(device, field) end)
+      end)
+
+    if invalid == [] do
+      :ok
+    else
+      {:error, {:invalid_devices, invalid}}
+    end
+  end
+
+  defp validate_devices(_, _), do: {:error, :devices_not_a_list}
+
+  # Asset parsing
+
+  defp parse_assets(assets, manifest_data) do
+    # If we have a manifest, use it to determine devices
+    if manifest_data do
+      parse_assets_from_manifest(assets, manifest_data)
+    else
+      parse_assets_legacy(assets)
+    end
+  end
+
+  defp parse_assets_from_manifest(assets, manifest_data) do
+    devices = manifest_data["devices"] || []
+
+    Enum.map(devices, fn device ->
+      filename = device["firmwareFile"]
+
+      # Find matching asset
+      asset =
+        Enum.find(assets, fn a ->
+          a["name"] == filename
+        end)
+
+      if asset do
+        environment = device["environment"]
+
+        %{
+          filename: filename,
+          download_url: asset["browser_download_url"],
+          file_size: asset["size"],
+          board_type: environment_to_board_type(environment),
+          environment: environment
+        }
+      else
+        Logger.warning("Manifest references missing asset: #{filename}")
+        nil
+      end
+    end)
+    |> Enum.reject(&is_nil/1)
+  end
+
+  # Convert PlatformIO environment name to legacy board_type atom
+  defp environment_to_board_type(environment) do
+    case environment do
+      "uno" -> :uno
+      "nanoatmega328" -> :nano
+      "leonardo" -> :leonardo
+      "micro" -> :micro
+      "sparkfun_promicro16" -> :sparkfun_pro_micro
+      "megaatmega2560" -> :mega2560
+      _ -> nil
+    end
+  end
+
+  defp parse_assets_legacy(assets) do
     assets
     |> Enum.filter(&hex_file?/1)
-    |> Enum.map(&parse_asset/1)
+    |> Enum.map(&parse_asset_legacy/1)
     |> Enum.filter(&(&1.board_type != nil))
   end
 
@@ -122,14 +263,15 @@ defmodule Trenino.Firmware.Downloader do
     String.ends_with?(asset["name"] || "", ".hex")
   end
 
-  defp parse_asset(asset) do
+  defp parse_asset_legacy(asset) do
     filename = asset["name"]
 
     %{
       filename: filename,
       download_url: asset["browser_download_url"],
       file_size: asset["size"],
-      board_type: detect_board_type(filename)
+      board_type: detect_board_type(filename),
+      environment: nil
     }
   end
 
@@ -143,12 +285,17 @@ defmodule Trenino.Firmware.Downloader do
   # Database storage
 
   defp store_release(release_data) do
-    case Firmware.upsert_release(Map.drop(release_data, [:assets])) do
+    case Firmware.upsert_release(Map.drop(release_data, [:assets, :manifest])) do
       {:ok, release} ->
         # Store firmware files for this release
         Enum.each(release_data.assets, fn asset ->
           store_firmware_file(release.id, asset)
         end)
+
+        # Reload DeviceRegistry if we have a manifest
+        if release_data.manifest do
+          DeviceRegistry.reload_from_manifest(release_data.manifest, release.id)
+        end
 
         {:ok, release}
 
@@ -160,6 +307,7 @@ defmodule Trenino.Firmware.Downloader do
   defp store_firmware_file(release_id, asset) do
     attrs = %{
       board_type: asset.board_type,
+      environment: asset.environment,
       download_url: asset.download_url,
       file_size: asset.file_size
     }

@@ -12,7 +12,7 @@ defmodule TreninoWeb.FirmwareLive do
   use TreninoWeb, :live_view
 
   alias Trenino.Firmware
-  alias Trenino.Firmware.{BoardConfig, FirmwareFile}
+  alias Trenino.Firmware.{DeviceRegistry, FirmwareFile}
   alias Trenino.Serial.Connection
 
   @impl true
@@ -33,7 +33,7 @@ defmodule TreninoWeb.FirmwareLive do
      |> assign(:checking_updates, false)
      |> assign(:selected_release, nil)
      |> assign(:selected_port, nil)
-     |> assign(:selected_board_type, nil)
+     |> assign(:selected_environment, nil)
      |> assign(:show_upload_modal, false)
      |> assign(:upload_progress, nil)
      |> assign(:upload_error, nil)
@@ -173,7 +173,7 @@ defmodule TreninoWeb.FirmwareLive do
      socket
      |> assign(:selected_release, release)
      |> assign(:selected_port, nil)
-     |> assign(:selected_board_type, nil)
+     |> assign(:selected_environment, nil)
      |> assign(:show_upload_modal, true)
      |> assign(:upload_error, nil)}
   end
@@ -196,10 +196,9 @@ defmodule TreninoWeb.FirmwareLive do
   end
 
   @impl true
-  def handle_event("select_board_type", %{"board_type" => board_type_str}, socket) do
-    if board_type_str != "" do
-      board_type = String.to_atom(board_type_str)
-      {:noreply, assign(socket, :selected_board_type, board_type)}
+  def handle_event("select_environment", %{"environment" => environment}, socket) do
+    if environment != "" do
+      {:noreply, assign(socket, :selected_environment, environment)}
     else
       {:noreply, socket}
     end
@@ -208,15 +207,15 @@ defmodule TreninoWeb.FirmwareLive do
   @impl true
   def handle_event("start_upload", _, socket) do
     port = socket.assigns.selected_port
-    board_type = socket.assigns.selected_board_type
+    environment = socket.assigns.selected_environment
     release = socket.assigns.selected_release
 
-    with {:ok, file} <- find_or_download_file(release, board_type),
-         {:ok, _upload_id} <- Firmware.start_upload(port, board_type, file.id) do
+    with {:ok, file} <- find_or_download_file(release, environment),
+         {:ok, _upload_id} <- Firmware.start_upload(port, environment, file.id) do
       {:noreply, assign(socket, :upload_error, nil)}
     else
-      {:error, :no_firmware_for_board} ->
-        {:noreply, assign(socket, :upload_error, "No firmware available for this board type.")}
+      {:error, :no_firmware_for_environment} ->
+        {:noreply, assign(socket, :upload_error, "No firmware available for this device.")}
 
       {:error, reason} ->
         {:noreply, assign(socket, :upload_error, "Failed to start upload: #{inspect(reason)}")}
@@ -240,12 +239,37 @@ defmodule TreninoWeb.FirmwareLive do
     {:noreply, assign(socket, :show_older_releases, !socket.assigns.show_older_releases)}
   end
 
-  defp find_or_download_file(release, board_type) do
-    case Enum.find(release.firmware_files, &(&1.board_type == board_type)) do
-      nil -> {:error, :no_firmware_for_board}
+  defp find_or_download_file(release, environment) do
+    file =
+      Enum.find(release.firmware_files, fn file ->
+        # Prefer matching by environment if available, otherwise fall back to board_type
+        if file.environment do
+          file.environment == environment
+        else
+          # Legacy: convert board_type atom to environment string for comparison
+          board_type_to_environment(file.board_type) == environment
+        end
+      end)
+
+    case file do
+      nil -> {:error, :no_firmware_for_environment}
       file -> ensure_file_downloaded(%{file | firmware_release: release})
     end
   end
+
+  defp board_type_to_environment(board_type) when is_atom(board_type) do
+    case board_type do
+      :uno -> "uno"
+      :nano -> "nanoatmega328"
+      :leonardo -> "leonardo"
+      :micro -> "micro"
+      :mega2560 -> "megaatmega2560"
+      :sparkfun_pro_micro -> "sparkfun_promicro16"
+      _ -> to_string(board_type)
+    end
+  end
+
+  defp board_type_to_environment(board_type) when is_binary(board_type), do: board_type
 
   defp ensure_file_downloaded(file) do
     require Logger
@@ -379,7 +403,7 @@ defmodule TreninoWeb.FirmwareLive do
       release={@selected_release}
       available_ports={@available_ports}
       selected_port={@selected_port}
-      board_type={@selected_board_type}
+      environment={@selected_environment}
       progress={@upload_progress}
       error={@upload_error}
       current_upload={@current_upload}
@@ -405,18 +429,21 @@ defmodule TreninoWeb.FirmwareLive do
   attr :is_latest, :boolean, default: false
 
   defp release_card(assigns) do
-    # Get board names for display
-    board_names =
+    # Get device names for display
+    device_names =
       assigns.release.firmware_files
       |> Enum.map(fn file ->
-        case BoardConfig.get_config(file.board_type) do
-          {:ok, config} -> config.name
-          _ -> to_string(file.board_type)
+        # Prefer environment over board_type for display names
+        environment = file.environment || board_type_to_environment(file.board_type)
+
+        case DeviceRegistry.get_device_config(environment) do
+          {:ok, config} -> config.display_name
+          {:error, :unknown_device} -> environment
         end
       end)
       |> Enum.sort()
 
-    assigns = assign(assigns, :board_names, board_names)
+    assigns = assign(assigns, :board_names, device_names)
 
     ~H"""
     <div class={[
@@ -518,19 +545,19 @@ defmodule TreninoWeb.FirmwareLive do
   attr :release, :map, required: true
   attr :available_ports, :list, required: true
   attr :selected_port, :string, required: true
-  attr :board_type, :atom, required: true
+  attr :environment, :string, required: true
   attr :progress, :map, required: true
   attr :error, :string, required: true
   attr :current_upload, :any, required: true
 
   defp upload_modal(assigns) do
-    board_options = BoardConfig.select_options()
+    device_options = DeviceRegistry.select_options()
     uploading = assigns.current_upload != nil
     no_ports = Enum.empty?(assigns.available_ports)
 
     assigns =
       assigns
-      |> assign(:board_options, board_options)
+      |> assign(:device_options, device_options)
       |> assign(:uploading, uploading)
       |> assign(:no_ports, no_ports)
 
@@ -588,19 +615,19 @@ defmodule TreninoWeb.FirmwareLive do
             </label>
           </form>
 
-          <%!-- Board type selection --%>
-          <form phx-change="select_board_type" class="form-control">
+          <%!-- Device selection --%>
+          <form phx-change="select_environment" class="form-control">
             <label class="label">
-              <span class="label-text font-medium">Board Type</span>
+              <span class="label-text font-medium">Device Type</span>
             </label>
-            <select name="board_type" class="select select-bordered w-full">
-              <option value="" disabled selected={@board_type == nil}>
-                Select your board type
+            <select name="environment" class="select select-bordered w-full">
+              <option value="" disabled selected={@environment == nil}>
+                Select your device type
               </option>
               <option
-                :for={{name, value} <- @board_options}
+                :for={{name, value} <- @device_options}
                 value={value}
-                selected={@board_type == value}
+                selected={@environment == value}
               >
                 {name}
               </option>
@@ -660,7 +687,7 @@ defmodule TreninoWeb.FirmwareLive do
           <button
             :if={!@uploading && !@no_ports}
             phx-click="start_upload"
-            disabled={@selected_port == nil or @board_type == nil}
+            disabled={@selected_port == nil or @environment == nil}
             class="btn btn-primary"
           >
             <.icon name="hero-arrow-up-tray" class="w-4 h-4" /> Start Upload

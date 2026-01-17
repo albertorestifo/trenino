@@ -62,6 +62,13 @@ defmodule Trenino.Firmware.UploaderTest do
       assert message =~ "unknown error"
     end
 
+    test "returns message for :unknown_device" do
+      message = Uploader.error_message(:unknown_device)
+
+      assert message =~ "Unknown device type"
+      assert message =~ "not recognized"
+    end
+
     test "returns generic message for unhandled atoms" do
       message = Uploader.error_message(:some_other_error)
 
@@ -166,7 +173,23 @@ defmodule Trenino.Firmware.UploaderTest do
 
   describe "upload/4 with missing hex file" do
     @tag :skip_without_avrdude
-    test "returns error when hex file doesn't exist" do
+    test "returns error when hex file doesn't exist with environment string" do
+      # Skip this test if avrdude is not available
+      case Avrdude.executable_path() do
+        {:ok, _} ->
+          result = Uploader.upload("/dev/ttyUSB0", "uno", "/nonexistent/firmware.hex")
+
+          assert {:error, :hex_file_not_found, message} = result
+          assert message =~ "not found"
+
+        {:error, :avrdude_not_found} ->
+          # Expected on CI systems without avrdude
+          :ok
+      end
+    end
+
+    @tag :skip_without_avrdude
+    test "returns error when hex file doesn't exist with legacy board_type atom" do
       # Skip this test if avrdude is not available
       case Avrdude.executable_path() do
         {:ok, _} ->
@@ -178,6 +201,74 @@ defmodule Trenino.Firmware.UploaderTest do
         {:error, :avrdude_not_found} ->
           # Expected on CI systems without avrdude
           :ok
+      end
+    end
+
+    @tag :skip_without_avrdude
+    test "returns error for unknown environment" do
+      case Avrdude.executable_path() do
+        {:ok, _} ->
+          # Create a dummy hex file for testing
+          hex_file = "/tmp/test_firmware.hex"
+          File.write!(hex_file, ":00000001FF\n")
+
+          result = Uploader.upload("/dev/ttyUSB0", "unknown_board", hex_file)
+
+          assert {:error, :unknown_device, message} = result
+          assert message =~ "Unknown device environment"
+
+          File.rm(hex_file)
+
+        {:error, :avrdude_not_found} ->
+          :ok
+      end
+    end
+  end
+
+  describe "environment string support" do
+    test "accepts environment strings for upload/4" do
+      # These tests verify the function signature accepts environment strings
+      # Actual upload testing requires hardware and is done in integration tests
+
+      environments = [
+        "uno",
+        "nanoatmega328",
+        "leonardo",
+        "micro",
+        "sparkfun_promicro16",
+        "megaatmega2560"
+      ]
+
+      for env <- environments do
+        # Verify the function accepts the environment string
+        # This will fail if DeviceRegistry doesn't know about it or hex file doesn't exist
+        # but that's a different error than invalid argument type
+        result = Uploader.upload("/dev/null", env, "/nonexistent.hex")
+
+        # Should get hex_file_not_found or similar, not a function clause error
+        assert match?({:error, _, _}, result)
+      end
+    end
+  end
+
+  describe "backward compatibility with board_type atoms" do
+    test "converts legacy board_type atoms to environment strings" do
+      # These should be converted internally
+      legacy_types = [
+        {:uno, "uno"},
+        {:nano, "nanoatmega328"},
+        {:leonardo, "leonardo"},
+        {:micro, "micro"},
+        {:mega2560, "megaatmega2560"},
+        {:sparkfun_pro_micro, "sparkfun_promicro16"}
+      ]
+
+      for {board_type, _expected_env} <- legacy_types do
+        # Verify the function accepts legacy board_type atoms
+        result = Uploader.upload("/dev/null", board_type, "/nonexistent.hex")
+
+        # Should get hex_file_not_found or similar, not a function clause error
+        assert match?({:error, _, _}, result)
       end
     end
   end

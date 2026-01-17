@@ -18,6 +18,7 @@ defmodule Trenino.Firmware.FirmwareFile do
           firmware_release_id: integer() | nil,
           firmware_release: FirmwareRelease.t() | Ecto.Association.NotLoaded.t(),
           board_type: BoardConfig.board_type() | nil,
+          environment: String.t() | nil,
           download_url: String.t() | nil,
           file_size: integer() | nil,
           checksum_sha256: String.t() | nil,
@@ -29,6 +30,7 @@ defmodule Trenino.Firmware.FirmwareFile do
     belongs_to :firmware_release, FirmwareRelease
 
     field :board_type, Ecto.Enum, values: BoardConfig.board_types()
+    field :environment, :string
     field :download_url, :string
     field :file_size, :integer
     field :checksum_sha256, :string
@@ -45,6 +47,7 @@ defmodule Trenino.Firmware.FirmwareFile do
     |> cast(attrs, [
       :firmware_release_id,
       :board_type,
+      :environment,
       :download_url,
       :file_size,
       :checksum_sha256

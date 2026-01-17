@@ -18,6 +18,7 @@ defmodule Trenino.Firmware.FirmwareRelease do
           release_url: String.t() | nil,
           release_notes: String.t() | nil,
           published_at: DateTime.t() | nil,
+          manifest_json: String.t() | nil,
           firmware_files: [FirmwareFile.t()] | Ecto.Association.NotLoaded.t(),
           inserted_at: DateTime.t() | nil,
           updated_at: DateTime.t() | nil
@@ -29,6 +30,7 @@ defmodule Trenino.Firmware.FirmwareRelease do
     field :release_url, :string
     field :release_notes, :string
     field :published_at, :utc_datetime
+    field :manifest_json, :string
 
     has_many :firmware_files, FirmwareFile
 
@@ -41,7 +43,14 @@ defmodule Trenino.Firmware.FirmwareRelease do
   @spec changeset(t(), map()) :: Ecto.Changeset.t()
   def changeset(%__MODULE__{} = release, attrs) do
     release
-    |> cast(attrs, [:version, :tag_name, :release_url, :release_notes, :published_at])
+    |> cast(attrs, [
+      :version,
+      :tag_name,
+      :release_url,
+      :release_notes,
+      :published_at,
+      :manifest_json
+    ])
     |> validate_required([:version, :tag_name])
     |> unique_constraint(:tag_name)
   end
