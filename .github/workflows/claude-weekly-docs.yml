@@ -1,0 +1,231 @@
+name: Weekly Documentation Review
+
+on:
+  schedule:
+    # Run every Friday at 9 AM UTC
+    - cron: '0 9 * * 5'
+  workflow_dispatch:
+    # Allow manual triggering for testing
+
+jobs:
+  weekly-docs-review:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: read
+      id-token: write
+      actions: read
+
+    steps:
+      - name: Checkout repository with full history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Full history needed for commit analysis
+
+      - name: Collect and filter last week's commits
+        id: collect-commits
+        run: |
+          set -e
+
+          # Create temp files for commit data
+          COMMITS_FILE="/tmp/recent_commits.txt"
+          FILES_FILE="/tmp/changed_files.txt"
+
+          echo "## Commits from the last 7 days" > "$COMMITS_FILE"
+          echo "" >> "$COMMITS_FILE"
+
+          echo "## Changed files from the last 7 days" > "$FILES_FILE"
+          echo "" >> "$FILES_FILE"
+
+          # Get commits from last 7 days
+          SINCE_DATE=$(date -u -d '7 days ago' '+%Y-%m-%d' 2>/dev/null || date -u -v-7d '+%Y-%m-%d')
+
+          # Paths to exclude (dependency, CI, test-only files)
+          EXCLUDE_PATTERNS=(
+            "package-lock.json"
+            "yarn.lock"
+            "mix.lock"
+            "Cargo.lock"
+            "Cargo.toml"
+            ".github/workflows/"
+            "test/"
+            "_test.exs"
+          )
+
+          FILTERED_COUNT=0
+          TOTAL_COUNT=0
+
+          # Process each commit from the last 7 days
+          while read -r commit_hash; do
+            TOTAL_COUNT=$((TOTAL_COUNT + 1))
+
+            # Get files changed in this commit
+            CHANGED_FILES=$(git diff-tree --no-commit-id --name-only -r "$commit_hash")
+
+            # Check if commit only touches excluded files
+            SHOULD_SKIP=true
+            for file in $CHANGED_FILES; do
+              FILE_SHOULD_SKIP=false
+              for pattern in "${EXCLUDE_PATTERNS[@]}"; do
+                if [[ "$file" == *"$pattern"* ]]; then
+                  FILE_SHOULD_SKIP=true
+                  break
+                fi
+              done
+
+              # If at least one file is not excluded, include the commit
+              if [ "$FILE_SHOULD_SKIP" = false ]; then
+                SHOULD_SKIP=false
+                break
+              fi
+            done
+
+            # Include commit if it has relevant changes
+            if [ "$SHOULD_SKIP" = false ]; then
+              FILTERED_COUNT=$((FILTERED_COUNT + 1))
+
+              # Get commit details
+              COMMIT_MSG=$(git log -1 --pretty=format:"%s" "$commit_hash")
+              COMMIT_AUTHOR=$(git log -1 --pretty=format:"%an" "$commit_hash")
+              COMMIT_DATE=$(git log -1 --pretty=format:"%ai" "$commit_hash")
+
+              # Add to commits file
+              echo "### Commit: $commit_hash" >> "$COMMITS_FILE"
+              echo "**Author**: $COMMIT_AUTHOR" >> "$COMMITS_FILE"
+              echo "**Date**: $COMMIT_DATE" >> "$COMMITS_FILE"
+              echo "**Message**: $COMMIT_MSG" >> "$COMMITS_FILE"
+              echo "" >> "$COMMITS_FILE"
+
+              # Add changed files
+              echo "**Files changed in $commit_hash**:" >> "$FILES_FILE"
+              for file in $CHANGED_FILES; do
+                echo "  - $file" >> "$FILES_FILE"
+              done
+              echo "" >> "$FILES_FILE"
+            fi
+          done < <(git log --since="$SINCE_DATE" --pretty=format:"%H")
+
+          echo "Total commits in last 7 days: $TOTAL_COUNT"
+          echo "Commits after filtering: $FILTERED_COUNT"
+
+          # Set output for next step
+          echo "commit_count=$FILTERED_COUNT" >> $GITHUB_OUTPUT
+          echo "total_count=$TOTAL_COUNT" >> $GITHUB_OUTPUT
+
+          # Show what we collected
+          echo "=== Commits File ==="
+          cat "$COMMITS_FILE"
+          echo ""
+          echo "=== Changed Files ==="
+          cat "$FILES_FILE"
+
+      - name: Run Claude Documentation Review
+        if: steps.collect-commits.outputs.commit_count > 0
+        id: claude-review
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+
+          # Configure allowed tools for documentation work
+          claude_args: '--allowed-tools Bash Read Write Edit Glob Grep'
+
+          prompt: |
+            # Weekly Documentation Review Task
+
+            You are conducting an automated weekly documentation review for the Trenino project. Your task is to analyze the commits from the past week and update documentation as needed.
+
+            ## Context
+
+            Commit data has been prepared for you:
+            - **Commits**: `/tmp/recent_commits.txt` - Contains filtered commits from the last 7 days (excluding dependency-only, CI-only, and test-only changes)
+            - **Changed files**: `/tmp/changed_files.txt` - Lists all files changed in those commits
+
+            ## Documentation Files to Review
+
+            Core documentation:
+            - `README.md` - Main project documentation
+            - `CHANGELOG.md` - Project changelog (follows Keep a Changelog format)
+            - `CLAUDE.md` - Claude Code instructions
+            - `AGENTS.md` - Agent-specific instructions
+
+            Feature documentation in `docs/`:
+            - `getting-started.md`
+            - `hardware-setup.md`
+            - `train-configuration.md`
+            - `architecture.md`
+            - `development.md`
+            - `TSW_API_GUIDE.md`
+            - `control_auto_suggestion.md`
+            - `lever_input_mapping_architecture.md`
+
+            ## Your Task
+
+            1. **Read and analyze commits**:
+               - Read `/tmp/recent_commits.txt` to understand what changed
+               - Read `/tmp/changed_files.txt` to see which files were modified
+               - Categorize changes: new features, bug fixes, refactoring, improvements, etc.
+
+            2. **Identify documentation impacts**:
+               - Determine which documentation files might need updates
+               - Focus on user-facing changes, new features, API changes, architectural changes
+               - Skip purely internal refactoring unless it affects behavior
+
+            3. **Review and update documentation**:
+               - Read relevant documentation files
+               - Update them to reflect the changes from the commits
+               - Maintain existing style and tone
+               - Be precise and concise
+               - For CHANGELOG.md:
+                 - Add entries under "## [Unreleased]" section
+                 - Use categories: Added, Changed, Deprecated, Removed, Fixed, Security
+                 - Follow the existing format exactly
+
+            4. **Create PR if documentation was updated**:
+               - ONLY create a PR if you actually made documentation changes
+               - If no meaningful updates are needed, just report your findings and exit
+               - Branch name: `docs/weekly-review-$(date +%Y-%m-%d)`
+               - Commit message: "docs: Weekly documentation review for YYYY-MM-DD"
+               - PR title: "docs: Weekly documentation review (YYYY-MM-DD)"
+               - PR body should include:
+                 - Summary of what was reviewed and updated
+                 - List of commits reviewed (with hashes and messages)
+                 - List of documentation files updated with reasons
+                 - Any recommendations for manual review
+                 - Footer: "🤖 Automated by Claude Code weekly documentation review"
+               - Use `gh pr create` to create the PR
+
+            5. **Report findings**:
+               - If no updates needed, explain why
+               - If updates made, summarize what was changed
+
+            ## Guidelines
+
+            - **Be selective**: Only update documentation if changes are meaningful and user-facing
+            - **Maintain quality**: Match the existing documentation style and quality
+            - **Be accurate**: Ensure all updates accurately reflect the code changes
+            - **Don't over-document**: Skip cosmetic changes, minor refactoring, or internal implementation details
+            - **ONLY create PR if you made changes**: Do not create empty PRs
+
+            ## Important
+
+            - This is an Elixir/Phoenix project with a Tauri frontend
+            - Follow the coding guidelines in CLAUDE.md and AGENTS.md
+            - The project is a train simulator interface
+            - Focus on changes that affect end users or developers using the system
+
+            Start by reading the commit data and analyzing what changed this week.
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "=== Weekly Documentation Review Summary ==="
+          echo "Total commits in last 7 days: ${{ steps.collect-commits.outputs.total_count }}"
+          echo "Commits reviewed (after filtering): ${{ steps.collect-commits.outputs.commit_count }}"
+
+          if [ "${{ steps.collect-commits.outputs.commit_count }}" -eq 0 ]; then
+            echo "No relevant commits to review - skipped Claude analysis"
+          else
+            echo "Claude documentation review completed"
+          fi
