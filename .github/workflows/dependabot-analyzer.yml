@@ -28,7 +28,7 @@ jobs:
 
           TITLE="${{ github.event.pull_request.title }}"
           BRANCH="${{ github.event.pull_request.head.ref }}"
-          PR_BODY="${{ github.event.pull_request.body }}"
+          PR_BODY='${{ github.event.pull_request.body }}'
 
           # Extract package name - format: "Bump [package] from [old] to [new]"
           PACKAGE=$(echo "$TITLE" | sed -E 's/^Bump (.+) from .*/\1/')
