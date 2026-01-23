@@ -35,6 +35,20 @@ Manages physical device connections and input calibration.
 - **ConfigurationManager** - GenServer broadcasting input value changes
 - **Calibration** - Multi-step wizard for input calibration
 
+### Firmware Domain (`lib/trenino/firmware/`)
+
+Manages firmware releases, device definitions, and firmware uploads.
+
+- **DeviceRegistry** - GenServer maintaining ETS cache of available devices
+  - Loads device list from firmware release manifests (release.json)
+  - Merges dynamic device data with static hardware configurations
+  - Provides fast lookups for device configuration (MCU, programmer, baud rate)
+  - Falls back to hardcoded devices if no manifest available
+- **FirmwareRelease** - GitHub release metadata with optional manifest
+- **FirmwareFile** - Individual firmware binaries per device environment
+- **Downloader** - Fetches releases and triggers registry reload
+- **Uploader** - Flashes firmware to devices using avrdude
+
 ### Train Domain (`lib/trenino/train/`)
 
 Handles train configurations and input-to-lever mappings.
@@ -108,6 +122,7 @@ Low-level USB/UART communication with hardware devices.
 Application
 ├── Trenino.Repo (Ecto)
 ├── TreninoWeb.Endpoint (Phoenix)
+├── Trenino.Firmware.DeviceRegistry (device definitions cache)
 ├── Trenino.Serial.Connection (device management)
 ├── Trenino.Simulator.Connection (API health)
 ├── Trenino.Train.Detection (train polling)
@@ -136,6 +151,15 @@ devices                    trains
                                    │   └── input_min/max
                                    └── input_binding
                                        └── input_id
+
+firmware_releases          firmware_files
+├── id                     ├── id
+├── version                ├── release_id (FK)
+├── tag_name (unique)      ├── filename
+├── release_url            ├── download_url
+├── release_notes          ├── file_size
+├── published_at           ├── environment (PlatformIO env)
+└── manifest_json          └── downloaded_at
 ```
 
 ## Communication Protocols
