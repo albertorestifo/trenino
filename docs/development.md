@@ -219,6 +219,7 @@ mix precommit
 
 Long-running processes are implemented as GenServers:
 
+- `Firmware.DeviceRegistry` - Device configuration cache with ETS
 - `Serial.Connection` - Device connections
 - `Simulator.Connection` - API health monitoring
 - `Train.Detection` - Active train polling
@@ -244,6 +245,7 @@ Business logic is organized into contexts:
 - `Trenino.Hardware` - Device and input management
 - `Trenino.Train` - Train configuration and bindings
 - `Trenino.Simulator` - TSW API communication
+- `Trenino.Firmware` - Firmware releases and device registry
 
 ## Adding New Features
 

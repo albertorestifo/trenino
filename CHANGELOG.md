@@ -8,7 +8,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **Dynamic device registry from firmware manifests**
+  - Device list now loaded from release.json manifest in firmware releases
+  - New DeviceRegistry GenServer maintains ETS cache for fast device lookups
+  - Firmware releases can include manifest_json field with device definitions
+  - Automatic fallback to hardcoded devices if no manifest available
+  - Device configurations merge dynamic manifest data with static hardware parameters
+
 ### Changed
+
+- **Firmware release management improvements**
+  - Firmware releases now support manifest_json field for device metadata
+  - FirmwareFile schema adds environment field for PlatformIO environment names
+  - Device detection from firmware filenames now uses registry lookup
+  - Downloader automatically loads device registry when manifest is present
 
 ### Fixed
 
