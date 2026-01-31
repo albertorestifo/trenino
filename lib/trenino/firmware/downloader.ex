@@ -263,17 +263,18 @@ defmodule Trenino.Firmware.Downloader do
   # Convert environment name to legacy board_type atom for database compatibility
   # This maintains backward compatibility with existing database records
   defp environment_to_board_type(environment) do
-    case environment do
-      "uno" -> :uno
-      "nanoatmega328new" -> :nano
-      "leonardo" -> :leonardo
-      "micro" -> :micro
-      "sparkfun_promicro16" -> :sparkfun_pro_micro
-      "megaatmega2560" -> :mega2560
-      "due" -> :due
-      "esp32dev" -> :esp32
-      _ -> String.to_atom(environment)
-    end
+    mapping = %{
+      "uno" => :uno,
+      "nanoatmega328new" => :nano,
+      "leonardo" => :leonardo,
+      "micro" => :micro,
+      "sparkfun_promicro16" => :sparkfun_pro_micro,
+      "megaatmega2560" => :mega2560,
+      "due" => :due,
+      "esp32dev" => :esp32
+    }
+
+    Map.get(mapping, environment, String.to_atom(environment))
   end
 
   # Database storage
