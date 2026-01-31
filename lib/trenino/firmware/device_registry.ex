@@ -117,9 +117,39 @@ defmodule Trenino.Firmware.DeviceRegistry do
     :ets.new(@table_name, [:named_table, :set, :public, read_concurrency: true])
 
     # Load initial devices from database or use fallback
-    load_initial_devices()
+    case load_initial_devices() do
+      {:ok, _count} ->
+        :ok
+
+      {:error, _reason} ->
+        # No manifest in database - schedule a background fetch to self-heal.
+        # This handles the case where releases were stored before manifest support
+        # was added, or the database was freshly migrated.
+        send(self(), :backfill_manifests)
+    end
 
     {:ok, %{}}
+  end
+
+  @impl true
+  def handle_info(:backfill_manifests, state) do
+    Logger.info("No device manifest in database, fetching from GitHub")
+
+    Task.start(fn ->
+      try do
+        case Firmware.Downloader.check_for_updates() do
+          {:ok, _releases} ->
+            Logger.info("Background manifest fetch completed successfully")
+
+          {:error, reason} ->
+            Logger.warning("Background manifest fetch failed: #{inspect(reason)}")
+        end
+      rescue
+        e -> Logger.warning("Background manifest fetch error: #{Exception.message(e)}")
+      end
+    end)
+
+    {:noreply, state}
   end
 
   @impl true

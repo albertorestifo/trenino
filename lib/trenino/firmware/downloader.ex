@@ -184,6 +184,13 @@ defmodule Trenino.Firmware.Downloader do
     end
   end
 
+  defp validate_manifest(data) when is_binary(data) do
+    case Jason.decode(data) do
+      {:ok, decoded} -> validate_manifest(decoded)
+      {:error, _} -> {:error, :invalid_json}
+    end
+  end
+
   defp validate_manifest(_), do: {:error, :not_a_map}
 
   defp check_required_fields(data, fields) do
