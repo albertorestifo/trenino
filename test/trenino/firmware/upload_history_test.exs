@@ -15,7 +15,7 @@ defmodule Trenino.Firmware.UploadHistoryTest do
       %FirmwareFile{}
       |> FirmwareFile.changeset(%{
         firmware_release_id: release.id,
-        board_type: :uno,
+        board_type: "uno",
         download_url: "https://example.com/uno.hex"
       })
       |> Repo.insert()
@@ -28,7 +28,7 @@ defmodule Trenino.Firmware.UploadHistoryTest do
       attrs = %{
         upload_id: "upload_123",
         port: "/dev/ttyUSB0",
-        board_type: :uno,
+        board_type: "uno",
         status: :started
       }
 
@@ -43,7 +43,7 @@ defmodule Trenino.Firmware.UploadHistoryTest do
       attrs = %{
         upload_id: "upload_456",
         port: "/dev/ttyACM0",
-        board_type: :leonardo,
+        board_type: "leonardo",
         firmware_file_id: file.id,
         status: :completed,
         avrdude_output: "avrdude: 22890 bytes written",
@@ -58,7 +58,7 @@ defmodule Trenino.Firmware.UploadHistoryTest do
     end
 
     test "requires upload_id" do
-      attrs = %{port: "/dev/ttyUSB0", board_type: :uno, status: :started}
+      attrs = %{port: "/dev/ttyUSB0", board_type: "uno", status: :started}
 
       changeset = UploadHistory.changeset(%UploadHistory{}, attrs)
 
@@ -67,7 +67,7 @@ defmodule Trenino.Firmware.UploadHistoryTest do
     end
 
     test "requires port" do
-      attrs = %{upload_id: "upload_123", board_type: :uno, status: :started}
+      attrs = %{upload_id: "upload_123", board_type: "uno", status: :started}
 
       changeset = UploadHistory.changeset(%UploadHistory{}, attrs)
 
@@ -85,7 +85,7 @@ defmodule Trenino.Firmware.UploadHistoryTest do
     end
 
     test "requires status" do
-      attrs = %{upload_id: "upload_123", port: "/dev/ttyUSB0", board_type: :uno}
+      attrs = %{upload_id: "upload_123", port: "/dev/ttyUSB0", board_type: "uno"}
 
       changeset = UploadHistory.changeset(%UploadHistory{}, attrs)
 
@@ -97,7 +97,7 @@ defmodule Trenino.Firmware.UploadHistoryTest do
       attrs = %{
         upload_id: "upload_123",
         port: "/dev/ttyUSB0",
-        board_type: :uno,
+        board_type: "uno",
         status: :invalid_status
       }
 
@@ -114,7 +114,7 @@ defmodule Trenino.Firmware.UploadHistoryTest do
         attrs = %{
           upload_id: "upload_#{status}",
           port: "/dev/ttyUSB0",
-          board_type: :uno,
+          board_type: "uno",
           status: status
         }
 
@@ -130,7 +130,7 @@ defmodule Trenino.Firmware.UploadHistoryTest do
       attrs = %{
         upload_id: "upload_start_123",
         port: "/dev/ttyUSB0",
-        board_type: :nano
+        board_type: "nano"
       }
 
       changeset = UploadHistory.start_changeset(attrs)
@@ -144,7 +144,7 @@ defmodule Trenino.Firmware.UploadHistoryTest do
       # started_at is truncated to second, so we need to truncate our comparison values too
       before = DateTime.utc_now() |> DateTime.truncate(:second)
 
-      attrs = %{upload_id: "upload_time", port: "/dev/ttyUSB0", board_type: :uno}
+      attrs = %{upload_id: "upload_time", port: "/dev/ttyUSB0", board_type: "uno"}
       changeset = UploadHistory.start_changeset(attrs)
 
       after_time = DateTime.utc_now() |> DateTime.add(1, :second) |> DateTime.truncate(:second)
@@ -160,7 +160,7 @@ defmodule Trenino.Firmware.UploadHistoryTest do
       attrs = %{
         upload_id: "upload_with_file",
         port: "/dev/ttyUSB0",
-        board_type: :uno,
+        board_type: "uno",
         firmware_file_id: file.id
       }
 
@@ -177,7 +177,7 @@ defmodule Trenino.Firmware.UploadHistoryTest do
         UploadHistory.start_changeset(%{
           upload_id: "upload_complete",
           port: "/dev/ttyUSB0",
-          board_type: :uno
+          board_type: "uno"
         })
         |> Repo.insert()
 
@@ -224,7 +224,7 @@ defmodule Trenino.Firmware.UploadHistoryTest do
         UploadHistory.start_changeset(%{
           upload_id: "upload_fail",
           port: "/dev/ttyUSB0",
-          board_type: :leonardo
+          board_type: "leonardo"
         })
         |> Repo.insert()
 
@@ -257,7 +257,7 @@ defmodule Trenino.Firmware.UploadHistoryTest do
         UploadHistory.start_changeset(%{
           upload_id: "upload_cancel",
           port: "/dev/ttyUSB0",
-          board_type: :micro
+          board_type: "micro"
         })
         |> Repo.insert()
 
@@ -286,7 +286,7 @@ defmodule Trenino.Firmware.UploadHistoryTest do
         |> UploadHistory.changeset(%{
           upload_id: "upload_assoc",
           port: "/dev/ttyUSB0",
-          board_type: :uno,
+          board_type: "uno",
           firmware_file_id: file.id,
           status: :completed
         })

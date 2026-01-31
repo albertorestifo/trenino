@@ -70,7 +70,7 @@ defmodule TreninoWeb.FirmwareLive do
 
   # Upload events
   @impl true
-  def handle_info({:upload_started, _upload_id, _port, _board_type}, socket) do
+  def handle_info({:upload_started, _upload_id, _port, _environment}, socket) do
     {:noreply,
      socket
      |> assign(:upload_progress, %{percent: 0, message: "Starting upload..."})

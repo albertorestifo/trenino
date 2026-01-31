@@ -42,6 +42,8 @@ defmodule Trenino.Firmware.FilePath do
   Generates a predictable path based on version and board type:
   `cache_dir/v1.0.1_sparkfun_pro_micro.hex`
 
+  Prefers the environment field over board_type when available.
+
   ## Examples
 
       iex> file = %FirmwareFile{
@@ -56,12 +58,16 @@ defmodule Trenino.Firmware.FilePath do
   """
   @spec firmware_path(FirmwareFile.t()) :: String.t()
   def firmware_path(%FirmwareFile{firmware_release: %FirmwareRelease{} = release} = file) do
-    firmware_path(release.version, file.board_type)
+    # Prefer environment over board_type for forward compatibility
+    identifier = file.environment || file.board_type
+    firmware_path(release.version, identifier)
   end
 
-  @spec firmware_path(String.t(), BoardConfig.board_type()) :: String.t()
-  def firmware_path(version, board_type) when is_binary(version) and is_atom(board_type) do
-    filename = "v#{version}_#{board_type}.hex"
+  @spec firmware_path(String.t(), BoardConfig.board_type() | String.t()) :: String.t()
+  def firmware_path(version, identifier) when is_binary(version) do
+    # Convert atom to string if needed
+    identifier_str = if is_atom(identifier), do: Atom.to_string(identifier), else: identifier
+    filename = "v#{version}_#{identifier_str}.hex"
     Path.join(cache_dir(), filename)
   end
 
@@ -86,10 +92,10 @@ defmodule Trenino.Firmware.FilePath do
     |> File.exists?()
   end
 
-  @spec downloaded?(String.t(), BoardConfig.board_type()) :: boolean()
-  def downloaded?(version, board_type) when is_binary(version) and is_atom(board_type) do
+  @spec downloaded?(String.t(), BoardConfig.board_type() | String.t()) :: boolean()
+  def downloaded?(version, identifier) when is_binary(version) do
     version
-    |> firmware_path(board_type)
+    |> firmware_path(identifier)
     |> File.exists?()
   end
 

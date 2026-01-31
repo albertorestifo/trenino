@@ -13,7 +13,7 @@ defmodule Trenino.Firmware.UploadManager do
   require Logger
 
   alias Trenino.Firmware
-  alias Trenino.Firmware.{BoardConfig, FilePath, FirmwareFile, Uploader}
+  alias Trenino.Firmware.{FilePath, FirmwareFile, Uploader}
   alias Trenino.Serial.Connection
 
   @pubsub_topic "firmware:uploads"
@@ -25,7 +25,7 @@ defmodule Trenino.Firmware.UploadManager do
     @type upload_info :: %{
             upload_id: String.t(),
             port: String.t(),
-            board_type: BoardConfig.board_type(),
+            environment: String.t(),
             firmware_file_id: integer(),
             task_ref: reference() | nil,
             release_token: String.t(),
@@ -48,6 +48,12 @@ defmodule Trenino.Firmware.UploadManager do
   @doc """
   Start a firmware upload.
 
+  ## Parameters
+
+    * `port` - Serial port (e.g., "/dev/cu.usbmodem14201")
+    * `environment` - PlatformIO environment name (e.g., "leonardo", "sparkfun_promicro16")
+    * `firmware_file_id` - Database ID of the firmware file to upload
+
   ## Returns
 
     * `{:ok, upload_id}` - Upload started
@@ -55,10 +61,10 @@ defmodule Trenino.Firmware.UploadManager do
     * `{:error, :firmware_not_downloaded}` - Firmware file not cached locally
     * `{:error, reason}` - Other error
   """
-  @spec start_upload(String.t(), BoardConfig.board_type(), integer()) ::
+  @spec start_upload(String.t(), String.t(), integer()) ::
           {:ok, String.t()} | {:error, term()}
-  def start_upload(port, board_type, firmware_file_id) do
-    GenServer.call(__MODULE__, {:start_upload, port, board_type, firmware_file_id})
+  def start_upload(port, environment, firmware_file_id) do
+    GenServer.call(__MODULE__, {:start_upload, port, environment, firmware_file_id})
   end
 
   @doc """
@@ -81,7 +87,7 @@ defmodule Trenino.Firmware.UploadManager do
   Subscribe to upload events.
 
   Events:
-    * `{:upload_started, upload_id, port, board_type}`
+    * `{:upload_started, upload_id, port, environment}`
     * `{:upload_progress, upload_id, percent, message}`
     * `{:upload_completed, upload_id, duration_ms}`
     * `{:upload_failed, upload_id, reason, message}`
@@ -99,11 +105,11 @@ defmodule Trenino.Firmware.UploadManager do
   end
 
   @impl true
-  def handle_call({:start_upload, port, board_type, firmware_file_id}, _from, %State{} = state) do
+  def handle_call({:start_upload, port, environment, firmware_file_id}, _from, %State{} = state) do
     if state.current_upload != nil do
       {:reply, {:error, :upload_in_progress}, state}
     else
-      case do_start_upload(port, board_type, firmware_file_id) do
+      case do_start_upload(port, environment, firmware_file_id) do
         {:ok, upload_info} ->
           {:reply, {:ok, upload_info.upload_id}, %{state | current_upload: upload_info}}
 
@@ -174,7 +180,7 @@ defmodule Trenino.Firmware.UploadManager do
 
   # Private functions
 
-  defp do_start_upload(port, board_type, firmware_file_id) do
+  defp do_start_upload(port, environment, firmware_file_id) do
     with {:ok, file} <- Firmware.get_firmware_file(firmware_file_id, preload: [:firmware_release]),
          :ok <- verify_firmware_downloaded(file),
          {:ok, release_token} <- Connection.request_upload_access(port) do
@@ -185,7 +191,7 @@ defmodule Trenino.Firmware.UploadManager do
         Firmware.create_upload_history(%{
           upload_id: upload_id,
           port: port,
-          board_type: board_type,
+          board_type: environment,
           firmware_file_id: firmware_file_id
         })
 
@@ -197,7 +203,7 @@ defmodule Trenino.Firmware.UploadManager do
           end
 
           file_path = FilePath.firmware_path(file)
-          Uploader.upload(port, board_type, file_path, progress_callback)
+          Uploader.upload(port, environment, file_path, progress_callback)
         end)
 
       # Schedule timeout
@@ -206,15 +212,15 @@ defmodule Trenino.Firmware.UploadManager do
       upload_info = %{
         upload_id: upload_id,
         port: port,
-        board_type: board_type,
+        environment: environment,
         firmware_file_id: firmware_file_id,
         task_ref: task.ref,
         release_token: release_token,
         started_at: System.monotonic_time(:millisecond)
       }
 
-      broadcast({:upload_started, upload_id, port, board_type})
-      Logger.info("Started firmware upload #{upload_id} to #{port}")
+      broadcast({:upload_started, upload_id, port, environment})
+      Logger.info("Started firmware upload #{upload_id} to #{port} (environment: #{environment})")
 
       {:ok, upload_info}
     end

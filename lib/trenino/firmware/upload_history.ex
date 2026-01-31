@@ -8,7 +8,6 @@ defmodule Trenino.Firmware.UploadHistory do
   use Ecto.Schema
   import Ecto.Changeset
 
-  alias Trenino.Firmware.BoardConfig
   alias Trenino.Firmware.FirmwareFile
 
   @type status :: :started | :completed | :failed | :cancelled
@@ -17,7 +16,7 @@ defmodule Trenino.Firmware.UploadHistory do
           id: integer() | nil,
           upload_id: String.t() | nil,
           port: String.t() | nil,
-          board_type: BoardConfig.board_type() | nil,
+          board_type: String.t() | nil,
           firmware_file_id: integer() | nil,
           firmware_file: FirmwareFile.t() | Ecto.Association.NotLoaded.t() | nil,
           status: status() | nil,
@@ -33,7 +32,7 @@ defmodule Trenino.Firmware.UploadHistory do
   schema "firmware_upload_history" do
     field :upload_id, :string
     field :port, :string
-    field :board_type, Ecto.Enum, values: BoardConfig.board_types()
+    field :board_type, :string
     field :status, Ecto.Enum, values: [:started, :completed, :failed, :cancelled]
     field :error_message, :string
     field :avrdude_output, :string

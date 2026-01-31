@@ -22,21 +22,21 @@ defmodule Trenino.FirmwareTest do
     # Create firmware files for common board types
     {:ok, uno_file} =
       Firmware.create_firmware_file(release.id, %{
-        board_type: :uno,
+        board_type: "uno",
         download_url: "https://github.com/releases/download/v1.0.0/tws-io-arduino-uno.hex",
         file_size: 17_113
       })
 
     {:ok, nano_file} =
       Firmware.create_firmware_file(release.id, %{
-        board_type: :nano,
+        board_type: "nano",
         download_url: "https://github.com/releases/download/v1.0.0/tws-io-arduino-nano.hex",
         file_size: 17_113
       })
 
     {:ok, leonardo_file} =
       Firmware.create_firmware_file(release.id, %{
-        board_type: :leonardo,
+        board_type: "leonardo",
         download_url: "https://github.com/releases/download/v1.0.0/tws-io-arduino-leonardo.hex",
         file_size: 22_890
       })
@@ -245,7 +245,7 @@ defmodule Trenino.FirmwareTest do
       {:ok, release} = Firmware.create_release(%{version: "1.0.0", tag_name: "v1.0.0"})
 
       attrs = %{
-        board_type: :micro,
+        board_type: "micro",
         download_url: "https://example.com/micro.hex",
         file_size: 22_890
       }
@@ -303,7 +303,7 @@ defmodule Trenino.FirmwareTest do
         Firmware.create_upload_history(%{
           upload_id: "old_upload",
           port: "/dev/ttyUSB0",
-          board_type: :uno
+          board_type: "uno"
         })
 
       # Small delay to ensure different timestamps
@@ -313,7 +313,7 @@ defmodule Trenino.FirmwareTest do
         Firmware.create_upload_history(%{
           upload_id: "new_upload",
           port: "/dev/ttyUSB1",
-          board_type: :nano
+          board_type: "nano"
         })
 
       history = Firmware.list_upload_history()
@@ -329,7 +329,7 @@ defmodule Trenino.FirmwareTest do
           Firmware.create_upload_history(%{
             upload_id: "upload_#{i}",
             port: "/dev/ttyUSB0",
-            board_type: :uno
+            board_type: "uno"
           })
       end
 
@@ -344,7 +344,7 @@ defmodule Trenino.FirmwareTest do
       attrs = %{
         upload_id: "upload_123",
         port: "/dev/ttyUSB0",
-        board_type: :leonardo
+        board_type: "leonardo"
       }
 
       assert {:ok, history} = Firmware.create_upload_history(attrs)
@@ -359,7 +359,7 @@ defmodule Trenino.FirmwareTest do
         Firmware.create_upload_history(%{
           upload_id: "find_me",
           port: "/dev/ttyUSB0",
-          board_type: :uno
+          board_type: "uno"
         })
 
       assert {:ok, found} = Firmware.get_upload_history("find_me")
@@ -377,7 +377,7 @@ defmodule Trenino.FirmwareTest do
         Firmware.create_upload_history(%{
           upload_id: "complete_test",
           port: "/dev/ttyUSB0",
-          board_type: :uno
+          board_type: "uno"
         })
 
       Process.sleep(10)
@@ -395,7 +395,7 @@ defmodule Trenino.FirmwareTest do
         Firmware.create_upload_history(%{
           upload_id: "fail_test",
           port: "/dev/ttyUSB0",
-          board_type: :leonardo
+          board_type: "leonardo"
         })
 
       assert {:ok, failed} =
@@ -413,7 +413,7 @@ defmodule Trenino.FirmwareTest do
         Firmware.create_upload_history(%{
           upload_id: "cancel_test",
           port: "/dev/ttyUSB0",
-          board_type: :micro
+          board_type: "micro"
         })
 
       assert {:ok, cancelled} = Firmware.cancel_upload_history(history)
