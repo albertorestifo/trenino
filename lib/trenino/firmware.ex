@@ -248,7 +248,7 @@ defmodule Trenino.Firmware do
     preloads = Keyword.get(opts, :preload, [])
 
     UploadHistory
-    |> order_by([h], desc: h.started_at)
+    |> order_by([h], desc: h.started_at, desc: h.id)
     |> limit(^limit)
     |> Repo.all()
     |> Repo.preload(preloads)

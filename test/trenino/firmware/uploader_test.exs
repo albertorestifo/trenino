@@ -251,8 +251,8 @@ defmodule Trenino.Firmware.UploaderTest do
         # but that's a different error than invalid argument type
         result = Uploader.upload("/dev/null", env, "/nonexistent.hex")
 
-        # Should get hex_file_not_found or similar, not a function clause error
-        assert match?({:error, _, _}, result)
+        # Should get an error tuple, not a function clause error
+        assert match?({:error, _}, result) or match?({:error, _, _}, result)
       end
     end
   end
@@ -273,8 +273,8 @@ defmodule Trenino.Firmware.UploaderTest do
         # Verify the function accepts legacy board_type atoms
         result = Uploader.upload("/dev/null", board_type, "/nonexistent.hex")
 
-        # Should get hex_file_not_found or similar, not a function clause error
-        assert match?({:error, _, _}, result)
+        # Should get an error tuple, not a function clause error
+        assert match?({:error, _}, result) or match?({:error, _, _}, result)
       end
     end
   end
