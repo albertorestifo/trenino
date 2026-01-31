@@ -35,6 +35,49 @@ defmodule TreninoWeb.ConfigurationEditLive do
     end
   end
 
+  @impl true
+  def handle_params(%{"config_id" => "new"}, _uri, socket) do
+    # Already in new mode, no changes needed
+    {:noreply, socket}
+  end
+
+  @impl true
+  def handle_params(%{"config_id" => config_id_str}, _uri, socket) do
+    if socket.assigns.new_mode do
+      handle_params_transition_from_new(socket, config_id_str)
+    else
+      # Already in existing mode, no changes needed
+      {:noreply, socket}
+    end
+  end
+
+  defp handle_params_transition_from_new(socket, config_id_str) do
+    with {:ok, config_id} <- ConfigId.parse(config_id_str),
+         true <- socket.assigns.device.config_id == config_id,
+         {:ok, inputs} <- Hardware.list_inputs(socket.assigns.device.id),
+         {:ok, matrices} <- Hardware.list_matrices(socket.assigns.device.id),
+         {:ok, outputs} <- Hardware.list_outputs(socket.assigns.device.id) do
+      {:noreply,
+       socket
+       |> assign(:new_mode, false)
+       |> assign(:inputs, inputs)
+       |> assign(:matrices, matrices)
+       |> assign(:outputs, outputs)}
+    else
+      {:error, :invalid} ->
+        {:noreply,
+         socket
+         |> put_flash(:error, "Invalid configuration ID")
+         |> redirect(to: ~p"/")}
+
+      false ->
+        {:noreply,
+         socket
+         |> put_flash(:error, "Configuration mismatch")
+         |> redirect(to: ~p"/")}
+    end
+  end
+
   defp mount_new(socket) do
     if connected?(socket) do
       Hardware.subscribe_configuration()
@@ -164,25 +207,25 @@ defmodule TreninoWeb.ConfigurationEditLive do
   # Device name/description editing
   @impl true
   def handle_event("validate_device", %{"device" => params}, socket) do
-    changeset =
-      socket.assigns.device
-      |> Device.changeset(params)
-      |> Map.put(:action, :validate)
-
-    {:noreply, assign(socket, :device_form, to_form(changeset))}
-  end
-
-  @impl true
-  def handle_event("save_device", %{"device" => params}, socket) do
+    # Auto-save on change
     case Hardware.update_device(socket.assigns.device, params) do
       {:ok, device} ->
         changeset = Device.changeset(device, %{})
 
-        {:noreply,
-         socket
-         |> assign(:device, device)
-         |> assign(:device_form, to_form(changeset))
-         |> put_flash(:info, "Configuration saved")}
+        socket =
+          socket
+          |> assign(:device, device)
+          |> assign(:device_form, to_form(changeset))
+
+        # Redirect from /new to the actual config page on first save
+        socket =
+          if socket.assigns.new_mode do
+            push_patch(socket, to: ~p"/configurations/#{device.config_id}")
+          else
+            socket
+          end
+
+        {:noreply, socket}
 
       {:error, changeset} ->
         {:noreply, assign(socket, :device_form, to_form(changeset))}
@@ -899,7 +942,7 @@ defmodule TreninoWeb.ConfigurationEditLive do
   defp device_header(assigns) do
     ~H"""
     <header>
-      <.form for={@device_form} phx-change="validate_device" phx-submit="save_device">
+      <.form for={@device_form} phx-change="validate_device">
         <div>
           <label class="label">
             <span class="label-text">Configuration Name</span>
@@ -939,9 +982,6 @@ defmodule TreninoWeb.ConfigurationEditLive do
               <.icon :if={@applying} name="hero-arrow-path" class="w-4 h-4 animate-spin" />
               <.icon :if={!@applying} name="hero-play" class="w-4 h-4" />
               {if @applying, do: "Applying...", else: "Apply to Device"}
-            </button>
-            <button type="submit" class="btn btn-primary btn-sm">
-              <.icon name="hero-check" class="w-4 h-4" /> Save
             </button>
           </div>
         </div>

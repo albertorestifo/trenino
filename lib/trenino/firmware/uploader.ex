@@ -68,7 +68,6 @@ defmodule Trenino.Firmware.Uploader do
     end
   end
 
-
   # Trigger bootloader on boards that need 1200bps touch (Leonardo, Micro, Pro Micro)
   defp maybe_trigger_bootloader(port, %{use_1200bps_touch: true}) do
     Logger.info("Triggering bootloader with 1200bps touch on #{port}")

@@ -19,7 +19,9 @@ defmodule Trenino.Firmware do
   alias Trenino.Repo
 
   # Delegate upload operations to UploadManager
-  defdelegate start_upload(port, environment, firmware_file_id), to: Trenino.Firmware.UploadManager
+  defdelegate start_upload(port, environment, firmware_file_id),
+    to: Trenino.Firmware.UploadManager
+
   defdelegate cancel_upload(upload_id), to: Trenino.Firmware.UploadManager
   defdelegate subscribe_uploads(), to: Trenino.Firmware.UploadManager
   defdelegate current_upload(), to: Trenino.Firmware.UploadManager

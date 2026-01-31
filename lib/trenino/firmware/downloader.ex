@@ -170,7 +170,12 @@ defmodule Trenino.Firmware.Downloader do
     upload_config_required_fields = ["protocol", "mcu", "speed"]
 
     with :ok <- check_required_fields(data, required_fields),
-         :ok <- validate_devices(data["devices"], device_required_fields, upload_config_required_fields) do
+         :ok <-
+           validate_devices(
+             data["devices"],
+             device_required_fields,
+             upload_config_required_fields
+           ) do
       {:ok, data}
     else
       {:error, reason} ->
@@ -191,7 +196,8 @@ defmodule Trenino.Firmware.Downloader do
     end
   end
 
-  defp validate_devices(devices, required_fields, upload_config_required_fields) when is_list(devices) do
+  defp validate_devices(devices, required_fields, upload_config_required_fields)
+       when is_list(devices) do
     invalid =
       Enum.filter(devices, fn device ->
         cond do
