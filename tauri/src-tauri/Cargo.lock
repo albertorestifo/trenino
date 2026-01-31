@@ -4618,7 +4618,7 @@ dependencies = [
 
 [[package]]
 name = "trenino"
-version = "0.6.0"
+version = "0.6.1"
 dependencies = [
  "reqwest 0.13.1",
  "serde",

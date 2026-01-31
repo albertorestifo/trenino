@@ -14,6 +14,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Removed
 
+## [0.6.1] - 2026-01-31
+
+### Fixed
+
+- Device type dropdown showing empty when firmware manifest download fails - now properly falls back to hardcoded device list
+
 ## [0.6.0] - 2026-01-31
 
 ### Added

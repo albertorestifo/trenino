@@ -1,6 +1,6 @@
 [package]
 name = "trenino"
-version = "0.6.0"
+version = "0.6.1"
 description = "trenino - Bridge hardware to Train Sim World"
 authors = ["Alberto Restifo"]
 license = "CC-BY-NC-4.0"
