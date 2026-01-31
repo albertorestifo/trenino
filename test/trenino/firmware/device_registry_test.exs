@@ -78,7 +78,7 @@ defmodule Trenino.Firmware.DeviceRegistryTest do
     test "returns all fallback devices when no manifest" do
       devices = DeviceRegistry.list_available_devices()
 
-      assert length(devices) == 6
+      assert length(devices) == 7
 
       environments = Enum.map(devices, & &1.environment) |> Enum.sort()
 
@@ -116,7 +116,7 @@ defmodule Trenino.Firmware.DeviceRegistryTest do
     test "returns options suitable for form select" do
       options = DeviceRegistry.select_options()
 
-      assert length(options) == 6
+      assert length(options) == 7
 
       for {name, env} <- options do
         assert is_binary(name)
@@ -238,7 +238,7 @@ defmodule Trenino.Firmware.DeviceRegistryTest do
 
       # Should still have fallback devices
       devices = DeviceRegistry.list_available_devices()
-      assert length(devices) == 6
+      assert length(devices) == 7
     end
 
     test "falls back when manifest devices are invalid" do
@@ -257,7 +257,7 @@ defmodule Trenino.Firmware.DeviceRegistryTest do
 
       # Should still have fallback devices
       devices = DeviceRegistry.list_available_devices()
-      assert length(devices) == 6
+      assert length(devices) == 7
     end
 
     test "merges manifest devices with hardware configs" do
@@ -331,7 +331,7 @@ defmodule Trenino.Firmware.DeviceRegistryTest do
 
       # Should still have fallback devices available
       devices = DeviceRegistry.list_available_devices()
-      assert length(devices) == 6
+      assert length(devices) == 7
     end
   end
 end

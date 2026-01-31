@@ -244,6 +244,7 @@ defmodule Trenino.Firmware.Downloader do
     case environment do
       "uno" -> :uno
       "nanoatmega328" -> :nano
+      "nanoatmega328new" -> :nano
       "leonardo" -> :leonardo
       "micro" -> :micro
       "sparkfun_promicro16" -> :sparkfun_pro_micro

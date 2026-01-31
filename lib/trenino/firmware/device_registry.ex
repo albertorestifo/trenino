@@ -33,6 +33,12 @@ defmodule Trenino.Firmware.DeviceRegistry do
       baud_rate: 115_200,
       use_1200bps_touch: false
     },
+    "nanoatmega328new" => %{
+      mcu: "m328p",
+      programmer: "arduino",
+      baud_rate: 115_200,
+      use_1200bps_touch: false
+    },
     "leonardo" => %{
       mcu: "m32u4",
       programmer: "avr109",
@@ -311,6 +317,7 @@ defmodule Trenino.Firmware.DeviceRegistry do
     case environment do
       "uno" -> "Arduino Uno"
       "nanoatmega328" -> "Arduino Nano (ATmega328)"
+      "nanoatmega328new" -> "Arduino Nano"
       "leonardo" -> "Arduino Leonardo"
       "micro" -> "Arduino Micro"
       "sparkfun_promicro16" -> "SparkFun Pro Micro"
