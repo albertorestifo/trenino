@@ -17,6 +17,7 @@ defmodule Trenino.DataCase do
   use ExUnit.CaseTemplate
 
   alias Ecto.Adapters.SQL.Sandbox
+  alias Trenino.Firmware.DeviceRegistry
 
   using do
     quote do
@@ -56,5 +57,85 @@ defmodule Trenino.DataCase do
         opts |> Keyword.get(String.to_existing_atom(key), key) |> to_string()
       end)
     end)
+  end
+
+  @doc """
+  Loads basic device configurations into the DeviceRegistry for testing.
+
+  This helper loads a minimal manifest with common Arduino devices to support
+  tests that need device configurations available.
+  """
+  def load_test_devices do
+    manifest = %{
+      "version" => "test",
+      "project" => "trenino_firmware",
+      "devices" => [
+        %{
+          "environment" => "uno",
+          "displayName" => "Arduino Uno",
+          "firmwareFile" => "trenino-uno.firmware.hex",
+          "uploadConfig" => %{
+            "protocol" => "arduino",
+            "mcu" => "atmega328p",
+            "speed" => 115_200
+          }
+        },
+        %{
+          "environment" => "leonardo",
+          "displayName" => "Arduino Leonardo",
+          "firmwareFile" => "trenino-leonardo.firmware.hex",
+          "uploadConfig" => %{
+            "protocol" => "avr109",
+            "mcu" => "atmega32u4",
+            "speed" => 57_600,
+            "use1200bpsTouch" => true
+          }
+        },
+        %{
+          "environment" => "nanoatmega328",
+          "displayName" => "Arduino Nano",
+          "firmwareFile" => "trenino-nano.firmware.hex",
+          "uploadConfig" => %{
+            "protocol" => "arduino",
+            "mcu" => "atmega328p",
+            "speed" => 115_200
+          }
+        },
+        %{
+          "environment" => "micro",
+          "displayName" => "Arduino Micro",
+          "firmwareFile" => "trenino-micro.firmware.hex",
+          "uploadConfig" => %{
+            "protocol" => "avr109",
+            "mcu" => "atmega32u4",
+            "speed" => 57_600,
+            "use1200bpsTouch" => true
+          }
+        },
+        %{
+          "environment" => "sparkfun_promicro16",
+          "displayName" => "SparkFun Pro Micro",
+          "firmwareFile" => "trenino-sparkfun-promicro.firmware.hex",
+          "uploadConfig" => %{
+            "protocol" => "avr109",
+            "mcu" => "atmega32u4",
+            "speed" => 57_600,
+            "use1200bpsTouch" => true
+          }
+        },
+        %{
+          "environment" => "megaatmega2560",
+          "displayName" => "Arduino Mega 2560",
+          "firmwareFile" => "trenino-mega2560.firmware.hex",
+          "uploadConfig" => %{
+            "protocol" => "wiring",
+            "mcu" => "atmega2560",
+            "speed" => 115_200
+          }
+        }
+      ]
+    }
+
+    DeviceRegistry.reload_from_manifest(manifest, 0)
   end
 end

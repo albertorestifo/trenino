@@ -295,7 +295,7 @@ defmodule Trenino.Firmware.UploadHistoryTest do
       history = Repo.preload(history, :firmware_file)
 
       assert history.firmware_file.id == file.id
-      assert history.firmware_file.board_type == :uno
+      assert history.firmware_file.board_type == "uno"
     end
   end
 end

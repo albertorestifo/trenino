@@ -249,7 +249,7 @@ defmodule Trenino.Firmware.Downloader do
           filename: filename,
           download_url: asset["browser_download_url"],
           file_size: asset["size"],
-          board_type: environment_to_board_type(environment),
+          board_type: environment,
           environment: environment
         }
       else
@@ -258,23 +258,6 @@ defmodule Trenino.Firmware.Downloader do
       end
     end)
     |> Enum.reject(&is_nil/1)
-  end
-
-  # Convert environment name to legacy board_type atom for database compatibility
-  # This maintains backward compatibility with existing database records
-  defp environment_to_board_type(environment) do
-    mapping = %{
-      "uno" => :uno,
-      "nanoatmega328new" => :nano,
-      "leonardo" => :leonardo,
-      "micro" => :micro,
-      "sparkfun_promicro16" => :sparkfun_pro_micro,
-      "megaatmega2560" => :mega2560,
-      "due" => :due,
-      "esp32dev" => :esp32
-    }
-
-    Map.get(mapping, environment, String.to_atom(environment))
   end
 
   # Database storage

@@ -216,7 +216,7 @@ defmodule Trenino.FirmwareTest do
 
       assert {:ok, found} = Firmware.get_firmware_file(uno_file.id)
       assert found.id == uno_file.id
-      assert found.board_type == :uno
+      assert found.board_type == "uno"
     end
 
     test "returns error when file not found" do
@@ -228,15 +228,16 @@ defmodule Trenino.FirmwareTest do
     test "returns firmware file for specific release and board type" do
       {release, _files} = create_release_with_files()
 
-      assert {:ok, file} = Firmware.get_firmware_file_for_board(release.id, :leonardo)
-      assert file.board_type == :leonardo
+      assert {:ok, file} = Firmware.get_firmware_file_for_board(release.id, "leonardo")
+      assert file.board_type == "leonardo"
       assert file.firmware_release_id == release.id
     end
 
     test "returns error when no file for board type" do
       {release, _files} = create_release_with_files()
 
-      assert {:error, :not_found} = Firmware.get_firmware_file_for_board(release.id, :mega2560)
+      assert {:error, :not_found} =
+               Firmware.get_firmware_file_for_board(release.id, "mega2560")
     end
   end
 
@@ -252,7 +253,7 @@ defmodule Trenino.FirmwareTest do
 
       assert {:ok, file} = Firmware.create_firmware_file(release.id, attrs)
       assert file.firmware_release_id == release.id
-      assert file.board_type == :micro
+      assert file.board_type == "micro"
     end
   end
 
@@ -475,24 +476,8 @@ defmodule Trenino.FirmwareTest do
     end
   end
 
-  describe "delegated functions" do
-    test "board_types/0 returns all board types" do
-      types = Firmware.board_types()
-
-      assert :uno in types
-      assert :nano in types
-      assert :leonardo in types
-    end
-
-    test "get_board_config/1 returns board configuration" do
-      assert {:ok, config} = Firmware.get_board_config(:uno)
-      assert config.name == "Arduino Uno"
-    end
-
-    test "board_select_options/0 returns select options" do
-      options = Firmware.board_select_options()
-
-      assert Enum.all?(options, fn {name, type} -> is_binary(name) and is_atom(type) end)
-    end
-  end
+  # Note: The board_types/0, get_board_config/1, and board_select_options/0 functions
+  # have been removed as part of removing hardcoded device configurations.
+  # Device configurations are now loaded dynamically from firmware release manifests.
+  # See DeviceRegistryTest for testing dynamic device configuration loading.
 end

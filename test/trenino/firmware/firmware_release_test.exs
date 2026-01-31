@@ -84,7 +84,7 @@ defmodule Trenino.Firmware.FirmwareReleaseTest do
         %FirmwareFile{}
         |> FirmwareFile.changeset(%{
           firmware_release_id: release.id,
-          board_type: :uno,
+          board_type: "uno",
           download_url: "https://example.com/uno.hex"
         })
         |> Repo.insert()
@@ -93,7 +93,7 @@ defmodule Trenino.Firmware.FirmwareReleaseTest do
       release = Repo.preload(release, :firmware_files)
 
       assert length(release.firmware_files) == 1
-      assert hd(release.firmware_files).board_type == :uno
+      assert hd(release.firmware_files).board_type == "uno"
     end
   end
 end

@@ -10,6 +10,104 @@ defmodule Trenino.Firmware.DownloaderTest do
 
   setup :verify_on_exit!
 
+  # Helper function to create a valid test manifest
+  defp build_test_manifest(devices) do
+    %{
+      "version" => "1.0",
+      "project" => "trenino_firmware",
+      "devices" => devices
+    }
+  end
+
+  # Helper function to create a valid device entry
+  defp build_device(environment, display_name, firmware_file, opts \\ []) do
+    %{
+      "environment" => environment,
+      "displayName" => display_name,
+      "firmwareFile" => firmware_file,
+      "uploadConfig" => %{
+        "protocol" => opts[:protocol] || "arduino",
+        "mcu" => opts[:mcu] || "atmega328p",
+        "speed" => opts[:speed] || 115_200,
+        "requires1200bpsTouch" => opts[:requires1200bps_touch] || false
+      }
+    }
+  end
+
+  # Test manifest for v1.0.0 release (defined as plain map for module attribute)
+  @test_manifest_v1 %{
+    "version" => "1.0",
+    "project" => "trenino_firmware",
+    "devices" => [
+      %{
+        "environment" => "leonardo",
+        "displayName" => "Arduino Leonardo",
+        "firmwareFile" => "tws-io-arduino-leonardo.hex",
+        "uploadConfig" => %{
+          "protocol" => "avr109",
+          "mcu" => "atmega32u4",
+          "speed" => 57_600,
+          "requires1200bpsTouch" => true
+        }
+      },
+      %{
+        "environment" => "mega2560",
+        "displayName" => "Arduino Mega 2560",
+        "firmwareFile" => "tws-io-arduino-mega-2560.hex",
+        "uploadConfig" => %{
+          "protocol" => "wiring",
+          "mcu" => "atmega2560",
+          "speed" => 115_200,
+          "requires1200bpsTouch" => false
+        }
+      },
+      %{
+        "environment" => "micro",
+        "displayName" => "Arduino Micro",
+        "firmwareFile" => "tws-io-arduino-micro.hex",
+        "uploadConfig" => %{
+          "protocol" => "avr109",
+          "mcu" => "atmega32u4",
+          "speed" => 57_600,
+          "requires1200bpsTouch" => true
+        }
+      },
+      %{
+        "environment" => "nanoatmega328new",
+        "displayName" => "Arduino Nano",
+        "firmwareFile" => "tws-io-arduino-nano.hex",
+        "uploadConfig" => %{
+          "protocol" => "arduino",
+          "mcu" => "atmega328p",
+          "speed" => 115_200,
+          "requires1200bpsTouch" => false
+        }
+      },
+      %{
+        "environment" => "uno",
+        "displayName" => "Arduino Uno",
+        "firmwareFile" => "tws-io-arduino-uno.hex",
+        "uploadConfig" => %{
+          "protocol" => "arduino",
+          "mcu" => "atmega328p",
+          "speed" => 115_200,
+          "requires1200bpsTouch" => false
+        }
+      },
+      %{
+        "environment" => "sparkfun_promicro16",
+        "displayName" => "SparkFun Pro Micro",
+        "firmwareFile" => "tws-io-sparkfun-pro-micro.hex",
+        "uploadConfig" => %{
+          "protocol" => "avr109",
+          "mcu" => "atmega32u4",
+          "speed" => 57_600,
+          "requires1200bpsTouch" => true
+        }
+      }
+    ]
+  }
+
   # Real GitHub API response fixture (from curl https://api.github.com/repos/albertorestifo/trenino_firmware/releases)
   @github_releases_response [
     %{
@@ -19,6 +117,12 @@ defmodule Trenino.Firmware.DownloaderTest do
       "body" => "Initial release with support for Arduino boards",
       "published_at" => "2025-12-09T12:31:04Z",
       "assets" => [
+        %{
+          "name" => "release.json",
+          "size" => 1024,
+          "browser_download_url" =>
+            "https://github.com/albertorestifo/trenino_firmware/releases/download/v1.0.0/release.json"
+        },
         %{
           "name" => "tws-io-arduino-leonardo.hex",
           "size" => 22_890,
@@ -61,9 +165,25 @@ defmodule Trenino.Firmware.DownloaderTest do
 
   describe "check_for_updates/0" do
     test "fetches releases from GitHub and stores them in database" do
-      expect(Req, :get, fn url, _opts ->
-        assert url =~ "api.github.com/repos/albertorestifo/trenino_firmware/releases"
-        {:ok, %Req.Response{status: 200, body: @github_releases_response}}
+      stub(Req, :get, fn url, _opts ->
+        cond do
+          url =~ "api.github.com/repos/albertorestifo/trenino_firmware/releases" ->
+            {:ok, %Req.Response{status: 200, body: @github_releases_response}}
+
+          url =~ "release.json" ->
+            {:ok, %Req.Response{status: 200, body: @test_manifest_v1}}
+
+          true ->
+            {:ok, %Req.Response{status: 404, body: nil}}
+        end
+      end)
+
+      stub(Req, :get, fn url ->
+        if url =~ "release.json" do
+          {:ok, %Req.Response{status: 200, body: @test_manifest_v1}}
+        else
+          {:ok, %Req.Response{status: 404, body: nil}}
+        end
       end)
 
       assert {:ok, releases} = Downloader.check_for_updates()
@@ -84,18 +204,23 @@ defmodule Trenino.Firmware.DownloaderTest do
       # Should have created firmware files for all 6 board types
       assert length(release.firmware_files) == 6
 
-      # Verify specific board types
-      board_types = Enum.map(release.firmware_files, & &1.board_type) |> Enum.sort()
+      # Verify specific environments
+      environments = Enum.map(release.firmware_files, & &1.environment) |> Enum.sort()
 
-      assert :leonardo in board_types
-      assert :mega2560 in board_types
-      assert :micro in board_types
-      assert :nano in board_types
-      assert :uno in board_types
-      assert :sparkfun_pro_micro in board_types
+      assert "leonardo" in environments
+      assert "mega2560" in environments
+      assert "micro" in environments
+      assert "nanoatmega328new" in environments
+      assert "uno" in environments
+      assert "sparkfun_promicro16" in environments
     end
 
     test "handles multiple releases" do
+      manifest_v1_1 =
+        build_test_manifest([
+          build_device("uno", "Arduino Uno", "tws-io-arduino-uno.hex")
+        ])
+
       releases_response = [
         %{
           "tag_name" => "v1.1.0",
@@ -104,6 +229,11 @@ defmodule Trenino.Firmware.DownloaderTest do
           "body" => "Bug fixes",
           "published_at" => "2025-12-10T10:00:00Z",
           "assets" => [
+            %{
+              "name" => "release.json",
+              "size" => 500,
+              "browser_download_url" => "https://github.com/releases/v1.1.0/release.json"
+            },
             %{
               "name" => "tws-io-arduino-uno.hex",
               "size" => 17_200,
@@ -114,8 +244,33 @@ defmodule Trenino.Firmware.DownloaderTest do
         | @github_releases_response
       ]
 
-      expect(Req, :get, fn _url, _opts ->
-        {:ok, %Req.Response{status: 200, body: releases_response}}
+      stub(Req, :get, fn url, _opts ->
+        cond do
+          url =~ "api.github.com/repos" ->
+            {:ok, %Req.Response{status: 200, body: releases_response}}
+
+          url =~ "v1.1.0/release.json" ->
+            {:ok, %Req.Response{status: 200, body: manifest_v1_1}}
+
+          url =~ "v1.0.0/release.json" ->
+            {:ok, %Req.Response{status: 200, body: @test_manifest_v1}}
+
+          true ->
+            {:ok, %Req.Response{status: 404, body: nil}}
+        end
+      end)
+
+      stub(Req, :get, fn url ->
+        cond do
+          url =~ "v1.1.0/release.json" ->
+            {:ok, %Req.Response{status: 200, body: manifest_v1_1}}
+
+          url =~ "v1.0.0/release.json" ->
+            {:ok, %Req.Response{status: 200, body: @test_manifest_v1}}
+
+          true ->
+            {:ok, %Req.Response{status: 404, body: nil}}
+        end
       end)
 
       assert {:ok, releases} = Downloader.check_for_updates()
@@ -127,8 +282,25 @@ defmodule Trenino.Firmware.DownloaderTest do
 
     test "updates existing release on re-fetch" do
       # First fetch
-      expect(Req, :get, fn _url, _opts ->
-        {:ok, %Req.Response{status: 200, body: @github_releases_response}}
+      stub(Req, :get, fn url, _opts ->
+        cond do
+          url =~ "api.github.com/repos" ->
+            {:ok, %Req.Response{status: 200, body: @github_releases_response}}
+
+          url =~ "release.json" ->
+            {:ok, %Req.Response{status: 200, body: @test_manifest_v1}}
+
+          true ->
+            {:ok, %Req.Response{status: 404, body: nil}}
+        end
+      end)
+
+      stub(Req, :get, fn url ->
+        if url =~ "release.json" do
+          {:ok, %Req.Response{status: 200, body: @test_manifest_v1}}
+        else
+          {:ok, %Req.Response{status: 404, body: nil}}
+        end
       end)
 
       assert {:ok, [release1]} = Downloader.check_for_updates()
@@ -141,12 +313,36 @@ defmodule Trenino.Firmware.DownloaderTest do
           "html_url" => "https://github.com/releases/v1.0.0",
           "body" => "Updated release notes",
           "published_at" => "2025-12-09T12:31:04Z",
-          "assets" => []
+          "assets" => [
+            %{
+              "name" => "release.json",
+              "size" => 1024,
+              "browser_download_url" =>
+                "https://github.com/albertorestifo/trenino_firmware/releases/download/v1.0.0/release.json"
+            }
+          ]
         }
       ]
 
-      expect(Req, :get, fn _url, _opts ->
-        {:ok, %Req.Response{status: 200, body: updated_response}}
+      stub(Req, :get, fn url, _opts ->
+        cond do
+          url =~ "api.github.com/repos" ->
+            {:ok, %Req.Response{status: 200, body: updated_response}}
+
+          url =~ "release.json" ->
+            {:ok, %Req.Response{status: 200, body: @test_manifest_v1}}
+
+          true ->
+            {:ok, %Req.Response{status: 404, body: nil}}
+        end
+      end)
+
+      stub(Req, :get, fn url ->
+        if url =~ "release.json" do
+          {:ok, %Req.Response{status: 200, body: @test_manifest_v1}}
+        else
+          {:ok, %Req.Response{status: 404, body: nil}}
+        end
       end)
 
       assert {:ok, [release2]} = Downloader.check_for_updates()
@@ -156,7 +352,12 @@ defmodule Trenino.Firmware.DownloaderTest do
       assert release2.release_notes == "Updated release notes"
     end
 
-    test "filters out non-hex assets" do
+    test "only includes assets specified in manifest" do
+      manifest_uno_only =
+        build_test_manifest([
+          build_device("uno", "Arduino Uno", "tws-io-arduino-uno.hex")
+        ])
+
       release_with_mixed_assets = [
         %{
           "tag_name" => "v1.0.0",
@@ -165,6 +366,11 @@ defmodule Trenino.Firmware.DownloaderTest do
           "body" => nil,
           "published_at" => "2025-12-09T12:31:04Z",
           "assets" => [
+            %{
+              "name" => "release.json",
+              "size" => 500,
+              "browser_download_url" => "https://github.com/releases/v1.0.0/release.json"
+            },
             %{
               "name" => "tws-io-arduino-uno.hex",
               "size" => 17_113,
@@ -184,21 +390,49 @@ defmodule Trenino.Firmware.DownloaderTest do
         }
       ]
 
-      expect(Req, :get, fn _url, _opts ->
-        {:ok, %Req.Response{status: 200, body: release_with_mixed_assets}}
+      stub(Req, :get, fn url, _opts ->
+        cond do
+          url =~ "api.github.com/repos" ->
+            {:ok, %Req.Response{status: 200, body: release_with_mixed_assets}}
+
+          url =~ "release.json" ->
+            {:ok, %Req.Response{status: 200, body: manifest_uno_only}}
+
+          true ->
+            {:ok, %Req.Response{status: 404, body: nil}}
+        end
+      end)
+
+      stub(Req, :get, fn url ->
+        if url =~ "release.json" do
+          {:ok, %Req.Response{status: 200, body: manifest_uno_only}}
+        else
+          {:ok, %Req.Response{status: 404, body: nil}}
+        end
       end)
 
       assert {:ok, _releases} = Downloader.check_for_updates()
 
       {:ok, release} = Firmware.get_release_by_tag("v1.0.0", preload: [:firmware_files])
 
-      # Should only have the uno.hex file
+      # Should only have the uno.hex file (from manifest)
       assert length(release.firmware_files) == 1
-      assert hd(release.firmware_files).board_type == :uno
+      assert hd(release.firmware_files).environment == "uno"
     end
 
-    test "handles unknown board types in assets" do
-      release_with_unknown_board = [
+    test "handles missing assets for devices in manifest" do
+      # Manifest references assets that don't exist in the release
+      manifest_with_missing_assets =
+        build_test_manifest([
+          build_device("uno", "Arduino Uno", "tws-io-arduino-uno.hex"),
+          build_device("leonardo", "Arduino Leonardo", "missing-file.hex",
+            protocol: "avr109",
+            mcu: "atmega32u4",
+            speed: 57_600
+          )
+        ])
+
+      release_with_missing_asset = [
         %{
           "tag_name" => "v1.0.0",
           "name" => "v1.0.0",
@@ -207,30 +441,47 @@ defmodule Trenino.Firmware.DownloaderTest do
           "published_at" => "2025-12-09T12:31:04Z",
           "assets" => [
             %{
+              "name" => "release.json",
+              "size" => 500,
+              "browser_download_url" => "https://github.com/releases/v1.0.0/release.json"
+            },
+            %{
               "name" => "tws-io-arduino-uno.hex",
               "size" => 17_113,
               "browser_download_url" => "https://github.com/releases/uno.hex"
-            },
-            %{
-              "name" => "tws-io-unknown-board.hex",
-              "size" => 10_000,
-              "browser_download_url" => "https://github.com/releases/unknown.hex"
             }
           ]
         }
       ]
 
-      expect(Req, :get, fn _url, _opts ->
-        {:ok, %Req.Response{status: 200, body: release_with_unknown_board}}
+      stub(Req, :get, fn url, _opts ->
+        cond do
+          url =~ "api.github.com/repos" ->
+            {:ok, %Req.Response{status: 200, body: release_with_missing_asset}}
+
+          url =~ "release.json" ->
+            {:ok, %Req.Response{status: 200, body: manifest_with_missing_assets}}
+
+          true ->
+            {:ok, %Req.Response{status: 404, body: nil}}
+        end
+      end)
+
+      stub(Req, :get, fn url ->
+        if url =~ "release.json" do
+          {:ok, %Req.Response{status: 200, body: manifest_with_missing_assets}}
+        else
+          {:ok, %Req.Response{status: 404, body: nil}}
+        end
       end)
 
       assert {:ok, _releases} = Downloader.check_for_updates()
 
       {:ok, release} = Firmware.get_release_by_tag("v1.0.0", preload: [:firmware_files])
 
-      # Should only have uno, unknown board should be filtered
+      # Should only have uno, leonardo asset is missing
       assert length(release.firmware_files) == 1
-      assert hd(release.firmware_files).board_type == :uno
+      assert hd(release.firmware_files).environment == "uno"
     end
 
     test "returns error on GitHub API failure" do
@@ -257,6 +508,11 @@ defmodule Trenino.Firmware.DownloaderTest do
     end
 
     test "handles release without published_at" do
+      manifest_simple =
+        build_test_manifest([
+          build_device("uno", "Arduino Uno", "firmware.hex")
+        ])
+
       release_without_date = [
         %{
           "tag_name" => "v1.0.0",
@@ -264,12 +520,40 @@ defmodule Trenino.Firmware.DownloaderTest do
           "html_url" => "https://github.com/releases/v1.0.0",
           "body" => nil,
           "published_at" => nil,
-          "assets" => []
+          "assets" => [
+            %{
+              "name" => "release.json",
+              "size" => 500,
+              "browser_download_url" => "https://github.com/releases/v1.0.0/release.json"
+            },
+            %{
+              "name" => "firmware.hex",
+              "size" => 10_000,
+              "browser_download_url" => "https://github.com/releases/v1.0.0/firmware.hex"
+            }
+          ]
         }
       ]
 
-      expect(Req, :get, fn _url, _opts ->
-        {:ok, %Req.Response{status: 200, body: release_without_date}}
+      stub(Req, :get, fn url, _opts ->
+        cond do
+          url =~ "api.github.com/repos" ->
+            {:ok, %Req.Response{status: 200, body: release_without_date}}
+
+          url =~ "release.json" ->
+            {:ok, %Req.Response{status: 200, body: manifest_simple}}
+
+          true ->
+            {:ok, %Req.Response{status: 404, body: nil}}
+        end
+      end)
+
+      stub(Req, :get, fn url ->
+        if url =~ "release.json" do
+          {:ok, %Req.Response{status: 200, body: manifest_simple}}
+        else
+          {:ok, %Req.Response{status: 404, body: nil}}
+        end
       end)
 
       assert {:ok, [release]} = Downloader.check_for_updates()
@@ -280,14 +564,31 @@ defmodule Trenino.Firmware.DownloaderTest do
   describe "download_firmware/1" do
     setup do
       # Create a release with a firmware file
-      expect(Req, :get, fn _url, _opts ->
-        {:ok, %Req.Response{status: 200, body: @github_releases_response}}
+      stub(Req, :get, fn url, _opts ->
+        cond do
+          url =~ "api.github.com/repos" ->
+            {:ok, %Req.Response{status: 200, body: @github_releases_response}}
+
+          url =~ "release.json" ->
+            {:ok, %Req.Response{status: 200, body: @test_manifest_v1}}
+
+          true ->
+            {:ok, %Req.Response{status: 404, body: nil}}
+        end
+      end)
+
+      stub(Req, :get, fn url ->
+        if url =~ "release.json" do
+          {:ok, %Req.Response{status: 200, body: @test_manifest_v1}}
+        else
+          {:ok, %Req.Response{status: 404, body: nil}}
+        end
       end)
 
       {:ok, [release]} = Downloader.check_for_updates()
       {:ok, release} = Firmware.get_release(release.id, preload: [:firmware_files])
 
-      uno_file = Enum.find(release.firmware_files, &(&1.board_type == :uno))
+      uno_file = Enum.find(release.firmware_files, &(&1.environment == "uno"))
 
       # Clean up any existing test files
       cache_dir = Application.app_dir(:trenino, "priv/firmware_cache")
@@ -347,22 +648,16 @@ defmodule Trenino.Firmware.DownloaderTest do
 
   describe "manifest support" do
     test "fetches and parses release.json manifest" do
-      manifest = %{
-        "version" => "1.0",
-        "project" => "trenino_firmware",
-        "devices" => [
-          %{
-            "environment" => "uno",
-            "displayName" => "Arduino Uno",
-            "firmwareFile" => "trenino-uno.firmware.hex"
-          },
-          %{
-            "environment" => "leonardo",
-            "displayName" => "Arduino Leonardo",
-            "firmwareFile" => "trenino-leonardo.firmware.hex"
-          }
-        ]
-      }
+      manifest =
+        build_test_manifest([
+          build_device("uno", "Arduino Uno", "trenino-uno.firmware.hex"),
+          build_device("leonardo", "Arduino Leonardo", "trenino-leonardo.firmware.hex",
+            protocol: "avr109",
+            mcu: "atmega32u4",
+            speed: 57_600,
+            requires1200bps_touch: true
+          )
+        ])
 
       release_with_manifest = [
         %{
@@ -439,13 +734,13 @@ defmodule Trenino.Firmware.DownloaderTest do
       assert "leonardo" in environments
     end
 
-    test "handles missing release.json gracefully" do
+    test "skips releases without release.json manifest" do
       release_without_manifest = [
         %{
           "tag_name" => "v1.5.0",
           "name" => "v1.5.0",
           "html_url" => "https://github.com/releases/v1.5.0",
-          "body" => "Old release",
+          "body" => "Old release without manifest",
           "published_at" => "2026-01-17T10:00:00Z",
           "assets" => [
             %{
@@ -457,25 +752,35 @@ defmodule Trenino.Firmware.DownloaderTest do
         }
       ]
 
-      expect(Req, :get, fn _url, _opts ->
-        {:ok, %Req.Response{status: 200, body: release_without_manifest}}
+      stub(Req, :get, fn url, _opts ->
+        cond do
+          url =~ "api.github.com/repos" ->
+            {:ok, %Req.Response{status: 200, body: release_without_manifest}}
+
+          url =~ "release.json" ->
+            {:ok, %Req.Response{status: 404, body: nil}}
+
+          true ->
+            {:ok, %Req.Response{status: 404, body: nil}}
+        end
+      end)
+
+      stub(Req, :get, fn url ->
+        if url =~ "release.json" do
+          {:ok, %Req.Response{status: 404, body: nil}}
+        else
+          {:ok, %Req.Response{status: 404, body: nil}}
+        end
       end)
 
       assert {:ok, releases} = Downloader.check_for_updates()
 
-      assert length(releases) == 1
-      release = hd(releases)
-
-      # Should still create the release
-      {:ok, db_release} = Firmware.get_release(release.id, preload: [:firmware_files])
-      assert db_release.manifest_json == nil
-
-      # Should use legacy board detection
-      assert length(db_release.firmware_files) == 1
-      assert hd(db_release.firmware_files).board_type == :uno
+      # Releases without manifests are now skipped
+      assert releases == []
     end
 
     test "handles invalid manifest JSON" do
+      # When manifest JSON is invalid, system should fall back to legacy filename detection
       release_with_bad_manifest = [
         %{
           "tag_name" => "v3.0.0",
@@ -488,11 +793,6 @@ defmodule Trenino.Firmware.DownloaderTest do
               "name" => "release.json",
               "size" => 100,
               "browser_download_url" => "https://github.com/releases/v3.0.0/release.json"
-            },
-            %{
-              "name" => "tws-io-arduino-uno.hex",
-              "size" => 17_113,
-              "browser_download_url" => "https://github.com/releases/v3.0.0/uno.hex"
             }
           ]
         }
@@ -520,14 +820,11 @@ defmodule Trenino.Firmware.DownloaderTest do
         end
       end)
 
-      # Should still succeed, just without manifest
+      # Should skip this release since it has no valid assets (only an invalid manifest)
       assert {:ok, releases} = Downloader.check_for_updates()
 
-      release = hd(releases)
-      {:ok, db_release} = Firmware.get_release(release.id)
-
-      # No manifest stored
-      assert db_release.manifest_json == nil
+      # Release should be skipped entirely because it has no valid firmware files
+      assert releases == []
     end
 
     test "validates manifest structure" do
@@ -573,11 +870,9 @@ defmodule Trenino.Firmware.DownloaderTest do
           end
         end)
 
-        # Should still succeed but not store invalid manifest
+        # Should skip releases with only invalid manifests and no firmware files
         assert {:ok, releases} = Downloader.check_for_updates()
-        release = hd(releases)
-        {:ok, db_release} = Firmware.get_release(release.id)
-        assert db_release.manifest_json == nil
+        assert releases == []
       end
     end
 
@@ -587,20 +882,26 @@ defmodule Trenino.Firmware.DownloaderTest do
         "project" => "trenino_firmware",
         "devices" => [
           # Valid device
-          %{
-            "environment" => "uno",
-            "displayName" => "Arduino Uno",
-            "firmwareFile" => "trenino-uno.hex"
-          },
+          build_device("uno", "Arduino Uno", "trenino-uno.hex"),
           # Missing displayName
           %{
             "environment" => "leonardo",
-            "firmwareFile" => "trenino-leonardo.hex"
+            "firmwareFile" => "trenino-leonardo.hex",
+            "uploadConfig" => %{
+              "protocol" => "avr109",
+              "mcu" => "atmega32u4",
+              "speed" => 57_600
+            }
           },
           # Missing firmwareFile
           %{
             "environment" => "micro",
-            "displayName" => "Arduino Micro"
+            "displayName" => "Arduino Micro",
+            "uploadConfig" => %{
+              "protocol" => "avr109",
+              "mcu" => "atmega32u4",
+              "speed" => 57_600
+            }
           }
         ]
       }
@@ -643,27 +944,18 @@ defmodule Trenino.Firmware.DownloaderTest do
         end
       end)
 
-      # Should reject manifest with invalid devices
+      # Should reject manifest with invalid devices and skip the release
       assert {:ok, releases} = Downloader.check_for_updates()
-      db_release = hd(releases)
-      {:ok, release_record} = Firmware.get_release(db_release.id)
 
-      # Manifest should not be stored because devices are invalid
-      assert release_record.manifest_json == nil
+      # Release should be skipped because manifest is invalid
+      assert releases == []
     end
 
     test "uses manifest devices over legacy filename detection" do
-      manifest = %{
-        "version" => "1.0",
-        "project" => "trenino_firmware",
-        "devices" => [
-          %{
-            "environment" => "uno",
-            "displayName" => "Custom Uno",
-            "firmwareFile" => "custom-uno.hex"
-          }
-        ]
-      }
+      manifest =
+        build_test_manifest([
+          build_device("uno", "Custom Uno", "custom-uno.hex")
+        ])
 
       release_with_both = [
         %{

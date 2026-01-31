@@ -20,7 +20,7 @@ defmodule Trenino.Firmware.FirmwareFileTest do
 
       attrs = %{
         firmware_release_id: release.id,
-        board_type: :uno,
+        board_type: "uno",
         download_url:
           "https://github.com/albertorestifo/trenino_firmware/releases/download/v1.0.0/tws-io-arduino-uno.hex"
       }
@@ -28,7 +28,7 @@ defmodule Trenino.Firmware.FirmwareFileTest do
       changeset = FirmwareFile.changeset(%FirmwareFile{}, attrs)
 
       assert changeset.valid?
-      assert get_change(changeset, :board_type) == :uno
+      assert get_change(changeset, :board_type) == "uno"
     end
 
     test "creates valid changeset with all fields" do
@@ -36,7 +36,7 @@ defmodule Trenino.Firmware.FirmwareFileTest do
 
       attrs = %{
         firmware_release_id: release.id,
-        board_type: :leonardo,
+        board_type: "leonardo",
         download_url: "https://github.com/releases/download/v1.0.0/tws-io-arduino-leonardo.hex",
         file_size: 22_890,
         checksum_sha256: "454b80bcf9612335dc07cff088ea909c232c3c960a15ff640e62eafdc8afcf47"
@@ -50,7 +50,7 @@ defmodule Trenino.Firmware.FirmwareFileTest do
     end
 
     test "requires firmware_release_id" do
-      attrs = %{board_type: :uno, download_url: "https://example.com/uno.hex"}
+      attrs = %{board_type: "uno", download_url: "https://example.com/uno.hex"}
 
       changeset = FirmwareFile.changeset(%FirmwareFile{}, attrs)
 
@@ -70,7 +70,7 @@ defmodule Trenino.Firmware.FirmwareFileTest do
 
     test "requires download_url" do
       release = create_release()
-      attrs = %{firmware_release_id: release.id, board_type: :uno}
+      attrs = %{firmware_release_id: release.id, board_type: "uno"}
 
       changeset = FirmwareFile.changeset(%FirmwareFile{}, attrs)
 
@@ -97,12 +97,12 @@ defmodule Trenino.Firmware.FirmwareFileTest do
       release = create_release()
 
       board_types = [
-        :uno,
-        :nano,
-        :leonardo,
-        :micro,
-        :mega2560,
-        :sparkfun_pro_micro
+        "uno",
+        "nanoatmega328new",
+        "leonardo",
+        "micro",
+        "mega2560",
+        "sparkfun_promicro16"
       ]
 
       for board_type <- board_types do
@@ -123,7 +123,7 @@ defmodule Trenino.Firmware.FirmwareFileTest do
 
       attrs = %{
         firmware_release_id: release.id,
-        board_type: :uno,
+        board_type: "uno",
         download_url: "https://example.com/uno.hex"
       }
 
@@ -143,7 +143,7 @@ defmodule Trenino.Firmware.FirmwareFileTest do
     test "enforces foreign key constraint on firmware_release_id" do
       attrs = %{
         firmware_release_id: 999_999,
-        board_type: :uno,
+        board_type: "uno",
         download_url: "https://example.com/uno.hex"
       }
 
@@ -164,7 +164,7 @@ defmodule Trenino.Firmware.FirmwareFileTest do
 
     test "returns false when file does not exist on disk", %{release: release} do
       file = %FirmwareFile{
-        board_type: :uno,
+        board_type: "uno",
         firmware_release: release
       }
 
@@ -173,7 +173,7 @@ defmodule Trenino.Firmware.FirmwareFileTest do
 
     test "returns true when file exists on disk", %{release: release} do
       file = %FirmwareFile{
-        board_type: :nano,
+        board_type: "nanoatmega328new",
         firmware_release: release
       }
 
@@ -197,7 +197,7 @@ defmodule Trenino.Firmware.FirmwareFileTest do
         %FirmwareFile{}
         |> FirmwareFile.changeset(%{
           firmware_release_id: release.id,
-          board_type: :nano,
+          board_type: "nanoatmega328new",
           download_url: "https://example.com/nano.hex"
         })
         |> Repo.insert()

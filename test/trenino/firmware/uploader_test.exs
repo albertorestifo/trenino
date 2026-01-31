@@ -1,8 +1,14 @@
 defmodule Trenino.Firmware.UploaderTest do
-  use ExUnit.Case, async: true
+  use Trenino.DataCase, async: false
 
   alias Trenino.Firmware.Avrdude
   alias Trenino.Firmware.Uploader
+
+  setup do
+    # Load test device configurations for uploader tests
+    load_test_devices()
+    :ok
+  end
 
   describe "error_message/1" do
     test "returns message for :port_not_found" do

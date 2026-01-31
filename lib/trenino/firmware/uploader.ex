@@ -35,6 +35,11 @@ defmodule Trenino.Firmware.Uploader do
           upload_result()
   def upload(port, environment, hex_file_path, progress_callback \\ nil)
 
+  # Backward compatibility: convert atom board_type to environment string
+  def upload(port, environment, hex_file_path, progress_callback) when is_atom(environment) do
+    upload(port, Atom.to_string(environment), hex_file_path, progress_callback)
+  end
+
   def upload(port, environment, hex_file_path, progress_callback)
       when is_binary(environment) do
     start_time = System.monotonic_time(:millisecond)
