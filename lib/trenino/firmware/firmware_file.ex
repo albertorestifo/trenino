@@ -1,15 +1,14 @@
 defmodule Trenino.Firmware.FirmwareFile do
   @moduledoc """
-  Schema for individual firmware files (HEX files) per board type.
+  Schema for individual firmware files per device environment.
 
-  Each release has multiple firmware files, one for each supported
-  Arduino board type (Uno, Nano, Leonardo, etc.).
+  Each release has multiple firmware files, one for each supported device.
+  Device configurations are loaded dynamically from release manifests.
   """
 
   use Ecto.Schema
   import Ecto.Changeset
 
-  alias Trenino.Firmware.BoardConfig
   alias Trenino.Firmware.FilePath
   alias Trenino.Firmware.FirmwareRelease
 
@@ -17,7 +16,7 @@ defmodule Trenino.Firmware.FirmwareFile do
           id: integer() | nil,
           firmware_release_id: integer() | nil,
           firmware_release: FirmwareRelease.t() | Ecto.Association.NotLoaded.t(),
-          board_type: BoardConfig.board_type() | nil,
+          board_type: String.t() | nil,
           environment: String.t() | nil,
           download_url: String.t() | nil,
           file_size: integer() | nil,
@@ -29,7 +28,7 @@ defmodule Trenino.Firmware.FirmwareFile do
   schema "firmware_files" do
     belongs_to :firmware_release, FirmwareRelease
 
-    field :board_type, Ecto.Enum, values: BoardConfig.board_types()
+    field :board_type, :string
     field :environment, :string
     field :download_url, :string
     field :file_size, :integer

@@ -2,13 +2,12 @@ defmodule Trenino.Firmware.DeviceRegistry do
   @moduledoc """
   Manages device configuration registry with dynamic loading from firmware release manifests.
 
-  This module replaces the hardcoded BoardConfig with a hybrid approach:
-  - Static hardware configurations (avrdude parameters) defined in the app
-  - Dynamic device list loaded from release.json manifests
-  - ETS cache for fast lookups
-  - Fallback to hardcoded devices if no manifest available
+  All device configurations are loaded from release.json manifests which include:
+  - Device display names and firmware files
+  - Upload configuration (protocol, MCU, speed, etc.)
+  - No hardcoded device configurations
 
-  The registry is a GenServer that maintains an ETS table with merged device configurations.
+  The registry is a GenServer that maintains an ETS table with device configurations.
   """
 
   use GenServer
@@ -17,53 +16,6 @@ defmodule Trenino.Firmware.DeviceRegistry do
   alias Trenino.Firmware
 
   @table_name :firmware_device_registry
-
-  # Static hardware configurations mapping PlatformIO environments to avrdude parameters
-  # These are kept static as they represent physical chipset characteristics
-  @hardware_configs %{
-    "uno" => %{
-      mcu: "m328p",
-      programmer: "arduino",
-      baud_rate: 115_200,
-      use_1200bps_touch: false
-    },
-    "nanoatmega328" => %{
-      mcu: "m328p",
-      programmer: "arduino",
-      baud_rate: 115_200,
-      use_1200bps_touch: false
-    },
-    "nanoatmega328new" => %{
-      mcu: "m328p",
-      programmer: "arduino",
-      baud_rate: 115_200,
-      use_1200bps_touch: false
-    },
-    "leonardo" => %{
-      mcu: "m32u4",
-      programmer: "avr109",
-      baud_rate: 57_600,
-      use_1200bps_touch: true
-    },
-    "micro" => %{
-      mcu: "m32u4",
-      programmer: "avr109",
-      baud_rate: 57_600,
-      use_1200bps_touch: true
-    },
-    "sparkfun_promicro16" => %{
-      mcu: "m32u4",
-      programmer: "avr109",
-      baud_rate: 57_600,
-      use_1200bps_touch: true
-    },
-    "megaatmega2560" => %{
-      mcu: "m2560",
-      programmer: "wiring",
-      baud_rate: 115_200,
-      use_1200bps_touch: false
-    }
-  }
 
   ## Client API
 
@@ -251,8 +203,8 @@ defmodule Trenino.Firmware.DeviceRegistry do
     with {:ok, environment} <- Map.fetch(device, "environment"),
          {:ok, display_name} <- Map.fetch(device, "displayName"),
          {:ok, firmware_file} <- Map.fetch(device, "firmwareFile"),
-         {:ok, hw_config} <- Map.fetch(@hardware_configs, environment) do
-      build_device_config(environment, display_name, firmware_file, hw_config)
+         {:ok, upload_config} <- Map.fetch(device, "uploadConfig") do
+      build_device_config(environment, display_name, firmware_file, upload_config)
     else
       :error ->
         log_invalid_device(device)
@@ -260,69 +212,57 @@ defmodule Trenino.Firmware.DeviceRegistry do
     end
   end
 
-  defp build_device_config(environment, display_name, firmware_file, hw_config) do
+  defp build_device_config(environment, display_name, firmware_file, upload_config) do
+    # Convert manifest field names to internal format
+    # Manifest uses: protocol, mcu, speed, requires1200bpsTouch
+    # Internal uses: programmer, mcu, baud_rate, use_1200bps_touch
     %{
       environment: environment,
       display_name: display_name,
       firmware_file: firmware_file,
-      mcu: hw_config.mcu,
-      programmer: hw_config.programmer,
-      baud_rate: hw_config.baud_rate,
-      use_1200bps_touch: hw_config.use_1200bps_touch
+      mcu: normalize_mcu(upload_config["mcu"]),
+      programmer: upload_config["protocol"],
+      baud_rate: upload_config["speed"],
+      use_1200bps_touch: upload_config["requires1200bpsTouch"] || false
     }
+  end
+
+  # Convert full MCU names from manifest to avrdude short codes
+  defp normalize_mcu(mcu) when is_binary(mcu) do
+    case mcu do
+      "atmega328p" -> "m328p"
+      "atmega32u4" -> "m32u4"
+      "atmega2560" -> "m2560"
+      "at91sam3x8e" -> "at91sam3x8e"
+      "esp32" -> "esp32"
+      other -> other
+    end
   end
 
   defp log_invalid_device(device) do
     env = Map.get(device, "environment", "unknown")
+    upload_config = Map.get(device, "uploadConfig")
 
-    if Map.has_key?(@hardware_configs, env) do
+    if upload_config do
       Logger.warning("Manifest device missing required fields: #{inspect(device)}")
     else
-      Logger.info(
-        "Skipping manifest device with unknown environment: #{env} (not in hardware configs)"
+      Logger.warning(
+        "Manifest device '#{env}' missing uploadConfig - device will be skipped. " <>
+          "uploadConfig is required for all devices in the manifest."
       )
     end
   end
 
   defp load_fallback_devices do
-    Logger.debug("Loading fallback devices from static hardware configs")
+    Logger.error(
+      "No firmware release manifest available. " <>
+        "Please check for firmware updates to download device configurations. " <>
+        "No devices will be available until a release manifest is loaded."
+    )
 
-    fallback_devices =
-      @hardware_configs
-      |> Enum.map(fn {env, hw_config} ->
-        {env,
-         %{
-           environment: env,
-           display_name: infer_display_name(env),
-           firmware_file: "trenino-#{env}.firmware.hex",
-           mcu: hw_config.mcu,
-           programmer: hw_config.programmer,
-           baud_rate: hw_config.baud_rate,
-           use_1200bps_touch: hw_config.use_1200bps_touch
-         }}
-      end)
-
-    # Clear existing entries
+    # Clear existing entries and leave registry empty
     :ets.delete_all_objects(@table_name)
 
-    # Insert fallback devices
-    Enum.each(fallback_devices, fn {env, config} ->
-      :ets.insert(@table_name, {env, config})
-    end)
-
-    {:ok, length(fallback_devices)}
-  end
-
-  defp infer_display_name(environment) do
-    case environment do
-      "uno" -> "Arduino Uno"
-      "nanoatmega328" -> "Arduino Nano (ATmega328)"
-      "nanoatmega328new" -> "Arduino Nano"
-      "leonardo" -> "Arduino Leonardo"
-      "micro" -> "Arduino Micro"
-      "sparkfun_promicro16" -> "SparkFun Pro Micro"
-      "megaatmega2560" -> "Arduino Mega 2560"
-      other -> String.capitalize(other)
-    end
+    {:error, :no_manifest}
   end
 end

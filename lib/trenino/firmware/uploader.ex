@@ -68,24 +68,6 @@ defmodule Trenino.Firmware.Uploader do
     end
   end
 
-  # Legacy support for board_type atoms - converts to environment string
-  def upload(port, board_type, hex_file_path, progress_callback)
-      when is_atom(board_type) do
-    environment = board_type_to_environment(board_type)
-    upload(port, environment, hex_file_path, progress_callback)
-  end
-
-  defp board_type_to_environment(board_type) do
-    case board_type do
-      :uno -> "uno"
-      :nano -> "nanoatmega328"
-      :leonardo -> "leonardo"
-      :micro -> "micro"
-      :mega2560 -> "megaatmega2560"
-      :sparkfun_pro_micro -> "sparkfun_promicro16"
-      _ -> to_string(board_type)
-    end
-  end
 
   # Trigger bootloader on boards that need 1200bps touch (Leonardo, Micro, Pro Micro)
   defp maybe_trigger_bootloader(port, %{use_1200bps_touch: true}) do

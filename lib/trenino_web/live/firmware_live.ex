@@ -240,36 +240,13 @@ defmodule TreninoWeb.FirmwareLive do
   end
 
   defp find_or_download_file(release, environment) do
-    file =
-      Enum.find(release.firmware_files, fn file ->
-        # Prefer matching by environment if available, otherwise fall back to board_type
-        if file.environment do
-          file.environment == environment
-        else
-          # Legacy: convert board_type atom to environment string for comparison
-          board_type_to_environment(file.board_type) == environment
-        end
-      end)
+    file = Enum.find(release.firmware_files, fn file -> file.environment == environment end)
 
     case file do
       nil -> {:error, :no_firmware_for_environment}
       file -> ensure_file_downloaded(%{file | firmware_release: release})
     end
   end
-
-  defp board_type_to_environment(board_type) when is_atom(board_type) do
-    case board_type do
-      :uno -> "uno"
-      :nano -> "nanoatmega328"
-      :leonardo -> "leonardo"
-      :micro -> "micro"
-      :mega2560 -> "megaatmega2560"
-      :sparkfun_pro_micro -> "sparkfun_promicro16"
-      _ -> to_string(board_type)
-    end
-  end
-
-  defp board_type_to_environment(board_type) when is_binary(board_type), do: board_type
 
   defp ensure_file_downloaded(file) do
     require Logger
@@ -433,12 +410,9 @@ defmodule TreninoWeb.FirmwareLive do
     device_names =
       assigns.release.firmware_files
       |> Enum.map(fn file ->
-        # Prefer environment over board_type for display names
-        environment = file.environment || board_type_to_environment(file.board_type)
-
-        case DeviceRegistry.get_device_config(environment) do
+        case DeviceRegistry.get_device_config(file.environment) do
           {:ok, config} -> config.display_name
-          {:error, :unknown_device} -> environment
+          {:error, :unknown_device} -> file.environment
         end
       end)
       |> Enum.sort()

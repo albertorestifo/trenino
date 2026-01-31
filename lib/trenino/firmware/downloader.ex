@@ -9,7 +9,7 @@ defmodule Trenino.Firmware.Downloader do
   require Logger
 
   alias Trenino.Firmware
-  alias Trenino.Firmware.{BoardConfig, DeviceRegistry, FilePath, FirmwareFile}
+  alias Trenino.Firmware.{DeviceRegistry, FilePath, FirmwareFile}
 
   @github_repo "albertorestifo/trenino_firmware"
   @github_api_url "https://api.github.com/repos/#{@github_repo}/releases"
@@ -27,6 +27,7 @@ defmodule Trenino.Firmware.Downloader do
         new_releases =
           releases
           |> Enum.map(&parse_release/1)
+          |> Enum.reject(&is_nil/1)
           |> Enum.map(&store_release/1)
           |> Enum.filter(&match?({:ok, _}, &1))
           |> Enum.map(fn {:ok, release} -> release end)
@@ -90,18 +91,25 @@ defmodule Trenino.Firmware.Downloader do
 
   defp parse_release(release) do
     assets = release["assets"] || []
-    manifest_data = fetch_and_parse_manifest(release["tag_name"], assets)
+    tag_name = release["tag_name"]
 
-    %{
-      version: parse_version(release["tag_name"]),
-      tag_name: release["tag_name"],
-      release_url: release["html_url"],
-      release_notes: release["body"],
-      published_at: parse_datetime(release["published_at"]),
-      manifest_json: manifest_data && Jason.encode!(manifest_data),
-      manifest: manifest_data,
-      assets: parse_assets(assets, manifest_data)
-    }
+    case fetch_and_parse_manifest(tag_name, assets) do
+      nil ->
+        Logger.warning("Release #{tag_name} has no valid manifest - skipping")
+        nil
+
+      manifest_data ->
+        %{
+          version: parse_version(tag_name),
+          tag_name: tag_name,
+          release_url: release["html_url"],
+          release_notes: release["body"],
+          published_at: parse_datetime(release["published_at"]),
+          manifest_json: Jason.encode!(manifest_data),
+          manifest: manifest_data,
+          assets: parse_assets_from_manifest(assets, manifest_data)
+        }
+    end
   end
 
   defp parse_version("v" <> version), do: version
@@ -158,10 +166,11 @@ defmodule Trenino.Firmware.Downloader do
 
   defp validate_manifest(data) when is_map(data) do
     required_fields = ["version", "project", "devices"]
-    device_required_fields = ["environment", "displayName", "firmwareFile"]
+    device_required_fields = ["environment", "displayName", "firmwareFile", "uploadConfig"]
+    upload_config_required_fields = ["protocol", "mcu", "speed"]
 
     with :ok <- check_required_fields(data, required_fields),
-         :ok <- validate_devices(data["devices"], device_required_fields) do
+         :ok <- validate_devices(data["devices"], device_required_fields, upload_config_required_fields) do
       {:ok, data}
     else
       {:error, reason} ->
@@ -182,11 +191,27 @@ defmodule Trenino.Firmware.Downloader do
     end
   end
 
-  defp validate_devices(devices, required_fields) when is_list(devices) do
+  defp validate_devices(devices, required_fields, upload_config_required_fields) when is_list(devices) do
     invalid =
       Enum.filter(devices, fn device ->
-        not is_map(device) or
-          Enum.any?(required_fields, fn field -> not Map.has_key?(device, field) end)
+        cond do
+          not is_map(device) ->
+            true
+
+          Enum.any?(required_fields, fn field -> not Map.has_key?(device, field) end) ->
+            true
+
+          not is_map(device["uploadConfig"]) ->
+            true
+
+          Enum.any?(upload_config_required_fields, fn field ->
+            not Map.has_key?(device["uploadConfig"], field)
+          end) ->
+            true
+
+          true ->
+            false
+        end
       end)
 
     if invalid == [] do
@@ -196,24 +221,16 @@ defmodule Trenino.Firmware.Downloader do
     end
   end
 
-  defp validate_devices(_, _), do: {:error, :devices_not_a_list}
+  defp validate_devices(_, _, _), do: {:error, :devices_not_a_list}
 
   # Asset parsing
-
-  defp parse_assets(assets, manifest_data) do
-    # If we have a manifest, use it to determine devices
-    if manifest_data do
-      parse_assets_from_manifest(assets, manifest_data)
-    else
-      parse_assets_legacy(assets)
-    end
-  end
 
   defp parse_assets_from_manifest(assets, manifest_data) do
     devices = manifest_data["devices"] || []
 
     Enum.map(devices, fn device ->
       filename = device["firmwareFile"]
+      environment = device["environment"]
 
       # Find matching asset
       asset =
@@ -222,8 +239,6 @@ defmodule Trenino.Firmware.Downloader do
         end)
 
       if asset do
-        environment = device["environment"]
-
         %{
           filename: filename,
           download_url: asset["browser_download_url"],
@@ -239,47 +254,19 @@ defmodule Trenino.Firmware.Downloader do
     |> Enum.reject(&is_nil/1)
   end
 
-  # Convert PlatformIO environment name to legacy board_type atom
+  # Convert environment name to legacy board_type atom for database compatibility
+  # This maintains backward compatibility with existing database records
   defp environment_to_board_type(environment) do
     case environment do
       "uno" -> :uno
-      "nanoatmega328" -> :nano
       "nanoatmega328new" -> :nano
       "leonardo" -> :leonardo
       "micro" -> :micro
       "sparkfun_promicro16" -> :sparkfun_pro_micro
       "megaatmega2560" -> :mega2560
-      _ -> nil
-    end
-  end
-
-  defp parse_assets_legacy(assets) do
-    assets
-    |> Enum.filter(&hex_file?/1)
-    |> Enum.map(&parse_asset_legacy/1)
-    |> Enum.filter(&(&1.board_type != nil))
-  end
-
-  defp hex_file?(asset) do
-    String.ends_with?(asset["name"] || "", ".hex")
-  end
-
-  defp parse_asset_legacy(asset) do
-    filename = asset["name"]
-
-    %{
-      filename: filename,
-      download_url: asset["browser_download_url"],
-      file_size: asset["size"],
-      board_type: detect_board_type(filename),
-      environment: nil
-    }
-  end
-
-  defp detect_board_type(filename) do
-    case BoardConfig.detect_board_type(filename) do
-      {:ok, board_type} -> board_type
-      :error -> nil
+      "due" -> :due
+      "esp32dev" -> :esp32
+      _ -> String.to_atom(environment)
     end
   end
 
