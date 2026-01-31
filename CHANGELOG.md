@@ -8,6 +8,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+### Changed
+
+### Fixed
+
+### Removed
+
+## [0.6.0] - 2026-01-31
+
+### Added
+
 - **Dynamic device registry from firmware manifests**
   - Device list now loaded from release.json manifest in firmware releases
   - New DeviceRegistry GenServer maintains ETS cache for fast device lookups
