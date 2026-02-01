@@ -31,6 +31,7 @@ defmodule Trenino.Application do
         lever_controller_child() ++
         button_controller_child() ++
         output_controller_child() ++
+        script_runner_child() ++
         update_checker_child() ++
         app_version_checker_child()
 
@@ -94,6 +95,17 @@ defmodule Trenino.Application do
   defp output_controller_child do
     if Application.get_env(:trenino, :start_output_controller, true) do
       [Trenino.Train.OutputController]
+    else
+      []
+    end
+  end
+
+  # Returns the ScriptRunner child spec only in non-test environments.
+  # In test, this GenServer subscribes to pubsub topics and interacts
+  # with other GenServers that may not be running.
+  defp script_runner_child do
+    if Application.get_env(:trenino, :start_script_runner, true) do
+      [Trenino.Train.ScriptRunner]
     else
       []
     end

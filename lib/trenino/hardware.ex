@@ -573,7 +573,7 @@ defmodule Trenino.Hardware do
   def get_output(id) do
     case Repo.get(Output, id) do
       nil -> {:error, :not_found}
-      output -> {:ok, output}
+      output -> {:ok, Repo.preload(output, :device)}
     end
   end
 
