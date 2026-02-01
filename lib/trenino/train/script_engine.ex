@@ -124,7 +124,7 @@ defmodule Trenino.Train.ScriptEngine do
 
   defp setup_print(lua) do
     Lua.set!(lua, [:print], fn args ->
-      message = args |> Enum.map(&to_string/1) |> Enum.join("\t")
+      message = Enum.map_join(args, "\t", &to_string/1)
       add_side_effect({:log, message})
       []
     end)

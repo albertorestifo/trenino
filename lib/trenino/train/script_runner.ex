@@ -240,24 +240,7 @@ defmodule Trenino.Train.ScriptRunner do
     subscriptions =
       case get_simulator_client() do
         {:ok, client} ->
-          endpoint_to_scripts
-          |> Map.keys()
-          |> Enum.with_index()
-          |> Map.new(fn {endpoint, index} ->
-            sub_id = @subscription_id_base + index
-
-            case SimulatorClient.subscribe(client, endpoint, sub_id) do
-              {:ok, _} ->
-                Logger.debug("[ScriptRunner] Subscribed to #{endpoint} (sub_id: #{sub_id})")
-
-              {:error, reason} ->
-                Logger.warning(
-                  "[ScriptRunner] Failed to subscribe to #{endpoint}: #{inspect(reason)}"
-                )
-            end
-
-            {endpoint, sub_id}
-          end)
+          subscribe_to_endpoints(client, Map.keys(endpoint_to_scripts))
 
         :error ->
           Logger.warning("[ScriptRunner] Simulator not connected, cannot set up subscriptions")
@@ -265,6 +248,28 @@ defmodule Trenino.Train.ScriptRunner do
       end
 
     {subscriptions, endpoint_to_scripts}
+  end
+
+  defp subscribe_to_endpoints(client, endpoints) do
+    endpoints
+    |> Enum.with_index()
+    |> Map.new(fn {endpoint, index} ->
+      sub_id = @subscription_id_base + index
+      subscribe_single(client, endpoint, sub_id)
+      {endpoint, sub_id}
+    end)
+  end
+
+  defp subscribe_single(client, endpoint, sub_id) do
+    case SimulatorClient.subscribe(client, endpoint, sub_id) do
+      {:ok, _} ->
+        Logger.debug("[ScriptRunner] Subscribed to #{endpoint} (sub_id: #{sub_id})")
+
+      {:error, reason} ->
+        Logger.warning(
+          "[ScriptRunner] Failed to subscribe to #{endpoint}: #{inspect(reason)}"
+        )
+    end
   end
 
   defp poll_and_execute(%State{subscriptions: subs} = state) when map_size(subs) == 0, do: state
@@ -309,34 +314,40 @@ defmodule Trenino.Train.ScriptRunner do
     script_ids = Map.get(state.endpoint_to_scripts, endpoint, [])
 
     Enum.reduce(script_ids, state, fn script_id, acc ->
-      case Map.get(acc.scripts, script_id) do
-        nil ->
-          acc
-
-        %ScriptState{lua: nil} ->
-          # Script has compile error, skip
-          acc
-
-        %ScriptState{last_values: last_values} = script_state ->
-          last = Map.get(last_values, endpoint)
-
-          if last != value do
-            # Value changed, fire the script
-            script_state = %{script_state | last_values: Map.put(last_values, endpoint, value)}
-            acc = put_in(acc.scripts[script_id], script_state)
-
-            event = %{
-              "source" => endpoint,
-              "value" => value,
-              "data" => build_data(entries)
-            }
-
-            execute_script(acc, script_id, script_state, event)
-          else
-            acc
-          end
-      end
+      maybe_fire_script(acc, script_id, endpoint, value, entries)
     end)
+  end
+
+  defp maybe_fire_script(%State{} = state, script_id, endpoint, value, entries) do
+    case Map.get(state.scripts, script_id) do
+      nil ->
+        state
+
+      %ScriptState{lua: nil} ->
+        state
+
+      %ScriptState{last_values: last_values} = script_state ->
+        last = Map.get(last_values, endpoint)
+
+        if last != value do
+          fire_script(state, script_id, script_state, endpoint, value, entries)
+        else
+          state
+        end
+    end
+  end
+
+  defp fire_script(%State{} = state, script_id, %ScriptState{} = script_state, endpoint, value, entries) do
+    script_state = %{script_state | last_values: Map.put(script_state.last_values, endpoint, value)}
+    state = put_in(state.scripts[script_id], script_state)
+
+    event = %{
+      "source" => endpoint,
+      "value" => value,
+      "data" => build_data(entries)
+    }
+
+    execute_script(state, script_id, script_state, event)
   end
 
   defp build_data(entries) do
@@ -399,19 +410,7 @@ defmodule Trenino.Train.ScriptRunner do
          %ScriptState{} = script_state,
          {:output_set, output_id, on?}
        ) do
-    case Train.get_output_by_id(output_id) do
-      {:ok, output} ->
-        port = ConfigurationManager.config_id_to_port(output.device.config_id)
-
-        if port do
-          value = if on?, do: :high, else: :low
-          Hardware.set_output(port, output.pin, value)
-        end
-
-      {:error, _} ->
-        Logger.warning("[ScriptRunner] Unknown output ID: #{output_id}")
-    end
-
+    apply_output_set(output_id, on?)
     script_state
   end
 
@@ -433,6 +432,25 @@ defmodule Trenino.Train.ScriptRunner do
     end
 
     script_state
+  end
+
+  defp apply_output_set(output_id, on?) do
+    case Train.get_output_by_id(output_id) do
+      {:ok, output} ->
+        set_hardware_output(output, on?)
+
+      {:error, _} ->
+        Logger.warning("[ScriptRunner] Unknown output ID: #{output_id}")
+    end
+  end
+
+  defp set_hardware_output(output, on?) do
+    port = ConfigurationManager.config_id_to_port(output.device.config_id)
+
+    if port do
+      value = if on?, do: :high, else: :low
+      Hardware.set_output(port, output.pin, value)
+    end
   end
 
   defp append_log(%ScriptState{} = script_state, message) do
