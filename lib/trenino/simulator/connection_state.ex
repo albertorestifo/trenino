@@ -16,14 +16,16 @@ defmodule Trenino.Simulator.ConnectionState do
           client: Client.t() | nil,
           last_error: error_reason() | nil,
           last_check: DateTime.t() | nil,
-          info: map() | nil
+          info: map() | nil,
+          health_failures: non_neg_integer()
         }
 
   defstruct status: :needs_config,
             client: nil,
             last_error: nil,
             last_check: nil,
-            info: nil
+            info: nil,
+            health_failures: 0
 
   @doc """
   Create a new connection state in needs_config status.
@@ -44,7 +46,14 @@ defmodule Trenino.Simulator.ConnectionState do
   """
   @spec mark_connected(t(), map()) :: t()
   def mark_connected(%__MODULE__{} = state, info) when is_map(info) do
-    %{state | status: :connected, last_check: DateTime.utc_now(), last_error: nil, info: info}
+    %{
+      state
+      | status: :connected,
+        last_check: DateTime.utc_now(),
+        last_error: nil,
+        info: info,
+        health_failures: 0
+    }
   end
 
   @doc """
@@ -52,7 +61,7 @@ defmodule Trenino.Simulator.ConnectionState do
   """
   @spec mark_disconnected(t()) :: t()
   def mark_disconnected(%__MODULE__{} = state) do
-    %{state | status: :disconnected, client: nil, last_check: nil, info: nil}
+    %{state | status: :disconnected, client: nil, last_check: nil, info: nil, health_failures: 0}
   end
 
   @doc """
@@ -60,7 +69,15 @@ defmodule Trenino.Simulator.ConnectionState do
   """
   @spec mark_needs_config(t()) :: t()
   def mark_needs_config(%__MODULE__{} = state) do
-    %{state | status: :needs_config, client: nil, last_error: nil, last_check: nil, info: nil}
+    %{
+      state
+      | status: :needs_config,
+        client: nil,
+        last_error: nil,
+        last_check: nil,
+        info: nil,
+        health_failures: 0
+    }
   end
 
   @doc """
@@ -68,6 +85,28 @@ defmodule Trenino.Simulator.ConnectionState do
   """
   @spec mark_error(t(), error_reason()) :: t()
   def mark_error(%__MODULE__{} = state, reason) do
-    %{state | status: :error, last_error: reason, last_check: DateTime.utc_now()}
+    %{
+      state
+      | status: :error,
+        last_error: reason,
+        last_check: DateTime.utc_now(),
+        health_failures: 0
+    }
+  end
+
+  @doc """
+  Record a transient health check failure without changing connection status.
+
+  Increments the health_failures counter and records the error/timestamp,
+  but keeps the current status (typically :connected) unchanged.
+  """
+  @spec record_health_failure(t(), error_reason()) :: t()
+  def record_health_failure(%__MODULE__{} = state, reason) do
+    %{
+      state
+      | health_failures: state.health_failures + 1,
+        last_error: reason,
+        last_check: DateTime.utc_now()
+    }
   end
 end

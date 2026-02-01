@@ -17,6 +17,8 @@ defmodule Trenino.Simulator.Connection do
   alias Trenino.Simulator.ConnectionState
 
   @health_check_interval_ms 30_000
+  @fast_health_check_interval_ms 2_000
+  @max_health_failures 3
   @retry_interval_ms 30_000
   @pubsub_topic "simulator:connection"
 
@@ -139,12 +141,24 @@ defmodule Trenino.Simulator.Connection do
   def handle_info(:health_check, %ConnectionState{status: :connected} = state) do
     new_state = perform_health_check(state)
 
-    if new_state.status != state.status do
-      broadcast_state_change(new_state)
-    end
+    case new_state do
+      %ConnectionState{status: :connected, health_failures: 0} ->
+        # Healthy — resume normal interval
+        schedule_health_check()
+        {:noreply, new_state}
 
-    schedule_health_check()
-    {:noreply, new_state}
+      %ConnectionState{status: :connected, health_failures: failures}
+      when failures < @max_health_failures ->
+        # Transient failure — fast retry, no broadcast
+        schedule_fast_health_check()
+        {:noreply, new_state}
+
+      _ ->
+        # Status changed to :error (permanent error or max failures exceeded)
+        broadcast_state_change(new_state)
+        schedule_retry()
+        {:noreply, new_state}
+    end
   end
 
   @impl true
@@ -233,19 +247,37 @@ defmodule Trenino.Simulator.Connection do
   end
 
   defp perform_health_check(%ConnectionState{client: %Client{} = client} = state) do
-    case Client.info(client) do
+    fast_client = Client.with_fast_timeouts(client)
+
+    case Client.info(fast_client) do
       {:ok, info} ->
         ConnectionState.mark_connected(state, info)
 
       {:error, {:invalid_key, _}} ->
+        # Permanent error — immediately broadcast
         Logger.warning("Health check failed: invalid API key")
-        schedule_retry()
         ConnectionState.mark_error(state, :invalid_key)
 
       {:error, reason} ->
-        Logger.warning("Health check failed: #{inspect(reason)}")
-        schedule_retry()
-        ConnectionState.mark_error(state, :connection_failed)
+        handle_transient_health_failure(state, reason)
+    end
+  end
+
+  defp handle_transient_health_failure(%ConnectionState{} = state, reason) do
+    new_state = ConnectionState.record_health_failure(state, :connection_failed)
+
+    if new_state.health_failures >= @max_health_failures do
+      Logger.warning(
+        "Health check failed #{new_state.health_failures} consecutive times: #{inspect(reason)}"
+      )
+
+      ConnectionState.mark_error(new_state, :connection_failed)
+    else
+      Logger.debug(
+        "Transient health check failure (#{new_state.health_failures}/#{@max_health_failures}): #{inspect(reason)}"
+      )
+
+      new_state
     end
   end
 
@@ -255,6 +287,10 @@ defmodule Trenino.Simulator.Connection do
 
   defp schedule_health_check do
     Process.send_after(self(), :health_check, @health_check_interval_ms)
+  end
+
+  defp schedule_fast_health_check do
+    Process.send_after(self(), :health_check, @fast_health_check_interval_ms)
   end
 
   defp schedule_retry do

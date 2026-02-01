@@ -27,6 +27,8 @@ defmodule Trenino.Train.Detection do
   alias Trenino.Train.Identifier
 
   @poll_interval_ms 5_000
+  @grace_period_ms 30_000
+  @grace_poll_interval_ms 200
   @pubsub_topic "train:detection"
 
   defmodule State do
@@ -39,14 +41,22 @@ defmodule Trenino.Train.Detection do
             current_identifier: String.t() | nil,
             last_check: DateTime.t() | nil,
             polling_enabled: boolean(),
-            detection_error: detection_error()
+            detection_error: detection_error(),
+            last_successful_contact: integer() | nil,
+            last_client: Client.t() | nil,
+            grace_client: Client.t() | nil,
+            grace_timer: reference() | nil
           }
 
     defstruct active_train: nil,
               current_identifier: nil,
               last_check: nil,
               polling_enabled: false,
-              detection_error: nil
+              detection_error: nil,
+              last_successful_contact: nil,
+              last_client: nil,
+              grace_client: nil,
+              grace_timer: nil
   end
 
   # Client API
@@ -126,7 +136,13 @@ defmodule Trenino.Train.Detection do
   @impl true
   def handle_cast(:sync, %State{} = state) do
     # Clear current_identifier to force a full re-detection with database lookup
-    new_state = detect_train(%{state | current_identifier: nil})
+    new_state =
+      if in_grace_period?(state) do
+        do_detect_train(%{state | current_identifier: nil}, state.grace_client)
+      else
+        detect_train(%{state | current_identifier: nil})
+      end
+
     {:noreply, new_state}
   end
 
@@ -160,6 +176,7 @@ defmodule Trenino.Train.Detection do
         %State{} = state
       ) do
     Logger.info("Simulator connected, enabling train detection polling")
+    state = exit_grace_period(state)
     schedule_poll()
     new_state = %{state | polling_enabled: true}
     # Trigger immediate detection
@@ -170,17 +187,32 @@ defmodule Trenino.Train.Detection do
   @impl true
   def handle_info({:simulator_status_changed, %ConnectionState{}}, %State{} = state) do
     Logger.info("Simulator disconnected, disabling train detection polling")
+    new_state = %{state | polling_enabled: false}
 
-    new_state = %{
-      state
-      | polling_enabled: false,
-        active_train: nil,
-        current_identifier: nil,
-        detection_error: nil
-    }
+    cond do
+      in_grace_period?(new_state) ->
+        # Already in grace period, don't re-enter
+        {:noreply, new_state}
 
-    broadcast({:train_changed, nil})
-    {:noreply, new_state}
+      new_state.active_train != nil ->
+        # Active train exists — enter grace period instead of deactivating
+        {:noreply, enter_grace_period(new_state)}
+
+      true ->
+        # No active train — deactivate as before
+        {:noreply, deactivate_train(new_state)}
+    end
+  end
+
+  @impl true
+  def handle_info(:grace_poll, %State{grace_client: nil} = state) do
+    # Grace period was exited (e.g., connection recovered), ignore late message
+    {:noreply, state}
+  end
+
+  @impl true
+  def handle_info(:grace_poll, %State{grace_client: %Client{}} = state) do
+    {:noreply, perform_grace_poll(state)}
   end
 
   # Private Functions
@@ -188,7 +220,7 @@ defmodule Trenino.Train.Detection do
   defp detect_train(%State{} = state) do
     case get_simulator_status() do
       %ConnectionState{status: :connected, client: %Client{} = client} ->
-        do_detect_train(state, client)
+        do_detect_train(%{state | last_client: client}, client)
 
       _ ->
         state
@@ -198,6 +230,7 @@ defmodule Trenino.Train.Detection do
   defp do_detect_train(%State{} = state, %Client{} = client) do
     case Identifier.derive_from_formation(client) do
       {:ok, identifier} ->
+        state = %{state | last_successful_contact: System.monotonic_time(:millisecond)}
         handle_identifier_detected(state, identifier)
 
       {:error, reason} ->
@@ -269,8 +302,36 @@ defmodule Trenino.Train.Detection do
     end
   end
 
+  defp perform_grace_poll(%State{} = state) do
+    case Identifier.derive_from_formation(state.grace_client) do
+      {:ok, _identifier} ->
+        new_state = %{state | last_successful_contact: System.monotonic_time(:millisecond)}
+        schedule_grace_poll()
+        new_state
+
+      {:error, _reason} ->
+        handle_grace_poll_failure(state)
+    end
+  end
+
+  defp handle_grace_poll_failure(%State{} = state) do
+    elapsed = System.monotonic_time(:millisecond) - state.last_successful_contact
+
+    if elapsed >= grace_period_ms() do
+      Logger.warning("Grace period expired after #{elapsed}ms, deactivating train")
+      deactivate_train(exit_grace_period(state))
+    else
+      schedule_grace_poll()
+      state
+    end
+  end
+
   defp schedule_poll do
     Process.send_after(self(), :poll, @poll_interval_ms)
+  end
+
+  defp schedule_grace_poll do
+    Process.send_after(self(), :grace_poll, @grace_poll_interval_ms)
   end
 
   defp broadcast(message) do
@@ -285,5 +346,60 @@ defmodule Trenino.Train.Detection do
     else
       %ConnectionState{status: :disconnected}
     end
+  end
+
+  # Grace period helpers
+
+  defp grace_period_ms do
+    Application.get_env(:trenino, :detection_grace_period_ms, @grace_period_ms)
+  end
+
+  defp in_grace_period?(%State{grace_client: nil}), do: false
+  defp in_grace_period?(%State{grace_client: %Client{}}), do: true
+
+  defp enter_grace_period(%State{last_client: %Client{} = client} = state) do
+    grace_client = Client.with_fast_timeouts(client)
+
+    Logger.info(
+      "Entering grace period (#{grace_period_ms()}ms) for train: #{inspect(state.active_train && state.active_train.name)}"
+    )
+
+    now = System.monotonic_time(:millisecond)
+
+    new_state = %{
+      state
+      | grace_client: grace_client,
+        last_successful_contact: state.last_successful_contact || now
+    }
+
+    schedule_grace_poll()
+    new_state
+  end
+
+  defp enter_grace_period(%State{} = state) do
+    Logger.warning("No client available for grace period, deactivating train immediately")
+    deactivate_train(state)
+  end
+
+  defp exit_grace_period(%State{grace_timer: nil} = state) do
+    %{state | grace_client: nil, grace_timer: nil}
+  end
+
+  defp exit_grace_period(%State{grace_timer: timer} = state) do
+    Process.cancel_timer(timer)
+    %{state | grace_client: nil, grace_timer: nil}
+  end
+
+  defp deactivate_train(%State{} = state) do
+    new_state = %{
+      state
+      | active_train: nil,
+        current_identifier: nil,
+        detection_error: nil,
+        last_successful_contact: nil
+    }
+
+    broadcast({:train_changed, nil})
+    new_state
   end
 end

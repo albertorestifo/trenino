@@ -13,6 +13,7 @@ defmodule Trenino.Simulator.ConnectionStateTest do
       assert state.last_error == nil
       assert state.last_check == nil
       assert state.info == nil
+      assert state.health_failures == 0
     end
   end
 
@@ -112,6 +113,80 @@ defmodule Trenino.Simulator.ConnectionStateTest do
         new_state = ConnectionState.mark_error(state, reason)
         assert new_state.last_error == reason
       end
+    end
+
+    test "resets health_failures counter" do
+      state = %ConnectionState{status: :connected, health_failures: 2}
+
+      new_state = ConnectionState.mark_error(state, :connection_failed)
+
+      assert new_state.health_failures == 0
+    end
+  end
+
+  describe "record_health_failure/2" do
+    test "increments health_failures counter" do
+      state = %ConnectionState{status: :connected, health_failures: 0}
+
+      new_state = ConnectionState.record_health_failure(state, :connection_failed)
+
+      assert new_state.health_failures == 1
+    end
+
+    test "records error and timestamp" do
+      state = %ConnectionState{status: :connected, health_failures: 0}
+
+      new_state = ConnectionState.record_health_failure(state, :connection_failed)
+
+      assert new_state.last_error == :connection_failed
+      assert %DateTime{} = new_state.last_check
+    end
+
+    test "preserves status unchanged" do
+      state = %ConnectionState{status: :connected, health_failures: 0}
+
+      new_state = ConnectionState.record_health_failure(state, :connection_failed)
+
+      assert new_state.status == :connected
+    end
+
+    test "increments counter across multiple failures" do
+      state = %ConnectionState{status: :connected, health_failures: 0}
+
+      state = ConnectionState.record_health_failure(state, :connection_failed)
+      assert state.health_failures == 1
+
+      state = ConnectionState.record_health_failure(state, :connection_failed)
+      assert state.health_failures == 2
+
+      state = ConnectionState.record_health_failure(state, :connection_failed)
+      assert state.health_failures == 3
+    end
+  end
+
+  describe "health_failures reset" do
+    test "mark_connected/2 resets health_failures" do
+      state = %ConnectionState{status: :connected, health_failures: 2}
+
+      new_state = ConnectionState.mark_connected(state, %{"version" => "1.0"})
+
+      assert new_state.health_failures == 0
+    end
+
+    test "mark_disconnected/1 resets health_failures" do
+      state = %ConnectionState{status: :connected, health_failures: 2}
+
+      new_state = ConnectionState.mark_disconnected(state)
+
+      assert new_state.health_failures == 0
+    end
+
+    test "mark_needs_config/1 resets health_failures" do
+      state = %ConnectionState{status: :error, health_failures: 2}
+
+      new_state = ConnectionState.mark_needs_config(state)
+
+      assert new_state.health_failures == 0
     end
   end
 end

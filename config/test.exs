@@ -57,3 +57,6 @@ config :trenino, :start_update_checker, false
 
 # Disable AppVersion.UpdateChecker GenServer in tests for the same reasons.
 config :trenino, :start_app_version_checker, false
+
+# Use fast grace period expiry for detection tests (200ms instead of 30s)
+config :trenino, :detection_grace_period_ms, 200

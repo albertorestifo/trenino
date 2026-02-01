@@ -5,6 +5,7 @@ Mimic.copy(Req, type_check: true)
 Mimic.copy(Trenino.Train.Identifier)
 Mimic.copy(Trenino.Simulator.Client)
 Mimic.copy(Trenino.Simulator)
+Mimic.copy(Trenino.Simulator.AutoConfig)
 Mimic.copy(Trenino.AppVersion)
 
 ExUnit.start()

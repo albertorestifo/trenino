@@ -75,6 +75,27 @@ defmodule Trenino.Simulator.Client do
   end
 
   @doc """
+  Returns a copy of the client with fast timeouts for health checks and grace period polls.
+
+  The returned client has:
+  - `receive_timeout: 1_000` (1s instead of 10s)
+  - `pool_timeout: 500` (500ms instead of 5s)
+  - `max_retries: 0` with `retry: false` (no retries)
+  """
+  @spec with_fast_timeouts(t()) :: t()
+  def with_fast_timeouts(%__MODULE__{} = client) do
+    fast_req =
+      Req.merge(client.req,
+        receive_timeout: 1_000,
+        pool_timeout: 500,
+        max_retries: 0,
+        retry: false
+      )
+
+    %{client | req: fast_req}
+  end
+
+  @doc """
   Lists available API commands.
 
   Returns information about the available API endpoints.

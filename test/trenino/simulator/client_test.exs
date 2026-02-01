@@ -25,6 +25,40 @@ defmodule Trenino.Simulator.ClientTest do
     end
   end
 
+  describe "with_fast_timeouts/1" do
+    test "preserves base_url and api_key" do
+      client = Client.new(@base_url, @api_key)
+      fast = Client.with_fast_timeouts(client)
+
+      assert fast.base_url == @base_url
+      assert fast.api_key == @api_key
+    end
+
+    test "sets short timeouts and disables retries" do
+      client = Client.new(@base_url, @api_key)
+      fast = Client.with_fast_timeouts(client)
+
+      assert fast.req.options.receive_timeout == 1_000
+      assert fast.req.options.pool_timeout == 500
+      assert fast.req.options.max_retries == 0
+      assert fast.req.options.retry == false
+    end
+
+    test "can make requests with fast client" do
+      client = Client.new(@base_url, @api_key)
+      fast = Client.with_fast_timeouts(client)
+
+      expect(Req, :request, fn _req, opts ->
+        assert opts[:method] == :get
+        assert opts[:url] == "/info"
+
+        {:ok, %Req.Response{status: 200, body: %{"commands" => ["info"]}}}
+      end)
+
+      assert {:ok, %{"commands" => ["info"]}} = Client.info(fast)
+    end
+  end
+
   describe "info/1" do
     test "makes a GET request to /info" do
       client = Client.new(@base_url, @api_key)
