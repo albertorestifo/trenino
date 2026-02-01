@@ -31,6 +31,7 @@ defmodule TreninoWeb.TrainEditLive do
   }
 
   alias Trenino.Train.LeverController
+  alias Trenino.Train.ScriptRunner
   alias TreninoWeb.SequenceManagerComponent
 
   @impl true
@@ -99,7 +100,8 @@ defmodule TreninoWeb.TrainEditLive do
      |> assign(:output_wizard_event, nil)
      |> assign(:available_outputs, [])
      |> assign(:sequence_manager_event, nil)
-     |> assign(:value_polling_target, nil)}
+     |> assign(:value_polling_target, nil)
+     |> assign(:scripts, [])}
   end
 
   defp mount_existing(socket, train_id) do
@@ -119,6 +121,7 @@ defmodule TreninoWeb.TrainEditLive do
         changeset = Train.changeset(train, %{})
         sequences = TrainContext.list_sequences(train.id)
         output_bindings = TrainContext.list_output_bindings(train.id)
+        scripts = TrainContext.list_scripts(train.id)
         available_outputs = load_available_outputs()
 
         {:ok,
@@ -149,7 +152,8 @@ defmodule TreninoWeb.TrainEditLive do
          |> assign(:output_wizard_event, nil)
          |> assign(:available_outputs, available_outputs)
          |> assign(:sequence_manager_event, nil)
-         |> assign(:value_polling_target, nil)}
+         |> assign(:value_polling_target, nil)
+         |> assign(:scripts, scripts)}
 
       {:error, :not_found} ->
         {:ok,
@@ -392,6 +396,39 @@ defmodule TreninoWeb.TrainEditLive do
 
       {:error, :not_found} ->
         {:noreply, put_flash(socket, :error, "Output binding not found")}
+    end
+  end
+
+  # Script events
+  @impl true
+  def handle_event("toggle_script_enabled", %{"id" => id_str}, socket) do
+    id = String.to_integer(id_str)
+
+    case TrainContext.get_script(id) do
+      {:ok, script} ->
+        {:ok, _} = TrainContext.update_script(script, %{enabled: !script.enabled})
+        ScriptRunner.reload_scripts()
+        scripts = TrainContext.list_scripts(socket.assigns.train.id)
+        {:noreply, assign(socket, :scripts, scripts)}
+
+      {:error, :not_found} ->
+        {:noreply, put_flash(socket, :error, "Script not found")}
+    end
+  end
+
+  @impl true
+  def handle_event("delete_script", %{"id" => id_str}, socket) do
+    id = String.to_integer(id_str)
+
+    case TrainContext.get_script(id) do
+      {:ok, script} ->
+        {:ok, _} = TrainContext.delete_script(script)
+        ScriptRunner.reload_scripts()
+        scripts = TrainContext.list_scripts(socket.assigns.train.id)
+        {:noreply, assign(socket, :scripts, scripts)}
+
+      {:error, :not_found} ->
+        {:noreply, put_flash(socket, :error, "Script not found")}
     end
   end
 
@@ -1179,6 +1216,10 @@ defmodule TreninoWeb.TrainEditLive do
           />
         </div>
 
+        <div :if={not @new_mode} class="bg-base-200/50 rounded-xl p-6 mt-6">
+          <.scripts_section scripts={@scripts} train_id={@train.id} />
+        </div>
+
         <.danger_zone
           :if={not @new_mode}
           action_label="Delete Train"
@@ -1408,6 +1449,79 @@ defmodule TreninoWeb.TrainEditLive do
                     phx-value-id={binding.id}
                     class="btn btn-ghost btn-xs text-error"
                     title="Delete"
+                  >
+                    <.icon name="hero-trash" class="w-4 h-4" />
+                  </button>
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    """
+  end
+
+  attr :scripts, :list, required: true
+  attr :train_id, :integer, required: true
+
+  defp scripts_section(assigns) do
+    ~H"""
+    <div>
+      <div class="flex items-center justify-between mb-4">
+        <h3 class="text-base font-semibold">Scripts</h3>
+        <.link navigate={~p"/trains/#{@train_id}/scripts/new"} class="btn btn-outline btn-sm">
+          <.icon name="hero-plus" class="w-4 h-4" /> Add Script
+        </.link>
+      </div>
+
+      <.empty_collection_state
+        :if={Enum.empty?(@scripts)}
+        icon="hero-code-bracket"
+        message="No scripts configured"
+        submessage="Add Lua scripts to automate actions based on simulator data"
+      />
+
+      <div :if={not Enum.empty?(@scripts)} class="overflow-x-auto">
+        <table class="table table-sm bg-base-100 rounded-lg">
+          <thead>
+            <tr class="bg-base-200">
+              <th>Name</th>
+              <th>Triggers</th>
+              <th>Enabled</th>
+              <th class="w-24"></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr :for={script <- @scripts} class="hover:bg-base-200/50">
+              <td class="font-medium">{script.name}</td>
+              <td class="text-sm text-base-content/60">
+                {length(script.triggers)} trigger{if length(script.triggers) != 1, do: "s"}
+              </td>
+              <td>
+                <input
+                  type="checkbox"
+                  class="toggle toggle-sm toggle-success"
+                  checked={script.enabled}
+                  phx-click="toggle_script_enabled"
+                  phx-value-id={script.id}
+                />
+              </td>
+              <td>
+                <div class="flex gap-1">
+                  <.link
+                    navigate={~p"/trains/#{@train_id}/scripts/#{script.id}"}
+                    class="btn btn-ghost btn-xs"
+                    title="Edit"
+                  >
+                    <.icon name="hero-pencil-square" class="w-4 h-4" />
+                  </.link>
+                  <button
+                    phx-click="delete_script"
+                    phx-value-id={script.id}
+                    class="btn btn-ghost btn-xs text-error"
+                    title="Delete"
+                    data-confirm="Are you sure you want to delete this script?"
                   >
                     <.icon name="hero-trash" class="w-4 h-4" />
                   </button>
