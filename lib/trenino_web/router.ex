@@ -36,8 +36,16 @@ defmodule TreninoWeb.Router do
     end
   end
 
-  # Other scopes may use custom stacks.
-  # scope "/api", TreninoWeb do
-  #   pipe_through :api
-  # end
+  scope "/api", TreninoWeb.Api do
+    pipe_through :api
+
+    resources "/trains", TrainApiController, only: [:index, :show] do
+      resources "/scripts", ScriptController, only: [:index, :create]
+    end
+
+    resources "/scripts", ScriptController, only: [:show, :update, :delete]
+    get "/outputs", OutputApiController, :index
+    get "/simulator/endpoints", SimulatorApiController, :endpoints
+    get "/simulator/value", SimulatorApiController, :value
+  end
 end
