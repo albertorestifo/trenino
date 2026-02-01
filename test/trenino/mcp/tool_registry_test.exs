@@ -4,9 +4,9 @@ defmodule Trenino.MCP.ToolRegistryTest do
   alias Trenino.MCP.ToolRegistry
 
   describe "list_tools/0" do
-    test "returns all 20 tools" do
+    test "returns all 23 tools" do
       tools = ToolRegistry.list_tools()
-      assert length(tools) == 20
+      assert length(tools) == 23
     end
 
     test "all tools have required fields" do
