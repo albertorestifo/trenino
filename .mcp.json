@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "trenino-api": {
+      "command": "npx",
+      "args": ["-y", "@anthropic/mcp-server-fetch"],
+      "env": {
+        "ALLOW_HTTP": "true"
+      }
+    }
+  }
+}
