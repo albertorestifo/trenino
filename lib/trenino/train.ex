@@ -19,6 +19,7 @@ defmodule Trenino.Train do
     LeverInputBinding,
     Notch,
     OutputBinding,
+    Script,
     Train
   }
 
@@ -1132,4 +1133,87 @@ defmodule Trenino.Train do
   def delete_output_binding(%OutputBinding{} = binding) do
     Repo.delete(binding)
   end
+
+  # =============================================================================
+  # Script functions
+  # =============================================================================
+
+  @doc """
+  List all scripts for a train.
+  """
+  @spec list_scripts(integer()) :: [Script.t()]
+  def list_scripts(train_id) do
+    Script
+    |> where([s], s.train_id == ^train_id)
+    |> order_by([s], s.name)
+    |> Repo.all()
+  end
+
+  @doc """
+  List all enabled scripts for a train.
+
+  Used by ScriptRunner to get active scripts for execution.
+  """
+  @spec list_enabled_scripts(integer()) :: [Script.t()]
+  def list_enabled_scripts(train_id) do
+    Script
+    |> where([s], s.train_id == ^train_id and s.enabled == true)
+    |> Repo.all()
+  end
+
+  @doc """
+  Get a script by ID.
+  """
+  @spec get_script(integer()) :: {:ok, Script.t()} | {:error, :not_found}
+  def get_script(id) do
+    case Repo.get(Script, id) do
+      nil -> {:error, :not_found}
+      script -> {:ok, script}
+    end
+  end
+
+  @doc """
+  Get a script by ID. Raises if not found.
+  """
+  @spec get_script!(integer()) :: Script.t()
+  def get_script!(id) do
+    Repo.get!(Script, id)
+  end
+
+  @doc """
+  Create a script for a train.
+  """
+  @spec create_script(integer(), map()) ::
+          {:ok, Script.t()} | {:error, Ecto.Changeset.t()}
+  def create_script(train_id, attrs) do
+    %Script{train_id: train_id}
+    |> Script.changeset(attrs)
+    |> Repo.insert()
+  end
+
+  @doc """
+  Update a script.
+  """
+  @spec update_script(Script.t(), map()) ::
+          {:ok, Script.t()} | {:error, Ecto.Changeset.t()}
+  def update_script(%Script{} = script, attrs) do
+    script
+    |> Script.changeset(attrs)
+    |> Repo.update()
+  end
+
+  @doc """
+  Delete a script.
+  """
+  @spec delete_script(Script.t()) ::
+          {:ok, Script.t()} | {:error, Ecto.Changeset.t()}
+  def delete_script(%Script{} = script) do
+    Repo.delete(script)
+  end
+
+  @doc """
+  Get a hardware output by database ID. Used by ScriptRunner for output.set().
+  """
+  @spec get_output_by_id(integer()) :: {:ok, Trenino.Hardware.Output.t()} | {:error, :not_found}
+  defdelegate get_output_by_id(id), to: Trenino.Hardware, as: :get_output
 end
