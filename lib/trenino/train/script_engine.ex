@@ -40,20 +40,18 @@ defmodule Trenino.Train.ScriptEngine do
   """
   @spec new(String.t()) :: {:ok, Lua.t()} | {:error, term()}
   def new(code) do
-    try do
-      lua =
-        Lua.new()
-        |> setup_api()
-        |> setup_output()
-        |> setup_schedule()
-        |> setup_print()
-        |> setup_state()
+    lua =
+      Lua.new()
+      |> setup_api()
+      |> setup_output()
+      |> setup_schedule()
+      |> setup_print()
+      |> setup_state()
 
-      {_, lua} = Lua.eval!(lua, code)
-      {:ok, lua}
-    rescue
-      e -> {:error, Exception.message(e)}
-    end
+    {_, lua} = Lua.eval!(lua, code)
+    {:ok, lua}
+  rescue
+    e -> {:error, Exception.message(e)}
   end
 
   @doc """

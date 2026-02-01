@@ -22,7 +22,9 @@ defmodule Trenino.Train.ScriptEngineTest do
         end
         """)
 
-      assert {:ok, _lua, effects} = ScriptEngine.execute(lua, %{"source" => "test", "value" => 1.0})
+      assert {:ok, _lua, effects} =
+               ScriptEngine.execute(lua, %{"source" => "test", "value" => 1.0})
+
       assert {:log, "test"} in effects
     end
 

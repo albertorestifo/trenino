@@ -34,6 +34,7 @@ No programming required. Just wire up your Arduino, flash the firmware with one 
 - **Calibrate your controls** with a guided step-by-step process
 - **Auto-detect trains** and load saved configurations automatically
 - **Map any control** to simulator inputs using the built-in API explorer
+- **Set up trains with Claude AI** — describe what you want in plain language and let Claude configure buttons, LEDs, and sequences for you via [MCP integration](docs/mcp-setup.md)
 
 ---
 
@@ -51,6 +52,22 @@ Download the latest release for Windows from the [Releases page](https://github.
 ### Setup and usage
 
 See the video tutorial (WIP).
+
+---
+
+## AI-Powered Setup with Claude
+
+Trenino includes a built-in [MCP server](https://modelcontextprotocol.io/) that lets you use Claude to configure your trains through conversation. Instead of manually setting up each button binding, LED rule, and command sequence, just describe what you want:
+
+> "Make the red LED turn on when speed exceeds 50 km/h"
+>
+> "Bind button 3 to the horn — it should sound while I hold it"
+>
+> "Create a startup sequence that turns on the battery, raises the pantograph, then closes the main breaker"
+
+Claude explores the simulator API, finds the right endpoints, and creates the configuration for you.
+
+See the [MCP setup guide](docs/mcp-setup.md) for instructions.
 
 ---
 

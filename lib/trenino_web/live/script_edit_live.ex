@@ -307,8 +307,7 @@ defmodule TreninoWeb.ScriptEditLive do
               class="btn btn-outline btn-sm"
               title="Run script manually"
             >
-              <.icon name="hero-play" class="w-4 h-4" />
-              Run
+              <.icon name="hero-play" class="w-4 h-4" /> Run
             </button>
 
             <button type="submit" class="btn btn-primary btn-sm">
@@ -407,12 +406,17 @@ defmodule TreninoWeb.ScriptEditLive do
             ]}
           >
             <%= if Enum.empty?(@console_log) do %>
-              <span class="text-base-content/30">No log output yet. Run the script to see output.</span>
+              <span class="text-base-content/30">
+                No log output yet. Run the script to see output.
+              </span>
             <% else %>
-              <div :for={line <- Enum.reverse(@console_log)} class={[
-                "py-0.5",
-                String.starts_with?(line, "[error]") && "text-error"
-              ]}>
+              <div
+                :for={line <- Enum.reverse(@console_log)}
+                class={[
+                  "py-0.5",
+                  String.starts_with?(line, "[error]") && "text-error"
+                ]}
+              >
                 {line}
               </div>
             <% end %>

@@ -17,6 +17,7 @@ defmodule Trenino.Application do
         {DNSCluster, query: Application.get_env(:trenino, :dns_cluster_query) || :ignore},
         {Phoenix.PubSub, name: Trenino.PubSub},
         {Registry, keys: :unique, name: Trenino.Registry},
+        {Registry, keys: :unique, name: Trenino.MCP.SessionRegistry},
         {Task.Supervisor, name: Trenino.TaskSupervisor},
         Trenino.Serial.Connection,
         Trenino.Hardware.ConfigurationManager,

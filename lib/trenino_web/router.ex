@@ -50,4 +50,10 @@ defmodule TreninoWeb.Router do
     get "/simulator/endpoints", SimulatorApiController, :endpoints
     get "/simulator/value", SimulatorApiController, :value
   end
+
+  # MCP (Model Context Protocol) server endpoints
+  scope "/mcp", TreninoWeb.MCP do
+    get "/sse", MCPController, :sse
+    post "/messages", MCPController, :messages
+  end
 end

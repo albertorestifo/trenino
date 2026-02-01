@@ -206,7 +206,10 @@ defmodule Trenino.Train.ScriptRunner do
           endpoint_to_scripts: endpoint_to_scripts
       }
 
-      Logger.info("[ScriptRunner] Loaded #{map_size(script_states)} scripts for train #{train.name}")
+      Logger.info(
+        "[ScriptRunner] Loaded #{map_size(script_states)} scripts for train #{train.name}"
+      )
+
       schedule_poll(state)
     end
   end
@@ -266,9 +269,7 @@ defmodule Trenino.Train.ScriptRunner do
         Logger.debug("[ScriptRunner] Subscribed to #{endpoint} (sub_id: #{sub_id})")
 
       {:error, reason} ->
-        Logger.warning(
-          "[ScriptRunner] Failed to subscribe to #{endpoint}: #{inspect(reason)}"
-        )
+        Logger.warning("[ScriptRunner] Failed to subscribe to #{endpoint}: #{inspect(reason)}")
     end
   end
 
@@ -337,8 +338,19 @@ defmodule Trenino.Train.ScriptRunner do
     end
   end
 
-  defp fire_script(%State{} = state, script_id, %ScriptState{} = script_state, endpoint, value, entries) do
-    script_state = %{script_state | last_values: Map.put(script_state.last_values, endpoint, value)}
+  defp fire_script(
+         %State{} = state,
+         script_id,
+         %ScriptState{} = script_state,
+         endpoint,
+         value,
+         entries
+       ) do
+    script_state = %{
+      script_state
+      | last_values: Map.put(script_state.last_values, endpoint, value)
+    }
+
     state = put_in(state.scripts[script_id], script_state)
 
     event = %{
