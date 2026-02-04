@@ -21,331 +21,74 @@ jobs:
         with:
           fetch-depth: 1
 
-      - name: Extract PR metadata
-        id: metadata
-        run: |
-          set -e
-
-          TITLE="${{ github.event.pull_request.title }}"
-          BRANCH="${{ github.event.pull_request.head.ref }}"
-          PR_BODY='${{ github.event.pull_request.body }}'
-
-          # Extract package name - format: "Bump [package] from [old] to [new]"
-          PACKAGE=$(echo "$TITLE" | sed -E 's/^Bump (.+) from .*/\1/')
-
-          # Extract versions
-          OLD_VERSION=$(echo "$TITLE" | sed -E 's/.*from ([0-9]+\.[0-9]+\.[0-9]+).*/\1/')
-          NEW_VERSION=$(echo "$TITLE" | sed -E 's/.*to ([0-9]+\.[0-9]+\.[0-9]+).*/\1/')
-
-          # Extract directory if present - format: "... in /path"
-          DIRECTORY=$(echo "$TITLE" | grep -oP 'in \K/.+' || echo "/")
-
-          # Determine ecosystem from branch name
-          if [[ "$BRANCH" == dependabot/cargo/* ]]; then
-            ECOSYSTEM="cargo"
-          elif [[ "$BRANCH" == dependabot/mix/* ]]; then
-            ECOSYSTEM="mix"
-          elif [[ "$BRANCH" == dependabot/github_actions/* ]] || [[ "$BRANCH" == dependabot/github-actions/* ]]; then
-            ECOSYSTEM="github-actions"
-          else
-            ECOSYSTEM="unknown"
-          fi
-
-          # Extract URLs from PR body
-          CHANGELOG_URL=$(echo "$PR_BODY" | grep -oP '\[Release notes\]\(\K[^)]+' || echo "")
-          if [ -z "$CHANGELOG_URL" ]; then
-            CHANGELOG_URL=$(echo "$PR_BODY" | grep -oP '\[Changelog\]\(\K[^)]+' || echo "")
-          fi
-
-          COMMITS_URL=$(echo "$PR_BODY" | grep -oP '\[Commits\]\(\K[^)]+' || echo "")
-
-          # Output all variables
-          echo "package=$PACKAGE" >> $GITHUB_OUTPUT
-          echo "old_version=$OLD_VERSION" >> $GITHUB_OUTPUT
-          echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
-          echo "directory=$DIRECTORY" >> $GITHUB_OUTPUT
-          echo "ecosystem=$ECOSYSTEM" >> $GITHUB_OUTPUT
-          echo "changelog_url=$CHANGELOG_URL" >> $GITHUB_OUTPUT
-          echo "commits_url=$COMMITS_URL" >> $GITHUB_OUTPUT
-
-          echo "Extracted metadata:"
-          echo "  Package: $PACKAGE"
-          echo "  Ecosystem: $ECOSYSTEM"
-          echo "  Version: $OLD_VERSION -> $NEW_VERSION"
-          echo "  Directory: $DIRECTORY"
-          echo "  Changelog: $CHANGELOG_URL"
-
-      - name: Determine criticality and search paths
-        id: criticality
-        run: |
-          set -e
-
-          ECOSYSTEM="${{ steps.metadata.outputs.ecosystem }}"
-          PACKAGE="${{ steps.metadata.outputs.package }}"
-
-          # Default values
-          CRITICALITY="LOW"
-          AREA="General dependency"
-          SEARCH_PATHS="."
-
-          # Map packages to criticality and search paths
-          case "$ECOSYSTEM:$PACKAGE" in
-            mix:circuits_uart)
-              CRITICALITY="CRITICAL"
-              AREA="Serial communication"
-              SEARCH_PATHS="lib/trenino/serial/"
-              ;;
-            mix:req)
-              CRITICALITY="CRITICAL"
-              AREA="HTTP client for simulator API"
-              SEARCH_PATHS="lib/trenino/simulator/ lib/trenino/firmware/"
-              ;;
-            mix:phoenix | mix:phoenix_live_view)
-              CRITICALITY="HIGH"
-              AREA="Web framework"
-              SEARCH_PATHS="lib/trenino_web/"
-              ;;
-            mix:ecto_sql | mix:ecto)
-              CRITICALITY="HIGH"
-              AREA="Database/ORM"
-              SEARCH_PATHS="lib/trenino/"
-              ;;
-            cargo:tauri* | cargo:tauri)
-              CRITICALITY="MEDIUM"
-              AREA="Desktop packaging"
-              SEARCH_PATHS="tauri/src-tauri/"
-              ;;
-            mix:floki | mix:jason | mix:plug*)
-              CRITICALITY="MEDIUM"
-              AREA="Core utilities"
-              SEARCH_PATHS="lib/"
-              ;;
-            mix:credo | mix:dialyxir | mix:ex_doc)
-              CRITICALITY="LOW"
-              AREA="Development tools"
-              SEARCH_PATHS="."
-              ;;
-            github-actions:*)
-              CRITICALITY="MEDIUM"
-              AREA="CI/CD workflows"
-              SEARCH_PATHS=".github/workflows/"
-              ;;
-            *)
-              # For unknown packages, try to infer from ecosystem
-              if [[ "$ECOSYSTEM" == "mix" ]]; then
-                CRITICALITY="MEDIUM"
-                AREA="Elixir dependency"
-                SEARCH_PATHS="lib/"
-              elif [[ "$ECOSYSTEM" == "cargo" ]]; then
-                CRITICALITY="MEDIUM"
-                AREA="Rust dependency"
-                SEARCH_PATHS="tauri/src-tauri/"
-              fi
-              ;;
-          esac
-
-          echo "criticality=$CRITICALITY" >> $GITHUB_OUTPUT
-          echo "area=$AREA" >> $GITHUB_OUTPUT
-          echo "search_paths=$SEARCH_PATHS" >> $GITHUB_OUTPUT
-
-          echo "Criticality determination:"
-          echo "  Level: $CRITICALITY"
-          echo "  Area: $AREA"
-          echo "  Search paths: $SEARCH_PATHS"
-
-      - name: Determine update type
-        id: update_type
-        run: |
-          set -e
-
-          OLD_VERSION="${{ steps.metadata.outputs.old_version }}"
-          NEW_VERSION="${{ steps.metadata.outputs.new_version }}"
-
-          # Parse version components
-          OLD_MAJOR=$(echo "$OLD_VERSION" | cut -d. -f1)
-          OLD_MINOR=$(echo "$OLD_VERSION" | cut -d. -f2)
-          OLD_PATCH=$(echo "$OLD_VERSION" | cut -d. -f3)
-
-          NEW_MAJOR=$(echo "$NEW_VERSION" | cut -d. -f1)
-          NEW_MINOR=$(echo "$NEW_VERSION" | cut -d. -f2)
-          NEW_PATCH=$(echo "$NEW_VERSION" | cut -d. -f3)
-
-          # Determine update type
-          if [[ "$NEW_MAJOR" != "$OLD_MAJOR" ]]; then
-            UPDATE_TYPE="major"
-          elif [[ "$NEW_MINOR" != "$OLD_MINOR" ]]; then
-            UPDATE_TYPE="minor"
-          else
-            UPDATE_TYPE="patch"
-          fi
-
-          echo "update_type=$UPDATE_TYPE" >> $GITHUB_OUTPUT
-          echo "Update type: $UPDATE_TYPE ($OLD_VERSION -> $NEW_VERSION)"
-
-      - name: Search dependency usage
-        id: usage
-        run: |
-          set -e
-
-          ECOSYSTEM="${{ steps.metadata.outputs.ecosystem }}"
-          PACKAGE="${{ steps.metadata.outputs.package }}"
-          SEARCH_PATHS="${{ steps.criticality.outputs.search_paths }}"
-
-          echo "Searching for usage of $PACKAGE in $SEARCH_PATHS..."
-
-          USAGE_COUNT=0
-          USAGE_FILE="usage_summary.txt"
-
-          > "$USAGE_FILE"
-
-          if [[ "$ECOSYSTEM" == "mix" ]]; then
-            # Convert snake_case to module name patterns
-            # Examples: circuits_uart -> Circuits.UART, phoenix_live_view -> Phoenix.LiveView
-            MODULE_PATTERN=$(echo "$PACKAGE" | sed 's/_/ /g' | awk '{for(i=1;i<=NF;i++) $i=toupper(substr($i,1,1)) tolower(substr($i,2))}1' | sed 's/ /./g')
-
-            echo "Searching for Elixir module: $MODULE_PATTERN" >> "$USAGE_FILE"
-            echo "---" >> "$USAGE_FILE"
-
-            # Search in .ex and .exs files
-            if grep -rn --include="*.ex" --include="*.exs" "$MODULE_PATTERN" $SEARCH_PATHS 2>/dev/null | head -20 >> "$USAGE_FILE"; then
-              USAGE_COUNT=$(grep -rc --include="*.ex" --include="*.exs" "$MODULE_PATTERN" $SEARCH_PATHS 2>/dev/null | awk -F: '{sum+=$2} END {print sum}' || echo "0")
-            fi
-
-          elif [[ "$ECOSYSTEM" == "cargo" ]]; then
-            echo "Searching for Rust usage of: $PACKAGE" >> "$USAGE_FILE"
-            echo "---" >> "$USAGE_FILE"
-
-            # Search for use statements and namespace usage
-            {
-              grep -rn --include="*.rs" "use.*$PACKAGE" $SEARCH_PATHS 2>/dev/null || true
-              grep -rn --include="*.rs" "$PACKAGE::" $SEARCH_PATHS 2>/dev/null || true
-            } | head -20 >> "$USAGE_FILE"
-
-            USAGE_COUNT=$(grep -rc --include="*.rs" -e "use.*$PACKAGE" -e "$PACKAGE::" $SEARCH_PATHS 2>/dev/null | awk -F: '{sum+=$2} END {print sum}' || echo "0")
-
-          elif [[ "$ECOSYSTEM" == "github-actions" ]]; then
-            echo "Searching for GitHub Action: $PACKAGE" >> "$USAGE_FILE"
-            echo "---" >> "$USAGE_FILE"
-
-            if grep -rn --include="*.yml" "$PACKAGE" .github/workflows/ 2>/dev/null | head -20 >> "$USAGE_FILE"; then
-              USAGE_COUNT=$(grep -rc --include="*.yml" "$PACKAGE" .github/workflows/ 2>/dev/null | awk -F: '{sum+=$2} END {print sum}' || echo "0")
-            fi
-          fi
-
-          # Fallback: if count is still 0, set to "unknown"
-          if [[ "$USAGE_COUNT" == "0" ]] || [[ -z "$USAGE_COUNT" ]]; then
-            echo "No direct usage found in search paths" >> "$USAGE_FILE"
-            USAGE_COUNT="0"
-          fi
-
-          echo "usage_count=$USAGE_COUNT" >> $GITHUB_OUTPUT
-          echo "usage_file=$USAGE_FILE" >> $GITHUB_OUTPUT
-
-          echo "Found $USAGE_COUNT usage locations"
-          echo "--- Usage summary ---"
-          cat "$USAGE_FILE"
-
       - name: Analyze with Claude
-        id: claude
         uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           prompt: |
-            Analyze this Dependabot pull request and post a safety assessment comment.
+            Analyze Dependabot PR #${{ github.event.pull_request.number }} and post a safety assessment comment.
 
-            **Package Information:**
-            - Package: ${{ steps.metadata.outputs.package }}
-            - Ecosystem: ${{ steps.metadata.outputs.ecosystem }}
-            - Old version: ${{ steps.metadata.outputs.old_version }}
-            - New version: ${{ steps.metadata.outputs.new_version }}
-            - Update type: ${{ steps.update_type.outputs.update_type }}
-            - Criticality: ${{ steps.criticality.outputs.criticality }} - ${{ steps.criticality.outputs.area }}
-            - Usage count: ${{ steps.usage.outputs.usage_count }} locations
-            - Changelog URL: ${{ steps.metadata.outputs.changelog_url }}
-            - Commits URL: ${{ steps.metadata.outputs.commits_url }}
-            - PR URL: ${{ github.event.pull_request.html_url }}
+            ## Instructions
 
-            **Your Tasks:**
-            1. If a changelog URL is provided, fetch and read the changelog/release notes
-            2. Review the usage summary file at: ${{ steps.usage.outputs.usage_file }}
-            3. Identify any breaking changes that might affect our codebase
-            4. Assess the risk level using these guidelines:
-               - CRITICAL + Major/Breaking = 🔴 High Risk
-               - CRITICAL + Minor = 🟡 Medium Risk
-               - HIGH + Major/Breaking = 🔴 High Risk
-               - MEDIUM + Major = 🟡 Medium Risk
-               - Patch + No Breaking = 🟢 Low Risk
-            5. Use the gh CLI tool to post a comment on PR #${{ github.event.pull_request.number }}
+            1. **Get PR details** using `gh pr view ${{ github.event.pull_request.number }} --json title,body,files`
 
-            **Comment Format (use this exact structure):**
+            2. **Parse the PR title** to extract:
+               - Package name
+               - Old version and new version
+               - Update type (major/minor/patch)
+               - Ecosystem (from branch name or file paths: mix.lock = Elixir, Cargo.lock = Rust, etc.)
 
-            ```markdown
+            3. **Search for package usage** in the codebase:
+               - For Elixir packages: search for the module name in lib/ (e.g., `circuits_uart` → search for `Circuits.UART`)
+               - For Rust packages: search for `use <package>` or `<package>::` in tauri/src-tauri/
+               - For GitHub Actions: search in .github/workflows/
+
+            4. **Fetch the changelog** if available in the PR body (look for [Release notes] or [Changelog] links)
+
+            5. **Assess risk level**:
+               - 🔴 High Risk: Major version bump OR breaking changes detected in changelog
+               - 🟡 Medium Risk: Minor version bump with new features, or widely-used package
+               - 🟢 Low Risk: Patch version with only bug fixes, or dev-only dependency
+
+            6. **Post a comment** on the PR using this format:
+
+            ```
             ## 🤖 Dependabot PR Analysis
 
-            **Package:** ${{ steps.metadata.outputs.package }} (${{ steps.metadata.outputs.ecosystem }})
-            **Update:** v${{ steps.metadata.outputs.old_version }} → v${{ steps.metadata.outputs.new_version }} (${{ steps.update_type.outputs.update_type }})
-            **Risk Level:** [🟢 Low / 🟡 Medium / 🔴 High]
-            **Criticality:** ${{ steps.criticality.outputs.criticality }} - ${{ steps.criticality.outputs.area }}
+            **Package:** <package> (<ecosystem>)
+            **Update:** v<old> → v<new> (<type>)
+            **Risk Level:** <emoji> <level>
 
             ### Assessment
-            [✅ Safe to merge / ⚠️ Needs review / 🚨 Breaking changes detected]
+            <✅ Safe to merge / ⚠️ Needs review / 🚨 Breaking changes detected>
 
             ### Changelog Summary
-            - [Key change 1]
-            - [Key change 2]
-            - [Key change 3]
+            - <key changes from changelog, or "No changelog available">
 
-            ### Impact on Our Codebase
-            - Found ${{ steps.usage.outputs.usage_count }} usage locations
-            - [Analysis of whether breaking changes affect us]
+            ### Impact on Codebase
+            - Found <N> usage locations in <paths>
+            - <analysis of whether any breaking changes affect the usage>
 
             ### Recommendations
-            - [ ] [Specific test to run or action to take]
-            - [ ] [Code change needed if breaking]
-            - [ ] [Area to review]
+            - [ ] <specific action items if any>
 
             ---
-            🤖 Generated by Claude Code Dependabot Analyzer
+            🤖 Generated by Claude Code
             ```
 
-            **Important:**
-            - Be concise but thorough
-            - Focus on actionable recommendations
-            - If changelog is not available, note this and recommend manual review
-            - If no usage is found, note that the dependency might be transitive
-            - Always include the risk assessment emoji (🟢/🟡/🔴)
-            - Post the comment using: gh pr comment ${{ github.event.pull_request.number }} --body "..."
-
-      - name: Post analysis comment
-        if: success()
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          # The Claude action should have posted the comment automatically
-          # This step is here as a fallback or for additional actions
-          echo "Claude analysis completed successfully"
+            Use `gh pr comment ${{ github.event.pull_request.number }} --body "..."` to post the comment.
+            Use a heredoc for the comment body to handle special characters properly.
 
       - name: Post fallback comment on failure
         if: failure()
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          cat << 'EOF' | gh pr comment ${{ github.event.pull_request.number }} --body-file -
-          ## ⚠️ Dependabot PR Analysis - Failed
+          gh pr comment ${{ github.event.pull_request.number }} --body "## ⚠️ Dependabot PR Analysis - Failed
 
-          Automated analysis could not be completed for this update.
-
-          **Package:** ${{ steps.metadata.outputs.package }} (${{ steps.metadata.outputs.ecosystem }})
-          **Update:** v${{ steps.metadata.outputs.old_version }} → v${{ steps.metadata.outputs.new_version }} (${{ steps.update_type.outputs.update_type }})
-          **Criticality:** ${{ steps.criticality.outputs.criticality }} - ${{ steps.criticality.outputs.area }}
-
-          Please review this update manually:
-          - Check the [changelog](${{ steps.metadata.outputs.changelog_url }})
-          - Review the [commits](${{ steps.metadata.outputs.commits_url }})
-          - Run the test suite before merging
+          Automated analysis could not be completed. Please review this update manually.
 
           [View workflow run](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
 
           ---
-          🤖 Dependabot PR Analyzer
-          EOF
+          🤖 Dependabot PR Analyzer"
