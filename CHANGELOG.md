@@ -8,9 +8,38 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **Lua scripting system for train automation**
+  - New Script schema and database migration for storing Lua scripts per train
+  - ScriptEngine providing sandboxed Lua execution environment with Trenino API
+  - ScriptRunner GenServer for executing scripts with configurable triggers (manual, on_train_active, on_input_change)
+  - Dedicated script editor LiveView page with syntax highlighting
+  - Scripts section added to train edit page for managing train-specific automation
+  - REST API endpoints for script management (`/api/scripts`)
+  - Claude Skill for AI-assisted Lua script authoring (`.claude/skills/lua-scripting.md`)
+- **Native MCP server for AI-powered train configuration**
+  - Built-in MCP server at `/mcp/sse` for integration with Claude Desktop and Claude Code
+  - 20 tools organized across 6 categories: Simulator, Trains, Devices, Output Bindings, Button Bindings, and Sequences
+  - Element tools for managing train buttons and levers directly from AI conversation
+  - MCP setup documentation (`docs/mcp-setup.md`) with configuration examples
+  - See [MCP Setup Guide](docs/mcp-setup.md) for details
+- **Resilient train detection with two-layer defense**
+  - Primary detection using ObjectClass from CurrentDrivableActor
+  - Fallback to ProviderName for trains with mismatched manifests
+  - Improved reliability for detecting freight trains and custom train configurations
+- **Arduino Nano new bootloader support** (nanoatmega328new)
+  - Additional firmware variant for Arduino Nano boards with newer bootloader
+  - Automatic device type detection from firmware filenames
+
 ### Changed
 
+- REST API expanded with new endpoints for outputs (`/api/outputs`), scripts (`/api/scripts`), and trains (`/api/trains`)
+- Script execution integrated with hardware input monitoring and train activation events
+- MCP tool registry architecture supports dynamic tool registration and categorization
+
 ### Fixed
+
+- Flaky CI tests for firmware uploader and upload history ordering
+- Train detection failing for freight trains where locomotive and wagons have different class prefixes
 
 ### Removed
 

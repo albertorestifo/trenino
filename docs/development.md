@@ -222,8 +222,9 @@ Long-running processes are implemented as GenServers:
 - `Firmware.DeviceRegistry` - Device configuration cache with ETS
 - `Serial.Connection` - Device connections
 - `Simulator.Connection` - API health monitoring
-- `Train.Detection` - Active train polling
+- `Train.Detection` - Active train polling with two-layer defense
 - `Train.LeverController` - Input-to-simulator mapping
+- `Train.ScriptRunner` - Lua script execution and lifecycle management
 - `Hardware.ConfigurationManager` - Input value broadcasting
 
 ### PubSub Events
@@ -243,9 +244,10 @@ Phoenix.PubSub.broadcast(Trenino.PubSub, "topic", {:event, data})
 Business logic is organized into contexts:
 
 - `Trenino.Hardware` - Device and input management
-- `Trenino.Train` - Train configuration and bindings
+- `Trenino.Train` - Train configuration, bindings, and scripting
 - `Trenino.Simulator` - TSW API communication
 - `Trenino.Firmware` - Firmware releases and device registry
+- `Trenino.MCP` - Model Context Protocol server and tools
 
 ## Adding New Features
 
