@@ -59,7 +59,10 @@ Handles train configurations and input-to-lever mappings.
 - **LeverInputBinding** - Maps hardware inputs to levers
 - **LeverMapper** - Converts hardware values to simulator values
 - **LeverController** - GenServer that sends values to simulator
-- **Detection** - GenServer polling simulator for active train
+- **Detection** - GenServer polling simulator for active train with two-layer defense (ObjectClass + ProviderName fallback)
+- **Script** - Lua scripts for train automation with configurable triggers
+- **ScriptEngine** - Sandboxed Lua execution environment with Trenino API bindings
+- **ScriptRunner** - GenServer managing script lifecycle and execution
 
 ### Simulator Domain (`lib/trenino/simulator/`)
 
@@ -68,6 +71,21 @@ Communicates with Train Sim World's External Interface API.
 - **Client** - HTTP client for TSW API
 - **Connection** - GenServer managing connection health
 - **AutoConfig** - Windows auto-detection of API key
+
+### MCP Domain (`lib/trenino/mcp/`)
+
+Model Context Protocol server for AI-powered configuration.
+
+- **Server** - MCP server implementation with SSE transport at `/mcp/sse`
+- **ToolRegistry** - Registry of available MCP tools organized by category
+- **Tools** - 20 tools across 6 categories:
+  - **ElementTools** - Manage train buttons and levers
+  - **TrainTools** - List trains and get configurations
+  - **DeviceTools** - List devices, inputs, and outputs
+  - **ButtonBindingTools** - CRUD operations for button bindings
+  - **OutputBindingTools** - CRUD operations for output bindings
+  - **SequenceTools** - CRUD operations for command sequences
+  - **SimulatorTools** - Browse endpoints, read/write simulator values
 
 ### Serial Domain (`lib/trenino/serial/`)
 
@@ -125,8 +143,9 @@ Application
 ├── Trenino.Firmware.DeviceRegistry (device definitions cache)
 ├── Trenino.Serial.Connection (device management)
 ├── Trenino.Simulator.Connection (API health)
-├── Trenino.Train.Detection (train polling)
+├── Trenino.Train.Detection (train polling with two-layer defense)
 ├── Trenino.Train.LeverController (value mapping)
+├── Trenino.Train.ScriptRunner (Lua script execution)
 ├── Trenino.Hardware.ConfigurationManager (input broadcasts)
 └── Calibration Supervisors
     ├── Trenino.Hardware.Calibration.SessionSupervisor
@@ -140,17 +159,22 @@ devices                    trains
 ├── id                     ├── id
 ├── config_id (unique)     ├── identifier (unique)
 ├── name                   ├── name
-└── inputs[]               └── elements[]
-    ├── pin                    ├── name
-    ├── type                   ├── type
-    ├── sensitivity            └── lever_config
-    └── calibration                ├── endpoints
-        ├── min_value              ├── notches[]
-        └── max_value              │   ├── value
-                                   │   ├── type
-                                   │   └── input_min/max
-                                   └── input_binding
-                                       └── input_id
+└── inputs[]               ├── elements[]
+    ├── pin                │   ├── name
+    ├── type               │   ├── type
+    ├── sensitivity        │   └── lever_config
+    └── calibration        │       ├── endpoints
+        ├── min_value      │       ├── notches[]
+        └── max_value      │       │   ├── value
+                           │       │   ├── type
+                           │       │   └── input_min/max
+                           │       └── input_binding
+                           │           └── input_id
+                           └── scripts[]
+                               ├── name
+                               ├── content (Lua code)
+                               ├── triggers (manual, on_train_active, on_input_change)
+                               └── enabled
 
 firmware_releases          firmware_files
 ├── id                     ├── id
@@ -190,6 +214,16 @@ HTTP/JSON REST API:
 Example paths:
 - `/CurrentDrivableActor/Throttle(Lever).InputValue`
 - `/CurrentDrivableActor/Reverser(Lever).NotchesIndex`
+
+### MCP Protocol (AI Tools ↔ Trenino)
+
+SSE (Server-Sent Events) transport implementing Model Context Protocol:
+
+| Endpoint | Description |
+|----------|-------------|
+| `/mcp/sse` | SSE endpoint for MCP server |
+
+Supports 20 tools across 6 categories for AI-powered train configuration. See [MCP Setup Guide](../docs/mcp-setup.md) for details.
 
 ## Event Broadcasting (PubSub)
 
