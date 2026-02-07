@@ -257,12 +257,11 @@ defmodule Trenino.Simulator.Client do
   defp encode_path(path) do
     path
     |> String.split(~r{[/.]}, include_captures: true)
-    |> Enum.map(fn
+    |> Enum.map_join(fn
       "/" -> "/"
       "." -> "."
       segment -> URI.encode(segment, &URI.char_unreserved?/1)
     end)
-    |> Enum.join()
   end
 
   @doc """

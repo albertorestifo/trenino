@@ -92,6 +92,48 @@ defmodule Trenino.Simulator.LeverAnalyzerTest do
       assert linears != []
     end
 
+    test "sweeps full -1 to 1 input range for irregular lever" do
+      client = Client.new(@base_url, @api_key)
+
+      stub_sweep_responses(
+        fn input ->
+          {actual_input, output, notch_index} =
+            cond do
+              input < -0.75 -> {-1.0, -4.0, 0}
+              input < -0.50 -> {-0.75, -3.0, 1}
+              input < -0.25 -> {-0.50, -2.0, 2}
+              input < 0.0 -> {-0.25, -1.0, 3}
+              input < 0.25 -> {0.0, 0.0, 4}
+              input < 0.50 -> {0.25, 1.0, 5}
+              input < 0.75 -> {0.50, 2.0, 6}
+              true -> {1.0, 3.0, 7}
+            end
+
+          %{actual_input: actual_input, output: output, notch_index: notch_index}
+        end,
+        min_input: -1.0,
+        max_input: 1.0
+      )
+
+      assert {:ok, %AnalysisResult{} = result} =
+               LeverAnalyzer.analyze(
+                 client,
+                 "CurrentDrivableActor/ThrottleAndBrake",
+                 @fast_opts
+               )
+
+      assert result.lever_type == :discrete
+
+      # Verify we got samples across the full range including negative inputs
+      min_set_input = result.samples |> Enum.map(& &1.set_input) |> Enum.min()
+      max_set_input = result.samples |> Enum.map(& &1.set_input) |> Enum.max()
+      assert min_set_input <= -1.0
+      assert max_set_input >= 1.0
+
+      # Verify we detected all 8 notches
+      assert length(result.zones) == 8
+    end
+
     test "returns error when insufficient samples are collected" do
       client = Client.new(@base_url, @api_key)
 
@@ -155,19 +197,22 @@ defmodule Trenino.Simulator.LeverAnalyzerTest do
   end
 
   # Helper to stub sweep responses using an Agent to track state
-  defp stub_sweep_responses(response_fn) do
+  defp stub_sweep_responses(response_fn, opts \\ []) do
+    min_input = Keyword.get(opts, :min_input, 0.0)
+    max_input = Keyword.get(opts, :max_input, 1.0)
+
     # Start an agent to track the last set input value
     {:ok, agent} = Agent.start_link(fn -> 0.0 end)
 
-    stub(Req, :request, fn _req, opts ->
-      handle_stubbed_request(opts, agent, response_fn)
+    stub(Req, :request, fn _req, req_opts ->
+      handle_stubbed_request(req_opts, agent, response_fn, min_input, max_input)
     end)
   end
 
-  defp handle_stubbed_request(opts, agent, response_fn) do
+  defp handle_stubbed_request(opts, agent, response_fn, min_input, max_input) do
     case opts[:method] do
       :patch -> handle_patch_request(opts, agent)
-      :get -> handle_get_request(opts, agent, response_fn)
+      :get -> handle_get_request(opts, agent, response_fn, min_input, max_input)
     end
   end
 
@@ -178,15 +223,35 @@ defmodule Trenino.Simulator.LeverAnalyzerTest do
     {:ok, %Req.Response{status: 200, body: %{"Result" => "Success"}}}
   end
 
-  defp handle_get_request(opts, agent, response_fn) do
+  defp handle_get_request(opts, agent, response_fn, min_input, max_input) do
     url = opts[:url]
     last_input = Agent.get(agent, & &1)
     response = response_fn.(last_input)
-    build_get_response(url, response)
+    build_get_response(url, response, min_input, max_input)
   end
 
-  defp build_get_response(url, response) do
+  defp build_get_response(url, response, min_input, max_input) do
     cond do
+      String.contains?(url, "GetMinimumInputValue") ->
+        {:ok,
+         %Req.Response{
+           status: 200,
+           body: %{
+             "Result" => "Success",
+             "Values" => %{"ReturnValue" => min_input}
+           }
+         }}
+
+      String.contains?(url, "GetMaximumInputValue") ->
+        {:ok,
+         %Req.Response{
+           status: 200,
+           body: %{
+             "Result" => "Success",
+             "Values" => %{"ReturnValue" => max_input}
+           }
+         }}
+
       String.contains?(url, "InputValue") ->
         {:ok,
          %Req.Response{

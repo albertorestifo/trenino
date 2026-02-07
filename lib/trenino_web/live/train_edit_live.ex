@@ -1032,7 +1032,7 @@ defmodule TreninoWeb.TrainEditLive do
     alias Trenino.Simulator.LeverAnalyzer
     alias Trenino.Train
 
-    case LeverAnalyzer.analyze(client, control_path, restore_position: 0.5) do
+    case LeverAnalyzer.analyze(client, control_path, restore_position: nil) do
       {:ok, analysis_result} ->
         # Check database for existing config (not the stale preloaded data)
         # This handles re-calibration within the same wizard session

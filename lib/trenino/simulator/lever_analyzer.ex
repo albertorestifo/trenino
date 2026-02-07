@@ -217,15 +217,16 @@ defmodule Trenino.Simulator.LeverAnalyzer do
   # Sweep and Sampling
   # ===========================================================================
 
-  # Sweep the lever from 0.0 to 1.0 and collect samples with notch index
+  # Sweep the lever across its full input range and collect samples with notch index
   defp sweep_lever(%Client{} = client, control_path, step, settling_time) do
-    input_values = generate_sweep_values(step)
+    {min_input, max_input} = read_input_range(client, control_path)
+    input_values = generate_sweep_values(min_input, max_input, step)
     value_endpoint = "#{control_path}.InputValue"
     output_endpoint = "#{control_path}.Function.GetCurrentOutputValue"
     notch_endpoint = "#{control_path}.Function.GetCurrentNotchIndex"
 
-    # Initialize lever to 0.0, pushing past any snap points
-    initialize_lever_position(client, value_endpoint, settling_time)
+    # Initialize lever to min position, pushing past any snap points
+    initialize_lever_position(client, value_endpoint, settling_time, min_input)
 
     Logger.debug("[LeverAnalyzer] Sweeping #{length(input_values)} positions...")
 
@@ -260,11 +261,31 @@ defmodule Trenino.Simulator.LeverAnalyzer do
     end
   end
 
-  defp initialize_lever_position(%Client{} = client, value_endpoint, settling_time) do
-    Logger.debug("[LeverAnalyzer] Initializing lever to 0.0 position...")
+  defp read_input_range(%Client{} = client, control_path) do
+    min_endpoint = "#{control_path}.Function.GetMinimumInputValue"
+    max_endpoint = "#{control_path}.Function.GetMaximumInputValue"
+
+    with {:ok, min_val} <- Client.get_float(client, min_endpoint),
+         {:ok, max_val} <- Client.get_float(client, max_endpoint),
+         true <- min_val < max_val do
+      min_input = Float.round(min_val, 2)
+      max_input = Float.round(max_val, 2)
+
+      Logger.debug("[LeverAnalyzer] Input range: #{min_input} to #{max_input}")
+
+      {min_input, max_input}
+    else
+      _ ->
+        Logger.debug("[LeverAnalyzer] Could not read input range, using default 0.0 to 1.0")
+        {0.0, 1.0}
+    end
+  end
+
+  defp initialize_lever_position(%Client{} = client, value_endpoint, settling_time, min_input) do
+    Logger.debug("[LeverAnalyzer] Initializing lever to #{min_input} position...")
 
     for _ <- 1..@push_attempts do
-      Client.set(client, value_endpoint, 0.0)
+      Client.set(client, value_endpoint, min_input)
       Process.sleep(@push_delay_ms)
     end
 
@@ -297,12 +318,13 @@ defmodule Trenino.Simulator.LeverAnalyzer do
     end
   end
 
-  defp generate_sweep_values(step) do
-    count = round(1.0 / step)
+  defp generate_sweep_values(min_input, max_input, step) do
+    range = max_input - min_input
+    count = round(range / step)
 
     0..count
-    |> Enum.map(fn i -> Float.round(i * step, 2) end)
-    |> Enum.filter(&(&1 <= 1.0))
+    |> Enum.map(fn i -> Float.round(min_input + i * step, 2) end)
+    |> Enum.filter(&(&1 <= max_input))
   end
 
   # ===========================================================================
