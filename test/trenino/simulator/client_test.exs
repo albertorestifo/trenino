@@ -130,7 +130,7 @@ defmodule Trenino.Simulator.ClientTest do
         assert opts[:method] == :get
 
         assert opts[:url] ==
-                 "/get/CurrentDrivableActor/Throttle(Lever).Function.GetCurrentNotchIndex"
+                 "/get/CurrentDrivableActor/Throttle%28Lever%29.Function.GetCurrentNotchIndex"
 
         {:ok,
          %Req.Response{
@@ -153,7 +153,7 @@ defmodule Trenino.Simulator.ClientTest do
 
       expect(Req, :request, fn _req, opts ->
         assert opts[:method] == :patch
-        assert opts[:url] == "/set/CurrentDrivableActor/Throttle(Lever).InputValue"
+        assert opts[:url] == "/set/CurrentDrivableActor/Throttle%28Lever%29.InputValue"
         assert opts[:params] == [Value: 0.25]
 
         {:ok, %Req.Response{status: 200, body: %{"Result" => "Success"}}}

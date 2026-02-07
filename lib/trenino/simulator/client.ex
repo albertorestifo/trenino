@@ -122,7 +122,7 @@ defmodule Trenino.Simulator.Client do
     url =
       case path do
         nil -> "/list"
-        path -> "/list/#{path}"
+        path -> "/list/#{encode_path(path)}"
       end
 
     request(client, :get, url)
@@ -148,7 +148,7 @@ defmodule Trenino.Simulator.Client do
   """
   @spec get(t(), String.t()) :: {:ok, response()} | error()
   def get(%__MODULE__{} = client, path) when is_binary(path) do
-    request(client, :get, "/get/#{path}")
+    request(client, :get, "/get/#{encode_path(path)}")
   end
 
   @doc """
@@ -251,6 +251,20 @@ defmodule Trenino.Simulator.Client do
     end
   end
 
+  # Encodes path segments for use in URLs.
+  # Preserves forward slashes and dots as path separators, but encodes
+  # spaces, parentheses, and other special characters.
+  defp encode_path(path) do
+    path
+    |> String.split(~r{[/.]}, include_captures: true)
+    |> Enum.map(fn
+      "/" -> "/"
+      "." -> "."
+      segment -> URI.encode(segment, &URI.char_unreserved?/1)
+    end)
+    |> Enum.join()
+  end
+
   @doc """
   Writes a value to the specified path and endpoint.
 
@@ -269,7 +283,7 @@ defmodule Trenino.Simulator.Client do
   @spec set(t(), String.t(), number() | String.t() | boolean()) :: {:ok, response()} | error()
   def set(%__MODULE__{} = client, path, value) when is_binary(path) do
     Logger.info("[Simulator] SET #{path} = #{inspect(value)}")
-    request(client, :patch, "/set/#{path}", params: [Value: value])
+    request(client, :patch, "/set/#{encode_path(path)}", params: [Value: value])
   end
 
   @doc """
@@ -296,7 +310,7 @@ defmodule Trenino.Simulator.Client do
   def subscribe(%__MODULE__{} = client, path, subscription_id)
       when is_binary(path) and is_integer(subscription_id) do
     # POST requests require Content-Length header, so we pass an empty body
-    request(client, :post, "/subscription/#{path}",
+    request(client, :post, "/subscription/#{encode_path(path)}",
       params: [Subscription: subscription_id],
       body: ""
     )
