@@ -41,7 +41,7 @@ defmodule Trenino.Simulator.ControlDetectionSessionTest do
                }
              }}
 
-          path == "/list/CurrentDrivableActor/Throttle(Lever)" ->
+          path == "/list/CurrentDrivableActor/Throttle%28Lever%29" ->
             {:ok,
              %Req.Response{
                status: 200,
@@ -487,7 +487,7 @@ defmodule Trenino.Simulator.ControlDetectionSessionTest do
                }
              }}
 
-          path == "/list/CurrentDrivableActor/Throttle(Lever)" ->
+          path == "/list/CurrentDrivableActor/Throttle%28Lever%29" ->
             {:ok,
              %Req.Response{
                status: 200,
@@ -501,28 +501,31 @@ defmodule Trenino.Simulator.ControlDetectionSessionTest do
           String.starts_with?(path, "/subscription/") ->
             {:ok, %Req.Response{status: 200, body: %{"Result" => "Success"}}}
 
-          path == "/subscription" and method == :get ->
-            count = :counters.get(poll_count, 1)
-            :counters.add(poll_count, 1, 1)
+          path == "/subscription" ->
+            case method do
+              :get ->
+                count = :counters.get(poll_count, 1)
+                :counters.add(poll_count, 1, 1)
 
-            value = if count == 0, do: 0.0, else: 0.5
+                value = if count == 0, do: 0.0, else: 0.5
 
-            {:ok,
-             %Req.Response{
-               status: 200,
-               body: %{
-                 "Result" => "Success",
-                 "Entries" => [
-                   %{
-                     "Path" => "CurrentDrivableActor/Throttle(Lever).InputValue",
-                     "Values" => %{"InputValue" => value}
+                {:ok,
+                 %Req.Response{
+                   status: 200,
+                   body: %{
+                     "Result" => "Success",
+                     "Entries" => [
+                       %{
+                         "Path" => "CurrentDrivableActor/Throttle(Lever).InputValue",
+                         "Values" => %{"InputValue" => value}
+                       }
+                     ]
                    }
-                 ]
-               }
-             }}
+                 }}
 
-          path == "/subscription" and method == :delete ->
-            {:ok, %Req.Response{status: 200, body: %{"Result" => "Success"}}}
+              _ ->
+                {:ok, %Req.Response{status: 200, body: %{"Result" => "Success"}}}
+            end
 
           true ->
             {:ok, %Req.Response{status: 404, body: "Not Found"}}
