@@ -172,34 +172,32 @@ defmodule Trenino.Train.NotchTest do
       assert "must be less than or equal to sim_input_max" in errors_on(changeset).sim_input_min
     end
 
-    test "rejects sim_input_min below 0.0" do
+    test "accepts negative sim_input values for levers with non-standard ranges" do
       attrs = %{
         index: 0,
         type: :gate,
-        value: 0.0,
-        sim_input_min: -0.1,
-        sim_input_max: 0.5
+        value: -4.0,
+        sim_input_min: -1.0,
+        sim_input_max: -0.88
       }
 
       changeset = Notch.changeset(%Notch{}, attrs)
 
-      refute changeset.valid?
-      assert "must be between 0.0 and 1.0" in errors_on(changeset).sim_input_min
+      assert changeset.valid?
     end
 
-    test "rejects sim_input_max above 1.0" do
+    test "accepts sim_input values spanning negative to positive range" do
       attrs = %{
         index: 0,
         type: :gate,
         value: 0.0,
-        sim_input_min: 0.9,
-        sim_input_max: 1.1
+        sim_input_min: -0.12,
+        sim_input_max: 0.06
       }
 
       changeset = Notch.changeset(%Notch{}, attrs)
 
-      refute changeset.valid?
-      assert "must be between 0.0 and 1.0" in errors_on(changeset).sim_input_max
+      assert changeset.valid?
     end
   end
 end

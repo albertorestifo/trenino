@@ -20,10 +20,13 @@ defmodule Trenino.Train.Notch do
 
   The InputValue to send to the simulator for this notch. These values are
   determined by LeverAnalyzer which sweeps through the simulator to find
-  what InputValue produces each notch's output.
+  what InputValue produces each notch's output. The range depends on the
+  lever — most use 0.0 to 1.0, but some (e.g., ThrottleAndBrake) use -1.0
+  to 1.0.
 
-  For example, LeverAnalyzer might find that InputValue 0.05-0.45 produces
-  braking outputs -10 to -0.91. These become sim_input_min=0.05, sim_input_max=0.45.
+  For example, LeverAnalyzer might find that InputValue -0.86 to -0.64
+  produces braking output -3.0. These become sim_input_min=-0.86,
+  sim_input_max=-0.64.
 
   ## Simulator Output Values (value, min_value, max_value)
 
@@ -131,7 +134,12 @@ defmodule Trenino.Train.Notch do
   end
 
   defp validate_sim_input_range(changeset) do
-    validate_range_pair(changeset, :sim_input_min, :sim_input_max)
+    min_val = get_field(changeset, :sim_input_min)
+    max_val = get_field(changeset, :sim_input_max)
+
+    changeset
+    |> validate_both_set(:sim_input_min, :sim_input_max, min_val, max_val)
+    |> validate_min_lte_max(:sim_input_min, :sim_input_max, min_val, max_val)
   end
 
   # Validates a min/max field pair for normalized 0.0-1.0 ranges
