@@ -14,7 +14,7 @@ defmodule Trenino.Train.LeverConfig do
   alias Trenino.Train.LeverInputBinding
   alias Trenino.Train.Notch
 
-  @type lever_type :: :discrete | :continuous | :hybrid | nil
+  @type lever_type :: :discrete | :continuous | :hybrid | :bldc | nil
 
   @type t :: %__MODULE__{
           id: integer() | nil,
@@ -40,7 +40,7 @@ defmodule Trenino.Train.LeverConfig do
     field :value_endpoint, :string
     field :notch_count_endpoint, :string
     field :notch_index_endpoint, :string
-    field :lever_type, Ecto.Enum, values: [:discrete, :continuous, :hybrid]
+    field :lever_type, Ecto.Enum, values: [:discrete, :continuous, :hybrid, :bldc]
     field :inverted, :boolean, default: false
     field :calibrated_at, :utc_datetime
 

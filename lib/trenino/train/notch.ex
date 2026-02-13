@@ -57,6 +57,11 @@ defmodule Trenino.Train.Notch do
           sim_input_min: float() | nil,
           sim_input_max: float() | nil,
           description: String.t() | nil,
+          bldc_engagement: integer() | nil,
+          bldc_hold: integer() | nil,
+          bldc_exit: integer() | nil,
+          bldc_spring_back: integer() | nil,
+          bldc_damping: integer() | nil,
           lever_config: LeverConfig.t() | Ecto.Association.NotLoaded.t(),
           inserted_at: DateTime.t() | nil,
           updated_at: DateTime.t() | nil
@@ -75,6 +80,12 @@ defmodule Trenino.Train.Notch do
     field :sim_input_min, :float
     field :sim_input_max, :float
     field :description, :string
+    # BLDC haptic parameters (0-255 range, NULL for non-BLDC levers)
+    field :bldc_engagement, :integer
+    field :bldc_hold, :integer
+    field :bldc_exit, :integer
+    field :bldc_spring_back, :integer
+    field :bldc_damping, :integer
 
     belongs_to :lever_config, LeverConfig
 
@@ -95,7 +106,12 @@ defmodule Trenino.Train.Notch do
       :sim_input_min,
       :sim_input_max,
       :description,
-      :lever_config_id
+      :lever_config_id,
+      :bldc_engagement,
+      :bldc_hold,
+      :bldc_exit,
+      :bldc_spring_back,
+      :bldc_damping
     ])
     |> round_float_fields([
       :value,
@@ -110,6 +126,7 @@ defmodule Trenino.Train.Notch do
     |> validate_notch_values()
     |> validate_input_range()
     |> validate_sim_input_range()
+    |> validate_bldc_fields()
     |> foreign_key_constraint(:lever_config_id)
     |> unique_constraint([:lever_config_id, :index])
   end
@@ -195,4 +212,26 @@ defmodule Trenino.Train.Notch do
       end
     end)
   end
+
+  # Validate BLDC haptic parameter fields are within 0-255 range when not nil
+  defp validate_bldc_fields(changeset) do
+    bldc_fields = [:bldc_engagement, :bldc_hold, :bldc_exit, :bldc_spring_back, :bldc_damping]
+
+    Enum.reduce(bldc_fields, changeset, fn field, cs ->
+      case get_field(cs, field) do
+        nil -> cs
+        value -> validate_bldc_field_range(cs, field, value)
+      end
+    end)
+  end
+
+  defp validate_bldc_field_range(changeset, field, value) when is_integer(value) do
+    if value < 0 or value > 255 do
+      add_error(changeset, field, "must be between 0 and 255")
+    else
+      changeset
+    end
+  end
+
+  defp validate_bldc_field_range(changeset, _field, _value), do: changeset
 end
