@@ -324,6 +324,148 @@ defmodule TreninoWeb.LeverSetupWizardTest do
     end
   end
 
+  describe "lever type selection" do
+    setup do
+      {:ok, train} =
+        TrainContext.create_train(%{
+          name: "Test Train",
+          identifier: "Test_Train_LeverType_#{System.unique_integer([:positive])}"
+        })
+
+      {:ok, lever_element} =
+        TrainContext.create_element(train.id, %{
+          name: "Throttle",
+          type: :lever
+        })
+
+      client = Client.new("http://localhost:8080", "test-key")
+
+      %{
+        train: train,
+        lever_element: lever_element,
+        client: client
+      }
+    end
+
+    test "shows BLDC option in lever type selection", %{
+      conn: conn,
+      train: train,
+      lever_element: lever_element,
+      client: client
+    } do
+      stub(Simulator, :get_status, fn ->
+        %ConnectionState{status: :connected, client: client}
+      end)
+
+      stub(Client, :list, fn _client ->
+        {:ok, %{"NodeName" => "Root", "NodePath" => "Root", "Nodes" => []}}
+      end)
+
+      {:ok, view, _html} = live(conn, ~p"/trains/#{train.id}")
+
+      view
+      |> element("[phx-click='configure_lever'][phx-value-id='#{lever_element.id}']")
+      |> render_click()
+
+      html = render(view)
+
+      # Should show BLDC option
+      assert html =~ "BLDC Haptic Lever"
+      assert html =~ "Motor-driven lever with programmable force feedback"
+      assert html =~ "SimpleFOCShield"
+    end
+
+    test "shows Analog option in lever type selection", %{
+      conn: conn,
+      train: train,
+      lever_element: lever_element,
+      client: client
+    } do
+      stub(Simulator, :get_status, fn ->
+        %ConnectionState{status: :connected, client: client}
+      end)
+
+      stub(Client, :list, fn _client ->
+        {:ok, %{"NodeName" => "Root", "NodePath" => "Root", "Nodes" => []}}
+      end)
+
+      {:ok, view, _html} = live(conn, ~p"/trains/#{train.id}")
+
+      view
+      |> element("[phx-click='configure_lever'][phx-value-id='#{lever_element.id}']")
+      |> render_click()
+
+      html = render(view)
+
+      # Should show Analog option
+      assert html =~ "Analog Potentiometer"
+    end
+
+    test "selecting BLDC skips pin selection step", %{
+      conn: conn,
+      train: train,
+      lever_element: lever_element,
+      client: client
+    } do
+      stub(Simulator, :get_status, fn ->
+        %ConnectionState{status: :connected, client: client}
+      end)
+
+      stub(Client, :list, fn _client ->
+        {:ok, %{"NodeName" => "Root", "NodePath" => "Root", "Nodes" => []}}
+      end)
+
+      {:ok, view, _html} = live(conn, ~p"/trains/#{train.id}")
+
+      view
+      |> element("[phx-click='configure_lever'][phx-value-id='#{lever_element.id}']")
+      |> render_click()
+
+      # Select BLDC lever type
+      view
+      |> element("input[value='bldc']")
+      |> render_click()
+
+      html = render(view)
+
+      # Should go directly to endpoint selection (skip pin/input selection)
+      assert html =~ "Find in Simulator"
+      assert html =~ "Auto-Detect Control"
+      refute html =~ "Select Hardware Input"
+    end
+
+    test "selecting Analog shows pin selection step", %{
+      conn: conn,
+      train: train,
+      lever_element: lever_element,
+      client: client
+    } do
+      stub(Simulator, :get_status, fn ->
+        %ConnectionState{status: :connected, client: client}
+      end)
+
+      stub(Client, :list, fn _client ->
+        {:ok, %{"NodeName" => "Root", "NodePath" => "Root", "Nodes" => []}}
+      end)
+
+      {:ok, view, _html} = live(conn, ~p"/trains/#{train.id}")
+
+      view
+      |> element("[phx-click='configure_lever'][phx-value-id='#{lever_element.id}']")
+      |> render_click()
+
+      # Select analog lever type
+      view
+      |> element("input[value='analog']")
+      |> render_click()
+
+      html = render(view)
+
+      # Should show input selection step
+      assert html =~ "Select Hardware Input"
+    end
+  end
+
   describe "dependency tracking" do
     setup do
       {:ok, train} =

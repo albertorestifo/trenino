@@ -34,6 +34,7 @@ defmodule TreninoWeb.LeverSetupWizard do
 
   # Steps for new lever setup (includes explanation step)
   @steps_new [
+    :select_lever_type,
     :select_input,
     :find_endpoint,
     :explain_calibration,
@@ -43,6 +44,7 @@ defmodule TreninoWeb.LeverSetupWizard do
 
   # Steps for editing existing lever (skips explanation step)
   @steps_edit [
+    :select_lever_type,
     :select_input,
     :find_endpoint,
     :run_calibration,
@@ -108,7 +110,7 @@ defmodule TreninoWeb.LeverSetupWizard do
     steps = if editing_mode, do: @steps_edit, else: @steps_new
 
     socket
-    |> assign(:current_step, :select_input)
+    |> assign(:current_step, :select_lever_type)
     |> assign(:available_inputs, available_inputs)
     |> assign(:selected_input_id, existing_input_id)
     |> assign(:selected_input, get_existing_input(existing_binding, available_inputs))
@@ -117,6 +119,7 @@ defmodule TreninoWeb.LeverSetupWizard do
     |> assign(:calibration_status, :idle)
     |> assign(:calibration_progress, 0.0)
     |> assign(:calibration_error, nil)
+    |> assign(:selected_lever_type, nil)
     |> assign(:lever_type, get_existing_lever_type(existing_config))
     |> assign(:notches, get_existing_notches(existing_config))
     |> assign(:mapping_session_pid, nil)
@@ -184,6 +187,9 @@ defmodule TreninoWeb.LeverSetupWizard do
 
   defp compute_configured_steps(config, input_id) do
     steps = MapSet.new()
+
+    # Step 0: select_lever_type - always configured in edit mode (we don't change type)
+    steps = MapSet.put(steps, :select_lever_type)
 
     # Step 1: select_input - configured if we have an input bound
     steps = if input_id != nil, do: MapSet.put(steps, :select_input), else: steps
@@ -295,6 +301,18 @@ defmodule TreninoWeb.LeverSetupWizard do
   end
 
   # Event handlers
+
+  @impl true
+  def handle_event("select_lever_type", %{"lever_type" => lever_type}, socket) do
+    lever_type_atom = String.to_existing_atom(lever_type)
+
+    socket =
+      socket
+      |> assign(:selected_lever_type, lever_type_atom)
+      |> assign(:current_step, next_step_after_type_selection(lever_type_atom))
+
+    {:noreply, socket}
+  end
 
   @impl true
   def handle_event("select_input", %{"input-id" => input_id_str}, socket) do
@@ -487,6 +505,9 @@ defmodule TreninoWeb.LeverSetupWizard do
 
   # Private helpers
 
+  defp next_step_after_type_selection(:bldc), do: :find_endpoint
+  defp next_step_after_type_selection(_), do: :select_input
+
   # Stop mapping session if leaving :map_notches step
   defp maybe_stop_mapping_session_if_leaving(socket) do
     if socket.assigns.current_step == :map_notches do
@@ -658,11 +679,14 @@ defmodule TreninoWeb.LeverSetupWizard do
     Enum.find_index(steps, &(&1 == step)) + 1
   end
 
+  defp step_label(:select_lever_type), do: "Lever Type"
   defp step_label(:select_input), do: "Select Input"
   defp step_label(:find_endpoint), do: "Find in Simulator"
   defp step_label(:explain_calibration), do: "Calibration Info"
   defp step_label(:run_calibration), do: "Detect Notches"
   defp step_label(:map_notches), do: "Map Positions"
+
+  defp can_proceed_from?(:select_lever_type, assigns), do: assigns.selected_lever_type != nil
 
   defp can_proceed_from?(:select_input, assigns), do: assigns.selected_input_id != nil
 
@@ -843,6 +867,16 @@ defmodule TreninoWeb.LeverSetupWizard do
   attr :socket_assigns, :map, required: true
   attr :myself, :any, required: true
 
+  defp step_content(%{current_step: :select_lever_type} = assigns) do
+    ~H"""
+    <.step_select_lever_type
+      selected_lever_type={@socket_assigns.selected_lever_type}
+      can_proceed={can_proceed_from?(:select_lever_type, @socket_assigns)}
+      myself={@myself}
+    />
+    """
+  end
+
   defp step_content(%{current_step: :select_input} = assigns) do
     ~H"""
     <.step_select_input
@@ -893,6 +927,80 @@ defmodule TreninoWeb.LeverSetupWizard do
       can_proceed={can_proceed_from?(:map_notches, @socket_assigns)}
       myself={@myself}
     />
+    """
+  end
+
+  # Step 0: Select Lever Type
+  attr :selected_lever_type, :atom, default: nil
+  attr :can_proceed, :boolean, required: true
+  attr :myself, :any, required: true
+
+  defp step_select_lever_type(assigns) do
+    ~H"""
+    <div class="flex-1 overflow-y-auto p-6">
+      <div class="max-w-lg mx-auto">
+        <h3 class="text-lg font-semibold mb-2">Select Lever Type</h3>
+        <p class="text-sm text-base-content/60 mb-4">
+          Choose the type of lever hardware you want to use.
+        </p>
+
+        <div class="space-y-3">
+          <label class={[
+            "flex items-start gap-4 p-4 rounded-lg border-2 cursor-pointer transition-colors",
+            @selected_lever_type == :analog && "border-primary bg-primary/10",
+            @selected_lever_type != :analog && "border-base-300 hover:border-base-content/30"
+          ]}>
+            <input
+              type="radio"
+              name="lever_type"
+              value="analog"
+              checked={@selected_lever_type == :analog}
+              phx-click="select_lever_type"
+              phx-value-lever_type="analog"
+              phx-target={@myself}
+              class="radio radio-primary mt-1"
+            />
+            <div class="flex-1">
+              <div class="font-medium">Analog Potentiometer</div>
+              <p class="text-sm text-base-content/60 mt-1">
+                Traditional analog lever using a potentiometer for position sensing
+              </p>
+              <p class="text-xs text-base-content/50 mt-2">
+                Requires calibrated analog input pin
+              </p>
+            </div>
+          </label>
+
+          <label class={[
+            "flex items-start gap-4 p-4 rounded-lg border-2 cursor-pointer transition-colors",
+            @selected_lever_type == :bldc && "border-primary bg-primary/10",
+            @selected_lever_type != :bldc && "border-base-300 hover:border-base-content/30"
+          ]}>
+            <input
+              type="radio"
+              name="lever_type"
+              value="bldc"
+              checked={@selected_lever_type == :bldc}
+              phx-click="select_lever_type"
+              phx-value-lever_type="bldc"
+              phx-target={@myself}
+              class="radio radio-primary mt-1"
+            />
+            <div class="flex-1">
+              <div class="font-medium">BLDC Haptic Lever</div>
+              <p class="text-sm text-base-content/60 mt-1">
+                Motor-driven lever with programmable force feedback
+              </p>
+              <p class="text-xs text-base-content/50 mt-2">
+                Requires SimpleFOCShield v2 on Arduino Mega 2560
+              </p>
+            </div>
+          </label>
+        </div>
+      </div>
+    </div>
+
+    <.step_footer can_proceed={@can_proceed} show_back={false} myself={@myself} />
     """
   end
 
