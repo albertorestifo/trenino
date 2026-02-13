@@ -40,6 +40,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - Flaky CI tests for firmware uploader and upload history ordering
 - Train detection failing for freight trains where locomotive and wagons have different class prefixes
+- Notch validation incorrectly rejecting negative `sim_input` values (some levers like ThrottleAndBrake use -1.0 to 1.0 range)
+- LeverAnalyzer using hardcoded 0.0-1.0 input range instead of reading actual lever range from simulator
+- Simulator API requests failing for control paths with special characters (parentheses, spaces)
 
 ### Removed
 
