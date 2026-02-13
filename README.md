@@ -34,6 +34,7 @@ No programming required. Just wire up your Arduino, flash the firmware with one 
 - **Calibrate your controls** with a guided step-by-step process
 - **Auto-detect trains** and load saved configurations automatically
 - **Map any control** to simulator inputs using the built-in API explorer
+- **BLDC haptic levers** with programmable force feedback and virtual detents
 - **Set up trains with Claude AI** — describe what you want in plain language and let Claude configure buttons, LEDs, and sequences for you via [MCP integration](docs/mcp-setup.md)
 
 ---
@@ -96,23 +97,34 @@ Trenino will automatically detect the API key when started.
 
 Trenino supports the following Arduino-compatible boards:
 
-| Board                         | MCU        | Analog Inputs | Digital I/O |
-| ----------------------------- | ---------- | ------------- | ----------- |
-| Arduino Uno                   | ATmega328P | 6             | 14          |
-| Arduino Nano                  | ATmega328P | 8             | 14          |
-| Arduino Nano (Old Bootloader) | ATmega328P | 8             | 14          |
-| Arduino Leonardo              | ATmega32U4 | 12            | 20          |
-| Arduino Micro                 | ATmega32U4 | 12            | 20          |
-| Arduino Mega 2560             | ATmega2560 | 16            | 54          |
-| SparkFun Pro Micro            | ATmega32U4 | 12            | 18          |
+| Board                         | MCU        | Analog Inputs | Digital I/O | BLDC Support |
+| ----------------------------- | ---------- | ------------- | ----------- | ------------ |
+| Arduino Uno                   | ATmega328P | 6             | 14          | No           |
+| Arduino Nano                  | ATmega328P | 8             | 14          | No           |
+| Arduino Nano (Old Bootloader) | ATmega328P | 8             | 14          | No           |
+| Arduino Leonardo              | ATmega32U4 | 12            | 20          | No           |
+| Arduino Micro                 | ATmega32U4 | 12            | 20          | No           |
+| Arduino Mega 2560             | ATmega2560 | 16            | 54          | Yes          |
+| SparkFun Pro Micro            | ATmega32U4 | 12            | 18          | No           |
 
 **Recommended boards:**
 
 - **Arduino Nano** - Compact and affordable, great for simple setups with a few levers
-- **Arduino Mega 2560** - Best for complex builds with many inputs
+- **Arduino Mega 2560** - Best for complex builds with many inputs or BLDC haptic levers
 - **SparkFun Pro Micro** - Small form factor with native USB
 
 All boards can be flashed directly from Trenino without any additional software.
+
+### BLDC Haptic Lever Requirements
+
+For advanced haptic feedback with programmable force feedback:
+
+- **Arduino Mega 2560** - Required for BLDC motor control
+- **SimpleFOCShield v2** - Motor driver board
+- **BLDC Motor** - 7 pole pairs typical
+- **AS5047D Encoder** - 14-bit magnetic encoder
+
+See [BLDC Lever Documentation](docs/features/bldc-levers.md) for setup instructions.
 
 ---
 
