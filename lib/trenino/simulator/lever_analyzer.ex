@@ -342,6 +342,8 @@ defmodule Trenino.Simulator.LeverAnalyzer do
   ## Parameters
 
   - `samples` - List of `Sample.t()` structs representing lever positions
+  - `opts` - Optional configuration:
+    - `:lever_type` - Override lever type classification (:bldc to generate BLDC haptic parameters)
 
   ## Examples
 
@@ -351,9 +353,12 @@ defmodule Trenino.Simulator.LeverAnalyzer do
         %Sample{set_input: 1.0, actual_input: 1.0, output: 1.0, notch_index: 2, snapped: true}
       ]
       {:ok, result} = LeverAnalyzer.analyze_samples(samples)
+
+      # Generate BLDC haptic parameters
+      {:ok, result} = LeverAnalyzer.analyze_samples(samples, lever_type: :bldc)
   """
-  @spec analyze_samples([Sample.t()]) :: {:ok, AnalysisResult.t()}
-  def analyze_samples(samples) when is_list(samples) do
+  @spec analyze_samples([Sample.t()], keyword()) :: {:ok, AnalysisResult.t()}
+  def analyze_samples(samples, opts \\ []) when is_list(samples) do
     outputs = Enum.map(samples, & &1.output)
     unique_outputs = Enum.uniq(outputs) |> Enum.sort()
 
@@ -375,7 +380,7 @@ defmodule Trenino.Simulator.LeverAnalyzer do
 
     lever_type = classify_lever_type(unique_count, all_integers, zones)
 
-    suggested_notches = build_notches_from_zones(zones)
+    suggested_notches = build_notches_from_zones(zones, opts)
 
     {:ok,
      %AnalysisResult{
@@ -542,38 +547,70 @@ defmodule Trenino.Simulator.LeverAnalyzer do
   end
 
   # Build notch suggestions from the detected zones
-  defp build_notches_from_zones(zones) do
+  defp build_notches_from_zones(zones, opts) do
+    lever_type = Keyword.get(opts, :lever_type)
+
     zones
     |> Enum.sort_by(& &1.set_input_min)
     |> Enum.with_index()
     |> Enum.map(fn {zone, idx} ->
-      case zone.type do
-        :gate ->
-          %{
-            type: :gate,
-            index: idx,
-            value: zone.value,
-            input_min: zone.set_input_min,
-            input_max: zone.set_input_max,
-            actual_input_min: zone.actual_input_min,
-            actual_input_max: zone.actual_input_max,
-            description: "Gate at output #{zone.value}"
-          }
+      base = build_base_notch(zone, idx)
 
-        :linear ->
-          %{
-            type: :linear,
-            index: idx,
-            min_value: zone.output_min,
-            max_value: zone.output_max,
-            input_min: zone.set_input_min,
-            input_max: zone.set_input_max,
-            actual_input_min: zone.actual_input_min,
-            actual_input_max: zone.actual_input_max,
-            description: "Linear #{zone.output_min} to #{zone.output_max}"
-          }
+      if lever_type == :bldc do
+        Map.merge(base, default_bldc_params(zone.type, idx))
+      else
+        base
       end
     end)
+  end
+
+  # Build the base notch configuration without BLDC parameters
+  defp build_base_notch(%Zone{type: :gate} = zone, idx) do
+    %{
+      type: :gate,
+      index: idx,
+      value: zone.value,
+      input_min: zone.set_input_min,
+      input_max: zone.set_input_max,
+      actual_input_min: zone.actual_input_min,
+      actual_input_max: zone.actual_input_max,
+      description: "Gate at output #{zone.value}"
+    }
+  end
+
+  defp build_base_notch(%Zone{type: :linear} = zone, idx) do
+    %{
+      type: :linear,
+      index: idx,
+      min_value: zone.output_min,
+      max_value: zone.output_max,
+      input_min: zone.set_input_min,
+      input_max: zone.set_input_max,
+      actual_input_min: zone.actual_input_min,
+      actual_input_max: zone.actual_input_max,
+      description: "Linear #{zone.output_min} to #{zone.output_max}"
+    }
+  end
+
+  # Default BLDC haptic parameters based on zone type
+  defp default_bldc_params(:gate, idx) do
+    %{
+      bldc_engagement: 180,
+      bldc_hold: 200,
+      bldc_exit: 150,
+      bldc_spring_back: idx,
+      bldc_damping: 0
+    }
+  end
+
+  defp default_bldc_params(:linear, idx) do
+    %{
+      bldc_engagement: 50,
+      bldc_hold: 30,
+      bldc_exit: 50,
+      bldc_spring_back: idx,
+      bldc_damping: 100
+    }
   end
 
   # Conditionally sleep - allows tests to use delay_ms: 0 for fast execution

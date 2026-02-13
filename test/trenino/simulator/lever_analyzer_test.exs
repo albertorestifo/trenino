@@ -196,6 +196,161 @@ defmodule Trenino.Simulator.LeverAnalyzerTest do
     end
   end
 
+  describe "analyze_samples/2 with BLDC parameter generation" do
+    test "generates BLDC parameters for gate zones when lever_type: :bldc" do
+      samples = [
+        %LeverAnalyzer.Sample{
+          set_input: 0.0,
+          actual_input: 0.0,
+          output: -1.0,
+          notch_index: 0,
+          snapped: true
+        },
+        %LeverAnalyzer.Sample{
+          set_input: 0.5,
+          actual_input: 0.5,
+          output: 0.0,
+          notch_index: 1,
+          snapped: true
+        },
+        %LeverAnalyzer.Sample{
+          set_input: 1.0,
+          actual_input: 1.0,
+          output: 1.0,
+          notch_index: 2,
+          snapped: true
+        }
+      ]
+
+      assert {:ok, %AnalysisResult{} = result} =
+               LeverAnalyzer.analyze_samples(samples, lever_type: :bldc)
+
+      assert result.lever_type == :discrete
+      assert length(result.suggested_notches) == 3
+
+      Enum.each(result.suggested_notches, fn notch ->
+        assert notch[:type] == :gate
+        assert notch[:bldc_engagement] == 180
+        assert notch[:bldc_hold] == 200
+        assert notch[:bldc_exit] == 150
+        assert notch[:bldc_spring_back] == notch[:index]
+        assert notch[:bldc_damping] == 0
+      end)
+    end
+
+    test "generates BLDC parameters for linear zones when lever_type: :bldc" do
+      samples =
+        for i <- 0..50 do
+          input = i * 0.02
+          %LeverAnalyzer.Sample{
+            set_input: input,
+            actual_input: input,
+            output: Float.round(input, 2),
+            notch_index: 0,
+            snapped: false
+          }
+        end
+
+      assert {:ok, %AnalysisResult{} = result} =
+               LeverAnalyzer.analyze_samples(samples, lever_type: :bldc)
+
+      assert result.lever_type == :continuous
+      assert length(result.suggested_notches) == 1
+
+      notch = hd(result.suggested_notches)
+      assert notch[:type] == :linear
+      assert notch[:bldc_engagement] == 50
+      assert notch[:bldc_hold] == 30
+      assert notch[:bldc_exit] == 50
+      assert notch[:bldc_spring_back] == notch[:index]
+      assert notch[:bldc_damping] == 100
+    end
+
+    test "does not add BLDC parameters when lever_type not specified" do
+      samples = [
+        %LeverAnalyzer.Sample{
+          set_input: 0.0,
+          actual_input: 0.0,
+          output: -1.0,
+          notch_index: 0,
+          snapped: true
+        },
+        %LeverAnalyzer.Sample{
+          set_input: 0.5,
+          actual_input: 0.5,
+          output: 0.0,
+          notch_index: 1,
+          snapped: true
+        }
+      ]
+
+      assert {:ok, %AnalysisResult{} = result} = LeverAnalyzer.analyze_samples(samples)
+
+      assert result.lever_type == :discrete
+
+      Enum.each(result.suggested_notches, fn notch ->
+        refute Map.has_key?(notch, :bldc_engagement)
+        refute Map.has_key?(notch, :bldc_hold)
+        refute Map.has_key?(notch, :bldc_exit)
+        refute Map.has_key?(notch, :bldc_spring_back)
+        refute Map.has_key?(notch, :bldc_damping)
+      end)
+    end
+
+    test "generates mixed BLDC parameters for hybrid lever" do
+      samples =
+        [
+          # Gate zone
+          %LeverAnalyzer.Sample{
+            set_input: 0.0,
+            actual_input: 0.0,
+            output: 0.0,
+            notch_index: 0,
+            snapped: true
+          },
+          %LeverAnalyzer.Sample{
+            set_input: 0.1,
+            actual_input: 0.0,
+            output: 0.0,
+            notch_index: 0,
+            snapped: true
+          }
+        ] ++
+          # Linear zone
+          for i <- 6..30 do
+            input = i * 0.02
+            %LeverAnalyzer.Sample{
+              set_input: input,
+              actual_input: input,
+              output: Float.round(input, 2),
+              notch_index: 1,
+              snapped: false
+            }
+          end
+
+      assert {:ok, %AnalysisResult{} = result} =
+               LeverAnalyzer.analyze_samples(samples, lever_type: :bldc)
+
+      assert result.lever_type == :hybrid
+      assert length(result.suggested_notches) == 2
+
+      gate_notch = Enum.find(result.suggested_notches, &(&1[:type] == :gate))
+      linear_notch = Enum.find(result.suggested_notches, &(&1[:type] == :linear))
+
+      # Gate should have gate BLDC params
+      assert gate_notch[:bldc_engagement] == 180
+      assert gate_notch[:bldc_hold] == 200
+      assert gate_notch[:bldc_exit] == 150
+      assert gate_notch[:bldc_damping] == 0
+
+      # Linear should have linear BLDC params
+      assert linear_notch[:bldc_engagement] == 50
+      assert linear_notch[:bldc_hold] == 30
+      assert linear_notch[:bldc_exit] == 50
+      assert linear_notch[:bldc_damping] == 100
+    end
+  end
+
   # Helper to stub sweep responses using an Agent to track state
   defp stub_sweep_responses(response_fn, opts \\ []) do
     min_input = Keyword.get(opts, :min_input, 0.0)
