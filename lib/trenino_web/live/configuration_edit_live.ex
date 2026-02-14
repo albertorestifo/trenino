@@ -560,6 +560,14 @@ defmodule TreninoWeb.ConfigurationEditLive do
   # Private helpers for input creation
 
   defp add_regular_input(socket, params) do
+    # For BLDC lever, auto-set pin to encoder_cs value
+    params =
+      if params["input_type"] in ["bldc_lever", :bldc_lever] do
+        Map.put(params, "pin", params["encoder_cs"])
+      else
+        params
+      end
+
     case Hardware.create_input(socket.assigns.device.id, params) do
       {:ok, _input} ->
         {:ok, inputs} = Hardware.list_inputs(socket.assigns.device.id)
@@ -1050,9 +1058,10 @@ defmodule TreninoWeb.ConfigurationEditLive do
               <span class={[
                 "badge badge-sm capitalize",
                 input.input_type == :analog && "badge-info",
-                input.input_type == :button && "badge-warning"
+                input.input_type == :button && "badge-warning",
+                input.input_type == :bldc_lever && "badge-accent"
               ]}>
-                {input.input_type}
+                {if input.input_type == :bldc_lever, do: "BLDC", else: input.input_type}
               </span>
             </td>
             <td class="min-w-24">
@@ -1366,12 +1375,12 @@ defmodule TreninoWeb.ConfigurationEditLive do
               <.input
                 field={@form[:input_type]}
                 type="select"
-                options={[{"Analog", :analog}, {"Button", :button}]}
+                options={[{"Analog", :analog}, {"Button", :button}, {"BLDC Lever", :bldc_lever}]}
                 class="select select-bordered w-full"
               />
             </div>
 
-            <div>
+            <div :if={@form[:input_type].value not in [:bldc_lever, "bldc_lever"]}>
               <label class="label">
                 <span class="label-text">Pin Number</span>
               </label>
@@ -1410,6 +1419,69 @@ defmodule TreninoWeb.ConfigurationEditLive do
                 placeholder="20"
                 class="input input-bordered w-full"
               />
+            </div>
+
+            <div :if={@form[:input_type].value in [:bldc_lever, "bldc_lever"]} class="space-y-4">
+              <div class="text-sm font-medium text-base-content/70 border-b border-base-300 pb-1">
+                Motor Pins
+              </div>
+              <div class="grid grid-cols-3 gap-3">
+                <div>
+                  <label class="label"><span class="label-text text-xs">Phase A</span></label>
+                  <.input field={@form[:motor_pin_a]} type="number" min="0" max="255" class="input input-bordered input-sm w-full" />
+                </div>
+                <div>
+                  <label class="label"><span class="label-text text-xs">Phase B</span></label>
+                  <.input field={@form[:motor_pin_b]} type="number" min="0" max="255" class="input input-bordered input-sm w-full" />
+                </div>
+                <div>
+                  <label class="label"><span class="label-text text-xs">Phase C</span></label>
+                  <.input field={@form[:motor_pin_c]} type="number" min="0" max="255" class="input input-bordered input-sm w-full" />
+                </div>
+              </div>
+
+              <div class="grid grid-cols-2 gap-3">
+                <div>
+                  <label class="label"><span class="label-text text-xs">Enable A</span></label>
+                  <.input field={@form[:motor_enable_a]} type="number" min="0" max="255" class="input input-bordered input-sm w-full" />
+                </div>
+                <div>
+                  <label class="label"><span class="label-text text-xs">Enable B</span></label>
+                  <.input field={@form[:motor_enable_b]} type="number" min="0" max="255" class="input input-bordered input-sm w-full" />
+                </div>
+              </div>
+
+              <div class="text-sm font-medium text-base-content/70 border-b border-base-300 pb-1 mt-2">
+                Encoder
+              </div>
+              <div class="grid grid-cols-2 gap-3">
+                <div>
+                  <label class="label"><span class="label-text text-xs">SPI CS Pin</span></label>
+                  <.input field={@form[:encoder_cs]} type="number" min="0" max="255" class="input input-bordered input-sm w-full" />
+                </div>
+                <div>
+                  <label class="label"><span class="label-text text-xs">Resolution (bits)</span></label>
+                  <.input field={@form[:encoder_bits]} type="number" min="1" max="255" placeholder="14" class="input input-bordered input-sm w-full" />
+                </div>
+              </div>
+
+              <div class="text-sm font-medium text-base-content/70 border-b border-base-300 pb-1 mt-2">
+                Motor Parameters
+              </div>
+              <div class="grid grid-cols-3 gap-3">
+                <div>
+                  <label class="label"><span class="label-text text-xs">Pole Pairs</span></label>
+                  <.input field={@form[:pole_pairs]} type="number" min="1" max="255" placeholder="11" class="input input-bordered input-sm w-full" />
+                </div>
+                <div>
+                  <label class="label"><span class="label-text text-xs">Voltage (0.1V)</span></label>
+                  <.input field={@form[:voltage]} type="number" min="1" max="255" placeholder="120" class="input input-bordered input-sm w-full" />
+                </div>
+                <div>
+                  <label class="label"><span class="label-text text-xs">Current Limit (0.1A)</span></label>
+                  <.input field={@form[:current_limit]} type="number" min="0" max="255" placeholder="0" class="input input-bordered input-sm w-full" />
+                </div>
+              </div>
             </div>
           </div>
 
