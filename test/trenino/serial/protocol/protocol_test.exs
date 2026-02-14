@@ -680,6 +680,32 @@ defmodule Trenino.Serial.ProtocolTest do
              }
     end
 
+    test "decodes RetryCalibration" do
+      binary = <<0x08, 0x0A>>
+      {:ok, decoded} = Message.decode(binary)
+
+      alias Trenino.Serial.Protocol.RetryCalibration
+      assert decoded == %RetryCalibration{pin: 0x0A}
+    end
+
+    test "decodes LoadBLDCProfile" do
+      # Minimal: pin=10, 1 detent, 0 ranges
+      binary = <<0x0B, 10, 1, 0, 50, 100, 150, 100, 255>>
+      {:ok, decoded} = Message.decode(binary)
+
+      alias Trenino.Serial.Protocol.LoadBLDCProfile
+      assert %LoadBLDCProfile{pin: 10, detents: [detent], ranges: []} = decoded
+      assert detent.position == 50
+    end
+
+    test "decodes DeactivateBLDCProfile" do
+      binary = <<0x0C, 0x0A>>
+      {:ok, decoded} = Message.decode(binary)
+
+      alias Trenino.Serial.Protocol.DeactivateBLDCProfile
+      assert decoded == %DeactivateBLDCProfile{pin: 0x0A}
+    end
+
     test "returns error for unknown message type" do
       binary = <<0xFF>>
       assert Message.decode(binary) == {:error, :unknown_message_type}
