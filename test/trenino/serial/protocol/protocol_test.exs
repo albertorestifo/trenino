@@ -261,6 +261,93 @@ defmodule Trenino.Serial.ProtocolTest do
     end
   end
 
+  describe "Configure - BLDC Lever type" do
+    test "encode encodes BLDC lever configuration correctly" do
+      configure = %Configure{
+        config_id: 0x12345678,
+        total_parts: 2,
+        part_number: 1,
+        input_type: :bldc_lever,
+        motor_pin_a: 5,
+        motor_pin_b: 6,
+        motor_pin_c: 9,
+        motor_enable_a: 7,
+        motor_enable_b: 8,
+        encoder_cs: 10,
+        pole_pairs: 11,
+        voltage: 120,
+        current_limit: 0,
+        encoder_bits: 14
+      }
+
+      {:ok, encoded} = Configure.encode(configure)
+
+      # Header (8 bytes): type(0x02) + config_id(4 LE) + total_parts(1) + part_number(1) + input_type(0x03)
+      # Payload (10 bytes): motor_pin_a, motor_pin_b, motor_pin_c, motor_enable_a, motor_enable_b,
+      #                      encoder_cs, pole_pairs, voltage, current_limit, encoder_bits
+      assert encoded ==
+               <<0x02, 0x78, 0x56, 0x34, 0x12, 0x02, 0x01, 0x03, 5, 6, 9, 7, 8, 10, 11, 120, 0,
+                 14>>
+
+      assert byte_size(encoded) == 18
+    end
+
+    test "decode_body decodes BLDC lever configuration" do
+      # Body without type byte
+      body =
+        <<0x78, 0x56, 0x34, 0x12, 0x02, 0x01, 0x03, 5, 6, 9, 7, 8, 10, 11, 120, 0, 14>>
+
+      {:ok, decoded} = Configure.decode_body(body)
+
+      assert decoded == %Configure{
+               config_id: 0x12345678,
+               total_parts: 2,
+               part_number: 1,
+               input_type: :bldc_lever,
+               motor_pin_a: 5,
+               motor_pin_b: 6,
+               motor_pin_c: 9,
+               motor_enable_a: 7,
+               motor_enable_b: 8,
+               encoder_cs: 10,
+               pole_pairs: 11,
+               voltage: 120,
+               current_limit: 0,
+               encoder_bits: 14
+             }
+    end
+
+    test "decode_body returns error for insufficient BLDC lever data" do
+      # Only 3 payload bytes instead of 10
+      body = <<0x78, 0x56, 0x34, 0x12, 0x02, 0x01, 0x03, 5, 6, 9>>
+      assert Configure.decode_body(body) == {:error, :invalid_message}
+    end
+
+    test "roundtrip encode/decode BLDC lever" do
+      original = %Configure{
+        config_id: 0x12345678,
+        total_parts: 2,
+        part_number: 1,
+        input_type: :bldc_lever,
+        motor_pin_a: 5,
+        motor_pin_b: 6,
+        motor_pin_c: 9,
+        motor_enable_a: 7,
+        motor_enable_b: 8,
+        encoder_cs: 10,
+        pole_pairs: 11,
+        voltage: 120,
+        current_limit: 0,
+        encoder_bits: 14
+      }
+
+      {:ok, encoded} = Configure.encode(original)
+      {:ok, decoded} = Message.decode(encoded)
+
+      assert decoded == original
+    end
+  end
+
   describe "ConfigurationStored" do
     test "encode encodes config_id correctly" do
       stored = %ConfigurationStored{config_id: 0x12345678}
@@ -569,6 +656,30 @@ defmodule Trenino.Serial.ProtocolTest do
              }
     end
 
+    test "decodes Configure with BLDC lever type" do
+      binary =
+        <<0x02, 0x78, 0x56, 0x34, 0x12, 0x02, 0x01, 0x03, 5, 6, 9, 7, 8, 10, 11, 120, 0, 14>>
+
+      {:ok, decoded} = Message.decode(binary)
+
+      assert decoded == %Configure{
+               config_id: 0x12345678,
+               total_parts: 2,
+               part_number: 1,
+               input_type: :bldc_lever,
+               motor_pin_a: 5,
+               motor_pin_b: 6,
+               motor_pin_c: 9,
+               motor_enable_a: 7,
+               motor_enable_b: 8,
+               encoder_cs: 10,
+               pole_pairs: 11,
+               voltage: 120,
+               current_limit: 0,
+               encoder_bits: 14
+             }
+    end
+
     test "returns error for unknown message type" do
       binary = <<0xFF>>
       assert Message.decode(binary) == {:error, :unknown_message_type}
@@ -614,6 +725,22 @@ defmodule Trenino.Serial.ProtocolTest do
           input_type: :matrix,
           row_pins: [2, 3, 4],
           col_pins: [5, 6]
+        },
+        %Configure{
+          config_id: 0x12345678,
+          total_parts: 2,
+          part_number: 1,
+          input_type: :bldc_lever,
+          motor_pin_a: 5,
+          motor_pin_b: 6,
+          motor_pin_c: 9,
+          motor_enable_a: 7,
+          motor_enable_b: 8,
+          encoder_cs: 10,
+          pole_pairs: 11,
+          voltage: 120,
+          current_limit: 0,
+          encoder_bits: 14
         },
         %ConfigurationStored{config_id: 0x12345678},
         %ConfigurationError{config_id: 0x12345678},

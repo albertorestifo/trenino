@@ -4,16 +4,17 @@ defmodule Trenino.Serial.Protocol.Configure do
 
   Protocol v2.0.0 - Discriminated union format:
   - Common header: [type=0x02][config_id:u32][total_parts:u8][part_number:u8][input_type:u8]
-  - Analog payload: [pin:u8][sensitivity:u8]
-  - Button payload: [pin:u8][debounce:u8]
-  - Matrix payload: [num_row_pins:u8][num_col_pins:u8][row_pins...][col_pins...]
+  - Analog payload (0x00): [pin:u8][sensitivity:u8]
+  - Button payload (0x01): [pin:u8][debounce:u8]
+  - Matrix payload (0x02): [num_row_pins:u8][num_col_pins:u8][row_pins...][col_pins...]
+  - BLDC Lever payload (0x03): [motor_pin_a:u8][motor_pin_b:u8][motor_pin_c:u8][motor_enable_a:u8][motor_enable_b:u8][encoder_cs:u8][pole_pairs:u8][voltage:u8][current_limit:u8][encoder_bits:u8]
   """
 
   alias Trenino.Serial.Protocol.Message
 
   @behaviour Message
 
-  @type input_type :: :analog | :button | :matrix
+  @type input_type :: :analog | :button | :matrix | :bldc_lever
 
   @type t() :: %__MODULE__{
           config_id: integer(),
@@ -26,7 +27,18 @@ defmodule Trenino.Serial.Protocol.Configure do
           debounce: integer() | nil,
           # Matrix fields
           row_pins: [integer()] | nil,
-          col_pins: [integer()] | nil
+          col_pins: [integer()] | nil,
+          # BLDC Lever fields
+          motor_pin_a: integer() | nil,
+          motor_pin_b: integer() | nil,
+          motor_pin_c: integer() | nil,
+          motor_enable_a: integer() | nil,
+          motor_enable_b: integer() | nil,
+          encoder_cs: integer() | nil,
+          pole_pairs: integer() | nil,
+          voltage: integer() | nil,
+          current_limit: integer() | nil,
+          encoder_bits: integer() | nil
         }
 
   defstruct [
@@ -38,7 +50,17 @@ defmodule Trenino.Serial.Protocol.Configure do
     :sensitivity,
     :debounce,
     :row_pins,
-    :col_pins
+    :col_pins,
+    :motor_pin_a,
+    :motor_pin_b,
+    :motor_pin_c,
+    :motor_enable_a,
+    :motor_enable_b,
+    :encoder_cs,
+    :pole_pairs,
+    :voltage,
+    :current_limit,
+    :encoder_bits
   ]
 
   # Encode - Analog (input_type = 0x00)
@@ -89,6 +111,31 @@ defmodule Trenino.Serial.Protocol.Configure do
      <<0x02, config_id::little-32-unsigned, total_parts::8-unsigned, part_number::8-unsigned,
        0x02::8-unsigned, num_row_pins::8-unsigned, num_col_pins::8-unsigned,
        row_pins_binary::binary, col_pins_binary::binary>>}
+  end
+
+  # Encode - BLDC Lever (input_type = 0x03)
+  def encode(%__MODULE__{
+        config_id: config_id,
+        total_parts: total_parts,
+        part_number: part_number,
+        input_type: :bldc_lever,
+        motor_pin_a: motor_pin_a,
+        motor_pin_b: motor_pin_b,
+        motor_pin_c: motor_pin_c,
+        motor_enable_a: motor_enable_a,
+        motor_enable_b: motor_enable_b,
+        encoder_cs: encoder_cs,
+        pole_pairs: pole_pairs,
+        voltage: voltage,
+        current_limit: current_limit,
+        encoder_bits: encoder_bits
+      }) do
+    {:ok,
+     <<0x02, config_id::little-32-unsigned, total_parts::8-unsigned, part_number::8-unsigned,
+       0x03::8-unsigned, motor_pin_a::8-unsigned, motor_pin_b::8-unsigned,
+       motor_pin_c::8-unsigned, motor_enable_a::8-unsigned, motor_enable_b::8-unsigned,
+       encoder_cs::8-unsigned, pole_pairs::8-unsigned, voltage::8-unsigned,
+       current_limit::8-unsigned, encoder_bits::8-unsigned>>}
   end
 
   # Decode body - Analog (input_type = 0x00)
@@ -150,6 +197,33 @@ defmodule Trenino.Serial.Protocol.Configure do
     else
       {:error, :invalid_message}
     end
+  end
+
+  # Decode body - BLDC Lever (input_type = 0x03)
+  def decode_body(
+        <<config_id::little-32-unsigned, total_parts::8-unsigned, part_number::8-unsigned, 0x03,
+          motor_pin_a::8-unsigned, motor_pin_b::8-unsigned, motor_pin_c::8-unsigned,
+          motor_enable_a::8-unsigned, motor_enable_b::8-unsigned, encoder_cs::8-unsigned,
+          pole_pairs::8-unsigned, voltage::8-unsigned, current_limit::8-unsigned,
+          encoder_bits::8-unsigned>>
+      ) do
+    {:ok,
+     %__MODULE__{
+       config_id: config_id,
+       total_parts: total_parts,
+       part_number: part_number,
+       input_type: :bldc_lever,
+       motor_pin_a: motor_pin_a,
+       motor_pin_b: motor_pin_b,
+       motor_pin_c: motor_pin_c,
+       motor_enable_a: motor_enable_a,
+       motor_enable_b: motor_enable_b,
+       encoder_cs: encoder_cs,
+       pole_pairs: pole_pairs,
+       voltage: voltage,
+       current_limit: current_limit,
+       encoder_bits: encoder_bits
+     }}
   end
 
   def decode_body(_), do: {:error, :invalid_message}
