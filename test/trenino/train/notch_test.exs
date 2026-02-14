@@ -214,10 +214,7 @@ defmodule Trenino.Train.NotchTest do
         index: 0,
         type: :gate,
         value: 0.0,
-        bldc_engagement: 0,
-        bldc_hold: 128,
-        bldc_exit: 255,
-        bldc_spring_back: 100,
+        bldc_detent_strength: 128,
         bldc_damping: 50
       }
 
@@ -231,9 +228,8 @@ defmodule Trenino.Train.NotchTest do
         index: 0,
         type: :gate,
         value: 0.0,
-        bldc_engagement: 100,
-        bldc_hold: nil,
-        bldc_exit: 200
+        bldc_detent_strength: 100,
+        bldc_damping: nil
       }
 
       changeset = Notch.changeset(%Notch{}, attrs)
@@ -241,68 +237,20 @@ defmodule Trenino.Train.NotchTest do
       assert changeset.valid?
     end
 
-    test "rejects BLDC engagement below 0" do
-      attrs = %{index: 0, type: :gate, value: 0.0, bldc_engagement: -1}
+    test "rejects BLDC detent_strength below 0" do
+      attrs = %{index: 0, type: :gate, value: 0.0, bldc_detent_strength: -1}
       changeset = Notch.changeset(%Notch{}, attrs)
 
       refute changeset.valid?
-      assert "must be between 0 and 255" in errors_on(changeset).bldc_engagement
+      assert "must be between 0 and 255" in errors_on(changeset).bldc_detent_strength
     end
 
-    test "rejects BLDC engagement above 255" do
-      attrs = %{index: 0, type: :gate, value: 0.0, bldc_engagement: 256}
+    test "rejects BLDC detent_strength above 255" do
+      attrs = %{index: 0, type: :gate, value: 0.0, bldc_detent_strength: 256}
       changeset = Notch.changeset(%Notch{}, attrs)
 
       refute changeset.valid?
-      assert "must be between 0 and 255" in errors_on(changeset).bldc_engagement
-    end
-
-    test "rejects BLDC hold below 0" do
-      attrs = %{index: 0, type: :gate, value: 0.0, bldc_hold: -1}
-      changeset = Notch.changeset(%Notch{}, attrs)
-
-      refute changeset.valid?
-      assert "must be between 0 and 255" in errors_on(changeset).bldc_hold
-    end
-
-    test "rejects BLDC hold above 255" do
-      attrs = %{index: 0, type: :gate, value: 0.0, bldc_hold: 256}
-      changeset = Notch.changeset(%Notch{}, attrs)
-
-      refute changeset.valid?
-      assert "must be between 0 and 255" in errors_on(changeset).bldc_hold
-    end
-
-    test "rejects BLDC exit below 0" do
-      attrs = %{index: 0, type: :gate, value: 0.0, bldc_exit: -1}
-      changeset = Notch.changeset(%Notch{}, attrs)
-
-      refute changeset.valid?
-      assert "must be between 0 and 255" in errors_on(changeset).bldc_exit
-    end
-
-    test "rejects BLDC exit above 255" do
-      attrs = %{index: 0, type: :gate, value: 0.0, bldc_exit: 256}
-      changeset = Notch.changeset(%Notch{}, attrs)
-
-      refute changeset.valid?
-      assert "must be between 0 and 255" in errors_on(changeset).bldc_exit
-    end
-
-    test "rejects BLDC spring_back below 0" do
-      attrs = %{index: 0, type: :gate, value: 0.0, bldc_spring_back: -1}
-      changeset = Notch.changeset(%Notch{}, attrs)
-
-      refute changeset.valid?
-      assert "must be between 0 and 255" in errors_on(changeset).bldc_spring_back
-    end
-
-    test "rejects BLDC spring_back above 255" do
-      attrs = %{index: 0, type: :gate, value: 0.0, bldc_spring_back: 256}
-      changeset = Notch.changeset(%Notch{}, attrs)
-
-      refute changeset.valid?
-      assert "must be between 0 and 255" in errors_on(changeset).bldc_spring_back
+      assert "must be between 0 and 255" in errors_on(changeset).bldc_detent_strength
     end
 
     test "rejects BLDC damping below 0" do
@@ -326,16 +274,15 @@ defmodule Trenino.Train.NotchTest do
         index: 0,
         type: :gate,
         value: 0.0,
-        bldc_engagement: -10,
-        bldc_hold: 300,
-        bldc_exit: 128
+        bldc_detent_strength: -10,
+        bldc_damping: 300
       }
 
       changeset = Notch.changeset(%Notch{}, attrs)
 
       refute changeset.valid?
-      assert "must be between 0 and 255" in errors_on(changeset).bldc_engagement
-      assert "must be between 0 and 255" in errors_on(changeset).bldc_hold
+      assert "must be between 0 and 255" in errors_on(changeset).bldc_detent_strength
+      assert "must be between 0 and 255" in errors_on(changeset).bldc_damping
     end
   end
 end
