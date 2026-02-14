@@ -1,11 +1,12 @@
 defmodule Trenino.Hardware.Input do
   @moduledoc """
-  Schema for device inputs (analog or button).
+  Schema for device inputs (analog, button, or BLDC lever).
 
   ## Input Types
 
   - `:analog` - Analog input (e.g., potentiometer, lever). Requires sensitivity.
   - `:button` - Button input. Can be physical (pin 0-127) or virtual (pin 128-255).
+  - `:bldc_lever` - BLDC motor haptic lever. Requires motor pins, encoder, and electrical params.
 
   ## Virtual Buttons
 
@@ -30,10 +31,20 @@ defmodule Trenino.Hardware.Input do
   @type t :: %__MODULE__{
           id: integer() | nil,
           pin: integer(),
-          input_type: :analog | :button,
+          input_type: :analog | :button | :bldc_lever,
           sensitivity: integer() | nil,
           debounce: integer() | nil,
           name: String.t() | nil,
+          motor_pin_a: integer() | nil,
+          motor_pin_b: integer() | nil,
+          motor_pin_c: integer() | nil,
+          motor_enable_a: integer() | nil,
+          motor_enable_b: integer() | nil,
+          encoder_cs: integer() | nil,
+          pole_pairs: integer() | nil,
+          voltage: integer() | nil,
+          current_limit: integer() | nil,
+          encoder_bits: integer() | nil,
           device_id: integer() | nil,
           matrix_id: integer() | nil,
           device: Device.t() | Ecto.Association.NotLoaded.t(),
@@ -46,10 +57,22 @@ defmodule Trenino.Hardware.Input do
 
   schema "device_inputs" do
     field :pin, :integer
-    field :input_type, Ecto.Enum, values: [:analog, :button]
+    field :input_type, Ecto.Enum, values: [:analog, :button, :bldc_lever]
     field :sensitivity, :integer
     field :debounce, :integer
     field :name, :string
+
+    # BLDC lever hardware parameters
+    field :motor_pin_a, :integer
+    field :motor_pin_b, :integer
+    field :motor_pin_c, :integer
+    field :motor_enable_a, :integer
+    field :motor_enable_b, :integer
+    field :encoder_cs, :integer
+    field :pole_pairs, :integer
+    field :voltage, :integer
+    field :current_limit, :integer
+    field :encoder_bits, :integer
 
     belongs_to :device, Device
     belongs_to :matrix, Matrix
@@ -59,17 +82,38 @@ defmodule Trenino.Hardware.Input do
     timestamps(type: :utc_datetime)
   end
 
+  @bldc_fields [
+    :motor_pin_a,
+    :motor_pin_b,
+    :motor_pin_c,
+    :motor_enable_a,
+    :motor_enable_b,
+    :encoder_cs,
+    :pole_pairs,
+    :voltage,
+    :current_limit,
+    :encoder_bits
+  ]
+
   @doc false
   @spec changeset(t(), map()) :: Ecto.Changeset.t()
   def changeset(%__MODULE__{} = input, attrs) do
     input
-    |> cast(attrs, [:pin, :input_type, :sensitivity, :debounce, :name, :device_id, :matrix_id])
+    |> cast(
+      attrs,
+      [:pin, :input_type, :sensitivity, :debounce, :name, :device_id, :matrix_id] ++
+        @bldc_fields
+    )
     |> validate_required([:input_type, :device_id, :pin])
     |> validate_by_input_type()
     |> validate_pin_range()
     |> foreign_key_constraint(:device_id)
     |> foreign_key_constraint(:matrix_id)
     |> unique_constraint([:device_id, :pin])
+    |> unique_constraint(:device_id,
+      name: :device_inputs_one_bldc_per_device,
+      message: "already has a BLDC lever configured"
+    )
   end
 
   defp validate_by_input_type(changeset) do
@@ -84,9 +128,36 @@ defmodule Trenino.Hardware.Input do
         |> validate_required([:debounce])
         |> validate_number(:debounce, greater_than_or_equal_to: 0, less_than_or_equal_to: 255)
 
+      :bldc_lever ->
+        changeset
+        |> validate_required(@bldc_fields)
+        |> validate_bldc_ranges()
+
       _ ->
         changeset
     end
+  end
+
+  @bldc_pin_fields [
+    :motor_pin_a,
+    :motor_pin_b,
+    :motor_pin_c,
+    :motor_enable_a,
+    :motor_enable_b,
+    :encoder_cs
+  ]
+
+  defp validate_bldc_ranges(changeset) do
+    changeset =
+      Enum.reduce(@bldc_pin_fields, changeset, fn field, cs ->
+        validate_number(cs, field, greater_than_or_equal_to: 0, less_than_or_equal_to: 255)
+      end)
+
+    changeset
+    |> validate_number(:pole_pairs, greater_than: 0, less_than_or_equal_to: 255)
+    |> validate_number(:voltage, greater_than: 0, less_than_or_equal_to: 255)
+    |> validate_number(:current_limit, greater_than_or_equal_to: 0, less_than_or_equal_to: 255)
+    |> validate_number(:encoder_bits, greater_than: 0, less_than_or_equal_to: 255)
   end
 
   # Virtual buttons (with matrix_id) use pins 128-255
