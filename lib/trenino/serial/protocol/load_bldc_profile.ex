@@ -68,7 +68,9 @@ defmodule Trenino.Serial.Protocol.LoadBLDCProfile do
   def encode(%__MODULE__{}), do: {:error, :invalid_pin}
 
   @impl Message
-  def decode_body(<<pin::8-unsigned, num_detents::8-unsigned, num_ranges::8-unsigned, rest::binary>>) do
+  def decode_body(
+        <<pin::8-unsigned, num_detents::8-unsigned, num_ranges::8-unsigned, rest::binary>>
+      ) do
     detent_bytes = num_detents * 5
     range_bytes = num_ranges * 3
     expected_size = detent_bytes + range_bytes
@@ -88,6 +90,8 @@ defmodule Trenino.Serial.Protocol.LoadBLDCProfile do
   def decode_body(_), do: {:error, :invalid_message}
 
   # Private functions
+
+  defguardp is_byte(v) when is_integer(v) and v >= 0 and v <= 255
 
   defp validate_counts(detents, ranges) do
     cond do
@@ -114,9 +118,8 @@ defmodule Trenino.Serial.Protocol.LoadBLDCProfile do
          exit: exit,
          spring_back: sb
        })
-       when is_integer(pos) and pos >= 0 and pos <= 100 and is_integer(eng) and eng >= 0 and
-              eng <= 255 and is_integer(hold) and hold >= 0 and hold <= 255 and is_integer(exit) and
-              exit >= 0 and exit <= 255 and is_integer(sb) and sb >= 0 and sb <= 255 do
+       when is_integer(pos) and pos >= 0 and pos <= 100 and
+              is_byte(eng) and is_byte(hold) and is_byte(exit) and is_byte(sb) do
     true
   end
 
@@ -149,8 +152,7 @@ defmodule Trenino.Serial.Protocol.LoadBLDCProfile do
                      exit: exit,
                      spring_back: sb
                    } ->
-      <<pos::8-unsigned, eng::8-unsigned, hold::8-unsigned, exit::8-unsigned,
-        sb::8-unsigned>>
+      <<pos::8-unsigned, eng::8-unsigned, hold::8-unsigned, exit::8-unsigned, sb::8-unsigned>>
     end)
     |> IO.iodata_to_binary()
   end
@@ -166,8 +168,8 @@ defmodule Trenino.Serial.Protocol.LoadBLDCProfile do
   defp decode_detents(<<>>, 0, acc), do: Enum.reverse(acc)
 
   defp decode_detents(
-         <<pos::8-unsigned, eng::8-unsigned, hold::8-unsigned, exit::8-unsigned,
-           sb::8-unsigned, rest::binary>>,
+         <<pos::8-unsigned, eng::8-unsigned, hold::8-unsigned, exit::8-unsigned, sb::8-unsigned,
+           rest::binary>>,
          count,
          acc
        )

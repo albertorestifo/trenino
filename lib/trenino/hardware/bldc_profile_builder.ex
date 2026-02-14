@@ -92,9 +92,7 @@ defmodule Trenino.Hardware.BLDCProfileBuilder do
   # Builds linear ranges from linear notches
   # Each linear range connects the previous gate detent to the next gate detent
   defp build_linear_ranges(notches) do
-    linear_notches =
-      notches
-      |> Enum.filter(&(&1.type == :linear))
+    linear_notches = Enum.filter(notches, &(&1.type == :linear))
 
     if Enum.empty?(linear_notches) do
       []
@@ -107,29 +105,28 @@ defmodule Trenino.Hardware.BLDCProfileBuilder do
         |> Enum.map(fn {notch, detent_idx} -> {notch.index, detent_idx} end)
         |> Map.new()
 
-      # For each linear notch, find the previous and next gate detent
-      linear_notches
-      |> Enum.map(fn %Notch{} = linear_notch ->
-        # Find the previous gate detent (gate with highest index < linear.index)
-        prev_detent_idx =
-          gate_indices
-          |> Enum.filter(fn {gate_idx, _} -> gate_idx < linear_notch.index end)
-          |> Enum.max_by(fn {gate_idx, _} -> gate_idx end, fn -> {nil, nil} end)
-          |> elem(1)
-
-        # Find the next gate detent (gate with lowest index > linear.index)
-        next_detent_idx =
-          gate_indices
-          |> Enum.filter(fn {gate_idx, _} -> gate_idx > linear_notch.index end)
-          |> Enum.min_by(fn {gate_idx, _} -> gate_idx end, fn -> {nil, nil} end)
-          |> elem(1)
-
-        %{
-          start_detent: prev_detent_idx,
-          end_detent: next_detent_idx,
-          damping: linear_notch.bldc_damping
-        }
-      end)
+      Enum.map(linear_notches, &build_range(&1, gate_indices))
     end
+  end
+
+  # For a linear notch, find the previous and next gate detent
+  defp build_range(%Notch{} = linear_notch, gate_indices) do
+    prev_detent_idx =
+      gate_indices
+      |> Enum.filter(fn {gate_idx, _} -> gate_idx < linear_notch.index end)
+      |> Enum.max_by(fn {gate_idx, _} -> gate_idx end, fn -> {nil, nil} end)
+      |> elem(1)
+
+    next_detent_idx =
+      gate_indices
+      |> Enum.filter(fn {gate_idx, _} -> gate_idx > linear_notch.index end)
+      |> Enum.min_by(fn {gate_idx, _} -> gate_idx end, fn -> {nil, nil} end)
+      |> elem(1)
+
+    %{
+      start_detent: prev_detent_idx,
+      end_detent: next_detent_idx,
+      damping: linear_notch.bldc_damping
+    }
   end
 end

@@ -477,8 +477,8 @@ defmodule Trenino.Integration.BLDCLeverFlowTest do
 
       # Verify profile 1 loaded (2 detents, 0 ranges)
       assert_receive {:profile_loaded, profile1}, 500
-      assert length(profile1.detents) == 2
-      assert length(profile1.ranges) == 0
+      assert [_, _] = profile1.detents
+      assert profile1.ranges == []
       # Verify it has train1's specific parameters
       assert Enum.any?(profile1.detents, fn d -> d.engagement == 100 end)
       assert Enum.any?(profile1.detents, fn d -> d.engagement == 105 end)
@@ -494,8 +494,8 @@ defmodule Trenino.Integration.BLDCLeverFlowTest do
 
       # Verify profile 2 loaded (2 detents, 1 range)
       assert_receive {:profile_loaded, profile2}, 500
-      assert length(profile2.detents) == 2
-      assert length(profile2.ranges) == 1
+      assert [_, _] = profile2.detents
+      assert [_] = profile2.ranges
       # Verify it has train2's specific parameters
       assert Enum.any?(profile2.detents, fn d -> d.engagement == 90 end)
       assert Enum.any?(profile2.detents, fn d -> d.engagement == 115 end)
@@ -512,8 +512,8 @@ defmodule Trenino.Integration.BLDCLeverFlowTest do
 
       # Verify profile 1 loaded again
       assert_receive {:profile_loaded, profile1_again}, 500
-      assert length(profile1_again.detents) == 2
-      assert length(profile1_again.ranges) == 0
+      assert [_, _] = profile1_again.detents
+      assert profile1_again.ranges == []
     end
 
     test "handles mixed BLDC and non-BLDC levers on same train", %{input1: input1, input2: input2} do

@@ -351,8 +351,7 @@ defmodule Trenino.Train.LeverController do
   defp get_lever_configs_from_elements(elements) do
     elements
     |> Enum.map(& &1.lever_config)
-    |> Enum.reject(&is_nil/1)
-    |> Enum.reject(&match?(%Ecto.Association.NotLoaded{}, &1))
+    |> Enum.reject(&(is_nil(&1) or match?(%Ecto.Association.NotLoaded{}, &1)))
   end
 
   # Loads a single BLDC profile to the device
@@ -422,9 +421,7 @@ defmodule Trenino.Train.LeverController do
         :ok
 
       {:error, reason} ->
-        Logger.error(
-          "[LeverController] Failed to deactivate BLDC profile: #{inspect(reason)}"
-        )
+        Logger.error("[LeverController] Failed to deactivate BLDC profile: #{inspect(reason)}")
 
         {:error, reason}
     end

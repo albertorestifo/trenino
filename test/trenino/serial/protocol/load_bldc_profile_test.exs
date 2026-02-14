@@ -102,8 +102,8 @@ defmodule Trenino.Serial.Protocol.LoadBLDCProfileTest do
       # + 3 detents (5 bytes each = 15 bytes)
       # + 2 ranges (3 bytes each = 6 bytes)
       assert encoded ==
-               <<0x0B, 0x03, 0x03, 0x02, 0, 50, 75, 40, 100, 50, 60, 85, 50, 120, 100, 70, 95,
-                 60, 140, 0, 1, 100, 1, 2, 150>>
+               <<0x0B, 0x03, 0x03, 0x02, 0, 50, 75, 40, 100, 50, 60, 85, 50, 120, 100, 70, 95, 60,
+                 140, 0, 1, 100, 1, 2, 150>>
     end
 
     test "encodes message with no detents and no ranges" do
@@ -137,7 +137,9 @@ defmodule Trenino.Serial.Protocol.LoadBLDCProfileTest do
     end
 
     test "returns error for too many detents (> 255)" do
-      detents = for i <- 0..255, do: %{position: i, engagement: 50, hold: 75, exit: 40, spring_back: 100}
+      detents =
+        for i <- 0..255, do: %{position: i, engagement: 50, hold: 75, exit: 40, spring_back: 100}
+
       message = %LoadBLDCProfile{pin: 5, detents: detents, ranges: []}
       assert {:error, :too_many_detents} = LoadBLDCProfile.encode(message)
     end
@@ -208,8 +210,8 @@ defmodule Trenino.Serial.Protocol.LoadBLDCProfileTest do
       {:ok, decoded} = LoadBLDCProfile.decode_body(body)
 
       assert decoded.pin == 5
-      assert length(decoded.detents) == 1
-      assert length(decoded.ranges) == 0
+      assert [_] = decoded.detents
+      assert decoded.ranges == []
 
       [detent] = decoded.detents
       assert detent.position == 50
@@ -224,8 +226,8 @@ defmodule Trenino.Serial.Protocol.LoadBLDCProfileTest do
       {:ok, decoded} = LoadBLDCProfile.decode_body(body)
 
       assert decoded.pin == 10
-      assert length(decoded.detents) == 2
-      assert length(decoded.ranges) == 0
+      assert [_, _] = decoded.detents
+      assert decoded.ranges == []
 
       [detent1, detent2] = decoded.detents
       assert detent1.position == 0

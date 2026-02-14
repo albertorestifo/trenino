@@ -242,6 +242,7 @@ defmodule Trenino.Simulator.LeverAnalyzerTest do
       samples =
         for i <- 0..50 do
           input = i * 0.02
+
           %LeverAnalyzer.Sample{
             set_input: input,
             actual_input: input,
@@ -298,6 +299,7 @@ defmodule Trenino.Simulator.LeverAnalyzerTest do
     end
 
     test "generates mixed BLDC parameters for hybrid lever" do
+      # Linear zone
       samples =
         [
           # Gate zone
@@ -316,9 +318,9 @@ defmodule Trenino.Simulator.LeverAnalyzerTest do
             snapped: true
           }
         ] ++
-          # Linear zone
           for i <- 6..30 do
             input = i * 0.02
+
             %LeverAnalyzer.Sample{
               set_input: input,
               actual_input: input,
