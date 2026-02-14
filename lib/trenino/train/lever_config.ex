@@ -29,6 +29,8 @@ defmodule Trenino.Train.LeverConfig do
           calibrated_at: DateTime.t() | nil,
           element: Element.t() | Ecto.Association.NotLoaded.t(),
           notches: [Notch.t()] | Ecto.Association.NotLoaded.t(),
+          bldc_snap_point: integer() | nil,
+          bldc_endstop_strength: integer() | nil,
           input_binding: LeverInputBinding.t() | Ecto.Association.NotLoaded.t() | nil,
           inserted_at: DateTime.t() | nil,
           updated_at: DateTime.t() | nil
@@ -43,6 +45,8 @@ defmodule Trenino.Train.LeverConfig do
     field :lever_type, Ecto.Enum, values: [:discrete, :continuous, :hybrid, :bldc]
     field :inverted, :boolean, default: false
     field :calibrated_at, :utc_datetime
+    field :bldc_snap_point, :integer
+    field :bldc_endstop_strength, :integer
 
     belongs_to :element, Element
     has_many :notches, Notch, on_delete: :delete_all
@@ -63,10 +67,14 @@ defmodule Trenino.Train.LeverConfig do
       :lever_type,
       :inverted,
       :calibrated_at,
-      :element_id
+      :element_id,
+      :bldc_snap_point,
+      :bldc_endstop_strength
     ])
     |> validate_required([:min_endpoint, :max_endpoint, :value_endpoint])
     |> validate_notch_endpoints()
+    |> validate_bldc_snap_point()
+    |> validate_bldc_endstop_strength()
     |> foreign_key_constraint(:element_id)
     |> unique_constraint(:element_id)
   end
@@ -92,6 +100,32 @@ defmodule Trenino.Train.LeverConfig do
 
       true ->
         changeset
+    end
+  end
+
+  defp validate_bldc_snap_point(changeset) do
+    case get_field(changeset, :bldc_snap_point) do
+      nil ->
+        changeset
+
+      _val ->
+        validate_number(changeset, :bldc_snap_point,
+          greater_than_or_equal_to: 50,
+          less_than_or_equal_to: 150
+        )
+    end
+  end
+
+  defp validate_bldc_endstop_strength(changeset) do
+    case get_field(changeset, :bldc_endstop_strength) do
+      nil ->
+        changeset
+
+      _val ->
+        validate_number(changeset, :bldc_endstop_strength,
+          greater_than_or_equal_to: 0,
+          less_than_or_equal_to: 255
+        )
     end
   end
 end
