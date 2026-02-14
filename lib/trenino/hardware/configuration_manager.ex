@@ -342,6 +342,30 @@ defmodule Trenino.Hardware.ConfigurationManager do
          config_id,
          total_parts,
          part_number,
+         {:input, %Input{input_type: :bldc_lever} = input}
+       ) do
+    %Configure{
+      config_id: config_id,
+      total_parts: total_parts,
+      part_number: part_number,
+      input_type: :bldc_lever,
+      motor_pin_a: input.motor_pin_a,
+      motor_pin_b: input.motor_pin_b,
+      motor_pin_c: input.motor_pin_c,
+      motor_enable_a: input.motor_enable_a,
+      motor_enable_b: input.motor_enable_b,
+      encoder_cs: input.encoder_cs,
+      pole_pairs: input.pole_pairs,
+      voltage: input.voltage,
+      current_limit: input.current_limit,
+      encoder_bits: input.encoder_bits
+    }
+  end
+
+  defp build_configure_message(
+         config_id,
+         total_parts,
+         part_number,
          {:matrix, matrix}
        ) do
     # Get row and col pins from the matrix association
