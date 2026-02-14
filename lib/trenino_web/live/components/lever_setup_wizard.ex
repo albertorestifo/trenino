@@ -94,10 +94,10 @@ defmodule TreninoWeb.LeverSetupWizard do
 
   # Initialize wizard state
   defp initialize_wizard(socket, %Element{} = element) do
-    # Get all calibrated analog inputs
+    # Get all calibrated analog and BLDC lever inputs
     available_inputs =
       Hardware.list_all_inputs()
-      |> Enum.filter(&(&1.input_type == :analog))
+      |> Enum.filter(&(&1.input_type in [:analog, :bldc_lever]))
 
     # Check for existing lever config
     existing_config = element.lever_config
@@ -505,8 +505,10 @@ defmodule TreninoWeb.LeverSetupWizard do
 
   # Private helpers
 
-  defp next_step_after_type_selection(:bldc), do: :find_endpoint
   defp next_step_after_type_selection(_), do: :select_input
+
+  defp filter_inputs_for_type(inputs, :bldc), do: Enum.filter(inputs, &(&1.input_type == :bldc_lever))
+  defp filter_inputs_for_type(inputs, _), do: Enum.filter(inputs, &(&1.input_type == :analog))
 
   # Stop mapping session if leaving :map_notches step
   defp maybe_stop_mapping_session_if_leaving(socket) do
@@ -880,7 +882,7 @@ defmodule TreninoWeb.LeverSetupWizard do
   defp step_content(%{current_step: :select_input} = assigns) do
     ~H"""
     <.step_select_input
-      available_inputs={@socket_assigns.available_inputs}
+      available_inputs={filter_inputs_for_type(@socket_assigns.available_inputs, @socket_assigns.selected_lever_type)}
       selected_input_id={@socket_assigns.selected_input_id}
       can_proceed={can_proceed_from?(:select_input, @socket_assigns)}
       myself={@myself}

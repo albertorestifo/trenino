@@ -401,7 +401,7 @@ defmodule TreninoWeb.LeverSetupWizardTest do
       assert html =~ "Analog Potentiometer"
     end
 
-    test "selecting BLDC skips pin selection step", %{
+    test "selecting BLDC shows BLDC input selection step", %{
       conn: conn,
       train: train,
       lever_element: lever_element,
@@ -428,10 +428,10 @@ defmodule TreninoWeb.LeverSetupWizardTest do
 
       html = render(view)
 
-      # Should go directly to endpoint selection (skip pin/input selection)
-      assert html =~ "Find in Simulator"
-      assert html =~ "Auto-Detect Control"
-      refute html =~ "Select Hardware Input"
+      # Should show input selection (but will show BLDC inputs, not analog)
+      assert html =~ "Select Hardware Input"
+      # BLDC inputs won't show "Calibrated" because they don't have calibration
+      assert html =~ "No calibrated levers available"
     end
 
     test "selecting Analog shows pin selection step", %{
