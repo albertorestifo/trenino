@@ -12,16 +12,15 @@ defmodule Trenino.Hardware.BLDCProfileBuilderTest do
     test "builds profile from lever config with gate notches" do
       lever_config = %LeverConfig{
         lever_type: :bldc,
+        bldc_snap_point: 80,
+        bldc_endstop_strength: 180,
         notches: [
           %Notch{
             index: 0,
             type: :gate,
             input_min: 0.0,
             input_max: 0.0,
-            bldc_engagement: 100,
-            bldc_hold: 150,
-            bldc_exit: 80,
-            bldc_spring_back: 120,
+            bldc_detent_strength: 150,
             bldc_damping: 30
           },
           %Notch{
@@ -29,10 +28,7 @@ defmodule Trenino.Hardware.BLDCProfileBuilderTest do
             type: :gate,
             input_min: 0.5,
             input_max: 0.5,
-            bldc_engagement: 120,
-            bldc_hold: 180,
-            bldc_exit: 90,
-            bldc_spring_back: 140,
+            bldc_detent_strength: 180,
             bldc_damping: 40
           },
           %Notch{
@@ -40,10 +36,7 @@ defmodule Trenino.Hardware.BLDCProfileBuilderTest do
             type: :gate,
             input_min: 1.0,
             input_max: 1.0,
-            bldc_engagement: 140,
-            bldc_hold: 200,
-            bldc_exit: 100,
-            bldc_spring_back: 160,
+            bldc_detent_strength: 200,
             bldc_damping: 50
           }
         ]
@@ -54,16 +47,17 @@ defmodule Trenino.Hardware.BLDCProfileBuilderTest do
       # Pin should always be 0
       assert profile.pin == 0
 
+      # Profile-level parameters
+      assert profile.snap_point == 80
+      assert profile.endstop_strength == 180
+
       # Should have 3 detents
       assert length(profile.detents) == 3
 
       # Check first detent
       first_detent = Enum.at(profile.detents, 0)
       assert first_detent.position == 0
-      assert first_detent.engagement == 100
-      assert first_detent.hold == 150
-      assert first_detent.exit == 80
-      assert first_detent.spring_back == 120
+      assert first_detent.detent_strength == 150
 
       # Check middle detent position calculation (0.5 → 50)
       middle_detent = Enum.at(profile.detents, 1)
@@ -86,10 +80,7 @@ defmodule Trenino.Hardware.BLDCProfileBuilderTest do
             type: :gate,
             input_min: 0.0,
             input_max: 0.0,
-            bldc_engagement: 100,
-            bldc_hold: 150,
-            bldc_exit: 80,
-            bldc_spring_back: 120,
+            bldc_detent_strength: 150,
             bldc_damping: 30
           },
           %Notch{
@@ -97,10 +88,7 @@ defmodule Trenino.Hardware.BLDCProfileBuilderTest do
             type: :linear,
             input_min: 0.2,
             input_max: 0.7,
-            bldc_engagement: 0,
-            bldc_hold: 0,
-            bldc_exit: 0,
-            bldc_spring_back: 0,
+            bldc_detent_strength: 0,
             bldc_damping: 25
           },
           %Notch{
@@ -108,16 +96,17 @@ defmodule Trenino.Hardware.BLDCProfileBuilderTest do
             type: :gate,
             input_min: 1.0,
             input_max: 1.0,
-            bldc_engagement: 140,
-            bldc_hold: 200,
-            bldc_exit: 100,
-            bldc_spring_back: 160,
+            bldc_detent_strength: 200,
             bldc_damping: 50
           }
         ]
       }
 
       assert {:ok, %LoadBLDCProfile{} = profile} = BLDCProfileBuilder.build_profile(lever_config)
+
+      # Should default snap_point and endstop_strength when nil
+      assert profile.snap_point == 70
+      assert profile.endstop_strength == 200
 
       # Should have detents for gate notches only
       assert length(profile.detents) == 2
@@ -157,10 +146,7 @@ defmodule Trenino.Hardware.BLDCProfileBuilderTest do
             type: :gate,
             input_min: 0.0,
             input_max: 0.0,
-            bldc_engagement: 100,
-            bldc_hold: 150,
-            bldc_exit: nil,
-            bldc_spring_back: 120,
+            bldc_detent_strength: nil,
             bldc_damping: 30
           }
         ]
@@ -173,16 +159,15 @@ defmodule Trenino.Hardware.BLDCProfileBuilderTest do
     test "handles position calculation with decimal values" do
       lever_config = %LeverConfig{
         lever_type: :bldc,
+        bldc_snap_point: 70,
+        bldc_endstop_strength: 200,
         notches: [
           %Notch{
             index: 0,
             type: :gate,
             input_min: 0.17,
             input_max: 0.17,
-            bldc_engagement: 100,
-            bldc_hold: 150,
-            bldc_exit: 80,
-            bldc_spring_back: 120,
+            bldc_detent_strength: 150,
             bldc_damping: 30
           },
           %Notch{
@@ -190,10 +175,7 @@ defmodule Trenino.Hardware.BLDCProfileBuilderTest do
             type: :gate,
             input_min: 0.73,
             input_max: 0.73,
-            bldc_engagement: 120,
-            bldc_hold: 180,
-            bldc_exit: 90,
-            bldc_spring_back: 140,
+            bldc_detent_strength: 180,
             bldc_damping: 40
           }
         ]
@@ -209,16 +191,15 @@ defmodule Trenino.Hardware.BLDCProfileBuilderTest do
     test "handles multiple linear ranges" do
       lever_config = %LeverConfig{
         lever_type: :bldc,
+        bldc_snap_point: 70,
+        bldc_endstop_strength: 200,
         notches: [
           %Notch{
             index: 0,
             type: :gate,
             input_min: 0.0,
             input_max: 0.0,
-            bldc_engagement: 100,
-            bldc_hold: 150,
-            bldc_exit: 80,
-            bldc_spring_back: 120,
+            bldc_detent_strength: 150,
             bldc_damping: 30
           },
           %Notch{
@@ -226,10 +207,7 @@ defmodule Trenino.Hardware.BLDCProfileBuilderTest do
             type: :linear,
             input_min: 0.1,
             input_max: 0.4,
-            bldc_engagement: 0,
-            bldc_hold: 0,
-            bldc_exit: 0,
-            bldc_spring_back: 0,
+            bldc_detent_strength: 0,
             bldc_damping: 20
           },
           %Notch{
@@ -237,10 +215,7 @@ defmodule Trenino.Hardware.BLDCProfileBuilderTest do
             type: :gate,
             input_min: 0.5,
             input_max: 0.5,
-            bldc_engagement: 120,
-            bldc_hold: 180,
-            bldc_exit: 90,
-            bldc_spring_back: 140,
+            bldc_detent_strength: 180,
             bldc_damping: 40
           },
           %Notch{
@@ -248,10 +223,7 @@ defmodule Trenino.Hardware.BLDCProfileBuilderTest do
             type: :linear,
             input_min: 0.6,
             input_max: 0.9,
-            bldc_engagement: 0,
-            bldc_hold: 0,
-            bldc_exit: 0,
-            bldc_spring_back: 0,
+            bldc_detent_strength: 0,
             bldc_damping: 35
           },
           %Notch{
@@ -259,10 +231,7 @@ defmodule Trenino.Hardware.BLDCProfileBuilderTest do
             type: :gate,
             input_min: 1.0,
             input_max: 1.0,
-            bldc_engagement: 140,
-            bldc_hold: 200,
-            bldc_exit: 100,
-            bldc_spring_back: 160,
+            bldc_detent_strength: 200,
             bldc_damping: 50
           }
         ]
@@ -298,10 +267,7 @@ defmodule Trenino.Hardware.BLDCProfileBuilderTest do
             type: :gate,
             input_min: 0.0,
             input_max: 0.0,
-            bldc_engagement: 100,
-            bldc_hold: 150,
-            bldc_exit: 80,
-            bldc_spring_back: 120,
+            bldc_detent_strength: 150,
             bldc_damping: 30
           },
           %Notch{
@@ -309,10 +275,7 @@ defmodule Trenino.Hardware.BLDCProfileBuilderTest do
             type: :linear,
             input_min: 0.2,
             input_max: 0.7,
-            bldc_engagement: 0,
-            bldc_hold: 0,
-            bldc_exit: 0,
-            bldc_spring_back: 0,
+            bldc_detent_strength: 0,
             bldc_damping: nil
           },
           %Notch{
@@ -320,10 +283,7 @@ defmodule Trenino.Hardware.BLDCProfileBuilderTest do
             type: :gate,
             input_min: 1.0,
             input_max: 1.0,
-            bldc_engagement: 140,
-            bldc_hold: 200,
-            bldc_exit: 100,
-            bldc_spring_back: 160,
+            bldc_detent_strength: 200,
             bldc_damping: 50
           }
         ]

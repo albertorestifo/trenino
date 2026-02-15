@@ -30,7 +30,10 @@ defmodule Trenino.Hardware.BLDCProfileBuilder do
   - Required BLDC parameters are missing
   """
   @spec build_profile(LeverConfig.t()) :: {:ok, LoadBLDCProfile.t()} | {:error, atom()}
-  def build_profile(%LeverConfig{lever_type: :bldc, notches: notches}) do
+  def build_profile(%LeverConfig{lever_type: :bldc, notches: notches} = config) do
+    snap_point = config.bldc_snap_point || 70
+    endstop_strength = config.bldc_endstop_strength || 200
+
     with :ok <- validate_bldc_parameters(notches),
          sorted_notches <- Enum.sort_by(notches, & &1.index),
          detents <- build_detents(sorted_notches),
@@ -38,6 +41,8 @@ defmodule Trenino.Hardware.BLDCProfileBuilder do
       {:ok,
        %LoadBLDCProfile{
          pin: 0,
+         snap_point: snap_point,
+         endstop_strength: endstop_strength,
          detents: detents,
          ranges: ranges
        }}
@@ -54,8 +59,7 @@ defmodule Trenino.Hardware.BLDCProfileBuilder do
       Enum.any?(notches, fn notch ->
         case notch.type do
           :gate ->
-            is_nil(notch.bldc_engagement) or is_nil(notch.bldc_hold) or is_nil(notch.bldc_exit) or
-              is_nil(notch.bldc_spring_back) or is_nil(notch.bldc_damping)
+            is_nil(notch.bldc_detent_strength) or is_nil(notch.bldc_damping)
 
           :linear ->
             is_nil(notch.bldc_damping)
@@ -76,10 +80,7 @@ defmodule Trenino.Hardware.BLDCProfileBuilder do
     |> Enum.map(fn %Notch{} = notch ->
       %{
         position: calculate_position(notch),
-        engagement: notch.bldc_engagement,
-        hold: notch.bldc_hold,
-        exit: notch.bldc_exit,
-        spring_back: notch.bldc_spring_back
+        detent_strength: notch.bldc_detent_strength
       }
     end)
   end
