@@ -230,10 +230,7 @@ defmodule Trenino.Simulator.LeverAnalyzerTest do
 
       Enum.each(result.suggested_notches, fn notch ->
         assert notch[:type] == :gate
-        assert notch[:bldc_engagement] == 180
-        assert notch[:bldc_hold] == 200
-        assert notch[:bldc_exit] == 150
-        assert notch[:bldc_spring_back] == notch[:index]
+        assert notch[:bldc_detent_strength] == 200
         assert notch[:bldc_damping] == 0
       end)
     end
@@ -260,10 +257,7 @@ defmodule Trenino.Simulator.LeverAnalyzerTest do
 
       notch = hd(result.suggested_notches)
       assert notch[:type] == :linear
-      assert notch[:bldc_engagement] == 50
-      assert notch[:bldc_hold] == 30
-      assert notch[:bldc_exit] == 50
-      assert notch[:bldc_spring_back] == notch[:index]
+      assert notch[:bldc_detent_strength] == 30
       assert notch[:bldc_damping] == 100
     end
 
@@ -290,10 +284,7 @@ defmodule Trenino.Simulator.LeverAnalyzerTest do
       assert result.lever_type == :discrete
 
       Enum.each(result.suggested_notches, fn notch ->
-        refute Map.has_key?(notch, :bldc_engagement)
-        refute Map.has_key?(notch, :bldc_hold)
-        refute Map.has_key?(notch, :bldc_exit)
-        refute Map.has_key?(notch, :bldc_spring_back)
+        refute Map.has_key?(notch, :bldc_detent_strength)
         refute Map.has_key?(notch, :bldc_damping)
       end)
     end
@@ -340,15 +331,11 @@ defmodule Trenino.Simulator.LeverAnalyzerTest do
       linear_notch = Enum.find(result.suggested_notches, &(&1[:type] == :linear))
 
       # Gate should have gate BLDC params
-      assert gate_notch[:bldc_engagement] == 180
-      assert gate_notch[:bldc_hold] == 200
-      assert gate_notch[:bldc_exit] == 150
+      assert gate_notch[:bldc_detent_strength] == 200
       assert gate_notch[:bldc_damping] == 0
 
       # Linear should have linear BLDC params
-      assert linear_notch[:bldc_engagement] == 50
-      assert linear_notch[:bldc_hold] == 30
-      assert linear_notch[:bldc_exit] == 50
+      assert linear_notch[:bldc_detent_strength] == 30
       assert linear_notch[:bldc_damping] == 100
     end
   end

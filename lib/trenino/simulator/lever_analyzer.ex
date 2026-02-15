@@ -593,22 +593,16 @@ defmodule Trenino.Simulator.LeverAnalyzer do
   end
 
   # Default BLDC haptic parameters based on zone type
-  defp default_bldc_params(:gate, idx) do
+  defp default_bldc_params(:gate, _idx) do
     %{
-      bldc_engagement: 180,
-      bldc_hold: 200,
-      bldc_exit: 150,
-      bldc_spring_back: idx,
+      bldc_detent_strength: 200,
       bldc_damping: 0
     }
   end
 
-  defp default_bldc_params(:linear, idx) do
+  defp default_bldc_params(:linear, _idx) do
     %{
-      bldc_engagement: 50,
-      bldc_hold: 30,
-      bldc_exit: 50,
-      bldc_spring_back: idx,
+      bldc_detent_strength: 30,
       bldc_damping: 100
     }
   end
