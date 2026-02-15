@@ -3,16 +3,13 @@ defmodule Trenino.Serial.Protocol.LoadBLDCProfile do
   LoadBLDCProfile message sent to device to configure a haptic profile for a BLDC motor.
 
   Protocol format:
-  [type=0x0B][pin:u8][num_detents:u8][num_ranges:u8]
-  [detent_data: 5 bytes × num_detents]
+  [type=0x0B][pin:u8][num_detents:u8][num_ranges:u8][snap_point:u8][endstop_strength:u8]
+  [detent_data: 2 bytes × num_detents]
   [range_data: 3 bytes × num_ranges]
 
-  Detent structure (5 bytes):
+  Detent structure (2 bytes):
   - position: u8 (0-100, percentage of full rotation)
-  - engagement: u8 (0-255, strength when entering detent)
-  - hold: u8 (0-255, strength when in detent)
-  - exit: u8 (0-255, strength when exiting detent)
-  - spring_back: u8 (0-255, strength of spring-back to detent)
+  - detent_strength: u8 (0-255, strength of detent)
 
   Range structure (3 bytes):
   - start_detent: u8 (index of starting detent)
@@ -26,10 +23,7 @@ defmodule Trenino.Serial.Protocol.LoadBLDCProfile do
 
   @type detent :: %{
           position: integer(),
-          engagement: integer(),
-          hold: integer(),
-          exit: integer(),
-          spring_back: integer()
+          detent_strength: integer()
         }
 
   @type range :: %{
@@ -40,16 +34,26 @@ defmodule Trenino.Serial.Protocol.LoadBLDCProfile do
 
   @type t() :: %__MODULE__{
           pin: integer(),
+          snap_point: integer(),
+          endstop_strength: integer(),
           detents: [detent()],
           ranges: [range()]
         }
 
-  defstruct [:pin, :detents, :ranges]
+  defstruct [:pin, :snap_point, :endstop_strength, :detents, :ranges]
 
   @impl Message
-  def encode(%__MODULE__{pin: pin, detents: detents, ranges: ranges})
-      when is_integer(pin) and pin >= 0 and pin <= 255 and is_list(detents) and
-             is_list(ranges) do
+  def encode(%__MODULE__{
+        pin: pin,
+        snap_point: snap_point,
+        endstop_strength: endstop_strength,
+        detents: detents,
+        ranges: ranges
+      })
+      when is_integer(pin) and pin >= 0 and pin <= 255 and
+             is_integer(snap_point) and snap_point >= 50 and snap_point <= 150 and
+             is_integer(endstop_strength) and endstop_strength >= 0 and endstop_strength <= 255 and
+             is_list(detents) and is_list(ranges) do
     with :ok <- validate_counts(detents, ranges),
          :ok <- validate_detents(detents),
          :ok <- validate_ranges(ranges) do
@@ -61,17 +65,25 @@ defmodule Trenino.Serial.Protocol.LoadBLDCProfile do
 
       {:ok,
        <<0x0B, pin::8-unsigned, num_detents::8-unsigned, num_ranges::8-unsigned,
-         detent_data::binary, range_data::binary>>}
+         snap_point::8-unsigned, endstop_strength::8-unsigned, detent_data::binary,
+         range_data::binary>>}
     end
+  end
+
+  def encode(%__MODULE__{snap_point: sp, endstop_strength: es})
+      when not is_integer(sp) or sp < 50 or sp > 150 or
+             not is_integer(es) or es < 0 or es > 255 do
+    {:error, :invalid_profile_params}
   end
 
   def encode(%__MODULE__{}), do: {:error, :invalid_pin}
 
   @impl Message
   def decode_body(
-        <<pin::8-unsigned, num_detents::8-unsigned, num_ranges::8-unsigned, rest::binary>>
+        <<pin::8-unsigned, num_detents::8-unsigned, num_ranges::8-unsigned,
+          snap_point::8-unsigned, endstop_strength::8-unsigned, rest::binary>>
       ) do
-    detent_bytes = num_detents * 5
+    detent_bytes = num_detents * 2
     range_bytes = num_ranges * 3
     expected_size = detent_bytes + range_bytes
 
@@ -81,7 +93,14 @@ defmodule Trenino.Serial.Protocol.LoadBLDCProfile do
       detents = decode_detents(detent_data, num_detents, [])
       ranges = decode_ranges(range_data, num_ranges, [])
 
-      {:ok, %__MODULE__{pin: pin, detents: detents, ranges: ranges}}
+      {:ok,
+       %__MODULE__{
+         pin: pin,
+         snap_point: snap_point,
+         endstop_strength: endstop_strength,
+         detents: detents,
+         ranges: ranges
+       }}
     else
       {:error, :invalid_message}
     end
@@ -111,15 +130,8 @@ defmodule Trenino.Serial.Protocol.LoadBLDCProfile do
     end)
   end
 
-  defp valid_detent?(%{
-         position: pos,
-         engagement: eng,
-         hold: hold,
-         exit: exit,
-         spring_back: sb
-       })
-       when is_integer(pos) and pos >= 0 and pos <= 100 and
-              is_byte(eng) and is_byte(hold) and is_byte(exit) and is_byte(sb) do
+  defp valid_detent?(%{position: pos, detent_strength: ds})
+       when is_integer(pos) and pos >= 0 and pos <= 100 and is_byte(ds) do
     true
   end
 
@@ -145,14 +157,8 @@ defmodule Trenino.Serial.Protocol.LoadBLDCProfile do
 
   defp encode_detents(detents) do
     detents
-    |> Enum.map(fn %{
-                     position: pos,
-                     engagement: eng,
-                     hold: hold,
-                     exit: exit,
-                     spring_back: sb
-                   } ->
-      <<pos::8-unsigned, eng::8-unsigned, hold::8-unsigned, exit::8-unsigned, sb::8-unsigned>>
+    |> Enum.map(fn %{position: pos, detent_strength: ds} ->
+      <<pos::8-unsigned, ds::8-unsigned>>
     end)
     |> IO.iodata_to_binary()
   end
@@ -168,18 +174,14 @@ defmodule Trenino.Serial.Protocol.LoadBLDCProfile do
   defp decode_detents(<<>>, 0, acc), do: Enum.reverse(acc)
 
   defp decode_detents(
-         <<pos::8-unsigned, eng::8-unsigned, hold::8-unsigned, exit::8-unsigned, sb::8-unsigned,
-           rest::binary>>,
+         <<pos::8-unsigned, ds::8-unsigned, rest::binary>>,
          count,
          acc
        )
        when count > 0 do
     detent = %{
       position: pos,
-      engagement: eng,
-      hold: hold,
-      exit: exit,
-      spring_back: sb
+      detent_strength: ds
     }
 
     decode_detents(rest, count - 1, [detent | acc])
