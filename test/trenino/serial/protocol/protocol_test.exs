@@ -689,13 +689,22 @@ defmodule Trenino.Serial.ProtocolTest do
     end
 
     test "decodes LoadBLDCProfile" do
-      # Minimal: pin=10, 1 detent, 0 ranges
-      binary = <<0x0B, 10, 1, 0, 50, 100, 150, 100, 255>>
+      # pin=10, 1 detent, 0 ranges, snap_point=70, endstop_strength=200, detent(pos=50, strength=150)
+      binary = <<0x0B, 10, 1, 0, 70, 200, 50, 150>>
       {:ok, decoded} = Message.decode(binary)
 
       alias Trenino.Serial.Protocol.LoadBLDCProfile
-      assert %LoadBLDCProfile{pin: 10, detents: [detent], ranges: []} = decoded
+
+      assert %LoadBLDCProfile{
+               pin: 10,
+               snap_point: 70,
+               endstop_strength: 200,
+               detents: [detent],
+               ranges: []
+             } = decoded
+
       assert detent.position == 50
+      assert detent.detent_strength == 150
     end
 
     test "decodes DeactivateBLDCProfile" do

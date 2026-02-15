@@ -50,11 +50,10 @@ defmodule Trenino.Serial.Protocol.LoadBLDCProfile do
         detents: detents,
         ranges: ranges
       })
-      when is_integer(pin) and pin >= 0 and pin <= 255 and
-             is_integer(snap_point) and snap_point >= 50 and snap_point <= 150 and
-             is_integer(endstop_strength) and endstop_strength >= 0 and endstop_strength <= 255 and
-             is_list(detents) and is_list(ranges) do
-    with :ok <- validate_counts(detents, ranges),
+      when is_list(detents) and is_list(ranges) do
+    with :ok <- validate_pin(pin),
+         :ok <- validate_profile_params(snap_point, endstop_strength),
+         :ok <- validate_counts(detents, ranges),
          :ok <- validate_detents(detents),
          :ok <- validate_ranges(ranges) do
       num_detents = length(detents)
@@ -68,12 +67,6 @@ defmodule Trenino.Serial.Protocol.LoadBLDCProfile do
          snap_point::8-unsigned, endstop_strength::8-unsigned, detent_data::binary,
          range_data::binary>>}
     end
-  end
-
-  def encode(%__MODULE__{snap_point: sp, endstop_strength: es})
-      when not is_integer(sp) or sp < 50 or sp > 150 or
-             not is_integer(es) or es < 0 or es > 255 do
-    {:error, :invalid_profile_params}
   end
 
   def encode(%__MODULE__{}), do: {:error, :invalid_pin}
@@ -111,6 +104,16 @@ defmodule Trenino.Serial.Protocol.LoadBLDCProfile do
   # Private functions
 
   defguardp is_byte(v) when is_integer(v) and v >= 0 and v <= 255
+
+  defp validate_pin(pin) when is_integer(pin) and pin >= 0 and pin <= 255, do: :ok
+  defp validate_pin(_), do: {:error, :invalid_pin}
+
+  defp validate_profile_params(sp, es)
+       when is_integer(sp) and sp >= 50 and sp <= 150 and
+              is_integer(es) and es >= 0 and es <= 255,
+       do: :ok
+
+  defp validate_profile_params(_, _), do: {:error, :invalid_profile_params}
 
   defp validate_counts(detents, ranges) do
     cond do
