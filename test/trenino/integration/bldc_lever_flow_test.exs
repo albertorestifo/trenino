@@ -85,10 +85,7 @@ defmodule Trenino.Integration.BLDCLeverFlowTest do
           value: 0.0,
           input_min: 0.0,
           input_max: 0.15,
-          bldc_engagement: 110,
-          bldc_hold: 85,
-          bldc_exit: 55,
-          bldc_spring_back: 125,
+          bldc_detent_strength: 85,
           bldc_damping: 35
         })
 
@@ -110,10 +107,7 @@ defmodule Trenino.Integration.BLDCLeverFlowTest do
           value: 1.0,
           input_min: 0.85,
           input_max: 1.0,
-          bldc_engagement: 105,
-          bldc_hold: 80,
-          bldc_exit: 52,
-          bldc_spring_back: 118,
+          bldc_detent_strength: 80,
           bldc_damping: 32
         })
 
@@ -147,18 +141,12 @@ defmodule Trenino.Integration.BLDCLeverFlowTest do
       [detent1, detent2] = profile.detents
 
       # First detent (from notch at index 0)
-      assert detent1.position >= 0 and detent1.position <= 255
-      assert detent1.engagement == 110
-      assert detent1.hold == 85
-      assert detent1.exit == 55
-      assert detent1.spring_back == 125
+      assert detent1.position >= 0 and detent1.position <= 100
+      assert detent1.detent_strength == 85
 
       # Second detent (from notch at index 2)
-      assert detent2.position >= 0 and detent2.position <= 255
-      assert detent2.engagement == 105
-      assert detent2.hold == 80
-      assert detent2.exit == 52
-      assert detent2.spring_back == 118
+      assert detent2.position >= 0 and detent2.position <= 100
+      assert detent2.detent_strength == 80
 
       # Verify ranges (1 linear notch should create 1 range)
       assert length(profile.ranges) == 1
@@ -210,10 +198,7 @@ defmodule Trenino.Integration.BLDCLeverFlowTest do
           value: 0.0,
           input_min: 0.0,
           input_max: 0.1,
-          bldc_engagement: 95,
-          bldc_hold: 75,
-          bldc_exit: 45,
-          bldc_spring_back: 110,
+          bldc_detent_strength: 75,
           bldc_damping: 28
         })
 
@@ -235,10 +220,7 @@ defmodule Trenino.Integration.BLDCLeverFlowTest do
           value: 0.5,
           input_min: 0.5,
           input_max: 0.6,
-          bldc_engagement: 120,
-          bldc_hold: 90,
-          bldc_exit: 60,
-          bldc_spring_back: 130,
+          bldc_detent_strength: 90,
           bldc_damping: 40
         })
 
@@ -260,10 +242,7 @@ defmodule Trenino.Integration.BLDCLeverFlowTest do
           value: 1.0,
           input_min: 0.9,
           input_max: 1.0,
-          bldc_engagement: 100,
-          bldc_hold: 82,
-          bldc_exit: 48,
-          bldc_spring_back: 115,
+          bldc_detent_strength: 82,
           bldc_damping: 30
         })
 
@@ -288,13 +267,10 @@ defmodule Trenino.Integration.BLDCLeverFlowTest do
       # Should have 2 ranges (2 linear notches, each between two gates)
       assert length(profile.ranges) == 2
 
-      # Verify detent parameters are within valid ranges (0-255)
+      # Verify detent parameters are within valid ranges
       Enum.each(profile.detents, fn detent ->
-        assert detent.position >= 0 and detent.position <= 255
-        assert detent.engagement >= 0 and detent.engagement <= 255
-        assert detent.hold >= 0 and detent.hold <= 255
-        assert detent.exit >= 0 and detent.exit <= 255
-        assert detent.spring_back >= 0 and detent.spring_back <= 255
+        assert detent.position >= 0 and detent.position <= 100
+        assert detent.detent_strength >= 0 and detent.detent_strength <= 255
       end)
 
       # Verify range parameters - ranges use detent indices
@@ -373,10 +349,7 @@ defmodule Trenino.Integration.BLDCLeverFlowTest do
           value: 0.0,
           input_min: 0.0,
           input_max: 0.5,
-          bldc_engagement: 100,
-          bldc_hold: 80,
-          bldc_exit: 50,
-          bldc_spring_back: 120,
+          bldc_detent_strength: 80,
           bldc_damping: 30
         })
 
@@ -387,10 +360,7 @@ defmodule Trenino.Integration.BLDCLeverFlowTest do
           value: 1.0,
           input_min: 0.5,
           input_max: 1.0,
-          bldc_engagement: 105,
-          bldc_hold: 85,
-          bldc_exit: 55,
-          bldc_spring_back: 125,
+          bldc_detent_strength: 85,
           bldc_damping: 35
         })
 
@@ -424,10 +394,7 @@ defmodule Trenino.Integration.BLDCLeverFlowTest do
           value: 0.0,
           input_min: 0.0,
           input_max: 0.2,
-          bldc_engagement: 90,
-          bldc_hold: 70,
-          bldc_exit: 40,
-          bldc_spring_back: 110,
+          bldc_detent_strength: 70,
           bldc_damping: 25
         })
 
@@ -449,10 +416,7 @@ defmodule Trenino.Integration.BLDCLeverFlowTest do
           value: 1.0,
           input_min: 0.8,
           input_max: 1.0,
-          bldc_engagement: 115,
-          bldc_hold: 95,
-          bldc_exit: 65,
-          bldc_spring_back: 135,
+          bldc_detent_strength: 95,
           bldc_damping: 38
         })
 
@@ -480,8 +444,8 @@ defmodule Trenino.Integration.BLDCLeverFlowTest do
       assert [_, _] = profile1.detents
       assert profile1.ranges == []
       # Verify it has train1's specific parameters
-      assert Enum.any?(profile1.detents, fn d -> d.engagement == 100 end)
-      assert Enum.any?(profile1.detents, fn d -> d.engagement == 105 end)
+      assert Enum.any?(profile1.detents, fn d -> d.detent_strength == 80 end)
+      assert Enum.any?(profile1.detents, fn d -> d.detent_strength == 85 end)
 
       # Deactivate train 1
       send(LeverController, {:train_changed, nil})
@@ -497,8 +461,8 @@ defmodule Trenino.Integration.BLDCLeverFlowTest do
       assert [_, _] = profile2.detents
       assert [_] = profile2.ranges
       # Verify it has train2's specific parameters
-      assert Enum.any?(profile2.detents, fn d -> d.engagement == 90 end)
-      assert Enum.any?(profile2.detents, fn d -> d.engagement == 115 end)
+      assert Enum.any?(profile2.detents, fn d -> d.detent_strength == 70 end)
+      assert Enum.any?(profile2.detents, fn d -> d.detent_strength == 95 end)
       assert hd(profile2.ranges).damping == 20
 
       # Deactivate train 2
@@ -548,10 +512,7 @@ defmodule Trenino.Integration.BLDCLeverFlowTest do
           value: 0.0,
           input_min: 0.0,
           input_max: 1.0,
-          bldc_engagement: 100,
-          bldc_hold: 80,
-          bldc_exit: 50,
-          bldc_spring_back: 120,
+          bldc_detent_strength: 80,
           bldc_damping: 30
         })
 

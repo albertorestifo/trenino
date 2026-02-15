@@ -66,10 +66,7 @@ defmodule Trenino.Train.LeverControllerBLDCTest do
           value: 0.0,
           input_min: 0.0,
           input_max: 0.1,
-          bldc_engagement: 100,
-          bldc_hold: 80,
-          bldc_exit: 50,
-          bldc_spring_back: 120,
+          bldc_detent_strength: 80,
           bldc_damping: 30
         })
 
@@ -91,10 +88,7 @@ defmodule Trenino.Train.LeverControllerBLDCTest do
           value: 1.0,
           input_min: 0.9,
           input_max: 1.0,
-          bldc_engagement: 100,
-          bldc_hold: 80,
-          bldc_exit: 50,
-          bldc_spring_back: 120,
+          bldc_detent_strength: 80,
           bldc_damping: 30
         })
 
