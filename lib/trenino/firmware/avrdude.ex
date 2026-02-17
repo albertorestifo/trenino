@@ -57,13 +57,11 @@ defmodule Trenino.Firmware.Avrdude do
   """
   @spec version() :: {:ok, String.t()} | {:error, term()}
   def version do
-    with {:ok, path} <- executable_path() do
-      case System.cmd(path, ["-?"], stderr_to_stdout: true) do
-        {output, _} ->
-          case Regex.run(~r/avrdude version (\S+)/, output) do
-            [_, version] -> {:ok, version}
-            nil -> {:ok, "unknown"}
-          end
+    with {:ok, path} <- executable_path(),
+         {output, _} <- System.cmd(path, ["-?"], stderr_to_stdout: true) do
+      case Regex.run(~r/avrdude version (\S+)/, output) do
+        [_, version] -> {:ok, version}
+        nil -> {:ok, "unknown"}
       end
     end
   end

@@ -198,12 +198,7 @@ defmodule Trenino.Firmware.UploadManager do
       # Start the upload task
       task =
         Task.async(fn ->
-          progress_callback = fn percent, message ->
-            broadcast({:upload_progress, upload_id, percent, message})
-          end
-
-          file_path = FilePath.firmware_path(file)
-          Uploader.upload(port, environment, file_path, progress_callback)
+          run_upload(upload_id, port, environment, file)
         end)
 
       # Schedule timeout
@@ -224,6 +219,15 @@ defmodule Trenino.Firmware.UploadManager do
 
       {:ok, upload_info}
     end
+  end
+
+  defp run_upload(upload_id, port, environment, file) do
+    progress_callback = fn percent, message ->
+      broadcast({:upload_progress, upload_id, percent, message})
+    end
+
+    file_path = FilePath.firmware_path(file)
+    Uploader.upload(port, environment, file_path, progress_callback)
   end
 
   defp verify_firmware_downloaded(%FirmwareFile{} = file) do

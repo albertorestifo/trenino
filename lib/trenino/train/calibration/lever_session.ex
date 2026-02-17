@@ -250,41 +250,50 @@ defmodule Trenino.Train.Calibration.LeverSession do
          {:ok, notch_count} <- Client.get_int(client, config.notch_count_endpoint) do
       # Handle single notch case - it's a linear spanning full range
       if notch_count == 1 do
-        single_notch = %Notch{
-          index: 0,
-          type: :linear,
-          value: nil,
-          min_value: min_value,
-          max_value: max_value,
-          description: "Notch 0"
-        }
-
-        {:ok,
-         %{
-           state
-           | step: :saving,
-             min_value: min_value,
-             max_value: max_value,
-             notches: [single_notch],
-             progress: 1.0,
-             calibration_skipped: true
-         }}
+        initialize_single_notch(state, min_value, max_value)
       else
-        # Set initial value and get starting notch index
-        with {:ok, _} <- Client.set(client, config.value_endpoint, min_value),
-             {:ok, notch_index} <- Client.get_int(client, config.notch_index_endpoint) do
-          {:ok,
-           %{
-             state
-             | step: :calibrating,
-               min_value: min_value,
-               max_value: max_value,
-               current_value: min_value,
-               current_notch_index: notch_index,
-               current_notch_start: min_value
-           }}
-        end
+        initialize_multi_notch(state, min_value, max_value)
       end
+    end
+  end
+
+  defp initialize_single_notch(state, min_value, max_value) do
+    single_notch = %Notch{
+      index: 0,
+      type: :linear,
+      value: nil,
+      min_value: min_value,
+      max_value: max_value,
+      description: "Notch 0"
+    }
+
+    {:ok,
+     %{
+       state
+       | step: :saving,
+         min_value: min_value,
+         max_value: max_value,
+         notches: [single_notch],
+         progress: 1.0,
+         calibration_skipped: true
+     }}
+  end
+
+  defp initialize_multi_notch(state, min_value, max_value) do
+    %{client: client, lever_config: config} = state
+
+    with {:ok, _} <- Client.set(client, config.value_endpoint, min_value),
+         {:ok, notch_index} <- Client.get_int(client, config.notch_index_endpoint) do
+      {:ok,
+       %{
+         state
+         | step: :calibrating,
+           min_value: min_value,
+           max_value: max_value,
+           current_value: min_value,
+           current_notch_index: notch_index,
+           current_notch_start: min_value
+       }}
     end
   end
 
