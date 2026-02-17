@@ -8,7 +8,9 @@ defmodule Trenino.Repo.Migrations.MigrateBldcProtocol do
     end
 
     # Migrate data: use old bldc_hold as the new bldc_detent_strength
-    execute("UPDATE train_lever_notches SET bldc_detent_strength = bldc_hold WHERE bldc_hold IS NOT NULL")
+    execute(
+      "UPDATE train_lever_notches SET bldc_detent_strength = bldc_hold WHERE bldc_hold IS NOT NULL"
+    )
 
     # Remove old columns from notches
     alter table(:train_lever_notches) do
@@ -41,7 +43,9 @@ defmodule Trenino.Repo.Migrations.MigrateBldcProtocol do
     end
 
     # Migrate data back: use bldc_detent_strength as bldc_hold
-    execute("UPDATE train_lever_notches SET bldc_hold = bldc_detent_strength WHERE bldc_detent_strength IS NOT NULL")
+    execute(
+      "UPDATE train_lever_notches SET bldc_hold = bldc_detent_strength WHERE bldc_detent_strength IS NOT NULL"
+    )
 
     # Remove new column
     alter table(:train_lever_notches) do

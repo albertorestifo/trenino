@@ -18,8 +18,8 @@ defmodule Trenino.Repo.Migrations.AddBldcLeverInputType do
 
     # Enforce one BLDC lever per device
     create unique_index(:device_inputs, [:device_id],
-      where: "input_type = 'bldc_lever'",
-      name: :device_inputs_one_bldc_per_device
-    )
+             where: "input_type = 'bldc_lever'",
+             name: :device_inputs_one_bldc_per_device
+           )
   end
 end

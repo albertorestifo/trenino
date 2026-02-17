@@ -507,7 +507,9 @@ defmodule TreninoWeb.LeverSetupWizard do
 
   defp next_step_after_type_selection(_), do: :select_input
 
-  defp filter_inputs_for_type(inputs, :bldc), do: Enum.filter(inputs, &(&1.input_type == :bldc_lever))
+  defp filter_inputs_for_type(inputs, :bldc),
+    do: Enum.filter(inputs, &(&1.input_type == :bldc_lever))
+
   defp filter_inputs_for_type(inputs, _), do: Enum.filter(inputs, &(&1.input_type == :analog))
 
   # Stop mapping session if leaving :map_notches step
@@ -882,7 +884,9 @@ defmodule TreninoWeb.LeverSetupWizard do
   defp step_content(%{current_step: :select_input} = assigns) do
     ~H"""
     <.step_select_input
-      available_inputs={filter_inputs_for_type(@socket_assigns.available_inputs, @socket_assigns.selected_lever_type)}
+      available_inputs={
+        filter_inputs_for_type(@socket_assigns.available_inputs, @socket_assigns.selected_lever_type)
+      }
       selected_input_id={@socket_assigns.selected_input_id}
       can_proceed={can_proceed_from?(:select_input, @socket_assigns)}
       myself={@myself}
