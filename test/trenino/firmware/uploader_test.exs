@@ -257,6 +257,24 @@ defmodule Trenino.Firmware.UploaderTest do
     end
   end
 
+  describe "retryable_baud_rates/2" do
+    test "returns alternate baud rates for arduino programmer excluding tried rate" do
+      assert Uploader.retryable_baud_rates("arduino", 115_200) == [57_600]
+    end
+
+    test "returns alternate baud rates for arduino programmer excluding other tried rate" do
+      assert Uploader.retryable_baud_rates("arduino", 57_600) == [115_200]
+    end
+
+    test "returns empty list for unknown programmer" do
+      assert Uploader.retryable_baud_rates("avrisp", 115_200) == []
+    end
+
+    test "returns empty list when tried rate is not in alternates" do
+      assert Uploader.retryable_baud_rates("arduino", 9600) == [57_600, 115_200]
+    end
+  end
+
   describe "backward compatibility with board_type atoms" do
     test "converts legacy board_type atoms to environment strings" do
       # These should be converted internally

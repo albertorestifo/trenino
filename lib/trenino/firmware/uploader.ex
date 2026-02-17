@@ -16,6 +16,24 @@ defmodule Trenino.Firmware.Uploader do
           {:ok, %{duration_ms: integer(), output: String.t()}}
           | {:error, atom(), String.t()}
 
+  # Known alternate baud rates by programmer type. The STK500v1 "arduino"
+  # programmer ships at 115200 on new-bootloader Nanos (Optiboot) and
+  # 57600 on old-bootloader clones.
+  @alternate_baud_rates %{
+    "arduino" => [57_600, 115_200]
+  }
+
+  @doc """
+  Returns alternate baud rates to try for a programmer when the initial
+  baud rate fails. Filters out the already-tried baud rate.
+  """
+  @spec retryable_baud_rates(String.t(), integer()) :: [integer()]
+  def retryable_baud_rates(programmer, tried_baud_rate) do
+    @alternate_baud_rates
+    |> Map.get(programmer, [])
+    |> Enum.reject(&(&1 == tried_baud_rate))
+  end
+
   @doc """
   Upload firmware to a device.
 
@@ -48,22 +66,14 @@ defmodule Trenino.Firmware.Uploader do
          {:ok, config} <- DeviceRegistry.get_device_config(environment),
          :ok <- verify_hex_file(hex_file_path),
          {:ok, upload_port} <- maybe_trigger_bootloader(port, config) do
-      args = build_args(config, upload_port, hex_file_path)
-
-      Logger.info("Running avrdude: #{avrdude_path} #{Enum.join(args, " ")}")
-
-      case run_avrdude(avrdude_path, args, progress_callback) do
-        {:ok, output} ->
-          duration_ms = System.monotonic_time(:millisecond) - start_time
-          Logger.info("Avrdude completed successfully in #{duration_ms}ms")
-          {:ok, %{duration_ms: duration_ms, output: output}}
-
-        {:error, output} ->
-          error_type = parse_error(output)
-          Logger.error("Avrdude failed with error: #{error_type}")
-          Logger.error("Avrdude output:\n#{output}")
-          {:error, error_type, output}
-      end
+      upload_with_retries(
+        avrdude_path,
+        config,
+        upload_port,
+        hex_file_path,
+        progress_callback,
+        start_time
+      )
     else
       {:error, :unknown_device} ->
         {:error, :unknown_device, "Unknown device environment: #{environment}"}
@@ -72,6 +82,130 @@ defmodule Trenino.Firmware.Uploader do
         error
     end
   end
+
+  defp upload_with_retries(avrdude_path, config, port, hex_file_path, callback, start_time) do
+    case attempt_upload(avrdude_path, config, port, hex_file_path, callback) do
+      {:ok, output} ->
+        finish_upload(output, start_time)
+
+      {:error, :port_not_found, output} ->
+        retry_port_not_found(
+          avrdude_path,
+          config,
+          port,
+          hex_file_path,
+          callback,
+          output,
+          start_time
+        )
+
+      {:error, :bootloader_not_responding, output} ->
+        retry_baud_rates(avrdude_path, config, port, hex_file_path, callback, output, start_time)
+
+      {:error, error_type, output} ->
+        {:error, error_type, output}
+    end
+  end
+
+  # Run avrdude once with the given config, return {:ok, output} or {:error, type, output}
+  defp attempt_upload(avrdude_path, config, port, hex_file_path, callback) do
+    args = build_args(config, port, hex_file_path)
+    Logger.info("Running avrdude: #{avrdude_path} #{Enum.join(args, " ")}")
+
+    case run_avrdude(avrdude_path, args, callback) do
+      {:ok, output} ->
+        {:ok, output}
+
+      {:error, output} ->
+        error_type = parse_error(output)
+        Logger.error("Avrdude failed with error: #{error_type}")
+        Logger.error("Avrdude output:\n#{output}")
+        {:error, error_type, output}
+    end
+  end
+
+  defp finish_upload(output, start_time) do
+    duration_ms = System.monotonic_time(:millisecond) - start_time
+    Logger.info("Avrdude completed successfully in #{duration_ms}ms")
+    {:ok, %{duration_ms: duration_ms, output: output}}
+  end
+
+  # Retry once after a short delay — serial ports can be slow to appear
+  defp retry_port_not_found(
+         avrdude_path,
+         config,
+         port,
+         hex_file_path,
+         callback,
+         first_output,
+         start_time
+       ) do
+    Logger.warning("Port not found, retrying in 2 seconds...")
+    report_progress(callback, 0, "Port not found, retrying...")
+    Process.sleep(2_000)
+
+    case attempt_upload(avrdude_path, config, port, hex_file_path, callback) do
+      {:ok, output} -> finish_upload(output, start_time)
+      {:error, _error_type, _output} -> {:error, :port_not_found, first_output}
+    end
+  end
+
+  # Try alternate baud rates when the bootloader doesn't respond
+  defp retry_baud_rates(
+         avrdude_path,
+         config,
+         port,
+         hex_file_path,
+         callback,
+         first_output,
+         start_time
+       ) do
+    alternates = retryable_baud_rates(config.programmer, config.baud_rate)
+
+    try_baud_rates(
+      avrdude_path,
+      config,
+      port,
+      hex_file_path,
+      callback,
+      alternates,
+      first_output,
+      start_time
+    )
+  end
+
+  defp try_baud_rates(_avrdude_path, _config, _port, _hex, _cb, [], first_output, _start_time) do
+    {:error, :bootloader_not_responding, first_output}
+  end
+
+  defp try_baud_rates(
+         avrdude_path,
+         config,
+         port,
+         hex,
+         cb,
+         [baud | rest],
+         first_output,
+         start_time
+       ) do
+    Logger.info("Retrying with alternate baud rate: #{baud}")
+    report_progress(cb, 0, "Retrying at #{baud} baud...")
+    alt_config = %{config | baud_rate: baud}
+
+    case attempt_upload(avrdude_path, alt_config, port, hex, cb) do
+      {:ok, output} ->
+        finish_upload(output, start_time)
+
+      {:error, :bootloader_not_responding, _output} ->
+        try_baud_rates(avrdude_path, config, port, hex, cb, rest, first_output, start_time)
+
+      {:error, error_type, output} ->
+        {:error, error_type, output}
+    end
+  end
+
+  defp report_progress(nil, _percent, _message), do: :ok
+  defp report_progress(callback, percent, message), do: callback.(percent, message)
 
   # Trigger bootloader on boards that need 1200bps touch (Leonardo, Micro, Pro Micro)
   defp maybe_trigger_bootloader(port, %{use_1200bps_touch: true}) do
@@ -181,20 +315,27 @@ defmodule Trenino.Firmware.Uploader do
 
   # Build avrdude command arguments
   defp build_args(config, port, hex_file_path) do
-    [
-      "-c",
-      config.programmer,
-      "-p",
-      config.mcu,
-      "-P",
-      port,
-      "-b",
-      to_string(config.baud_rate),
-      "-D",
-      "-U",
-      "flash:w:#{hex_file_path}:i",
-      "-v"
-    ]
+    conf_args =
+      case Avrdude.conf_path() do
+        {:ok, path} -> ["-C", path]
+        {:error, :not_found} -> []
+      end
+
+    conf_args ++
+      [
+        "-c",
+        config.programmer,
+        "-p",
+        config.mcu,
+        "-P",
+        port,
+        "-b",
+        to_string(config.baud_rate),
+        "-D",
+        "-U",
+        "flash:w:#{hex_file_path}:i",
+        "-v"
+      ]
   end
 
   # Verify the hex file exists and is readable
