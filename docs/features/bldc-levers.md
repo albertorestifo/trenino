@@ -35,15 +35,11 @@ In the train configuration UI:
 The system automatically generates haptic parameters based on detected notch types:
 
 **Gate Notches** (discrete positions):
-- Engagement: 180 (strong snap into position)
-- Hold: 200 (firm hold in position)
-- Exit: 150 (moderate force to exit)
-- Damping: 0 (no damping)
+- Detent Strength: 200 (strong snap into and hold at position)
+- Damping: 0 (no damping between detents)
 
 **Linear Ranges** (smooth zones):
-- Engagement: 50 (light engagement)
-- Hold: 30 (light hold)
-- Exit: 50 (easy to exit)
+- Detent Strength: 30 (light engagement at boundary)
 - Damping: 100 (medium damping for smooth feel)
 
 ### 3. Profile Loading
@@ -101,10 +97,19 @@ Detent 2 (Gate) at position 100
 
 **LoadBLDCProfile (0x0B)**
 ```
-[type][pin][num_detents][num_ranges]
-[detent_data: 5 bytes × num_detents]
+[type][pin][num_detents][num_ranges][snap_point][endstop_strength]
+[detent_data: 2 bytes × num_detents]
 [range_data: 3 bytes × num_ranges]
 ```
+
+Detent structure (2 bytes):
+- `position`: u8 (0–100, percentage of calibrated range)
+- `detent_strength`: u8 (0–255)
+
+Range structure (3 bytes):
+- `start_detent`: u8 (index of starting detent)
+- `end_detent`: u8 (index of ending detent)
+- `damping`: u8 (0–255)
 
 **DeactivateBLDCProfile (0x0C)**
 ```
@@ -198,16 +203,15 @@ When serial connection drops during operation:
 
 ### Database Schema
 
-**LeverConfig**: Added `:bldc` to `lever_type` enum
+**LeverConfig**: Added `:bldc` to `lever_type` enum, plus two BLDC-specific fields:
+- `bldc_snap_point` (integer, 50–150) – snap-point sensitivity for all detents on this lever
+- `bldc_endstop_strength` (integer, 0–255) – strength of the virtual endstop at the physical travel limits
 
-**Notch**: Added optional BLDC fields:
-- `bldc_engagement` (0-255)
-- `bldc_hold` (0-255)
-- `bldc_exit` (0-255)
-- `bldc_spring_back` (notch index)
-- `bldc_damping` (0-255)
+**Notch**: Added optional BLDC fields (NULL for non-BLDC levers):
+- `bldc_detent_strength` (0–255) – combined snap-in / hold force for this detent
+- `bldc_damping` (0–255) – damping applied in the range approaching this notch
 
-Fields are validated to ensure values are within valid ranges and are only required when `lever_type == :bldc`.
+Fields are validated to ensure values are within valid ranges.
 
 ### Modules
 
@@ -281,9 +285,8 @@ Current implementation uses fixed default values. Manual tuning UI is planned fo
 **Workaround**: Edit notch BLDC parameters in database:
 ```sql
 UPDATE train_lever_notches
-SET bldc_engagement = 200,
-    bldc_hold = 220,
-    bldc_exit = 180
+SET bldc_detent_strength = 220,
+    bldc_damping = 0
 WHERE id = <notch_id>;
 ```
 

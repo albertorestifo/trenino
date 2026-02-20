@@ -23,6 +23,7 @@ trenino communicates with microcontroller-based devices via USB serial running t
 |------|-------------|----------|
 | Analog | 10-bit ADC (0-1023) | Potentiometers, throttle levers |
 | Digital | On/Off state | Buttons, switches (coming soon) |
+| BLDC Lever | Brushless DC motor with haptic feedback | Force-feedback levers (requires Arduino Mega 2560 + SimpleFOCShield v2) |
 
 ## Creating a Device Configuration
 

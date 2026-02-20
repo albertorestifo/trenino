@@ -31,9 +31,10 @@ TWS IO is built with Elixir and Phoenix LiveView, providing real-time hardware-t
 Manages physical device connections and input calibration.
 
 - **Device** - Configuration schema with unique `config_id`
-- **Input** - Pin definitions (analog/digital) with sensitivity
+- **Input** - Pin definitions (analog/digital/bldc_lever) with sensitivity
 - **ConfigurationManager** - GenServer broadcasting input value changes
 - **Calibration** - Multi-step wizard for input calibration
+- **BLDCProfileBuilder** - Converts `LeverConfig` notch data to `LoadBLDCProfile` protocol messages for haptic levers
 
 ### Firmware Domain (`lib/trenino/firmware/`)
 
@@ -196,10 +197,13 @@ Binary protocol with message types:
 |------|------|-----------|-------------|
 | 0x01 | IdentityRequest | App → Device | Request device info |
 | 0x01 | IdentityResponse | Device → App | Device signature |
-| 0x02 | Configure | App → Device | Send input config |
+| 0x02 | Configure | App → Device | Send input config (supports `:bldc_lever` type) |
 | 0x03 | ConfigurationStored | Device → App | Config acknowledged |
 | 0x04 | Heartbeat | Both | Keep-alive |
 | 0x05 | InputValue | Device → App | Real-time input data |
+| 0x08 | RetryCalibration | App → Device | Retry BLDC motor calibration |
+| 0x0B | LoadBLDCProfile | App → Device | Load haptic detent profile for BLDC lever |
+| 0x0C | DeactivateBLDCProfile | App → Device | Unload BLDC haptic profile (freewheel mode) |
 
 ### Simulator API (TWS IO ↔ Train Sim World)
 
