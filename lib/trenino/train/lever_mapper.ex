@@ -106,6 +106,49 @@ defmodule Trenino.Train.LeverMapper do
   end
 
   @doc """
+  Map a BLDC detent index to a simulator InputValue.
+
+  BLDC levers self-calibrate on the firmware side and report discrete detent
+  indices (0, 1, 2, ...). The firmware only creates detents from gate notches,
+  so detent index N corresponds to the Nth gate notch (sorted by index).
+
+  Returns the center of that gate notch's sim_input range.
+
+  ## Parameters
+
+    * `lever_config` - The lever config with preloaded notches
+    * `detent_index` - The detent index reported by firmware (0-based)
+
+  ## Returns
+
+    * `{:ok, sim_input}` - The simulator InputValue to send
+    * `{:error, :no_gate_at_index}` - No gate notch exists at this detent index
+    * `{:error, :no_sim_input_range}` - Gate notch has no simulator input range
+
+  """
+  @spec map_detent(LeverConfig.t(), non_neg_integer()) ::
+          {:ok, float()} | {:error, :no_gate_at_index} | {:error, :no_sim_input_range}
+  def map_detent(%LeverConfig{notches: notches}, detent_index)
+      when is_integer(detent_index) and detent_index >= 0 do
+    gate_notches =
+      notches
+      |> Enum.filter(&(&1.type == :gate))
+      |> Enum.sort_by(& &1.index)
+
+    case Enum.at(gate_notches, detent_index) do
+      nil ->
+        {:error, :no_gate_at_index}
+
+      %Notch{sim_input_min: sim_min, sim_input_max: sim_max}
+      when is_number(sim_min) and is_number(sim_max) ->
+        {:ok, Float.round((sim_min + sim_max) / 2, 2)}
+
+      %Notch{} ->
+        {:error, :no_sim_input_range}
+    end
+  end
+
+  @doc """
   Find which notch contains a given hardware input value.
 
   Returns the notch whose input_min/input_max range contains the value,

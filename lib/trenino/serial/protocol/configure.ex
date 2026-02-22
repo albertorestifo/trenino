@@ -130,9 +130,9 @@ defmodule Trenino.Serial.Protocol.Configure do
     {:ok,
      <<0x02, config_id::little-32-unsigned, total_parts::8-unsigned, part_number::8-unsigned,
        0x03::8-unsigned, motor_pin_a::8-unsigned, motor_pin_b::8-unsigned,
-       motor_pin_c::8-unsigned, motor_enable::8-unsigned,
-       encoder_cs::8-unsigned, pole_pairs::8-unsigned, voltage::8-unsigned,
-       current_limit::8-unsigned, encoder_bits::8-unsigned>>}
+       motor_pin_c::8-unsigned, motor_enable::8-unsigned, encoder_cs::8-unsigned,
+       pole_pairs::8-unsigned, voltage::8-unsigned, current_limit::8-unsigned,
+       encoder_bits::8-unsigned>>}
   end
 
   # Decode body - Analog (input_type = 0x00)
@@ -200,9 +200,8 @@ defmodule Trenino.Serial.Protocol.Configure do
   def decode_body(
         <<config_id::little-32-unsigned, total_parts::8-unsigned, part_number::8-unsigned, 0x03,
           motor_pin_a::8-unsigned, motor_pin_b::8-unsigned, motor_pin_c::8-unsigned,
-          motor_enable::8-unsigned, encoder_cs::8-unsigned,
-          pole_pairs::8-unsigned, voltage::8-unsigned, current_limit::8-unsigned,
-          encoder_bits::8-unsigned>>
+          motor_enable::8-unsigned, encoder_cs::8-unsigned, pole_pairs::8-unsigned,
+          voltage::8-unsigned, current_limit::8-unsigned, encoder_bits::8-unsigned>>
       ) do
     {:ok,
      %__MODULE__{

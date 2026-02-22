@@ -285,8 +285,7 @@ defmodule Trenino.Serial.ProtocolTest do
       # Payload (9 bytes): motor_pin_a, motor_pin_b, motor_pin_c, motor_enable,
       #                     encoder_cs, pole_pairs, voltage, current_limit, encoder_bits
       assert encoded ==
-               <<0x02, 0x78, 0x56, 0x34, 0x12, 0x02, 0x01, 0x03, 5, 6, 9, 7, 10, 11, 120, 0,
-                 14>>
+               <<0x02, 0x78, 0x56, 0x34, 0x12, 0x02, 0x01, 0x03, 5, 6, 9, 7, 10, 11, 120, 0, 14>>
 
       assert byte_size(encoded) == 17
     end

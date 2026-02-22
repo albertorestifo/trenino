@@ -45,6 +45,7 @@ defmodule Trenino.Train.LeverController do
     @type input_lookup :: %{
             {port :: String.t(), pin :: integer()} => %{
               input_id: integer(),
+              input_type: :analog | :button | :bldc_lever,
               calibration: Calibration.t() | nil
             }
           }
@@ -212,6 +213,7 @@ defmodule Trenino.Train.LeverController do
           Enum.reduce(inputs, lookup, fn input, acc ->
             Map.put(acc, {device_conn.port, input.pin}, %{
               input_id: input.id,
+              input_type: input.input_type,
               calibration: input.calibration
             })
           end)
@@ -253,23 +255,46 @@ defmodule Trenino.Train.LeverController do
 
   defp handle_input_update(%State{} = state, port, pin, raw_value) do
     with {:ok, input_info} <- Map.fetch(state.input_lookup, {port, pin}),
-         {:ok, binding_info} <- Map.fetch(state.binding_lookup, input_info.input_id),
-         {:ok, normalized} <- normalize_value(raw_value, input_info.calibration),
-         {:ok, sim_value} <- LeverMapper.map_input(binding_info.lever_config, normalized) do
-      # Only send if value changed (avoid flooding simulator)
-      lever_config_id = binding_info.lever_config.id
+         {:ok, binding_info} <- Map.fetch(state.binding_lookup, input_info.input_id) do
+      case input_info.input_type do
+        :bldc_lever ->
+          handle_bldc_input(state, binding_info, raw_value)
 
-      if Map.get(state.last_sent_values, lever_config_id) != sim_value do
-        send_to_simulator(binding_info.lever_config, sim_value)
-
-        {:ok,
-         %{state | last_sent_values: Map.put(state.last_sent_values, lever_config_id, sim_value)}}
-      else
-        :skip
+        _analog ->
+          handle_analog_input(state, input_info, binding_info, raw_value)
       end
     else
       :error -> :skip
+    end
+  end
+
+  defp handle_bldc_input(%State{} = state, binding_info, detent_index) do
+    case LeverMapper.map_detent(binding_info.lever_config, detent_index) do
+      {:ok, sim_value} ->
+        maybe_send_value(state, binding_info.lever_config, sim_value)
+
+      {:error, _reason} ->
+        :skip
+    end
+  end
+
+  defp handle_analog_input(%State{} = state, input_info, binding_info, raw_value) do
+    with {:ok, normalized} <- normalize_value(raw_value, input_info.calibration),
+         {:ok, sim_value} <- LeverMapper.map_input(binding_info.lever_config, normalized) do
+      maybe_send_value(state, binding_info.lever_config, sim_value)
+    else
       {:error, _reason} -> :skip
+    end
+  end
+
+  defp maybe_send_value(%State{} = state, %LeverConfig{} = lever_config, sim_value) do
+    if Map.get(state.last_sent_values, lever_config.id) != sim_value do
+      send_to_simulator(lever_config, sim_value)
+
+      {:ok,
+       %{state | last_sent_values: Map.put(state.last_sent_values, lever_config.id, sim_value)}}
+    else
+      :skip
     end
   end
 

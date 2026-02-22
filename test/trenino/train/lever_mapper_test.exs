@@ -723,6 +723,159 @@ defmodule Trenino.Train.LeverMapperTest do
     end
   end
 
+  describe "map_detent/2 with mixed gate and linear notches" do
+    setup do
+      # MasterController-style: Gate - Linear - Gate - Linear
+      # Only gates should be considered for detent mapping
+      lever_config = %LeverConfig{
+        id: 20,
+        notches: [
+          %Notch{
+            index: 0,
+            type: :gate,
+            value: -11.0,
+            input_min: 0.0,
+            input_max: 0.05,
+            sim_input_min: 0.0,
+            sim_input_max: 0.04
+          },
+          %Notch{
+            index: 1,
+            type: :linear,
+            min_value: -10.0,
+            max_value: -0.91,
+            input_min: 0.05,
+            input_max: 0.45,
+            sim_input_min: 0.05,
+            sim_input_max: 0.44
+          },
+          %Notch{
+            index: 2,
+            type: :gate,
+            value: 0.0,
+            input_min: 0.45,
+            input_max: 0.55,
+            sim_input_min: 0.49,
+            sim_input_max: 0.51
+          },
+          %Notch{
+            index: 3,
+            type: :linear,
+            min_value: 1.0,
+            max_value: 10.0,
+            input_min: 0.55,
+            input_max: 1.0,
+            sim_input_min: 0.56,
+            sim_input_max: 1.0
+          }
+        ]
+      }
+
+      %{lever_config: lever_config}
+    end
+
+    test "detent 0 maps to first gate center, skipping linear notches", %{lever_config: config} do
+      # First gate (index 0): center of 0.0-0.04 = 0.02
+      assert {:ok, 0.02} = LeverMapper.map_detent(config, 0)
+    end
+
+    test "detent 1 maps to second gate center, skipping linear notches", %{lever_config: config} do
+      # Second gate (index 2): center of 0.49-0.51 = 0.5
+      assert {:ok, 0.5} = LeverMapper.map_detent(config, 1)
+    end
+
+    test "out-of-range detent index returns error", %{lever_config: config} do
+      # Only 2 gates exist (detent 0 and 1)
+      assert {:error, :no_gate_at_index} = LeverMapper.map_detent(config, 2)
+      assert {:error, :no_gate_at_index} = LeverMapper.map_detent(config, 10)
+    end
+  end
+
+  describe "map_detent/2 with all-gate notches" do
+    setup do
+      lever_config = %LeverConfig{
+        id: 21,
+        notches: [
+          %Notch{
+            index: 0,
+            type: :gate,
+            value: -1.0,
+            sim_input_min: 0.0,
+            sim_input_max: 0.1
+          },
+          %Notch{
+            index: 1,
+            type: :gate,
+            value: 0.0,
+            sim_input_min: 0.45,
+            sim_input_max: 0.55
+          },
+          %Notch{
+            index: 2,
+            type: :gate,
+            value: 1.0,
+            sim_input_min: 0.9,
+            sim_input_max: 1.0
+          }
+        ]
+      }
+
+      %{lever_config: lever_config}
+    end
+
+    test "each detent maps to the correct gate center", %{lever_config: config} do
+      assert {:ok, 0.05} = LeverMapper.map_detent(config, 0)
+      assert {:ok, 0.5} = LeverMapper.map_detent(config, 1)
+      assert {:ok, 0.95} = LeverMapper.map_detent(config, 2)
+    end
+
+    test "out-of-range detent index returns error", %{lever_config: config} do
+      assert {:error, :no_gate_at_index} = LeverMapper.map_detent(config, 3)
+    end
+  end
+
+  describe "map_detent/2 edge cases" do
+    test "empty notches returns error" do
+      config = %LeverConfig{id: 22, notches: []}
+      assert {:error, :no_gate_at_index} = LeverMapper.map_detent(config, 0)
+    end
+
+    test "missing sim_input range returns error" do
+      config = %LeverConfig{
+        id: 23,
+        notches: [
+          %Notch{
+            index: 0,
+            type: :gate,
+            value: 0.0,
+            sim_input_min: nil,
+            sim_input_max: nil
+          }
+        ]
+      }
+
+      assert {:error, :no_sim_input_range} = LeverMapper.map_detent(config, 0)
+    end
+
+    test "rounds float values to 2 decimal places" do
+      config = %LeverConfig{
+        id: 24,
+        notches: [
+          %Notch{
+            index: 0,
+            type: :gate,
+            value: 0.0,
+            sim_input_min: 0.0,
+            sim_input_max: 0.07
+          }
+        ]
+      }
+
+      # Center of 0.0-0.07 = 0.035, rounded to 0.04
+      assert {:ok, 0.04} = LeverMapper.map_detent(config, 0)
+    end
+  end
+
   describe "calculate_sim_input/2 with integer values from SQLite" do
     test "handles integer sim_input values for gate notch" do
       # SQLite may return 0 instead of 0.0

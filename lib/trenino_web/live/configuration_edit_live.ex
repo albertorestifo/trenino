@@ -1225,8 +1225,24 @@ defmodule TreninoWeb.ConfigurationEditLive do
     >
       Released
     </span>
+    <%!-- BLDC lever inputs --%>
+    <span
+      :if={@active && @input_type == :bldc_lever && is_nil(@raw_value)}
+      class="text-base-content/50"
+    >
+      &mdash;
+    </span>
+    <span
+      :if={@active && @input_type == :bldc_lever && !is_nil(@raw_value)}
+      class="font-mono tabular-nums"
+    >
+      Detent {@raw_value}
+    </span>
     <%!-- Analog inputs --%>
-    <span :if={@active && @input_type == :analog && is_nil(@raw_value)} class="text-base-content/50">
+    <span
+      :if={@active && @input_type == :analog && is_nil(@raw_value)}
+      class="text-base-content/50"
+    >
       &mdash;
     </span>
     <span
