@@ -7,7 +7,7 @@ defmodule Trenino.Serial.Protocol.Configure do
   - Analog payload (0x00): [pin:u8][sensitivity:u8]
   - Button payload (0x01): [pin:u8][debounce:u8]
   - Matrix payload (0x02): [num_row_pins:u8][num_col_pins:u8][row_pins...][col_pins...]
-  - BLDC Lever payload (0x03): [motor_pin_a:u8][motor_pin_b:u8][motor_pin_c:u8][motor_enable_a:u8][motor_enable_b:u8][encoder_cs:u8][pole_pairs:u8][voltage:u8][current_limit:u8][encoder_bits:u8]
+  - BLDC Lever payload (0x03): [motor_pin_a:u8][motor_pin_b:u8][motor_pin_c:u8][motor_enable:u8][encoder_cs:u8][pole_pairs:u8][voltage:u8][current_limit:u8][encoder_bits:u8]
   """
 
   alias Trenino.Serial.Protocol.Message
@@ -32,8 +32,7 @@ defmodule Trenino.Serial.Protocol.Configure do
           motor_pin_a: integer() | nil,
           motor_pin_b: integer() | nil,
           motor_pin_c: integer() | nil,
-          motor_enable_a: integer() | nil,
-          motor_enable_b: integer() | nil,
+          motor_enable: integer() | nil,
           encoder_cs: integer() | nil,
           pole_pairs: integer() | nil,
           voltage: integer() | nil,
@@ -54,8 +53,7 @@ defmodule Trenino.Serial.Protocol.Configure do
     :motor_pin_a,
     :motor_pin_b,
     :motor_pin_c,
-    :motor_enable_a,
-    :motor_enable_b,
+    :motor_enable,
     :encoder_cs,
     :pole_pairs,
     :voltage,
@@ -122,8 +120,7 @@ defmodule Trenino.Serial.Protocol.Configure do
         motor_pin_a: motor_pin_a,
         motor_pin_b: motor_pin_b,
         motor_pin_c: motor_pin_c,
-        motor_enable_a: motor_enable_a,
-        motor_enable_b: motor_enable_b,
+        motor_enable: motor_enable,
         encoder_cs: encoder_cs,
         pole_pairs: pole_pairs,
         voltage: voltage,
@@ -133,7 +130,7 @@ defmodule Trenino.Serial.Protocol.Configure do
     {:ok,
      <<0x02, config_id::little-32-unsigned, total_parts::8-unsigned, part_number::8-unsigned,
        0x03::8-unsigned, motor_pin_a::8-unsigned, motor_pin_b::8-unsigned,
-       motor_pin_c::8-unsigned, motor_enable_a::8-unsigned, motor_enable_b::8-unsigned,
+       motor_pin_c::8-unsigned, motor_enable::8-unsigned,
        encoder_cs::8-unsigned, pole_pairs::8-unsigned, voltage::8-unsigned,
        current_limit::8-unsigned, encoder_bits::8-unsigned>>}
   end
@@ -203,7 +200,7 @@ defmodule Trenino.Serial.Protocol.Configure do
   def decode_body(
         <<config_id::little-32-unsigned, total_parts::8-unsigned, part_number::8-unsigned, 0x03,
           motor_pin_a::8-unsigned, motor_pin_b::8-unsigned, motor_pin_c::8-unsigned,
-          motor_enable_a::8-unsigned, motor_enable_b::8-unsigned, encoder_cs::8-unsigned,
+          motor_enable::8-unsigned, encoder_cs::8-unsigned,
           pole_pairs::8-unsigned, voltage::8-unsigned, current_limit::8-unsigned,
           encoder_bits::8-unsigned>>
       ) do
@@ -216,8 +213,7 @@ defmodule Trenino.Serial.Protocol.Configure do
        motor_pin_a: motor_pin_a,
        motor_pin_b: motor_pin_b,
        motor_pin_c: motor_pin_c,
-       motor_enable_a: motor_enable_a,
-       motor_enable_b: motor_enable_b,
+       motor_enable: motor_enable,
        encoder_cs: encoder_cs,
        pole_pairs: pole_pairs,
        voltage: voltage,

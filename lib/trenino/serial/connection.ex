@@ -346,7 +346,6 @@ defmodule Trenino.Serial.Connection do
   def handle_info({:circuits_uart, port, data}, state) do
     case Message.decode(data) do
       {:ok, message} ->
-        # Logger.debug("Received message from port #{port}: #{inspect(message)}")
         broadcast_message(port, message)
 
       {:error, reason} ->

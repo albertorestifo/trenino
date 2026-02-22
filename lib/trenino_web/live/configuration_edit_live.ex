@@ -1458,27 +1458,18 @@ defmodule TreninoWeb.ConfigurationEditLive do
                 </div>
               </div>
 
-              <div class="grid grid-cols-2 gap-3">
-                <div>
-                  <label class="label"><span class="label-text text-xs">Enable A</span></label>
-                  <.input
-                    field={@form[:motor_enable_a]}
-                    type="number"
-                    min="0"
-                    max="255"
-                    class="input input-bordered input-sm w-full"
-                  />
-                </div>
-                <div>
-                  <label class="label"><span class="label-text text-xs">Enable B</span></label>
-                  <.input
-                    field={@form[:motor_enable_b]}
-                    type="number"
-                    min="0"
-                    max="255"
-                    class="input input-bordered input-sm w-full"
-                  />
-                </div>
+              <div>
+                <label class="label">
+                  <span class="label-text text-xs">Enable (optional)</span>
+                </label>
+                <.input
+                  field={@form[:motor_enable]}
+                  type="number"
+                  min="0"
+                  max="255"
+                  placeholder="None"
+                  class="input input-bordered input-sm w-full"
+                />
               </div>
 
               <div class="text-sm font-medium text-base-content/70 border-b border-base-300 pb-1 mt-2">
@@ -1538,13 +1529,14 @@ defmodule TreninoWeb.ConfigurationEditLive do
                 </div>
                 <div>
                   <label class="label">
-                    <span class="label-text text-xs">Current Limit (0.1A)</span>
+                    <span class="label-text text-xs">Current Limit (A)</span>
                   </label>
                   <.input
                     field={@form[:current_limit]}
                     type="number"
                     min="0"
-                    max="255"
+                    max="25.5"
+                    step="0.1"
                     placeholder="0"
                     class="input input-bordered input-sm w-full"
                   />

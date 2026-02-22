@@ -15,7 +15,7 @@ defmodule Trenino.Hardware.InputTest do
       assert changeset.valid?
     end
 
-    test "BLDC lever requires all hardware fields", %{device: device} do
+    test "BLDC lever requires all hardware fields except enable pins", %{device: device} do
       attrs = %{
         input_type: :bldc_lever,
         pin: 10,
@@ -25,6 +25,13 @@ defmodule Trenino.Hardware.InputTest do
       changeset = Input.changeset(%Input{device_id: device.id}, attrs)
       refute changeset.valid?
       assert errors_on(changeset).motor_pin_b
+    end
+
+    test "BLDC lever is valid without enable pin", %{device: device} do
+      attrs = Map.delete(bldc_attrs(), :motor_enable)
+
+      changeset = Input.changeset(%Input{device_id: device.id}, attrs)
+      assert changeset.valid?
     end
 
     test "BLDC lever validates pole_pairs > 0", %{device: device} do
@@ -70,12 +77,11 @@ defmodule Trenino.Hardware.InputTest do
         motor_pin_a: 5,
         motor_pin_b: 6,
         motor_pin_c: 9,
-        motor_enable_a: 7,
-        motor_enable_b: 8,
+        motor_enable: 7,
         encoder_cs: 10,
         pole_pairs: 11,
         voltage: 120,
-        current_limit: 0,
+        current_limit: 0.0,
         encoder_bits: 14
       },
       Map.new(overrides)

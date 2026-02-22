@@ -352,12 +352,11 @@ defmodule Trenino.Hardware.ConfigurationManager do
       motor_pin_a: input.motor_pin_a,
       motor_pin_b: input.motor_pin_b,
       motor_pin_c: input.motor_pin_c,
-      motor_enable_a: input.motor_enable_a,
-      motor_enable_b: input.motor_enable_b,
+      motor_enable: input.motor_enable || 255,
       encoder_cs: input.encoder_cs,
       pole_pairs: input.pole_pairs,
       voltage: input.voltage,
-      current_limit: input.current_limit,
+      current_limit: round((input.current_limit || 0) * 10),
       encoder_bits: input.encoder_bits
     }
   end

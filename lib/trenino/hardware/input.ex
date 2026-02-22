@@ -38,12 +38,11 @@ defmodule Trenino.Hardware.Input do
           motor_pin_a: integer() | nil,
           motor_pin_b: integer() | nil,
           motor_pin_c: integer() | nil,
-          motor_enable_a: integer() | nil,
-          motor_enable_b: integer() | nil,
+          motor_enable: integer() | nil,
           encoder_cs: integer() | nil,
           pole_pairs: integer() | nil,
           voltage: integer() | nil,
-          current_limit: integer() | nil,
+          current_limit: float() | nil,
           encoder_bits: integer() | nil,
           device_id: integer() | nil,
           matrix_id: integer() | nil,
@@ -66,12 +65,11 @@ defmodule Trenino.Hardware.Input do
     field :motor_pin_a, :integer
     field :motor_pin_b, :integer
     field :motor_pin_c, :integer
-    field :motor_enable_a, :integer
-    field :motor_enable_b, :integer
+    field :motor_enable, :integer
     field :encoder_cs, :integer
     field :pole_pairs, :integer
     field :voltage, :integer
-    field :current_limit, :integer
+    field :current_limit, :float
     field :encoder_bits, :integer
 
     belongs_to :device, Device
@@ -82,18 +80,20 @@ defmodule Trenino.Hardware.Input do
     timestamps(type: :utc_datetime)
   end
 
-  @bldc_fields [
+  @bldc_required_fields [
     :motor_pin_a,
     :motor_pin_b,
     :motor_pin_c,
-    :motor_enable_a,
-    :motor_enable_b,
     :encoder_cs,
     :pole_pairs,
     :voltage,
     :current_limit,
     :encoder_bits
   ]
+
+  @bldc_optional_fields [:motor_enable]
+
+  @bldc_fields @bldc_required_fields ++ @bldc_optional_fields
 
   @doc false
   @spec changeset(t(), map()) :: Ecto.Changeset.t()
@@ -130,7 +130,7 @@ defmodule Trenino.Hardware.Input do
 
       :bldc_lever ->
         changeset
-        |> validate_required(@bldc_fields)
+        |> validate_required(@bldc_required_fields)
         |> validate_bldc_ranges()
 
       _ ->
@@ -142,8 +142,7 @@ defmodule Trenino.Hardware.Input do
     :motor_pin_a,
     :motor_pin_b,
     :motor_pin_c,
-    :motor_enable_a,
-    :motor_enable_b,
+    :motor_enable,
     :encoder_cs
   ]
 
@@ -156,7 +155,7 @@ defmodule Trenino.Hardware.Input do
     changeset
     |> validate_number(:pole_pairs, greater_than: 0, less_than_or_equal_to: 255)
     |> validate_number(:voltage, greater_than: 0, less_than_or_equal_to: 255)
-    |> validate_number(:current_limit, greater_than_or_equal_to: 0, less_than_or_equal_to: 255)
+    |> validate_number(:current_limit, greater_than_or_equal_to: 0, less_than_or_equal_to: 25.5)
     |> validate_number(:encoder_bits, greater_than: 0, less_than_or_equal_to: 255)
   end
 
