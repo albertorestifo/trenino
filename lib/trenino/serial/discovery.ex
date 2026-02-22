@@ -14,9 +14,10 @@ defmodule Trenino.Serial.Discovery do
 
   require Logger
 
-  # Delay to let the device settle after port opens (Windows needs this)
-  # Device may send startup messages before being ready for identity requests
-  @settle_delay_ms 200
+  # Delay to let the device settle after port opens.
+  # Arduino Mega with stock stk500v2 bootloader can take up to 3 seconds.
+  # DTR toggles on open, resetting the board into the bootloader.
+  @settle_delay_ms 3_000
 
   @spec discover(pid()) :: {:ok, Protocol.IdentityResponse.t()} | {:error, term()}
   def discover(uart_pid) do
