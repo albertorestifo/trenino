@@ -8,6 +8,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **BLDC haptic lever support** for programmable force feedback
+  - New `:bldc_lever` input type for hardware inputs backed by a brushless DC motor
+  - `BLDCProfileBuilder` converts `LeverConfig` notch data to `LoadBLDCProfile` protocol messages
+  - `LeverController` automatically loads/unloads BLDC profiles when trains activate and deactivate
+  - `LeverAnalyzer` generates default BLDC haptic parameters during calibration (gate notches get strong detents, linear ranges get smooth damping)
+  - Setup wizard and Device Settings UI expose BLDC lever configuration
+  - `LeverConfig` schema adds `bldc_snap_point` (50–150) and `bldc_endstop_strength` (0–255) fields
+  - `Notch` schema adds `bldc_detent_strength` and `bldc_damping` fields (0–255, replaces previous per-notch engagement/hold/exit fields)
+  - New protocol messages: `LoadBLDCProfile` (0x0B), `DeactivateBLDCProfile` (0x0C), `RetryCalibration` (0x08)
+  - See [BLDC Lever Documentation](docs/features/bldc-levers.md) for hardware requirements and setup
 - **Lua scripting system for train automation**
   - New Script schema and database migration for storing Lua scripts per train
   - ScriptEngine providing sandboxed Lua execution environment with Trenino API
@@ -38,6 +48,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- Firmware flashing via avrdude is now more robust with automatic retry on transient failures
 - Flaky CI tests for firmware uploader and upload history ordering
 - Train detection failing for freight trains where locomotive and wagons have different class prefixes
 - Notch validation incorrectly rejecting negative `sim_input` values (some levers like ThrottleAndBrake use -1.0 to 1.0 range)
