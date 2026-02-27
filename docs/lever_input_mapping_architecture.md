@@ -11,7 +11,11 @@ The system handles the conversion from raw hardware sensor values (e.g., potenti
 - **Flexible notch configurations**: Both discrete gate positions and continuous linear ranges
 - **Interactive calibration**: User-guided mapping of physical positions to simulator values
 
-## Data Flow Pipeline
+## Data Flow Pipelines
+
+The system has two distinct input pipelines depending on the hardware input type.
+
+### Analog Pipeline (potentiometers, standard levers)
 
 ```
 1. Hardware (Raw ADC)
@@ -25,13 +29,35 @@ The system handles the conversion from raw hardware sensor values (e.g., potenti
    └─> Normalized float (0.0 to 1.0)
    └─> Represents percentage of physical lever travel
 
-4. Mapping (LeverMapper)
+4. Mapping (LeverMapper.map_input/2)
    └─> Simulator value (any float, including negative)
    └─> Based on notch configuration
 
 5. Simulator
    └─> Final value sent to train simulator
 ```
+
+### BLDC Detent Pipeline (brushless DC haptic levers)
+
+BLDC levers self-calibrate on the firmware side. Instead of streaming raw ADC values, the firmware detects physical detent positions and reports a discrete detent index.
+
+```
+1. Hardware (BLDC Motor + Magnetic Encoder)
+   └─> Firmware self-calibrates and finds detent positions
+
+2. Firmware reports detent index (integer: 0, 1, 2, ...)
+   └─> Index N = Nth detent the user clicked into
+   └─> No ADC value, no software calibration needed
+
+3. Mapping (LeverMapper.map_detent/2)
+   └─> Finds the Nth gate notch (sorted by index)
+   └─> Returns center of that gate notch's sim_input range
+
+4. Simulator
+   └─> Final value sent to train simulator
+```
+
+The key difference: **BLDC levers skip the calibration and normalization stages entirely**. The firmware handles position detection; the application only needs to map the reported detent index to the correct simulator value via gate notches.
 
 ### Example: Potentiometer with 800 Units of Travel
 
@@ -367,6 +393,31 @@ defmodule Trenino.Train.InputCalibration do
 end
 ```
 
+## BLDC Lever Configuration
+
+Gate notches drive the BLDC detent mapping. Each gate notch in a `LeverConfig` corresponds to one physical detent position on the lever. The firmware counts detents from 0 and the application maps index N to the Nth gate notch (sorted by `index` field).
+
+```elixir
+# Example: Three-position reverser (Reverse / Neutral / Forward)
+notches = [
+  %Notch{index: 0, type: :gate, sim_input_min: 0.0,  sim_input_max: 0.04},  # Reverse
+  %Notch{index: 1, type: :gate, sim_input_min: 0.48, sim_input_max: 0.52},  # Neutral
+  %Notch{index: 2, type: :gate, sim_input_min: 0.96, sim_input_max: 1.0}    # Forward
+]
+
+# Firmware reports detent 0 → LeverMapper.map_detent(config, 0)
+# => {:ok, 0.02}   # center of first gate notch
+
+# Firmware reports detent 2 → LeverMapper.map_detent(config, 2)
+# => {:ok, 0.98}   # center of third gate notch
+```
+
+Linear notches are ignored by the BLDC pipeline — they have no corresponding physical detent and are never reported by the firmware. They remain valid for use with analog inputs bound to the same `LeverConfig`.
+
+### `motor_enable` Pin
+
+The BLDC hardware configuration requires three motor phase pins (`motor_pin_a`, `motor_pin_b`, `motor_pin_c`) plus an optional `motor_enable` pin. When provided, the enable pin is used to engage/disengage the motor driver. Not all motor driver boards require this pin.
+
 ## Key Design Decisions
 
 ### ✅ Decision 1: Keep 0.0-1.0 Normalization
@@ -406,6 +457,8 @@ The current implementation is **architecturally sound**. Only minor improvements
 
 ## Summary
 
+### Analog Pipeline
+
 | Component | Input | Output | Purpose |
 |-----------|-------|--------|---------|
 | `Calculator.normalize/2` | Raw ADC value | Calibrated integer (0 to total_travel) | Handle hardware quirks |
@@ -413,3 +466,12 @@ The current implementation is **architecturally sound**. Only minor improvements
 | `LeverMapper.map_input/2` | Normalized float | Simulator value (any float) | Game logic mapping |
 
 **The key insight**: The 0.0-1.0 normalization layer makes configurations portable across different hardware while still supporting the full range of simulator values (including negative).
+
+### BLDC Pipeline
+
+| Component | Input | Output | Purpose |
+|-----------|-------|--------|---------|
+| Firmware self-calibration | Motor + encoder signals | Detent index (integer) | Physical position detection |
+| `LeverMapper.map_detent/2` | Detent index | Simulator value (float) | Map detent to gate notch center |
+
+**The key insight**: BLDC levers offload position detection entirely to firmware. The application only needs to know which detent was clicked and translate that to a simulator value via gate notches.
