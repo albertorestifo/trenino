@@ -45,6 +45,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - REST API expanded with new endpoints for outputs (`/api/outputs`), scripts (`/api/scripts`), and trains (`/api/trains`)
 - Script execution integrated with hardware input monitoring and train activation events
 - MCP tool registry architecture supports dynamic tool registration and categorization
+- **BLDC levers now use firmware-side self-calibration** - firmware reports discrete detent indices (0, 1, 2, ...) instead of raw analog values; `LeverMapper.map_detent/2` maps each index to the corresponding gate notch's simulator value, bypassing the analog normalization pipeline entirely
+- **BLDC lever motor enable pin consolidated** - dual `motor_enable_a`/`motor_enable_b` hardware fields replaced by a single optional `motor_enable` field; existing data is automatically migrated
 
 ### Fixed
 
@@ -54,6 +56,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Notch validation incorrectly rejecting negative `sim_input` values (some levers like ThrottleAndBrake use -1.0 to 1.0 range)
 - LeverAnalyzer using hardcoded 0.0-1.0 input range instead of reading actual lever range from simulator
 - Simulator API requests failing for control paths with special characters (parentheses, spaces)
+- Serial discovery settle delay increased to 3 seconds for Arduino Mega compatibility (stock stk500v2 bootloader resets the board via DTR toggle on port open and may take up to 3 seconds before accepting commands)
 
 ### Removed
 
