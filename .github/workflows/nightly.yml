@@ -1,0 +1,347 @@
+name: Nightly Build
+
+on:
+  schedule:
+    - cron: '0 0 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: nightly-build
+  cancel-in-progress: true
+
+env:
+  ELIXIR_VERSION: "1.19"
+  OTP_VERSION: "28"
+  MIX_ENV: prod
+  AVRDUDE_VERSION: "8.1"
+
+jobs:
+  check-changes:
+    name: Check for Changes
+    runs-on: ubuntu-latest
+    outputs:
+      should_build: ${{ steps.check.outputs.should_build }}
+    steps:
+      - name: Restore cached SHA
+        id: cache-sha
+        uses: actions/cache/restore@v4
+        with:
+          path: nightly-last-sha.txt
+          key: nightly-sha-dummy
+          restore-keys: |
+            nightly-sha-
+
+      - name: Check if build is needed
+        id: check
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "Manual trigger - always build"
+            echo "should_build=true" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+
+          LAST_SHA=""
+          if [ -f nightly-last-sha.txt ]; then
+            LAST_SHA=$(cat nightly-last-sha.txt)
+          fi
+
+          CURRENT_SHA="${{ github.sha }}"
+
+          echo "Last SHA: $LAST_SHA"
+          echo "Current SHA: $CURRENT_SHA"
+
+          if [ "$LAST_SHA" = "$CURRENT_SHA" ]; then
+            echo "No changes since last nightly build"
+            echo "should_build=false" >> $GITHUB_OUTPUT
+          else
+            echo "Changes detected, building"
+            echo "should_build=true" >> $GITHUB_OUTPUT
+          fi
+
+  build-elixir:
+    name: Build Elixir (${{ matrix.target }})
+    needs: [check-changes]
+    if: needs.check-changes.outputs.should_build == 'true'
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-2022
+            target: windows_x86_64
+            binary_name: trenino_desktop_windows_x86_64.exe
+            tauri_target: x86_64-pc-windows-msvc
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Setup Elixir
+        uses: erlef/setup-beam@v1
+        with:
+          elixir-version: ${{ env.ELIXIR_VERSION }}
+          otp-version: ${{ env.OTP_VERSION }}
+
+      - name: Install Windows build dependencies
+        run: choco install 7zip -y
+
+      - name: Setup Zig
+        uses: mlugg/setup-zig@v2
+        with:
+          version: 0.15.2
+
+      - name: Cache Mix dependencies
+        uses: actions/cache@v5
+        with:
+          path: deps
+          key: ${{ runner.os }}-deps-${{ hashFiles('**/mix.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-deps-
+
+      - name: Install dependencies
+        run: mix deps.get --only prod
+
+      - name: Build assets
+        run: mix assets.deploy
+
+      - name: Build Elixir release
+        run: mix release trenino_desktop
+        env:
+          BURRITO_TARGET: ${{ matrix.target }}
+
+      - name: Upload Elixir binary
+        uses: actions/upload-artifact@v6
+        with:
+          name: elixir-${{ matrix.target }}
+          path: burrito_out/${{ matrix.binary_name }}
+          retention-days: 7
+
+  build-keystroke:
+    name: Build Keystroke (${{ matrix.target }})
+    needs: [check-changes]
+    if: needs.check-changes.outputs.should_build == 'true'
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-2022
+            target: windows_x86_64
+            tauri_target: x86_64-pc-windows-msvc
+            binary_ext: ".exe"
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.tauri_target }}
+
+      - name: Cache Rust
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: tauri/keystroke -> target
+
+      - name: Build keystroke utility
+        working-directory: tauri/keystroke
+        run: cargo build --release
+
+      - name: Upload keystroke binary (Windows)
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@v6
+        with:
+          name: keystroke-${{ matrix.target }}
+          path: tauri/keystroke/target/release/keystroke.exe
+          retention-days: 7
+
+      - name: Upload keystroke binary (Unix)
+        if: runner.os != 'Windows'
+        uses: actions/upload-artifact@v6
+        with:
+          name: keystroke-${{ matrix.target }}
+          path: tauri/keystroke/target/release/keystroke
+          retention-days: 7
+
+  download-avrdude:
+    name: Download avrdude (${{ matrix.target }})
+    needs: [check-changes]
+    if: needs.check-changes.outputs.should_build == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: windows_x86_64
+            avrdude_url: https://github.com/avrdudes/avrdude/releases/download/v8.1/avrdude-v8.1-windows-x64.zip
+            avrdude_binary: avrdude.exe
+            extract_cmd: unzip -o
+
+    steps:
+      - name: Download avrdude
+        run: |
+          curl -L -o avrdude-archive.zip "${{ matrix.avrdude_url }}"
+          ${{ matrix.extract_cmd }} avrdude-archive.zip
+          # Find and copy the avrdude binary
+          find . -name "${{ matrix.avrdude_binary }}" -type f | head -1 | xargs -I {} cp {} avrdude-binary
+          # Also copy avrdude.conf if it exists
+          find . -name "avrdude.conf" -type f | head -1 | xargs -I {} cp {} avrdude.conf || true
+          ls -la
+
+      - name: Upload avrdude binary
+        uses: actions/upload-artifact@v6
+        with:
+          name: avrdude-${{ matrix.target }}
+          path: |
+            avrdude-binary
+            avrdude.conf
+          retention-days: 7
+
+  build-tauri:
+    name: Build Tauri (${{ matrix.target }})
+    needs: [check-changes, build-elixir, build-keystroke, download-avrdude]
+    if: needs.check-changes.outputs.should_build == 'true'
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-2022
+            target: windows_x86_64
+            elixir_binary: trenino_desktop_windows_x86_64.exe
+            tauri_target: x86_64-pc-windows-msvc
+            tauri_args: ""
+            avrdude_ext: ".exe"
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Download Elixir binary
+        uses: actions/download-artifact@v7
+        with:
+          name: elixir-${{ matrix.target }}
+          path: tauri/src-tauri/binaries
+
+      - name: Download avrdude
+        uses: actions/download-artifact@v7
+        with:
+          name: avrdude-${{ matrix.target }}
+          path: tauri/src-tauri/binaries/avrdude-download
+
+      - name: Download keystroke
+        uses: actions/download-artifact@v7
+        with:
+          name: keystroke-${{ matrix.target }}
+          path: tauri/src-tauri/binaries/keystroke-download
+
+      - name: Prepare binaries (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          # Prepare Elixir backend binary
+          Move-Item -Path "tauri/src-tauri/binaries/${{ matrix.elixir_binary }}" `
+                    -Destination "tauri/src-tauri/binaries/trenino_backend-${{ matrix.tauri_target }}.exe"
+
+          # Prepare avrdude binary
+          Move-Item -Path "tauri/src-tauri/binaries/avrdude-download/avrdude-binary" `
+                    -Destination "tauri/src-tauri/binaries/avrdude-${{ matrix.tauri_target }}.exe"
+
+          # Copy avrdude.conf if it exists
+          if (Test-Path "tauri/src-tauri/binaries/avrdude-download/avrdude.conf") {
+            Copy-Item -Path "tauri/src-tauri/binaries/avrdude-download/avrdude.conf" `
+                      -Destination "tauri/src-tauri/binaries/"
+          }
+
+          # Prepare keystroke binary
+          Move-Item -Path "tauri/src-tauri/binaries/keystroke-download/keystroke.exe" `
+                    -Destination "tauri/src-tauri/binaries/keystroke-${{ matrix.tauri_target }}.exe"
+
+          # Clean up download folders
+          Remove-Item -Recurse -Force "tauri/src-tauri/binaries/avrdude-download"
+          Remove-Item -Recurse -Force "tauri/src-tauri/binaries/keystroke-download"
+
+          Get-ChildItem tauri/src-tauri/binaries/
+
+      - name: Prepare binaries (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          # Prepare Elixir backend binary
+          mv "tauri/src-tauri/binaries/${{ matrix.elixir_binary }}" \
+             "tauri/src-tauri/binaries/trenino_backend-${{ matrix.tauri_target }}"
+          chmod +x "tauri/src-tauri/binaries/trenino_backend-${{ matrix.tauri_target }}"
+
+          # Prepare avrdude binary
+          mv "tauri/src-tauri/binaries/avrdude-download/avrdude-binary" \
+             "tauri/src-tauri/binaries/avrdude-${{ matrix.tauri_target }}"
+          chmod +x "tauri/src-tauri/binaries/avrdude-${{ matrix.tauri_target }}"
+
+          # Copy avrdude.conf if it exists
+          if [ -f "tauri/src-tauri/binaries/avrdude-download/avrdude.conf" ]; then
+            cp "tauri/src-tauri/binaries/avrdude-download/avrdude.conf" \
+               "tauri/src-tauri/binaries/"
+          fi
+
+          # Prepare keystroke binary
+          mv "tauri/src-tauri/binaries/keystroke-download/keystroke" \
+             "tauri/src-tauri/binaries/keystroke-${{ matrix.tauri_target }}"
+          chmod +x "tauri/src-tauri/binaries/keystroke-${{ matrix.tauri_target }}"
+
+          # Clean up download folders
+          rm -rf "tauri/src-tauri/binaries/avrdude-download"
+          rm -rf "tauri/src-tauri/binaries/keystroke-download"
+
+          ls -la tauri/src-tauri/binaries/
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.tauri_target }}
+
+      - name: Cache Rust
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: tauri/src-tauri -> target
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 20
+          cache: 'npm'
+          cache-dependency-path: tauri/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: tauri
+        run: npm install
+
+      - name: Build Tauri app
+        uses: tauri-apps/tauri-action@v0
+        with:
+          projectPath: tauri
+          tauriScript: npx tauri
+          args: ${{ matrix.tauri_args }}
+
+      - name: Upload Tauri installers
+        uses: actions/upload-artifact@v6
+        with:
+          name: tauri-installers-${{ matrix.target }}
+          path: |
+            tauri/src-tauri/target/release/bundle/nsis/*.exe
+            tauri/src-tauri/target/release/bundle/msi/*.msi
+          retention-days: 7
+
+  update-nightly-sha:
+    name: Update Nightly SHA
+    needs: [build-tauri, check-changes]
+    if: needs.check-changes.outputs.should_build == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Save current SHA
+        run: echo "${{ github.sha }}" > nightly-last-sha.txt
+
+      - name: Cache SHA for next run
+        uses: actions/cache/save@v4
+        with:
+          path: nightly-last-sha.txt
+          key: nightly-sha-${{ github.run_id }}
