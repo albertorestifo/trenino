@@ -132,7 +132,7 @@ jobs:
           BURRITO_TARGET: ${{ matrix.target }}
 
       - name: Upload Elixir binary
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: elixir-${{ matrix.target }}
           path: burrito_out/${{ matrix.binary_name }}
@@ -171,7 +171,7 @@ jobs:
 
       - name: Upload keystroke binary (Windows)
         if: runner.os == 'Windows'
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: keystroke-${{ matrix.target }}
           path: tauri/keystroke/target/release/keystroke.exe
@@ -179,7 +179,7 @@ jobs:
 
       - name: Upload keystroke binary (Unix)
         if: runner.os != 'Windows'
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: keystroke-${{ matrix.target }}
           path: tauri/keystroke/target/release/keystroke
@@ -209,7 +209,7 @@ jobs:
           ls -la
 
       - name: Upload avrdude binary
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: avrdude-${{ matrix.target }}
           path: |
