@@ -136,6 +136,7 @@ defmodule Trenino.Serial.Connection.DeviceConnection do
     do: "No Trenino firmware detected"
 
   defp format_error_reason(:timeout), do: "Connection timed out"
+  defp format_error_reason(:port_timed_out), do: "Device not responding"
 
   defp format_error_reason(reason) when is_atom(reason) do
     reason |> Atom.to_string() |> String.replace("_", " ") |> String.capitalize()

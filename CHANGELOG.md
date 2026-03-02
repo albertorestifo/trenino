@@ -50,6 +50,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- Serial connection GenServer crashing when Bluetooth or unresponsive devices cause `:port_timed_out` exits during port open or device discovery, taking down all device tracking ([#46](https://github.com/albertorestifo/trenino/issues/46))
 - Firmware flashing via avrdude is now more robust with automatic retry on transient failures
 - Flaky CI tests for firmware uploader and upload history ordering
 - Train detection failing for freight trains where locomotive and wagons have different class prefixes

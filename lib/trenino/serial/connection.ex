@@ -485,12 +485,23 @@ defmodule Trenino.Serial.Connection do
     conn = DeviceConnection.new(port, pid)
     state_with_conn = State.put(state, conn)
 
-    case UART.open(pid, port,
-           active: false,
-           speed: 115_200,
-           framing: Framing,
-           rx_framing_timeout: 1_000
-         ) do
+    # UART.open is a GenServer.call to the UART process. If the UART process's
+    # internal port communication times out, it calls exit(:port_timed_out),
+    # which propagates through GenServer.call as an exit signal. We catch it
+    # here to prevent crashing the Connection GenServer.
+    result =
+      try do
+        UART.open(pid, port,
+          active: false,
+          speed: 115_200,
+          framing: Framing,
+          rx_framing_timeout: 1_000
+        )
+      catch
+        :exit, reason -> {:error, reason}
+      end
+
+    case result do
       :ok ->
         Logger.info("Connected to device on port #{port}")
         updated_state = State.update(state_with_conn, port, &DeviceConnection.mark_discovering/1)
@@ -515,13 +526,26 @@ defmodule Trenino.Serial.Connection do
   end
 
   defp do_discover(%DeviceConnection{port: port} = conn, pid, state) do
-    with {:ok, identity} <- Discovery.discover(pid),
-         :ok <- UART.configure(pid, active: true) do
-      Logger.info("Discovered device #{inspect(identity)} on port #{port}")
-      updated_state = State.put(state, DeviceConnection.mark_connected(conn, identity))
-      broadcast_update(updated_state)
-      {:noreply, updated_state}
-    else
+    # Discovery calls UART functions (read/write/drain/flush) that can exit
+    # with :port_timed_out if the UART port driver becomes unresponsive.
+    # Catch these exits to prevent crashing the Connection GenServer.
+    result =
+      try do
+        with {:ok, identity} <- Discovery.discover(pid),
+             :ok <- UART.configure(pid, active: true) do
+          {:ok, identity}
+        end
+      catch
+        :exit, reason -> {:error, reason}
+      end
+
+    case result do
+      {:ok, identity} ->
+        Logger.info("Discovered device #{inspect(identity)} on port #{port}")
+        updated_state = State.put(state, DeviceConnection.mark_connected(conn, identity))
+        broadcast_update(updated_state)
+        {:noreply, updated_state}
+
       {:error, reason} ->
         Logger.error("Failed to discover/configure device on port #{port}: #{inspect(reason)}")
         # Store the error reason before disconnecting
