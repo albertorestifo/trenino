@@ -6,6 +6,9 @@ on:
   pull_request:
     branches: [master, main]
 
+permissions:
+  contents: read
+
 env:
   MIX_ENV: test
   ELIXIR_VERSION: "1.19"

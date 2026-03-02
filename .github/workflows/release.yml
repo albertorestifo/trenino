@@ -10,6 +10,9 @@ on:
         required: true
         type: string
 
+permissions:
+  contents: read
+
 env:
   ELIXIR_VERSION: "1.19"
   OTP_VERSION: "28"
@@ -29,12 +32,16 @@ jobs:
 
       - name: Get and verify version
         id: get-version
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          TAG_NAME: ${{ github.event.release.tag_name }}
+          INPUT_VERSION: ${{ github.event.inputs.version }}
         run: |
           # Get expected version from tag or input
-          if [ "${{ github.event_name }}" = "release" ]; then
-            EXPECTED="${{ github.event.release.tag_name }}"
+          if [ "$EVENT_NAME" = "release" ]; then
+            EXPECTED="$TAG_NAME"
           else
-            EXPECTED="${{ github.event.inputs.version }}"
+            EXPECTED="$INPUT_VERSION"
           fi
           # Remove 'v' prefix if present
           EXPECTED="${EXPECTED#v}"
@@ -228,6 +235,11 @@ jobs:
             avrdude_ext: ".exe"
 
     steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@v2
+        with:
+          egress-policy: audit
+
       - name: Checkout code
         uses: actions/checkout@v6
 

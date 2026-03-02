@@ -19,6 +19,11 @@ jobs:
       actions: read
 
     steps:
+      - name: Harden Runner
+        uses: step-security/harden-runner@v2
+        with:
+          egress-policy: audit
+
       - name: Checkout repository with full history
         uses: actions/checkout@v6
         with:
