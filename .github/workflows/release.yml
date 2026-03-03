@@ -244,19 +244,19 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Download Elixir binary
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: elixir-${{ matrix.target }}
           path: tauri/src-tauri/binaries
 
       - name: Download avrdude
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: avrdude-${{ matrix.target }}
           path: tauri/src-tauri/binaries/avrdude-download
 
       - name: Download keystroke
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: keystroke-${{ matrix.target }}
           path: tauri/src-tauri/binaries/keystroke-download
