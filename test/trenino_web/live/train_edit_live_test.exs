@@ -1,5 +1,5 @@
 defmodule TreninoWeb.TrainEditLiveTest do
-  use TreninoWeb.ConnCase, async: true
+  use TreninoWeb.ConnCase, async: false
 
   import Phoenix.LiveViewTest
 

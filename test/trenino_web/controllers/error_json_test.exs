@@ -1,5 +1,5 @@
 defmodule TreninoWeb.ErrorJSONTest do
-  use TreninoWeb.ConnCase, async: true
+  use TreninoWeb.ConnCase, async: false
 
   test "renders 404" do
     assert TreninoWeb.ErrorJSON.render("404.json", %{}) == %{errors: %{detail: "Not Found"}}

@@ -1,5 +1,5 @@
 defmodule TreninoWeb.HealthControllerTest do
-  use TreninoWeb.ConnCase, async: true
+  use TreninoWeb.ConnCase, async: false
 
   describe "GET /api/health" do
     test "returns 200 with ok status when database is ready", %{conn: conn} do

@@ -1,5 +1,5 @@
 defmodule Trenino.Train.NotchTest do
-  use Trenino.DataCase, async: true
+  use Trenino.DataCase, async: false
 
   alias Trenino.Train.Notch
 

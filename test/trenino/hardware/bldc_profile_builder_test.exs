@@ -1,7 +1,7 @@
 defmodule Trenino.Hardware.BLDCProfileBuilderTest do
   @moduledoc false
 
-  use Trenino.DataCase, async: true
+  use Trenino.DataCase, async: false
 
   alias Trenino.Hardware.BLDCProfileBuilder
   alias Trenino.Serial.Protocol.LoadBLDCProfile

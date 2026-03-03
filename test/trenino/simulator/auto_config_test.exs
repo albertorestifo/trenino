@@ -1,5 +1,5 @@
 defmodule Trenino.Simulator.AutoConfigTest do
-  use Trenino.DataCase, async: true
+  use Trenino.DataCase, async: false
 
   alias Trenino.Simulator.AutoConfig
   alias Trenino.Simulator.Config
