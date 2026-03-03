@@ -1,7 +1,13 @@
 name: Dependabot PR Analyzer
 
 on:
-  pull_request:
+  # SECURITY: Uses pull_request_target so Dependabot PRs can access secrets.
+  # Safety measures against "pwn request" attacks:
+  #   1. Checkout explicitly targets the default branch (not PR head)
+  #   2. Only triggers for dependabot[bot] (if condition + allowed_bots)
+  #   3. No untrusted PR data (title/body) interpolated into shell commands
+  #   4. Minimal permissions (read contents, write PRs)
+  pull_request_target:
     types: [opened]
 
 jobs:
@@ -24,6 +30,10 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v6
         with:
+          # SECURITY: Explicitly checkout the base branch, NOT the PR head.
+          # With pull_request_target, secrets are available. Checking out
+          # untrusted PR code would allow secret exfiltration.
+          ref: ${{ github.event.repository.default_branch }}
           fetch-depth: 1
 
       - name: Analyze with Claude

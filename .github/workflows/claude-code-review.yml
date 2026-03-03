@@ -6,10 +6,13 @@ on:
 
 jobs:
   claude-review:
-    # Skip draft PRs and PRs created by claude[bot] (avoids circular reviews)
+    # Skip draft PRs, PRs by claude[bot] (circular reviews), and dependabot PRs
+    # (handled by dependabot-analyzer workflow). Dependabot cannot access secrets
+    # in pull_request events, so this would always fail.
     if: |
       !github.event.pull_request.draft &&
-      github.event.pull_request.user.login != 'claude[bot]'
+      github.event.pull_request.user.login != 'claude[bot]' &&
+      github.event.pull_request.user.login != 'dependabot[bot]'
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -33,7 +36,6 @@ jobs:
         uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
-          allowed_bots: "dependabot[bot]"
           prompt: |
             REPO: ${{ github.repository }}
             PR NUMBER: ${{ github.event.pull_request.number }}
