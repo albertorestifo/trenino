@@ -99,7 +99,8 @@ defmodule Trenino.Simulator.Connection do
   @impl true
   def init(:ok) do
     # Attempt initial connection after a short delay
-    schedule_connect(1_000)
+    delay = Application.get_env(:trenino, :connection_initial_delay_ms, 1_000)
+    schedule_connect(delay)
     {:ok, ConnectionState.new()}
   end
 

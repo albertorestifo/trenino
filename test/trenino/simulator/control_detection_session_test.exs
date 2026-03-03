@@ -384,8 +384,8 @@ defmodule Trenino.Simulator.ControlDetectionSessionTest do
 
       {:ok, pid} = ControlDetectionSession.start(client, self())
 
-      # Should NOT receive detection (wait a bit to make sure)
-      refute_receive {:control_detected, _}, 500
+      # Should NOT receive detection — wait long enough for 2 poll cycles (150ms each)
+      refute_receive {:control_detected, _}, 350
 
       # Session should still be running
       assert Process.alive?(pid)

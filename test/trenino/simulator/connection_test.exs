@@ -49,7 +49,7 @@ defmodule Trenino.Simulator.ConnectionTest do
     receive do
       {:simulator_status_changed, _} -> drain_status_messages()
     after
-      100 -> :ok
+      10 -> :ok
     end
   end
 
