@@ -28,7 +28,7 @@ jobs:
     steps:
       - name: Restore cached SHA
         id: cache-sha
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v5
         with:
           path: nightly-last-sha.txt
           key: nightly-sha-dummy
@@ -350,7 +350,7 @@ jobs:
         run: echo "${{ github.sha }}" > nightly-last-sha.txt
 
       - name: Cache SHA for next run
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v5
         with:
           path: nightly-last-sha.txt
           key: nightly-sha-${{ github.run_id }}
