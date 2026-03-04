@@ -111,7 +111,8 @@ defmodule TreninoWeb.ConfigurationEditLive do
      |> assign(:calibrating_input, nil)
      |> assign(:calibration_session_state, nil)
      |> assign(:show_apply_modal, false)
-     |> assign(:show_delete_modal, false)}
+     |> assign(:show_delete_modal, false)
+     |> assign(:bldc_enabled, Application.get_env(:trenino, :enable_bldc_levers, false))}
   end
 
   defp mount_existing(socket, config_id) do
@@ -154,7 +155,8 @@ defmodule TreninoWeb.ConfigurationEditLive do
          |> assign(:calibrating_input, nil)
          |> assign(:calibration_session_state, nil)
          |> assign(:show_apply_modal, false)
-         |> assign(:show_delete_modal, false)}
+         |> assign(:show_delete_modal, false)
+         |> assign(:bldc_enabled, Application.get_env(:trenino, :enable_bldc_levers, false))}
 
       {:error, :not_found} ->
         {:ok,
@@ -1391,7 +1393,10 @@ defmodule TreninoWeb.ConfigurationEditLive do
               <.input
                 field={@form[:input_type]}
                 type="select"
-                options={[{"Analog", :analog}, {"Button", :button}, {"BLDC Lever", :bldc_lever}]}
+                options={
+                  [{"Analog", :analog}, {"Button", :button}] ++
+                    if(@bldc_enabled, do: [{"BLDC Lever", :bldc_lever}], else: [])
+                }
                 class="select select-bordered w-full"
               />
             </div>

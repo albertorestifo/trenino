@@ -66,3 +66,6 @@ config :trenino, :detection_grace_period_ms, 200
 
 # Skip initial connection delay in tests (1s in production)
 config :trenino, :connection_initial_delay_ms, 0
+
+# Enable BLDC levers in tests so BLDC-related tests pass
+config :trenino, :enable_bldc_levers, true

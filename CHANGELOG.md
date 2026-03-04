@@ -8,16 +8,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
-- **BLDC haptic lever support** for programmable force feedback
-  - New `:bldc_lever` input type for hardware inputs backed by a brushless DC motor
-  - `BLDCProfileBuilder` converts `LeverConfig` notch data to `LoadBLDCProfile` protocol messages
-  - `LeverController` automatically loads/unloads BLDC profiles when trains activate and deactivate
-  - `LeverAnalyzer` generates default BLDC haptic parameters during calibration (gate notches get strong detents, linear ranges get smooth damping)
-  - Setup wizard and Device Settings UI expose BLDC lever configuration
-  - `LeverConfig` schema adds `bldc_snap_point` (50–150) and `bldc_endstop_strength` (0–255) fields
-  - `Notch` schema adds `bldc_detent_strength` and `bldc_damping` fields (0–255, replaces previous per-notch engagement/hold/exit fields)
-  - New protocol messages: `LoadBLDCProfile` (0x0B), `DeactivateBLDCProfile` (0x0C), `RetryCalibration` (0x08)
-  - See [BLDC Lever Documentation](docs/features/bldc-levers.md) for hardware requirements and setup
 - **Lua scripting system for train automation**
   - New Script schema and database migration for storing Lua scripts per train
   - ScriptEngine providing sandboxed Lua execution environment with Trenino API
@@ -45,8 +35,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - REST API expanded with new endpoints for outputs (`/api/outputs`), scripts (`/api/scripts`), and trains (`/api/trains`)
 - Script execution integrated with hardware input monitoring and train activation events
 - MCP tool registry architecture supports dynamic tool registration and categorization
-- **BLDC levers now use firmware-side self-calibration** - firmware reports discrete detent indices (0, 1, 2, ...) instead of raw analog values; `LeverMapper.map_detent/2` maps each index to the corresponding gate notch's simulator value, bypassing the analog normalization pipeline entirely
-- **BLDC lever motor enable pin consolidated** - dual `motor_enable_a`/`motor_enable_b` hardware fields replaced by a single optional `motor_enable` field; existing data is automatically migrated
 
 ### Fixed
 

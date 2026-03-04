@@ -63,6 +63,9 @@ config :trenino, TreninoWeb.Endpoint,
 # Enable dev routes for dashboard and mailbox
 config :trenino, dev_routes: true
 
+# Enable BLDC haptic lever support (dev-only feature, not included in production builds)
+config :trenino, :enable_bldc_levers, true
+
 # Do not include metadata nor timestamps in development logs
 config :logger, :default_formatter, format: "[$level] $message\n"
 

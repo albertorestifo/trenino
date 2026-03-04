@@ -94,10 +94,14 @@ defmodule TreninoWeb.LeverSetupWizard do
 
   # Initialize wizard state
   defp initialize_wizard(socket, %Element{} = element) do
-    # Get all calibrated analog and BLDC lever inputs
+    bldc_enabled? = Application.get_env(:trenino, :enable_bldc_levers, false)
+
+    # Get all calibrated analog (and BLDC lever if enabled) inputs
+    allowed_types = if bldc_enabled?, do: [:analog, :bldc_lever], else: [:analog]
+
     available_inputs =
       Hardware.list_all_inputs()
-      |> Enum.filter(&(&1.input_type in [:analog, :bldc_lever]))
+      |> Enum.filter(&(&1.input_type in allowed_types))
 
     # Check for existing lever config
     existing_config = element.lever_config
@@ -110,6 +114,7 @@ defmodule TreninoWeb.LeverSetupWizard do
     steps = if editing_mode, do: @steps_edit, else: @steps_new
 
     socket
+    |> assign(:bldc_enabled, bldc_enabled?)
     |> assign(:current_step, :select_lever_type)
     |> assign(:available_inputs, available_inputs)
     |> assign(:selected_input_id, existing_input_id)
@@ -875,6 +880,7 @@ defmodule TreninoWeb.LeverSetupWizard do
     ~H"""
     <.step_select_lever_type
       selected_lever_type={@socket_assigns.selected_lever_type}
+      bldc_enabled={@socket_assigns.bldc_enabled}
       can_proceed={can_proceed_from?(:select_lever_type, @socket_assigns)}
       myself={@myself}
     />
@@ -938,6 +944,7 @@ defmodule TreninoWeb.LeverSetupWizard do
 
   # Step 0: Select Lever Type
   attr :selected_lever_type, :atom, default: nil
+  attr :bldc_enabled, :boolean, required: true
   attr :can_proceed, :boolean, required: true
   attr :myself, :any, required: true
 
@@ -977,11 +984,14 @@ defmodule TreninoWeb.LeverSetupWizard do
             </div>
           </label>
 
-          <label class={[
-            "flex items-start gap-4 p-4 rounded-lg border-2 cursor-pointer transition-colors",
-            @selected_lever_type == :bldc && "border-primary bg-primary/10",
-            @selected_lever_type != :bldc && "border-base-300 hover:border-base-content/30"
-          ]}>
+          <label
+            :if={@bldc_enabled}
+            class={[
+              "flex items-start gap-4 p-4 rounded-lg border-2 cursor-pointer transition-colors",
+              @selected_lever_type == :bldc && "border-primary bg-primary/10",
+              @selected_lever_type != :bldc && "border-base-300 hover:border-base-content/30"
+            ]}
+          >
             <input
               type="radio"
               name="lever_type"
