@@ -100,9 +100,10 @@ defmodule Trenino.Hardware.InputDetectionSession do
     input_type = Keyword.get(opts, :input_type, :any)
     timeout_ms = Keyword.get(opts, :timeout_ms, @default_timeout_ms)
 
-    pin_lookup = build_pin_lookup()
+    connected = Connection.connected_devices()
+    pin_lookup = build_pin_lookup(connected)
 
-    subscribe_to_ports()
+    subscribe_to_ports(connected)
 
     timeout_timer = Process.send_after(self(), :timeout, timeout_ms)
 
@@ -189,9 +190,8 @@ defmodule Trenino.Hardware.InputDetectionSession do
     Map.put(input_info, :value, value)
   end
 
-  defp build_pin_lookup do
+  defp build_pin_lookup(connected) do
     devices = Hardware.list_configurations(preload: [:inputs])
-    connected = Connection.connected_devices()
 
     # Build a map of config_id → port for connected devices
     config_id_to_port =
@@ -225,13 +225,12 @@ defmodule Trenino.Hardware.InputDetectionSession do
     end)
   end
 
-  defp subscribe_to_ports do
+  defp subscribe_to_ports(connected) do
     # Always subscribe to the test port for testing purposes
     Phoenix.PubSub.subscribe(Trenino.PubSub, "#{@input_values_topic}:#{@test_port}")
 
     # Subscribe to each connected device's port
-    Connection.connected_devices()
-    |> Enum.each(fn device_conn ->
+    Enum.each(connected, fn device_conn ->
       Phoenix.PubSub.subscribe(
         Trenino.PubSub,
         "#{@input_values_topic}:#{device_conn.port}"

@@ -41,7 +41,11 @@ defmodule Trenino.Hardware.InputDetectionSessionTest do
       {:ok, pid} = InputDetectionSession.start(self(), input_type: :button, timeout_ms: 5_000)
 
       on_exit(fn ->
-        if is_pid(pid) and Process.alive?(pid), do: InputDetectionSession.stop(pid)
+        try do
+          InputDetectionSession.stop(pid)
+        catch
+          :exit, _ -> :ok
+        end
       end)
 
       %{device: device, button: button, pid: pid}
@@ -112,7 +116,11 @@ defmodule Trenino.Hardware.InputDetectionSessionTest do
       {:ok, pid} = InputDetectionSession.start(self(), input_type: :analog, timeout_ms: 5_000)
 
       on_exit(fn ->
-        if is_pid(pid) and Process.alive?(pid), do: InputDetectionSession.stop(pid)
+        try do
+          InputDetectionSession.stop(pid)
+        catch
+          :exit, _ -> :ok
+        end
       end)
 
       %{device: device, analog: analog, pid: pid}
@@ -171,7 +179,11 @@ defmodule Trenino.Hardware.InputDetectionSessionTest do
       {:ok, pid} = InputDetectionSession.start(self(), input_type: :any, timeout_ms: 5_000)
 
       on_exit(fn ->
-        if is_pid(pid) and Process.alive?(pid), do: InputDetectionSession.stop(pid)
+        try do
+          InputDetectionSession.stop(pid)
+        catch
+          :exit, _ -> :ok
+        end
       end)
 
       %{device: device, button: button, analog: analog, pid: pid}
@@ -199,9 +211,10 @@ defmodule Trenino.Hardware.InputDetectionSessionTest do
   describe "timeout" do
     test "sends detection_timeout after configured timeout" do
       {:ok, pid} = InputDetectionSession.start(self(), input_type: :any, timeout_ms: 100)
+      ref = Process.monitor(pid)
 
       assert_receive {:detection_timeout}, 500
-      refute Process.alive?(pid)
+      assert_receive {:DOWN, ^ref, :process, ^pid, :normal}, 500
     end
 
     test "uses default timeout of 60 seconds when not specified" do
@@ -240,7 +253,11 @@ defmodule Trenino.Hardware.InputDetectionSessionTest do
       {:ok, pid} = InputDetectionSession.start(self(), input_type: :any, timeout_ms: 5_000)
 
       on_exit(fn ->
-        if is_pid(pid) and Process.alive?(pid), do: InputDetectionSession.stop(pid)
+        try do
+          InputDetectionSession.stop(pid)
+        catch
+          :exit, _ -> :ok
+        end
       end)
 
       %{pid: pid}
