@@ -126,6 +126,11 @@ end
 
 ## Workflow
 
+> **Note:** When connected via MCP (Claude Desktop or Claude Code), use the MCP tools
+> (`list_trains`, `get_train`, `list_simulator_endpoints`, etc.) instead of the REST API
+> endpoints listed below. The REST API documentation is kept for reference and for
+> non-MCP contexts (e.g., external integrations).
+
 When creating or modifying scripts:
 
 1. **Discover available outputs**: Use `GET /api/outputs` to list hardware outputs with their IDs, names, pins, and devices.
