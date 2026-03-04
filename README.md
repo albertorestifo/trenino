@@ -3,16 +3,17 @@
 </p>
 
 <h1 align="center">Trenino</h1>
-<p align="center"><em>Train Sim World + Arduino • "Model train" in Italian</em></p>
+<p align="center"><em>Train Sim World + Arduino · "Model train" in Italian</em></p>
 
 <p align="center">
   <strong>Bridge your custom hardware to Train Sim World</strong>
 </p>
 
 <p align="center">
-  <a href="#what-you-can-do">What You Can Do</a> •
-  <a href="#getting-started">Getting Started</a> •
-  <a href="#roadmap">Roadmap</a>
+  <a href="#features">Features</a> ·
+  <a href="#getting-started">Getting Started</a> ·
+  <a href="#supported-hardware">Supported Hardware</a> ·
+  <a href="#development">Development</a>
 </p>
 
 <p align="center">
@@ -20,110 +21,71 @@
   <img src="https://img.shields.io/badge/License-CC%20BY--NC-green" alt="License">
 </p>
 
----
-
-## What You Can Do
+## Features
 
 **[See Trenino in action!](https://www.youtube.com/watch?v=FcnUJaJU0Wo)**
 
-Trenino bridges the gap between physical hardware and Train Sim World.
-Build your own train controls with real throttle levers, brake handles, switches, and gauges—then connect them to the game through a simple desktop app.
-No programming required. Just wire up your Arduino, flash the firmware with one click, and start driving.
+Build your own train controls with real throttle levers, brake handles, switches, and gauges — then connect them to Train Sim World through a simple desktop app. No programming required. Wire up your Arduino, flash the firmware with one click, and start driving.
 
-- **Flash Arduino boards** directly from the app with pre-built firmware
-- **Calibrate your controls** with a guided step-by-step process
-- **Auto-detect trains** and load saved configurations automatically
-- **Map any control** to simulator inputs using the built-in API explorer
-- **Set up trains with Claude AI** — describe what you want in plain language and let Claude configure buttons, LEDs, and sequences for you via [MCP integration](docs/mcp-setup.md)
-
----
+- **One-click firmware flashing** — flash Arduino boards directly from the app, no extra software needed
+- **Guided calibration** — step-by-step process to calibrate your levers and controls
+- **Auto-detection** — automatically recognizes which train you're driving and loads the right configuration
+- **Visual control mapping** — map any hardware input to simulator controls using the built-in API explorer
+- **Lua scripting** — write custom logic to flash warning LEDs, react to speed changes, automate sequences, and more ([scripting guide](docs/lua-scripting.md))
+- **AI-assisted setup** — describe what you want in plain language and let Claude configure your train via [MCP integration](docs/mcp-setup.md)
 
 ## Getting Started
 
 ### Requirements
 
-- Train Sim World 6 with External Interface API enabled. See [How to Enable the TSW API](#how-to-enable-the-tsw-api).
-- An Arduino-compatible micro-controller. See [Supported Hardware](#supported-hardware).
+- **Train Sim World 6** with the External Interface API enabled (see [below](#enabling-the-tsw-api))
+- **An Arduino board** — see [Supported Hardware](#supported-hardware)
 
 ### Installation
 
 Download the latest release for Windows from the [Releases page](https://github.com/albertorestifo/trenino/releases).
 
-### Setup and usage
+### Enabling the TSW API
 
-See the video tutorial (WIP).
+Train Sim World 6 ships with an External Interface API for third-party apps. To enable it:
 
----
+1. Right-click **Train Sim World 6** in Steam → **Properties**
+2. In the **General** tab, add `-HTTPAPI` to **Launch Options**
+3. Launch the game once to generate the API key
+
+Trenino detects the API key automatically on startup.
+
+## Supported Hardware
+
+| Board | MCU | Analog Inputs | Digital I/O | Status |
+|---|---|---|---|---|
+| Arduino Nano | ATmega328P | 8 | 14 | Fully tested |
+| Arduino Nano (Old Bootloader) | ATmega328P | 8 | 14 | Fully tested |
+| SparkFun Pro Micro | ATmega32U4 | 12 | 18 | Fully tested |
+| Arduino Uno | ATmega328P | 6 | 14 | Supported |
+| Arduino Leonardo | ATmega32U4 | 12 | 20 | Supported |
+| Arduino Micro | ATmega32U4 | 12 | 20 | Supported |
+| Arduino Mega 2560 | ATmega2560 | 16 | 54 | Supported |
+
+All boards can be flashed directly from Trenino.
 
 ## Development
 
 ```bash
-# Clone and setup
 git clone https://github.com/albertorestifo/trenino.git
 cd trenino
 mix deps.get
 mix ecto.setup
-
-# Run the server
 mix phx.server
 ```
 
-Visit [http://localhost:4000](http://localhost:4000)
-
-See the [docs](docs/) folder for architecture and development guides.
-
----
-
-## How to Enable the TSW API
-
-Train Sim World 6 includes an External Interface API that allows third-party applications to communicate with the simulator. To enable it:
-
-### 1. Add the Launch Flag
-
-1. Right-click Train Sim World 6 in Steam
-2. Select **Properties**
-3. In the **General** tab, find **Launch Options**
-4. Add `-HTTPAPI`
-
-### 2. Launch the game
-
-The game must be launched to generate the API key for the first time.
-Trenino will automatically detect the API key when started.
-
----
-
-## Supported Hardware
-
-Trenino supports the following Arduino-compatible boards:
-
-| Board                         | MCU        | Analog Inputs | Digital I/O |
-| ----------------------------- | ---------- | ------------- | ----------- |
-| Arduino Uno                   | ATmega328P | 6             | 14          |
-| Arduino Nano                  | ATmega328P | 8             | 14          |
-| Arduino Nano (Old Bootloader) | ATmega328P | 8             | 14          |
-| Arduino Leonardo              | ATmega32U4 | 12            | 20          |
-| Arduino Micro                 | ATmega32U4 | 12            | 20          |
-| Arduino Mega 2560             | ATmega2560 | 16            | 54          |
-| SparkFun Pro Micro            | ATmega32U4 | 12            | 18          |
-
-**Recommended boards:**
-
-- **Arduino Nano** - Compact and affordable, great for simple setups with a few levers
-- **Arduino Mega 2560** - Best for complex builds with many inputs
-- **SparkFun Pro Micro** - Small form factor with native USB
-
-All boards can be flashed directly from Trenino without any additional software.
-
----
+Visit [localhost:4000](http://localhost:4000). See the [docs](docs/) folder for architecture and development guides.
 
 ## License
 
-[CC BY-NC 4.0](https://creativecommons.org/licenses/by-nc/4.0/) - Free to use and modify for non-commercial purposes.
-
+[CC BY-NC 4.0](https://creativecommons.org/licenses/by-nc/4.0/) — free to use and modify for non-commercial purposes.
 For commercial licensing, contact [alberto@restifo.dev](mailto:alberto@restifo.dev).
-
----
 
 ## Acknowledgment
 
-This project was inspired by [MobiFlight](https://www.mobiflight.com/en/index.html).
+Inspired by [MobiFlight](https://www.mobiflight.com/en/index.html).
