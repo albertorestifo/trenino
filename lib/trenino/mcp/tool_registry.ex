@@ -8,6 +8,7 @@ defmodule Trenino.MCP.ToolRegistry do
 
   alias Trenino.MCP.Tools.{
     ButtonBindingTools,
+    DetectionTools,
     DeviceTools,
     ElementTools,
     OutputBindingTools,
@@ -23,7 +24,8 @@ defmodule Trenino.MCP.ToolRegistry do
     DeviceTools,
     OutputBindingTools,
     ButtonBindingTools,
-    SequenceTools
+    SequenceTools,
+    DetectionTools
   ]
 
   @type tool_def :: %{
