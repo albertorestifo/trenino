@@ -26,7 +26,12 @@ defmodule TreninoWeb.Router do
   scope "/", TreninoWeb do
     pipe_through :browser
 
-    live_session :default, on_mount: TreninoWeb.NavHook, layout: {TreninoWeb.Layouts, :app} do
+    live_session :default,
+      on_mount: [
+        {TreninoWeb.NavHook, :default},
+        {TreninoWeb.MCPDetectionHook, :default}
+      ],
+      layout: {TreninoWeb.Layouts, :app} do
       live "/", ConfigurationListLive
       live "/configurations/:config_id", ConfigurationEditLive
       live "/simulator/config", SimulatorConfigLive
