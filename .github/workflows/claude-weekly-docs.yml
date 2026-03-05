@@ -139,88 +139,109 @@ jobs:
           prompt: |
             # Weekly Documentation Review Task
 
-            You are conducting an automated weekly documentation review for the Trenino project. Your task is to analyze the commits from the past week and update documentation as needed.
+            You are a technical writer conducting a deep weekly documentation review for the Trenino project — an Elixir/Phoenix application with a Tauri frontend that interfaces physical hardware controls with Train Sim World.
+
+            ## Audience Definitions
+
+            Every documentation file serves one of two audiences. Keep this in mind for tone, depth, and what to include:
+
+            - **End users**: People setting up and using Trenino with their hardware and Train Sim World. They care about how to install, configure, and use features. They don't care about internal architecture or code patterns. Write clearly, assume no Elixir knowledge.
+            - **Developers**: Contributors to the Trenino codebase. They care about architecture, design decisions, code patterns, and how systems interconnect. Assume Elixir/Phoenix familiarity.
+
+            | File | Audience | Purpose |
+            |------|----------|---------|
+            | `README.md` | Both (end-user first) | Project overview, quick start, feature summary |
+            | `CHANGELOG.md` | Both | Release history (Keep a Changelog format) |
+            | `docs/getting-started.md` | End users | Installation and first-run guide |
+            | `docs/hardware-setup.md` | End users | Physical hardware configuration |
+            | `docs/train-configuration.md` | End users | Train profile setup and binding |
+            | `docs/mcp-setup.md` | End users | MCP integration setup |
+            | `docs/lua-scripting.md` | End users | Writing Lua scripts for automation |
+            | `docs/TSW_API_GUIDE.md` | Both | Train Sim World API reference |
+            | `docs/architecture.md` | Developers | System architecture and design |
+            | `docs/development.md` | Developers | Development setup and workflow |
+            | `docs/control_auto_suggestion.md` | Developers | Auto-suggestion system design |
+            | `docs/lever_input_mapping_architecture.md` | Developers | Lever mapping internals |
+            | `docs/features/bldc-levers.md` | Both | BLDC lever feature documentation |
+            | `CLAUDE.md` | Developers (AI agents) | Coding guidelines for AI assistants |
+            | `AGENTS.md` | Developers (AI agents) | Agent-specific instructions |
 
             ## Context
 
-            Commit data has been prepared for you:
-            - **Commits**: `/tmp/recent_commits.txt` - Contains filtered commits from the last 7 days (excluding dependency-only, CI-only, and test-only changes)
-            - **Changed files**: `/tmp/changed_files.txt` - Lists all files changed in those commits
-
-            ## Documentation Files to Review
-
-            Core documentation:
-            - `README.md` - Main project documentation
-            - `CHANGELOG.md` - Project changelog (follows Keep a Changelog format)
-            - `CLAUDE.md` - Claude Code instructions
-            - `AGENTS.md` - Agent-specific instructions
-
-            Feature documentation in `docs/`:
-            - `getting-started.md`
-            - `hardware-setup.md`
-            - `train-configuration.md`
-            - `architecture.md`
-            - `development.md`
-            - `TSW_API_GUIDE.md`
-            - `control_auto_suggestion.md`
-            - `lever_input_mapping_architecture.md`
+            Commit data from the past week has been prepared:
+            - `/tmp/recent_commits.txt` — Filtered commits (excluding deps, CI, test-only)
+            - `/tmp/changed_files.txt` — Files changed in those commits
 
             ## Your Task
 
-            1. **Read and analyze commits**:
-               - Read `/tmp/recent_commits.txt` to understand what changed
-               - Read `/tmp/changed_files.txt` to see which files were modified
-               - Categorize changes: new features, bug fixes, refactoring, improvements, etc.
+            ### Phase 1: Understand what changed
 
-            2. **Identify documentation impacts**:
-               - Determine which documentation files might need updates
-               - Focus on user-facing changes, new features, API changes, architectural changes
-               - Skip purely internal refactoring unless it affects behavior
+            1. Read `/tmp/recent_commits.txt` and `/tmp/changed_files.txt`
+            2. Read the actual source code of significantly changed files to understand what was built, not just commit messages
+            3. Categorize: new features, behavior changes, new configuration options, new APIs, bug fixes, UX improvements
 
-            3. **Review and update documentation**:
-               - Read relevant documentation files
-               - Update them to reflect the changes from the commits
-               - Maintain existing style and tone
-               - Be precise and concise
-               - For CHANGELOG.md:
-                 - Add entries under "## [Unreleased]" section
-                 - Use categories: Added, Changed, Deprecated, Removed, Fixed, Security
-                 - Follow the existing format exactly
+            ### Phase 2: Audit existing documentation
 
-            4. **Create PR if documentation was updated**:
-               - ONLY create a PR if you actually made documentation changes
-               - If no meaningful updates are needed, just report your findings and exit
-               - Branch name: `docs/weekly-review-$(date +%Y-%m-%d)`
-               - Commit message: "docs: Weekly documentation review for YYYY-MM-DD"
-               - PR title: "docs: Weekly documentation review (YYYY-MM-DD)"
-               - PR body should include:
-                 - Summary of what was reviewed and updated
-                 - List of commits reviewed (with hashes and messages)
-                 - List of documentation files updated with reasons
-                 - Any recommendations for manual review
-                 - Footer: "🤖 Automated by Claude Code weekly documentation review"
-               - Use `gh pr create` to create the PR
+            For each documentation file in the table above:
 
-            5. **Report findings**:
-               - If no updates needed, explain why
-               - If updates made, summarize what was changed
+            1. **Read it fully**
+            2. **Check for gaps**: Are recently added features documented? Are removed features still mentioned? Are there placeholders or TODOs?
+            3. **Check for accuracy**: Do code examples still work? Are configuration options current? Do described workflows match the actual implementation?
+            4. **Check for quality**: Is the writing clear for its target audience? Are there missing examples where they'd help? Are complex features explained well enough? Could a new user/developer actually follow this?
+            5. **Check for completeness**: Are there features in the codebase that have no documentation at all? Look at the source code, not just commits.
+
+            ### Phase 3: Improve documentation
+
+            Go beyond just reflecting commits. Actively improve the docs:
+
+            - **Add missing documentation** for features that exist in code but aren't documented
+            - **Improve explanations** that are too terse or assume too much context
+            - **Add practical examples** where abstract descriptions aren't enough (e.g., example configurations, sample Lua scripts, common workflows)
+            - **Fix stale content** — remove references to features that no longer exist, update outdated instructions
+            - **Improve structure** — reorganize sections if the current flow is confusing, add cross-references between related docs
+            - **Add troubleshooting tips** for common issues you can identify from the codebase (error handling paths, common misconfiguration)
+            - **Update CHANGELOG.md** — add entries under `## [Unreleased]` using categories: Added, Changed, Deprecated, Removed, Fixed, Security
+
+            ### Phase 4: Create PR
+
+            - ONLY create a PR if you actually made documentation changes
+            - If no meaningful updates are needed, report your findings and exit
+            - Branch: `docs/weekly-review-$(date +%Y-%m-%d)`
+            - Commit message: `docs: weekly documentation review for $(date +%Y-%m-%d)`
+
+            PR body format:
+            ```
+            ## Summary
+            [2-3 sentence overview of what was improved and why]
+
+            ## Changes by document
+            - **file.md**: [what changed and why]
+            - ...
+
+            ## Commits reviewed
+            - `hash` message
+            - ...
+
+            ## Notes for reviewer
+            [Anything that needs human judgment — tone, accuracy of examples, whether a section should be split into its own doc, etc.]
+
+            ---
+            🤖 Automated by Claude Code weekly documentation review
+            ```
+
+            Use `gh pr create` to create the PR.
 
             ## Guidelines
 
-            - **Be selective**: Only update documentation if changes are meaningful and user-facing
-            - **Maintain quality**: Match the existing documentation style and quality
-            - **Be accurate**: Ensure all updates accurately reflect the code changes
-            - **Don't over-document**: Skip cosmetic changes, minor refactoring, or internal implementation details
-            - **ONLY create PR if you made changes**: Do not create empty PRs
+            - **Write for the audience**: End-user docs should be friendly and practical. Developer docs should be precise and technical.
+            - **Be substantive**: Don't make trivial wording tweaks. Every change should meaningfully help a reader.
+            - **Read the code**: Don't guess what a feature does from commit messages alone. Read the implementation to write accurate docs.
+            - **Show, don't just tell**: Prefer concrete examples over abstract descriptions, especially in end-user docs.
+            - **Respect existing style**: Match the voice and formatting conventions already established in each file.
+            - **Create new docs if needed**: If a significant feature has zero documentation, create a new file in `docs/` or `docs/features/` and link to it from README.md.
+            - **ONLY create PR if you made changes**: Do not create empty PRs.
 
-            ## Important
-
-            - This is an Elixir/Phoenix project with a Tauri frontend
-            - Follow the coding guidelines in CLAUDE.md and AGENTS.md
-            - The project is a train simulator interface
-            - Focus on changes that affect end users or developers using the system
-
-            Start by reading the commit data and analyzing what changed this week.
+            Start by reading the commit data, then systematically audit each documentation file.
 
       - name: Summary
         if: always()
