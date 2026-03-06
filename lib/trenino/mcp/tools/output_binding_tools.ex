@@ -40,7 +40,13 @@ defmodule Trenino.MCP.Tools.OutputBindingTools do
               type: "integer",
               description: "Hardware output ID from list_hardware_outputs"
             },
-            endpoint: %{type: "string", description: "Simulator endpoint path to monitor"},
+            endpoint: %{
+              type: "string",
+              description:
+                "Simulator endpoint path to monitor, using 'NodePath.EndpointName' format " <>
+                  "(e.g. 'CurrentDrivableActor/AWS.Function.IsWarningSound'). " <>
+                  "Use '/' between nodes and '.' to join the final node to the endpoint."
+            },
             operator: %{
               type: "string",
               enum: ["gt", "gte", "lt", "lte", "between", "eq_true", "eq_false"],
