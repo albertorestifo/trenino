@@ -75,6 +75,22 @@ function normalizeKey(code) {
 
 // Custom hooks for LiveView
 const Hooks = {
+  AutoDismiss: {
+    mounted() {
+      const delay = parseInt(this.el.dataset.dismissAfter || "5000")
+      this.timer = setTimeout(() => {
+        this.el.style.transition = "opacity 200ms ease-in"
+        this.el.style.opacity = "0"
+        setTimeout(() => {
+          this.pushEvent("lv:clear-flash", {key: "info"})
+          this.el.remove()
+        }, 200)
+      }, delay)
+    },
+    destroyed() {
+      clearTimeout(this.timer)
+    }
+  },
   KeystrokeCapture: {
     mounted() {
       // Focus the element immediately when mounted

@@ -10,6 +10,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- Info flash notifications auto-dismiss after 5 seconds
+
 ### Fixed
 
 - Fix crash when opening the "Add Input" modal due to missing `bldc_enabled` assign
