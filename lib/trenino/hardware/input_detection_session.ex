@@ -200,28 +200,35 @@ defmodule Trenino.Hardware.InputDetectionSession do
       end)
 
     Enum.reduce(devices, %{}, fn device, acc ->
-      # Always include inputs under test_port for test support
-      # Also include under the real port if the device is connected
-      ports_for_device =
-        case Map.get(config_id_to_port, device.config_id) do
-          nil -> [@test_port]
-          port -> [port, @test_port]
-        end
+      ports_for_device = ports_for_device(device.config_id, config_id_to_port)
 
       Enum.reduce(device.inputs, acc, fn input, inner_acc ->
-        input_info = %{
-          input_id: input.id,
-          pin: input.pin,
-          input_type: input.input_type,
-          name: input.name,
-          device_id: device.id,
-          device_name: device.name
-        }
-
-        Enum.reduce(ports_for_device, inner_acc, fn port, port_acc ->
-          Map.put(port_acc, {port, input.pin}, input_info)
-        end)
+        add_input_to_lookup(inner_acc, device, input, ports_for_device)
       end)
+    end)
+  end
+
+  # Always include inputs under test_port for test support
+  # Also include under the real port if the device is connected
+  defp ports_for_device(config_id, config_id_to_port) do
+    case Map.get(config_id_to_port, config_id) do
+      nil -> [@test_port]
+      port -> [port, @test_port]
+    end
+  end
+
+  defp add_input_to_lookup(acc, device, input, ports) do
+    input_info = %{
+      input_id: input.id,
+      pin: input.pin,
+      input_type: input.input_type,
+      name: input.name,
+      device_id: device.id,
+      device_name: device.name
+    }
+
+    Enum.reduce(ports, acc, fn port, port_acc ->
+      Map.put(port_acc, {port, input.pin}, input_info)
     end)
   end
 
