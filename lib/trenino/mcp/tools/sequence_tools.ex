@@ -183,6 +183,10 @@ defmodule Trenino.MCP.Tools.SequenceTools do
 
   defp set_commands_if_present(sequence, _args), do: {:ok, sequence}
 
+  defp build_command_attrs(commands) when is_binary(commands) do
+    commands |> Jason.decode!() |> build_command_attrs()
+  end
+
   defp build_command_attrs(commands) do
     commands
     |> Enum.with_index()
