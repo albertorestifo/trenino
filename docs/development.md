@@ -1,6 +1,6 @@
 # Development Guide
 
-Guide for developers contributing to TWS IO.
+Guide for developers contributing to Trenino.
 
 ## Development Setup
 
@@ -84,7 +84,8 @@ lib/
 │   ├── hardware/              # Hardware domain modules
 │   ├── train/                 # Train domain modules
 │   ├── simulator/             # Simulator domain modules
-│   └── serial/                # Serial communication
+│   ├── serial/                # Serial communication
+│   └── mcp/                   # MCP server and tools
 │
 ├── trenino_web/                # Web layer
 │   ├── router.ex              # Routes

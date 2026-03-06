@@ -1,6 +1,6 @@
 # Architecture Overview
 
-TWS IO is built with Elixir and Phoenix LiveView, providing real-time hardware-to-simulator communication with a responsive web interface.
+Trenino is built with Elixir and Phoenix LiveView, providing real-time hardware-to-simulator communication with a responsive web interface.
 
 ## System Components
 
@@ -79,14 +79,15 @@ Model Context Protocol server for AI-powered configuration.
 
 - **Server** - MCP server implementation with SSE transport at `/mcp/sse`
 - **ToolRegistry** - Registry of available MCP tools organized by category
-- **Tools** - 20 tools across 6 categories:
-  - **ElementTools** - Manage train buttons and levers
-  - **TrainTools** - List trains and get configurations
-  - **DeviceTools** - List devices, inputs, and outputs
-  - **ButtonBindingTools** - CRUD operations for button bindings
-  - **OutputBindingTools** - CRUD operations for output bindings
-  - **SequenceTools** - CRUD operations for command sequences
+- **Tools** - 22 tools across 7 categories:
   - **SimulatorTools** - Browse endpoints, read/write simulator values
+  - **TrainTools** - List trains and get configurations
+  - **ElementTools** - Manage train buttons and levers
+  - **DeviceTools** - List devices, inputs, and outputs
+  - **DetectionTools** - Interactive hardware input and simulator endpoint detection (prompts the user via a UI modal)
+  - **OutputBindingTools** - CRUD operations for output bindings
+  - **ButtonBindingTools** - CRUD operations for button bindings
+  - **SequenceTools** - CRUD operations for command sequences
 
 ### Serial Domain (`lib/trenino/serial/`)
 
@@ -227,7 +228,7 @@ SSE (Server-Sent Events) transport implementing Model Context Protocol:
 |----------|-------------|
 | `/mcp/sse` | SSE endpoint for MCP server |
 
-Supports 20 tools across 6 categories for AI-powered train configuration. See [MCP Setup Guide](../docs/mcp-setup.md) for details.
+Supports 22 tools across 7 categories for AI-powered train configuration. See [MCP Setup Guide](../docs/mcp-setup.md) for details.
 
 ## Event Broadcasting (PubSub)
 
@@ -237,3 +238,5 @@ Supports 20 tools across 6 categories for AI-powered train configuration. See [M
 | `train:detection` | Train detected | Active train changed |
 | `simulator:connection` | Status changes | API connection health |
 | `serial:messages:{port}` | Input values | Per-port message stream |
+| `hardware:input_values:{port}` | Input value updates | Per-port hardware input stream (used by InputDetectionSession) |
+| `mcp:detection` | Detection requests/completions | Coordinates MCP detection tools with the UI modal overlay |

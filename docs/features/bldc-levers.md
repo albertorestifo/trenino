@@ -1,6 +1,11 @@
 # BLDC Haptic Levers
 
-> **Work in Progress** — This feature is under active development and only available in development builds. It is not included in production releases. The documentation below describes the current state of the implementation and may change.
+> **Work in Progress** — This feature is under active development and hidden behind a feature flag. It is not included in production releases. The documentation below describes the current state of the implementation and may change.
+>
+> **To enable in development**: set `enable_bldc_levers: true` in `config/dev.exs`:
+> ```elixir
+> config :trenino, enable_bldc_levers: true
+> ```
 
 BLDC (Brushless DC) motor-based haptic levers provide programmable force feedback with virtual detents, enabling realistic haptic simulation of train controls.
 
