@@ -18,10 +18,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   - Claude Skill for AI-assisted Lua script authoring (`.claude/skills/lua-scripting.md`)
 - **Native MCP server for AI-powered train configuration**
   - Built-in MCP server at `/mcp/sse` for integration with Claude Desktop and Claude Code
-  - 20 tools organized across 6 categories: Simulator, Trains, Devices, Output Bindings, Button Bindings, and Sequences
+  - 22 tools organized across 7 categories: Simulator, Trains, Elements, Devices, Detection, Output Bindings, Button Bindings, and Sequences
   - Element tools for managing train buttons and levers directly from AI conversation
+  - **Interactive detection tools** — Claude can now prompt you to press a button or move a lever on your hardware, or interact with a control in Train Sim World, and automatically detect the input/endpoint via a UI modal overlay
   - MCP setup documentation (`docs/mcp-setup.md`) with configuration examples
   - See [MCP Setup Guide](docs/mcp-setup.md) for details
+- **BLDC haptic lever UI hidden behind `enable_bldc_levers` feature flag** — the feature remains under development and is excluded from stable releases; enable with `config :trenino, enable_bldc_levers: true` in `config/dev.exs`
 - **Resilient train detection with two-layer defense**
   - Primary detection using ObjectClass from CurrentDrivableActor
   - Fallback to ProviderName for trains with mismatched manifests

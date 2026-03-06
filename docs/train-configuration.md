@@ -4,7 +4,7 @@ This guide covers setting up train configurations and binding hardware inputs to
 
 ## Understanding Train Configurations
 
-Each train in Train Sim World has unique cab elements (throttle, reverser, brakes). TWS IO stores configurations that map your hardware to these elements.
+Each train in Train Sim World has unique cab elements (throttle, reverser, brakes). Trenino stores configurations that map your hardware to these elements.
 
 ### Train Identifier
 
@@ -15,14 +15,16 @@ Formation: ["Class_BR_DR4_08_A", "Class_BR_DR4_08_B", ...]
 Identifier: "Class_BR_DR4"
 ```
 
-When you drive this train in the simulator, TWS IO automatically activates the matching configuration.
+When you drive this train in the simulator, Trenino automatically activates the matching configuration.
+
+The identifier acts as a prefix — a single configuration for `RVM_LIRREX_M9` will match `RVM_LIRREX_M9-A`, `RVM_LIRREX_M9-B`, and other variants. This is useful for trains where different car variants form the same consist.
 
 ## Creating a Train Configuration
 
 ### From Auto-Detection
 
 1. Start Train Sim World with your desired train loaded
-2. Navigate to **Trains** in TWS IO
+2. Navigate to **Trains** in Trenino
 3. The detected train appears with a **Create Configuration** option
 4. Click to create a configuration pre-filled with the train identifier
 
@@ -42,8 +44,7 @@ When you drive this train in the simulator, TWS IO automatically activates the m
 | Type | Description | Examples |
 |------|-------------|----------|
 | Lever | Analog control with notches | Throttle, Reverser, Dynamic Brake |
-| Button | Momentary input (coming soon) | Horn, Bell, Sander |
-| Switch | Toggle input (coming soon) | Headlights, Wipers |
+| Button | Momentary or latching input | Horn, Bell, Headlights, Wipers, Sander |
 
 ### Creating a Lever Element
 
@@ -143,10 +144,12 @@ Before binding:
 
 When you load a train in the simulator:
 
-1. TWS IO polls the simulator every 15 seconds
+1. Trenino polls the simulator every 15 seconds
 2. Detects the current formation's identifier
 3. Matches against stored train configurations
 4. Activates bindings for the matched train
+
+Detection uses a two-layer strategy: it first checks `ObjectClass` from `CurrentDrivableActor`, then falls back to `ProviderName`. This makes detection reliable even for freight trains where the locomotive and wagons have different class prefixes.
 
 ### Manual Train Activation
 
@@ -161,6 +164,23 @@ Hardware Input → Calibration → Notch Mapping → Simulator API
      ↓               ↓              ↓              ↓
   0-1023         0.0-1.0       Notch Value    Lever Moves
 ```
+
+## Lua Scripts
+
+Each train configuration can have Lua scripts that react to simulator events — speed changes, control movements, or timers — and control hardware outputs or write simulator values in response.
+
+Common uses:
+- Turn on a warning LED when speed exceeds a threshold
+- Blink an LED at a configurable rate
+- Synchronize output LEDs with simulator state (e.g., pantograph up indicator)
+- Automate startup sequences
+
+Scripts are managed in the **Scripts** section of the train configuration page. Each script has:
+- A name
+- Lua code with an `on_change(event)` function
+- One or more triggers (simulator endpoint paths whose value changes will fire the script)
+
+See the [Lua Scripting Guide](lua-scripting.md) for the full API reference and examples.
 
 ## API Explorer
 
@@ -180,8 +200,8 @@ Common paths to explore:
 ### Train Not Detected
 
 1. Verify simulator is running with External Interface enabled
-2. Check TWS IO simulator connection status
-3. Ensure train identifier matches exactly
+2. Check Trenino's simulator connection status
+3. Ensure the train identifier matches the `ObjectClass` prefix for your locomotive
 
 ### Lever Not Responding
 
