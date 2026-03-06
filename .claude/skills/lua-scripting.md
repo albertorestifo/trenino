@@ -127,17 +127,17 @@ end
 ## Workflow
 
 > **Note:** When connected via MCP (Claude Desktop or Claude Code), use the MCP tools
-> (`list_trains`, `get_train`, `list_simulator_endpoints`, etc.) instead of the REST API
-> endpoints listed below. The REST API documentation is kept for reference and for
-> non-MCP contexts (e.g., external integrations).
+> instead of the REST API endpoints listed below. The REST API documentation is kept
+> for reference and for non-MCP contexts (e.g., external integrations).
 
-When creating or modifying scripts:
+When creating or modifying scripts via MCP:
 
-1. **Discover available outputs**: Use `GET /api/outputs` to list hardware outputs with their IDs, names, pins, and devices.
-2. **Browse simulator endpoints**: Use `GET /api/simulator/endpoints?path=<path>` to explore the simulator API tree. Use `GET /api/simulator/value?path=<path>` to read current values.
-3. **List existing scripts**: Use `GET /api/trains/:train_id/scripts` to see what scripts already exist for the train.
-4. **Create/update scripts**: Use `POST /api/trains/:train_id/scripts` or `PUT /api/scripts/:id` with `name`, `code`, `triggers`, and `enabled` fields.
-5. **Test**: Use the "Run" button in the script editor UI or rely on trigger endpoints to fire `on_change`.
+1. **Discover available outputs**: Use `list_hardware_outputs` to list hardware outputs with their IDs.
+2. **Browse simulator endpoints**: Use `list_simulator_endpoints` to explore the simulator API tree and find trigger paths.
+3. **List existing scripts**: Use `list_scripts(train_id)` to see what scripts already exist.
+4. **Read a script**: Use `get_script(id)` to retrieve the full code and triggers.
+5. **Create/update scripts**: Use `create_script` or `update_script` with `name`, `code`, `triggers`, and `enabled` fields.
+6. **Test**: Use the "Run" button in the script editor UI or rely on trigger endpoints to fire `on_change`.
 
 ## REST API
 

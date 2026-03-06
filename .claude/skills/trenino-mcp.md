@@ -28,8 +28,7 @@ Trenino's MCP server runs at `http://localhost:4000/mcp/sse` using SSE transport
 - `list_hardware_outputs` — List all hardware outputs (LEDs) across devices.
 
 ### Detection Tools (Interactive)
-- `detect_hardware_input(prompt, input_type)` — Auto-detect hardware input. Blocks until user interacts with hardware. Shows modal in UI.
-- `detect_simulator_endpoint(prompt)` — Auto-detect simulator endpoint. Blocks until user interacts with simulator. Shows modal in UI.
+- `detect_hardware_input(prompt, input_type)` — Auto-detect hardware input. Blocks until user interacts with hardware. Shows modal in UI. **IMPORTANT: Only call one detection at a time. Do NOT run multiple detections in parallel. Wait for each to complete before starting the next.**
 
 ### Button Binding Tools
 - `get_button_binding(element_id)` — Get binding for a button element.
@@ -48,6 +47,13 @@ Trenino's MCP server runs at `http://localhost:4000/mcp/sse` using SSE transport
 - `create_sequence(train_id, name, commands)` — Create sequence.
 - `update_sequence(id, ...)` — Update sequence.
 - `delete_sequence(id)` — Delete sequence.
+
+### Script Tools
+- `list_scripts(train_id)` — List Lua scripts (metadata only, no code).
+- `get_script(id)` — Get a script with full code, triggers, and enabled status.
+- `create_script(train_id, name, code, triggers?, enabled?)` — Create a Lua script.
+- `update_script(id, name?, code?, triggers?, enabled?)` — Update script fields.
+- `delete_script(id)` — Delete a script.
 
 ## Common Workflows
 

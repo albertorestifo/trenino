@@ -12,6 +12,7 @@ defmodule Trenino.MCP.ToolRegistry do
     DeviceTools,
     ElementTools,
     OutputBindingTools,
+    ScriptTools,
     SequenceTools,
     SimulatorTools,
     TrainTools
@@ -25,6 +26,7 @@ defmodule Trenino.MCP.ToolRegistry do
     OutputBindingTools,
     ButtonBindingTools,
     SequenceTools,
+    ScriptTools,
     DetectionTools
   ]
 
