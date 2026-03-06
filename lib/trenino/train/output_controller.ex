@@ -252,7 +252,6 @@ defmodule Trenino.Train.OutputController do
         update_bindings_with_value(state, binding_entries, value)
 
       {:ok, %{"Entries" => [%{"NodeValid" => false} | _]}} ->
-        Logger.debug("[OutputController] Subscription #{sub_id} node invalid")
         state
 
       {:ok, _} ->
