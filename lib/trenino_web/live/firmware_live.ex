@@ -388,6 +388,8 @@ defmodule TreninoWeb.FirmwareLive do
     """
   end
 
+  attr :checking, :boolean, required: true
+
   defp empty_releases(assigns) do
     ~H"""
     <div class="flex flex-col items-center justify-center py-20 text-center">

@@ -12,6 +12,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- Fix crash when opening the "Add Input" modal due to missing `bldc_enabled` assign
+- Add missing `checking` attr declaration on `empty_releases` component in firmware page
+
 ### Removed
 
 ## [0.7.0] - 2026-03-06

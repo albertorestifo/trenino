@@ -896,7 +896,7 @@ defmodule TreninoWeb.ConfigurationEditLive do
       </div>
     </main>
 
-    <.add_input_modal :if={@modal_open} form={@form} />
+    <.add_input_modal :if={@modal_open} form={@form} bldc_enabled={@bldc_enabled} />
 
     <.add_matrix_modal
       :if={@matrix_modal_open}
@@ -1364,6 +1364,7 @@ defmodule TreninoWeb.ConfigurationEditLive do
   end
 
   attr :form, :map, required: true
+  attr :bldc_enabled, :boolean, required: true
 
   defp add_input_modal(assigns) do
     ~H"""
