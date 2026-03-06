@@ -625,13 +625,13 @@ defmodule Trenino.Train.ButtonController do
 
         # Set Interacting first (before setting value for press, after for release)
         if interacting do
-          # Press: set Interacting=true first, then InputValue
-          set_interacting(client, interacting_endpoint, true)
+          # Press: set Interacting=1 first, then InputValue
+          set_interacting(client, interacting_endpoint, 1)
           send_value(client, endpoint, value)
         else
-          # Release: set InputValue first, then Interacting=false
+          # Release: set InputValue first, then Interacting=0
           send_value(client, endpoint, value)
-          set_interacting(client, interacting_endpoint, false)
+          set_interacting(client, interacting_endpoint, 0)
         end
 
         :ok

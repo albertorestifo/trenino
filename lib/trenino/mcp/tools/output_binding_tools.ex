@@ -7,6 +7,7 @@ defmodule Trenino.MCP.Tools.OutputBindingTools do
   """
 
   alias Trenino.Train, as: TrainContext
+  alias Trenino.Train.OutputController
 
   def tools do
     [
@@ -110,8 +111,12 @@ defmodule Trenino.MCP.Tools.OutputBindingTools do
     attrs = build_attrs(args)
 
     case TrainContext.create_output_binding(train_id, attrs) do
-      {:ok, binding} -> {:ok, %{output_binding: serialize(binding)}}
-      {:error, changeset} -> {:error, format_changeset_errors(changeset)}
+      {:ok, binding} ->
+        OutputController.reload_bindings()
+        {:ok, %{output_binding: serialize(binding)}}
+
+      {:error, changeset} ->
+        {:error, format_changeset_errors(changeset)}
     end
   end
 
@@ -121,8 +126,12 @@ defmodule Trenino.MCP.Tools.OutputBindingTools do
         attrs = build_attrs(args)
 
         case TrainContext.update_output_binding(binding, attrs) do
-          {:ok, updated} -> {:ok, %{output_binding: serialize(updated)}}
-          {:error, changeset} -> {:error, format_changeset_errors(changeset)}
+          {:ok, updated} ->
+            OutputController.reload_bindings()
+            {:ok, %{output_binding: serialize(updated)}}
+
+          {:error, changeset} ->
+            {:error, format_changeset_errors(changeset)}
         end
 
       {:error, :not_found} ->
@@ -134,8 +143,12 @@ defmodule Trenino.MCP.Tools.OutputBindingTools do
     case TrainContext.get_output_binding(id) do
       {:ok, binding} ->
         case TrainContext.delete_output_binding(binding) do
-          {:ok, _} -> {:ok, %{deleted: true, id: id}}
-          {:error, changeset} -> {:error, format_changeset_errors(changeset)}
+          {:ok, _} ->
+            OutputController.reload_bindings()
+            {:ok, %{deleted: true, id: id}}
+
+          {:error, changeset} ->
+            {:error, format_changeset_errors(changeset)}
         end
 
       {:error, :not_found} ->

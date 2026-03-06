@@ -7,6 +7,7 @@ defmodule Trenino.MCP.Tools.ButtonBindingTools do
   """
 
   alias Trenino.Train, as: TrainContext
+  alias Trenino.Train.ButtonController
 
   def tools do
     [
@@ -124,8 +125,12 @@ defmodule Trenino.MCP.Tools.ButtonBindingTools do
     attrs = build_attrs(args)
 
     case TrainContext.create_button_binding(element_id, input_id, attrs) do
-      {:ok, binding} -> {:ok, %{button_binding: serialize(binding)}}
-      {:error, changeset} -> {:error, format_changeset_errors(changeset)}
+      {:ok, binding} ->
+        ButtonController.reload_bindings()
+        {:ok, %{button_binding: serialize(binding)}}
+
+      {:error, changeset} ->
+        {:error, format_changeset_errors(changeset)}
     end
   end
 
@@ -135,8 +140,12 @@ defmodule Trenino.MCP.Tools.ButtonBindingTools do
         attrs = build_attrs(args)
 
         case TrainContext.update_button_binding(binding, attrs) do
-          {:ok, updated} -> {:ok, %{button_binding: serialize(updated)}}
-          {:error, changeset} -> {:error, format_changeset_errors(changeset)}
+          {:ok, updated} ->
+            ButtonController.reload_bindings()
+            {:ok, %{button_binding: serialize(updated)}}
+
+          {:error, changeset} ->
+            {:error, format_changeset_errors(changeset)}
         end
 
       {:error, :not_found} ->
@@ -146,8 +155,12 @@ defmodule Trenino.MCP.Tools.ButtonBindingTools do
 
   def execute("delete_button_binding", %{"element_id" => element_id}) do
     case TrainContext.delete_button_binding(element_id) do
-      :ok -> {:ok, %{deleted: true, element_id: element_id}}
-      {:error, :not_found} -> {:error, "No button binding found for element #{element_id}"}
+      :ok ->
+        ButtonController.reload_bindings()
+        {:ok, %{deleted: true, element_id: element_id}}
+
+      {:error, :not_found} ->
+        {:error, "No button binding found for element #{element_id}"}
     end
   end
 
