@@ -1063,9 +1063,9 @@ defmodule TreninoWeb.LeverSetupWizard do
               class="radio radio-primary"
             />
             <div class="flex-1">
-              <div class="font-medium">{input.device.name}</div>
+              <div class="font-medium">{input.name || "Unnamed Input"}</div>
               <div class="text-sm text-base-content/60">
-                Pin {input.pin}
+                {input.device.name} · Pin {input.pin}
                 <span :if={input.calibration} class="text-success">
                   — Calibrated
                 </span>
