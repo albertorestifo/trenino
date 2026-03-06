@@ -10,14 +10,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+### Fixed
+
+### Removed
+
+## [0.7.1] - 2026-03-06
+
+### Changed
+
 - Info flash notifications auto-dismiss after 5 seconds
+- Input selection list now shows lever name as primary text for easier identification
 
 ### Fixed
 
 - Fix crash when opening the "Add Input" modal due to missing `bldc_enabled` assign
 - Add missing `checking` attr declaration on `empty_releases` component in firmware page
-
-### Removed
 
 ## [0.7.0] - 2026-03-06
 
