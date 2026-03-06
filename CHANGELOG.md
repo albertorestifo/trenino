@@ -8,6 +8,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+### Changed
+
+### Fixed
+
+### Removed
+
+## [0.7.0] - 2026-03-06
+
+### Added
+
 - **Lua scripting system for train automation**
   - New Script schema and database migration for storing Lua scripts per train
   - ScriptEngine providing sandboxed Lua execution environment with Trenino API
