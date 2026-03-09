@@ -12,11 +12,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+### Removed
+
+## [0.7.2] - 2026-03-09
+
+### Added
+
+- MCP tools for Lua script CRUD operations (create, read, update, delete scripts via AI)
+
+### Changed
+
+- Removed `detect_simulator_endpoint` MCP tool (redundant with existing detection tools)
+- Clarified simulator API path format in MCP tool descriptions
+
+### Fixed
+
 - Fix LiveView crash when serial Connection GenServer is blocked by UART timeouts
 - NavHook no longer blocks on mount; device/simulator state loads asynchronously via PubSub
 - `list_devices` and `connected_devices` return empty list instead of crashing on GenServer timeout
-
-### Removed
+- Fix commands parameter arriving as JSON string in sequence MCP tools
+- Reload controller bindings after MCP tool updates to output bindings or button bindings
+- Remove noisy `node-invalid` debug log from OutputController
 
 ## [0.7.1] - 2026-03-06
 
