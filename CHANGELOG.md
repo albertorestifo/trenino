@@ -12,6 +12,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- Fix LiveView crash when serial Connection GenServer is blocked by UART timeouts
+- NavHook no longer blocks on mount; device/simulator state loads asynchronously via PubSub
+- `list_devices` and `connected_devices` return empty list instead of crashing on GenServer timeout
+
 ### Removed
 
 ## [0.7.1] - 2026-03-06

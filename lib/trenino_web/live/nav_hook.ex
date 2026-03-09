@@ -14,6 +14,7 @@ defmodule TreninoWeb.NavHook do
   alias Trenino.Firmware
   alias Trenino.Serial.Connection
   alias Trenino.Simulator
+  alias Trenino.Simulator.ConnectionState
 
   def on_mount(:default, _params, _session, socket) do
     if connected?(socket) do
@@ -21,19 +22,19 @@ defmodule TreninoWeb.NavHook do
       Simulator.subscribe()
       Firmware.subscribe_update_notifications()
       AppVersion.subscribe_update_notifications()
-    end
 
-    devices = Connection.list_devices()
-    simulator_status = Simulator.get_status()
-    firmware_update_status = Firmware.check_update_status()
-    app_version_update_status = AppVersion.check_update_status()
+      # Fetch initial state asynchronously to avoid blocking mount
+      # when the Connection GenServer is busy with UART operations.
+      # PubSub subscription ensures we receive updates going forward.
+      send(self(), :nav_fetch_initial_state)
+    end
 
     {:cont,
      socket
-     |> assign(:nav_devices, devices)
-     |> assign(:nav_simulator_status, simulator_status)
-     |> assign(:nav_firmware_update, format_update_status(firmware_update_status))
-     |> assign(:nav_app_version_update, format_update_status(app_version_update_status))
+     |> assign(:nav_devices, [])
+     |> assign(:nav_simulator_status, ConnectionState.new())
+     |> assign(:nav_firmware_update, nil)
+     |> assign(:nav_app_version_update, nil)
      |> assign(:nav_firmware_checking, false)
      |> assign(:nav_dropdown_open, false)
      |> assign(:nav_scanning, false)
@@ -65,6 +66,21 @@ defmodule TreninoWeb.NavHook do
 
   defp handle_event(_event, _params, socket) do
     {:cont, socket}
+  end
+
+  # Async initial state fetch — avoids blocking mount when Connection GenServer is busy
+  defp handle_info(:nav_fetch_initial_state, socket) do
+    devices = Connection.list_devices()
+    simulator_status = Simulator.get_status()
+    firmware_update_status = Firmware.check_update_status()
+    app_version_update_status = AppVersion.check_update_status()
+
+    {:cont,
+     socket
+     |> assign(:nav_devices, devices)
+     |> assign(:nav_simulator_status, simulator_status)
+     |> assign(:nav_firmware_update, format_update_status(firmware_update_status))
+     |> assign(:nav_app_version_update, format_update_status(app_version_update_status))}
   end
 
   # Device update events

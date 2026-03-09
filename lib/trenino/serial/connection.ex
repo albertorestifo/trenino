@@ -43,12 +43,16 @@ defmodule Trenino.Serial.Connection do
   @spec connected_devices() :: [DeviceConnection.t()]
   def connected_devices do
     GenServer.call(__MODULE__, :connected_devices)
+  catch
+    :exit, _ -> []
   end
 
   @doc "Get all tracked devices (any status)"
   @spec list_devices() :: [DeviceConnection.t()]
   def list_devices do
     GenServer.call(__MODULE__, :list_devices)
+  catch
+    :exit, _ -> []
   end
 
   @doc "Get all available serial ports (filtered by ignored patterns)"
