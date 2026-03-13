@@ -61,7 +61,7 @@ Each lever needs API endpoints to communicate with the simulator.
 ### Auto-Detection
 
 1. With the train loaded in simulator, click **Auto-Detect** on the lever
-2. TWS IO queries the simulator for available controls
+2. Trenino queries the simulator for available controls
 3. Endpoints are automatically configured:
    - Value endpoint (read/write current position)
    - Notch count and index endpoints
@@ -81,7 +81,7 @@ Click the **Settings** icon on the lever to manually configure:
 
 ## Notch Configuration
 
-Many train controls have discrete positions (notches). TWS IO supports both continuous and notched controls.
+Many train controls have discrete positions (notches). Trenino supports both continuous and notched controls.
 
 ### Notch Types
 
@@ -93,7 +93,7 @@ Many train controls have discrete positions (notches). TWS IO supports both cont
 ### Auto-Detecting Notches
 
 1. Click **Auto-Detect** on a configured lever
-2. TWS IO reads notch data from the simulator
+2. Trenino reads notch data from the simulator
 3. Notch positions and types are automatically set
 
 ### Notch Mapping Wizard

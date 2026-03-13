@@ -6,10 +6,10 @@ Trenino includes a built-in MCP (Model Context Protocol) server that lets you us
 
 - **Explore the simulator API** to discover what controls a train has (throttle, brakes, lights, doors, etc.)
 - **Detect your hardware** — Claude can ask you to press a button or move a lever, and it will automatically identify the input for you. No need to look up input IDs.
-- **Detect simulator controls** — Claude can ask you to interact with a control in Train Sim World and automatically identify the endpoint path
 - **Set up output bindings** — "make the red LED turn on when speed exceeds 50" and Claude will find the right endpoint, pick your LED, and create the binding
 - **Configure button mappings** — "this button should toggle the headlights" and Claude will create the binding with the correct mode and endpoint
 - **Create command sequences** — "create a startup sequence that turns on the battery, then the pantograph, then the main breaker with delays between each"
+- **Write and manage Lua scripts** — "create a script that flashes my warning LED when speed exceeds 100 km/h" and Claude will write, create, and enable the script for you
 - **Experiment with controls** — read and write simulator values in real-time to test what endpoints do before committing to a configuration
 
 ## Setup
@@ -92,9 +92,19 @@ Claude will:
 
 Claude will browse the simulator API tree, find the wiper endpoint, and set the value — you'll see the result in real-time in the game.
 
+### Writing Lua Scripts
+
+> "Create a script for the BR 442 that turns on my warning LED when speed exceeds 100 km/h, and turns it off when speed drops below 95."
+
+Claude will:
+1. Look up the speed endpoint for that train (`CurrentDrivableActor.Function.HUD_GetSpeed`)
+2. Find your warning LED output ID
+3. Write the Lua script with hysteresis logic
+4. Create and enable the script with the speed endpoint as the trigger
+
 ## Available Tools
 
-Claude has access to 22 tools for interacting with Trenino:
+Claude has access to 29 tools for interacting with Trenino:
 
 | Category | Tools |
 |----------|-------|
@@ -102,10 +112,11 @@ Claude has access to 22 tools for interacting with Trenino:
 | Trains | List trains, get full train configuration |
 | Elements | List, create, delete buttons and levers |
 | Devices | List devices, list inputs, list outputs |
-| Detection | Detect hardware input (button/lever), detect simulator endpoint |
+| Detection | Detect hardware inputs (button/lever) |
 | Output Bindings | List, create, update, delete |
 | Button Bindings | Get, create, update, delete |
 | Sequences | List, create, update, delete |
+| Scripts | List, get, create, update, delete Lua scripts |
 
 ## Tips
 

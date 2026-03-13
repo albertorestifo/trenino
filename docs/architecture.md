@@ -6,7 +6,7 @@ Trenino is built with Elixir and Phoenix LiveView, providing real-time hardware-
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────┐
-│                              TWS IO                                     │
+│                             Trenino                                     │
 │                                                                         │
 │  ┌──────────────┐    ┌──────────────┐    ┌──────────────────────────┐  │
 │  │   Hardware   │    │   Phoenix    │    │     Train Sim World      │  │
@@ -79,15 +79,16 @@ Model Context Protocol server for AI-powered configuration.
 
 - **Server** - MCP server implementation with SSE transport at `/mcp/sse`
 - **ToolRegistry** - Registry of available MCP tools organized by category
-- **Tools** - 22 tools across 7 categories:
+- **Tools** - 29 tools across 9 categories:
   - **SimulatorTools** - Browse endpoints, read/write simulator values
   - **TrainTools** - List trains and get configurations
   - **ElementTools** - Manage train buttons and levers
   - **DeviceTools** - List devices, inputs, and outputs
-  - **DetectionTools** - Interactive hardware input and simulator endpoint detection (prompts the user via a UI modal)
+  - **DetectionTools** - Interactive hardware input detection (prompts the user via a UI modal)
   - **OutputBindingTools** - CRUD operations for output bindings
   - **ButtonBindingTools** - CRUD operations for button bindings
   - **SequenceTools** - CRUD operations for command sequences
+  - **ScriptTools** - CRUD operations for Lua scripts
 
 ### Serial Domain (`lib/trenino/serial/`)
 
@@ -190,7 +191,7 @@ firmware_releases          firmware_files
 
 ## Communication Protocols
 
-### Serial Protocol (Device ↔ TWS IO)
+### Serial Protocol (Device ↔ Trenino)
 
 Binary protocol with message types:
 
@@ -206,7 +207,7 @@ Binary protocol with message types:
 | 0x0B | LoadBLDCProfile | App → Device | Load haptic detent profile for BLDC lever |
 | 0x0C | DeactivateBLDCProfile | App → Device | Unload BLDC haptic profile (freewheel mode) |
 
-### Simulator API (TWS IO ↔ Train Sim World)
+### Simulator API (Trenino ↔ Train Sim World)
 
 HTTP/JSON REST API:
 
@@ -228,7 +229,7 @@ SSE (Server-Sent Events) transport implementing Model Context Protocol:
 |----------|-------------|
 | `/mcp/sse` | SSE endpoint for MCP server |
 
-Supports 22 tools across 7 categories for AI-powered train configuration. See [MCP Setup Guide](../docs/mcp-setup.md) for details.
+Supports 29 tools across 9 categories for AI-powered train configuration. See [MCP Setup Guide](../docs/mcp-setup.md) for details.
 
 ## Event Broadcasting (PubSub)
 

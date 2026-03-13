@@ -12,10 +12,19 @@ trenino communicates with microcontroller-based devices via USB serial running t
 
 ### Compatible Microcontrollers
 
-- Arduino (Uno, Mega, Nano)
-- ESP32 / ESP8266
-- Teensy
-- Any microcontroller with USB serial and ADC inputs
+The following Arduino boards are tested and supported with one-click firmware flashing from the app:
+
+| Board | MCU | Analog Inputs | Digital I/O |
+|---|---|---|---|
+| Arduino Nano | ATmega328P | 8 | 14 |
+| Arduino Nano (Old Bootloader) | ATmega328P | 8 | 14 |
+| SparkFun Pro Micro | ATmega32U4 | 12 | 18 |
+| Arduino Uno | ATmega328P | 6 | 14 |
+| Arduino Leonardo | ATmega32U4 | 12 | 20 |
+| Arduino Micro | ATmega32U4 | 12 | 20 |
+| Arduino Mega 2560 | ATmega2560 | 16 | 54 |
+
+Other microcontrollers with USB serial and ADC inputs may work if you flash the firmware manually, but are not officially supported.
 
 ### Input Types
 
@@ -42,7 +51,7 @@ For each physical input on your device:
 2. Click **Add Input**
 3. Configure:
    - **Pin Number** - The ADC pin on your microcontroller
-   - **Input Type** - Analog (digital coming soon)
+   - **Input Type** - Analog or Digital
    - **Sensitivity** - Value change threshold (1-255, default 5)
 4. Save the input
 
