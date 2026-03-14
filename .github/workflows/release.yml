@@ -94,6 +94,11 @@ jobs:
             binary_name: trenino_desktop_windows_x86_64.exe
             tauri_target: x86_64-pc-windows-msvc
 
+          - os: ubuntu-22.04
+            target: linux_x86_64
+            binary_name: trenino_desktop_linux_x86_64
+            tauri_target: x86_64-unknown-linux-gnu
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
@@ -105,6 +110,7 @@ jobs:
           otp-version: ${{ env.OTP_VERSION }}
 
       - name: Install Windows build dependencies
+        if: runner.os == 'Windows'
         run: choco install 7zip -y
 
       - name: Setup Zig
@@ -151,9 +157,18 @@ jobs:
             tauri_target: x86_64-pc-windows-msvc
             binary_ext: ".exe"
 
+          - os: ubuntu-22.04
+            target: linux_x86_64
+            tauri_target: x86_64-unknown-linux-gnu
+            binary_ext: ""
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
+
+      - name: Install Linux build dependencies
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libxdo-dev
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
@@ -197,6 +212,11 @@ jobs:
             avrdude_binary: avrdude.exe
             extract_cmd: unzip -o
 
+          - target: linux_x86_64
+            avrdude_url: https://github.com/avrdudes/avrdude/releases/download/v8.1/avrdude_v8.1_Linux_64bit.tar.gz
+            avrdude_binary: avrdude
+            extract_cmd: tar xzf
+
     steps:
       - name: Download avrdude
         run: |
@@ -233,6 +253,13 @@ jobs:
             tauri_target: x86_64-pc-windows-msvc
             tauri_args: ""
             avrdude_ext: ".exe"
+
+          - os: ubuntu-22.04
+            target: linux_x86_64
+            elixir_binary: trenino_desktop_linux_x86_64
+            tauri_target: x86_64-unknown-linux-gnu
+            tauri_args: "--bundles appimage"
+            avrdude_ext: ""
 
     steps:
       - name: Harden Runner
@@ -318,6 +345,25 @@ jobs:
           rm -rf "tauri/src-tauri/binaries/keystroke-download"
 
           ls -la tauri/src-tauri/binaries/
+
+      - name: Install Linux system dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            build-essential \
+            libssl-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            libxdo-dev
+
+      - name: Create placeholder for Windows-only resources
+        if: runner.os == 'Linux'
+        run: |
+          mkdir -p tauri/src-tauri/resources
+          touch tauri/src-tauri/resources/vc_redist.x64.exe
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
