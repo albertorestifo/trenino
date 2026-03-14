@@ -29,8 +29,14 @@
       "binaries/keystroke"
     ],
     "resources": [
-      "binaries/avrdude.conf"
+      "binaries/avrdude.conf",
+      "resources/vc_redist.x64.exe"
     ],
+    "windows": {
+      "nsis": {
+        "installerHooks": "./windows/installer-hooks.nsh"
+      }
+    },
     "macOS": {
       "entitlements": null,
       "minimumSystemVersion": "10.15"

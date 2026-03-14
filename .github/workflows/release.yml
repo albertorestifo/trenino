@@ -237,9 +237,31 @@ jobs:
             avrdude.conf
           retention-days: 1
 
+  download-vcredist:
+    name: Download VC++ Redistributable
+    runs-on: ubuntu-latest
+    steps:
+      - name: Cache VC++ Redistributable
+        id: cache-vcredist
+        uses: actions/cache@v5
+        with:
+          path: vc_redist.x64.exe
+          key: vcredist-x64-2022
+
+      - name: Download VC++ Redistributable
+        if: steps.cache-vcredist.outputs.cache-hit != 'true'
+        run: curl -L -o vc_redist.x64.exe https://aka.ms/vs/17/release/vc_redist.x64.exe
+
+      - name: Upload VC++ Redistributable
+        uses: actions/upload-artifact@v7
+        with:
+          name: vcredist
+          path: vc_redist.x64.exe
+          retention-days: 1
+
   build-tauri:
     name: Build Tauri (${{ matrix.target }})
-    needs: [verify-version, build-elixir, build-keystroke, download-avrdude]
+    needs: [verify-version, build-elixir, build-keystroke, download-avrdude, download-vcredist]
     runs-on: ${{ matrix.os }}
     permissions:
       contents: write
@@ -287,6 +309,13 @@ jobs:
         with:
           name: keystroke-${{ matrix.target }}
           path: tauri/src-tauri/binaries/keystroke-download
+
+      - name: Download VC++ Redistributable
+        if: runner.os == 'Windows'
+        uses: actions/download-artifact@v8
+        with:
+          name: vcredist
+          path: tauri/src-tauri/resources
 
       - name: Prepare binaries (Windows)
         if: runner.os == 'Windows'
