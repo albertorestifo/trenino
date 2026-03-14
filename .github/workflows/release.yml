@@ -15,7 +15,10 @@ permissions:
 
 env:
   ELIXIR_VERSION: "1.19"
-  OTP_VERSION: "28"
+  # NOTE: Pin to exact minor version because Burrito downloads precompiled ERTS
+  # from Beam Machine, which may not have the latest patch version yet.
+  # Check availability at: https://beam-machine-universal.b-cdn.net
+  OTP_VERSION: "28.4"
   MIX_ENV: prod
   AVRDUDE_VERSION: "8.1"
 
