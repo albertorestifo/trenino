@@ -143,6 +143,13 @@ jobs:
           curl -fL -o /tmp/erts.tar.gz "$ERTS_URL"
           echo "BURRITO_CUSTOM_ERTS=/tmp/erts.tar.gz" >> $GITHUB_ENV
 
+      - name: Fix circuits_uart Makefile for Burrito cross-compilation
+        if: runner.os == 'Linux'
+        run: |
+          # Burrito runs `make` from the dep root, but circuits_uart has its
+          # Makefile at src/Makefile. Create a wrapper that delegates.
+          printf 'all clean:\n\t$$(MAKE) -f src/Makefile $@\n.PHONY: all clean\n' > deps/circuits_uart/Makefile
+
       - name: Build Elixir release
         run: mix release trenino_desktop
         env:
