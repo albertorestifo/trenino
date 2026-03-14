@@ -7,7 +7,7 @@ authors = ["Alberto Restifo"]
 license = "CC-BY-NC-4.0"
 
 [dependencies]
-enigo = "0.2"
+enigo = "0.6"
 clap = { version = "4", features = ["derive"] }
 
 [[bin]]

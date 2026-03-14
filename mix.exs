@@ -26,7 +26,8 @@ defmodule Trenino.MixProject do
         burrito: [
           targets: [
             macos_arm64: [os: :darwin, cpu: :aarch64],
-            windows_x86_64: [os: :windows, cpu: :x86_64]
+            windows_x86_64: [os: :windows, cpu: :x86_64],
+            linux_x86_64: [os: :linux, cpu: :x86_64]
           ]
         ]
       ]
