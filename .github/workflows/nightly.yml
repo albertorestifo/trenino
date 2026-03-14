@@ -15,13 +15,11 @@ concurrency:
 
 env:
   ELIXIR_VERSION: "1.19"
-  OTP_VERSION: "28"
+  # Pin to exact version available on Beam Machine (Burrito's ERTS source).
+  # Beam Machine may lag behind the latest OTP patch releases.
+  OTP_VERSION: "28.4"
   MIX_ENV: prod
   AVRDUDE_VERSION: "8.1"
-  # Burrito downloads precompiled ERTS from Beam Machine, which may lag behind
-  # the latest OTP patch releases. Pin to a version known to be available.
-  # Check: https://beam-machine-universal.b-cdn.net/OTP-{VERSION}/linux/x86_64/any/
-  BURRITO_ERTS_VERSION: "28.4"
 
 jobs:
   check-changes:
@@ -94,6 +92,7 @@ jobs:
         with:
           elixir-version: ${{ env.ELIXIR_VERSION }}
           otp-version: ${{ env.OTP_VERSION }}
+          version-type: strict
 
       - name: Install Windows build dependencies
         if: runner.os == 'Windows'
@@ -118,19 +117,9 @@ jobs:
       - name: Build assets
         run: mix assets.deploy
 
-      - name: Download precompiled ERTS for Burrito
+      - name: Workaround circuits_uart Makefile location for Burrito
         if: runner.os == 'Linux'
-        run: |
-          ERTS_URL="https://beam-machine-universal.b-cdn.net/OTP-${{ env.BURRITO_ERTS_VERSION }}/linux/x86_64/any/otp_${{ env.BURRITO_ERTS_VERSION }}_linux_any_x86_64.tar.gz?please-respect-my-bandwidth-costs=thank-you"
-          curl -fL -o /tmp/erts.tar.gz "$ERTS_URL"
-          echo "BURRITO_CUSTOM_ERTS=/tmp/erts.tar.gz" >> $GITHUB_ENV
-
-      - name: Fix circuits_uart Makefile for Burrito cross-compilation
-        if: runner.os == 'Linux'
-        run: |
-          # Burrito runs `make` from the dep root, but circuits_uart has its
-          # Makefile at src/Makefile. Create a wrapper that delegates.
-          printf 'all clean:\n\t$$(MAKE) -f src/Makefile $@\n.PHONY: all clean\n' > deps/circuits_uart/Makefile
+        run: ln -s src/Makefile deps/circuits_uart/Makefile
 
       - name: Build Elixir release
         run: mix release trenino_desktop
