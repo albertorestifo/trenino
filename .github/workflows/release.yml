@@ -15,12 +15,13 @@ permissions:
 
 env:
   ELIXIR_VERSION: "1.19"
-  # NOTE: Pin to exact minor version because Burrito downloads precompiled ERTS
-  # from Beam Machine, which may not have the latest patch version yet.
-  # Check availability at: https://beam-machine-universal.b-cdn.net
-  OTP_VERSION: "28.4"
+  OTP_VERSION: "28"
   MIX_ENV: prod
   AVRDUDE_VERSION: "8.1"
+  # Burrito downloads precompiled ERTS from Beam Machine, which may lag behind
+  # the latest OTP patch releases. Pin to a version known to be available.
+  # Check: https://beam-machine-universal.b-cdn.net/OTP-{VERSION}/linux/x86_64/any/
+  BURRITO_ERTS_VERSION: "28.4"
 
 jobs:
   # Verify version in source files matches the release tag
@@ -134,6 +135,13 @@ jobs:
 
       - name: Build assets
         run: mix assets.deploy
+
+      - name: Download precompiled ERTS for Burrito
+        if: runner.os == 'Linux'
+        run: |
+          ERTS_URL="https://beam-machine-universal.b-cdn.net/OTP-${{ env.BURRITO_ERTS_VERSION }}/linux/x86_64/any/otp_${{ env.BURRITO_ERTS_VERSION }}_linux_any_x86_64.tar.gz?please-respect-my-bandwidth-costs=thank-you"
+          curl -fL -o /tmp/erts.tar.gz "$ERTS_URL"
+          echo "BURRITO_CUSTOM_ERTS=/tmp/erts.tar.gz" >> $GITHUB_ENV
 
       - name: Build Elixir release
         run: mix release trenino_desktop

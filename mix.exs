@@ -25,9 +25,9 @@ defmodule Trenino.MixProject do
         steps: [:assemble, &Burrito.wrap/1],
         burrito: [
           targets: [
-            macos_arm64: [os: :darwin, cpu: :aarch64],
-            windows_x86_64: [os: :windows, cpu: :x86_64],
-            linux_x86_64: [os: :linux, cpu: :x86_64]
+            macos_arm64: [os: :darwin, cpu: :aarch64, custom_erts: System.get_env("BURRITO_CUSTOM_ERTS")],
+            windows_x86_64: [os: :windows, cpu: :x86_64, custom_erts: System.get_env("BURRITO_CUSTOM_ERTS")],
+            linux_x86_64: [os: :linux, cpu: :x86_64, custom_erts: System.get_env("BURRITO_CUSTOM_ERTS")]
           ]
         ]
       ]
