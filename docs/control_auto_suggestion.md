@@ -363,6 +363,6 @@ Uses `{:ok, result} | {:error, reason}` tuples consistently throughout.
 
 ## Related Documentation
 
-- [TSW6 API Documentation](../tsw_api.md)
+- [TSW6 API Documentation](TSW_API_GUIDE.md)
 - [Simulator Client Module](../lib/trenino/simulator/client.ex)
-- [Train Configuration Guide](../train_configuration.md)
+- [Train Configuration Guide](train-configuration.md)

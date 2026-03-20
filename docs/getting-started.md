@@ -4,61 +4,56 @@ Get Trenino up and running in minutes.
 
 ## Prerequisites
 
-- **Train Sim World** (with External Interface API enabled)
-- **Elixir 1.15+** and **Erlang/OTP 26+**
-- **Hardware device** - Arduino or compatible microcontroller with [Trenino Firmware](https://github.com/albertorestifo/trenino_firmware)
+- **Train Sim World** (with External Interface API enabled — see [Enabling the TSW API](#enabling-the-tsw-api) below)
+- **An Arduino board** — see [Supported Hardware](hardware-setup.md#compatible-microcontrollers) for the full list
 
-## Firmware Installation
+That's it. The desktop app includes everything else: the Trenino backend, avrdude for firmware flashing, and all required runtimes.
 
-Before using Trenino, you need to flash the Trenino Firmware to your microcontroller.
+## Installation
 
-1. Visit the [Trenino Firmware repository](https://github.com/albertorestifo/trenino_firmware)
-2. Follow the installation instructions for your hardware
-3. Flash the firmware to your device
-4. Connect the device via USB
+Download the latest installer for your platform from the [Releases page](https://github.com/albertorestifo/trenino/releases):
 
-The firmware handles:
-- Reading analog inputs (potentiometers, sliders)
-- Communicating with Trenino over USB serial
-- Storing device configuration
+- **Windows**: Run the NSIS installer (`.exe`) or the MSI — the Visual C++ Redistributable is bundled, no separate install needed
+- **Linux**: Download the `.AppImage`, then mark it executable and run it:
+  ```bash
+  chmod +x Trenino_*.AppImage
+  ./Trenino_*.AppImage
+  ```
 
-## Trenino Installation
+> **macOS**: Pre-built installers are not yet available for macOS. See the [Development Guide](development.md#building-the-desktop-app) to build from source.
 
-### Clone the Repository
+## Enabling the TSW API
 
-```bash
-git clone https://github.com/albertorestifo/trenino.git
-cd trenino
-```
+Train Sim World ships with an External Interface API that Trenino uses to read and control your train. It's disabled by default.
 
-### Install Dependencies
+1. Right-click **Train Sim World** in Steam → **Properties**
+2. In the **General** tab, add `-HTTPAPI` to **Launch Options**
+3. Launch the game once — this generates the API key file
 
-```bash
-mix deps.get
-```
+Trenino detects the API key automatically on startup (Windows). On other platforms, enter the key manually in **Simulator** → settings. The key is stored in `Documents/My Games/TrainSimWorld/Saved/Config/CommAPIKey.txt`.
 
-### Setup Database
+## Firmware
 
-```bash
-mix ecto.setup
-```
+Your Arduino needs the Trenino firmware before Trenino can talk to it. The easiest way is to flash it directly from the app — no separate tools required:
 
-### Start the Server
+1. Plug in your Arduino via USB
+2. In Trenino, go to **Firmware** in the sidebar
+3. Select your board type and click **Flash Firmware**
 
-```bash
-mix phx.server
-```
+The app downloads the latest firmware release and flashes it in one step using the bundled avrdude.
 
-Visit [http://localhost:4000](http://localhost:4000) in your browser.
+> If you prefer to flash manually, see the [Trenino Firmware repository](https://github.com/albertorestifo/trenino_firmware).
 
 ## Quick Setup Guide
+
+Once Trenino is running and your hardware is connected:
 
 ### Step 1: Configure Simulator Connection
 
 1. Start Train Sim World
 2. In Trenino, click **Simulator** in the sidebar
 3. The default URL is `http://localhost:31270`
-4. Click **Auto-Detect API Key** (Windows) or enter manually
+4. Click **Auto-Detect API Key** (Windows) or enter it manually
 5. Click **Save** and verify connection status shows "Connected"
 
 ### Step 2: Create Hardware Configuration
@@ -68,7 +63,7 @@ Visit [http://localhost:4000](http://localhost:4000) in your browser.
 3. Name it (e.g., "My Throttle Controller")
 4. Add inputs for each physical control:
    - Click **Add Input**
-   - Set pin number, type (analog), and sensitivity
+   - Set pin number and type (Analog for potentiometers, Digital for buttons)
 5. Save your configuration
 
 ### Step 3: Connect and Calibrate Hardware
@@ -76,28 +71,25 @@ Visit [http://localhost:4000](http://localhost:4000) in your browser.
 1. Plug in your hardware device via USB
 2. Click **Scan Devices** or wait for auto-discovery
 3. Click **Apply to Device** on your configuration
-4. For each input, click **Calibrate**:
-   - Hold at minimum → record samples
-   - Sweep full range
-   - Hold at maximum → record samples
+4. For each analog input, click **Calibrate**:
+   - Hold at minimum → samples are collected automatically
+   - Sweep the full range
+   - Hold at maximum → click Finish
 
 ### Step 4: Create Train Configuration
 
 1. Load a train in Train Sim World
 2. In Trenino, click **Trains**
-3. The detected train appears - click **Create Configuration**
+3. The detected train appears — click **Create Configuration**
 4. Add elements:
-   - Click **Add Element**
-   - Name it "Throttle" (or appropriate control)
-   - Type: Lever
-5. Click **Auto-Detect** to configure endpoints automatically
+   - Click **Add Element**, name it (e.g., "Throttle"), choose type: Lever
+5. Click **Configure** → the app suggests the matching simulator endpoint automatically
 
 ### Step 5: Bind Input to Lever
 
-1. On your lever element, click **Bind Input**
+1. On your lever element, click **Configure**
 2. Select your calibrated hardware input
-3. Click **Map Notches** to configure notch boundaries
-4. Follow the wizard to set input ranges for each notch
+3. Follow the **Map Notches** wizard to set input ranges for each notch
 
 ### Step 6: Test It Out!
 
@@ -107,29 +99,36 @@ Visit [http://localhost:4000](http://localhost:4000) in your browser.
 
 ## Next Steps
 
-- Read the [Hardware Setup Guide](hardware-setup.md) for detailed device configuration
-- See [Train Configuration](train-configuration.md) for advanced lever setup
-- Check [Architecture](architecture.md) to understand the system design
+- [Hardware Setup Guide](hardware-setup.md) — detailed device and input configuration
+- [Train Configuration](train-configuration.md) — advanced lever and button setup
+- [Lua Scripting](lua-scripting.md) — automate lighting, sequences, and more
+- [MCP Setup](mcp-setup.md) — use Claude AI to configure your trains by conversation
 
 ## Troubleshooting
 
 ### Simulator Won't Connect
 
-- Ensure Train Sim World is running
-- Verify External Interface is enabled in TSW settings
-- Check firewall isn't blocking port 31270
-- On Windows, the API key is in `Documents/My Games/TrainSimWorld/CommAPIKey.txt`
+- Ensure Train Sim World is running with `-HTTPAPI` in launch options
+- Check that no firewall is blocking port 31270
+- On Windows, verify `Documents/My Games/TrainSimWorld/Saved/Config/CommAPIKey.txt` exists
+- Try clicking **Auto-Detect API Key** again after the game fully loads
 
 ### Device Not Found
 
-- Check USB connection
-- Verify device has compatible firmware
-- Try different USB port
-- Run manual device scan
+- Check the USB cable and try a different port
+- Verify the device has been flashed with Trenino firmware (see **Firmware** section above)
+- Click **Scan Devices** to trigger a manual scan
+- Check that no other application (e.g., the Arduino IDE) has the serial port open
 
 ### No Response from Train Controls
 
-- Verify train configuration is active
-- Check input binding is enabled
-- Confirm calibration is complete
-- Test API endpoints with the Explorer tool
+- Verify the train configuration is active (check the **Trains** page)
+- Confirm the input binding is enabled
+- Make sure calibration completed successfully (inputs show a normalized value)
+- Use the API Explorer to test your simulator endpoint paths directly
+
+---
+
+## For Developers
+
+If you want to contribute to Trenino or run it from source, see the [Development Guide](development.md). You'll need Elixir 1.15+, Erlang/OTP 26+, and Node.js.
