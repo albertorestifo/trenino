@@ -8,9 +8,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- Linux x86_64 AppImage installer in nightly builds and releases
+
 ### Changed
 
 ### Fixed
+
+- Windows NSIS installer now bundles the Visual C++ Redistributable, eliminating "missing runtime" errors on fresh Windows installations
+- Burrito Linux builds now download precompiled ERTS from Beam Machine, reducing CI build times and workarounds
 
 ### Removed
 

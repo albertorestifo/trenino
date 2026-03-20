@@ -20,7 +20,15 @@ To use the keystroke button binding mode during development, you need to build t
 mix keystroke
 ```
 
-This builds a small Rust executable that simulates keyboard input via the Windows SendInput API. The `Trenino.Keyboard` module automatically finds it at `tauri/keystroke/target/release/keystroke.exe`.
+This builds a small Rust executable that simulates keyboard input. On Windows it uses the `SendInput` API; on Linux it uses `xdotool` (requires `libxdo-dev`). The `Trenino.Keyboard` module automatically finds it:
+
+- **Windows**: `tauri/keystroke/target/release/keystroke.exe`
+- **Linux/macOS**: `tauri/keystroke/target/release/keystroke`
+
+**Linux prerequisite:**
+```bash
+sudo apt-get install libxdo-dev
+```
 
 Verify it's working:
 ```elixir
@@ -298,7 +306,7 @@ The desktop application is built using Tauri with a Burrito-packaged Elixir back
 
 ### Building for macOS (Local Development)
 
-Pre-built releases are only provided for Windows. To build for macOS (Apple Silicon) locally:
+Pre-built releases are provided for Windows and Linux. To build for macOS (Apple Silicon) locally:
 
 #### Prerequisites
 

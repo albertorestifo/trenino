@@ -43,7 +43,12 @@ Build your own train controls with real throttle levers, brake handles, switches
 
 ### Installation
 
-Download the latest release for Windows from the [Releases page](https://github.com/albertorestifo/trenino/releases).
+Download the latest installer for your platform from the [Releases page](https://github.com/albertorestifo/trenino/releases):
+
+- **Windows**: NSIS installer (`.exe`) or MSI — the Visual C++ Redistributable is bundled, no separate install needed
+- **Linux**: AppImage (`.AppImage`) — download, mark as executable, and run
+
+macOS builds are not provided as pre-built releases. See the [Development Guide](docs/development.md#building-the-desktop-app) to build from source.
 
 ### Enabling the TSW API
 
