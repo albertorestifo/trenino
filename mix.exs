@@ -89,7 +89,8 @@ defmodule Trenino.MixProject do
       {:mimic, "~> 2.0", only: :test},
       {:usage_rules, "~> 1.2", only: :dev},
       {:burrito, "~> 1.5.0"},
-      {:credo, "~> 1.7", only: [:dev, :test], runtime: false}
+      {:credo, "~> 1.7", only: [:dev, :test], runtime: false},
+      {:sentry, "~> 12.0"}
     ]
   end
 

@@ -125,6 +125,7 @@ jobs:
         run: mix release trenino_desktop
         env:
           BURRITO_TARGET: ${{ matrix.target }}
+          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
 
       - name: Upload Elixir binary
         uses: actions/upload-artifact@v7

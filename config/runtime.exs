@@ -22,6 +22,23 @@ if System.get_env("PHX_SERVER") || System.get_env("BURRITO") do
   config :trenino, TreninoWeb.Endpoint, server: true
 end
 
+# Sentry error tracking (Better Stack) — only active when SENTRY_DSN is set.
+# Set SENTRY_DSN during the release build in CI.
+if sentry_dsn = System.get_env("SENTRY_DSN") do
+  config :sentry, dsn: sentry_dsn
+
+  config :trenino, :logger, [
+    {:handler, :sentry_handler, Sentry.LoggerHandler,
+     %{
+       config: %{
+         metadata: [:file, :line, :request_id],
+         capture_log_messages: true,
+         level: :error
+       }
+     }}
+  ]
+end
+
 if config_env() == :prod do
   # Determine platform-specific data directory for the database.
   # Can be overridden with DATABASE_PATH environment variable.

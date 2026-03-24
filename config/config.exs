@@ -44,6 +44,13 @@ config :tailwind,
     cd: Path.expand("..", __DIR__)
   ]
 
+# Configures Sentry error tracking (Better Stack)
+# DSN is set at runtime via SENTRY_DSN env var; Sentry is inactive without it.
+config :sentry,
+  environment_name: config_env(),
+  enable_source_code_context: true,
+  root_source_code_paths: [File.cwd!()]
+
 # Configures Elixir's Logger
 config :logger, :default_formatter,
   format: "$time $metadata[$level] $message\n",

@@ -9,6 +9,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Added
 
 - Linux x86_64 AppImage installer in nightly builds and releases
+- Better Stack error tracking via Sentry SDK, activated when `SENTRY_DSN` env var is set
 
 ### Changed
 
