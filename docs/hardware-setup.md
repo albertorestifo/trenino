@@ -17,7 +17,7 @@ The following Arduino boards are tested and supported with one-click firmware fl
 | Board | MCU | Analog Inputs | Digital I/O |
 |---|---|---|---|
 | Arduino Nano | ATmega328P | 8 | 14 |
-| Arduino Nano (Old Bootloader) | ATmega328P | 8 | 14 |
+| Arduino Nano (New Bootloader) | ATmega328P | 8 | 14 |
 | SparkFun Pro Micro | ATmega32U4 | 12 | 18 |
 | Arduino Uno | ATmega328P | 6 | 14 |
 | Arduino Leonardo | ATmega32U4 | 12 | 20 |

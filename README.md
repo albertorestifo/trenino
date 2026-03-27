@@ -65,7 +65,7 @@ Trenino detects the API key automatically on startup.
 | Board | MCU | Analog Inputs | Digital I/O | Status |
 |---|---|---|---|---|
 | Arduino Nano | ATmega328P | 8 | 14 | Fully tested |
-| Arduino Nano (Old Bootloader) | ATmega328P | 8 | 14 | Fully tested |
+| Arduino Nano (New Bootloader) | ATmega328P | 8 | 14 | Fully tested |
 | SparkFun Pro Micro | ATmega32U4 | 12 | 18 | Fully tested |
 | Arduino Uno | ATmega328P | 6 | 14 | Supported |
 | Arduino Leonardo | ATmega32U4 | 12 | 20 | Supported |

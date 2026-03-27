@@ -362,4 +362,9 @@ SECRET_KEY_BASE=<generated-key>
 DATABASE_PATH=/path/to/database.db
 PHX_HOST=localhost
 PORT=4000
+
+# Optional: Better Stack error tracking (via Sentry SDK)
+# If set, errors and log messages at :error level are forwarded to Better Stack.
+# Set this during the release build in CI or at runtime before starting the server.
+SENTRY_DSN=<your-sentry-dsn>
 ```
