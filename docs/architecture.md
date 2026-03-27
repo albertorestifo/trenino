@@ -147,7 +147,9 @@ Application
 ├── Trenino.Serial.Connection (device management)
 ├── Trenino.Simulator.Connection (API health)
 ├── Trenino.Train.Detection (train polling with two-layer defense)
-├── Trenino.Train.LeverController (value mapping)
+├── Trenino.Train.LeverController (value mapping, BLDC profile loading)
+├── Trenino.Train.ButtonController (button input to simulator)
+├── Trenino.Train.OutputController (LED/output bindings)
 ├── Trenino.Train.ScriptRunner (Lua script execution)
 ├── Trenino.Hardware.ConfigurationManager (input broadcasts)
 └── Calibration Supervisors
