@@ -211,17 +211,21 @@ Binary protocol with message types:
 
 ### Simulator API (Trenino ↔ Train Sim World)
 
-HTTP/JSON REST API:
+HTTP/JSON REST API on port 31270:
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET | `/Info` | List available commands |
-| GET | `/Path/{path}` | Read cab element value |
-| PUT | `/Path/{path}` | Set cab element value |
+| GET | `/get/<path>.<endpoint>` | Read a value |
+| PATCH | `/set/<path>.<endpoint>?Value=X` | Write a value |
+| GET | `/list/<path>` | List controls under a path |
+| POST | `/subscription/<path>?Subscription=ID` | Subscribe to endpoint |
+| GET | `/subscription?Subscription=ID` | Read subscription values |
 
 Example paths:
-- `/CurrentDrivableActor/Throttle(Lever).InputValue`
-- `/CurrentDrivableActor/Reverser(Lever).NotchesIndex`
+- `/get/CurrentDrivableActor/Throttle(Lever).InputValue`
+- `/set/CurrentDrivableActor/Throttle(Lever).InputValue?Value=0.5`
+
+See [TSW API Guide](TSW_API_GUIDE.md) for the full reference.
 
 ### MCP Protocol (AI Tools ↔ Trenino)
 

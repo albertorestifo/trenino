@@ -30,7 +30,7 @@ Train Sim World ships with an External Interface API that Trenino uses to read a
 2. In the **General** tab, add `-HTTPAPI` to **Launch Options**
 3. Launch the game once — this generates the API key file
 
-Trenino detects the API key automatically on startup (Windows). On other platforms, enter the key manually in **Simulator** → settings. The key is stored in `Documents/My Games/TrainSimWorld/Saved/Config/CommAPIKey.txt`.
+Trenino detects the API key automatically on startup (Windows). On other platforms, enter the key manually in **Simulator** → settings. The key is stored in `Documents/My Games/TrainSimWorld6/Saved/Config/CommAPIKey.txt`.
 
 ## Firmware
 

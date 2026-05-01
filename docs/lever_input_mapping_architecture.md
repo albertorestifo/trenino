@@ -400,9 +400,9 @@ Gate notches drive the BLDC detent mapping. Each gate notch in a `LeverConfig` c
 ```elixir
 # Example: Three-position reverser (Reverse / Neutral / Forward)
 notches = [
-  %Notch{index: 0, type: :gate, sim_input_min: 0.0,  sim_input_max: 0.04},  # Reverse
-  %Notch{index: 1, type: :gate, sim_input_min: 0.48, sim_input_max: 0.52},  # Neutral
-  %Notch{index: 2, type: :gate, sim_input_min: 0.96, sim_input_max: 1.0}    # Forward
+  %Notch{index: 0, type: :gate, input_min: 0.0,  input_max: 0.04},  # Reverse
+  %Notch{index: 1, type: :gate, input_min: 0.48, input_max: 0.52},  # Neutral
+  %Notch{index: 2, type: :gate, input_min: 0.96, input_max: 1.0}    # Forward
 ]
 
 # Firmware reports detent 0 → LeverMapper.map_detent(config, 0)
