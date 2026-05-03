@@ -26,6 +26,10 @@ defmodule TreninoWeb.Router do
   scope "/", TreninoWeb do
     pipe_through :browser
 
+    live_session :consent, layout: {TreninoWeb.Layouts, :root} do
+      live "/consent", ConsentLive
+    end
+
     live_session :default,
       on_mount: [
         TreninoWeb.ConsentGateHook,
