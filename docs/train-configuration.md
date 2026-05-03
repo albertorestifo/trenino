@@ -182,6 +182,91 @@ Scripts are managed in the **Scripts** section of the train configuration page. 
 
 See the [Lua Scripting Guide](lua-scripting.md) for the full API reference and examples.
 
+## Configuring Buttons
+
+Each button element needs a hardware input binding and a behavior mode.
+
+### Button Hardware Types
+
+Before configuring the binding, tell Trenino what kind of switch you're using:
+
+| Type | Description | Examples |
+|------|-------------|---------|
+| **Momentary** | Spring-loaded, returns when released | Horn buttons, push buttons |
+| **Latching** | Stays in position when toggled | Toggle switches, key switches |
+
+### Binding a Hardware Input to a Button
+
+1. Open your train configuration and find the button element
+2. Click **Configure** on the button
+3. Select your hardware input from the list
+4. Choose the **hardware type** (Momentary or Latching)
+5. Choose a **binding mode** (see below)
+
+### Button Binding Modes
+
+#### Simple Mode (default)
+
+Sends a value to a simulator endpoint when pressed, and another value when released. Best for lights, sanding, and most switches.
+
+- **Endpoint** — the simulator API path to write to
+- **ON Value** — sent when the button is pressed (default: `1.0`)
+- **OFF Value** — sent when the button is released (default: `0.0`)
+
+**Auto-detecting ON/OFF values**: Instead of entering values manually, click **Auto-Detect** on the button configuration. Trenino will watch for changes when you interact with the matching control in the simulator and suggest the correct values.
+
+#### Momentary Mode
+
+Continuously repeats the ON value at a fixed interval while the button is held down. Use this for controls like the horn that need a stream of "pressed" signals, not a single toggle.
+
+- **Endpoint** — the simulator API path
+- **ON Value** — sent repeatedly while held
+- **Repeat Interval** — how often to repeat (milliseconds, default: 100ms)
+
+#### Keystroke Mode
+
+Simulates a keyboard key while the button is held. The key is pressed when the button is pressed and released when the button is released. Useful for games that respond to keyboard input.
+
+- **Key** — captured interactively; click **Capture Key** and press the key on your keyboard
+- **Modifiers** — optionally combine with Ctrl, Shift, or Alt
+
+> Note: Keystroke simulation requires the keystroke utility to be present. In the desktop app it's bundled automatically. See the [Development Guide](development.md#optional-keystroke-simulation-support) for setup in development.
+
+#### Sequence Mode
+
+Executes a pre-configured command sequence when the button is pressed (and optionally a different sequence when released). Use this for multi-step operations like startup procedures.
+
+- **On Press Sequence** — sequence to run when button is pressed
+- **On Release Sequence** — (latching hardware only) sequence to run when button is released/toggled off
+
+At least one sequence must be assigned. See [Command Sequences](#command-sequences) below to create sequences first.
+
+### Command Sequences
+
+Sequences are reusable lists of simulator commands with configurable delays between steps. They're available to all buttons on a train and can also be triggered manually from the Sequences section.
+
+**Creating a sequence:**
+
+1. Open your train configuration
+2. Scroll to the **Sequences** section and click **New Sequence**
+3. Name the sequence (e.g., "Cold Start")
+4. Add commands:
+   - **Endpoint** — the simulator API path to write to
+   - **Value** — the value to send
+   - **Delay** — milliseconds to wait before the next command
+5. Save the sequence
+6. Click **Test** to execute it immediately from the Sequences table
+
+**Example — Cold Start sequence:**
+
+| Step | Endpoint | Value | Delay |
+|------|----------|-------|-------|
+| 1 | `CurrentDrivableActor/BatteryIsolator.InputValue` | `1.0` | `500` |
+| 2 | `CurrentDrivableActor/Pantograph.InputValue` | `1.0` | `1000` |
+| 3 | `CurrentDrivableActor/MainBreaker.InputValue` | `1.0` | `0` |
+
+Assign this sequence to a button in Sequence mode to trigger the full startup with one button press.
+
 ## API Explorer
 
 For debugging, use the built-in API Explorer:

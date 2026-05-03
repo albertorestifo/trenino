@@ -4,7 +4,15 @@ This guide covers connecting and configuring physical hardware devices with tren
 
 ## Firmware
 
-Your hardware device needs the trenino_firmware firmware installed. See the [trenino_firmware repository](https://github.com/albertorestifo/trenino_firmware) for installation instructions.
+The easiest way to install firmware is directly from the Trenino app — no separate tools needed:
+
+1. Plug in your Arduino via USB
+2. In Trenino, go to **Firmware** in the sidebar
+3. Select your board type and click **Flash Firmware**
+
+The app downloads the latest firmware release and flashes it in one step.
+
+If you prefer to flash manually, see the [trenino_firmware repository](https://github.com/albertorestifo/trenino_firmware).
 
 ## Supported Hardware
 
@@ -50,6 +58,7 @@ For each physical input on your device:
 1. Open your configuration
 2. Click **Add Input**
 3. Configure:
+   - **Name** - A friendly label shown in train configuration selectors (e.g., "Throttle Lever", "Horn Button")
    - **Pin Number** - The ADC pin on your microcontroller
    - **Input Type** - Analog or Digital
    - **Sensitivity** - Value change threshold (1-255, default 5)
