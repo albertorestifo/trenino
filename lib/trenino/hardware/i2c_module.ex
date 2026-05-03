@@ -45,7 +45,7 @@ defmodule Trenino.Hardware.I2cModule do
     |> unique_constraint([:device_id, :i2c_address])
   end
 
-  @doc "Parse an i2c address string — accepts decimal ('112') or hex ('0x70')."
+  @doc "Parse an i2c address string — accepts decimal ('112') or lowercase hex ('0x70'). Uppercase prefix ('0X70') is not supported."
   @spec parse_i2c_address(String.t()) :: {:ok, integer()} | :error
   def parse_i2c_address("0x" <> hex) do
     case Integer.parse(hex, 16) do
