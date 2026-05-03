@@ -15,13 +15,13 @@ defmodule TreninoWeb.ConsentLive do
   @impl true
   def handle_event("accept", _params, socket) do
     {:ok, _} = Settings.set_error_reporting(:enabled)
-    {:noreply, redirect(socket, to: "/")}
+    {:noreply, redirect(socket, to: ~p"/")}
   end
 
   @impl true
   def handle_event("decline", _params, socket) do
     {:ok, _} = Settings.set_error_reporting(:disabled)
-    {:noreply, redirect(socket, to: "/")}
+    {:noreply, redirect(socket, to: ~p"/")}
   end
 
   @impl true

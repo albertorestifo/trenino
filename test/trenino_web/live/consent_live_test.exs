@@ -30,7 +30,7 @@ defmodule TreninoWeb.ConsentLiveTest do
       {:ok, view, _html} = live(conn, ~p"/consent")
 
       assert {:error, {:redirect, %{to: "/"}}} =
-               view |> element("button[phx-click=accept]") |> render_click()
+               view |> element("button[phx-click='accept']") |> render_click()
 
       assert Settings.error_reporting?()
     end
@@ -39,7 +39,7 @@ defmodule TreninoWeb.ConsentLiveTest do
       {:ok, view, _html} = live(conn, ~p"/consent")
 
       assert {:error, {:redirect, %{to: "/"}}} =
-               view |> element("button[phx-click=decline]") |> render_click()
+               view |> element("button[phx-click='decline']") |> render_click()
 
       assert Settings.error_reporting_set?()
       refute Settings.error_reporting?()
