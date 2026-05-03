@@ -426,6 +426,16 @@ defmodule Trenino.Train.ScriptRunner do
     script_state
   end
 
+  defp process_effect(
+         _state,
+         _script_id,
+         %ScriptState{} = script_state,
+         {:display_set, addr, text}
+       ) do
+    apply_display_set(addr, text)
+    script_state
+  end
+
   defp process_effect(_state, _script_id, %ScriptState{} = script_state, {:api_get, _path}) do
     # API get results are handled via side effects; for now we just log the intent
     script_state
@@ -464,6 +474,26 @@ defmodule Trenino.Train.ScriptRunner do
       Hardware.set_output(port, output.pin, value)
     end
   end
+
+  defp apply_display_set(i2c_address, text) do
+    modules = Hardware.list_all_i2c_modules()
+
+    case Enum.find(modules, &(&1.i2c_address == i2c_address)) do
+      nil ->
+        Logger.warning("[ScriptRunner] No i2c module found at address #{i2c_address}")
+
+      mod ->
+        port = ConfigurationManager.config_id_to_port(mod.device.config_id)
+
+        if port do
+          chip_mod = chip_module(mod.module_chip)
+          bytes = chip_mod.encode_string(text, mod.num_digits)
+          Hardware.write_segments(port, i2c_address, bytes)
+        end
+    end
+  end
+
+  defp chip_module(:ht16k33), do: Trenino.Hardware.HT16K33
 
   defp append_log(%ScriptState{} = script_state, message) do
     # Keep last 100 log entries

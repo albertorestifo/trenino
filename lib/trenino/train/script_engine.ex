@@ -26,6 +26,7 @@ defmodule Trenino.Train.ScriptEngine do
           {:api_get, String.t()}
           | {:api_set, String.t(), number()}
           | {:output_set, integer(), boolean()}
+          | {:display_set, integer(), String.t()}
           | {:schedule, pos_integer()}
           | {:log, String.t()}
 
@@ -44,6 +45,7 @@ defmodule Trenino.Train.ScriptEngine do
       Lua.new()
       |> setup_api()
       |> setup_output()
+      |> setup_display()
       |> setup_schedule()
       |> setup_print()
       |> setup_state()
@@ -103,6 +105,19 @@ defmodule Trenino.Train.ScriptEngine do
 
         _ ->
           [nil, "usage: output.set(id, true/false)"]
+      end
+    end)
+  end
+
+  defp setup_display(lua) do
+    Lua.set!(lua, [:display, :set], fn args ->
+      case args do
+        [addr, text] when is_number(addr) and is_binary(text) ->
+          add_side_effect({:display_set, trunc(addr), text})
+          [true]
+
+        _ ->
+          [nil, "usage: display.set(i2c_address, text)"]
       end
     end)
   end
