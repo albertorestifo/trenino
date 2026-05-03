@@ -445,9 +445,9 @@ defmodule TreninoWeb.ConfigurationEditLive do
 
     if mod && socket.assigns.active_port do
       port = socket.assigns.active_port
-      texts = display_test_texts(mod.num_digits)
+      texts = display_test_texts(mod.params.num_digits)
       first = List.first(texts)
-      bytes = HT16K33.encode_string(first, mod.num_digits)
+      bytes = HT16K33.encode_string(first, mod.params)
       Hardware.write_segments(port, mod.i2c_address, bytes)
 
       texts
@@ -895,14 +895,14 @@ defmodule TreninoWeb.ConfigurationEditLive do
     mod = Enum.find(socket.assigns.i2c_modules, &(&1.id == mod_id))
 
     if mod && socket.assigns.active_port do
-      texts = display_test_texts(mod.num_digits)
+      texts = display_test_texts(mod.params.num_digits)
 
       case Enum.at(texts, step) do
         nil ->
           :ok
 
         text ->
-          bytes = HT16K33.encode_string(text, mod.num_digits)
+          bytes = HT16K33.encode_string(text, mod.params)
           Hardware.write_segments(socket.assigns.active_port, mod.i2c_address, bytes)
       end
     end
@@ -1511,8 +1511,8 @@ defmodule TreninoWeb.ConfigurationEditLive do
               <td>{mod.name || "—"}</td>
               <td class="uppercase text-xs">{mod.module_chip}</td>
               <td class="font-mono">{I2cModule.format_i2c_address(mod.i2c_address)}</td>
-              <td>{mod.num_digits}</td>
-              <td>{round((mod.brightness || 8) * 100 / 15)}%</td>
+              <td>{mod.params.num_digits}</td>
+              <td>{round(mod.params.brightness * 100 / 15)}%</td>
               <td :if={@active_port} class="text-center">
                 <button
                   phx-click="test_display"

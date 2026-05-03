@@ -210,8 +210,12 @@ defmodule Trenino.MCP.Tools.DeviceTools do
       module_chip: mod.module_chip,
       i2c_address: mod.i2c_address,
       i2c_address_display: I2cModule.format_i2c_address(mod.i2c_address),
-      brightness: mod.brightness,
-      num_digits: mod.num_digits
+      brightness: mod.params.brightness,
+      num_digits: mod.params.num_digits,
+      display_type: mod.params.display_type,
+      has_dot: mod.params.has_dot,
+      align_right: mod.params.align_right,
+      min_value: mod.params.min_value
     }
   end
 

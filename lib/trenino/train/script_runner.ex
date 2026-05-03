@@ -489,7 +489,7 @@ defmodule Trenino.Train.ScriptRunner do
 
         if port do
           chip_mod = chip_module(mod.module_chip)
-          bytes = chip_mod.encode_string(text, mod.num_digits)
+          bytes = chip_mod.encode_string(text, mod.params)
           Hardware.write_segments(port, i2c_address, bytes)
         end
     end

@@ -384,8 +384,8 @@ defmodule Trenino.Hardware.ConfigurationManager do
       part_number: part_number,
       input_type: :ht16k33,
       i2c_address: mod.i2c_address,
-      brightness: mod.brightness,
-      num_digits: mod.num_digits
+      brightness: mod.params.brightness,
+      num_digits: mod.params.num_digits
     }
   end
 

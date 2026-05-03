@@ -251,7 +251,7 @@ defmodule TreninoWeb.DisplayBindingWizard do
                     "Module at #{Trenino.Hardware.I2cModule.format_i2c_address(mod.i2c_address)}"}
                 </p>
                 <p class="text-xs text-base-content/60">
-                  {mod.device.name} · {mod.module_chip} · {mod.num_digits} digits · addr {Trenino.Hardware.I2cModule.format_i2c_address(
+                  {mod.device.name} · {mod.module_chip} · {mod.params.num_digits} digits · addr {Trenino.Hardware.I2cModule.format_i2c_address(
                     mod.i2c_address
                   )}
                 </p>

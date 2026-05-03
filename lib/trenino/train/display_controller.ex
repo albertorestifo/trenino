@@ -13,6 +13,7 @@ defmodule Trenino.Train.DisplayController do
   alias Trenino.Hardware
   alias Trenino.Hardware.ConfigurationManager
   alias Trenino.Hardware.HT16K33
+  alias Trenino.Hardware.HT16K33.Params, as: HT16K33Params
   alias Trenino.Hardware.I2cModule
   alias Trenino.Simulator.Client, as: SimulatorClient
   alias Trenino.Simulator.Connection, as: SimulatorConnection
@@ -210,9 +211,16 @@ defmodule Trenino.Train.DisplayController do
     end
   end
 
+  defp clamp_to_min(raw_value, %HT16K33Params{min_value: min_v})
+       when is_number(raw_value) and is_number(min_v) and raw_value < min_v,
+       do: min_v
+
+  defp clamp_to_min(raw_value, _params), do: raw_value
+
   defp update_displays(state, entries, value) do
     Enum.reduce(entries, state, fn {id, info}, acc ->
-      text = DisplayFormatter.format(info.binding.format_string, value)
+      clamped = clamp_to_min(value, info.binding.i2c_module.params)
+      text = DisplayFormatter.format(info.binding.format_string, clamped)
 
       if text != info.last_text do
         send_to_display(info.binding, text)
@@ -228,7 +236,7 @@ defmodule Trenino.Train.DisplayController do
 
     if port do
       chip_mod = chip_module(mod.module_chip)
-      bytes = chip_mod.encode_string(text, mod.num_digits)
+      bytes = chip_mod.encode_string(text, mod.params)
       Hardware.write_segments(port, mod.i2c_address, bytes)
     end
   end
@@ -237,7 +245,7 @@ defmodule Trenino.Train.DisplayController do
     port = ConfigurationManager.config_id_to_port(mod.device.config_id)
 
     if port do
-      blank = :binary.copy(<<0>>, mod.num_digits * 2)
+      blank = chip_module(mod.module_chip).encode_string("", mod.params)
       Hardware.write_segments(port, mod.i2c_address, blank)
     end
   end
