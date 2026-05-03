@@ -6,12 +6,13 @@ defmodule Trenino.Hardware do
   import Ecto.Query
 
   alias Trenino.Hardware.Calibration.{Calculator, SessionSupervisor}
-  alias Trenino.Hardware.{ConfigId, Device, Input, Matrix, Output}
+  alias Trenino.Hardware.{ConfigId, Device, I2cModule, Input, Matrix, Output}
   alias Trenino.Hardware.Input.Calibration
   alias Trenino.Hardware.Input.MatrixPin
   alias Trenino.Repo
   alias Trenino.Serial.Connection
   alias Trenino.Serial.Protocol.SetOutput
+  alias Trenino.Serial.Protocol.WriteSegments
 
   # Delegate configuration operations to ConfigurationManager
   defdelegate apply_configuration(port, device_id), to: Trenino.Hardware.ConfigurationManager
@@ -611,6 +612,65 @@ defmodule Trenino.Hardware do
     output
     |> Output.changeset(attrs)
     |> Repo.update()
+  end
+
+  # I2C module operations
+
+  @doc "List all i2c modules for a device."
+  @spec list_i2c_modules(integer()) :: [I2cModule.t()]
+  def list_i2c_modules(device_id) do
+    I2cModule
+    |> where([m], m.device_id == ^device_id)
+    |> order_by([m], m.i2c_address)
+    |> Repo.all()
+  end
+
+  @doc "List all i2c modules across all devices (for MCP tools)."
+  @spec list_all_i2c_modules() :: [I2cModule.t()]
+  def list_all_i2c_modules do
+    I2cModule
+    |> order_by([m], m.i2c_address)
+    |> preload(:device)
+    |> Repo.all()
+  end
+
+  @doc "Get a single i2c module by id."
+  @spec get_i2c_module(integer()) :: {:ok, I2cModule.t()} | {:error, :not_found}
+  def get_i2c_module(id) do
+    case Repo.get(I2cModule, id) do
+      nil -> {:error, :not_found}
+      mod -> {:ok, Repo.preload(mod, :device)}
+    end
+  end
+
+  @doc "Create an i2c module on a device."
+  @spec create_i2c_module(integer(), map()) :: {:ok, I2cModule.t()} | {:error, Ecto.Changeset.t()}
+  def create_i2c_module(device_id, attrs) do
+    %I2cModule{device_id: device_id}
+    |> I2cModule.changeset(attrs)
+    |> Repo.insert()
+  end
+
+  @doc "Update an i2c module."
+  @spec update_i2c_module(I2cModule.t(), map()) ::
+          {:ok, I2cModule.t()} | {:error, Ecto.Changeset.t()}
+  def update_i2c_module(%I2cModule{} = mod, attrs) do
+    mod
+    |> I2cModule.changeset(attrs)
+    |> Repo.update()
+  end
+
+  @doc "Delete an i2c module."
+  @spec delete_i2c_module(I2cModule.t()) :: {:ok, I2cModule.t()} | {:error, Ecto.Changeset.t()}
+  def delete_i2c_module(%I2cModule{} = mod) do
+    Repo.delete(mod)
+  end
+
+  @doc "Send WriteSegments to an I2C display module. data must be <= 16 bytes."
+  @spec write_segments(String.t(), integer(), binary()) :: :ok | {:error, term()}
+  def write_segments(port, i2c_address, data) do
+    message = %WriteSegments{i2c_address: i2c_address, data: data}
+    Connection.send_message(port, message)
   end
 
   # Calibration operations
