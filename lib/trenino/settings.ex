@@ -14,6 +14,10 @@ defmodule Trenino.Settings do
   @error_reporting_key "error_reporting"
   @error_reporting_values [:enabled, :disabled]
 
+  @simulator_url_key "simulator_url"
+  @simulator_api_key_key "simulator_api_key"
+  @default_simulator_url "http://localhost:31270"
+
   @spec error_reporting?() :: boolean()
   def error_reporting?, do: get_atom(@error_reporting_key, @error_reporting_values) == :enabled
 
@@ -25,6 +29,28 @@ defmodule Trenino.Settings do
   def set_error_reporting(value) when value in @error_reporting_values do
     put_raw(@error_reporting_key, Atom.to_string(value))
   end
+
+  @spec simulator_url() :: String.t()
+  def simulator_url, do: get_raw(@simulator_url_key) || @default_simulator_url
+
+  @spec set_simulator_url(String.t()) ::
+          {:ok, Setting.t()} | {:error, Ecto.Changeset.t()}
+  def set_simulator_url(url) when is_binary(url), do: put_raw(@simulator_url_key, url)
+
+  @spec api_key() ::
+          {:ok, String.t()}
+          | {:error,
+             :not_windows | :userprofile_not_set | :file_not_found | :read_error}
+  def api_key do
+    case get_raw(@simulator_api_key_key) do
+      nil -> Trenino.Settings.Simulator.read_from_file()
+      key when is_binary(key) -> {:ok, key}
+    end
+  end
+
+  @spec set_api_key(String.t()) ::
+          {:ok, Setting.t()} | {:error, Ecto.Changeset.t()}
+  def set_api_key(key) when is_binary(key), do: put_raw(@simulator_api_key_key, key)
 
   @doc """
   Sentry `before_send` callback. Returns `false` to drop the event when the

@@ -65,4 +65,49 @@ defmodule Trenino.SettingsTest do
       assert ^event = Settings.sentry_before_send(event)
     end
   end
+
+  describe "simulator_url/0" do
+    test "returns the default URL when unset" do
+      assert "http://localhost:31270" = Settings.simulator_url()
+    end
+
+    test "returns the stored URL when set" do
+      {:ok, _} = Settings.set_simulator_url("http://192.168.1.10:31270")
+      assert "http://192.168.1.10:31270" = Settings.simulator_url()
+    end
+  end
+
+  describe "set_simulator_url/1" do
+    test "stores a URL" do
+      {:ok, _} = Settings.set_simulator_url("http://example.local:31270")
+      assert "http://example.local:31270" = Settings.simulator_url()
+    end
+  end
+
+  describe "api_key/0" do
+    test "returns the stored key when set" do
+      {:ok, _} = Settings.set_api_key("manual-key-123")
+      assert {:ok, "manual-key-123"} = Settings.api_key()
+    end
+
+    test "delegates to Settings.Simulator on non-Windows when no key is stored" do
+      # On non-Windows machines with no DB entry, file read returns :not_windows
+      unless Trenino.Settings.Simulator.windows?() do
+        assert {:error, :not_windows} = Settings.api_key()
+      end
+    end
+  end
+
+  describe "set_api_key/1" do
+    test "persists the manual override" do
+      {:ok, _} = Settings.set_api_key("override-abc")
+      assert {:ok, "override-abc"} = Settings.api_key()
+    end
+
+    test "subsequent calls reflect the override" do
+      {:ok, _} = Settings.set_api_key("first")
+      {:ok, _} = Settings.set_api_key("second")
+      assert {:ok, "second"} = Settings.api_key()
+    end
+  end
 end
