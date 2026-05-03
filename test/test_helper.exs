@@ -12,6 +12,8 @@ Mimic.copy(Trenino.Simulator.ControlDetectionSession)
 Mimic.copy(Trenino.AppVersion)
 Mimic.copy(Circuits.UART, type_check: true)
 Mimic.copy(Trenino.Serial.Discovery, type_check: true)
+Mimic.copy(Trenino.Firmware.Avrdude)
+Mimic.copy(Trenino.Firmware.AvrdudeRunner)
 
 ExUnit.start()
 Ecto.Adapters.SQL.Sandbox.mode(Trenino.Repo, :manual)

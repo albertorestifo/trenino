@@ -8,7 +8,7 @@ defmodule Trenino.Firmware.Uploader do
 
   require Logger
 
-  alias Trenino.Firmware.{Avrdude, DeviceRegistry}
+  alias Trenino.Firmware.{Avrdude, AvrdudeRunner, DeviceRegistry}
 
   @type progress_callback :: (integer(), String.t() -> any())
 
@@ -112,7 +112,7 @@ defmodule Trenino.Firmware.Uploader do
     args = build_args(config, port, hex_file_path)
     Logger.info("Running avrdude: #{avrdude_path} #{Enum.join(args, " ")}")
 
-    case run_avrdude(avrdude_path, args, callback) do
+    case AvrdudeRunner.run(avrdude_path, args, callback) do
       {:ok, output} ->
         {:ok, output}
 
@@ -346,67 +346,6 @@ defmodule Trenino.Firmware.Uploader do
       {:error, :hex_file_not_found, "Firmware file not found: #{path}"}
     end
   end
-
-  # Run avrdude and collect output
-  defp run_avrdude(avrdude_path, args, progress_callback) do
-    port =
-      Port.open({:spawn_executable, avrdude_path}, [
-        :binary,
-        :exit_status,
-        :stderr_to_stdout,
-        args: args
-      ])
-
-    collect_output(port, "", progress_callback)
-  end
-
-  defp collect_output(port, acc, progress_callback) do
-    receive do
-      {^port, {:data, data}} ->
-        new_acc = acc <> data
-
-        # Parse and report progress
-        if progress_callback do
-          parse_progress(data, progress_callback)
-        end
-
-        collect_output(port, new_acc, progress_callback)
-
-      {^port, {:exit_status, 0}} ->
-        {:ok, acc}
-
-      {^port, {:exit_status, _code}} ->
-        {:error, acc}
-    after
-      # 2 minute timeout
-      120_000 ->
-        Port.close(port)
-        {:error, acc <> "\n[Timeout: avrdude did not respond within 2 minutes]"}
-    end
-  end
-
-  # Parse avrdude output for progress updates
-  defp parse_progress(data, callback) do
-    # avrdude progress format: "Writing | ####... | 45% 1.15s"
-    # Also: "Reading | ####... | 100% 0.23s"
-    lines = String.split(data, "\n")
-
-    Enum.each(lines, fn line ->
-      case Regex.run(~r/(Reading|Writing|Verifying)\s+\|.*?\|\s+(\d+)%/, line) do
-        [_, operation, percent_str] ->
-          percent = String.to_integer(percent_str)
-          message = format_operation(operation, percent)
-          callback.(percent, message)
-
-        nil ->
-          :ok
-      end
-    end)
-  end
-
-  defp format_operation("Reading", _percent), do: "Reading device..."
-  defp format_operation("Writing", percent), do: "Writing flash (#{percent}%)"
-  defp format_operation("Verifying", percent), do: "Verifying (#{percent}%)"
 
   # Error patterns mapped to error atoms
   # Each pattern is either a string or a list of strings (all must match)
