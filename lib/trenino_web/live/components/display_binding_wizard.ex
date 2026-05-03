@@ -39,6 +39,7 @@ defmodule TreninoWeb.DisplayBindingWizard do
     {:ok, socket}
   end
 
+  @impl true
   def update(assigns, socket) do
     {:ok, handle_explorer_event(assigns, socket)}
   end

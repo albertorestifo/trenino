@@ -425,9 +425,14 @@ defmodule TreninoWeb.ConfigurationEditLive do
   def handle_event("delete_i2c_module", %{"id" => id_str}, socket) do
     case Hardware.get_i2c_module(String.to_integer(id_str)) do
       {:ok, mod} ->
-        {:ok, _} = Hardware.delete_i2c_module(mod)
-        i2c_modules = Hardware.list_i2c_modules(socket.assigns.device.id)
-        {:noreply, assign(socket, :i2c_modules, i2c_modules)}
+        case Hardware.delete_i2c_module(mod) do
+          {:ok, _} ->
+            i2c_modules = Hardware.list_i2c_modules(socket.assigns.device.id)
+            {:noreply, assign(socket, :i2c_modules, i2c_modules)}
+
+          {:error, _reason} ->
+            {:noreply, put_flash(socket, :error, "Failed to delete I2C module")}
+        end
 
       {:error, :not_found} ->
         {:noreply, put_flash(socket, :error, "Module not found")}

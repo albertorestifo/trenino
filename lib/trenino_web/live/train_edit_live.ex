@@ -438,10 +438,15 @@ defmodule TreninoWeb.TrainEditLive do
   def handle_event("delete_display_binding", %{"id" => id_str}, socket) do
     case TrainContext.get_display_binding(String.to_integer(id_str)) do
       {:ok, binding} ->
-        {:ok, _} = TrainContext.delete_display_binding(binding)
-        DisplayController.reload_bindings()
-        display_bindings = TrainContext.list_display_bindings(socket.assigns.train.id)
-        {:noreply, assign(socket, :display_bindings, display_bindings)}
+        case TrainContext.delete_display_binding(binding) do
+          {:ok, _} ->
+            DisplayController.reload_bindings()
+            display_bindings = TrainContext.list_display_bindings(socket.assigns.train.id)
+            {:noreply, assign(socket, :display_bindings, display_bindings)}
+
+          {:error, _reason} ->
+            {:noreply, put_flash(socket, :error, "Failed to delete display binding")}
+        end
 
       {:error, :not_found} ->
         {:noreply, put_flash(socket, :error, "Display binding not found")}
@@ -1294,10 +1299,7 @@ defmodule TreninoWeb.TrainEditLive do
         </div>
 
         <div :if={not @new_mode} class="bg-base-200/50 rounded-xl p-6 mt-6">
-          <.display_bindings_section
-            display_bindings={@display_bindings}
-            simulator_connected={@nav_simulator_status.status == :connected}
-          />
+          <.display_bindings_section display_bindings={@display_bindings} />
         </div>
 
         <div :if={not @new_mode} class="bg-base-200/50 rounded-xl p-6 mt-6">
@@ -1557,7 +1559,6 @@ defmodule TreninoWeb.TrainEditLive do
   end
 
   attr :display_bindings, :list, required: true
-  attr :simulator_connected, :boolean, required: true
 
   defp display_bindings_section(assigns) do
     ~H"""
