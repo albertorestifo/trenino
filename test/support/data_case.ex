@@ -27,11 +27,28 @@ defmodule Trenino.DataCase do
       import Ecto.Changeset
       import Ecto.Query
       import Trenino.DataCase
+
+      use Mimic
     end
   end
 
   setup tags do
     Trenino.DataCase.setup_sandbox(tags)
+    Trenino.DataCase.setup_forbidden_serial_stubs()
+    :ok
+  end
+
+  @doc """
+  Installs default Mimic stubs that forbid real serial / avrdude / discovery
+  access. Tests that legitimately need to simulate one of these subsystems
+  override the default with `Mimic.expect/3` or `Mimic.stub/3`.
+  """
+  def setup_forbidden_serial_stubs do
+    Mimic.set_mimic_private()
+    Mimic.stub_with(Circuits.UART, Trenino.Test.ForbiddenUART)
+    Mimic.stub_with(Trenino.Firmware.Avrdude, Trenino.Test.ForbiddenAvrdude)
+    Mimic.stub_with(Trenino.Firmware.AvrdudeRunner, Trenino.Test.ForbiddenAvrdudeRunner)
+    Mimic.stub_with(Trenino.Serial.Discovery, Trenino.Test.ForbiddenSerialDiscovery)
     :ok
   end
 
