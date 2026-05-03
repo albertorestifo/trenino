@@ -16,7 +16,7 @@ defmodule Trenino.Serial.Protocol.SetModuleBrightness do
   def encode(%__MODULE__{}), do: {:error, :invalid_brightness}
 
   @impl Message
-  def decode_body(<<addr::8-unsigned, b::8-unsigned>>) do
+  def decode_body(<<addr::8-unsigned, b::8-unsigned>>) when b in 0..15 do
     {:ok, %__MODULE__{i2c_address: addr, brightness: b}}
   end
 
