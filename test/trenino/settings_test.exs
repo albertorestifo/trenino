@@ -50,13 +50,13 @@ defmodule Trenino.SettingsTest do
   end
 
   describe "sentry_before_send/1" do
-    test "returns :ignore when error reporting is disabled (default)" do
-      assert :ignore = Settings.sentry_before_send(%{event: :stub})
+    test "returns false when error reporting is disabled (default)" do
+      assert false == Settings.sentry_before_send(%{event: :stub})
     end
 
-    test "returns :ignore when explicitly disabled" do
+    test "returns false when explicitly disabled" do
       {:ok, _} = Settings.set_error_reporting(:disabled)
-      assert :ignore = Settings.sentry_before_send(%{event: :stub})
+      assert false == Settings.sentry_before_send(%{event: :stub})
     end
 
     test "returns the event unchanged when enabled" do

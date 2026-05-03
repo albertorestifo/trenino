@@ -27,12 +27,14 @@ defmodule Trenino.Settings do
   end
 
   @doc """
-  Sentry `before_send` callback. Drops events when the user has not
-  opted in to error reporting.
+  Sentry `before_send` callback. Returns `false` to drop the event when the
+  user has not opted in to error reporting; otherwise returns the event
+  unchanged. Sentry treats a falsy return as "exclude" and a truthy return
+  as "send".
   """
-  @spec sentry_before_send(map()) :: map() | :ignore
+  @spec sentry_before_send(event) :: event | false when event: term()
   def sentry_before_send(event) do
-    if error_reporting?(), do: event, else: :ignore
+    if error_reporting?(), do: event, else: false
   end
 
   # Private helpers
