@@ -11,9 +11,8 @@ defmodule Trenino.Simulator.Connection do
   use GenServer
   require Logger
 
-  alias Trenino.Simulator.AutoConfig
+  alias Trenino.Settings
   alias Trenino.Simulator.Client
-  alias Trenino.Simulator.Config
   alias Trenino.Simulator.ConnectionState
 
   @health_check_interval_ms 30_000
@@ -218,9 +217,9 @@ defmodule Trenino.Simulator.Connection do
   end
 
   defp attempt_connection(%ConnectionState{} = state) do
-    case AutoConfig.ensure_config() do
-      {:ok, %Config{url: url, api_key: api_key}} ->
-        do_connect(state, url, api_key)
+    case Settings.api_key() do
+      {:ok, api_key} ->
+        do_connect(state, Settings.simulator_url(), api_key)
 
       {:error, _reason} ->
         ConnectionState.mark_needs_config(state)

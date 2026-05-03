@@ -26,6 +26,8 @@ defmodule TreninoWeb.Router do
   scope "/", TreninoWeb do
     pipe_through :browser
 
+    get "/simulator/config", RedirectController, :simulator_config
+
     live_session :consent, layout: {TreninoWeb.Layouts, :root} do
       live "/consent", ConsentLive
     end
@@ -39,7 +41,6 @@ defmodule TreninoWeb.Router do
       layout: {TreninoWeb.Layouts, :app} do
       live "/", ConfigurationListLive
       live "/configurations/:config_id", ConfigurationEditLive
-      live "/simulator/config", SimulatorConfigLive
       live "/trains", TrainListLive
       live "/trains/:train_id", TrainEditLive
       live "/trains/:train_id/scripts/new", ScriptEditLive

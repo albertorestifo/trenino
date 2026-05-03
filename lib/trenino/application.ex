@@ -62,7 +62,7 @@ defmodule Trenino.Application do
 
   # Returns the Simulator.Connection child spec only in non-test environments.
   # In test, this GenServer would interfere with the Ecto Sandbox since it
-  # queries the database during initialization via AutoConfig.ensure_config/0.
+  # queries the database during initialization via Settings.api_key/0.
   defp simulator_connection_child do
     if Application.get_env(:trenino, :start_simulator_connection, true) do
       [Trenino.Simulator.Connection]
