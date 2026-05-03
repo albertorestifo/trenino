@@ -18,6 +18,7 @@ defmodule Trenino.Train.ScriptEngine do
   - `{:api_get, path}` - Read simulator endpoint
   - `{:api_set, path, value}` - Write simulator endpoint
   - `{:output_set, output_id, on?}` - Set hardware output
+  - `{:display_set, i2c_address, text}` — write text to an I2C display module
   - `{:schedule, ms}` - Schedule re-invocation
   - `{:log, message}` - Print output from script
   """

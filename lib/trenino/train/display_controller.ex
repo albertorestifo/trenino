@@ -34,7 +34,7 @@ defmodule Trenino.Train.DisplayController do
           }
 
     @type t :: %__MODULE__{
-            active_train: map() | nil,
+            active_train: Trenino.Train.Train.t() | nil,
             bindings: %{integer() => binding_info()},
             subscriptions: %{String.t() => integer()},
             poll_timer: reference() | nil
@@ -240,6 +240,14 @@ defmodule Trenino.Train.DisplayController do
       blank = :binary.copy(<<0>>, mod.num_digits * 2)
       Hardware.write_segments(port, mod.i2c_address, blank)
     end
+  end
+
+  # i2c_module not preloaded — this should not happen since list_enabled_display_bindings/1
+  # always preloads i2c_module: :device
+  defp blank_display(%DisplayBinding{}) do
+    Logger.warning(
+      "[DisplayController] blank_display called with unloaded i2c_module association"
+    )
   end
 
   defp chip_module(:ht16k33), do: HT16K33

@@ -18,6 +18,7 @@ defmodule Trenino.Train.ScriptRunner do
 
   alias Trenino.Hardware
   alias Trenino.Hardware.ConfigurationManager
+  alias Trenino.Hardware.HT16K33
   alias Trenino.Simulator.Client, as: SimulatorClient
   alias Trenino.Simulator.Connection, as: SimulatorConnection
   alias Trenino.Simulator.ConnectionState
@@ -476,6 +477,7 @@ defmodule Trenino.Train.ScriptRunner do
   end
 
   defp apply_display_set(i2c_address, text) do
+    # Queries DB each invocation — acceptable for first iteration; cache here if it becomes hot
     modules = Hardware.list_all_i2c_modules()
 
     case Enum.find(modules, &(&1.i2c_address == i2c_address)) do
@@ -493,7 +495,7 @@ defmodule Trenino.Train.ScriptRunner do
     end
   end
 
-  defp chip_module(:ht16k33), do: Trenino.Hardware.HT16K33
+  defp chip_module(:ht16k33), do: HT16K33
 
   defp append_log(%ScriptState{} = script_state, message) do
     # Keep last 100 log entries

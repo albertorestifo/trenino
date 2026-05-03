@@ -42,6 +42,18 @@ defmodule Trenino.Train.ScriptEngineTest do
       assert {:output_set, 7, false} in effects
     end
 
+    test "collects display.set side effects" do
+      {:ok, lua} =
+        ScriptEngine.new("""
+        function on_change(event)
+          display.set(0x70, "1234")
+        end
+        """)
+
+      assert {:ok, _lua, effects} = ScriptEngine.execute(lua, %{"source" => "test"})
+      assert {:display_set, 0x70, "1234"} in effects
+    end
+
     test "collects schedule side effects" do
       {:ok, lua} =
         ScriptEngine.new("""
