@@ -41,11 +41,11 @@ defmodule TreninoWeb.ConfigurationListLiveTest do
   end
 
   describe "simulator status indicator" do
-    test "shows simulator link in header", %{conn: conn} do
+    test "shows settings link in header", %{conn: conn} do
       {:ok, _view, html} = live(conn, ~p"/")
 
-      assert html =~ "Simulator"
-      assert html =~ ~s(href="/simulator/config")
+      assert html =~ "Settings"
+      assert html =~ ~s(href="/settings")
     end
 
     test "updates simulator status on PubSub event", %{conn: conn} do
