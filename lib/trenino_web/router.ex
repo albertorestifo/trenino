@@ -45,6 +45,7 @@ defmodule TreninoWeb.Router do
       live "/trains/:train_id/scripts/new", ScriptEditLive
       live "/trains/:train_id/scripts/:script_id", ScriptEditLive
       live "/firmware", FirmwareLive
+      live "/settings", SettingsLive
     end
   end
 
