@@ -15,6 +15,7 @@ defmodule Trenino.Hardware.ConfigurationManager do
   use GenServer
 
   alias Trenino.Hardware
+  alias Trenino.Hardware.I2cModule
   alias Trenino.Hardware.Input
   alias Trenino.Serial.Connection
 
@@ -22,6 +23,7 @@ defmodule Trenino.Hardware.ConfigurationManager do
   alias Trenino.Serial.Protocol.ConfigurationStored
   alias Trenino.Serial.Protocol.Configure
   alias Trenino.Serial.Protocol.InputValue
+  alias Trenino.Serial.Protocol.ModuleError
 
   require Logger
 
@@ -218,6 +220,18 @@ defmodule Trenino.Hardware.ConfigurationManager do
   end
 
   @impl true
+  def handle_info(
+        {:serial_message, _port, %ModuleError{i2c_address: addr, error_code: code}},
+        %State{} = state
+      ) do
+    Logger.warning(
+      "[ConfigurationManager] ModuleError: I2C module at #{I2cModule.format_i2c_address(addr)} failed init (error_code=#{code})"
+    )
+
+    {:noreply, state}
+  end
+
+  @impl true
   def handle_info({:serial_message, _port, _other_message}, %State{} = state) do
     {:noreply, state}
   end
@@ -257,29 +271,22 @@ defmodule Trenino.Hardware.ConfigurationManager do
     with {:ok, device} <- Hardware.get_device(device_id),
          {:ok, inputs} <- Hardware.list_inputs(device_id),
          {:ok, matrices} <- Hardware.list_matrices(device_id),
-         :ok <- validate_configuration(inputs, matrices),
-         # Use the existing config_id - don't generate a new one
+         i2c_modules = Hardware.list_i2c_modules(device_id),
+         :ok <- validate_configuration(inputs, matrices, i2c_modules),
          config_id = device.config_id,
-         :ok <- send_configuration_messages(port, config_id, inputs, matrices) do
+         :ok <- send_configuration_messages(port, config_id, inputs, matrices, i2c_modules) do
       timer_ref = Process.send_after(self(), {:config_timeout, config_id}, @config_timeout_ms)
-
-      in_flight_info = %{
-        port: port,
-        timer_ref: timer_ref,
-        device_id: device_id
-      }
-
+      in_flight_info = %{port: port, timer_ref: timer_ref, device_id: device_id}
       new_in_flight = Map.put(state.in_flight, config_id, in_flight_info)
       {:ok, config_id, %{state | in_flight: new_in_flight}}
     end
   end
 
-  defp validate_configuration([], []), do: {:error, :no_inputs}
-  defp validate_configuration(_inputs, _matrices), do: :ok
+  defp validate_configuration([], [], _i2c_modules), do: {:error, :no_inputs}
+  defp validate_configuration(_inputs, _matrices, _i2c_modules), do: :ok
 
-  defp send_configuration_messages(port, config_id, inputs, matrices) do
-    # Build list of all configuration parts: inputs + matrices
-    config_parts = build_config_parts(inputs, matrices)
+  defp send_configuration_messages(port, config_id, inputs, matrices, i2c_modules) do
+    config_parts = build_config_parts(inputs, matrices, i2c_modules)
     total_parts = length(config_parts)
 
     Logger.info(
@@ -299,11 +306,11 @@ defmodule Trenino.Hardware.ConfigurationManager do
     end)
   end
 
-  # Build a list of configuration parts from inputs and matrices
-  defp build_config_parts(inputs, matrices) do
+  defp build_config_parts(inputs, matrices, i2c_modules) do
     input_parts = Enum.map(inputs, &{:input, &1})
     matrix_parts = Enum.map(matrices, &{:matrix, &1})
-    input_parts ++ matrix_parts
+    i2c_parts = Enum.map(i2c_modules, &{:i2c_module, &1})
+    input_parts ++ matrix_parts ++ i2c_parts
   end
 
   defp build_configure_message(
@@ -362,6 +369,23 @@ defmodule Trenino.Hardware.ConfigurationManager do
       input_type: :matrix,
       row_pins: row_pins,
       col_pins: col_pins
+    }
+  end
+
+  defp build_configure_message(
+         config_id,
+         total_parts,
+         part_number,
+         {:i2c_module, %I2cModule{module_chip: :ht16k33} = mod}
+       ) do
+    %Configure{
+      config_id: config_id,
+      total_parts: total_parts,
+      part_number: part_number,
+      input_type: :ht16k33,
+      i2c_address: mod.i2c_address,
+      brightness: mod.brightness,
+      num_digits: mod.num_digits
     }
   end
 
