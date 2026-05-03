@@ -25,6 +25,10 @@ defmodule Trenino.Serial.Connection do
   @cleanup_timeout_ms 5_000
   # Timeout for discovery operations (5 retries × 1s each + buffer)
   @discovery_timeout_ms 7_000
+  # Default GenServer.call timeout for blocking public API calls (ms).
+  # Overridable via Application env for tests.
+  @default_call_timeout_ms 5_000
+
   # Port name patterns to ignore (Bluetooth, debug consoles, etc.)
   @ignored_port_patterns [
     ~r/Bluetooth/i,
@@ -42,7 +46,7 @@ defmodule Trenino.Serial.Connection do
   @doc "Get all connected devices"
   @spec connected_devices() :: [DeviceConnection.t()]
   def connected_devices do
-    GenServer.call(__MODULE__, :connected_devices)
+    GenServer.call(__MODULE__, :connected_devices, call_timeout())
   catch
     :exit, _ -> []
   end
@@ -50,7 +54,7 @@ defmodule Trenino.Serial.Connection do
   @doc "Get all tracked devices (any status)"
   @spec list_devices() :: [DeviceConnection.t()]
   def list_devices do
-    GenServer.call(__MODULE__, :list_devices)
+    GenServer.call(__MODULE__, :list_devices, call_timeout())
   catch
     :exit, _ -> []
   end
@@ -66,6 +70,10 @@ defmodule Trenino.Serial.Connection do
 
   defp ignored_port?(port) do
     Enum.any?(@ignored_port_patterns, &Regex.match?(&1, port))
+  end
+
+  defp call_timeout do
+    Application.get_env(:trenino, :serial_connection_call_timeout_ms, @default_call_timeout_ms)
   end
 
   @doc "Trigger an immediate device scan"

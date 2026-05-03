@@ -117,7 +117,7 @@ defmodule Trenino.Serial.Connection.PortTimeoutTest do
           Connection.list_devices()
         end)
 
-      result = Task.yield(task, 6_000) || Task.shutdown(task)
+      result = Task.yield(task, 1_000) || Task.shutdown(task)
 
       assert {:ok, devices} = result
       assert devices == []
@@ -146,7 +146,7 @@ defmodule Trenino.Serial.Connection.PortTimeoutTest do
           Connection.connected_devices()
         end)
 
-      result = Task.yield(task, 6_000) || Task.shutdown(task)
+      result = Task.yield(task, 1_000) || Task.shutdown(task)
 
       assert {:ok, devices} = result
       assert devices == []
