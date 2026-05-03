@@ -176,7 +176,7 @@ A new inline form component handles create/edit. It is a simple form (not a mult
 |-------|-----------|-------|
 | Name | text | e.g. "Speed display" |
 | Chip | select | Only `HT16K33` for now |
-| I2C address | number | 0–255; shown as decimal, documented as hex (e.g. 112 = 0x70) |
+| I2C address | text | Accepts decimal (`112`) or hex (`0x70`); stored as integer; always displayed as both (e.g. "112 (0x70)") |
 | Brightness | number / range | 0–15 |
 | Num digits | select | 4 or 8 |
 
