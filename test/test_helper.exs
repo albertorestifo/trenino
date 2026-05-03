@@ -14,6 +14,7 @@ Mimic.copy(Circuits.UART, type_check: true)
 Mimic.copy(Trenino.Serial.Discovery, type_check: true)
 Mimic.copy(Trenino.Firmware.Avrdude)
 Mimic.copy(Trenino.Firmware.AvrdudeRunner)
+Mimic.copy(Trenino.Serial.Connection)
 
 ExUnit.start()
 ExUnit.configure(exclude: [:skip_without_avrdude])
