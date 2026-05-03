@@ -40,8 +40,7 @@ defmodule Trenino.Settings do
 
   @spec api_key() ::
           {:ok, String.t()}
-          | {:error,
-             :not_windows | :userprofile_not_set | :file_not_found | :read_error}
+          | {:error, :not_windows | :userprofile_not_set | :file_not_found | :read_error}
   def api_key do
     case get_raw(@simulator_api_key_key) do
       nil -> Simulator.read_from_file()

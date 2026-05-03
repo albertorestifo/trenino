@@ -10,12 +10,13 @@ defmodule Trenino.Repo.Migrations.MigrateSimulatorConfigsToAppSettings do
 
     rows =
       repo.all(
-        from c in "simulator_configs",
+        from(c in "simulator_configs",
           select: %{
             url: c.url,
             api_key: c.api_key,
             auto_detected: c.auto_detected
           }
+        )
       )
 
     Enum.each(rows, fn row ->
