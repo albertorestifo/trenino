@@ -4,8 +4,8 @@ defmodule TreninoWeb.I2cModuleFormComponent do
   use TreninoWeb, :live_component
 
   alias Trenino.Hardware
-  alias Trenino.Hardware.I2cModule
   alias Trenino.Hardware.HT16K33.Params, as: HT16K33Params
+  alias Trenino.Hardware.I2cModule
 
   @impl true
   def update(%{i2c_module: mod, device_id: device_id} = _assigns, socket) do
@@ -122,7 +122,9 @@ defmodule TreninoWeb.I2cModuleFormComponent do
           <div>
             <label class="label">
               <span class="label-text font-medium">I2C Address</span>
-              <span class="label-text-alt text-base-content/50">decimal or hex (e.g. 112 or 0x70)</span>
+              <span class="label-text-alt text-base-content/50">
+                decimal or hex (e.g. 112 or 0x70)
+              </span>
             </label>
             <input
               type="text"
