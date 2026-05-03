@@ -104,4 +104,47 @@ defmodule Trenino.Firmware.UploadFlowTest do
                Uploader.upload("COM3", "nanoatmega328", hex_file)
     end
   end
+
+  describe "1200bps touch + bootloader port polling" do
+    test "succeeds when bootloader COM port takes three polls to appear (Windows scenario)", %{
+      hex_file: hex_file
+    } do
+      # Simulate Windows COM port enumeration sequence:
+      # call 0 — before touch: COM5 present
+      # call 1 — first poll after touch: port disappeared
+      # call 2 — second poll: still gone
+      # call 3+ — third poll: bootloader appeared on COM6
+      # The old code (single retry) fails at call 2; the polling loop succeeds at call 3.
+      {:ok, mock_uart} = Agent.start_link(fn -> :ok end)
+      {:ok, enum_agent} = Agent.start_link(fn -> 0 end)
+
+      on_exit(fn ->
+        if Process.alive?(mock_uart), do: Agent.stop(mock_uart)
+        if Process.alive?(enum_agent), do: Agent.stop(enum_agent)
+      end)
+
+      stub(Circuits.UART, :start_link, fn -> {:ok, mock_uart} end)
+      stub(Circuits.UART, :open, fn ^mock_uart, "COM5", [speed: 1200] -> :ok end)
+      stub(Circuits.UART, :close, fn ^mock_uart -> :ok end)
+
+      stub(Circuits.UART, :enumerate, fn ->
+        call_n = Agent.get_and_update(enum_agent, fn n -> {n, n + 1} end)
+
+        case call_n do
+          0 -> %{"COM5" => %{}}
+          1 -> %{}
+          2 -> %{}
+          _ -> %{"COM5" => %{}, "COM6" => %{}}
+        end
+      end)
+
+      stub(AvrdudeRunner, :run, fn _path, args, _cb ->
+        assert "COM6" in args
+        {:ok, AvrdudeFixtures.successful_upload()}
+      end)
+
+      assert {:ok, %{duration_ms: _, output: _}} =
+               Uploader.upload("COM5", "micro", hex_file)
+    end
+  end
 end

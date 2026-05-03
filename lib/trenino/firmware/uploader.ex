@@ -23,6 +23,10 @@ defmodule Trenino.Firmware.Uploader do
     "arduino" => [57_600, 115_200]
   }
 
+  @bootloader_initial_wait_ms 100
+  @bootloader_poll_interval_ms 300
+  @bootloader_poll_deadline_ms 5_000
+
   @doc """
   Returns alternate baud rates to try for a programmer when the initial
   baud rate fails. Filters out the already-tried baud rate.
@@ -210,30 +214,21 @@ defmodule Trenino.Firmware.Uploader do
   # Trigger bootloader on boards that need 1200bps touch (Leonardo, Micro, Pro Micro)
   defp maybe_trigger_bootloader(port, %{use_1200bps_touch: true}) do
     Logger.info("Triggering bootloader with 1200bps touch on #{port}")
-
-    # Get list of ports before triggering bootloader
     ports_before = get_available_ports()
 
     case Circuits.UART.start_link() do
       {:ok, uart} ->
-        # Open at 1200 baud, then close immediately to trigger bootloader
         result =
           case Circuits.UART.open(uart, port, speed: 1200) do
             :ok ->
-              # Small delay to ensure the signal is registered
-              Process.sleep(50)
+              Process.sleep(@bootloader_initial_wait_ms)
               Circuits.UART.close(uart)
-              # Wait for bootloader to start (typically appears on a new port)
               Logger.info("Waiting for bootloader to start...")
-              Process.sleep(1500)
-
-              # On Windows, the bootloader often appears on a different port
-              # Try to detect the new port
-              detect_bootloader_port(port, ports_before)
+              deadline = System.monotonic_time(:millisecond) + @bootloader_poll_deadline_ms
+              poll_for_bootloader_port(port, ports_before, deadline)
 
             {:error, reason} ->
               Logger.warning("Could not open port for 1200bps touch: #{inspect(reason)}")
-              # Continue anyway - device might already be in bootloader mode
               {:ok, port}
           end
 
@@ -242,68 +237,38 @@ defmodule Trenino.Firmware.Uploader do
 
       {:error, reason} ->
         Logger.warning("Could not start UART for 1200bps touch: #{inspect(reason)}")
-        # Continue anyway
         {:ok, port}
     end
   end
 
   defp maybe_trigger_bootloader(port, _config), do: {:ok, port}
 
-  # Detect the bootloader port after 1200bps touch
-  # On Windows, the device often reappears on a different COM port
-  defp detect_bootloader_port(original_port, ports_before) do
+  defp poll_for_bootloader_port(original_port, ports_before, deadline) do
     ports_after = get_available_ports()
     new_ports = ports_after -- ports_before
 
     cond do
-      # If the original port is still available, use it (common on macOS/Linux)
-      original_port in ports_after ->
-        Logger.info("Original port #{original_port} still available, using it")
-        {:ok, original_port}
-
-      # If a new port appeared, use that (common on Windows)
       length(new_ports) == 1 ->
         [new_port] = new_ports
         Logger.info("Bootloader appeared on new port #{new_port} (was #{original_port})")
         {:ok, new_port}
 
-      # Multiple new ports appeared - try to find one that looks like a bootloader
       length(new_ports) > 1 ->
-        # Prefer the highest numbered COM port (bootloader usually gets a new higher number)
         new_port = Enum.max(new_ports)
         Logger.info("Multiple new ports appeared, using #{new_port}")
         {:ok, new_port}
 
-      # No ports available - wait a bit more and retry once
-      true ->
-        Logger.info("Port disappeared, waiting for bootloader to appear...")
-        Process.sleep(1000)
-        retry_detect_bootloader_port(original_port, ports_before)
-    end
-  end
-
-  defp retry_detect_bootloader_port(original_port, ports_before) do
-    ports_after = get_available_ports()
-    new_ports = ports_after -- ports_before
-
-    cond do
       original_port in ports_after ->
+        Logger.info("Original port #{original_port} still available, using it")
         {:ok, original_port}
 
-      new_ports != [] ->
-        new_port = Enum.max(new_ports)
-        Logger.info("Bootloader appeared on port #{new_port}")
-        {:ok, new_port}
-
-      ports_after != [] ->
-        # Use any available port as a last resort
-        new_port = Enum.max(ports_after)
-        Logger.warning("Could not detect bootloader port, trying #{new_port}")
-        {:ok, new_port}
-
-      true ->
+      System.monotonic_time(:millisecond) >= deadline ->
         Logger.error("No ports available after bootloader trigger")
         {:error, :bootloader_port_not_found}
+
+      true ->
+        Process.sleep(@bootloader_poll_interval_ms)
+        poll_for_bootloader_port(original_port, ports_before, deadline)
     end
   end
 

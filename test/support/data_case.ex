@@ -88,7 +88,7 @@ defmodule Trenino.DataCase do
             "protocol" => "avr109",
             "mcu" => "atmega32u4",
             "speed" => 57_600,
-            "use1200bpsTouch" => true
+            "requires1200bpsTouch" => true
           }
         },
         %{
@@ -109,7 +109,7 @@ defmodule Trenino.DataCase do
             "protocol" => "avr109",
             "mcu" => "atmega32u4",
             "speed" => 57_600,
-            "use1200bpsTouch" => true
+            "requires1200bpsTouch" => true
           }
         },
         %{
@@ -120,7 +120,7 @@ defmodule Trenino.DataCase do
             "protocol" => "avr109",
             "mcu" => "atmega32u4",
             "speed" => 57_600,
-            "use1200bpsTouch" => true
+            "requires1200bpsTouch" => true
           }
         },
         %{
