@@ -2,6 +2,7 @@ defmodule Trenino.MCP.Tools.DisplayBindingTools do
   @moduledoc "MCP tools for CRUD operations on display bindings."
 
   alias Trenino.Train, as: TrainContext
+  alias Trenino.Train.DisplayBinding
   alias Trenino.Train.DisplayController
 
   def tools do
@@ -121,7 +122,7 @@ defmodule Trenino.MCP.Tools.DisplayBindingTools do
     |> Enum.reduce(%{}, fn {k, v}, acc -> Map.put(acc, String.to_existing_atom(k), v) end)
   end
 
-  defp serialize(b) do
+  defp serialize(%DisplayBinding{} = b) do
     %{
       id: b.id,
       train_id: b.train_id,

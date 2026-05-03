@@ -175,7 +175,7 @@ defmodule Trenino.MCP.Tools.DeviceTools do
 
         case Hardware.update_i2c_module(mod, attrs) do
           {:ok, updated} ->
-            {:ok, %{i2c_module: serialize_i2c_module(Repo.preload(updated, :device))}}
+            {:ok, %{i2c_module: serialize_i2c_module(updated)}}
 
           {:error, changeset} ->
             {:error, format_changeset_errors(changeset)}
@@ -201,7 +201,7 @@ defmodule Trenino.MCP.Tools.DeviceTools do
 
   defp parse_i2c_address(str), do: I2cModule.parse_i2c_address(str)
 
-  defp serialize_i2c_module(mod) do
+  defp serialize_i2c_module(%I2cModule{} = mod) do
     %{
       id: mod.id,
       device_id: mod.device_id,
