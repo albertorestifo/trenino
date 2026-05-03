@@ -164,7 +164,47 @@ Tool count in test files must be updated when tools are added. Current count is 
 
 ---
 
-## 7. Extensibility
+## 7. LiveView UI Changes
+
+### Device configuration page — `configuration_edit_live.ex`
+
+Add a new "I2C Modules" section to the device configuration page, alongside the existing Inputs and Outputs sections. It lists configured i2c modules (name, chip, address, num_digits, brightness) and provides add/edit/delete actions.
+
+A new inline form component handles create/edit. It is a simple form (not a multi-step wizard — there is no auto-detection and the fields are short):
+
+| Field | Input type | Notes |
+|-------|-----------|-------|
+| Name | text | e.g. "Speed display" |
+| Chip | select | Only `HT16K33` for now |
+| I2C address | number | 0–255; shown as decimal, documented as hex (e.g. 112 = 0x70) |
+| Brightness | number / range | 0–15 |
+| Num digits | select | 4 or 8 |
+
+New LiveComponent: `TreninoWeb.I2cModuleFormComponent`.
+
+### Train edit page — `train_edit_live.ex`
+
+Add a "Display Bindings" section alongside the existing "Output Bindings" section. Lists configured display bindings (name, endpoint, i2c module name, format_string, enabled toggle) with edit/delete actions and an "Add display binding" button.
+
+Opening the wizard requires a simulator connection and at least one i2c module configured on any device; appropriate empty-state messages are shown if either condition is not met.
+
+### New display binding wizard — `display_binding_wizard.ex`
+
+Multi-step wizard (3 steps) analogous to `OutputBindingWizard`:
+
+1. **Select endpoint** — reuses the existing `ApiExplorerComponent`
+2. **Select display** — lists configured i2c modules across all devices (chip, address, num_digits, device name)
+3. **Configure format + name** — text input for `format_string` with inline syntax hint and a live preview showing what the current value would look like (format applied to a sample value), plus name input
+
+The format string preview renders the string inside a monospace block styled to suggest a segmented display (character-limited to `num_digits`).
+
+### Output binding wizard — `output_binding_wizard.ex`
+
+The existing "Select Type" step has a placeholder: *"More output types (servo, display, etc.) coming soon."* Remove or update this note now that display outputs exist — though they are configured through a separate flow (display bindings), not through the output binding wizard.
+
+---
+
+## 8. Extensibility
 
 Adding a future i2c chip (e.g. MCP23017 GPIO expander):
 1. Add new value to `Hardware.I2cModule.module_chip` enum.
@@ -174,7 +214,7 @@ Adding a future i2c chip (e.g. MCP23017 GPIO expander):
 
 ---
 
-## 8. Out of Scope
+## 9. Out of Scope
 
 - `SetModuleBrightness (14)` at runtime — brightness is set once at configure time. Runtime brightness control can be added later as a separate MCP tool.
 - Scrolling, blinking, or animation effects.
