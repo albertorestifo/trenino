@@ -33,4 +33,8 @@ defmodule Trenino.Train.DisplayFormatterTest do
   test "{value} with prefix and suffix" do
     assert "~42~" = DisplayFormatter.format("~{value}~", 42)
   end
+
+  test "format string with no tokens returns literal" do
+    assert "HELLO" = DisplayFormatter.format("HELLO", 42)
+  end
 end

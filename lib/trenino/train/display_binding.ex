@@ -6,6 +6,10 @@ defmodule Trenino.Train.DisplayBinding do
   on every change. Supported format tokens:
   - `{value}` — raw value as string
   - `{value:.Nf}` — float formatted to N decimal places
+
+  `script_id` is a reserved nullable FK for future Lua scripting support. It is
+  not cast in the current changeset; add `foreign_key_constraint(:script_id)` and
+  include it in `cast/2` before using it.
   """
 
   use Ecto.Schema
