@@ -127,6 +127,17 @@ defmodule Trenino.DataCase do
   end
 
   @doc """
+  Captures Logger output during the given function. Use to wrap calls
+  in tests that intentionally exercise error/cleanup paths and would
+  otherwise leak [warning]/[error] lines into the test output.
+
+      silently(fn -> Connection.handle_decode_failure(garbage) end)
+  """
+  def silently(fun) when is_function(fun, 0) do
+    ExUnit.CaptureLog.capture_log(fun)
+  end
+
+  @doc """
   Loads basic device configurations into the DeviceRegistry for testing.
 
   This helper loads a minimal manifest with common Arduino devices to support
