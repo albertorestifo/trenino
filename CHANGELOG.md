@@ -8,17 +8,41 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
-- Linux x86_64 AppImage installer in nightly builds and releases
-- Better Stack error tracking via Sentry SDK, activated when `SENTRY_DSN` env var is set
-
 ### Changed
 
 ### Fixed
 
+### Removed
+
+## [0.7.3] - 2026-05-03
+
+### Added
+
+- Linux x86_64 AppImage installer in nightly builds and releases
+- Better Stack error tracking via Sentry SDK, activated when `SENTRY_DSN` env var is set
+- **Firmware version compatibility checks** — incompatible releases are now badged in the firmware page and the install/upload buttons are disabled with a clear explanation
+- **Error reporting consent screen** — first-run screen at `/consent` lets users opt in or out of error reporting before using the app; redirects automatically until a preference is set
+- **Settings page** with error reporting toggle and simulator connection configuration; accessible via the gear icon in the navigation bar
+- Firmware devices with unsupported upload protocols in the manifest are now rejected at download time with a clear error (closes [#76](https://github.com/albertorestifo/trenino/issues/76))
+
+### Changed
+
+- Navigation bar: Simulator link replaced with a Settings gear icon
+- Simulator URL and API key are now configured via the Settings page instead of environment-level config
+
+### Fixed
+
+- Windows firmware flashing: replaced fixed bootloader wait with a 5-second polling loop for COM port redetection, fixing timeouts on slower machines
+- Firmware upload failures are now captured in Sentry with the full avrdude output for easier debugging
+- Double URL-encoding of the port name in firmware install links
+- Startup log demoted from `error` to `info` when no firmware manifest is available yet
+- Nightly build pipeline
 - Windows NSIS installer now bundles the Visual C++ Redistributable, eliminating "missing runtime" errors on fresh Windows installations
 - Burrito Linux builds now download precompiled ERTS from Beam Machine, reducing CI build times and workarounds
 
 ### Removed
+
+- All BLDC (brushless motor) functionality — the experimental code has been removed from the codebase
 
 ## [0.7.2] - 2026-03-09
 

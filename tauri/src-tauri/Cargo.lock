@@ -4454,7 +4454,7 @@ dependencies = [
 
 [[package]]
 name = "trenino"
-version = "0.7.2"
+version = "0.7.3"
 dependencies = [
  "reqwest",
  "serde",
