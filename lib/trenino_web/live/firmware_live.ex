@@ -466,8 +466,9 @@ defmodule TreninoWeb.FirmwareLive do
             Supported boards: {Enum.join(@board_names, ", ")}
           </p>
           <p :if={not @compatible} class="text-xs text-warning mt-2">
-            Requires app update — this firmware is outside the supported range
-            <span :if={@requirement_string != ""}>({@requirement_string})</span>.
+            Requires app update — this firmware is outside the supported range <span :if={
+              @requirement_string != ""
+            }>({@requirement_string})</span>.
           </p>
         </div>
         <div class="flex gap-2 items-center shrink-0">
@@ -562,9 +563,11 @@ defmodule TreninoWeb.FirmwareLive do
     device_options = DeviceRegistry.select_options()
     uploading = assigns.current_upload != nil
     no_ports = Enum.empty?(assigns.available_ports)
+    compatible? = Compatibility.compatible?(assigns.release)
 
     assigns =
       assigns
+      |> assign(:compatible, compatible?)
       |> assign(:device_options, device_options)
       |> assign(:uploading, uploading)
       |> assign(:no_ports, no_ports)
@@ -695,7 +698,7 @@ defmodule TreninoWeb.FirmwareLive do
           <button
             :if={!@uploading && !@no_ports}
             phx-click="start_upload"
-            disabled={@selected_port == nil or @environment == nil}
+            disabled={@selected_port == nil or @environment == nil or not @compatible}
             class="btn btn-primary"
           >
             <.icon name="hero-arrow-up-tray" class="w-4 h-4" /> Start Upload
