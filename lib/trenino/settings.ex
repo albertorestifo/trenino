@@ -26,6 +26,15 @@ defmodule Trenino.Settings do
     put_raw(@error_reporting_key, Atom.to_string(value))
   end
 
+  @doc """
+  Sentry `before_send` callback. Drops events when the user has not
+  opted in to error reporting.
+  """
+  @spec sentry_before_send(map()) :: map() | :ignore
+  def sentry_before_send(event) do
+    if error_reporting?(), do: event, else: :ignore
+  end
+
   # Private helpers
 
   defp get_raw(key) do
