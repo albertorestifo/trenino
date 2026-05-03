@@ -137,7 +137,7 @@ jobs:
 
       - name: Workaround circuits_uart Makefile location for Burrito
         if: runner.os == 'Linux'
-        run: ln -s src/Makefile deps/circuits_uart/Makefile
+        run: ln -sf src/Makefile deps/circuits_uart/Makefile
 
       - name: Build Elixir release
         run: mix release trenino_desktop
