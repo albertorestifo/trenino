@@ -111,8 +111,7 @@ defmodule TreninoWeb.ConfigurationEditLive do
      |> assign(:calibrating_input, nil)
      |> assign(:calibration_session_state, nil)
      |> assign(:show_apply_modal, false)
-     |> assign(:show_delete_modal, false)
-     |> assign(:bldc_enabled, Application.get_env(:trenino, :enable_bldc_levers, false))}
+     |> assign(:show_delete_modal, false)}
   end
 
   defp mount_existing(socket, config_id) do
@@ -155,8 +154,7 @@ defmodule TreninoWeb.ConfigurationEditLive do
          |> assign(:calibrating_input, nil)
          |> assign(:calibration_session_state, nil)
          |> assign(:show_apply_modal, false)
-         |> assign(:show_delete_modal, false)
-         |> assign(:bldc_enabled, Application.get_env(:trenino, :enable_bldc_levers, false))}
+         |> assign(:show_delete_modal, false)}
 
       {:error, :not_found} ->
         {:ok,
@@ -562,14 +560,6 @@ defmodule TreninoWeb.ConfigurationEditLive do
   # Private helpers for input creation
 
   defp add_regular_input(socket, params) do
-    # For BLDC lever, auto-set pin to encoder_cs value
-    params =
-      if params["input_type"] in ["bldc_lever", :bldc_lever] do
-        Map.put(params, "pin", params["encoder_cs"])
-      else
-        params
-      end
-
     case Hardware.create_input(socket.assigns.device.id, params) do
       {:ok, _input} ->
         {:ok, inputs} = Hardware.list_inputs(socket.assigns.device.id)
@@ -896,7 +886,7 @@ defmodule TreninoWeb.ConfigurationEditLive do
       </div>
     </main>
 
-    <.add_input_modal :if={@modal_open} form={@form} bldc_enabled={@bldc_enabled} />
+    <.add_input_modal :if={@modal_open} form={@form} />
 
     <.add_matrix_modal
       :if={@matrix_modal_open}
@@ -1060,10 +1050,9 @@ defmodule TreninoWeb.ConfigurationEditLive do
               <span class={[
                 "badge badge-sm capitalize",
                 input.input_type == :analog && "badge-info",
-                input.input_type == :button && "badge-warning",
-                input.input_type == :bldc_lever && "badge-accent"
+                input.input_type == :button && "badge-warning"
               ]}>
-                {if input.input_type == :bldc_lever, do: "BLDC", else: input.input_type}
+                {input.input_type}
               </span>
             </td>
             <td class="min-w-24">
@@ -1227,19 +1216,6 @@ defmodule TreninoWeb.ConfigurationEditLive do
     >
       Released
     </span>
-    <%!-- BLDC lever inputs --%>
-    <span
-      :if={@active && @input_type == :bldc_lever && is_nil(@raw_value)}
-      class="text-base-content/50"
-    >
-      &mdash;
-    </span>
-    <span
-      :if={@active && @input_type == :bldc_lever && !is_nil(@raw_value)}
-      class="font-mono tabular-nums"
-    >
-      Detent {@raw_value}
-    </span>
     <%!-- Analog inputs --%>
     <span
       :if={@active && @input_type == :analog && is_nil(@raw_value)}
@@ -1364,7 +1340,6 @@ defmodule TreninoWeb.ConfigurationEditLive do
   end
 
   attr :form, :map, required: true
-  attr :bldc_enabled, :boolean, required: true
 
   defp add_input_modal(assigns) do
     ~H"""
@@ -1394,15 +1369,12 @@ defmodule TreninoWeb.ConfigurationEditLive do
               <.input
                 field={@form[:input_type]}
                 type="select"
-                options={
-                  [{"Analog", :analog}, {"Button", :button}] ++
-                    if(@bldc_enabled, do: [{"BLDC Lever", :bldc_lever}], else: [])
-                }
+                options={[{"Analog", :analog}, {"Button", :button}]}
                 class="select select-bordered w-full"
               />
             </div>
 
-            <div :if={@form[:input_type].value not in [:bldc_lever, "bldc_lever"]}>
+            <div>
               <label class="label">
                 <span class="label-text">Pin Number</span>
               </label>
@@ -1443,128 +1415,6 @@ defmodule TreninoWeb.ConfigurationEditLive do
               />
             </div>
 
-            <div :if={@form[:input_type].value in [:bldc_lever, "bldc_lever"]} class="space-y-4">
-              <div class="text-sm font-medium text-base-content/70 border-b border-base-300 pb-1">
-                Motor Pins
-              </div>
-              <div class="grid grid-cols-3 gap-3">
-                <div>
-                  <label class="label"><span class="label-text text-xs">Phase A</span></label>
-                  <.input
-                    field={@form[:motor_pin_a]}
-                    type="number"
-                    min="0"
-                    max="255"
-                    class="input input-bordered input-sm w-full"
-                  />
-                </div>
-                <div>
-                  <label class="label"><span class="label-text text-xs">Phase B</span></label>
-                  <.input
-                    field={@form[:motor_pin_b]}
-                    type="number"
-                    min="0"
-                    max="255"
-                    class="input input-bordered input-sm w-full"
-                  />
-                </div>
-                <div>
-                  <label class="label"><span class="label-text text-xs">Phase C</span></label>
-                  <.input
-                    field={@form[:motor_pin_c]}
-                    type="number"
-                    min="0"
-                    max="255"
-                    class="input input-bordered input-sm w-full"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label class="label">
-                  <span class="label-text text-xs">Enable (optional)</span>
-                </label>
-                <.input
-                  field={@form[:motor_enable]}
-                  type="number"
-                  min="0"
-                  max="255"
-                  placeholder="None"
-                  class="input input-bordered input-sm w-full"
-                />
-              </div>
-
-              <div class="text-sm font-medium text-base-content/70 border-b border-base-300 pb-1 mt-2">
-                Encoder
-              </div>
-              <div class="grid grid-cols-2 gap-3">
-                <div>
-                  <label class="label"><span class="label-text text-xs">SPI CS Pin</span></label>
-                  <.input
-                    field={@form[:encoder_cs]}
-                    type="number"
-                    min="0"
-                    max="255"
-                    class="input input-bordered input-sm w-full"
-                  />
-                </div>
-                <div>
-                  <label class="label">
-                    <span class="label-text text-xs">Resolution (bits)</span>
-                  </label>
-                  <.input
-                    field={@form[:encoder_bits]}
-                    type="number"
-                    min="1"
-                    max="255"
-                    placeholder="14"
-                    class="input input-bordered input-sm w-full"
-                  />
-                </div>
-              </div>
-
-              <div class="text-sm font-medium text-base-content/70 border-b border-base-300 pb-1 mt-2">
-                Motor Parameters
-              </div>
-              <div class="grid grid-cols-3 gap-3">
-                <div>
-                  <label class="label"><span class="label-text text-xs">Pole Pairs</span></label>
-                  <.input
-                    field={@form[:pole_pairs]}
-                    type="number"
-                    min="1"
-                    max="255"
-                    placeholder="11"
-                    class="input input-bordered input-sm w-full"
-                  />
-                </div>
-                <div>
-                  <label class="label"><span class="label-text text-xs">Voltage (0.1V)</span></label>
-                  <.input
-                    field={@form[:voltage]}
-                    type="number"
-                    min="1"
-                    max="255"
-                    placeholder="120"
-                    class="input input-bordered input-sm w-full"
-                  />
-                </div>
-                <div>
-                  <label class="label">
-                    <span class="label-text text-xs">Current Limit (A)</span>
-                  </label>
-                  <.input
-                    field={@form[:current_limit]}
-                    type="number"
-                    min="0"
-                    max="25.5"
-                    step="0.1"
-                    placeholder="0"
-                    class="input input-bordered input-sm w-full"
-                  />
-                </div>
-              </div>
-            </div>
           </div>
 
           <div class="flex justify-end gap-2 mt-6">

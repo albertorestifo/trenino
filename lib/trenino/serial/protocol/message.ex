@@ -7,12 +7,10 @@ defmodule Trenino.Serial.Protocol.Message do
     ConfigurationError,
     ConfigurationStored,
     Configure,
-    DeactivateBLDCProfile,
     Heartbeat,
     IdentityRequest,
     IdentityResponse,
     InputValue,
-    LoadBLDCProfile,
     RetryCalibration,
     SetOutput
   }
@@ -46,8 +44,6 @@ defmodule Trenino.Serial.Protocol.Message do
   def decode(<<0x06, rest::binary>>), do: Heartbeat.decode_body(rest)
   def decode(<<0x07, rest::binary>>), do: SetOutput.decode_body(rest)
   def decode(<<0x08, rest::binary>>), do: RetryCalibration.decode_body(rest)
-  def decode(<<0x0B, rest::binary>>), do: LoadBLDCProfile.decode_body(rest)
-  def decode(<<0x0C, rest::binary>>), do: DeactivateBLDCProfile.decode_body(rest)
   def decode(<<_unknown, _rest::binary>>), do: {:error, :unknown_message_type}
   def decode(<<>>), do: {:error, :insufficient_data}
   def decode(_), do: {:error, :invalid_input}

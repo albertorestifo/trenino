@@ -43,7 +43,7 @@ defmodule Trenino.Hardware.InputDetectionSession do
     @type input_info :: %{
             input_id: integer(),
             pin: integer(),
-            input_type: :analog | :button | :bldc_lever,
+            input_type: :analog | :button,
             name: String.t() | nil,
             device_id: integer(),
             device_name: String.t()
@@ -184,7 +184,6 @@ defmodule Trenino.Hardware.InputDetectionSession do
 
   defp value_changed?(:button, baseline, value), do: value != baseline
   defp value_changed?(:analog, baseline, value), do: abs(value - baseline) > @analog_threshold
-  defp value_changed?(:bldc_lever, baseline, value), do: abs(value - baseline) > @analog_threshold
 
   defp build_detection(input_info, value) do
     Map.put(input_info, :value, value)
