@@ -12,7 +12,7 @@ defmodule TreninoWeb.FirmwareLive do
   use TreninoWeb, :live_view
 
   alias Trenino.Firmware
-  alias Trenino.Firmware.{DeviceRegistry, FirmwareFile}
+  alias Trenino.Firmware.{Compatibility, DeviceRegistry, FirmwareFile}
   alias Trenino.Serial.Connection
 
   @impl true
@@ -210,10 +210,19 @@ defmodule TreninoWeb.FirmwareLive do
     environment = socket.assigns.selected_environment
     release = socket.assigns.selected_release
 
-    with {:ok, file} <- find_or_download_file(release, environment),
+    with :ok <- check_compatible(release),
+         {:ok, file} <- find_or_download_file(release, environment),
          {:ok, _upload_id} <- Firmware.start_upload(port, environment, file.id) do
       {:noreply, assign(socket, :upload_error, nil)}
     else
+      {:error, :incompatible} ->
+        {:noreply,
+         assign(
+           socket,
+           :upload_error,
+           "This firmware is not compatible with this version of the app."
+         )}
+
       {:error, :no_firmware_for_environment} ->
         {:noreply, assign(socket, :upload_error, "No firmware available for this device.")}
 
@@ -237,6 +246,10 @@ defmodule TreninoWeb.FirmwareLive do
   @impl true
   def handle_event("toggle_older_releases", _, socket) do
     {:noreply, assign(socket, :show_older_releases, !socket.assigns.show_older_releases)}
+  end
+
+  defp check_compatible(release) do
+    if Compatibility.compatible?(release), do: :ok, else: {:error, :incompatible}
   end
 
   defp find_or_download_file(release, environment) do
@@ -419,7 +432,16 @@ defmodule TreninoWeb.FirmwareLive do
       end)
       |> Enum.sort()
 
-    assigns = assign(assigns, :board_names, device_names)
+    compatible? = Compatibility.compatible?(assigns.release)
+
+    requirement_string =
+      Application.get_env(:trenino, :firmware_version_requirement) || ""
+
+    assigns =
+      assigns
+      |> assign(:board_names, device_names)
+      |> assign(:compatible, compatible?)
+      |> assign(:requirement_string, requirement_string)
 
     ~H"""
     <div class={[
@@ -431,10 +453,11 @@ defmodule TreninoWeb.FirmwareLive do
     ]}>
       <div class="flex items-start justify-between gap-4">
         <div>
-          <div class="flex items-center gap-2">
+          <div class="flex items-center gap-2 flex-wrap">
             <h3 class="font-medium">v{@release.version}</h3>
             <span class="badge badge-ghost badge-sm">{@release.tag_name}</span>
             <span :if={@is_latest} class="badge badge-success badge-sm">Latest</span>
+            <span :if={not @compatible} class="badge badge-warning badge-sm">Incompatible</span>
           </div>
           <p :if={@release.published_at} class="text-xs text-base-content/60 mt-1">
             Released {Calendar.strftime(@release.published_at, "%B %d, %Y")}
@@ -442,12 +465,22 @@ defmodule TreninoWeb.FirmwareLive do
           <p class="text-xs text-base-content/50 mt-2">
             Supported boards: {Enum.join(@board_names, ", ")}
           </p>
+          <p :if={not @compatible} class="text-xs text-warning mt-2">
+            Requires app update — this firmware is outside the supported range <span :if={
+              @requirement_string != ""
+            }>({@requirement_string})</span>.
+          </p>
         </div>
         <div class="flex gap-2 items-center shrink-0">
           <button
             phx-click="show_upload_modal"
             phx-value-release-id={@release.id}
-            class={["btn btn-sm", if(@is_latest, do: "btn-primary", else: "btn-outline")]}
+            disabled={not @compatible}
+            class={[
+              "btn btn-sm",
+              if(@is_latest, do: "btn-primary", else: "btn-outline"),
+              if(not @compatible, do: "btn-disabled", else: "")
+            ]}
           >
             <.icon name="hero-arrow-up-tray" class="w-4 h-4" /> Upload to Device
           </button>
@@ -530,9 +563,11 @@ defmodule TreninoWeb.FirmwareLive do
     device_options = DeviceRegistry.select_options()
     uploading = assigns.current_upload != nil
     no_ports = Enum.empty?(assigns.available_ports)
+    compatible? = Compatibility.compatible?(assigns.release)
 
     assigns =
       assigns
+      |> assign(:compatible, compatible?)
       |> assign(:device_options, device_options)
       |> assign(:uploading, uploading)
       |> assign(:no_ports, no_ports)
@@ -663,7 +698,7 @@ defmodule TreninoWeb.FirmwareLive do
           <button
             :if={!@uploading && !@no_ports}
             phx-click="start_upload"
-            disabled={@selected_port == nil or @environment == nil}
+            disabled={@selected_port == nil or @environment == nil or not @compatible}
             class="btn btn-primary"
           >
             <.icon name="hero-arrow-up-tray" class="w-4 h-4" /> Start Upload

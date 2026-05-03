@@ -10,6 +10,7 @@ defmodule Trenino.Firmware do
 
   alias Trenino.Firmware.{
     BoardConfig,
+    Compatibility,
     FirmwareFile,
     FirmwareRelease,
     UpdateChecker,
@@ -118,6 +119,29 @@ defmodule Trenino.Firmware do
          |> order_by([r], desc: r.published_at)
          |> limit(1)
          |> Repo.one() do
+      nil -> {:error, :not_found}
+      release -> {:ok, Repo.preload(release, preloads)}
+    end
+  end
+
+  @doc """
+  Get the latest firmware release that satisfies the configured
+  `:firmware_version_requirement`.
+
+  Iterates from newest to oldest by `published_at` and returns the first
+  release whose version matches. Returns `{:error, :not_found}` if no
+  release matches (or none exist).
+  """
+  @spec get_latest_compatible_release(keyword()) ::
+          {:ok, FirmwareRelease.t()} | {:error, :not_found}
+  def get_latest_compatible_release(opts \\ []) do
+    preloads = Keyword.get(opts, :preload, [])
+
+    FirmwareRelease
+    |> order_by([r], desc: r.published_at)
+    |> Repo.all()
+    |> Enum.find(&Compatibility.compatible?/1)
+    |> case do
       nil -> {:error, :not_found}
       release -> {:ok, Repo.preload(release, preloads)}
     end

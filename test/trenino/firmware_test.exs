@@ -480,4 +480,82 @@ defmodule Trenino.FirmwareTest do
   # have been removed as part of removing hardcoded device configurations.
   # Device configurations are now loaded dynamically from firmware release manifests.
   # See DeviceRegistryTest for testing dynamic device configuration loading.
+
+  describe "get_latest_compatible_release/1" do
+    setup do
+      original = Application.get_env(:trenino, :firmware_version_requirement)
+
+      on_exit(fn ->
+        if is_nil(original) do
+          Application.delete_env(:trenino, :firmware_version_requirement)
+        else
+          Application.put_env(:trenino, :firmware_version_requirement, original)
+        end
+      end)
+
+      :ok
+    end
+
+    defp insert_release!(version, published_at) do
+      {:ok, release} =
+        Trenino.Firmware.create_release(%{
+          version: version,
+          tag_name: "v" <> version,
+          published_at: published_at
+        })
+
+      release
+    end
+
+    test "returns the newest-published release matching the requirement" do
+      Application.put_env(:trenino, :firmware_version_requirement, ">= 1.0.0 and < 2.0.0")
+
+      _v0 = insert_release!("0.9.0", ~U[2025-01-01 00:00:00Z])
+      v1 = insert_release!("1.5.0", ~U[2025-06-01 00:00:00Z])
+      _v2 = insert_release!("2.0.0", ~U[2025-12-01 00:00:00Z])
+
+      assert {:ok, found} = Trenino.Firmware.get_latest_compatible_release()
+      assert found.id == v1.id
+    end
+
+    test "returns :not_found when no releases match" do
+      Application.put_env(:trenino, :firmware_version_requirement, "~> 5.0")
+
+      insert_release!("1.0.0", ~U[2025-01-01 00:00:00Z])
+      insert_release!("2.0.0", ~U[2025-06-01 00:00:00Z])
+
+      assert {:error, :not_found} = Trenino.Firmware.get_latest_compatible_release()
+    end
+
+    test "with no requirement set, returns the newest release" do
+      Application.delete_env(:trenino, :firmware_version_requirement)
+
+      _old = insert_release!("1.0.0", ~U[2025-01-01 00:00:00Z])
+      newest = insert_release!("2.0.0", ~U[2025-06-01 00:00:00Z])
+
+      assert {:ok, found} = Trenino.Firmware.get_latest_compatible_release()
+      assert found.id == newest.id
+    end
+
+    test "skips a newer-but-incompatible release in favor of an older compatible one" do
+      Application.put_env(:trenino, :firmware_version_requirement, "~> 1.0")
+
+      compatible = insert_release!("1.5.0", ~U[2025-01-01 00:00:00Z])
+      _incompatible = insert_release!("2.0.0", ~U[2025-06-01 00:00:00Z])
+
+      assert {:ok, found} = Trenino.Firmware.get_latest_compatible_release()
+      assert found.id == compatible.id
+    end
+
+    test "supports preload option" do
+      Application.delete_env(:trenino, :firmware_version_requirement)
+
+      insert_release!("1.0.0", ~U[2025-01-01 00:00:00Z])
+
+      assert {:ok, release} =
+               Trenino.Firmware.get_latest_compatible_release(preload: [:firmware_files])
+
+      assert is_list(release.firmware_files)
+    end
+  end
 end

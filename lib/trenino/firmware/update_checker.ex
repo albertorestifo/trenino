@@ -299,19 +299,19 @@ defmodule Trenino.Firmware.UpdateChecker do
   end
 
   defp handle_check_success(checked_at, new_releases) do
-    # Get latest release to compare versions
-    case Firmware.get_latest_release() do
+    # We only care about the latest *compatible* release — incompatible
+    # releases stay visible elsewhere in the UI but never trigger update
+    # notifications for the running app.
+    case Firmware.get_latest_compatible_release() do
       {:ok, latest_release} ->
         update_available = new_releases != []
 
-        # Record check in database
         record_check(checked_at, update_available, latest_release.version, nil)
 
         {:ok, update_available, latest_release.version, checked_at}
 
       {:error, :not_found} ->
-        # No releases in DB
-        record_check(checked_at, false, nil, "No releases found")
+        record_check(checked_at, false, nil, "No compatible releases found")
         {:ok, false, nil, checked_at}
     end
   end
