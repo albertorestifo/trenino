@@ -1463,23 +1463,25 @@ defmodule TreninoWeb.ConfigurationEditLive do
               <td class="uppercase text-xs">{mod.module_chip}</td>
               <td class="font-mono">{I2cModule.format_i2c_address(mod.i2c_address)}</td>
               <td>{mod.num_digits}</td>
-              <td>{mod.brightness}</td>
-              <td class="text-right">
-                <button
-                  phx-click="open_edit_i2c_modal"
-                  phx-value-id={mod.id}
-                  class="btn btn-ghost btn-xs"
-                >
-                  <.icon name="hero-pencil" class="w-3.5 h-3.5" />
-                </button>
-                <button
-                  phx-click="delete_i2c_module"
-                  phx-value-id={mod.id}
-                  data-confirm="Delete this I2C module?"
-                  class="btn btn-ghost btn-xs text-error"
-                >
-                  <.icon name="hero-trash" class="w-3.5 h-3.5" />
-                </button>
+              <td>{round((mod.brightness || 8) * 100 / 15)}%</td>
+              <td>
+                <div class="flex gap-1">
+                  <button
+                    phx-click="open_edit_i2c_modal"
+                    phx-value-id={mod.id}
+                    class="btn btn-ghost btn-xs"
+                  >
+                    <.icon name="hero-pencil" class="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    phx-click="delete_i2c_module"
+                    phx-value-id={mod.id}
+                    data-confirm="Delete this I2C module?"
+                    class="btn btn-ghost btn-xs text-error"
+                  >
+                    <.icon name="hero-trash" class="w-3.5 h-3.5" />
+                  </button>
+                </div>
               </td>
             </tr>
           </tbody>
