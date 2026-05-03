@@ -478,7 +478,7 @@ defmodule TreninoWeb.OutputBindingWizard do
       </button>
 
       <div class="text-center text-sm text-base-content/50 mt-4">
-        More output types (servo, display, etc.) coming soon
+        For I2C display outputs, use Display Bindings instead
       </div>
 
       <div class="flex justify-between pt-4 border-t border-base-300">

@@ -22,6 +22,7 @@ defmodule TreninoWeb.TrainEditLive do
 
   alias Trenino.Train.{
     ButtonController,
+    DisplayController,
     Element,
     Identifier,
     LeverConfig,
@@ -99,6 +100,10 @@ defmodule TreninoWeb.TrainEditLive do
      |> assign(:output_wizard_binding, nil)
      |> assign(:output_wizard_event, nil)
      |> assign(:available_outputs, [])
+     |> assign(:display_bindings, [])
+     |> assign(:show_display_wizard, false)
+     |> assign(:display_wizard_binding, nil)
+     |> assign(:display_wizard_event, nil)
      |> assign(:sequence_manager_event, nil)
      |> assign(:value_polling_target, nil)
      |> assign(:scripts, [])}
@@ -121,6 +126,7 @@ defmodule TreninoWeb.TrainEditLive do
         changeset = Train.changeset(train, %{})
         sequences = TrainContext.list_sequences(train.id)
         output_bindings = TrainContext.list_output_bindings(train.id)
+        display_bindings = TrainContext.list_display_bindings(train.id)
         scripts = TrainContext.list_scripts(train.id)
         available_outputs = load_available_outputs()
 
@@ -151,6 +157,10 @@ defmodule TreninoWeb.TrainEditLive do
          |> assign(:output_wizard_binding, nil)
          |> assign(:output_wizard_event, nil)
          |> assign(:available_outputs, available_outputs)
+         |> assign(:display_bindings, display_bindings)
+         |> assign(:show_display_wizard, false)
+         |> assign(:display_wizard_binding, nil)
+         |> assign(:display_wizard_event, nil)
          |> assign(:sequence_manager_event, nil)
          |> assign(:value_polling_target, nil)
          |> assign(:scripts, scripts)}
@@ -396,6 +406,45 @@ defmodule TreninoWeb.TrainEditLive do
 
       {:error, :not_found} ->
         {:noreply, put_flash(socket, :error, "Output binding not found")}
+    end
+  end
+
+  # Display binding events
+  @impl true
+  def handle_event("open_add_display_binding", _params, socket) do
+    simulator_status = socket.assigns.nav_simulator_status
+
+    if simulator_status.status != :connected or simulator_status.client == nil do
+      {:noreply, put_flash(socket, :error, "Connect to the simulator to add display bindings")}
+    else
+      {:noreply,
+       socket |> assign(:show_display_wizard, true) |> assign(:display_wizard_binding, nil)}
+    end
+  end
+
+  @impl true
+  def handle_event("configure_display_binding", %{"id" => id_str}, socket) do
+    case TrainContext.get_display_binding(String.to_integer(id_str)) do
+      {:ok, binding} ->
+        {:noreply,
+         socket |> assign(:show_display_wizard, true) |> assign(:display_wizard_binding, binding)}
+
+      {:error, :not_found} ->
+        {:noreply, put_flash(socket, :error, "Display binding not found")}
+    end
+  end
+
+  @impl true
+  def handle_event("delete_display_binding", %{"id" => id_str}, socket) do
+    case TrainContext.get_display_binding(String.to_integer(id_str)) do
+      {:ok, binding} ->
+        {:ok, _} = TrainContext.delete_display_binding(binding)
+        DisplayController.reload_bindings()
+        display_bindings = TrainContext.list_display_bindings(socket.assigns.train.id)
+        {:noreply, assign(socket, :display_bindings, display_bindings)}
+
+      {:error, :not_found} ->
+        {:noreply, put_flash(socket, :error, "Display binding not found")}
     end
   end
 
@@ -648,6 +697,9 @@ defmodule TreninoWeb.TrainEditLive do
       socket.assigns.show_output_wizard ->
         {:noreply, assign(socket, :output_wizard_event, {:select, field, path})}
 
+      socket.assigns.show_display_wizard ->
+        {:noreply, assign(socket, :display_wizard_event, {:select, field, path})}
+
       true ->
         # Try forwarding to EndpointSelectorComponent (used by SequenceManagerComponent)
         send_update(TreninoWeb.EndpointSelectorComponent,
@@ -673,6 +725,9 @@ defmodule TreninoWeb.TrainEditLive do
 
       socket.assigns.show_output_wizard ->
         {:noreply, assign(socket, :output_wizard_event, :close)}
+
+      socket.assigns.show_display_wizard ->
+        {:noreply, assign(socket, :display_wizard_event, :close)}
 
       true ->
         # Try forwarding to EndpointSelectorComponent (used by SequenceManagerComponent)
@@ -793,6 +848,28 @@ defmodule TreninoWeb.TrainEditLive do
      |> assign(:show_output_wizard, false)
      |> assign(:output_wizard_binding, nil)
      |> assign(:output_wizard_event, nil)}
+  end
+
+  # Display binding wizard events
+  @impl true
+  def handle_info({:display_binding_saved, _binding}, socket) do
+    display_bindings = TrainContext.list_display_bindings(socket.assigns.train.id)
+
+    {:noreply,
+     socket
+     |> assign(:display_bindings, display_bindings)
+     |> assign(:show_display_wizard, false)
+     |> assign(:display_wizard_binding, nil)
+     |> assign(:display_wizard_event, nil)}
+  end
+
+  @impl true
+  def handle_info(:display_binding_cancelled, socket) do
+    {:noreply,
+     socket
+     |> assign(:show_display_wizard, false)
+     |> assign(:display_wizard_binding, nil)
+     |> assign(:display_wizard_event, nil)}
   end
 
   # Value polling for button ON/OFF detection using API subscriptions
@@ -1217,6 +1294,13 @@ defmodule TreninoWeb.TrainEditLive do
         </div>
 
         <div :if={not @new_mode} class="bg-base-200/50 rounded-xl p-6 mt-6">
+          <.display_bindings_section
+            display_bindings={@display_bindings}
+            simulator_connected={@nav_simulator_status.status == :connected}
+          />
+        </div>
+
+        <div :if={not @new_mode} class="bg-base-200/50 rounded-xl p-6 mt-6">
           <.scripts_section scripts={@scripts} train_id={@train.id} />
         </div>
 
@@ -1281,6 +1365,16 @@ defmodule TreninoWeb.TrainEditLive do
       available_outputs={@available_outputs}
       binding={@output_wizard_binding}
       explorer_event={@output_wizard_event}
+    />
+
+    <.live_component
+      :if={@show_display_wizard and @nav_simulator_status.client != nil}
+      module={TreninoWeb.DisplayBindingWizard}
+      id="display-binding-wizard"
+      train_id={@train.id}
+      client={@nav_simulator_status.client}
+      binding={@display_wizard_binding}
+      explorer_event={@display_wizard_event}
     />
     """
   end
@@ -1449,6 +1543,77 @@ defmodule TreninoWeb.TrainEditLive do
                     phx-value-id={binding.id}
                     class="btn btn-ghost btn-xs text-error"
                     title="Delete"
+                  >
+                    <.icon name="hero-trash" class="w-4 h-4" />
+                  </button>
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    """
+  end
+
+  attr :display_bindings, :list, required: true
+  attr :simulator_connected, :boolean, required: true
+
+  defp display_bindings_section(assigns) do
+    ~H"""
+    <div>
+      <.section_header
+        title="Display Bindings"
+        action_label="Add Display Binding"
+        on_action="open_add_display_binding"
+      />
+
+      <.empty_collection_state
+        :if={Enum.empty?(@display_bindings)}
+        icon="hero-cpu-chip"
+        message="No display bindings configured"
+        submessage="Bind simulator values to I2C displays to show numbers on hardware"
+      />
+
+      <div :if={not Enum.empty?(@display_bindings)} class="overflow-x-auto">
+        <table class="table table-sm bg-base-100 rounded-lg">
+          <thead>
+            <tr class="bg-base-200">
+              <th>Name</th>
+              <th>Endpoint</th>
+              <th>Format</th>
+              <th>Display</th>
+              <th class="w-24"></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr :for={binding <- @display_bindings} class="hover:bg-base-200/50">
+              <td class="font-medium">{binding.name}</td>
+              <td class="font-mono text-xs max-w-[180px] truncate" title={binding.endpoint}>
+                {binding.endpoint}
+              </td>
+              <td class="font-mono text-xs">{binding.format_string}</td>
+              <td class="text-sm text-base-content/60">
+                {if binding.i2c_module,
+                  do: binding.i2c_module.name || "Module #{binding.i2c_module_id}",
+                  else: "—"}
+              </td>
+              <td>
+                <div class="flex gap-1">
+                  <button
+                    phx-click="configure_display_binding"
+                    phx-value-id={binding.id}
+                    class="btn btn-ghost btn-xs"
+                    title="Configure"
+                  >
+                    <.icon name="hero-cog-6-tooth" class="w-4 h-4" />
+                  </button>
+                  <button
+                    phx-click="delete_display_binding"
+                    phx-value-id={binding.id}
+                    class="btn btn-ghost btn-xs text-error"
+                    title="Delete"
+                    data-confirm="Delete this display binding?"
                   >
                     <.icon name="hero-trash" class="w-4 h-4" />
                   </button>
