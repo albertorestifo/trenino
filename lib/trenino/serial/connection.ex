@@ -161,7 +161,6 @@ defmodule Trenino.Serial.Connection do
 
   @impl true
   def init(%State{} = state) do
-    # Start with a quick discovery to get things going
     schedule_discovery(1_000)
     {:ok, state}
   end

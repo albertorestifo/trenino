@@ -94,6 +94,16 @@ defmodule Trenino.Serial.Connection.PortTimeoutTest do
   end
 
   describe "list_devices when Connection GenServer is blocked" do
+    # Previous tests (nav_hook, port_timeout) leave state in the GenServer.
+    # Wait for any cleanup tasks to finish (transitional → failed), then clear
+    # all failed ports so the blocking cast below is not ignored by should_connect?.
+    setup do
+      wait_for_no_transitional_ports()
+      GenServer.cast(Connection, :scan)
+      Connection.list_devices()
+      :ok
+    end
+
     test "returns empty list instead of crashing when GenServer is busy" do
       fake_pid = spawn(fn -> Process.sleep(:infinity) end)
 
@@ -152,6 +162,19 @@ defmodule Trenino.Serial.Connection.PortTimeoutTest do
       assert devices == []
 
       kill_and_restart_connection(fake_pid)
+    end
+  end
+
+  # Poll until no port is in a transitional state (connecting/discovering/disconnecting).
+  # This ensures cleanup tasks from previous tests have fully completed before
+  # the blocking tests clear state and cast their own blocking connect.
+  defp wait_for_no_transitional_ports(attempts \\ 20) do
+    devices = Connection.list_devices()
+    transitional = [:connecting, :discovering, :disconnecting]
+
+    if attempts > 0 and Enum.any?(devices, &(&1.status in transitional)) do
+      Process.sleep(50)
+      wait_for_no_transitional_ports(attempts - 1)
     end
   end
 
