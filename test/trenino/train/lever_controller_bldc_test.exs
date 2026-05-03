@@ -8,7 +8,6 @@ defmodule Trenino.Train.LeverControllerBLDCTest do
   - Non-BLDC levers are skipped
   """
   use Trenino.DataCase, async: false
-  use Mimic
 
   import ExUnit.CaptureLog
 

@@ -5,8 +5,7 @@ defmodule Trenino.Simulator.LeverAnalyzerTest do
   These tests verify the full analyze/3 flow with mocked HTTP responses.
   For fast unit tests of the analysis logic, see LeverAnalyzer.AnalysisTest.
   """
-  use ExUnit.Case, async: true
-  use Mimic
+  use Trenino.SerialSafetyCase, async: true
 
   alias Trenino.Simulator.Client
   alias Trenino.Simulator.LeverAnalyzer

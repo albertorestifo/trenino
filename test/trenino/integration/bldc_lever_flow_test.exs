@@ -13,7 +13,6 @@ defmodule Trenino.Integration.BLDCLeverFlowTest do
   """
 
   use Trenino.DataCase, async: false
-  use Mimic
 
   alias Trenino.Hardware
   alias Trenino.Serial.Connection, as: SerialConnection

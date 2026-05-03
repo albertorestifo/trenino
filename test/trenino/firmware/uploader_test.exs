@@ -7,6 +7,8 @@ defmodule Trenino.Firmware.UploaderTest do
   setup do
     # Load test device configurations for uploader tests
     load_test_devices()
+    stub(Trenino.Firmware.Avrdude, :executable_path, fn -> {:ok, "/fake/avrdude"} end)
+    stub(Trenino.Firmware.Avrdude, :conf_path, fn -> {:error, :not_found} end)
     :ok
   end
 

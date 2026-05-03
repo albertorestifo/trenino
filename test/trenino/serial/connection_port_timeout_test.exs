@@ -7,8 +7,7 @@ defmodule Trenino.Serial.Connection.PortTimeoutTest do
   Connection process.
   """
 
-  use ExUnit.Case, async: false
-  use Mimic
+  use Trenino.SerialSafetyCase, async: false
 
   alias Trenino.Serial.Connection
 

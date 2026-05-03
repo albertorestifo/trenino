@@ -1,6 +1,5 @@
 defmodule Trenino.Firmware.DownloaderTest do
   use Trenino.DataCase, async: false
-  use Mimic
 
   import ExUnit.CaptureLog
 

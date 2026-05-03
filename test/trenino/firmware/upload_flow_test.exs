@@ -1,8 +1,6 @@
 defmodule Trenino.Firmware.UploadFlowTest do
   use Trenino.DataCase, async: false
 
-  import Mimic
-
   alias Trenino.AvrdudeFixtures
   alias Trenino.Firmware.Avrdude
   alias Trenino.Firmware.AvrdudeRunner
@@ -18,6 +16,7 @@ defmodule Trenino.Firmware.UploadFlowTest do
     on_exit(fn -> File.rm(hex_file) end)
 
     stub(Avrdude, :executable_path, fn -> {:ok, "/fake/avrdude"} end)
+    stub(Avrdude, :conf_path, fn -> {:error, :not_found} end)
 
     {:ok, hex_file: hex_file}
   end

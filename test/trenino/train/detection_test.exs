@@ -1,6 +1,5 @@
 defmodule Trenino.Train.DetectionTest do
   use Trenino.DataCase, async: false
-  use Mimic
 
   alias Trenino.Simulator.Client
   alias Trenino.Simulator.ConnectionState

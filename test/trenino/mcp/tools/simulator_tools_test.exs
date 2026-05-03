@@ -1,6 +1,5 @@
 defmodule Trenino.MCP.Tools.SimulatorToolsTest do
   use Trenino.DataCase, async: false
-  use Mimic
 
   alias Trenino.MCP.Tools.SimulatorTools
   alias Trenino.Simulator.Client

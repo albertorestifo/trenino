@@ -16,4 +16,5 @@ Mimic.copy(Trenino.Firmware.Avrdude)
 Mimic.copy(Trenino.Firmware.AvrdudeRunner)
 
 ExUnit.start()
+ExUnit.configure(exclude: [:skip_without_avrdude])
 Ecto.Adapters.SQL.Sandbox.mode(Trenino.Repo, :manual)

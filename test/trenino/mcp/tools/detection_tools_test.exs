@@ -1,6 +1,5 @@
 defmodule Trenino.MCP.Tools.DetectionToolsTest do
   use Trenino.DataCase, async: false
-  use Mimic
 
   alias Trenino.Hardware
   alias Trenino.MCP.Tools.DetectionTools

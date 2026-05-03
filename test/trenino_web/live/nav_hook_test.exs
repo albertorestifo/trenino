@@ -7,7 +7,6 @@ defmodule TreninoWeb.NavHookTest do
   """
 
   use TreninoWeb.ConnCase, async: false
-  use Mimic
 
   import Phoenix.LiveViewTest
 

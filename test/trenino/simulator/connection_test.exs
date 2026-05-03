@@ -1,6 +1,5 @@
 defmodule Trenino.Simulator.ConnectionTest do
-  use ExUnit.Case, async: false
-  use Mimic
+  use Trenino.SerialSafetyCase, async: false
 
   alias Trenino.Settings
   alias Trenino.Simulator.Connection
