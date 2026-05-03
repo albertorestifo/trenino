@@ -9,6 +9,8 @@ defmodule Trenino.Settings do
   alias Trenino.Repo
   alias Trenino.Settings.Setting
 
+  require Logger
+
   @error_reporting_key "error_reporting"
   @error_reporting_values [:enabled, :disabled]
 
@@ -44,7 +46,9 @@ defmodule Trenino.Settings do
     atom = String.to_existing_atom(raw)
     if atom in allowed, do: atom
   rescue
-    ArgumentError -> nil
+    ArgumentError ->
+      Logger.warning("Trenino.Settings: unknown value #{inspect(raw)} in app_settings, ignoring")
+      nil
   end
 
   defp put_raw(key, value) do
