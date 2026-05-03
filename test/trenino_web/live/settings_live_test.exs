@@ -31,6 +31,11 @@ defmodule TreninoWeb.SettingsLiveTest do
       {:ok, view, _html} = live(conn, ~p"/settings")
       assert has_element?(view, "input[data-testid='error-reporting-toggle'][checked]")
     end
+
+    test "shows a link to revisit the consent screen", %{conn: conn} do
+      {:ok, _view, html} = live(conn, ~p"/settings")
+      assert html =~ ~s(href="/consent")
+    end
   end
 
   describe "toggle_error_reporting" do

@@ -125,6 +125,11 @@ defmodule TreninoWeb.SettingsLive do
                 checked={@error_reporting_enabled}
               />
             </div>
+            <div class="mt-3">
+              <.link navigate={~p"/consent"} class="text-sm link link-primary">
+                Review consent details
+              </.link>
+            </div>
           </div>
         </section>
 
