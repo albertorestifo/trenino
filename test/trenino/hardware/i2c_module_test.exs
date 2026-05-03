@@ -3,6 +3,13 @@ defmodule Trenino.Hardware.I2cModuleTest do
 
   alias Trenino.Hardware.I2cModule
 
+  defp valid_params(overrides \\ %{}) do
+    Map.merge(
+      %{brightness: 8, num_digits: 4, display_type: :fourteen_segment, has_dot: false, align_right: true, min_value: 0.0},
+      overrides
+    )
+  end
+
   describe "parse_i2c_address/1" do
     test "accepts decimal string" do
       assert {:ok, 112} = I2cModule.parse_i2c_address("112")
@@ -13,8 +20,6 @@ defmodule Trenino.Hardware.I2cModuleTest do
     end
 
     test "uppercase hex prefix is not supported and returns :error" do
-      # The pattern match is on "0x" (lowercase only), so "0X70" falls through
-      # to the decimal parser and fails.
       assert :error = I2cModule.parse_i2c_address("0X70")
     end
 
@@ -53,71 +58,41 @@ defmodule Trenino.Hardware.I2cModuleTest do
     end
   end
 
-  describe "changeset/2" do
-    test "valid attrs produce a valid changeset" do
-      attrs = %{device_id: 1, module_chip: :ht16k33, i2c_address: 112}
+  describe "changeset/2 – core fields" do
+    test "valid attrs with params produce a valid changeset" do
+      attrs = %{device_id: 1, module_chip: :ht16k33, i2c_address: 112, params: valid_params()}
       changeset = I2cModule.changeset(%I2cModule{}, attrs)
       assert changeset.valid?
     end
 
     test "requires device_id" do
-      attrs = %{module_chip: :ht16k33, i2c_address: 112}
+      attrs = %{module_chip: :ht16k33, i2c_address: 112, params: valid_params()}
       changeset = I2cModule.changeset(%I2cModule{}, attrs)
       assert "can't be blank" in errors_on(changeset).device_id
     end
 
     test "requires module_chip" do
-      attrs = %{device_id: 1, i2c_address: 112}
+      attrs = %{device_id: 1, i2c_address: 112, params: valid_params()}
       changeset = I2cModule.changeset(%I2cModule{}, attrs)
       assert "can't be blank" in errors_on(changeset).module_chip
     end
 
     test "requires i2c_address" do
-      attrs = %{device_id: 1, module_chip: :ht16k33}
+      attrs = %{device_id: 1, module_chip: :ht16k33, params: valid_params()}
       changeset = I2cModule.changeset(%I2cModule{}, attrs)
       assert "can't be blank" in errors_on(changeset).i2c_address
     end
 
     test "rejects i2c_address below 0" do
-      attrs = %{device_id: 1, module_chip: :ht16k33, i2c_address: -1}
+      attrs = %{device_id: 1, module_chip: :ht16k33, i2c_address: -1, params: valid_params()}
       changeset = I2cModule.changeset(%I2cModule{}, attrs)
       assert errors_on(changeset).i2c_address != []
     end
 
     test "rejects i2c_address above 255" do
-      attrs = %{device_id: 1, module_chip: :ht16k33, i2c_address: 256}
+      attrs = %{device_id: 1, module_chip: :ht16k33, i2c_address: 256, params: valid_params()}
       changeset = I2cModule.changeset(%I2cModule{}, attrs)
       assert errors_on(changeset).i2c_address != []
-    end
-
-    test "rejects brightness below 0" do
-      attrs = %{device_id: 1, module_chip: :ht16k33, i2c_address: 112, brightness: -1}
-      changeset = I2cModule.changeset(%I2cModule{}, attrs)
-      assert errors_on(changeset).brightness != []
-    end
-
-    test "rejects brightness above 15" do
-      attrs = %{device_id: 1, module_chip: :ht16k33, i2c_address: 112, brightness: 16}
-      changeset = I2cModule.changeset(%I2cModule{}, attrs)
-      assert errors_on(changeset).brightness != []
-    end
-
-    test "rejects num_digits not in [4, 8]" do
-      attrs = %{device_id: 1, module_chip: :ht16k33, i2c_address: 112, num_digits: 6}
-      changeset = I2cModule.changeset(%I2cModule{}, attrs)
-      assert errors_on(changeset).num_digits != []
-    end
-
-    test "accepts num_digits of 4" do
-      attrs = %{device_id: 1, module_chip: :ht16k33, i2c_address: 112, num_digits: 4}
-      changeset = I2cModule.changeset(%I2cModule{}, attrs)
-      assert changeset.valid?
-    end
-
-    test "accepts num_digits of 8" do
-      attrs = %{device_id: 1, module_chip: :ht16k33, i2c_address: 112, num_digits: 8}
-      changeset = I2cModule.changeset(%I2cModule{}, attrs)
-      assert changeset.valid?
     end
 
     test "rejects name longer than 100 characters" do
@@ -125,9 +100,9 @@ defmodule Trenino.Hardware.I2cModuleTest do
         device_id: 1,
         module_chip: :ht16k33,
         i2c_address: 112,
+        params: valid_params(),
         name: String.duplicate("a", 101)
       }
-
       changeset = I2cModule.changeset(%I2cModule{}, attrs)
       assert errors_on(changeset).name != []
     end
@@ -136,6 +111,26 @@ defmodule Trenino.Hardware.I2cModuleTest do
       attrs = %{device_id: 1, module_chip: :unknown_chip, i2c_address: 112}
       changeset = I2cModule.changeset(%I2cModule{}, attrs)
       assert errors_on(changeset).module_chip != []
+    end
+  end
+
+  describe "changeset/2 – params embed" do
+    test "invalid brightness propagates through embed" do
+      attrs = %{
+        device_id: 1, module_chip: :ht16k33, i2c_address: 112,
+        params: valid_params(%{brightness: 16})
+      }
+      changeset = I2cModule.changeset(%I2cModule{}, attrs)
+      refute changeset.valid?
+    end
+
+    test "invalid num_digits propagates through embed" do
+      attrs = %{
+        device_id: 1, module_chip: :ht16k33, i2c_address: 112,
+        params: valid_params(%{num_digits: 6})
+      }
+      changeset = I2cModule.changeset(%I2cModule{}, attrs)
+      refute changeset.valid?
     end
   end
 end

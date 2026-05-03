@@ -1,10 +1,12 @@
 defmodule Trenino.Hardware.I2cModule do
-  @moduledoc "Schema for I2C-attached modules on a device (e.g. HT16K33 14-segment display)."
+  @moduledoc "Schema for I2C-attached modules on a device (e.g. HT16K33 display)."
 
   use Ecto.Schema
   import Ecto.Changeset
+  import PolymorphicEmbed
 
   alias Trenino.Hardware.Device
+  alias Trenino.Hardware.HT16K33.Params, as: HT16K33Params
 
   @type module_chip :: :ht16k33
 
@@ -14,8 +16,7 @@ defmodule Trenino.Hardware.I2cModule do
           name: String.t() | nil,
           module_chip: module_chip(),
           i2c_address: integer() | nil,
-          brightness: integer() | nil,
-          num_digits: integer() | nil,
+          params: HT16K33Params.t() | nil,
           device: Device.t() | Ecto.Association.NotLoaded.t(),
           inserted_at: DateTime.t() | nil,
           updated_at: DateTime.t() | nil
@@ -25,8 +26,16 @@ defmodule Trenino.Hardware.I2cModule do
     field :name, :string
     field :module_chip, Ecto.Enum, values: [:ht16k33]
     field :i2c_address, :integer
-    field :brightness, :integer, default: 8
-    field :num_digits, :integer, default: 4
+
+    polymorphic_embeds_one :params,
+      types: [
+        ht16k33: [
+          module: HT16K33Params,
+          identify_by_fields: [:brightness, :num_digits, :display_type, :has_dot]
+        ]
+      ],
+      on_type_not_found: :raise,
+      on_replace: :update
 
     belongs_to :device, Device
     timestamps(type: :utc_datetime)
@@ -35,11 +44,10 @@ defmodule Trenino.Hardware.I2cModule do
   @spec changeset(t(), map()) :: Ecto.Changeset.t()
   def changeset(%__MODULE__{} = mod, attrs) do
     mod
-    |> cast(attrs, [:device_id, :name, :module_chip, :i2c_address, :brightness, :num_digits])
+    |> cast(attrs, [:device_id, :name, :module_chip, :i2c_address])
+    |> cast_polymorphic_embed(:params)
     |> validate_required([:device_id, :module_chip, :i2c_address])
     |> validate_number(:i2c_address, greater_than_or_equal_to: 0, less_than_or_equal_to: 255)
-    |> validate_number(:brightness, greater_than_or_equal_to: 0, less_than_or_equal_to: 15)
-    |> validate_inclusion(:num_digits, [4, 8])
     |> validate_length(:name, max: 100)
     |> foreign_key_constraint(:device_id)
     |> unique_constraint([:device_id, :i2c_address])
