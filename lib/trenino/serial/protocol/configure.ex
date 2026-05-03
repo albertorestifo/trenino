@@ -7,13 +7,15 @@ defmodule Trenino.Serial.Protocol.Configure do
   - Analog payload (0x00): [pin:u8][sensitivity:u8]
   - Button payload (0x01): [pin:u8][debounce:u8]
   - Matrix payload (0x02): [num_row_pins:u8][num_col_pins:u8][row_pins...][col_pins...]
+  - HT16K33 payload (0x04): [i2c_address:u8][brightness:u8][num_digits:u8]
+  - Note: type ID 0x03 is reserved (BLDC, removed)
   """
 
   alias Trenino.Serial.Protocol.Message
 
   @behaviour Message
 
-  @type input_type :: :analog | :button | :matrix
+  @type input_type :: :analog | :button | :matrix | :ht16k33
 
   @type t() :: %__MODULE__{
           config_id: integer(),
@@ -26,7 +28,11 @@ defmodule Trenino.Serial.Protocol.Configure do
           debounce: integer() | nil,
           # Matrix fields
           row_pins: [integer()] | nil,
-          col_pins: [integer()] | nil
+          col_pins: [integer()] | nil,
+          # HT16K33 fields
+          i2c_address: integer() | nil,
+          brightness: integer() | nil,
+          num_digits: integer() | nil
         }
 
   defstruct [
@@ -38,7 +44,10 @@ defmodule Trenino.Serial.Protocol.Configure do
     :sensitivity,
     :debounce,
     :row_pins,
-    :col_pins
+    :col_pins,
+    :i2c_address,
+    :brightness,
+    :num_digits
   ]
 
   # Encode - Analog (input_type = 0x00)
@@ -89,6 +98,21 @@ defmodule Trenino.Serial.Protocol.Configure do
      <<0x02, config_id::little-32-unsigned, total_parts::8-unsigned, part_number::8-unsigned,
        0x02::8-unsigned, num_row_pins::8-unsigned, num_col_pins::8-unsigned,
        row_pins_binary::binary, col_pins_binary::binary>>}
+  end
+
+  # Encode - HT16K33 (input_type = 0x04)
+  def encode(%__MODULE__{
+        config_id: config_id,
+        total_parts: total_parts,
+        part_number: part_number,
+        input_type: :ht16k33,
+        i2c_address: i2c_address,
+        brightness: brightness,
+        num_digits: num_digits
+      }) do
+    {:ok,
+     <<0x02, config_id::little-32-unsigned, total_parts::8-unsigned, part_number::8-unsigned,
+       0x04::8-unsigned, i2c_address::8-unsigned, brightness::8-unsigned, num_digits::8-unsigned>>}
   end
 
   # Decode body - Analog (input_type = 0x00)
