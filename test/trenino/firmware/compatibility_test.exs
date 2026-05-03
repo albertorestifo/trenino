@@ -41,6 +41,11 @@ defmodule Trenino.Firmware.CompatibilityTest do
       set_requirement("not a requirement")
       assert_raise Version.InvalidRequirementError, fn -> Compatibility.requirement() end
     end
+
+    test "raises ArgumentError on a non-binary, non-nil value" do
+      Application.put_env(:trenino, :firmware_version_requirement, :not_a_string)
+      assert_raise ArgumentError, fn -> Compatibility.requirement() end
+    end
   end
 
   describe "compatible?/1 with no requirement set" do
@@ -58,7 +63,7 @@ defmodule Trenino.Firmware.CompatibilityTest do
       assert Compatibility.compatible?(%FirmwareRelease{version: "1.0.0"})
     end
 
-    test "returns false for an unparseable version (still safer than installing junk)" do
+    test "returns false for an unparseable version" do
       refute Compatibility.compatible?("not-a-version")
     end
   end

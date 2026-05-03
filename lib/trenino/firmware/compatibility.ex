@@ -18,15 +18,23 @@ defmodule Trenino.Firmware.Compatibility do
   @doc """
   Returns the parsed requirement, or `nil` if none is configured.
 
-  Raises `Version.InvalidRequirementError` if the configured value is
-  not a valid requirement string. Misconfiguration is a developer bug,
-  not a user-facing error.
+  Raises `Version.InvalidRequirementError` if the configured value is a
+  binary that does not parse as a valid requirement string. Raises
+  `ArgumentError` if the configured value is neither a binary nor `nil`.
+  Misconfiguration is a developer bug, not a user-facing error.
   """
   @spec requirement() :: Version.Requirement.t() | nil
   def requirement do
     case Application.get_env(:trenino, :firmware_version_requirement) do
-      nil -> nil
-      string when is_binary(string) -> Version.parse_requirement!(string)
+      nil ->
+        nil
+
+      string when is_binary(string) ->
+        Version.parse_requirement!(string)
+
+      other ->
+        raise ArgumentError,
+              "expected :firmware_version_requirement to be a binary or nil, got: #{inspect(other)}"
     end
   end
 
