@@ -62,7 +62,14 @@ defmodule Trenino.Hardware.HT16K33Test do
     end
 
     test "right-aligns short string when align_right is true" do
-      params = %Params{display_type: :fourteen_segment, has_dot: false, num_digits: 4, brightness: 8, align_right: true, min_value: 0.0}
+      params = %Params{
+        display_type: :fourteen_segment,
+        has_dot: false,
+        num_digits: 4,
+        brightness: 8,
+        align_right: true,
+        min_value: 0.0
+      }
       result = HT16K33.encode_string("4", params)
       # First 3 pairs should be blank (spaces), last pair is "4"
       assert byte_size(result) == 8
@@ -74,7 +81,14 @@ defmodule Trenino.Hardware.HT16K33Test do
     end
 
     test "left-aligns short string when align_right is false" do
-      params = %Params{display_type: :fourteen_segment, has_dot: false, num_digits: 4, brightness: 8, align_right: false, min_value: 0.0}
+      params = %Params{
+        display_type: :fourteen_segment,
+        has_dot: false,
+        num_digits: 4,
+        brightness: 8,
+        align_right: false,
+        min_value: 0.0
+      }
       result = HT16K33.encode_string("4", params)
       <<b0, b1, _rest::binary>> = result
       assert {b0, b1} == {0xE6, 0x00}
@@ -119,7 +133,14 @@ defmodule Trenino.Hardware.HT16K33Test do
     end
 
     test "right-aligns short string when align_right is true" do
-      params = %Params{display_type: :seven_segment, has_dot: false, num_digits: 4, brightness: 8, align_right: true, min_value: 0.0}
+      params = %Params{
+        display_type: :seven_segment,
+        has_dot: false,
+        num_digits: 4,
+        brightness: 8,
+        align_right: true,
+        min_value: 0.0
+      }
       result = HT16K33.encode_string("4", params)
       assert byte_size(result) == 4
       <<b0, b1, b2, b3>> = result
@@ -127,6 +148,25 @@ defmodule Trenino.Hardware.HT16K33Test do
       assert b1 == 0x00
       assert b2 == 0x00
       assert b3 == 0x66
+    end
+
+    test "right-aligns correctly when has_dot is true and text contains a dot" do
+      params = %Params{
+        display_type: :seven_segment,
+        has_dot: true,
+        num_digits: 4,
+        brightness: 8,
+        align_right: true,
+        min_value: 0.0
+      }
+      # "1.2" occupies 2 display slots, so 2 leading spaces expected → " ", " ", "1.", "2"
+      result = HT16K33.encode_string("1.2", params)
+      assert byte_size(result) == 4
+      <<b0, b1, b2, b3>> = result
+      assert b0 == 0x00
+      assert b1 == 0x00
+      assert b2 == (0x06 ||| 0x80)
+      assert b3 == 0x5B
     end
   end
 

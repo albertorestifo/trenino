@@ -289,20 +289,26 @@ defmodule Trenino.Hardware.HT16K33 do
   @spec encode_string(String.t(), Params.t()) :: binary()
   def encode_string(text, %Params{display_type: :fourteen_segment} = params)
       when is_binary(text) do
-    aligned = maybe_align_right(text, params.num_digits, params.align_right)
+    aligned = maybe_align_right(text, params.num_digits, params.align_right, params.has_dot)
     encode_14seg(aligned, params.num_digits)
   end
 
   def encode_string(text, %Params{display_type: :seven_segment} = params) when is_binary(text) do
-    aligned = maybe_align_right(text, params.num_digits, params.align_right)
+    aligned = maybe_align_right(text, params.num_digits, params.align_right, params.has_dot)
     encode_7seg(aligned, params.num_digits, params.has_dot)
   end
 
-  defp maybe_align_right(text, _num_digits, false), do: text
+  defp maybe_align_right(text, _num_digits, false, _has_dot), do: text
 
-  defp maybe_align_right(text, num_digits, true) do
-    len = String.length(text)
-    if len < num_digits, do: String.duplicate(" ", num_digits - len) <> text, else: text
+  defp maybe_align_right(text, num_digits, true, has_dot) do
+    dot_count = if has_dot, do: text |> String.graphemes() |> Enum.count(&(&1 == ".")), else: 0
+    effective_len = String.length(text) - dot_count
+
+    if effective_len < num_digits do
+      String.duplicate(" ", num_digits - effective_len) <> text
+    else
+      text
+    end
   end
 
   defp encode_14seg(text, num_digits) do
