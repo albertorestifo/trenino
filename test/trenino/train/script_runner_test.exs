@@ -1,5 +1,5 @@
 defmodule Trenino.Train.ScriptRunnerTest do
-  use Trenino.DataCase, async: false
+  use Trenino.DataCase, async: true
 
   alias Trenino.Train, as: TrainContext
 

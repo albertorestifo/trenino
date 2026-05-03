@@ -1,5 +1,5 @@
 defmodule Trenino.Firmware.UploaderTest do
-  use Trenino.DataCase, async: false
+  use Trenino.DataCase, async: true
 
   alias Trenino.Firmware.Avrdude
   alias Trenino.Firmware.Uploader

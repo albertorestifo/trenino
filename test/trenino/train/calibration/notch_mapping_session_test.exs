@@ -1,5 +1,5 @@
 defmodule Trenino.Train.Calibration.NotchMappingSessionTest do
-  use Trenino.DataCase, async: false
+  use Trenino.DataCase, async: true
 
   alias Ecto.Adapters.SQL.Sandbox
   alias Trenino.Hardware

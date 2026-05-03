@@ -1,5 +1,5 @@
 defmodule Trenino.MCP.Tools.ElementToolsTest do
-  use Trenino.DataCase, async: false
+  use Trenino.DataCase, async: true
 
   alias Trenino.MCP.Tools.ElementTools
   alias Trenino.Train, as: TrainContext

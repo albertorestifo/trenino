@@ -8,7 +8,7 @@ defmodule Trenino.Train.OutputControllerTest do
   - Train activation/deactivation handling
   - Subscription management
   """
-  use Trenino.DataCase, async: false
+  use Trenino.DataCase, async: true
 
   alias Trenino.Hardware
   alias Trenino.Train, as: TrainContext

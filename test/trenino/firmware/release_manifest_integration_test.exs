@@ -7,7 +7,7 @@ defmodule Trenino.Firmware.ReleaseManifestIntegrationTest do
   release.json format from the trenino_firmware repository.
   """
 
-  use Trenino.DataCase, async: false
+  use Trenino.DataCase, async: true
 
   alias Trenino.Firmware
   alias Trenino.Firmware.DeviceRegistry

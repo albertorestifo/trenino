@@ -1,5 +1,5 @@
 defmodule Trenino.Train.LeverMapperTest do
-  use Trenino.DataCase, async: false
+  use Trenino.DataCase, async: true
 
   alias Trenino.Train.{LeverConfig, LeverMapper, Notch}
 

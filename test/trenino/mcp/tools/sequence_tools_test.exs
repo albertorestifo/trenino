@@ -1,5 +1,5 @@
 defmodule Trenino.MCP.Tools.SequenceToolsTest do
-  use Trenino.DataCase, async: false
+  use Trenino.DataCase, async: true
 
   alias Trenino.MCP.Tools.SequenceTools
   alias Trenino.Train, as: TrainContext

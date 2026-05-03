@@ -1,5 +1,5 @@
 defmodule Trenino.MCP.ToolRegistryTest do
-  use Trenino.DataCase, async: false
+  use Trenino.DataCase, async: true
 
   alias Trenino.MCP.ToolRegistry
 

@@ -1,5 +1,5 @@
 defmodule Trenino.Firmware.UploadHistoryTest do
-  use Trenino.DataCase, async: false
+  use Trenino.DataCase, async: true
 
   alias Trenino.Firmware.FirmwareFile
   alias Trenino.Firmware.FirmwareRelease

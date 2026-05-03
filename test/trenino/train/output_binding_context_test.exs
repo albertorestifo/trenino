@@ -2,7 +2,7 @@ defmodule Trenino.Train.OutputBindingContextTest do
   @moduledoc """
   Tests for output binding context functions in Trenino.Train module.
   """
-  use Trenino.DataCase, async: false
+  use Trenino.DataCase, async: true
 
   alias Trenino.Hardware
   alias Trenino.Train, as: TrainContext

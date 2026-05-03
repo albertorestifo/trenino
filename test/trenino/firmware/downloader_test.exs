@@ -1,5 +1,5 @@
 defmodule Trenino.Firmware.DownloaderTest do
-  use Trenino.DataCase, async: false
+  use Trenino.DataCase, async: true
 
   import ExUnit.CaptureLog
 

@@ -1,5 +1,5 @@
 defmodule Trenino.TrainTest do
-  use Trenino.DataCase, async: false
+  use Trenino.DataCase, async: true
 
   alias Trenino.Hardware
   alias Trenino.Train, as: TrainContext
