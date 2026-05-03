@@ -1,5 +1,5 @@
 defmodule Trenino.Firmware.FirmwareFileTest do
-  use Trenino.DataCase, async: false
+  use Trenino.DataCase, async: true
 
   alias Trenino.Firmware.FilePath
   alias Trenino.Firmware.FirmwareFile

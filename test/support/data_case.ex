@@ -33,7 +33,12 @@ defmodule Trenino.DataCase do
   end
 
   setup tags do
-    Trenino.DataCase.setup_sandbox(tags)
+    if tags[:async] do
+      Trenino.DataCase.setup_isolated_repo()
+    else
+      Trenino.DataCase.setup_sandbox(tags)
+    end
+
     Trenino.DataCase.setup_forbidden_serial_stubs()
     :ok
   end
@@ -49,6 +54,51 @@ defmodule Trenino.DataCase do
     Mimic.stub_with(Trenino.Firmware.Avrdude, Trenino.Test.ForbiddenAvrdude)
     Mimic.stub_with(Trenino.Firmware.AvrdudeRunner, Trenino.Test.ForbiddenAvrdudeRunner)
     Mimic.stub_with(Trenino.Serial.Discovery, Trenino.Test.ForbiddenSerialDiscovery)
+    :ok
+  end
+
+  @doc """
+  For async tests: copies the pre-migrated template SQLite file to a
+  unique per-test path, starts a dynamic Trenino.Repo against it, and
+  routes the test process's queries via put_dynamic_repo/1. On test
+  exit, restores the default repo and removes the temp file.
+
+  Each test gets its own SQLite file, eliminating writer-lock contention
+  between async tests.
+  """
+  def setup_isolated_repo do
+    template_path = Application.fetch_env!(:trenino, :test_template_db_path)
+    test_id = :erlang.unique_integer([:positive])
+    test_db_path = Path.join(Path.dirname(template_path), "isolated_test_#{test_id}.db")
+    File.cp!(template_path, test_db_path)
+
+    {:ok, repo_pid} =
+      Trenino.Repo.start_link(
+        name: nil,
+        database: test_db_path,
+        pool: DBConnection.ConnectionPool,
+        pool_size: 1,
+        journal_mode: :wal,
+        synchronous: :normal,
+        busy_timeout: 1_000
+      )
+
+    Trenino.Repo.put_dynamic_repo(repo_pid)
+
+    ExUnit.Callbacks.on_exit(fn ->
+      Trenino.Repo.put_dynamic_repo(Trenino.Repo)
+
+      try do
+        :ok = GenServer.stop(repo_pid)
+      catch
+        :exit, _ -> :ok
+      end
+
+      File.rm(test_db_path)
+      File.rm(test_db_path <> "-wal")
+      File.rm(test_db_path <> "-shm")
+    end)
+
     :ok
   end
 
