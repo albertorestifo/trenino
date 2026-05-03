@@ -11,6 +11,7 @@ defmodule TreninoWeb.ConsentGateHookTest do
     :ok
   end
 
+  @tag :consent_unset
   test "redirects to /consent when no preference is set", %{conn: conn} do
     assert {:error, {:redirect, %{to: "/consent"}}} = live(conn, ~p"/")
   end
