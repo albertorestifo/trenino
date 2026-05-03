@@ -11,6 +11,13 @@ config :trenino,
   ecto_repos: [Trenino.Repo],
   generators: [timestamp_type: :utc_datetime]
 
+# Semver requirement that incoming firmware releases must satisfy.
+# Releases outside this range are shown but cannot be installed.
+# nil = no restriction (any parseable version compatible). Set per
+# release line, e.g. ">= 1.0.0 and < 2.0.0" before a breaking firmware
+# version ships.
+config :trenino, :firmware_version_requirement, nil
+
 # Configures the endpoint
 config :trenino, TreninoWeb.Endpoint,
   url: [host: "localhost"],
