@@ -666,7 +666,7 @@ defmodule Trenino.Hardware do
     Repo.delete(mod)
   end
 
-  @doc "Send WriteSegments to an I2C display module. data must be <= 16 bytes."
+  @doc "Send WriteSegments to an I2C display module."
   @spec write_segments(String.t(), integer(), binary()) :: :ok | {:error, term()}
   def write_segments(port, i2c_address, data) do
     message = %WriteSegments{i2c_address: i2c_address, data: data}

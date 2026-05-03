@@ -225,7 +225,7 @@ defmodule Trenino.Hardware.ConfigurationManager do
         %State{} = state
       ) do
     Logger.warning(
-      "[ConfigurationManager] ModuleError: I2C module at #{I2cModule.format_i2c_address(addr)} failed init (error_code=#{code})"
+      "ModuleError: I2C module at #{I2cModule.format_i2c_address(addr)} failed init (error_code=#{code})"
     )
 
     {:noreply, state}
