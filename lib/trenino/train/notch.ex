@@ -195,5 +195,4 @@ defmodule Trenino.Train.Notch do
       end
     end)
   end
-
 end

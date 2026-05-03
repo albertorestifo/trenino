@@ -972,7 +972,6 @@ defmodule TreninoWeb.LeverSetupWizard do
               </p>
             </div>
           </label>
-
         </div>
       </div>
     </div>

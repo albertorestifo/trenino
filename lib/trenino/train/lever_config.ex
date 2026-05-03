@@ -94,5 +94,4 @@ defmodule Trenino.Train.LeverConfig do
         changeset
     end
   end
-
 end

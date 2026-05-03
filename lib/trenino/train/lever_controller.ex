@@ -329,5 +329,4 @@ defmodule Trenino.Train.LeverController do
         :error
     end
   end
-
 end

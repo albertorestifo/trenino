@@ -8,9 +8,7 @@ defmodule Trenino.Repo.Migrations.RemoveBldcSupport do
   def up do
     execute "UPDATE train_lever_configs SET lever_type = NULL WHERE lever_type = 'bldc'"
 
-    drop_if_exists index(:device_inputs, [:device_id],
-                     name: :device_inputs_one_bldc_per_device
-                   )
+    drop_if_exists index(:device_inputs, [:device_id], name: :device_inputs_one_bldc_per_device)
 
     drop_cols_if_exist("device_inputs", @bldc_input_cols)
     drop_cols_if_exist("train_lever_notches", @bldc_notch_cols)

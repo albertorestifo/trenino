@@ -200,5 +200,4 @@ defmodule Trenino.Train.NotchTest do
       assert changeset.valid?
     end
   end
-
 end
