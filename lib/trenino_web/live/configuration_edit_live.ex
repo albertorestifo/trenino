@@ -13,7 +13,7 @@ defmodule TreninoWeb.ConfigurationEditLive do
 
   alias Trenino.Hardware
   alias Trenino.Hardware.Calibration.Session
-  alias Trenino.Hardware.{ConfigId, Device, I2cModule, Input, Output}
+  alias Trenino.Hardware.{ConfigId, Device, HT16K33, I2cModule, Input, Output}
   alias Trenino.Serial.Connection
 
   @impl true
@@ -437,6 +437,28 @@ defmodule TreninoWeb.ConfigurationEditLive do
       {:error, :not_found} ->
         {:noreply, put_flash(socket, :error, "Module not found")}
     end
+  end
+
+  @impl true
+  def handle_event("test_display", %{"id" => id_str}, socket) do
+    mod = Enum.find(socket.assigns.i2c_modules, &(&1.id == String.to_integer(id_str)))
+
+    if mod && socket.assigns.active_port do
+      port = socket.assigns.active_port
+      texts = display_test_texts(mod.num_digits)
+      first = List.first(texts)
+      bytes = HT16K33.encode_string(first, mod.num_digits)
+      Hardware.write_segments(port, mod.i2c_address, bytes)
+
+      texts
+      |> Enum.drop(1)
+      |> Enum.with_index(1)
+      |> Enum.each(fn {_text, step} ->
+        Process.send_after(self(), {:display_test_step, mod.id, step}, step * 1000)
+      end)
+    end
+
+    {:noreply, socket}
   end
 
   # Apply configuration
@@ -869,7 +891,31 @@ defmodule TreninoWeb.ConfigurationEditLive do
   end
 
   @impl true
+  def handle_info({:display_test_step, mod_id, step}, socket) do
+    mod = Enum.find(socket.assigns.i2c_modules, &(&1.id == mod_id))
+
+    if mod && socket.assigns.active_port do
+      texts = display_test_texts(mod.num_digits)
+
+      case Enum.at(texts, step) do
+        nil ->
+          :ok
+
+        text ->
+          bytes = HT16K33.encode_string(text, mod.num_digits)
+          Hardware.write_segments(socket.assigns.active_port, mod.i2c_address, bytes)
+      end
+    end
+
+    {:noreply, socket}
+  end
+
+  @impl true
   def handle_info(_msg, socket), do: {:noreply, socket}
+
+  defp display_test_texts(4), do: ["8888", "1234", "ABCD", "    "]
+  defp display_test_texts(8), do: ["88888888", "12345678", "ABCDEFGH", "        "]
+  defp display_test_texts(_), do: ["8888", "1234", "ABCD", "    "]
 
   defp find_active_port_in_list(devices, config_id) do
     devices
@@ -937,6 +983,7 @@ defmodule TreninoWeb.ConfigurationEditLive do
           <.i2c_modules_section
             i2c_modules={@i2c_modules}
             new_mode={@new_mode}
+            active_port={@active_port}
           />
         </div>
 
@@ -1422,6 +1469,7 @@ defmodule TreninoWeb.ConfigurationEditLive do
 
   attr :i2c_modules, :list, required: true
   attr :new_mode, :boolean, required: true
+  attr :active_port, :string, default: nil
 
   defp i2c_modules_section(assigns) do
     ~H"""
@@ -1454,6 +1502,7 @@ defmodule TreninoWeb.ConfigurationEditLive do
               <th>Address</th>
               <th>Digits</th>
               <th>Brightness</th>
+              <th :if={@active_port} class="text-center">Test</th>
               <th class="w-20"></th>
             </tr>
           </thead>
@@ -1464,6 +1513,16 @@ defmodule TreninoWeb.ConfigurationEditLive do
               <td class="font-mono">{I2cModule.format_i2c_address(mod.i2c_address)}</td>
               <td>{mod.num_digits}</td>
               <td>{round((mod.brightness || 8) * 100 / 15)}%</td>
+              <td :if={@active_port} class="text-center">
+                <button
+                  phx-click="test_display"
+                  phx-value-id={mod.id}
+                  class="btn btn-ghost btn-xs text-primary hover:bg-primary/10"
+                  title="Run test sequence"
+                >
+                  <.icon name="hero-play" class="w-3.5 h-3.5" /> Test
+                </button>
+              </td>
               <td>
                 <div class="flex gap-1">
                   <button
