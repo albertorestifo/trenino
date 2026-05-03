@@ -26,8 +26,11 @@ config :trenino, TreninoWeb.Endpoint,
   secret_key_base: "NvZHOhdHQPBJ0Es1QVYQfVjXzJ9sSiQLWARJBAYZBR4yh+YZ3u0/M0d6grAy8QMQ",
   server: false
 
-# Print only warnings and errors during test
-config :logger, level: :warning
+# Suppress all logs during tests. ExUnit.start(capture_log: true) captures
+# per-test-process logs and shows them on failure; this setting silences
+# logs emitted from background GenServers (e.g. DeviceRegistry) which
+# don't have a test-process owner and would otherwise leak into output.
+config :logger, level: :none
 
 # Initialize plugs at runtime for faster test compilation
 config :phoenix, :plug_init_mode, :runtime
