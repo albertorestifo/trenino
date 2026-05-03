@@ -16,6 +16,7 @@ defmodule Trenino.Firmware.DeviceRegistry do
   alias Trenino.Firmware
 
   @table_name :firmware_device_registry
+  @supported_programmers ~w[arduino avr109 wiring avrisp usbasp]
 
   ## Client API
 
@@ -243,18 +244,26 @@ defmodule Trenino.Firmware.DeviceRegistry do
   end
 
   defp build_device_config(environment, display_name, firmware_file, upload_config) do
-    # Convert manifest field names to internal format
-    # Manifest uses: protocol, mcu, speed, requires1200bpsTouch
-    # Internal uses: programmer, mcu, baud_rate, use_1200bps_touch
-    %{
-      environment: environment,
-      display_name: display_name,
-      firmware_file: firmware_file,
-      mcu: normalize_mcu(upload_config["mcu"]),
-      programmer: upload_config["protocol"],
-      baud_rate: upload_config["speed"],
-      use_1200bps_touch: upload_config["requires1200bpsTouch"] || false
-    }
+    protocol = upload_config["protocol"]
+
+    if protocol in @supported_programmers do
+      %{
+        environment: environment,
+        display_name: display_name,
+        firmware_file: firmware_file,
+        mcu: normalize_mcu(upload_config["mcu"]),
+        programmer: protocol,
+        baud_rate: upload_config["speed"],
+        use_1200bps_touch: upload_config["requires1200bpsTouch"] || false
+      }
+    else
+      Logger.warning(
+        "Skipping device #{environment}: protocol #{inspect(protocol)} is not supported. " <>
+          "Supported protocols: #{Enum.join(@supported_programmers, ", ")}"
+      )
+
+      nil
+    end
   end
 
   # Convert full MCU names from manifest to avrdude short codes
@@ -264,7 +273,6 @@ defmodule Trenino.Firmware.DeviceRegistry do
       "atmega32u4" -> "m32u4"
       "atmega2560" -> "m2560"
       "at91sam3x8e" -> "at91sam3x8e"
-      "esp32" -> "esp32"
       other -> other
     end
   end
