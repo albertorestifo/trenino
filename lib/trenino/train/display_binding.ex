@@ -22,6 +22,7 @@ defmodule Trenino.Train.DisplayBinding do
           endpoint: String.t() | nil,
           format_string: String.t(),
           enabled: boolean(),
+          script_id: integer() | nil,
           train: Train.t() | Ecto.Association.NotLoaded.t(),
           i2c_module: I2cModule.t() | Ecto.Association.NotLoaded.t(),
           inserted_at: DateTime.t() | nil,
@@ -33,6 +34,7 @@ defmodule Trenino.Train.DisplayBinding do
     field :endpoint, :string
     field :format_string, :string, default: "{value}"
     field :enabled, :boolean, default: true
+    field :script_id, :integer
 
     belongs_to :train, Train
     belongs_to :i2c_module, I2cModule

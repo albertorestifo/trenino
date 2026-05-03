@@ -1246,6 +1246,7 @@ defmodule Trenino.Train do
   def list_enabled_display_bindings(train_id) do
     DisplayBinding
     |> where([d], d.train_id == ^train_id and d.enabled == true)
+    |> order_by([d], d.name)
     |> preload(i2c_module: :device)
     |> Repo.all()
   end
