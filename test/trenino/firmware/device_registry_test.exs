@@ -1,6 +1,8 @@
 defmodule Trenino.Firmware.DeviceRegistryTest do
   use Trenino.DataCase, async: false
 
+  import ExUnit.CaptureLog
+
   alias Trenino.Firmware
   alias Trenino.Firmware.DeviceRegistry
 
@@ -98,14 +100,14 @@ defmodule Trenino.Firmware.DeviceRegistryTest do
 
     # After each test, clear the manifest
     on_exit(fn ->
-      # Reload with empty manifest to clear devices
+      # Reload with empty manifest to clear devices — suppress expected warning/error logs
       manifest = %{
         "version" => "1.0",
         "project" => "trenino_firmware",
         "devices" => []
       }
 
-      DeviceRegistry.reload_from_manifest(manifest, 0)
+      capture_log(fn -> DeviceRegistry.reload_from_manifest(manifest, 0) end)
     end)
 
     :ok
@@ -386,7 +388,12 @@ defmodule Trenino.Firmware.DeviceRegistryTest do
         "devices" => []
       }
 
-      assert {:error, :no_devices} = DeviceRegistry.reload_from_manifest(manifest, 1)
+      log =
+        capture_log(fn ->
+          assert {:error, :no_devices} = DeviceRegistry.reload_from_manifest(manifest, 1)
+        end)
+
+      assert log =~ "Manifest contains no devices"
 
       # Registry should be empty (no devices available)
       devices = DeviceRegistry.list_available_devices()
@@ -405,7 +412,12 @@ defmodule Trenino.Firmware.DeviceRegistryTest do
         ]
       }
 
-      assert {:error, :no_valid_devices} = DeviceRegistry.reload_from_manifest(manifest, 1)
+      log =
+        capture_log(fn ->
+          assert {:error, :no_valid_devices} = DeviceRegistry.reload_from_manifest(manifest, 1)
+        end)
+
+      assert log =~ "No valid devices in manifest"
 
       # Registry should be empty (no valid devices)
       devices = DeviceRegistry.list_available_devices()
