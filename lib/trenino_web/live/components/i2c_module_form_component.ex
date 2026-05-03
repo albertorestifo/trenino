@@ -9,12 +9,15 @@ defmodule TreninoWeb.I2cModuleFormComponent do
   @impl true
   def update(%{i2c_module: mod, device_id: device_id} = _assigns, socket) do
     changeset = I2cModule.changeset(mod || %I2cModule{}, %{})
+    wire = (mod && mod.brightness) || 8
+    brightness_pct = round(wire * 100 / 15)
 
     {:ok,
      socket
      |> assign(:i2c_module, mod)
      |> assign(:device_id, device_id)
      |> assign(:form, to_form(changeset))
+     |> assign(:brightness_pct, brightness_pct)
      |> assign(
        :i2c_address_input,
        if(mod, do: I2cModule.format_i2c_address(mod.i2c_address), else: "")
@@ -23,6 +26,12 @@ defmodule TreninoWeb.I2cModuleFormComponent do
 
   @impl true
   def handle_event("validate", %{"i2c_module" => params}, socket) do
+    pct =
+      case Integer.parse(Map.get(params, "brightness_pct", "53")) do
+        {n, ""} -> n
+        _ -> 53
+      end
+
     changeset =
       (socket.assigns.i2c_module || %I2cModule{})
       |> I2cModule.changeset(coerce_params(params))
@@ -31,6 +40,7 @@ defmodule TreninoWeb.I2cModuleFormComponent do
     {:noreply,
      socket
      |> assign(:form, to_form(changeset))
+     |> assign(:brightness_pct, pct)
      |> assign(:i2c_address_input, Map.get(params, "i2c_address_raw", ""))}
   end
 
@@ -62,8 +72,17 @@ defmodule TreninoWeb.I2cModuleFormComponent do
         :error -> nil
       end
 
+    pct =
+      case Integer.parse(Map.get(params, "brightness_pct", "53")) do
+        {n, ""} -> n
+        _ -> 53
+      end
+
+    brightness = round(pct * 15 / 100)
+
     params
     |> Map.put("i2c_address", addr)
+    |> Map.put("brightness", brightness)
     |> Map.take(["name", "module_chip", "i2c_address", "brightness", "num_digits"])
     |> Enum.reduce(%{}, fn {k, v}, acc ->
       Map.put(acc, String.to_existing_atom(k), v)
@@ -115,14 +134,15 @@ defmodule TreninoWeb.I2cModuleFormComponent do
             <div>
               <label class="label">
                 <span class="label-text font-medium">Brightness</span>
+                <span class="label-text-alt text-base-content/50">{@brightness_pct}%</span>
               </label>
               <input
-                type="number"
-                name="i2c_module[brightness]"
-                value={@form[:brightness].value || 8}
+                type="range"
+                name="i2c_module[brightness_pct]"
+                value={@brightness_pct}
                 min="0"
-                max="15"
-                class="input input-bordered w-full"
+                max="100"
+                class="range range-sm w-full"
               />
             </div>
             <div>
