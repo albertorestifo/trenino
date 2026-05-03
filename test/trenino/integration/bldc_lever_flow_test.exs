@@ -554,8 +554,8 @@ defmodule Trenino.Integration.BLDCLeverFlowTest do
       assert_receive {:profile_loaded, profile}, 500
       assert length(profile.detents) == 1
 
-      # Give time for any additional messages
-      Process.sleep(100)
+      # Confirm no additional profiles arrive
+      refute_receive {:profile_loaded, _}, 50
 
       # Verify only one profile was sent
       assert :counters.get(profile_count, 1) == 1
