@@ -8,11 +8,13 @@ defmodule Trenino.Train do
 
   import Ecto.Query
 
+  alias Trenino.Hardware
   alias Trenino.Repo
   alias Trenino.Simulator.Client
 
   alias Trenino.Train.{
     ButtonInputBinding,
+    DisplayBinding,
     Element,
     Identifier,
     LeverConfig,
@@ -1215,5 +1217,86 @@ defmodule Trenino.Train do
   Get a hardware output by database ID. Used by ScriptRunner for output.set().
   """
   @spec get_output_by_id(integer()) :: {:ok, Trenino.Hardware.Output.t()} | {:error, :not_found}
-  defdelegate get_output_by_id(id), to: Trenino.Hardware, as: :get_output
+  defdelegate get_output_by_id(id), to: Hardware, as: :get_output
+
+  # =============================================================================
+  # Display Binding functions
+  # =============================================================================
+
+  @doc """
+  List all display bindings for a train.
+
+  Returns bindings with their associated i2c modules and devices preloaded.
+  """
+  @spec list_display_bindings(integer()) :: [DisplayBinding.t()]
+  def list_display_bindings(train_id) do
+    DisplayBinding
+    |> where([d], d.train_id == ^train_id)
+    |> order_by([d], d.name)
+    |> preload(i2c_module: :device)
+    |> Repo.all()
+  end
+
+  @doc """
+  List all enabled display bindings for a train.
+
+  Used by DisplayController to get active bindings for subscription.
+  """
+  @spec list_enabled_display_bindings(integer()) :: [DisplayBinding.t()]
+  def list_enabled_display_bindings(train_id) do
+    DisplayBinding
+    |> where([d], d.train_id == ^train_id and d.enabled == true)
+    |> preload(i2c_module: :device)
+    |> Repo.all()
+  end
+
+  @doc """
+  Get a display binding by ID.
+  """
+  @spec get_display_binding(integer()) :: {:ok, DisplayBinding.t()} | {:error, :not_found}
+  def get_display_binding(id) do
+    case Repo.get(DisplayBinding, id) do
+      nil -> {:error, :not_found}
+      b -> {:ok, Repo.preload(b, i2c_module: :device)}
+    end
+  end
+
+  @doc """
+  Create a display binding for a train.
+  """
+  @spec create_display_binding(integer(), map()) ::
+          {:ok, DisplayBinding.t()} | {:error, Ecto.Changeset.t()}
+  def create_display_binding(train_id, attrs) do
+    %DisplayBinding{train_id: train_id}
+    |> DisplayBinding.changeset(attrs)
+    |> Repo.insert()
+  end
+
+  @doc """
+  Update a display binding.
+  """
+  @spec update_display_binding(DisplayBinding.t(), map()) ::
+          {:ok, DisplayBinding.t()} | {:error, Ecto.Changeset.t()}
+  def update_display_binding(%DisplayBinding{} = binding, attrs) do
+    binding
+    |> DisplayBinding.changeset(attrs)
+    |> Repo.update()
+  end
+
+  @doc """
+  Delete a display binding.
+  """
+  @spec delete_display_binding(DisplayBinding.t()) ::
+          {:ok, DisplayBinding.t()} | {:error, Ecto.Changeset.t()}
+  def delete_display_binding(%DisplayBinding{} = binding) do
+    Repo.delete(binding)
+  end
+
+  @doc """
+  List all I2C modules across all devices.
+
+  Used when creating display bindings to select an available module.
+  """
+  @spec list_all_i2c_modules() :: [Trenino.Hardware.I2cModule.t()]
+  def list_all_i2c_modules, do: Hardware.list_all_i2c_modules()
 end
