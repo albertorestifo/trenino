@@ -69,3 +69,4 @@ priv/firmware_cache
 
 # Git worktrees
 /.worktrees/
+.superpowers/

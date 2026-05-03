@@ -26,20 +26,27 @@ defmodule TreninoWeb.Router do
   scope "/", TreninoWeb do
     pipe_through :browser
 
+    get "/simulator/config", RedirectController, :simulator_config
+
+    live_session :consent, layout: {TreninoWeb.Layouts, :root} do
+      live "/consent", ConsentLive
+    end
+
     live_session :default,
       on_mount: [
+        TreninoWeb.ConsentGateHook,
         {TreninoWeb.NavHook, :default},
         {TreninoWeb.MCPDetectionHook, :default}
       ],
       layout: {TreninoWeb.Layouts, :app} do
       live "/", ConfigurationListLive
       live "/configurations/:config_id", ConfigurationEditLive
-      live "/simulator/config", SimulatorConfigLive
       live "/trains", TrainListLive
       live "/trains/:train_id", TrainEditLive
       live "/trains/:train_id/scripts/new", ScriptEditLive
       live "/trains/:train_id/scripts/:script_id", ScriptEditLive
       live "/firmware", FirmwareLive
+      live "/settings", SettingsLive
     end
   end
 

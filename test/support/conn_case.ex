@@ -33,6 +33,11 @@ defmodule TreninoWeb.ConnCase do
 
   setup tags do
     Trenino.DataCase.setup_sandbox(tags)
+
+    unless tags[:consent_unset] do
+      {:ok, _} = Trenino.Settings.set_error_reporting(:disabled)
+    end
+
     {:ok, conn: Phoenix.ConnTest.build_conn()}
   end
 end

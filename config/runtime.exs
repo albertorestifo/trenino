@@ -25,7 +25,9 @@ end
 # Sentry error tracking (Better Stack) — only active when SENTRY_DSN is set.
 # Set SENTRY_DSN during the release build in CI.
 if sentry_dsn = System.get_env("SENTRY_DSN") do
-  config :sentry, dsn: sentry_dsn
+  config :sentry,
+    dsn: sentry_dsn,
+    before_send: {Trenino.Settings, :sentry_before_send}
 
   config :trenino, :logger, [
     {:handler, :sentry_handler, Sentry.LoggerHandler,

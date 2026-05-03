@@ -130,12 +130,14 @@ defmodule TreninoWeb.NavComponents do
 
         <div class="flex-none flex items-center gap-3">
           <.link
-            navigate={~p"/simulator/config"}
+            navigate={~p"/settings"}
             class="flex items-center gap-2 px-3 py-2 rounded-lg bg-base-200 hover:bg-base-300 transition-colors duration-150"
-            title="Simulator Connection"
+            title="Settings"
+            aria-label="Settings"
           >
             <span class={["w-2 h-2 rounded-full", simulator_status_color(@simulator_status.status)]} />
-            <span class="text-sm font-medium hidden sm:inline">Simulator</span>
+            <.icon name="hero-cog-6-tooth" class="w-4 h-4" />
+            <span class="text-sm font-medium hidden sm:inline">Settings</span>
           </.link>
 
           <div class="relative">

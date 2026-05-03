@@ -2,8 +2,7 @@ defmodule Trenino.Simulator.ConnectionTest do
   use ExUnit.Case, async: false
   use Mimic
 
-  alias Trenino.Simulator.AutoConfig
-  alias Trenino.Simulator.Config
+  alias Trenino.Settings
   alias Trenino.Simulator.Connection
   alias Trenino.Simulator.ConnectionState
   alias Trenino.Train.Identifier
@@ -15,10 +14,9 @@ defmodule Trenino.Simulator.ConnectionTest do
   @api_key "test-api-key"
 
   setup do
-    # Mock AutoConfig to return a valid config
-    stub(AutoConfig, :ensure_config, fn ->
-      {:ok, %Config{url: @url, api_key: @api_key}}
-    end)
+    # Stub Settings to return a valid URL and API key
+    stub(Settings, :simulator_url, fn -> @url end)
+    stub(Settings, :api_key, fn -> {:ok, @api_key} end)
 
     # Default stub: all Req requests succeed (handles background health checks, polls, etc.)
     stub(Req, :request, fn _req, _opts ->
