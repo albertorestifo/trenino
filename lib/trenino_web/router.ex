@@ -28,6 +28,7 @@ defmodule TreninoWeb.Router do
 
     live_session :default,
       on_mount: [
+        TreninoWeb.ConsentGateHook,
         {TreninoWeb.NavHook, :default},
         {TreninoWeb.MCPDetectionHook, :default}
       ],
