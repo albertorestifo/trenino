@@ -1,40 +1,3 @@
-defmodule Trenino.Hardware.HT16K33.Params do
-  @moduledoc "Chip-specific configuration for HT16K33 LED display drivers."
-
-  use Ecto.Schema
-  import Ecto.Changeset
-
-  @type display_type :: :seven_segment | :fourteen_segment
-
-  @type t() :: %__MODULE__{
-          brightness: integer(),
-          num_digits: integer(),
-          display_type: display_type(),
-          has_dot: boolean()
-        }
-
-  @primary_key false
-  embedded_schema do
-    field :brightness, :integer, default: 8
-    field :num_digits, :integer, default: 4
-
-    field :display_type, Ecto.Enum,
-      values: [:seven_segment, :fourteen_segment],
-      default: :fourteen_segment
-
-    field :has_dot, :boolean, default: false
-  end
-
-  @spec changeset(t(), map()) :: Ecto.Changeset.t()
-  def changeset(%__MODULE__{} = params, attrs) do
-    params
-    |> cast(attrs, [:brightness, :num_digits, :display_type, :has_dot])
-    |> validate_required([:brightness, :num_digits, :display_type, :has_dot])
-    |> validate_number(:brightness, greater_than_or_equal_to: 0, less_than_or_equal_to: 15)
-    |> validate_inclusion(:num_digits, [4, 8])
-  end
-end
-
 defmodule Trenino.Hardware.HT16K33 do
   @moduledoc """
   Segment encoder for the Holtek HT16K33 LED display driver.
@@ -326,11 +289,20 @@ defmodule Trenino.Hardware.HT16K33 do
   @spec encode_string(String.t(), Params.t()) :: binary()
   def encode_string(text, %Params{display_type: :fourteen_segment} = params)
       when is_binary(text) do
-    encode_14seg(text, params.num_digits)
+    aligned = maybe_align_right(text, params.num_digits, params.align_right)
+    encode_14seg(aligned, params.num_digits)
   end
 
   def encode_string(text, %Params{display_type: :seven_segment} = params) when is_binary(text) do
-    encode_7seg(text, params.num_digits, params.has_dot)
+    aligned = maybe_align_right(text, params.num_digits, params.align_right)
+    encode_7seg(aligned, params.num_digits, params.has_dot)
+  end
+
+  defp maybe_align_right(text, _num_digits, false), do: text
+
+  defp maybe_align_right(text, num_digits, true) do
+    len = String.length(text)
+    if len < num_digits, do: String.duplicate(" ", num_digits - len) <> text, else: text
   end
 
   defp encode_14seg(text, num_digits) do

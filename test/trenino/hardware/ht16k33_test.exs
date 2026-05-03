@@ -10,7 +10,9 @@ defmodule Trenino.Hardware.HT16K33Test do
       display_type: :fourteen_segment,
       has_dot: false,
       num_digits: num_digits,
-      brightness: 8
+      brightness: 8,
+      align_right: false,
+      min_value: 0.0
     }
 
   defp params_7seg(num_digits \\ 4, has_dot \\ false),
@@ -18,7 +20,9 @@ defmodule Trenino.Hardware.HT16K33Test do
       display_type: :seven_segment,
       has_dot: has_dot,
       num_digits: num_digits,
-      brightness: 8
+      brightness: 8,
+      align_right: false,
+      min_value: 0.0
     }
 
   describe "encode_string/2 – 14-segment" do
@@ -55,6 +59,25 @@ defmodule Trenino.Hardware.HT16K33Test do
       <<low, high, _rest::binary>> = HT16K33.encode_string("~", params_14seg())
       assert low == 0x00
       assert high == 0x00
+    end
+
+    test "right-aligns short string when align_right is true" do
+      params = %Params{display_type: :fourteen_segment, has_dot: false, num_digits: 4, brightness: 8, align_right: true, min_value: 0.0}
+      result = HT16K33.encode_string("4", params)
+      # First 3 pairs should be blank (spaces), last pair is "4"
+      assert byte_size(result) == 8
+      <<b0, b1, b2, b3, b4, b5, b6, b7>> = result
+      assert {b0, b1} == {0x00, 0x00}
+      assert {b2, b3} == {0x00, 0x00}
+      assert {b4, b5} == {0x00, 0x00}
+      assert {b6, b7} == {0xE6, 0x00}
+    end
+
+    test "left-aligns short string when align_right is false" do
+      params = %Params{display_type: :fourteen_segment, has_dot: false, num_digits: 4, brightness: 8, align_right: false, min_value: 0.0}
+      result = HT16K33.encode_string("4", params)
+      <<b0, b1, _rest::binary>> = result
+      assert {b0, b1} == {0xE6, 0x00}
     end
   end
 
@@ -93,6 +116,17 @@ defmodule Trenino.Hardware.HT16K33Test do
       result = HT16K33.encode_string(".1", params_7seg(4, true))
       <<b0, _rest::binary>> = result
       assert b0 in [0x00, 0x80]
+    end
+
+    test "right-aligns short string when align_right is true" do
+      params = %Params{display_type: :seven_segment, has_dot: false, num_digits: 4, brightness: 8, align_right: true, min_value: 0.0}
+      result = HT16K33.encode_string("4", params)
+      assert byte_size(result) == 4
+      <<b0, b1, b2, b3>> = result
+      assert b0 == 0x00
+      assert b1 == 0x00
+      assert b2 == 0x00
+      assert b3 == 0x66
     end
   end
 
