@@ -45,7 +45,7 @@ defmodule Trenino.Hardware.I2cModule do
   def changeset(%__MODULE__{} = mod, attrs) do
     mod
     |> cast(attrs, [:device_id, :name, :module_chip, :i2c_address])
-    |> cast_polymorphic_embed(:params)
+    |> cast_polymorphic_embed(:params, required: true)
     |> validate_required([:device_id, :module_chip, :i2c_address])
     |> validate_number(:i2c_address, greater_than_or_equal_to: 0, less_than_or_equal_to: 255)
     |> validate_length(:name, max: 100)

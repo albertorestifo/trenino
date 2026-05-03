@@ -132,5 +132,11 @@ defmodule Trenino.Hardware.I2cModuleTest do
       changeset = I2cModule.changeset(%I2cModule{}, attrs)
       refute changeset.valid?
     end
+
+    test "requires params" do
+      attrs = %{device_id: 1, module_chip: :ht16k33, i2c_address: 112}
+      changeset = I2cModule.changeset(%I2cModule{}, attrs)
+      refute changeset.valid?
+    end
   end
 end
