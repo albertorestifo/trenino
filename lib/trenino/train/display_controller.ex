@@ -164,6 +164,8 @@ defmodule Trenino.Train.DisplayController do
   defp cleanup(%State{poll_timer: timer, subscriptions: subs, bindings: bindings} = state) do
     if timer, do: Process.cancel_timer(timer)
 
+    Enum.each(bindings, fn {_id, info} -> blank_display(info.binding) end)
+
     case get_simulator_client() do
       {:ok, client} ->
         Enum.each(subs, fn {_endpoint, sub_id} -> SimulatorClient.unsubscribe(client, sub_id) end)
@@ -171,8 +173,6 @@ defmodule Trenino.Train.DisplayController do
       :error ->
         :ok
     end
-
-    Enum.each(bindings, fn {_id, info} -> blank_display(info.binding) end)
 
     %{state | poll_timer: nil}
   end
