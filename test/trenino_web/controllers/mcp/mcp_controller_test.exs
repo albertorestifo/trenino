@@ -54,7 +54,7 @@ defmodule TreninoWeb.MCP.MCPControllerTest do
 
       assert_receive {:mcp_response, response}
       assert %{tools: tools} = response.result
-      assert length(tools) == 29
+      assert length(tools) == 37
     end
 
     test "handles tools/call via POST", %{conn: conn} do

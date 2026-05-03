@@ -10,6 +10,7 @@ defmodule Trenino.MCP.ToolRegistry do
     ButtonBindingTools,
     DetectionTools,
     DeviceTools,
+    DisplayBindingTools,
     ElementTools,
     OutputBindingTools,
     ScriptTools,
@@ -27,7 +28,8 @@ defmodule Trenino.MCP.ToolRegistry do
     ButtonBindingTools,
     SequenceTools,
     ScriptTools,
-    DetectionTools
+    DetectionTools,
+    DisplayBindingTools
   ]
 
   @type tool_def :: %{
