@@ -292,7 +292,7 @@ defmodule Trenino.Firmware.DeviceRegistry do
   end
 
   defp load_fallback_devices do
-    Logger.error(
+    Logger.info(
       "No firmware release manifest available. " <>
         "Please check for firmware updates to download device configurations. " <>
         "No devices will be available until a release manifest is loaded."
