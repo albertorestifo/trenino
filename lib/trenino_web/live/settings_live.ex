@@ -1,17 +1,33 @@
 defmodule TreninoWeb.SettingsLive do
   @moduledoc """
-  Settings page. Currently exposes the error reporting preference.
-  The simulator connection section is added in a later task.
+  Settings page. Exposes the error reporting preference and simulator connection settings.
   """
 
   use TreninoWeb, :live_view
 
   alias Trenino.Serial.Connection
   alias Trenino.Settings
+  alias Trenino.Settings.Simulator, as: SimulatorSettings
+  alias Trenino.Simulator.Connection, as: SimulatorConnection
 
   @impl true
   def mount(_params, _session, socket) do
-    {:ok, assign(socket, :error_reporting_enabled, Settings.error_reporting?())}
+    {:ok,
+     socket
+     |> assign(:error_reporting_enabled, Settings.error_reporting?())
+     |> assign(:simulator_url, Settings.simulator_url())
+     |> assign(:api_key_status, api_key_status())}
+  end
+
+  defp api_key_status do
+    if SimulatorSettings.windows?() do
+      case SimulatorSettings.read_from_file() do
+        {:ok, _key} -> :found_in_file
+        {:error, _} -> :missing
+      end
+    else
+      :unsupported_platform
+    end
   end
 
   # Nav events (mirror other LiveViews)
@@ -42,6 +58,25 @@ defmodule TreninoWeb.SettingsLive do
     new_value = if socket.assigns.error_reporting_enabled, do: :disabled, else: :enabled
     {:ok, _} = Settings.set_error_reporting(new_value)
     {:noreply, assign(socket, :error_reporting_enabled, new_value == :enabled)}
+  end
+
+  @impl true
+  def handle_event("save_simulator", %{"simulator" => params}, socket) do
+    %{"url" => url, "api_key" => api_key} = params
+
+    {:ok, _} = Settings.set_simulator_url(url)
+
+    if api_key != "" do
+      {:ok, _} = Settings.set_api_key(api_key)
+    end
+
+    SimulatorConnection.reconfigure()
+
+    {:noreply,
+     socket
+     |> assign(:simulator_url, Settings.simulator_url())
+     |> assign(:api_key_status, api_key_status())
+     |> put_flash(:info, "Simulator configuration saved")}
   end
 
   # PubSub handlers (mirror other LiveViews)
@@ -90,6 +125,60 @@ defmodule TreninoWeb.SettingsLive do
                 checked={@error_reporting_enabled}
               />
             </div>
+          </div>
+        </section>
+
+        <section class="card bg-base-100 border border-base-300">
+          <div class="card-body">
+            <div class="text-xs uppercase tracking-wider text-base-content/60 mb-2">
+              Simulator Connection
+            </div>
+            <.form for={%{}} as={:simulator} phx-submit="save_simulator" data-testid="simulator-form">
+              <label class="form-control w-full mb-3">
+                <span class="label-text text-sm">URL</span>
+                <input
+                  type="text"
+                  name="simulator[url]"
+                  value={@simulator_url}
+                  class="input input-bordered font-mono"
+                />
+              </label>
+
+              <div class="mb-3">
+                <span class="label-text text-sm">API Key</span>
+                <%= case @api_key_status do %>
+                  <% :found_in_file -> %>
+                    <div class="alert alert-success p-2 mt-1 text-sm">
+                      <.icon name="hero-check-circle" class="w-4 h-4" />
+                      Found in TSW file — updated automatically
+                    </div>
+                  <% :missing -> %>
+                    <div class="alert alert-warning p-2 mt-1 text-sm">
+                      <.icon name="hero-exclamation-triangle" class="w-4 h-4" />
+                      Not found in TSW file — enter a key below
+                    </div>
+                  <% :unsupported_platform -> %>
+                    <div class="alert p-2 mt-1 text-sm">
+                      <.icon name="hero-information-circle" class="w-4 h-4" />
+                      Auto-detection only available on Windows — enter a key below
+                    </div>
+                <% end %>
+              </div>
+
+              <label class="form-control w-full mb-3">
+                <span class="label-text text-sm text-base-content/60">Override API key manually</span>
+                <input
+                  type="password"
+                  name="simulator[api_key]"
+                  placeholder="Leave blank to keep current value"
+                  class="input input-bordered font-mono"
+                />
+              </label>
+
+              <div class="flex justify-end">
+                <button type="submit" class="btn btn-primary">Save</button>
+              </div>
+            </.form>
           </div>
         </section>
       </div>

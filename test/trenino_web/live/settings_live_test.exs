@@ -55,4 +55,51 @@ defmodule TreninoWeb.SettingsLiveTest do
       refute Settings.error_reporting?()
     end
   end
+
+  describe "simulator section" do
+    test "renders the URL field", %{conn: conn} do
+      {:ok, _} = Settings.set_simulator_url("http://192.168.1.42:31270")
+      {:ok, _view, html} = live(conn, ~p"/settings")
+
+      assert html =~ "Simulator Connection"
+      assert html =~ "http://192.168.1.42:31270"
+    end
+
+    test "saves a new URL on submit", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/settings")
+
+      view
+      |> form("[data-testid='simulator-form']",
+        simulator: %{url: "http://10.0.0.1:31270", api_key: ""}
+      )
+      |> render_submit()
+
+      assert "http://10.0.0.1:31270" = Settings.simulator_url()
+    end
+
+    test "saves an api key override when provided", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/settings")
+
+      view
+      |> form("[data-testid='simulator-form']",
+        simulator: %{url: "http://localhost:31270", api_key: "my-override"}
+      )
+      |> render_submit()
+
+      assert {:ok, "my-override"} = Settings.api_key()
+    end
+
+    test "leaves api key untouched when override field is blank", %{conn: conn} do
+      {:ok, _} = Settings.set_api_key("existing")
+      {:ok, view, _html} = live(conn, ~p"/settings")
+
+      view
+      |> form("[data-testid='simulator-form']",
+        simulator: %{url: "http://localhost:31270", api_key: ""}
+      )
+      |> render_submit()
+
+      assert {:ok, "existing"} = Settings.api_key()
+    end
+  end
 end
