@@ -94,14 +94,9 @@ defmodule TreninoWeb.LeverSetupWizard do
 
   # Initialize wizard state
   defp initialize_wizard(socket, %Element{} = element) do
-    bldc_enabled? = Application.get_env(:trenino, :enable_bldc_levers, false)
-
-    # Get all calibrated analog (and BLDC lever if enabled) inputs
-    allowed_types = if bldc_enabled?, do: [:analog, :bldc_lever], else: [:analog]
-
     available_inputs =
       Hardware.list_all_inputs()
-      |> Enum.filter(&(&1.input_type in allowed_types))
+      |> Enum.filter(&(&1.input_type == :analog))
 
     # Check for existing lever config
     existing_config = element.lever_config
@@ -114,7 +109,6 @@ defmodule TreninoWeb.LeverSetupWizard do
     steps = if editing_mode, do: @steps_edit, else: @steps_new
 
     socket
-    |> assign(:bldc_enabled, bldc_enabled?)
     |> assign(:current_step, :select_lever_type)
     |> assign(:available_inputs, available_inputs)
     |> assign(:selected_input_id, existing_input_id)
@@ -512,9 +506,6 @@ defmodule TreninoWeb.LeverSetupWizard do
 
   defp next_step_after_type_selection(_), do: :select_input
 
-  defp filter_inputs_for_type(inputs, :bldc),
-    do: Enum.filter(inputs, &(&1.input_type == :bldc_lever))
-
   defp filter_inputs_for_type(inputs, _), do: Enum.filter(inputs, &(&1.input_type == :analog))
 
   # Stop mapping session if leaving :map_notches step
@@ -880,7 +871,6 @@ defmodule TreninoWeb.LeverSetupWizard do
     ~H"""
     <.step_select_lever_type
       selected_lever_type={@socket_assigns.selected_lever_type}
-      bldc_enabled={@socket_assigns.bldc_enabled}
       can_proceed={can_proceed_from?(:select_lever_type, @socket_assigns)}
       myself={@myself}
     />
@@ -944,7 +934,6 @@ defmodule TreninoWeb.LeverSetupWizard do
 
   # Step 0: Select Lever Type
   attr :selected_lever_type, :atom, default: nil
-  attr :bldc_enabled, :boolean, required: true
   attr :can_proceed, :boolean, required: true
   attr :myself, :any, required: true
 
@@ -984,34 +973,6 @@ defmodule TreninoWeb.LeverSetupWizard do
             </div>
           </label>
 
-          <label
-            :if={@bldc_enabled}
-            class={[
-              "flex items-start gap-4 p-4 rounded-lg border-2 cursor-pointer transition-colors",
-              @selected_lever_type == :bldc && "border-primary bg-primary/10",
-              @selected_lever_type != :bldc && "border-base-300 hover:border-base-content/30"
-            ]}
-          >
-            <input
-              type="radio"
-              name="lever_type"
-              value="bldc"
-              checked={@selected_lever_type == :bldc}
-              phx-click="select_lever_type"
-              phx-value-lever_type="bldc"
-              phx-target={@myself}
-              class="radio radio-primary mt-1"
-            />
-            <div class="flex-1">
-              <div class="font-medium">BLDC Haptic Lever</div>
-              <p class="text-sm text-base-content/60 mt-1">
-                Motor-driven lever with programmable force feedback
-              </p>
-              <p class="text-xs text-base-content/50 mt-2">
-                Requires SimpleFOCShield v2 on Arduino Mega 2560
-              </p>
-            </div>
-          </label>
         </div>
       </div>
     </div>

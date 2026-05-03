@@ -27,12 +27,10 @@ defmodule Trenino.Train.LeverController do
   require Logger
 
   alias Trenino.Hardware
-  alias Trenino.Hardware.BLDCProfileBuilder
   alias Trenino.Hardware.Calibration.Calculator
   alias Trenino.Hardware.ConfigurationManager
   alias Trenino.Hardware.Input.Calibration
   alias Trenino.Serial.Connection, as: SerialConnection
-  alias Trenino.Serial.Protocol.{DeactivateBLDCProfile, LoadBLDCProfile}
   alias Trenino.Simulator.Client, as: SimulatorClient
   alias Trenino.Simulator.Connection, as: SimulatorConnection
   alias Trenino.Simulator.ConnectionState
@@ -45,7 +43,7 @@ defmodule Trenino.Train.LeverController do
     @type input_lookup :: %{
             {port :: String.t(), pin :: integer()} => %{
               input_id: integer(),
-              input_type: :analog | :button | :bldc_lever,
+              input_type: :analog | :button,
               calibration: Calibration.t() | nil
             }
           }
@@ -136,12 +134,8 @@ defmodule Trenino.Train.LeverController do
 
   # Train detection events
   @impl true
-  def handle_info({:train_changed, nil}, %State{active_train: active_train} = state) do
+  def handle_info({:train_changed, nil}, %State{} = state) do
     Logger.info("[LeverController] Train deactivated, clearing bindings")
-
-    if active_train do
-      deactivate_bldc_profiles_for_train(active_train)
-    end
 
     {:noreply, %{state | active_train: nil, binding_lookup: %{}, last_sent_values: %{}}}
   end
@@ -244,8 +238,6 @@ defmodule Trenino.Train.LeverController do
       "[LeverController] Loaded #{map_size(binding_lookup)} enabled bindings for train #{train.name}"
     )
 
-    load_bldc_profiles_for_train(train)
-
     %{state | active_train: train, binding_lookup: binding_lookup, last_sent_values: %{}}
   end
 
@@ -256,25 +248,9 @@ defmodule Trenino.Train.LeverController do
   defp handle_input_update(%State{} = state, port, pin, raw_value) do
     with {:ok, input_info} <- Map.fetch(state.input_lookup, {port, pin}),
          {:ok, binding_info} <- Map.fetch(state.binding_lookup, input_info.input_id) do
-      case input_info.input_type do
-        :bldc_lever ->
-          handle_bldc_input(state, binding_info, raw_value)
-
-        _analog ->
-          handle_analog_input(state, input_info, binding_info, raw_value)
-      end
+      handle_analog_input(state, input_info, binding_info, raw_value)
     else
       :error -> :skip
-    end
-  end
-
-  defp handle_bldc_input(%State{} = state, binding_info, detent_index) do
-    case LeverMapper.map_detent(binding_info.lever_config, detent_index) do
-      {:ok, sim_value} ->
-        maybe_send_value(state, binding_info.lever_config, sim_value)
-
-      {:error, _reason} ->
-        :skip
     end
   end
 
@@ -354,101 +330,4 @@ defmodule Trenino.Train.LeverController do
     end
   end
 
-  # Loads BLDC profiles for all BLDC levers in the train
-  defp load_bldc_profiles_for_train(%Train.Train{} = train) do
-    with {:ok, elements} <- Train.list_elements(train.id),
-         lever_configs <- get_lever_configs_from_elements(elements),
-         bldc_configs <- Enum.filter(lever_configs, &(&1.lever_type == :bldc)),
-         {:ok, port} <- find_device_port_for_lever() do
-      Enum.each(bldc_configs, fn %LeverConfig{} = config ->
-        load_bldc_profile(port, config)
-      end)
-    else
-      {:error, :no_device_connected} ->
-        Logger.warning("[LeverController] No device connected, skipping BLDC profile loading")
-
-      {:error, reason} ->
-        Logger.error("[LeverController] Failed to load BLDC profiles: #{inspect(reason)}")
-    end
-  end
-
-  # Extracts lever configs from elements, filtering out those without configs
-  defp get_lever_configs_from_elements(elements) do
-    elements
-    |> Enum.map(& &1.lever_config)
-    |> Enum.reject(&(is_nil(&1) or match?(%Ecto.Association.NotLoaded{}, &1)))
-  end
-
-  # Loads a single BLDC profile to the device
-  defp load_bldc_profile(port, %LeverConfig{} = config) do
-    case BLDCProfileBuilder.build_profile(config) do
-      {:ok, %LoadBLDCProfile{} = profile} ->
-        case SerialConnection.send_message(port, profile) do
-          :ok ->
-            Logger.info(
-              "[LeverController] Loaded BLDC profile for lever config #{config.id} on port #{port}"
-            )
-
-            :ok
-
-          {:error, reason} ->
-            Logger.error(
-              "[LeverController] Failed to send BLDC profile for config #{config.id}: #{inspect(reason)}"
-            )
-
-            {:error, reason}
-        end
-
-      {:error, reason} ->
-        Logger.error(
-          "[LeverController] Failed to build BLDC profile for config #{config.id}: #{inspect(reason)}"
-        )
-
-        {:error, reason}
-    end
-  end
-
-  # Finds the first connected device port
-  defp find_device_port_for_lever do
-    case SerialConnection.connected_devices() do
-      [device | _] -> {:ok, device.port}
-      [] -> {:error, :no_device_connected}
-    end
-  end
-
-  # Deactivates BLDC profiles for all BLDC levers in the train
-  defp deactivate_bldc_profiles_for_train(%Train.Train{} = train) do
-    with {:ok, elements} <- Train.list_elements(train.id),
-         lever_configs <- get_lever_configs_from_elements(elements),
-         bldc_configs <- Enum.filter(lever_configs, &(&1.lever_type == :bldc)),
-         {:ok, port} <- find_device_port_for_lever() do
-      Enum.each(bldc_configs, fn _config ->
-        deactivate_bldc_profile(port)
-      end)
-    else
-      {:error, :no_device_connected} ->
-        Logger.warning(
-          "[LeverController] No device connected, skipping BLDC profile deactivation"
-        )
-
-      {:error, reason} ->
-        Logger.error("[LeverController] Failed to deactivate BLDC profiles: #{inspect(reason)}")
-    end
-  end
-
-  # Deactivates a BLDC profile on the device
-  defp deactivate_bldc_profile(port) do
-    profile = %DeactivateBLDCProfile{pin: 0}
-
-    case SerialConnection.send_message(port, profile) do
-      :ok ->
-        Logger.info("[LeverController] Deactivated BLDC profile on port #{port}")
-        :ok
-
-      {:error, reason} ->
-        Logger.error("[LeverController] Failed to deactivate BLDC profile: #{inspect(reason)}")
-
-        {:error, reason}
-    end
-  end
 end

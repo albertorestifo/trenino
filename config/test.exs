@@ -70,9 +70,6 @@ config :trenino, :detection_grace_period_ms, 200
 # Skip initial connection delay in tests (1s in production)
 config :trenino, :connection_initial_delay_ms, 0
 
-# Enable BLDC levers in tests so BLDC-related tests pass
-config :trenino, :enable_bldc_levers, true
-
 # Shorter call timeout in tests so port-timeout tests don't wait the full
 # production 5s. Production default stays 5000ms via Application.get_env.
 config :trenino, :serial_connection_call_timeout_ms, 500

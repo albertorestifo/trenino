@@ -9,8 +9,7 @@ import Config
 
 config :trenino,
   ecto_repos: [Trenino.Repo],
-  generators: [timestamp_type: :utc_datetime],
-  enable_bldc_levers: false
+  generators: [timestamp_type: :utc_datetime]
 
 # Configures the endpoint
 config :trenino, TreninoWeb.Endpoint,

@@ -261,89 +261,6 @@ defmodule Trenino.Serial.ProtocolTest do
     end
   end
 
-  describe "Configure - BLDC Lever type" do
-    test "encode encodes BLDC lever configuration correctly" do
-      configure = %Configure{
-        config_id: 0x12345678,
-        total_parts: 2,
-        part_number: 1,
-        input_type: :bldc_lever,
-        motor_pin_a: 5,
-        motor_pin_b: 6,
-        motor_pin_c: 9,
-        motor_enable: 7,
-        encoder_cs: 10,
-        pole_pairs: 11,
-        voltage: 120,
-        current_limit: 0,
-        encoder_bits: 14
-      }
-
-      {:ok, encoded} = Configure.encode(configure)
-
-      # Header (8 bytes): type(0x02) + config_id(4 LE) + total_parts(1) + part_number(1) + input_type(0x03)
-      # Payload (9 bytes): motor_pin_a, motor_pin_b, motor_pin_c, motor_enable,
-      #                     encoder_cs, pole_pairs, voltage, current_limit, encoder_bits
-      assert encoded ==
-               <<0x02, 0x78, 0x56, 0x34, 0x12, 0x02, 0x01, 0x03, 5, 6, 9, 7, 10, 11, 120, 0, 14>>
-
-      assert byte_size(encoded) == 17
-    end
-
-    test "decode_body decodes BLDC lever configuration" do
-      # Body without type byte
-      body =
-        <<0x78, 0x56, 0x34, 0x12, 0x02, 0x01, 0x03, 5, 6, 9, 7, 10, 11, 120, 0, 14>>
-
-      {:ok, decoded} = Configure.decode_body(body)
-
-      assert decoded == %Configure{
-               config_id: 0x12345678,
-               total_parts: 2,
-               part_number: 1,
-               input_type: :bldc_lever,
-               motor_pin_a: 5,
-               motor_pin_b: 6,
-               motor_pin_c: 9,
-               motor_enable: 7,
-               encoder_cs: 10,
-               pole_pairs: 11,
-               voltage: 120,
-               current_limit: 0,
-               encoder_bits: 14
-             }
-    end
-
-    test "decode_body returns error for insufficient BLDC lever data" do
-      # Only 3 payload bytes instead of 9
-      body = <<0x78, 0x56, 0x34, 0x12, 0x02, 0x01, 0x03, 5, 6, 9>>
-      assert Configure.decode_body(body) == {:error, :invalid_message}
-    end
-
-    test "roundtrip encode/decode BLDC lever" do
-      original = %Configure{
-        config_id: 0x12345678,
-        total_parts: 2,
-        part_number: 1,
-        input_type: :bldc_lever,
-        motor_pin_a: 5,
-        motor_pin_b: 6,
-        motor_pin_c: 9,
-        motor_enable: 7,
-        encoder_cs: 10,
-        pole_pairs: 11,
-        voltage: 120,
-        current_limit: 0,
-        encoder_bits: 14
-      }
-
-      {:ok, encoded} = Configure.encode(original)
-      {:ok, decoded} = Message.decode(encoded)
-
-      assert decoded == original
-    end
-  end
-
   describe "ConfigurationStored" do
     test "encode encodes config_id correctly" do
       stored = %ConfigurationStored{config_id: 0x12345678}
@@ -652,62 +569,12 @@ defmodule Trenino.Serial.ProtocolTest do
              }
     end
 
-    test "decodes Configure with BLDC lever type" do
-      binary =
-        <<0x02, 0x78, 0x56, 0x34, 0x12, 0x02, 0x01, 0x03, 5, 6, 9, 7, 10, 11, 120, 0, 14>>
-
-      {:ok, decoded} = Message.decode(binary)
-
-      assert decoded == %Configure{
-               config_id: 0x12345678,
-               total_parts: 2,
-               part_number: 1,
-               input_type: :bldc_lever,
-               motor_pin_a: 5,
-               motor_pin_b: 6,
-               motor_pin_c: 9,
-               motor_enable: 7,
-               encoder_cs: 10,
-               pole_pairs: 11,
-               voltage: 120,
-               current_limit: 0,
-               encoder_bits: 14
-             }
-    end
-
     test "decodes RetryCalibration" do
       binary = <<0x08, 0x0A>>
       {:ok, decoded} = Message.decode(binary)
 
       alias Trenino.Serial.Protocol.RetryCalibration
       assert decoded == %RetryCalibration{pin: 0x0A}
-    end
-
-    test "decodes LoadBLDCProfile" do
-      # pin=10, 1 detent, 0 ranges, snap_point=70, endstop_strength=200, detent(pos=50, strength=150)
-      binary = <<0x0B, 10, 1, 0, 70, 200, 50, 150>>
-      {:ok, decoded} = Message.decode(binary)
-
-      alias Trenino.Serial.Protocol.LoadBLDCProfile
-
-      assert %LoadBLDCProfile{
-               pin: 10,
-               snap_point: 70,
-               endstop_strength: 200,
-               detents: [detent],
-               ranges: []
-             } = decoded
-
-      assert detent.position == 50
-      assert detent.detent_strength == 150
-    end
-
-    test "decodes DeactivateBLDCProfile" do
-      binary = <<0x0C, 0x0A>>
-      {:ok, decoded} = Message.decode(binary)
-
-      alias Trenino.Serial.Protocol.DeactivateBLDCProfile
-      assert decoded == %DeactivateBLDCProfile{pin: 0x0A}
     end
 
     test "returns error for unknown message type" do
@@ -755,21 +622,6 @@ defmodule Trenino.Serial.ProtocolTest do
           input_type: :matrix,
           row_pins: [2, 3, 4],
           col_pins: [5, 6]
-        },
-        %Configure{
-          config_id: 0x12345678,
-          total_parts: 2,
-          part_number: 1,
-          input_type: :bldc_lever,
-          motor_pin_a: 5,
-          motor_pin_b: 6,
-          motor_pin_c: 9,
-          motor_enable: 7,
-          encoder_cs: 10,
-          pole_pairs: 11,
-          voltage: 120,
-          current_limit: 0,
-          encoder_bits: 14
         },
         %ConfigurationStored{config_id: 0x12345678},
         %ConfigurationError{config_id: 0x12345678},

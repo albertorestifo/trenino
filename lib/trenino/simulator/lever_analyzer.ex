@@ -342,8 +342,7 @@ defmodule Trenino.Simulator.LeverAnalyzer do
   ## Parameters
 
   - `samples` - List of `Sample.t()` structs representing lever positions
-  - `opts` - Optional configuration:
-    - `:lever_type` - Override lever type classification (:bldc to generate BLDC haptic parameters)
+  - `opts` - Optional configuration (currently unused, reserved for future use)
 
   ## Examples
 
@@ -353,9 +352,6 @@ defmodule Trenino.Simulator.LeverAnalyzer do
         %Sample{set_input: 1.0, actual_input: 1.0, output: 1.0, notch_index: 2, snapped: true}
       ]
       {:ok, result} = LeverAnalyzer.analyze_samples(samples)
-
-      # Generate BLDC haptic parameters
-      {:ok, result} = LeverAnalyzer.analyze_samples(samples, lever_type: :bldc)
   """
   @spec analyze_samples([Sample.t()], keyword()) :: {:ok, AnalysisResult.t()}
   def analyze_samples(samples, opts \\ []) when is_list(samples) do
@@ -546,25 +542,13 @@ defmodule Trenino.Simulator.LeverAnalyzer do
     abs(value - rounded) < @output_integer_tolerance
   end
 
-  # Build notch suggestions from the detected zones
-  defp build_notches_from_zones(zones, opts) do
-    lever_type = Keyword.get(opts, :lever_type)
-
+  defp build_notches_from_zones(zones, _opts) do
     zones
     |> Enum.sort_by(& &1.set_input_min)
     |> Enum.with_index()
-    |> Enum.map(fn {zone, idx} ->
-      base = build_base_notch(zone, idx)
-
-      if lever_type == :bldc do
-        Map.merge(base, default_bldc_params(zone.type, idx))
-      else
-        base
-      end
-    end)
+    |> Enum.map(fn {zone, idx} -> build_base_notch(zone, idx) end)
   end
 
-  # Build the base notch configuration without BLDC parameters
   defp build_base_notch(%Zone{type: :gate} = zone, idx) do
     %{
       type: :gate,
@@ -589,21 +573,6 @@ defmodule Trenino.Simulator.LeverAnalyzer do
       actual_input_min: zone.actual_input_min,
       actual_input_max: zone.actual_input_max,
       description: "Linear #{zone.output_min} to #{zone.output_max}"
-    }
-  end
-
-  # Default BLDC haptic parameters based on zone type
-  defp default_bldc_params(:gate, _idx) do
-    %{
-      bldc_detent_strength: 200,
-      bldc_damping: 0
-    }
-  end
-
-  defp default_bldc_params(:linear, _idx) do
-    %{
-      bldc_detent_strength: 30,
-      bldc_damping: 100
     }
   end
 
