@@ -47,6 +47,6 @@ Trenino.Repo.put_dynamic_repo(Trenino.Repo)
 # Make the path available at runtime to DataCase
 Application.put_env(:trenino, :test_template_db_path, template_path)
 
-ExUnit.start()
+ExUnit.start(capture_log: true)
 ExUnit.configure(exclude: [:skip_without_avrdude])
 Ecto.Adapters.SQL.Sandbox.mode(Trenino.Repo, :manual)

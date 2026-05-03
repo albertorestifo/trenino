@@ -257,7 +257,7 @@ defmodule Trenino.Firmware.DeviceRegistry do
         use_1200bps_touch: upload_config["requires1200bpsTouch"] || false
       }
     else
-      Logger.warning(
+      Logger.info(
         "Skipping device #{environment}: protocol #{inspect(protocol)} is not supported. " <>
           "Supported protocols: #{Enum.join(@supported_programmers, ", ")}"
       )
