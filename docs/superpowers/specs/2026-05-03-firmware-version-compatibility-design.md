@@ -48,13 +48,7 @@ Behavior:
 
 ### `FirmwareRelease` schema
 
-Add a virtual field:
-
-```elixir
-field :compatible, :boolean, virtual: true, default: true
-```
-
-Populate via a small helper (`Compatibility.annotate/1` taking a release or list) called by callers that need the flag for UI rendering. We don't auto-populate inside the context functions — keeping the schema's stored vs derived fields explicit.
+No changes. Compatibility is a pure function of `release.version` + the current app config; computing it on every render (`Compatibility.compatible?(release)`) is cheap and avoids any risk of stale state surviving an app upgrade. The check is just a string parse + `Version.match?/2`.
 
 ### `Firmware` context
 
@@ -70,7 +64,7 @@ Populate via a small helper (`Compatibility.annotate/1` taking a release or list
 
 For each release row in the firmware list:
 
-- Add an "Incompatible" badge when `release.compatible == false`.
+- Add an "Incompatible" badge when `Compatibility.compatible?(release) == false`.
 - Disable install buttons for any `FirmwareFile` whose parent release is incompatible.
 - Show a tooltip / inline note next to the disabled button:
   > *Requires app update — this firmware is outside the supported range (`<requirement>`).*
