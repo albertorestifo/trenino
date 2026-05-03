@@ -11,6 +11,7 @@ defmodule Trenino.Hardware.Device do
   import Ecto.Changeset
 
   alias Trenino.Hardware.ConfigId
+  alias Trenino.Hardware.I2cModule
   alias Trenino.Hardware.Input
   alias Trenino.Hardware.Output
 
@@ -21,6 +22,7 @@ defmodule Trenino.Hardware.Device do
           config_id: integer() | nil,
           inputs: [Input.t()] | Ecto.Association.NotLoaded.t(),
           outputs: [Output.t()] | Ecto.Association.NotLoaded.t(),
+          i2c_modules: [I2cModule.t()] | Ecto.Association.NotLoaded.t(),
           inserted_at: DateTime.t() | nil,
           updated_at: DateTime.t() | nil
         }
@@ -32,6 +34,7 @@ defmodule Trenino.Hardware.Device do
 
     has_many :inputs, Input
     has_many :outputs, Output
+    has_many :i2c_modules, I2cModule
 
     timestamps(type: :utc_datetime)
   end
