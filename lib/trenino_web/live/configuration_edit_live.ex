@@ -13,7 +13,7 @@ defmodule TreninoWeb.ConfigurationEditLive do
 
   alias Trenino.Hardware
   alias Trenino.Hardware.Calibration.Session
-  alias Trenino.Hardware.{ConfigId, Device, Input, Output}
+  alias Trenino.Hardware.{ConfigId, Device, I2cModule, Input, Output}
   alias Trenino.Serial.Connection
 
   @impl true
@@ -111,7 +111,10 @@ defmodule TreninoWeb.ConfigurationEditLive do
      |> assign(:calibrating_input, nil)
      |> assign(:calibration_session_state, nil)
      |> assign(:show_apply_modal, false)
-     |> assign(:show_delete_modal, false)}
+     |> assign(:show_delete_modal, false)
+     |> assign(:i2c_modules, [])
+     |> assign(:i2c_modal_open, false)
+     |> assign(:i2c_modal_module, nil)}
   end
 
   defp mount_existing(socket, config_id) do
@@ -122,6 +125,7 @@ defmodule TreninoWeb.ConfigurationEditLive do
         {:ok, inputs} = Hardware.list_inputs(device.id)
         {:ok, matrices} = Hardware.list_matrices(device.id)
         {:ok, outputs} = Hardware.list_outputs(device.id)
+        i2c_modules = Hardware.list_i2c_modules(device.id)
         active_port = find_active_port(config_id)
         input_values = if active_port, do: Hardware.get_input_values(active_port), else: %{}
         changeset = Device.changeset(device, %{})
@@ -154,7 +158,10 @@ defmodule TreninoWeb.ConfigurationEditLive do
          |> assign(:calibrating_input, nil)
          |> assign(:calibration_session_state, nil)
          |> assign(:show_apply_modal, false)
-         |> assign(:show_delete_modal, false)}
+         |> assign(:show_delete_modal, false)
+         |> assign(:i2c_modules, i2c_modules)
+         |> assign(:i2c_modal_open, false)
+         |> assign(:i2c_modal_module, nil)}
 
       {:error, :not_found} ->
         {:ok,
@@ -389,6 +396,41 @@ defmodule TreninoWeb.ConfigurationEditLive do
       {:noreply, assign(socket, :output_states, output_states)}
     else
       {:noreply, socket}
+    end
+  end
+
+  # I2C module management
+  @impl true
+  def handle_event("open_add_i2c_modal", _params, socket) do
+    {:noreply, socket |> assign(:i2c_modal_open, true) |> assign(:i2c_modal_module, nil)}
+  end
+
+  @impl true
+  def handle_event("open_edit_i2c_modal", %{"id" => id_str}, socket) do
+    case Hardware.get_i2c_module(String.to_integer(id_str)) do
+      {:ok, mod} ->
+        {:noreply, socket |> assign(:i2c_modal_open, true) |> assign(:i2c_modal_module, mod)}
+
+      {:error, :not_found} ->
+        {:noreply, put_flash(socket, :error, "Module not found")}
+    end
+  end
+
+  @impl true
+  def handle_event("close_i2c_modal", _params, socket) do
+    {:noreply, socket |> assign(:i2c_modal_open, false) |> assign(:i2c_modal_module, nil)}
+  end
+
+  @impl true
+  def handle_event("delete_i2c_module", %{"id" => id_str}, socket) do
+    case Hardware.get_i2c_module(String.to_integer(id_str)) do
+      {:ok, mod} ->
+        {:ok, _} = Hardware.delete_i2c_module(mod)
+        i2c_modules = Hardware.list_i2c_modules(socket.assigns.device.id)
+        {:noreply, assign(socket, :i2c_modules, i2c_modules)}
+
+      {:error, :not_found} ->
+        {:noreply, put_flash(socket, :error, "Module not found")}
     end
   end
 
@@ -811,6 +853,17 @@ defmodule TreninoWeb.ConfigurationEditLive do
   end
 
   @impl true
+  def handle_info(:i2c_module_saved, socket) do
+    i2c_modules = Hardware.list_i2c_modules(socket.assigns.device.id)
+
+    {:noreply,
+     socket
+     |> assign(:i2c_modules, i2c_modules)
+     |> assign(:i2c_modal_open, false)
+     |> assign(:i2c_modal_module, nil)}
+  end
+
+  @impl true
   def handle_info(_msg, socket), do: {:noreply, socket}
 
   defp find_active_port_in_list(devices, config_id) do
@@ -875,6 +928,13 @@ defmodule TreninoWeb.ConfigurationEditLive do
           />
         </div>
 
+        <div class="bg-base-200/50 rounded-xl p-6 mt-6">
+          <.i2c_modules_section
+            i2c_modules={@i2c_modules}
+            new_mode={@new_mode}
+          />
+        </div>
+
         <.danger_zone
           :if={not @new_mode}
           action_label="Delete Configuration"
@@ -908,6 +968,22 @@ defmodule TreninoWeb.ConfigurationEditLive do
       device={@device}
       active={@active_port != nil}
     />
+
+    <%!-- I2C module modal --%>
+    <div :if={@i2c_modal_open} class="modal modal-open">
+      <div class="modal-box">
+        <h3 class="font-bold text-lg mb-4">
+          {if @i2c_modal_module, do: "Edit I2C Module", else: "Add I2C Module"}
+        </h3>
+        <.live_component
+          module={TreninoWeb.I2cModuleFormComponent}
+          id="i2c-module-form"
+          i2c_module={@i2c_modal_module}
+          device_id={@device.id}
+        />
+      </div>
+      <div class="modal-backdrop" phx-click="close_i2c_modal" />
+    </div>
 
     <.live_component
       :if={@calibrating_input}
@@ -1339,6 +1415,75 @@ defmodule TreninoWeb.ConfigurationEditLive do
     """
   end
 
+  attr :i2c_modules, :list, required: true
+  attr :new_mode, :boolean, required: true
+
+  defp i2c_modules_section(assigns) do
+    ~H"""
+    <div>
+      <div class="flex items-center justify-between mb-4">
+        <h3 class="text-base font-semibold">I2C Modules</h3>
+        <button
+          type="button"
+          phx-click="open_add_i2c_modal"
+          class="btn btn-outline btn-sm"
+          disabled={@new_mode}
+        >
+          <.icon name="hero-plus" class="w-4 h-4" /> Add Module
+        </button>
+      </div>
+
+      <.empty_collection_state
+        :if={Enum.empty?(@i2c_modules)}
+        icon="hero-cpu-chip"
+        message="No I2C modules configured"
+        submessage="Add a display module to show simulator values"
+      />
+
+      <div :if={not Enum.empty?(@i2c_modules)} class="overflow-x-auto">
+        <table class="table table-sm bg-base-100 rounded-lg">
+          <thead>
+            <tr class="bg-base-200">
+              <th>Name</th>
+              <th>Chip</th>
+              <th>Address</th>
+              <th>Digits</th>
+              <th>Brightness</th>
+              <th class="w-20"></th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr :for={mod <- @i2c_modules} class="hover:bg-base-200/50">
+              <td>{mod.name || "—"}</td>
+              <td class="uppercase text-xs">{mod.module_chip}</td>
+              <td class="font-mono">{I2cModule.format_i2c_address(mod.i2c_address)}</td>
+              <td>{mod.num_digits}</td>
+              <td>{mod.brightness}</td>
+              <td class="text-right">
+                <button
+                  phx-click="open_edit_i2c_modal"
+                  phx-value-id={mod.id}
+                  class="btn btn-ghost btn-xs"
+                >
+                  <.icon name="hero-pencil" class="w-3.5 h-3.5" />
+                </button>
+                <button
+                  phx-click="delete_i2c_module"
+                  phx-value-id={mod.id}
+                  data-confirm="Delete this I2C module?"
+                  class="btn btn-ghost btn-xs text-error"
+                >
+                  <.icon name="hero-trash" class="w-3.5 h-3.5" />
+                </button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    """
+  end
+
   attr :form, :map, required: true
 
   defp add_input_modal(assigns) do
@@ -1414,7 +1559,6 @@ defmodule TreninoWeb.ConfigurationEditLive do
                 class="input input-bordered w-full"
               />
             </div>
-
           </div>
 
           <div class="flex justify-end gap-2 mt-6">
