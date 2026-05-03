@@ -2,6 +2,7 @@ defmodule Trenino.SettingsTest do
   use Trenino.DataCase, async: true
 
   alias Trenino.Settings
+  alias Trenino.Settings.Simulator
 
   describe "error_reporting?/0" do
     test "returns false when no preference is set" do
@@ -92,7 +93,7 @@ defmodule Trenino.SettingsTest do
 
     test "delegates to Settings.Simulator on non-Windows when no key is stored" do
       # On non-Windows machines with no DB entry, file read returns :not_windows
-      unless Trenino.Settings.Simulator.windows?() do
+      unless Simulator.windows?() do
         assert {:error, :not_windows} = Settings.api_key()
       end
     end

@@ -8,6 +8,7 @@ defmodule Trenino.Settings do
 
   alias Trenino.Repo
   alias Trenino.Settings.Setting
+  alias Trenino.Settings.Simulator
 
   require Logger
 
@@ -43,7 +44,7 @@ defmodule Trenino.Settings do
              :not_windows | :userprofile_not_set | :file_not_found | :read_error}
   def api_key do
     case get_raw(@simulator_api_key_key) do
-      nil -> Trenino.Settings.Simulator.read_from_file()
+      nil -> Simulator.read_from_file()
       key when is_binary(key) -> {:ok, key}
     end
   end
