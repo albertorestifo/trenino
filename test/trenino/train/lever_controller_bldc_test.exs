@@ -8,7 +8,6 @@ defmodule Trenino.Train.LeverControllerBLDCTest do
   - Non-BLDC levers are skipped
   """
   use Trenino.DataCase, async: false
-  use Mimic
 
   import ExUnit.CaptureLog
 
@@ -195,8 +194,9 @@ defmodule Trenino.Train.LeverControllerBLDCTest do
       # Activate train with both BLDC and non-BLDC levers
       send(LeverController, {:train_changed, train})
 
-      # Wait for profile loading to complete
-      Process.sleep(200)
+      # Wait for the one expected BLDC profile, then confirm no more arrive
+      assert_receive {:bldc_profile_loaded, _}, 500
+      refute_receive {:bldc_profile_loaded, _}, 50
 
       # Should only receive one profile load (for the BLDC lever, not the continuous one)
       assert :counters.get(profile_count, 1) == 1
@@ -210,7 +210,8 @@ defmodule Trenino.Train.LeverControllerBLDCTest do
       log =
         capture_log(fn ->
           send(LeverController, {:train_changed, train})
-          Process.sleep(100)
+          # Sync with the GenServer to ensure handle_info has run before capture_log exits
+          LeverController.get_state()
         end)
 
       assert log =~ "No device connected, skipping BLDC profile loading"

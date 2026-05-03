@@ -23,6 +23,7 @@ defmodule TreninoWeb.ConnCase do
       @endpoint TreninoWeb.Endpoint
 
       use TreninoWeb, :verified_routes
+      use Mimic
 
       # Import conveniences for testing with connections
       import Plug.Conn
@@ -33,6 +34,7 @@ defmodule TreninoWeb.ConnCase do
 
   setup tags do
     Trenino.DataCase.setup_sandbox(tags)
+    Trenino.DataCase.setup_forbidden_serial_stubs()
 
     unless tags[:consent_unset] do
       {:ok, _} = Trenino.Settings.set_error_reporting(:disabled)

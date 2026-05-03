@@ -1,6 +1,8 @@
 defmodule Trenino.Firmware.DeviceRegistryTest do
   use Trenino.DataCase, async: false
 
+  import ExUnit.CaptureLog
+
   alias Trenino.Firmware
   alias Trenino.Firmware.DeviceRegistry
 
@@ -98,14 +100,14 @@ defmodule Trenino.Firmware.DeviceRegistryTest do
 
     # After each test, clear the manifest
     on_exit(fn ->
-      # Reload with empty manifest to clear devices
+      # Reload with empty manifest to clear devices — suppress expected warning/error logs
       manifest = %{
         "version" => "1.0",
         "project" => "trenino_firmware",
         "devices" => []
       }
 
-      DeviceRegistry.reload_from_manifest(manifest, 0)
+      capture_log(fn -> DeviceRegistry.reload_from_manifest(manifest, 0) end)
     end)
 
     :ok
@@ -166,7 +168,7 @@ defmodule Trenino.Firmware.DeviceRegistryTest do
     test "returns all devices from loaded manifest" do
       devices = DeviceRegistry.list_available_devices()
 
-      assert length(devices) == 7
+      assert length(devices) == 6
 
       environments = Enum.map(devices, & &1.environment) |> Enum.sort()
 
@@ -176,7 +178,6 @@ defmodule Trenino.Firmware.DeviceRegistryTest do
       assert "micro" in environments
       assert "sparkfun_promicro16" in environments
       assert "megaatmega2560" in environments
-      assert "due" in environments
     end
 
     test "devices are sorted by display name" do
@@ -205,7 +206,7 @@ defmodule Trenino.Firmware.DeviceRegistryTest do
     test "returns options suitable for form select" do
       options = DeviceRegistry.select_options()
 
-      assert length(options) == 7
+      assert length(options) == 6
 
       for {name, env} <- options do
         assert is_binary(name)
@@ -342,7 +343,7 @@ defmodule Trenino.Firmware.DeviceRegistryTest do
       assert config.display_name == "Custom Leonardo"
     end
 
-    test "loads all devices with valid uploadConfig from manifest" do
+    test "accepts devices with supported avrdude protocols" do
       manifest = %{
         "version" => "1.0",
         "project" => "trenino_firmware",
@@ -372,17 +373,12 @@ defmodule Trenino.Firmware.DeviceRegistryTest do
 
       assert :ok = DeviceRegistry.reload_from_manifest(manifest, 1)
 
-      # Should have uno
       assert {:ok, uno_config} = DeviceRegistry.get_device_config("uno")
-      assert uno_config.environment == "uno"
       assert uno_config.programmer == "arduino"
 
-      # Should also have custom board (any protocol/mcu is accepted from manifest)
-      assert {:ok, custom_config} = DeviceRegistry.get_device_config("custom_board")
-      assert custom_config.environment == "custom_board"
-      assert custom_config.programmer == "custom_protocol"
-      assert custom_config.mcu == "custom_mcu"
-      assert custom_config.baud_rate == 9600
+      assert {:error, :unknown_device} = DeviceRegistry.get_device_config("custom_board")
+
+      assert length(DeviceRegistry.list_available_devices()) == 1
     end
 
     test "returns error when manifest has no devices" do
@@ -392,7 +388,12 @@ defmodule Trenino.Firmware.DeviceRegistryTest do
         "devices" => []
       }
 
-      assert {:error, :no_devices} = DeviceRegistry.reload_from_manifest(manifest, 1)
+      log =
+        capture_log(fn ->
+          assert {:error, :no_devices} = DeviceRegistry.reload_from_manifest(manifest, 1)
+        end)
+
+      assert log =~ "Manifest contains no devices"
 
       # Registry should be empty (no devices available)
       devices = DeviceRegistry.list_available_devices()
@@ -411,11 +412,63 @@ defmodule Trenino.Firmware.DeviceRegistryTest do
         ]
       }
 
-      assert {:error, :no_valid_devices} = DeviceRegistry.reload_from_manifest(manifest, 1)
+      log =
+        capture_log(fn ->
+          assert {:error, :no_valid_devices} = DeviceRegistry.reload_from_manifest(manifest, 1)
+        end)
+
+      assert log =~ "No valid devices in manifest"
 
       # Registry should be empty (no valid devices)
       devices = DeviceRegistry.list_available_devices()
       assert devices == []
+    end
+
+    test "rejects devices whose upload protocol is not in the avrdude allowlist" do
+      manifest = %{
+        "version" => "1.0",
+        "project" => "trenino_firmware",
+        "devices" => [
+          %{
+            "environment" => "uno",
+            "displayName" => "Arduino Uno",
+            "firmwareFile" => "trenino-uno.hex",
+            "uploadConfig" => %{
+              "protocol" => "arduino",
+              "mcu" => "atmega328p",
+              "speed" => 115_200
+            }
+          },
+          %{
+            "environment" => "due",
+            "displayName" => "Arduino Due",
+            "firmwareFile" => "trenino-due.bin",
+            "uploadConfig" => %{
+              "protocol" => "sam-ba",
+              "mcu" => "at91sam3x8e",
+              "speed" => 115_200
+            }
+          },
+          %{
+            "environment" => "esp32_device",
+            "displayName" => "ESP32",
+            "firmwareFile" => "trenino-esp32.bin",
+            "uploadConfig" => %{
+              "protocol" => "esptool",
+              "mcu" => "esp32",
+              "speed" => 115_200
+            }
+          }
+        ]
+      }
+
+      assert :ok = DeviceRegistry.reload_from_manifest(manifest, 1)
+
+      assert {:ok, _} = DeviceRegistry.get_device_config("uno")
+      assert {:error, :unknown_device} = DeviceRegistry.get_device_config("due")
+      assert {:error, :unknown_device} = DeviceRegistry.get_device_config("esp32_device")
+
+      assert length(DeviceRegistry.list_available_devices()) == 1
     end
 
     test "merges manifest devices with hardware configs" do
@@ -500,7 +553,7 @@ defmodule Trenino.Firmware.DeviceRegistryTest do
 
       # Should still have fallback devices available
       devices = DeviceRegistry.list_available_devices()
-      assert length(devices) == 7
+      assert length(devices) == 6
     end
   end
 end

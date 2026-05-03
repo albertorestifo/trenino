@@ -1,4 +1,7 @@
 defmodule Trenino.Train.Calibration.NotchMappingSessionTest do
+  # async: false because the test uses Sandbox.allow/3 to grant DB access
+  # to spawned NotchMappingSession processes — that API requires the shared
+  # Sandbox pool, not the dynamic isolated Repo used for async tests.
   use Trenino.DataCase, async: false
 
   alias Ecto.Adapters.SQL.Sandbox

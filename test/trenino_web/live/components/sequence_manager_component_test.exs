@@ -1,6 +1,5 @@
 defmodule TreninoWeb.SequenceManagerComponentTest do
   use TreninoWeb.ConnCase, async: false
-  use Mimic
 
   import Phoenix.LiveViewTest
 

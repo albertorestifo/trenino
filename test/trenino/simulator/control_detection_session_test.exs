@@ -1,7 +1,5 @@
 defmodule Trenino.Simulator.ControlDetectionSessionTest do
-  use ExUnit.Case, async: false
-
-  import Mimic
+  use Trenino.SerialSafetyCase, async: false
 
   alias Trenino.Simulator.Client
   alias Trenino.Simulator.ControlDetectionSession

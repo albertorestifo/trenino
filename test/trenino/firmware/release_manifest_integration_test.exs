@@ -7,7 +7,7 @@ defmodule Trenino.Firmware.ReleaseManifestIntegrationTest do
   release.json format from the trenino_firmware repository.
   """
 
-  use Trenino.DataCase, async: false
+  use Trenino.DataCase, async: true
 
   alias Trenino.Firmware
   alias Trenino.Firmware.DeviceRegistry
@@ -124,19 +124,18 @@ defmodule Trenino.Firmware.ReleaseManifestIntegrationTest do
       # Step 3: Reload device registry from manifest
       assert :ok = DeviceRegistry.reload_from_manifest(@test_manifest, release.id)
 
-      # Step 4: Verify all devices are available
+      # Step 4: Verify all supported devices are available
+      # "due" (sam-ba) and "esp32dev" (esptool) are silently rejected
       devices = DeviceRegistry.list_available_devices()
-      assert length(devices) == 6
+      assert length(devices) == 4
 
-      # Verify device names
+      # Verify device names (sam-ba and esptool devices are excluded)
       device_names = Enum.map(devices, & &1.display_name) |> Enum.sort()
 
       expected_names = [
-        "Arduino Due",
         "Arduino Leonardo",
         "Arduino Nano",
         "Arduino Uno",
-        "ESP32 DevKit",
         "SparkFun Pro Micro"
       ]
 
@@ -163,12 +162,8 @@ defmodule Trenino.Firmware.ReleaseManifestIntegrationTest do
       assert leo_config.baud_rate == 57_600
       assert leo_config.use_1200bps_touch == true
 
-      # Test ESP32 configuration (different protocol)
-      {:ok, esp_config} = DeviceRegistry.get_device_config("esp32dev")
-      assert esp_config.programmer == "esptool"
-      assert esp_config.mcu == "esp32"
-      assert esp_config.baud_rate == 921_600
-      assert esp_config.use_1200bps_touch == false
+      # esp32dev (esptool protocol) is silently rejected at load time
+      assert {:error, :unknown_device} = DeviceRegistry.get_device_config("esp32dev")
     end
 
     test "firmware file selection works with environment strings" do
@@ -204,10 +199,11 @@ defmodule Trenino.Firmware.ReleaseManifestIntegrationTest do
 
       options = DeviceRegistry.select_options()
 
-      assert length(options) == 6
+      # Only 4 devices: sam-ba (due) and esptool (esp32dev) are silently rejected
+      assert length(options) == 4
       assert {"Arduino Nano", "nanoatmega328new"} in options
       assert {"Arduino Leonardo", "leonardo"} in options
-      assert {"ESP32 DevKit", "esp32dev"} in options
+      refute {"ESP32 DevKit", "esp32dev"} in options
     end
 
     test "detects devices from firmware filenames" do
@@ -235,8 +231,8 @@ defmodule Trenino.Firmware.ReleaseManifestIntegrationTest do
       {:ok, leo} = DeviceRegistry.get_device_config("leonardo")
       assert leo.mcu == "m32u4", "atmega32u4 should be normalized to m32u4"
 
-      {:ok, due} = DeviceRegistry.get_device_config("due")
-      assert due.mcu == "at91sam3x8e", "ARM MCU should keep full name"
+      # "due" uses sam-ba protocol which is not supported, so it is silently rejected
+      assert {:error, :unknown_device} = DeviceRegistry.get_device_config("due")
     end
 
     test "handles missing uploadConfig gracefully" do

@@ -1,5 +1,5 @@
 defmodule Trenino.MCP.Tools.ScriptToolsTest do
-  use Trenino.DataCase, async: false
+  use Trenino.DataCase, async: true
 
   alias Trenino.MCP.Tools.ScriptTools
   alias Trenino.Train, as: TrainContext

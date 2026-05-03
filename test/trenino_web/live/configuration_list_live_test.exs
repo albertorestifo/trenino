@@ -6,11 +6,24 @@ defmodule TreninoWeb.ConfigurationListLiveTest do
 
   alias Ecto.Adapters.SQL.Sandbox
   alias Trenino.Hardware
+  alias Trenino.Serial.Connection
   alias Trenino.Simulator.ConnectionState
 
   # Allow the Connection GenServer to access the database sandbox
   setup do
     Sandbox.mode(Trenino.Repo, {:shared, self()})
+    :ok
+  end
+
+  # Stub serial Connection calls that would otherwise hit the real GenServer.
+  # Connection.scan/0 is a GenServer.cast and Connection.list_devices/0 is a
+  # GenServer.call; without stubs both go to the running process and can add
+  # 200ms+ per test while the GenServer processes the request and attempts
+  # (forbidden) UART enumeration.
+  setup do
+    stub(Connection, :scan, fn -> :ok end)
+    stub(Connection, :connected_devices, fn -> [] end)
+    stub(Connection, :list_devices, fn -> [] end)
     :ok
   end
 

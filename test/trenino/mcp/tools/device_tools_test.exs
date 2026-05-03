@@ -1,5 +1,5 @@
 defmodule Trenino.MCP.Tools.DeviceToolsTest do
-  use Trenino.DataCase, async: false
+  use Trenino.DataCase, async: true
 
   alias Trenino.Hardware
   alias Trenino.MCP.Tools.DeviceTools

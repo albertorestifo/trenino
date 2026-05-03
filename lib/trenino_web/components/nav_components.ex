@@ -346,7 +346,7 @@ defmodule TreninoWeb.NavComponents do
       </div>
       <div :if={@device.status == :failed and flashable_error?(@device.error_type)} class="mt-2 pl-4">
         <.link
-          navigate={~p"/firmware?port=#{URI.encode_www_form(@device.port)}"}
+          navigate={~p"/firmware?port=#{@device.port}"}
           class="btn btn-xs btn-outline btn-primary"
         >
           <.icon name="hero-arrow-up-tray" class="w-3 h-3" /> Install Firmware

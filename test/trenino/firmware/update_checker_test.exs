@@ -1,6 +1,5 @@
 defmodule Trenino.Firmware.UpdateCheckerTest do
-  use Trenino.DataCase, async: false
-  use Mimic
+  use Trenino.DataCase, async: true
 
   alias Trenino.Firmware
   alias Trenino.Firmware.UpdateCheck

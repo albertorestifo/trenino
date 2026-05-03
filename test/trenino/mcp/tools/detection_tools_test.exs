@@ -1,9 +1,10 @@
 defmodule Trenino.MCP.Tools.DetectionToolsTest do
   use Trenino.DataCase, async: false
-  use Mimic
 
   alias Trenino.Hardware
   alias Trenino.MCP.Tools.DetectionTools
+
+  import Trenino.PubSubHelpers, only: [wait_for_subscriber: 1]
 
   @input_values_topic "hardware:input_values"
   @test_port "test_port"
@@ -53,14 +54,14 @@ defmodule Trenino.MCP.Tools.DetectionToolsTest do
           })
         end)
 
-      # Give the detection session time to subscribe
-      Process.sleep(50)
+      # Wait deterministically for the detection session to subscribe
+      :ok = wait_for_subscriber("hardware:input_values:#{@test_port}")
 
       # Establish baseline then trigger change
       broadcast_input(button.pin, 0)
       broadcast_input(button.pin, 1)
 
-      assert {:ok, result} = Task.await(task, 3_000)
+      assert {:ok, result} = Task.await(task, 1_000)
       assert result.detected == true
       assert result.input.input_id == button.id
       assert result.input.input_type == :button
@@ -80,7 +81,7 @@ defmodule Trenino.MCP.Tools.DetectionToolsTest do
           })
         end)
 
-      Process.sleep(50)
+      :ok = wait_for_subscriber("hardware:input_values:#{@test_port}")
 
       # Analog input should be ignored when filtering for buttons
       broadcast_input(analog.pin, 0)
@@ -90,7 +91,7 @@ defmodule Trenino.MCP.Tools.DetectionToolsTest do
       broadcast_input(button.pin, 0)
       broadcast_input(button.pin, 1)
 
-      assert {:ok, result} = Task.await(task, 2_000)
+      assert {:ok, result} = Task.await(task, 1_000)
       assert result.detected == true
       assert result.input.input_type == :button
     end
@@ -154,12 +155,12 @@ defmodule Trenino.MCP.Tools.DetectionToolsTest do
           })
         end)
 
-      Process.sleep(50)
+      :ok = wait_for_subscriber("hardware:input_values:#{@test_port}")
 
       broadcast_input(analog.pin, 500)
       broadcast_input(analog.pin, 600)
 
-      assert {:ok, result} = Task.await(task, 3_000)
+      assert {:ok, result} = Task.await(task, 1_000)
       assert result.detected == true
       assert result.input.input_type == :analog
     end

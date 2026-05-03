@@ -155,7 +155,6 @@ defmodule Trenino.Firmware.UploadManager do
     # Task crashed
     case state.current_upload do
       %{task_ref: ^ref} = upload ->
-        Logger.error("Upload task crashed: #{inspect(reason)}")
         handle_upload_crash(upload, reason)
         {:noreply, %{state | current_upload: nil}}
 
@@ -268,16 +267,25 @@ defmodule Trenino.Firmware.UploadManager do
   end
 
   defp handle_upload_result(upload, {:error, reason, output}) do
-    # Release the port
     Connection.release_upload_access(upload.port, upload.release_token)
 
-    # Update history
     error_message = Uploader.error_message(reason)
 
     case Firmware.get_upload_history(upload.upload_id) do
       {:ok, history} -> Firmware.fail_upload(history, to_string(reason), output)
       _ -> :ok
     end
+
+    Sentry.capture_message("firmware_upload_failed",
+      level: :error,
+      extra: %{
+        upload_id: upload.upload_id,
+        port: upload.port,
+        environment: upload.environment,
+        error_reason: reason,
+        avrdude_output: output
+      }
+    )
 
     broadcast({:upload_failed, upload.upload_id, reason, error_message})
     Logger.error("Failed firmware upload #{upload.upload_id}: #{reason}")
@@ -289,16 +297,26 @@ defmodule Trenino.Firmware.UploadManager do
   end
 
   defp handle_upload_crash(upload, reason) do
-    # Release the port
     Connection.release_upload_access(upload.port, upload.release_token)
 
-    # Update history
     case Firmware.get_upload_history(upload.upload_id) do
       {:ok, history} -> Firmware.fail_upload(history, "Task crashed: #{inspect(reason)}", nil)
       _ -> :ok
     end
 
+    Sentry.capture_message("firmware_upload_crashed",
+      level: :error,
+      extra: %{
+        upload_id: upload.upload_id,
+        port: upload.port,
+        environment: upload.environment,
+        error_reason: :crash,
+        crash_reason: inspect(reason)
+      }
+    )
+
     broadcast({:upload_failed, upload.upload_id, :crash, "Upload task crashed unexpectedly"})
+    Logger.error("Upload task crashed: #{inspect(reason)}")
   end
 
   defp broadcast(event) do

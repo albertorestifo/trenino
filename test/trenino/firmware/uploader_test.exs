@@ -1,5 +1,5 @@
 defmodule Trenino.Firmware.UploaderTest do
-  use Trenino.DataCase, async: false
+  use Trenino.DataCase, async: true
 
   alias Trenino.Firmware.Avrdude
   alias Trenino.Firmware.Uploader
@@ -7,6 +7,8 @@ defmodule Trenino.Firmware.UploaderTest do
   setup do
     # Load test device configurations for uploader tests
     load_test_devices()
+    stub(Trenino.Firmware.Avrdude, :executable_path, fn -> {:ok, "/fake/avrdude"} end)
+    stub(Trenino.Firmware.Avrdude, :conf_path, fn -> {:error, :not_found} end)
     :ok
   end
 

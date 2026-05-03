@@ -26,7 +26,10 @@ config :trenino, TreninoWeb.Endpoint,
   secret_key_base: "NvZHOhdHQPBJ0Es1QVYQfVjXzJ9sSiQLWARJBAYZBR4yh+YZ3u0/M0d6grAy8QMQ",
   server: false
 
-# Print only warnings and errors during test
+# Print only warnings and errors during test. ExUnit.start(capture_log: true)
+# captures per-test-process logs and shows them on failure; tests that
+# intentionally trigger noisy background-GenServer logs (e.g. DeviceRegistry
+# fallbacks) wrap their calls in ExUnit.CaptureLog.capture_log/1 explicitly.
 config :logger, level: :warning
 
 # Initialize plugs at runtime for faster test compilation
@@ -69,3 +72,7 @@ config :trenino, :connection_initial_delay_ms, 0
 
 # Enable BLDC levers in tests so BLDC-related tests pass
 config :trenino, :enable_bldc_levers, true
+
+# Shorter call timeout in tests so port-timeout tests don't wait the full
+# production 5s. Production default stays 5000ms via Application.get_env.
+config :trenino, :serial_connection_call_timeout_ms, 500

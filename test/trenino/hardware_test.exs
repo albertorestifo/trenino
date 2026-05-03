@@ -1,6 +1,6 @@
 defmodule Trenino.HardwareTest do
   # async: false due to SQLite write lock contention with other tests
-  use Trenino.DataCase, async: false
+  use Trenino.DataCase, async: true
 
   alias Trenino.Hardware
   alias Trenino.Hardware.Device

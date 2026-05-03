@@ -8,7 +8,7 @@ defmodule Trenino.Firmware.Uploader do
 
   require Logger
 
-  alias Trenino.Firmware.{Avrdude, DeviceRegistry}
+  alias Trenino.Firmware.{Avrdude, AvrdudeRunner, DeviceRegistry}
 
   @type progress_callback :: (integer(), String.t() -> any())
 
@@ -22,6 +22,10 @@ defmodule Trenino.Firmware.Uploader do
   @alternate_baud_rates %{
     "arduino" => [57_600, 115_200]
   }
+
+  @bootloader_initial_wait_ms 100
+  @bootloader_poll_interval_ms 300
+  @bootloader_poll_deadline_ms 5_000
 
   @doc """
   Returns alternate baud rates to try for a programmer when the initial
@@ -112,7 +116,7 @@ defmodule Trenino.Firmware.Uploader do
     args = build_args(config, port, hex_file_path)
     Logger.info("Running avrdude: #{avrdude_path} #{Enum.join(args, " ")}")
 
-    case run_avrdude(avrdude_path, args, callback) do
+    case AvrdudeRunner.run(avrdude_path, args, callback) do
       {:ok, output} ->
         {:ok, output}
 
@@ -210,30 +214,21 @@ defmodule Trenino.Firmware.Uploader do
   # Trigger bootloader on boards that need 1200bps touch (Leonardo, Micro, Pro Micro)
   defp maybe_trigger_bootloader(port, %{use_1200bps_touch: true}) do
     Logger.info("Triggering bootloader with 1200bps touch on #{port}")
-
-    # Get list of ports before triggering bootloader
     ports_before = get_available_ports()
 
     case Circuits.UART.start_link() do
       {:ok, uart} ->
-        # Open at 1200 baud, then close immediately to trigger bootloader
         result =
           case Circuits.UART.open(uart, port, speed: 1200) do
             :ok ->
-              # Small delay to ensure the signal is registered
-              Process.sleep(50)
+              Process.sleep(@bootloader_initial_wait_ms)
               Circuits.UART.close(uart)
-              # Wait for bootloader to start (typically appears on a new port)
               Logger.info("Waiting for bootloader to start...")
-              Process.sleep(1500)
-
-              # On Windows, the bootloader often appears on a different port
-              # Try to detect the new port
-              detect_bootloader_port(port, ports_before)
+              deadline = System.monotonic_time(:millisecond) + @bootloader_poll_deadline_ms
+              poll_for_bootloader_port(port, ports_before, deadline)
 
             {:error, reason} ->
               Logger.warning("Could not open port for 1200bps touch: #{inspect(reason)}")
-              # Continue anyway - device might already be in bootloader mode
               {:ok, port}
           end
 
@@ -242,68 +237,38 @@ defmodule Trenino.Firmware.Uploader do
 
       {:error, reason} ->
         Logger.warning("Could not start UART for 1200bps touch: #{inspect(reason)}")
-        # Continue anyway
         {:ok, port}
     end
   end
 
   defp maybe_trigger_bootloader(port, _config), do: {:ok, port}
 
-  # Detect the bootloader port after 1200bps touch
-  # On Windows, the device often reappears on a different COM port
-  defp detect_bootloader_port(original_port, ports_before) do
+  defp poll_for_bootloader_port(original_port, ports_before, deadline) do
     ports_after = get_available_ports()
     new_ports = ports_after -- ports_before
 
     cond do
-      # If the original port is still available, use it (common on macOS/Linux)
-      original_port in ports_after ->
-        Logger.info("Original port #{original_port} still available, using it")
-        {:ok, original_port}
-
-      # If a new port appeared, use that (common on Windows)
       length(new_ports) == 1 ->
         [new_port] = new_ports
         Logger.info("Bootloader appeared on new port #{new_port} (was #{original_port})")
         {:ok, new_port}
 
-      # Multiple new ports appeared - try to find one that looks like a bootloader
       length(new_ports) > 1 ->
-        # Prefer the highest numbered COM port (bootloader usually gets a new higher number)
         new_port = Enum.max(new_ports)
         Logger.info("Multiple new ports appeared, using #{new_port}")
         {:ok, new_port}
 
-      # No ports available - wait a bit more and retry once
-      true ->
-        Logger.info("Port disappeared, waiting for bootloader to appear...")
-        Process.sleep(1000)
-        retry_detect_bootloader_port(original_port, ports_before)
-    end
-  end
-
-  defp retry_detect_bootloader_port(original_port, ports_before) do
-    ports_after = get_available_ports()
-    new_ports = ports_after -- ports_before
-
-    cond do
       original_port in ports_after ->
+        Logger.info("Original port #{original_port} still available, using it")
         {:ok, original_port}
 
-      new_ports != [] ->
-        new_port = Enum.max(new_ports)
-        Logger.info("Bootloader appeared on port #{new_port}")
-        {:ok, new_port}
-
-      ports_after != [] ->
-        # Use any available port as a last resort
-        new_port = Enum.max(ports_after)
-        Logger.warning("Could not detect bootloader port, trying #{new_port}")
-        {:ok, new_port}
-
-      true ->
+      System.monotonic_time(:millisecond) >= deadline ->
         Logger.error("No ports available after bootloader trigger")
         {:error, :bootloader_port_not_found}
+
+      true ->
+        Process.sleep(@bootloader_poll_interval_ms)
+        poll_for_bootloader_port(original_port, ports_before, deadline)
     end
   end
 
@@ -346,67 +311,6 @@ defmodule Trenino.Firmware.Uploader do
       {:error, :hex_file_not_found, "Firmware file not found: #{path}"}
     end
   end
-
-  # Run avrdude and collect output
-  defp run_avrdude(avrdude_path, args, progress_callback) do
-    port =
-      Port.open({:spawn_executable, avrdude_path}, [
-        :binary,
-        :exit_status,
-        :stderr_to_stdout,
-        args: args
-      ])
-
-    collect_output(port, "", progress_callback)
-  end
-
-  defp collect_output(port, acc, progress_callback) do
-    receive do
-      {^port, {:data, data}} ->
-        new_acc = acc <> data
-
-        # Parse and report progress
-        if progress_callback do
-          parse_progress(data, progress_callback)
-        end
-
-        collect_output(port, new_acc, progress_callback)
-
-      {^port, {:exit_status, 0}} ->
-        {:ok, acc}
-
-      {^port, {:exit_status, _code}} ->
-        {:error, acc}
-    after
-      # 2 minute timeout
-      120_000 ->
-        Port.close(port)
-        {:error, acc <> "\n[Timeout: avrdude did not respond within 2 minutes]"}
-    end
-  end
-
-  # Parse avrdude output for progress updates
-  defp parse_progress(data, callback) do
-    # avrdude progress format: "Writing | ####... | 45% 1.15s"
-    # Also: "Reading | ####... | 100% 0.23s"
-    lines = String.split(data, "\n")
-
-    Enum.each(lines, fn line ->
-      case Regex.run(~r/(Reading|Writing|Verifying)\s+\|.*?\|\s+(\d+)%/, line) do
-        [_, operation, percent_str] ->
-          percent = String.to_integer(percent_str)
-          message = format_operation(operation, percent)
-          callback.(percent, message)
-
-        nil ->
-          :ok
-      end
-    end)
-  end
-
-  defp format_operation("Reading", _percent), do: "Reading device..."
-  defp format_operation("Writing", percent), do: "Writing flash (#{percent}%)"
-  defp format_operation("Verifying", percent), do: "Verifying (#{percent}%)"
 
   # Error patterns mapped to error atoms
   # Each pattern is either a string or a list of strings (all must match)

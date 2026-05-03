@@ -1,6 +1,5 @@
 defmodule Trenino.Simulator.ClientTest do
-  use ExUnit.Case, async: true
-  use Mimic
+  use Trenino.SerialSafetyCase, async: true
 
   alias Trenino.Simulator.Client
 
