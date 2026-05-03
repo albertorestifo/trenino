@@ -11,8 +11,11 @@ defmodule Trenino.Serial.Protocol.Message do
     IdentityRequest,
     IdentityResponse,
     InputValue,
+    ModuleError,
     RetryCalibration,
-    SetOutput
+    SetModuleBrightness,
+    SetOutput,
+    WriteSegments
   }
 
   @type t() :: struct()
@@ -44,6 +47,9 @@ defmodule Trenino.Serial.Protocol.Message do
   def decode(<<0x06, rest::binary>>), do: Heartbeat.decode_body(rest)
   def decode(<<0x07, rest::binary>>), do: SetOutput.decode_body(rest)
   def decode(<<0x08, rest::binary>>), do: RetryCalibration.decode_body(rest)
+  def decode(<<0x0D, rest::binary>>), do: WriteSegments.decode_body(rest)
+  def decode(<<0x0E, rest::binary>>), do: SetModuleBrightness.decode_body(rest)
+  def decode(<<0x0F, rest::binary>>), do: ModuleError.decode_body(rest)
   def decode(<<_unknown, _rest::binary>>), do: {:error, :unknown_message_type}
   def decode(<<>>), do: {:error, :insufficient_data}
   def decode(_), do: {:error, :invalid_input}
