@@ -5,7 +5,7 @@ defmodule Trenino.Serial.Protocol.SetModuleBrightness do
 
   @behaviour Message
 
-  @type t :: %__MODULE__{i2c_address: integer(), brightness: integer()}
+  @type t() :: %__MODULE__{i2c_address: integer(), brightness: integer()}
   defstruct [:i2c_address, :brightness]
 
   @impl Message

@@ -5,7 +5,7 @@ defmodule Trenino.Serial.Protocol.WriteSegments do
 
   @behaviour Message
 
-  @type t :: %__MODULE__{i2c_address: integer(), data: binary()}
+  @type t() :: %__MODULE__{i2c_address: integer(), data: binary()}
   defstruct [:i2c_address, :data]
 
   @impl Message

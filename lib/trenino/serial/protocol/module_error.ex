@@ -5,13 +5,16 @@ defmodule Trenino.Serial.Protocol.ModuleError do
 
   @behaviour Message
 
-  @type t :: %__MODULE__{i2c_address: integer(), error_code: integer()}
+  @type t() :: %__MODULE__{i2c_address: integer(), error_code: integer()}
   defstruct [:i2c_address, :error_code]
 
   @impl Message
-  def encode(%__MODULE__{i2c_address: addr, error_code: code}) do
+  def encode(%__MODULE__{i2c_address: addr, error_code: code})
+      when is_integer(addr) and is_integer(code) do
     {:ok, <<0x0F, addr::8-unsigned, code::8-unsigned>>}
   end
+
+  def encode(%__MODULE__{}), do: {:error, :invalid_fields}
 
   @impl Message
   def decode_body(<<addr::8-unsigned, code::8-unsigned>>) do
