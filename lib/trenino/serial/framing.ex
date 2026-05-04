@@ -62,8 +62,8 @@ defmodule Trenino.Serial.Framing do
                 <<>>
               end
             rescue
-              # Drop invalid frames
-              _ -> nil
+              # Drop frames with invalid COBS structure
+              ArgumentError -> nil
             end
           end
 
@@ -73,35 +73,36 @@ defmodule Trenino.Serial.Framing do
   end
 
   # COBS Encoding
+  # Uses list accumulators (O(n)) instead of binary concatenation (O(n²)).
   defp encode(data) do
-    encode_chunk(data, <<>>)
+    encode_chunk(data, [])
   end
 
-  defp encode_chunk(<<>>, acc), do: acc
+  defp encode_chunk(<<>>, acc) do
+    acc |> :lists.reverse() |> :erlang.iolist_to_binary()
+  end
 
   defp encode_chunk(data, acc) do
-    {block, rest, code} = find_zero_or_max(data, 0, 254, <<>>)
-    new_acc = acc <> <<code, block::binary>>
-    encode_chunk(rest, new_acc)
+    {block, rest, code} = find_zero_or_max(data, 0, 254, [])
+    encode_chunk(rest, [[code | block] | acc])
   end
 
   # Finds the next zero or consumes up to 254 bytes
-  # Returns {block_data, remaining_data, code}
+  # Returns {block_as_list, remaining_data, code}
   defp find_zero_or_max(rest, count, max, acc) when count == max do
-    # Code 255 (0xFF)
-    {acc, rest, max + 1}
+    {:lists.reverse(acc), rest, max + 1}
   end
 
   defp find_zero_or_max(<<0, rest::binary>>, count, _max, acc) do
-    {acc, rest, count + 1}
+    {:lists.reverse(acc), rest, count + 1}
   end
 
   defp find_zero_or_max(<<byte, rest::binary>>, count, max, acc) do
-    find_zero_or_max(rest, count + 1, max, acc <> <<byte>>)
+    find_zero_or_max(rest, count + 1, max, [byte | acc])
   end
 
   defp find_zero_or_max(<<>>, count, _max, acc) do
-    {acc, <<>>, count + 1}
+    {:lists.reverse(acc), <<>>, count + 1}
   end
 
   # COBS Decoding
