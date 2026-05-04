@@ -10,9 +10,10 @@ defmodule Trenino.Repo.Migrations.I2cModuleParams do
 
     flush()
 
-    rows = Trenino.Repo.all(
-      from(m in "device_i2c_modules", select: {m.id, m.brightness, m.num_digits})
-    )
+    rows =
+      Trenino.Repo.all(
+        from(m in "device_i2c_modules", select: {m.id, m.brightness, m.num_digits})
+      )
 
     Enum.each(rows, fn {id, brightness, num_digits} ->
       params_json =
@@ -45,9 +46,7 @@ defmodule Trenino.Repo.Migrations.I2cModuleParams do
 
     flush()
 
-    rows = Trenino.Repo.all(
-      from(m in "device_i2c_modules", select: {m.id, m.params})
-    )
+    rows = Trenino.Repo.all(from(m in "device_i2c_modules", select: {m.id, m.params}))
 
     Enum.each(rows, fn {id, params_json} ->
       case Jason.decode(params_json || "{}") do

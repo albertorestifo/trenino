@@ -27,7 +27,7 @@ defmodule Trenino.Hardware.I2cModule do
     field :module_chip, Ecto.Enum, values: [:ht16k33]
     field :i2c_address, :integer
 
-    polymorphic_embeds_one :params,
+    polymorphic_embeds_one(:params,
       types: [
         ht16k33: [
           module: HT16K33Params,
@@ -36,6 +36,7 @@ defmodule Trenino.Hardware.I2cModule do
       ],
       on_type_not_found: :raise,
       on_replace: :update
+    )
 
     belongs_to :device, Device
     timestamps(type: :utc_datetime)

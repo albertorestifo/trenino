@@ -5,7 +5,14 @@ defmodule Trenino.Hardware.I2cModuleTest do
 
   defp valid_params(overrides \\ %{}) do
     Map.merge(
-      %{brightness: 8, num_digits: 4, display_type: :fourteen_segment, has_dot: false, align_right: true, min_value: 0.0},
+      %{
+        brightness: 8,
+        num_digits: 4,
+        display_type: :fourteen_segment,
+        has_dot: false,
+        align_right: true,
+        min_value: 0.0
+      },
       overrides
     )
   end
@@ -103,6 +110,7 @@ defmodule Trenino.Hardware.I2cModuleTest do
         params: valid_params(),
         name: String.duplicate("a", 101)
       }
+
       changeset = I2cModule.changeset(%I2cModule{}, attrs)
       assert errors_on(changeset).name != []
     end
@@ -117,18 +125,24 @@ defmodule Trenino.Hardware.I2cModuleTest do
   describe "changeset/2 – params embed" do
     test "invalid brightness propagates through embed" do
       attrs = %{
-        device_id: 1, module_chip: :ht16k33, i2c_address: 112,
+        device_id: 1,
+        module_chip: :ht16k33,
+        i2c_address: 112,
         params: valid_params(%{brightness: 16})
       }
+
       changeset = I2cModule.changeset(%I2cModule{}, attrs)
       refute changeset.valid?
     end
 
     test "invalid num_digits propagates through embed" do
       attrs = %{
-        device_id: 1, module_chip: :ht16k33, i2c_address: 112,
+        device_id: 1,
+        module_chip: :ht16k33,
+        i2c_address: 112,
         params: valid_params(%{num_digits: 6})
       }
+
       changeset = I2cModule.changeset(%I2cModule{}, attrs)
       refute changeset.valid?
     end

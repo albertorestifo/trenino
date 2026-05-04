@@ -70,6 +70,7 @@ defmodule Trenino.Hardware.HT16K33Test do
         align_right: true,
         min_value: 0.0
       }
+
       result = HT16K33.encode_string("4", params)
       # First 3 pairs should be blank (spaces), last pair is "4"
       assert byte_size(result) == 8
@@ -89,6 +90,7 @@ defmodule Trenino.Hardware.HT16K33Test do
         align_right: false,
         min_value: 0.0
       }
+
       result = HT16K33.encode_string("4", params)
       <<b0, b1, _rest::binary>> = result
       assert {b0, b1} == {0xE6, 0x00}
@@ -141,6 +143,7 @@ defmodule Trenino.Hardware.HT16K33Test do
         align_right: true,
         min_value: 0.0
       }
+
       result = HT16K33.encode_string("4", params)
       assert byte_size(result) == 4
       <<b0, b1, b2, b3>> = result
@@ -159,6 +162,7 @@ defmodule Trenino.Hardware.HT16K33Test do
         align_right: true,
         min_value: 0.0
       }
+
       # "1.2" occupies 2 display slots, so 2 leading spaces expected → " ", " ", "1.", "2"
       result = HT16K33.encode_string("1.2", params)
       assert byte_size(result) == 4
