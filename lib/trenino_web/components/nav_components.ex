@@ -459,6 +459,7 @@ defmodule TreninoWeb.NavComponents do
       :error -> "hero-exclamation-circle"
       :disconnected -> "hero-signal-slash"
       :needs_config -> "hero-wrench-screwdriver"
+      _ -> "hero-check-circle"
     end
   end
 
@@ -467,6 +468,7 @@ defmodule TreninoWeb.NavComponents do
       :error -> "Simulator connection failed"
       :disconnected -> "Simulator is offline"
       :needs_config -> "Simulator not configured"
+      _ -> ""
     end
   end
 
@@ -476,5 +478,4 @@ defmodule TreninoWeb.NavComponents do
       _ -> "text-warning-content hover:bg-warning-content/10"
     end
   end
-
 end

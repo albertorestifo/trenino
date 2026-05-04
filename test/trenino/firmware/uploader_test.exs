@@ -270,6 +270,7 @@ defmodule Trenino.Firmware.UploaderTest do
       # On any OS the result should not look like "X:..." where X is a single letter
       path = "/tmp/firmware.hex"
       result = Uploader.avrdude_hex_path(path)
+
       refute Regex.match?(~r/^[A-Za-z]:/, result),
              "Path #{inspect(result)} starts with a drive-letter colon"
     end

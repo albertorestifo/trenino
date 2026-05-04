@@ -225,7 +225,9 @@ defmodule TreninoWeb.SettingsLive do
                   Enter a new key to override the one read from your Train Simulator folder.
                 <% else %>
                   Found at
-                  <span class="font-mono break-all">Documents\My Games\TrainSimWorld6\Saved\Config\CommAPIKey.txt</span>
+                  <span class="font-mono break-all">
+                    Documents\My Games\TrainSimWorld6\Saved\Config\CommAPIKey.txt
+                  </span>
                   on the PC running Train Simulator.
                 <% end %>
               </div>
