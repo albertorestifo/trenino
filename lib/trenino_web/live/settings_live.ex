@@ -155,24 +155,43 @@ defmodule TreninoWeb.SettingsLive do
                 />
               </label>
 
-              <div class="mb-3">
-                <span class="label-text text-sm">API Key</span>
-                <%= case @api_key_status do %>
-                  <% :found_in_file -> %>
-                    <div class="alert alert-success p-2 mt-1 text-sm">
-                      <.icon name="hero-check-circle" class="w-4 h-4" />
-                      Found in TSW file — updated automatically
-                    </div>
-                  <% :missing -> %>
-                    <div class="alert alert-warning p-2 mt-1 text-sm">
-                      <.icon name="hero-exclamation-triangle" class="w-4 h-4" />
-                      Not found in TSW file — enter a key below
-                    </div>
-                  <% :unsupported_platform -> %>
-                    <div class="alert p-2 mt-1 text-sm">
-                      <.icon name="hero-information-circle" class="w-4 h-4" />
-                      Auto-detection only available on Windows — enter a key below
-                    </div>
+              <%= case @api_key_status do %>
+                <% :found_in_file -> %>
+                  <div class="flex items-center gap-2 px-3 py-2 mb-3 text-sm bg-base-200 rounded border border-base-300">
+                    <.icon name="hero-check-circle" class="w-4 h-4 text-base-content/70 shrink-0" />
+                    <span class="text-base-content/70">
+                      Found in your Train Simulator folder, updated automatically.
+                    </span>
+                  </div>
+                <% :missing -> %>
+                  <div class="alert alert-warning px-3 py-2 mb-3 text-sm">
+                    <.icon name="hero-exclamation-triangle" class="w-4 h-4 shrink-0" />
+                    <span>
+                      Not found in your Train Simulator folder. Enter a key below.
+                    </span>
+                  </div>
+                <% :unsupported_platform -> %>
+                  <div class="alert px-3 py-2 mb-3 text-sm">
+                    <.icon name="hero-information-circle" class="w-4 h-4 shrink-0" />
+                    <span>Auto-detection is only available on Windows. Enter a key below.</span>
+                  </div>
+              <% end %>
+              <input
+                id="simulator_api_key"
+                type="password"
+                name="simulator[api_key]"
+                placeholder="Leave blank to keep current value"
+                class="input input-bordered w-full font-mono"
+              />
+              <div class="mt-1.5 text-xs text-base-content/50">
+                <%= if @api_key_status == :found_in_file do %>
+                  Enter a new key to override the one read from your Train Simulator folder.
+                <% else %>
+                  Found at
+                  <span class="font-mono break-all">
+                    Documents\My Games\TrainSimWorld6\Saved\Config\CommAPIKey.txt
+                  </span>
+                  on the PC running Train Simulator.
                 <% end %>
               </div>
 

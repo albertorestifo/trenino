@@ -64,11 +64,12 @@ defmodule TreninoWeb.ConfigurationListLiveTest do
     test "updates simulator status on PubSub event", %{conn: conn} do
       {:ok, view, _html} = live(conn, ~p"/")
 
-      # Send connected status
+      # Send connected status — banner is hidden, no error message shown
       send(view.pid, {:simulator_status_changed, %ConnectionState{status: :connected}})
 
       html = render(view)
-      assert html =~ "bg-success"
+      refute html =~ "Simulator connection failed"
+      refute html =~ "Simulator is offline"
     end
 
     test "shows warning color when needs config", %{conn: conn} do
@@ -92,14 +93,15 @@ defmodule TreninoWeb.ConfigurationListLiveTest do
       assert html =~ "bg-error"
     end
 
-    test "shows connecting animation when connecting", %{conn: conn} do
+    test "hides sim banner when connecting", %{conn: conn} do
       {:ok, view, _html} = live(conn, ~p"/")
 
+      # Banner is hidden while connecting — no error message shown
       send(view.pid, {:simulator_status_changed, %ConnectionState{status: :connecting}})
 
       html = render(view)
-      assert html =~ "bg-info"
-      assert html =~ "animate-pulse"
+      refute html =~ "Simulator connection failed"
+      refute html =~ "Simulator is offline"
     end
 
     test "shows disconnected color", %{conn: conn} do
