@@ -211,6 +211,12 @@ defmodule TreninoWeb.ConfigurationEditLive do
     {:noreply, socket}
   end
 
+  @impl true
+  def handle_event("nav_retry_simulator", _, socket) do
+    Trenino.Simulator.retry_connection()
+    {:noreply, socket}
+  end
+
   # Device name/description editing
   @impl true
   def handle_event("validate_device", %{"device" => params}, socket) do

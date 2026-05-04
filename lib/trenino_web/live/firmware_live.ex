@@ -141,6 +141,12 @@ defmodule TreninoWeb.FirmwareLive do
     {:noreply, socket}
   end
 
+  @impl true
+  def handle_event("nav_retry_simulator", _, socket) do
+    Trenino.Simulator.retry_connection()
+    {:noreply, socket}
+  end
+
   # Firmware events
   @impl true
   def handle_event("check_updates", _, socket) do

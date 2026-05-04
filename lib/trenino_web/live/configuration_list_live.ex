@@ -54,6 +54,12 @@ defmodule TreninoWeb.ConfigurationListLive do
   end
 
   @impl true
+  def handle_event("nav_retry_simulator", _, socket) do
+    Trenino.Simulator.retry_connection()
+    {:noreply, socket}
+  end
+
+  @impl true
   def render(assigns) do
     connected_devices = Enum.filter(assigns.nav_devices, &(&1.status == :connected))
     active_config_ids = MapSet.new(connected_devices, & &1.device_config_id)
