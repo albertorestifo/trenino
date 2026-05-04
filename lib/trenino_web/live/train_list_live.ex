@@ -95,6 +95,12 @@ defmodule TreninoWeb.TrainListLive do
   end
 
   @impl true
+  def handle_event("nav_retry_simulator", _, socket) do
+    Trenino.Simulator.retry_connection()
+    {:noreply, socket}
+  end
+
+  @impl true
   def render(assigns) do
     active_train_id =
       if assigns.active_train, do: assigns.active_train.id, else: nil

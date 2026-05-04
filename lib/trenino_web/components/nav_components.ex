@@ -118,57 +118,59 @@ defmodule TreninoWeb.NavComponents do
     ~H"""
     <.app_version_update_banner update={@app_version_update} />
     <.firmware_update_banner update={@firmware_update} checking={@firmware_checking} />
-    <header class="bg-base-100 border-b border-base-300 sticky top-0 z-50 px-4 sm:px-8">
-      <div class="max-w-2xl mx-auto py-3 flex items-center">
-        <div class="flex-1 flex items-center gap-6">
-          <.link navigate={~p"/"} class="text-lg font-semibold">Trenino</.link>
-          <nav class="hidden sm:flex items-center gap-1">
-            <.nav_tab path={~p"/"} label="Devices" current_path={@current_path} />
-            <.nav_tab path={~p"/trains"} label="Trains" current_path={@current_path} />
-          </nav>
-        </div>
+    <header class="bg-base-100 border-b border-base-300 sticky top-0 z-50">
+      <div class="px-4 sm:px-8">
+        <div class="max-w-2xl mx-auto py-3 flex items-center">
+          <div class="flex-1 flex items-center gap-6">
+            <.link navigate={~p"/"} class="text-lg font-semibold">Trenino</.link>
+            <nav class="hidden sm:flex items-center gap-1">
+              <.nav_tab path={~p"/"} label="Devices" current_path={@current_path} />
+              <.nav_tab path={~p"/trains"} label="Trains" current_path={@current_path} />
+            </nav>
+          </div>
 
-        <div class="flex-none flex items-center gap-3">
-          <.link
-            navigate={~p"/settings"}
-            class="flex items-center gap-2 px-3 py-2 rounded-lg bg-base-200 hover:bg-base-300 transition-colors duration-150"
-            title="Settings"
-            aria-label="Settings"
-          >
-            <span class={["w-2 h-2 rounded-full", simulator_status_color(@simulator_status.status)]} />
-            <.icon name="hero-cog-6-tooth" class="w-4 h-4" />
-            <span class="text-sm font-medium hidden sm:inline">Settings</span>
-          </.link>
-
-          <div class="relative">
-            <button
-              phx-click="nav_toggle_dropdown"
-              class="flex items-center gap-2 px-3 py-2 rounded-lg bg-base-200 hover:bg-base-300 transition-colors duration-150"
-              aria-expanded={@dropdown_open}
-              aria-haspopup="menu"
+          <div class="flex-none flex items-center gap-2">
+            <.link
+              navigate={~p"/settings"}
+              class="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-base-200 hover:bg-base-300 transition-colors duration-150"
+              title="Settings"
+              aria-label="Settings"
             >
-              <span class={["w-2 h-2 rounded-full", devices_status_color(@devices)]} />
-              <span class="text-sm font-medium hidden sm:inline">
-                {device_count_text(@devices)}
-              </span>
-              <span class="text-sm font-medium sm:hidden">
-                {connected_count(@devices)}
-              </span>
-              <.icon
-                name="hero-chevron-down-solid"
-                class={"w-4 h-4 transition-transform duration-200 #{if @dropdown_open, do: "rotate-180", else: ""}"}
-              />
-            </button>
+              <.icon name="hero-cog-6-tooth" class="w-4 h-4" />
+              <span class="text-sm font-medium hidden sm:inline">Settings</span>
+            </.link>
 
-            <.device_dropdown
-              :if={@dropdown_open}
-              devices={@devices}
-              scanning={@scanning}
-              firmware_checking={@firmware_checking}
-            />
+            <div class="relative">
+              <button
+                phx-click="nav_toggle_dropdown"
+                class="flex items-center gap-2 px-3 py-2 rounded-lg bg-base-200 hover:bg-base-300 transition-colors duration-150"
+                aria-expanded={@dropdown_open}
+                aria-haspopup="menu"
+              >
+                <span class={["w-2 h-2 rounded-full", devices_status_color(@devices)]} />
+                <span class="text-sm font-medium hidden sm:inline">
+                  {device_count_text(@devices)}
+                </span>
+                <span class="text-sm font-medium sm:hidden">
+                  {connected_count(@devices)}
+                </span>
+                <.icon
+                  name="hero-chevron-down-solid"
+                  class={"w-4 h-4 transition-transform duration-200 #{if @dropdown_open, do: "rotate-180", else: ""}"}
+                />
+              </button>
+
+              <.device_dropdown
+                :if={@dropdown_open}
+                devices={@devices}
+                scanning={@scanning}
+                firmware_checking={@firmware_checking}
+              />
+            </div>
           </div>
         </div>
       </div>
+      <.sim_status_banner status={@simulator_status.status} />
     </header>
     """
   end
@@ -203,6 +205,48 @@ defmodule TreninoWeb.NavComponents do
     >
       {@label}
     </.link>
+    """
+  end
+
+  attr :status, :atom, required: true
+
+  defp sim_status_banner(assigns) do
+    ~H"""
+    <div
+      class={[
+        "overflow-hidden transition-[max-height] duration-200 ease-out",
+        if(@status in [:error, :disconnected, :needs_config], do: "max-h-10", else: "max-h-0")
+      ]}
+      role="status"
+      aria-live="polite"
+    >
+      <div class={["px-4 sm:px-8", sim_banner_bg(@status)]}>
+        <div class="max-w-2xl mx-auto py-1 flex items-center justify-between gap-4">
+          <div class="flex items-center gap-2">
+            <.icon name={sim_banner_icon(@status)} class="w-3.5 h-3.5 flex-shrink-0 opacity-75" />
+            <span class="text-xs">{sim_banner_message(@status)}</span>
+          </div>
+
+          <div class="flex items-center">
+            <button
+              :if={@status in [:error, :disconnected]}
+              phx-click="nav_retry_simulator"
+              class={["btn btn-xs btn-ghost", sim_banner_btn_class(@status)]}
+            >
+              <.icon name="hero-arrow-path" class="w-3.5 h-3.5" /> Retry
+            </button>
+
+            <.link
+              :if={@status == :needs_config}
+              navigate={~p"/settings"}
+              class={["btn btn-xs btn-ghost", sim_banner_btn_class(@status)]}
+            >
+              Open Settings
+            </.link>
+          </div>
+        </div>
+      </div>
+    </div>
     """
   end
 
@@ -401,13 +445,36 @@ defmodule TreninoWeb.NavComponents do
     Enum.count(devices, &(&1.status == :connected))
   end
 
-  defp simulator_status_color(status) do
+  defp sim_banner_bg(status) do
     case status do
-      :connected -> "bg-success"
-      :connecting -> "bg-info animate-pulse"
-      :error -> "bg-error"
-      :needs_config -> "bg-warning"
-      :disconnected -> "bg-base-content/20"
+      :error -> "bg-error text-error-content"
+      :disconnected -> "bg-warning text-warning-content"
+      :needs_config -> "bg-warning text-warning-content"
+      _ -> "bg-base-100"
     end
   end
+
+  defp sim_banner_icon(status) do
+    case status do
+      :error -> "hero-exclamation-circle"
+      :disconnected -> "hero-signal-slash"
+      :needs_config -> "hero-wrench-screwdriver"
+    end
+  end
+
+  defp sim_banner_message(status) do
+    case status do
+      :error -> "Simulator connection failed"
+      :disconnected -> "Simulator is offline"
+      :needs_config -> "Simulator not configured"
+    end
+  end
+
+  defp sim_banner_btn_class(status) do
+    case status do
+      :error -> "text-error-content hover:bg-error-content/10"
+      _ -> "text-warning-content hover:bg-warning-content/10"
+    end
+  end
+
 end

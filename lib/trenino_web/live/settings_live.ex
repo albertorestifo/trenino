@@ -54,6 +54,12 @@ defmodule TreninoWeb.SettingsLive do
   end
 
   @impl true
+  def handle_event("nav_retry_simulator", _, socket) do
+    SimulatorConnection.retry_connection()
+    {:noreply, socket}
+  end
+
+  @impl true
   def handle_event("toggle_error_reporting", _params, socket) do
     new_value = if socket.assigns.error_reporting_enabled, do: :disabled, else: :enabled
     {:ok, _} = Settings.set_error_reporting(new_value)

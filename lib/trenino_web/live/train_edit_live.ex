@@ -186,6 +186,12 @@ defmodule TreninoWeb.TrainEditLive do
     {:noreply, socket}
   end
 
+  @impl true
+  def handle_event("nav_retry_simulator", _, socket) do
+    Trenino.Simulator.retry_connection()
+    {:noreply, socket}
+  end
+
   # Train name/description editing
   @impl true
   def handle_event("validate_train", %{"train" => params}, socket) do
