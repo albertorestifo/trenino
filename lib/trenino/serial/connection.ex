@@ -23,8 +23,8 @@ defmodule Trenino.Serial.Connection do
   @discovery_interval_ms 60_000
   # Timeout for cleanup operations (failsafe if task crashes)
   @cleanup_timeout_ms 5_000
-  # Timeout for discovery operations (5 retries × 1s each + buffer)
-  @discovery_timeout_ms 7_000
+  # Timeout for discovery operations (3s settle + 5×1s reads + buffer)
+  @discovery_timeout_ms 10_000
   # Default GenServer.call timeout for blocking public API calls (ms).
   # Overridable via Application env for tests.
   @default_call_timeout_ms 5_000
@@ -289,6 +289,27 @@ defmodule Trenino.Serial.Connection do
   end
 
   @impl true
+  def handle_cast({:discovery_result, port, result}, state) do
+    case {State.get(state, port), result} do
+      {%DeviceConnection{status: :discovering} = conn, {:ok, identity}} ->
+        Logger.info("Discovered device #{inspect(identity)} on port #{port}")
+        updated_state = State.put(state, DeviceConnection.mark_connected(conn, identity))
+        broadcast_update(updated_state)
+        {:noreply, updated_state}
+
+      {%DeviceConnection{status: :discovering}, {:error, reason}} ->
+        Logger.error("Failed to discover device on port #{port}: #{inspect(reason)}")
+        updated_state = State.update(state, port, &DeviceConnection.set_error_reason(&1, reason))
+        GenServer.cast(self(), {:disconnect, port})
+        {:noreply, updated_state}
+
+      _ ->
+        # Port changed state while the discovery Task was running (timed out, disconnected).
+        {:noreply, state}
+    end
+  end
+
+  @impl true
   def handle_cast({:disconnect, port}, state) do
     case State.get(state, port) do
       conn when is_nil(conn) or conn.status in [:disconnecting, :failed] ->
@@ -336,8 +357,8 @@ defmodule Trenino.Serial.Connection do
     {:noreply, state}
   end
 
+  @impl true
   def handle_info(:post_upload_scan, state) do
-    # Scan for devices after firmware upload completes
     discover_new_ports(state)
     {:noreply, state}
   end
@@ -536,36 +557,25 @@ defmodule Trenino.Serial.Connection do
     end
   end
 
-  defp do_discover(%DeviceConnection{port: port} = conn, pid, state) do
-    # Discovery calls UART functions (read/write/drain/flush) that can exit
-    # with :port_timed_out if the UART port driver becomes unresponsive.
-    # Catch these exits to prevent crashing the Connection GenServer.
-    result =
-      try do
-        with {:ok, identity} <- Discovery.discover(pid),
-             :ok <- UART.configure(pid, active: true) do
-          {:ok, identity}
+  defp do_discover(%DeviceConnection{port: port}, pid, state) do
+    # Discovery is performed in a Task so the GenServer stays responsive
+    # to other messages (send_message calls, UART data from connected devices)
+    # while waiting for the 3-second DTR settle delay and identity handshake.
+    Task.start(fn ->
+      result =
+        try do
+          with {:ok, identity} <- Discovery.discover(pid),
+               :ok <- UART.configure(pid, active: true) do
+            {:ok, identity}
+          end
+        catch
+          :exit, reason -> {:error, reason}
         end
-      catch
-        :exit, reason -> {:error, reason}
-      end
 
-    case result do
-      {:ok, identity} ->
-        Logger.info("Discovered device #{inspect(identity)} on port #{port}")
-        updated_state = State.put(state, DeviceConnection.mark_connected(conn, identity))
-        broadcast_update(updated_state)
-        {:noreply, updated_state}
+      GenServer.cast(__MODULE__, {:discovery_result, port, result})
+    end)
 
-      {:error, reason} ->
-        Logger.error("Failed to discover/configure device on port #{port}: #{inspect(reason)}")
-        # Store the error reason before disconnecting
-        updated_state =
-          State.update(state, port, &DeviceConnection.set_error_reason(&1, reason))
-
-        GenServer.cast(self(), {:disconnect, port})
-        {:noreply, updated_state}
-    end
+    {:noreply, state}
   end
 
   defp start_async_cleanup(port, pid) do

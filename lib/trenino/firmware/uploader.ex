@@ -298,9 +298,28 @@ defmodule Trenino.Firmware.Uploader do
         to_string(config.baud_rate),
         "-D",
         "-U",
-        "flash:w:#{hex_file_path}:i",
+        "flash:w:#{avrdude_hex_path(hex_file_path)}:i",
         "-v"
       ]
+  end
+
+  # On Windows, avrdude splits the -U argument on ':' without special-casing
+  # drive letters like "C:", corrupting the path. Using a path relative to the
+  # current working directory avoids the drive-letter colon entirely.
+  #
+  # Falls back to the absolute path when the file is on a different drive than
+  # cwd (Path.relative_to returns the original path unchanged in that case).
+  @doc false
+  def avrdude_hex_path(path) do
+    case :os.type() do
+      {:win32, _} ->
+        relative = Path.relative_to(path, File.cwd!())
+        # Path.relative_to returns the absolute path when it can't relativise
+        if relative == path, do: path, else: relative
+
+      _ ->
+        path
+    end
   end
 
   # Verify the hex file exists and is readable
