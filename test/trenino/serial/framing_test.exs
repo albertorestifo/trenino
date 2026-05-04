@@ -93,4 +93,40 @@ defmodule Trenino.Serial.FramingTest do
 
     assert {:ok, [^input], %Framing.State{buffer: <<>>}} = Framing.remove_framing(framed, state)
   end
+
+  test "encodes large payloads correctly (roundtrip)" do
+    # 500 bytes exercises multiple 254-byte COBS blocks, catching any O(n²)
+    # accumulator bugs that would silently truncate or corrupt later blocks.
+    input = :crypto.strong_rand_bytes(500)
+    state = %Framing.State{}
+
+    {:ok, framed, _} = Framing.add_framing(input, state)
+    {:ok, [decoded], _} = Framing.remove_framing(framed, state)
+
+    assert decoded == input
+  end
+
+  test "drops frames with invalid COBS structure without raising" do
+    # Build a frame where the code byte claims more data than exists.
+    # Code 0xFF means 254 non-zero bytes follow, but we only supply 2.
+    corrupt_frame = <<0xFF, 0xAA, 0xBB, 0x00>>
+    state = %Framing.State{}
+
+    # Must not raise — invalid frames are silently dropped
+    assert {:ok, [], _} = Framing.remove_framing(corrupt_frame, state)
+  end
+
+  test "does not drop a valid frame that follows a corrupt one" do
+    state = %Framing.State{}
+    valid_input = <<0x11, 0x22, 0x33>>
+    {:ok, valid_framed, _} = Framing.add_framing(valid_input, state)
+
+    # Corrupt frame: code 0xFF but only 2 data bytes, then the valid frame
+    corrupt_frame = <<0xFF, 0xAA, 0xBB, 0x00>>
+    combined = corrupt_frame <> valid_framed
+
+    {:ok, frames, _} = Framing.remove_framing(combined, state)
+
+    assert frames == [valid_input]
+  end
 end

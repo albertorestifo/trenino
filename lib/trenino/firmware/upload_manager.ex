@@ -28,6 +28,7 @@ defmodule Trenino.Firmware.UploadManager do
             environment: String.t(),
             firmware_file_id: integer(),
             task_ref: reference() | nil,
+            task_pid: pid() | nil,
             release_token: String.t(),
             started_at: integer()
           }
@@ -194,9 +195,10 @@ defmodule Trenino.Firmware.UploadManager do
           firmware_file_id: firmware_file_id
         })
 
-      # Start the upload task
+      # Start the upload task without a link so killing it on cancel
+      # doesn't propagate an exit signal to this GenServer.
       task =
-        Task.async(fn ->
+        Task.Supervisor.async_nolink(Trenino.TaskSupervisor, fn ->
           run_upload(upload_id, port, environment, file)
         end)
 
@@ -209,6 +211,7 @@ defmodule Trenino.Firmware.UploadManager do
         environment: environment,
         firmware_file_id: firmware_file_id,
         task_ref: task.ref,
+        task_pid: task.pid,
         release_token: release_token,
         started_at: System.monotonic_time(:millisecond)
       }
@@ -234,10 +237,10 @@ defmodule Trenino.Firmware.UploadManager do
   end
 
   defp do_cancel_upload(upload) do
-    # Kill the task if running - demonitor and flush any pending messages
-    if upload.task_ref do
-      Process.demonitor(upload.task_ref, [:flush])
-    end
+    # Kill the task process (and the avrdude Port linked to it) before
+    # demonitoring so the :DOWN message is flushed cleanly from the mailbox.
+    if upload.task_pid, do: Process.exit(upload.task_pid, :kill)
+    if upload.task_ref, do: Process.demonitor(upload.task_ref, [:flush])
 
     # Release the port
     Connection.release_upload_access(upload.port, upload.release_token)

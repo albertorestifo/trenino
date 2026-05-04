@@ -165,6 +165,112 @@ defmodule Trenino.Serial.Connection.PortTimeoutTest do
     end
   end
 
+  describe "non-blocking discovery" do
+    test "GenServer answers calls immediately while discovery Task is running", %{
+      conn_pid: conn_pid
+    } do
+      test_pid = self()
+      fake_uart_pid = spawn(fn -> Process.sleep(:infinity) end)
+
+      on_exit(fn ->
+        if Process.alive?(fake_uart_pid), do: Process.exit(fake_uart_pid, :kill)
+      end)
+
+      Circuits.UART
+      |> stub(:start_link, fn -> {:ok, fake_uart_pid} end)
+      |> stub(:open, fn _pid, _port, _opts -> :ok end)
+      |> stub(:close, fn _pid -> :ok end)
+
+      # Stub Discovery to block and report its task pid back to the test
+      Trenino.Serial.Discovery
+      |> stub(:discover, fn _pid ->
+        send(test_pid, {:discovery_running, self()})
+
+        receive do
+          :continue -> {:error, :test_cancelled}
+        after
+          5_000 -> {:error, :test_timeout}
+        end
+      end)
+
+      # Trigger connection — port opens successfully then starts discovery Task
+      GenServer.cast(Connection, {:connect, "/dev/tty.non-blocking-test"})
+
+      # Block until we know the discovery Task is actually running
+      assert_receive {:discovery_running, discovery_pid}, 2_000
+
+      # GenServer must answer a call IMMEDIATELY despite ongoing discovery
+      t0 = System.monotonic_time(:millisecond)
+      devices = Connection.list_devices()
+      elapsed_ms = System.monotonic_time(:millisecond) - t0
+
+      assert is_list(devices)
+      assert elapsed_ms < 500, "GenServer took #{elapsed_ms}ms — discovery is still blocking it"
+      assert Process.alive?(conn_pid)
+
+      # Release the blocked discovery Task so it exits cleanly
+      send(discovery_pid, :continue)
+    end
+
+    test "stale discovery result is ignored when port timed out before Task finished", %{
+      conn_pid: conn_pid
+    } do
+      test_pid = self()
+      fake_uart_pid = spawn(fn -> Process.sleep(:infinity) end)
+
+      on_exit(fn ->
+        if Process.alive?(fake_uart_pid), do: Process.exit(fake_uart_pid, :kill)
+      end)
+
+      Circuits.UART
+      |> stub(:start_link, fn -> {:ok, fake_uart_pid} end)
+      |> stub(:open, fn _pid, _port, _opts -> :ok end)
+      |> stub(:close, fn _pid -> :ok end)
+      |> stub(:configure, fn _pid, _opts -> :ok end)
+
+      identity = %Trenino.Serial.Protocol.IdentityResponse{
+        request_id: 1,
+        version: "1.0.0",
+        config_id: 0
+      }
+
+      Trenino.Serial.Discovery
+      |> stub(:discover, fn _pid ->
+        send(test_pid, {:discovery_running, self()})
+
+        receive do
+          :continue -> {:ok, identity}
+        after
+          5_000 -> {:error, :test_timeout}
+        end
+      end)
+
+      port = "/dev/tty.stale-result-test"
+      GenServer.cast(Connection, {:connect, port})
+
+      # Wait until discovery is running, then disconnect the port
+      assert_receive {:discovery_running, discovery_pid}, 2_000
+      Connection.disconnect(port)
+
+      # Give disconnect time to process
+      Process.sleep(50)
+
+      # Unblock the discovery Task — it will send a successful result back,
+      # but the GenServer should ignore it since the port is no longer :discovering
+      send(discovery_pid, :continue)
+
+      # Allow the stale result cast to be processed
+      Process.sleep(50)
+
+      devices = Connection.list_devices()
+      matching = Enum.find(devices, &(&1.port == port))
+
+      # Port must NOT have been moved to :connected by the stale result
+      if matching, do: assert(matching.status != :connected)
+      assert Process.alive?(conn_pid)
+    end
+  end
+
   # Poll until no port is in a transitional state (connecting/discovering/disconnecting).
   # This ensures cleanup tasks from previous tests have fully completed before
   # the blocking tests clear state and cast their own blocking connect.
