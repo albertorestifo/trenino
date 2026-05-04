@@ -1,0 +1,282 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-05-04T00:00:00Z",
+  "title": "Design System: Trenino",
+  "extensions": {
+    "colorMeta": {
+      "electric-indigo": {
+        "role": "primary",
+        "displayName": "Electric Indigo",
+        "canonical": "oklch(58% 0.233 277.117)",
+        "theme": "dark",
+        "tonalRamp": [
+          "oklch(15% 0.05 277)",
+          "oklch(22% 0.08 277)",
+          "oklch(30% 0.12 277)",
+          "oklch(38% 0.17 277)",
+          "oklch(46% 0.21 277)",
+          "oklch(58% 0.233 277.117)",
+          "oklch(70% 0.20 277)",
+          "oklch(84% 0.12 277)"
+        ]
+      },
+      "copper-signal": {
+        "role": "primary",
+        "displayName": "Copper Signal",
+        "canonical": "oklch(70% 0.213 47.604)",
+        "theme": "light",
+        "tonalRamp": [
+          "oklch(20% 0.05 47)",
+          "oklch(30% 0.09 47)",
+          "oklch(40% 0.13 47)",
+          "oklch(52% 0.17 47)",
+          "oklch(62% 0.20 47)",
+          "oklch(70% 0.213 47.604)",
+          "oklch(80% 0.16 47)",
+          "oklch(92% 0.07 47)"
+        ]
+      },
+      "surface-dark": {
+        "role": "neutral",
+        "displayName": "Workshop Slate",
+        "canonical": "oklch(30.33% 0.016 252.42)",
+        "theme": "dark",
+        "tonalRamp": [
+          "oklch(12% 0.008 252)",
+          "oklch(18% 0.010 252)",
+          "oklch(20.15% 0.012 254)",
+          "oklch(25.26% 0.014 253)",
+          "oklch(30.33% 0.016 252.42)",
+          "oklch(37% 0.044 257)",
+          "oklch(50% 0.020 252)",
+          "oklch(70% 0.015 252)"
+        ]
+      },
+      "signal-green": {
+        "role": "semantic-success",
+        "displayName": "Signal Green",
+        "canonical": "oklch(60% 0.118 184.704)",
+        "tonalRamp": [
+          "oklch(15% 0.03 185)",
+          "oklch(25% 0.05 185)",
+          "oklch(35% 0.07 185)",
+          "oklch(45% 0.09 185)",
+          "oklch(55% 0.11 185)",
+          "oklch(60% 0.118 184.704)",
+          "oklch(72% 0.10 185)",
+          "oklch(88% 0.05 185)"
+        ]
+      },
+      "signal-amber": {
+        "role": "semantic-warning",
+        "displayName": "Signal Amber",
+        "canonical": "oklch(66% 0.179 58.318)",
+        "tonalRamp": [
+          "oklch(18% 0.04 58)",
+          "oklch(28% 0.07 58)",
+          "oklch(38% 0.10 58)",
+          "oklch(50% 0.13 58)",
+          "oklch(58% 0.16 58)",
+          "oklch(66% 0.179 58.318)",
+          "oklch(78% 0.14 58)",
+          "oklch(92% 0.06 58)"
+        ]
+      },
+      "signal-red": {
+        "role": "semantic-error",
+        "displayName": "Signal Red",
+        "canonical": "oklch(58% 0.253 17.585)",
+        "tonalRamp": [
+          "oklch(15% 0.06 17)",
+          "oklch(23% 0.09 17)",
+          "oklch(32% 0.13 17)",
+          "oklch(42% 0.18 17)",
+          "oklch(50% 0.22 17)",
+          "oklch(58% 0.253 17.585)",
+          "oklch(70% 0.20 17)",
+          "oklch(88% 0.09 17)"
+        ]
+      },
+      "signal-blue": {
+        "role": "semantic-info",
+        "displayName": "Signal Blue",
+        "canonical": "oklch(58% 0.158 241.966)",
+        "tonalRamp": [
+          "oklch(15% 0.04 242)",
+          "oklch(23% 0.06 242)",
+          "oklch(32% 0.09 242)",
+          "oklch(42% 0.12 242)",
+          "oklch(50% 0.14 242)",
+          "oklch(58% 0.158 241.966)",
+          "oklch(70% 0.13 242)",
+          "oklch(88% 0.06 242)"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "display": { "displayName": "Display", "purpose": "Page titles and wizard headings. At most once per screen." },
+      "headline": { "displayName": "Headline", "purpose": "Section titles in complex edit pages." },
+      "title": { "displayName": "Title", "purpose": "Card headings, modal titles, nav-level labels." },
+      "body": { "displayName": "Body", "purpose": "Descriptive text, form labels, table content, alert messages." },
+      "label": { "displayName": "Label", "purpose": "Secondary metadata, helper text, empty-state sublines. Always muted." },
+      "mono": { "displayName": "Mono", "purpose": "Port names, firmware versions, hardware identifiers. Machine-generated values only." }
+    },
+    "shadows": [
+      {
+        "name": "floating",
+        "value": "0 20px 60px rgba(0,0,0,0.35), 0 4px 16px rgba(0,0,0,0.20)",
+        "purpose": "Modals and dropdown menus only. Signals visual detachment from page."
+      }
+    ],
+    "motion": [
+      {
+        "name": "ease-state",
+        "value": "cubic-bezier(0.4, 0, 0.2, 1)",
+        "duration": "150ms",
+        "purpose": "Background and color transitions on hover/focus. Buttons, nav tabs, card hovers."
+      },
+      {
+        "name": "ease-enter",
+        "value": "cubic-bezier(0, 0, 0.2, 1)",
+        "duration": "300ms",
+        "purpose": "Elements entering the viewport (show). Translate + opacity."
+      },
+      {
+        "name": "ease-exit",
+        "value": "cubic-bezier(0.4, 0, 1, 1)",
+        "duration": "200ms",
+        "purpose": "Elements leaving the viewport (hide). Translate + opacity."
+      },
+      {
+        "name": "status-pulse",
+        "value": "animate-pulse",
+        "duration": "1500ms",
+        "purpose": "Status dots only, when hardware is in a connecting/discovering state. Never for decoration."
+      }
+    ],
+    "breakpoints": [
+      { "name": "sm", "value": "640px" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button (Dark)",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Main action on any screen. Electric Indigo. Only one per surface.",
+      "html": "<button class=\"ds-btn-primary\"><svg xmlns=\"http://www.w3.org/2000/svg\" fill=\"none\" viewBox=\"0 0 24 24\" stroke-width=\"1.5\" stroke=\"currentColor\" width=\"16\" height=\"16\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M12 4.5v15m7.5-7.5h-15\" /></svg> Scan for Devices</button>",
+      "css": ".ds-btn-primary { display: inline-flex; align-items: center; gap: 6px; background: oklch(58% 0.233 277.117); color: oklch(96% 0.018 272.314); padding: 8px 16px; border-radius: 4px; font-size: 0.875rem; font-weight: 500; border: none; cursor: pointer; font-family: system-ui, -apple-system, sans-serif; transition: background 150ms cubic-bezier(0.4,0,0.2,1); } .ds-btn-primary:hover { background: oklch(62% 0.233 277.117); } .ds-btn-primary:focus-visible { outline: 2px solid oklch(58% 0.233 277.117); outline-offset: 2px; } .ds-btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }"
+    },
+    {
+      "name": "Primary Button (Light)",
+      "kind": "button",
+      "refersTo": "button-primary-light",
+      "description": "Main action on light theme. Copper Signal.",
+      "html": "<button class=\"ds-btn-primary-light\">Add Configuration</button>",
+      "css": ".ds-btn-primary-light { display: inline-flex; align-items: center; gap: 6px; background: oklch(70% 0.213 47.604); color: oklch(98% 0.016 73.684); padding: 8px 16px; border-radius: 4px; font-size: 0.875rem; font-weight: 500; border: none; cursor: pointer; font-family: system-ui, -apple-system, sans-serif; transition: background 150ms cubic-bezier(0.4,0,0.2,1); } .ds-btn-primary-light:hover { background: oklch(74% 0.213 47.604); } .ds-btn-primary-light:focus-visible { outline: 2px solid oklch(70% 0.213 47.604); outline-offset: 2px; } .ds-btn-primary-light:disabled { opacity: 0.4; cursor: not-allowed; }"
+    },
+    {
+      "name": "Ghost Button",
+      "kind": "button",
+      "refersTo": "button-ghost",
+      "description": "Secondary actions. No background at rest.",
+      "html": "<button class=\"ds-btn-ghost\">Cancel</button>",
+      "css": ".ds-btn-ghost { display: inline-flex; align-items: center; gap: 6px; background: transparent; color: oklch(97.807% 0.029 256.847); padding: 8px 16px; border-radius: 4px; font-size: 0.875rem; font-weight: 500; border: none; cursor: pointer; font-family: system-ui, -apple-system, sans-serif; transition: background 150ms cubic-bezier(0.4,0,0.2,1); } .ds-btn-ghost:hover { background: oklch(37% 0.044 257.287); } .ds-btn-ghost:focus-visible { outline: 2px solid oklch(58% 0.233 277.117); outline-offset: 2px; }"
+    },
+    {
+      "name": "Outline Button",
+      "kind": "button",
+      "refersTo": "button-outline",
+      "description": "Contextual secondary action that needs visual weight without competing with primary.",
+      "html": "<button class=\"ds-btn-outline\"><svg xmlns=\"http://www.w3.org/2000/svg\" fill=\"none\" viewBox=\"0 0 24 24\" stroke-width=\"1.5\" stroke=\"currentColor\" width=\"12\" height=\"12\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M4.5 10.5 12 3m0 0 7.5 7.5M12 3v18\" /></svg> Install Firmware</button>",
+      "css": ".ds-btn-outline { display: inline-flex; align-items: center; gap: 6px; background: transparent; color: oklch(58% 0.233 277.117); padding: 4px 10px; border-radius: 4px; font-size: 0.75rem; font-weight: 500; border: 1px solid oklch(58% 0.233 277.117); cursor: pointer; font-family: system-ui, -apple-system, sans-serif; transition: background 150ms cubic-bezier(0.4,0,0.2,1), color 150ms; } .ds-btn-outline:hover { background: oklch(58% 0.233 277.117); color: oklch(96% 0.018 272.314); } .ds-btn-outline:focus-visible { outline: 2px solid oklch(58% 0.233 277.117); outline-offset: 2px; }"
+    },
+    {
+      "name": "Text Input",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "Standard text field inside a fieldset wrapper. 4px radius, 1.5px border.",
+      "html": "<div class=\"ds-fieldset\"><label class=\"ds-label\">Port Name</label><input type=\"text\" class=\"ds-input\" value=\"COM3\" /><p class=\"ds-input-hint\">Detected automatically on scan</p></div>",
+      "css": ".ds-fieldset { display: flex; flex-direction: column; gap: 4px; margin-bottom: 8px; } .ds-label { font-size: 0.75rem; font-weight: 400; color: oklch(97.807% 0.029 256.847); opacity: 0.7; font-family: system-ui, -apple-system, sans-serif; } .ds-input { width: 100%; padding: 8px 12px; background: oklch(25.26% 0.014 253.1); color: oklch(97.807% 0.029 256.847); border: 1.5px solid oklch(20.15% 0.012 254.09); border-radius: 4px; font-size: 0.875rem; font-family: system-ui, -apple-system, sans-serif; transition: border-color 150ms cubic-bezier(0.4,0,0.2,1); box-sizing: border-box; } .ds-input:focus { outline: none; border-color: oklch(58% 0.233 277.117); } .ds-input-hint { font-size: 0.75rem; color: oklch(97.807% 0.029 256.847); opacity: 0.5; font-family: system-ui, -apple-system, sans-serif; margin: 0; }"
+    },
+    {
+      "name": "List Card",
+      "kind": "card",
+      "refersTo": "list-card",
+      "description": "Signature list item component. Active state shows success border. Hover reveals background fill and primary-colored title.",
+      "html": "<a href=\"#\" class=\"ds-list-card\"><div class=\"ds-list-card-inner\"><div class=\"ds-list-card-header\"><h3 class=\"ds-list-card-title\">BR Class 377</h3><span class=\"ds-badge-active\"><span class=\"ds-badge-dot\"></span>Active</span></div><p class=\"ds-list-card-desc\">Southern commuter electric multiple unit</p><div class=\"ds-list-card-meta\"><span class=\"ds-meta-mono\">br-class-377</span><span class=\"ds-meta-mono\">4 elements</span></div></div><svg xmlns=\"http://www.w3.org/2000/svg\" fill=\"none\" viewBox=\"0 0 24 24\" stroke-width=\"1.5\" stroke=\"currentColor\" width=\"20\" height=\"20\" style=\"flex-shrink:0;color:oklch(60% 0.118 184.704);opacity:0.5\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"m8.25 4.5 7.5 7.5-7.5 7.5\" /></svg></div></a>",
+      "css": ".ds-list-card { display: block; border-radius: 12px; border: 2px solid oklch(60% 0.118 184.704); background: oklch(60% 0.118 184.704 / 0.05); text-decoration: none; transition: background 150ms cubic-bezier(0.4,0,0.2,1); } .ds-list-card-inner { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding: 20px; } .ds-list-card-header { display: flex; align-items: center; gap: 8px; } .ds-list-card-title { margin: 0; font-size: 0.875rem; font-weight: 500; color: oklch(97.807% 0.029 256.847); font-family: system-ui, -apple-system, sans-serif; } .ds-list-card-desc { margin: 4px 0 0; font-size: 0.875rem; color: oklch(97.807% 0.029 256.847); opacity: 0.7; font-family: system-ui, -apple-system, sans-serif; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; } .ds-list-card-meta { margin-top: 8px; display: flex; gap: 16px; } .ds-meta-mono { font-size: 0.75rem; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; color: oklch(97.807% 0.029 256.847); opacity: 0.6; } .ds-badge-active { display: inline-flex; align-items: center; gap: 4px; font-size: 0.6875rem; font-weight: 500; color: oklch(98% 0.014 180.72); background: oklch(60% 0.118 184.704 / 0.2); padding: 2px 6px; border-radius: 9999px; font-family: system-ui, -apple-system, sans-serif; } .ds-badge-dot { width: 6px; height: 6px; border-radius: 9999px; background: oklch(98% 0.014 180.72); animation: ds-pulse 1.5s cubic-bezier(0.4,0,0.6,1) infinite; } @keyframes ds-pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }"
+    },
+    {
+      "name": "Status Dot",
+      "kind": "custom",
+      "refersTo": null,
+      "description": "Hardware/simulator connection state indicator. Color-coded, always paired with a label.",
+      "html": "<div class=\"ds-status-row\"><span class=\"ds-status-dot ds-status-connected\"></span><span class=\"ds-status-label\">Connected</span></div><div class=\"ds-status-row\" style=\"margin-top:8px\"><span class=\"ds-status-dot ds-status-connecting\"></span><span class=\"ds-status-label\">Discovering</span></div><div class=\"ds-status-row\" style=\"margin-top:8px\"><span class=\"ds-status-dot ds-status-failed\"></span><span class=\"ds-status-label\">Failed</span></div>",
+      "css": ".ds-status-row { display: flex; align-items: center; gap: 8px; } .ds-status-dot { display: inline-block; width: 8px; height: 8px; border-radius: 9999px; flex-shrink: 0; } .ds-status-label { font-size: 0.875rem; font-family: system-ui, -apple-system, sans-serif; color: oklch(97.807% 0.029 256.847); } .ds-status-connected { background: oklch(60% 0.118 184.704); } .ds-status-connecting { background: oklch(58% 0.158 241.966); animation: ds-pulse 1.5s cubic-bezier(0.4,0,0.6,1) infinite; } .ds-status-failed { background: oklch(58% 0.253 17.585); } @keyframes ds-pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }"
+    },
+    {
+      "name": "Navigation Header",
+      "kind": "nav",
+      "refersTo": null,
+      "description": "Sticky top bar. max-w-2xl content, full-width background. Tab navigation + status controls.",
+      "html": "<header class=\"ds-nav\"><div class=\"ds-nav-inner\"><div class=\"ds-nav-left\"><span class=\"ds-nav-wordmark\">Trenino</span><nav class=\"ds-nav-tabs\"><a href=\"#\" class=\"ds-nav-tab ds-nav-tab-active\">Devices</a><a href=\"#\" class=\"ds-nav-tab\">Trains</a></nav></div><div class=\"ds-nav-right\"><button class=\"ds-nav-control\"><span class=\"ds-status-dot ds-status-connected\" style=\"flex-shrink:0\"></span><svg xmlns=\"http://www.w3.org/2000/svg\" fill=\"none\" viewBox=\"0 0 24 24\" stroke-width=\"1.5\" stroke=\"currentColor\" width=\"16\" height=\"16\"><path stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.325.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 0 1 1.37.49l1.296 2.247a1.125 1.125 0 0 1-.26 1.431l-1.003.827c-.293.241-.438.613-.43.992a7.723 7.723 0 0 1 0 .255c-.008.378.137.75.43.991l1.004.827c.424.35.534.955.26 1.43l-1.298 2.247a1.125 1.125 0 0 1-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124a6.47 6.47 0 0 1-.22.128c-.331.183-.581.495-.644.869l-.213 1.281c-.09.543-.56.94-1.11.94h-2.594c-.55 0-1.019-.398-1.11-.94l-.213-1.281c-.062-.374-.312-.686-.644-.87a6.52 6.52 0 0 1-.22-.127c-.325-.196-.72-.257-1.076-.124l-1.217.456a1.125 1.125 0 0 1-1.369-.49l-1.297-2.247a1.125 1.125 0 0 1 .26-1.431l1.004-.827c.292-.24.437-.613.43-.991a6.932 6.932 0 0 1 0-.255c.007-.38-.138-.751-.43-.992l-1.004-.827a1.125 1.125 0 0 1-.26-1.43l1.297-2.247a1.125 1.125 0 0 1 1.37-.491l1.216.456c.356.133.751.072 1.076-.124.072-.044.146-.086.22-.128.332-.183.582-.495.644-.869l.214-1.28Z\" /><path stroke-linecap=\"round\" stroke-linejoin=\"round\" d=\"M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z\" /></svg><span class=\"ds-nav-control-label\">Settings</span></button></div></div></header>",
+      "css": ".ds-nav { background: oklch(30.33% 0.016 252.42); border-bottom: 1.5px solid oklch(20.15% 0.012 254.09); position: sticky; top: 0; z-index: 50; padding: 0 32px; } .ds-nav-inner { max-width: 672px; margin: 0 auto; padding: 12px 0; display: flex; align-items: center; } .ds-nav-left { flex: 1; display: flex; align-items: center; gap: 24px; } .ds-nav-wordmark { font-size: 1.125rem; font-weight: 600; color: oklch(97.807% 0.029 256.847); font-family: system-ui, -apple-system, sans-serif; text-decoration: none; } .ds-nav-tabs { display: flex; align-items: center; gap: 4px; } .ds-nav-tab { padding: 6px 12px; border-radius: 8px; font-size: 0.875rem; font-weight: 500; text-decoration: none; color: oklch(97.807% 0.029 256.847); opacity: 0.7; transition: background 150ms, opacity 150ms; } .ds-nav-tab:hover { background: oklch(25.26% 0.014 253.1); opacity: 1; } .ds-nav-tab-active { background: oklch(58% 0.233 277.117); color: oklch(96% 0.018 272.314); opacity: 1; } .ds-nav-tab-active:hover { background: oklch(62% 0.233 277.117); } .ds-nav-right { flex: none; display: flex; align-items: center; gap: 12px; } .ds-nav-control { display: flex; align-items: center; gap: 8px; padding: 8px 12px; border-radius: 8px; background: oklch(25.26% 0.014 253.1); border: none; cursor: pointer; color: oklch(97.807% 0.029 256.847); font-family: system-ui, -apple-system, sans-serif; transition: background 150ms; } .ds-nav-control:hover { background: oklch(20.15% 0.012 254.09); } .ds-nav-control-label { font-size: 0.875rem; font-weight: 500; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Maker's Workshop",
+    "overview": "Trenino is a tool for people who build things with their hands. The design system reflects that: organized, purposeful, with a place for everything. Every surface is calm and legible. There are no decorative distractions, no color for atmosphere, no motion to impress. Complexity is earned gradually, surfaced only when the user is ready for it.\n\nThe dark theme is the primary context. A maker at a desk with a half-assembled rig, an Arduino plugged in, a wiring diagram open in another tab. The interface needs to be readable at a glance, unambiguous in state, and forgiving in interaction. When something is connected, you know. When something fails, you know immediately and without ambiguity.\n\nThis system explicitly rejects the aesthetics of cluttered dev tools (the Arduino IDE), industrial data panels (SCADA-style dashboards), and gaming-aesthetic dark modes with neon accents or glass effects. The goal is a tool that feels like a trusted instrument, not a product.",
+    "keyCharacteristics": [
+      "Restrained color strategy: primary accent used only on actionable, foregrounded elements",
+      "Dual theme with distinct personalities: Electric Indigo (dark), Copper Signal (light)",
+      "Tactile and direct: substantial padding, clear borders, confident type weights",
+      "Semantic color is functional, not decorative (success, warning, error, info only for state)",
+      "Flat surfaces at rest; depth only for floating elements (modals, dropdowns)",
+      "Monospace type for all technical identifiers (port names, firmware versions, hardware IDs)"
+    ],
+    "rules": [
+      {
+        "name": "The Semantic Firewall Rule",
+        "body": "Signal colors (green, amber, red, blue) are reserved for hardware and connection state. They are forbidden as decorative accents, background washes, or typography highlights. A green on screen means something is connected. Full stop.",
+        "section": "colors"
+      },
+      {
+        "name": "The One Voice Rule",
+        "body": "The primary accent (Electric Indigo or Copper Signal) appears only on foregrounded, actionable surfaces: buttons, active nav tabs, active card borders. Its rarity is what makes it readable. Do not use it on text, icons, or section headings.",
+        "section": "colors"
+      },
+      {
+        "name": "The Mono Signal Rule",
+        "body": "If a value was generated by hardware or software (a port name, a version string, an internal ID), render it in monospace. If a human typed it (a train name, a description), render it in the body font. This is the boundary. Do not cross it.",
+        "section": "typography"
+      },
+      {
+        "name": "The Flat-By-Default Rule",
+        "body": "Surfaces are flat at rest. A card does not have a shadow. A list item does not have a shadow. If you are reaching for box-shadow on a non-floating element, stop and use a background tint or border instead.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "Use Signal colors exclusively for hardware and connection state.",
+      "Render machine-generated values (port names, firmware versions, device IDs) in monospace.",
+      "Use surface tints (base-200, base-300) for depth within a page. Reserve shadow-xl for modals and dropdowns only.",
+      "Surface complex actions progressively — wizards for first-time setup, compact controls for experienced users.",
+      "Use large, clearly bordered interactive targets. Users may have tools in hand.",
+      "Use OKLCH for all new color values. Reduce chroma as lightness approaches 0 or 100.",
+      "Constrain all content to max-w-2xl centered layout."
+    ],
+    "donts": [
+      "Don't use Signal colors (green, amber, red, blue) for decoration, emphasis, or branding.",
+      "Don't use the primary accent on text, icons, or section labels.",
+      "Don't add shadows to cards, list rows, or inline panels.",
+      "Don't expose all configuration options at once.",
+      "Don't reproduce SCADA-dashboard aesthetics.",
+      "Don't use neon accents, gradient overlays, glassmorphism, or gaming-peripheral visual treatments.",
+      "Don't use side-stripe borders (border-left or border-right wider than 1px) as colored accents.",
+      "Don't use gradient text (background-clip: text).",
+      "Don't add motion to layout properties.",
+      "Don't rely on color alone to convey state."
+    ]
+  }
+}
