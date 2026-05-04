@@ -16,7 +16,8 @@ defmodule TreninoWeb.SettingsLive do
      socket
      |> assign(:error_reporting_enabled, Settings.error_reporting?())
      |> assign(:simulator_url, Settings.simulator_url())
-     |> assign(:api_key_status, api_key_status())}
+     |> assign(:api_key_status, api_key_status())
+     |> assign(:url_error, nil)}
   end
 
   defp api_key_status do
@@ -27,6 +28,16 @@ defmodule TreninoWeb.SettingsLive do
       end
     else
       :unsupported_platform
+    end
+  end
+
+  defp url_error(""), do: "URL is required"
+
+  defp url_error(url) do
+    if String.starts_with?(url, ["http://", "https://"]) do
+      nil
+    else
+      "URL must start with http:// or https://"
     end
   end
 
@@ -61,22 +72,34 @@ defmodule TreninoWeb.SettingsLive do
   end
 
   @impl true
+  def handle_event("validate_simulator", %{"simulator" => %{"url" => url}}, socket) do
+    {:noreply, assign(socket, :url_error, url_error(url))}
+  end
+
+  @impl true
   def handle_event("save_simulator", %{"simulator" => params}, socket) do
     %{"url" => url, "api_key" => api_key} = params
 
-    {:ok, _} = Settings.set_simulator_url(url)
+    case url_error(url) do
+      nil ->
+        {:ok, _} = Settings.set_simulator_url(url)
 
-    if api_key != "" do
-      {:ok, _} = Settings.set_api_key(api_key)
+        if api_key != "" do
+          {:ok, _} = Settings.set_api_key(api_key)
+        end
+
+        SimulatorConnection.reconfigure()
+
+        {:noreply,
+         socket
+         |> assign(:simulator_url, Settings.simulator_url())
+         |> assign(:api_key_status, api_key_status())
+         |> assign(:url_error, nil)
+         |> put_flash(:info, "Simulator configuration saved")}
+
+      error ->
+        {:noreply, assign(socket, :url_error, error)}
     end
-
-    SimulatorConnection.reconfigure()
-
-    {:noreply,
-     socket
-     |> assign(:simulator_url, Settings.simulator_url())
-     |> assign(:api_key_status, api_key_status())
-     |> put_flash(:info, "Simulator configuration saved")}
   end
 
   # PubSub handlers (mirror other LiveViews)
@@ -98,93 +121,116 @@ defmodule TreninoWeb.SettingsLive do
     ~H"""
     <main class="flex-1 p-4 sm:p-8">
       <div class="max-w-2xl mx-auto">
-        <header class="mb-8">
+        <header class="mb-10">
           <h1 class="text-2xl font-semibold">Settings</h1>
-          <p class="text-sm text-base-content/70 mt-1">
-            Configure your Trenino preferences
-          </p>
         </header>
 
-        <section class="card bg-base-100 border border-base-300 mb-4">
-          <div class="card-body">
-            <div class="text-xs uppercase tracking-wider text-base-content/60 mb-2">
-              Error Reporting
-            </div>
-            <div class="flex items-center justify-between gap-4">
-              <div>
-                <div class="font-medium">Share anonymous error reports</div>
-                <div class="text-sm text-base-content/70">
-                  Crash reports are sent to help fix bugs. No personal data is included.
-                </div>
+        <section>
+          <h2 class="text-base font-semibold mb-5">Error Reporting</h2>
+          <label class="flex items-start justify-between gap-6 cursor-pointer">
+            <div>
+              <div class="font-medium">Share anonymous error reports</div>
+              <div class="text-sm text-base-content/70 mt-1">
+                Crash reports are sent to help fix bugs. No personal data is included.
               </div>
-              <input
-                type="checkbox"
-                class="toggle toggle-primary"
-                data-testid="error-reporting-toggle"
-                phx-click="toggle_error_reporting"
-                checked={@error_reporting_enabled}
-              />
-            </div>
-            <div class="mt-3">
-              <.link navigate={~p"/consent"} class="text-sm link link-primary">
+              <.link
+                navigate={~p"/consent"}
+                class="text-sm text-base-content/60 underline underline-offset-2 hover:text-base-content transition-colors mt-3 inline-block"
+              >
                 Review consent details
               </.link>
             </div>
-          </div>
+            <input
+              type="checkbox"
+              class="toggle toggle-primary mt-0.5 shrink-0"
+              data-testid="error-reporting-toggle"
+              phx-click="toggle_error_reporting"
+              checked={@error_reporting_enabled}
+            />
+          </label>
         </section>
 
-        <section class="card bg-base-100 border border-base-300">
-          <div class="card-body">
-            <div class="text-xs uppercase tracking-wider text-base-content/60 mb-2">
-              Simulator Connection
-            </div>
-            <.form for={%{}} as={:simulator} phx-submit="save_simulator" data-testid="simulator-form">
-              <label class="form-control w-full mb-3">
-                <span class="label-text text-sm">URL</span>
-                <input
-                  type="text"
-                  name="simulator[url]"
-                  value={@simulator_url}
-                  class="input input-bordered font-mono"
-                />
-              </label>
+        <div class="border-t border-base-300 my-10"></div>
 
-              <div class="mb-3">
-                <span class="label-text text-sm">API Key</span>
-                <%= case @api_key_status do %>
-                  <% :found_in_file -> %>
-                    <div class="alert alert-success p-2 mt-1 text-sm">
-                      <.icon name="hero-check-circle" class="w-4 h-4" />
-                      Found in TSW file — updated automatically
-                    </div>
-                  <% :missing -> %>
-                    <div class="alert alert-warning p-2 mt-1 text-sm">
-                      <.icon name="hero-exclamation-triangle" class="w-4 h-4" />
-                      Not found in TSW file — enter a key below
-                    </div>
-                  <% :unsupported_platform -> %>
-                    <div class="alert p-2 mt-1 text-sm">
-                      <.icon name="hero-information-circle" class="w-4 h-4" />
-                      Auto-detection only available on Windows — enter a key below
-                    </div>
+        <section>
+          <h2 class="text-base font-semibold mb-5">Simulator Connection</h2>
+          <.form
+            for={%{}}
+            as={:simulator}
+            phx-submit="save_simulator"
+            phx-change="validate_simulator"
+            data-testid="simulator-form"
+          >
+            <div class="mb-5">
+              <label class="label pb-1.5" for="simulator_url">
+                <span class="label-text">URL</span>
+              </label>
+              <input
+                id="simulator_url"
+                type="text"
+                name="simulator[url]"
+                value={@simulator_url}
+                placeholder="http://192.168.1.x:31270"
+                class={[
+                  "input input-bordered w-full font-mono",
+                  @url_error && "input-error"
+                ]}
+              />
+              <div :if={@url_error} class="flex items-center gap-1.5 mt-1.5 text-xs text-error">
+                <.icon name="hero-exclamation-circle" class="w-3.5 h-3.5 shrink-0" />
+                {@url_error}
+              </div>
+            </div>
+
+            <div class="mb-6">
+              <label class="label pb-1.5" for="simulator_api_key">
+                <span class="label-text">API Key</span>
+              </label>
+              <%= case @api_key_status do %>
+                <% :found_in_file -> %>
+                  <div class="flex items-center gap-2 px-3 py-2 mb-3 text-sm bg-base-200 rounded border border-base-300">
+                    <.icon name="hero-check-circle" class="w-4 h-4 text-base-content/70 shrink-0" />
+                    <span class="text-base-content/70">
+                      Found in your Train Simulator folder, updated automatically.
+                    </span>
+                  </div>
+                <% :missing -> %>
+                  <div class="alert alert-warning px-3 py-2 mb-3 text-sm">
+                    <.icon name="hero-exclamation-triangle" class="w-4 h-4 shrink-0" />
+                    <span>
+                      Not found in your Train Simulator folder. Enter a key below.
+                    </span>
+                  </div>
+                <% :unsupported_platform -> %>
+                  <div class="alert px-3 py-2 mb-3 text-sm">
+                    <.icon name="hero-information-circle" class="w-4 h-4 shrink-0" />
+                    <span>Auto-detection is only available on Windows. Enter a key below.</span>
+                  </div>
+              <% end %>
+              <input
+                id="simulator_api_key"
+                type="password"
+                name="simulator[api_key]"
+                placeholder="Leave blank to keep current value"
+                class="input input-bordered w-full font-mono"
+              />
+              <div class="mt-1.5 text-xs text-base-content/50">
+                <%= if @api_key_status == :found_in_file do %>
+                  Enter a new key to override the one read from your Train Simulator folder.
+                <% else %>
+                  Found at
+                  <span class="font-mono break-all">Documents\My Games\TrainSimWorld6\Saved\Config\CommAPIKey.txt</span>
+                  on the PC running Train Simulator.
                 <% end %>
               </div>
+            </div>
 
-              <label class="form-control w-full mb-3">
-                <span class="label-text text-sm text-base-content/60">Override API key manually</span>
-                <input
-                  type="password"
-                  name="simulator[api_key]"
-                  placeholder="Leave blank to keep current value"
-                  class="input input-bordered font-mono"
-                />
-              </label>
-
-              <div class="flex justify-end">
-                <button type="submit" class="btn btn-primary">Save</button>
-              </div>
-            </.form>
-          </div>
+            <div class="flex justify-end">
+              <button type="submit" class="btn btn-primary" phx-disable-with="Saving...">
+                Save
+              </button>
+            </div>
+          </.form>
         </section>
       </div>
     </main>
