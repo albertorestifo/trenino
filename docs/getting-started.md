@@ -30,7 +30,7 @@ Train Sim World ships with an External Interface API that Trenino uses to read a
 2. In the **General** tab, add `-HTTPAPI` to **Launch Options**
 3. Launch the game once — this generates the API key file
 
-Trenino detects the API key automatically on startup (Windows). On other platforms, enter the key manually in **Simulator** → settings. The key is stored in `Documents/My Games/TrainSimWorld6/Saved/Config/CommAPIKey.txt`.
+On Windows, Trenino detects the API key automatically from `Documents\My Games\TrainSimWorld6\Saved\Config\CommAPIKey.txt`. On other platforms, enter the key manually in **Settings** → Simulator Connection.
 
 ## Firmware
 
@@ -44,6 +44,10 @@ The app downloads the latest firmware release and flashes it in one step using t
 
 > If you prefer to flash manually, see the [Trenino Firmware repository](https://github.com/albertorestifo/trenino_firmware).
 
+## First Run
+
+The first time you launch Trenino, you'll be directed to a consent screen at `/consent`. It asks whether you'd like to share anonymous crash reports to help improve the app. You can change this at any time from the **Settings** page.
+
 ## Quick Setup Guide
 
 Once Trenino is running and your hardware is connected:
@@ -51,10 +55,10 @@ Once Trenino is running and your hardware is connected:
 ### Step 1: Configure Simulator Connection
 
 1. Start Train Sim World
-2. In Trenino, click **Simulator** in the sidebar
-3. The default URL is `http://localhost:31270`
-4. Click **Auto-Detect API Key** (Windows) or enter it manually
-5. Click **Save** and verify connection status shows "Connected"
+2. In Trenino, click the **Settings** gear icon (⚙) in the navigation bar
+3. Under **Simulator Connection**, the default URL is `http://localhost:31270` — change it if your simulator is on a different machine
+4. **Windows**: if the API key is found in your Train Simulator folder it's used automatically; otherwise enter it manually in the **API Key** field
+5. Click **Save** and verify the connection status in the nav bar shows "Connected"
 
 ### Step 2: Create Hardware Configuration
 
@@ -110,8 +114,8 @@ Once Trenino is running and your hardware is connected:
 
 - Ensure Train Sim World is running with `-HTTPAPI` in launch options
 - Check that no firewall is blocking port 31270
-- On Windows, verify `Documents/My Games/TrainSimWorld/Saved/Config/CommAPIKey.txt` exists
-- Try clicking **Auto-Detect API Key** again after the game fully loads
+- On Windows, verify `Documents\My Games\TrainSimWorld6\Saved\Config\CommAPIKey.txt` exists; Trenino reads it automatically
+- Open **Settings** and check that the simulator URL is correct (default `http://localhost:31270`)
 
 ### Device Not Found
 

@@ -233,6 +233,7 @@ Long-running processes are implemented as GenServers:
 - `Simulator.Connection` - API health monitoring
 - `Train.Detection` - Active train polling with two-layer defense
 - `Train.LeverController` - Input-to-simulator mapping
+- `Train.DisplayController` - I2C display bindings and polling
 - `Train.ScriptRunner` - Lua script execution and lifecycle management
 - `Hardware.ConfigurationManager` - Input value broadcasting
 

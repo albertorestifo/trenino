@@ -182,6 +182,55 @@ Scripts are managed in the **Scripts** section of the train configuration page. 
 
 See the [Lua Scripting Guide](lua-scripting.md) for the full API reference and examples.
 
+## Display Bindings
+
+Display bindings connect simulator endpoint values to I2C display modules on your hardware — for example, showing current speed on a 7-segment LED display attached to your Arduino.
+
+### Prerequisites
+
+Before creating display bindings:
+1. At least one I2C display module must be configured on your device — see [I2C Display Modules](hardware-setup.md#i2c-display-modules)
+2. Your train configuration must exist and be open in the train edit page
+
+### Adding a Display Binding
+
+1. Open your train configuration
+2. Scroll to the **Display Bindings** section and click **Add Binding**
+3. Configure:
+   - **Name** — optional label (e.g., "Speed", "Brake Pressure")
+   - **I2C Module** — select the display to write to
+   - **Endpoint** — the simulator API path whose value you want to show (use the API Explorer to find paths)
+   - **Format** — how to render the value (see below)
+4. Save the binding
+
+### Format Strings
+
+The format string controls how the numeric value is rendered before being sent to the display.
+
+| Token | Output | Example value | Result |
+|-------|--------|---------------|--------|
+| `{value}` | Raw value as string | `42.5` | `42.5` |
+| `{value:.0f}` | Float with 0 decimal places | `42.5` | `43` |
+| `{value:.1f}` | Float with 1 decimal place | `42.5` | `42.5` |
+| `{value:.2f}` | Float with 2 decimal places | `42.5` | `42.50` |
+
+For speed in km/h, `{value:.0f}` is usually the most readable choice.
+
+You can mix static text with the token: for example, `{value:.0f}` shows just the number, while a format like `{value}` shows whatever the simulator returns as-is.
+
+### How Bindings Work
+
+- Bindings activate automatically when their train's configuration becomes active
+- The display is polled every 200 ms and updated only when the value changes
+- When the train is deactivated, all bound displays are blanked
+- A train can have one binding per I2C module
+
+### Example: Speed Display
+
+**Endpoint:** `CurrentDrivableActor.Function.HUD_GetSpeed`
+
+The speed endpoint returns meters per second. To convert to km/h, you would need a Lua script (see [display.set()](lua-scripting.md#displayset)). If you just want raw m/s, `{value:.1f}` gives one decimal place.
+
 ## Configuring Buttons
 
 Each button element needs a hardware input binding and a behavior mode.

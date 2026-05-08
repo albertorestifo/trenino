@@ -81,6 +81,17 @@ output.set(3, true)   -- Turn on output #3
 output.set(3, false)  -- Turn it off
 ```
 
+### `display.set(i2c_address, text)`
+
+Write text directly to an I2C display module. `i2c_address` is the integer I2C address of the module (e.g., `0x70` = `112`). The text is rendered as segment characters; unsupported characters are shown as blank.
+
+```lua
+display.set(0x70, "42")    -- Show "42" on display at address 0x70
+display.set(0x71, "STOP")  -- Show "STOP" on display at address 0x71
+```
+
+Use this when you need dynamic or script-computed content on a display. For simple endpoint-to-display mirroring, [display bindings](train-configuration.md#display-bindings) are easier to configure and don't require a script.
+
 ### `schedule(ms)`
 
 Schedule `on_change` to fire again after the given number of milliseconds. The event source will be `"scheduled"`. Only one timer per script can be active — calling `schedule` again replaces the previous timer.

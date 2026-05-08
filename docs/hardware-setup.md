@@ -40,7 +40,6 @@ Other microcontrollers with USB serial and ADC inputs may work if you flash the 
 |------|-------------|----------|
 | Analog | 10-bit ADC (0-1023) | Potentiometers, throttle levers |
 | Digital | On/Off state | Buttons, momentary switches, toggle switches |
-| BLDC Lever | Brushless DC motor with haptic feedback | Force-feedback levers (requires Arduino Mega 2560 + SimpleFOCShield v2) |
 
 ## Creating a Device Configuration
 
@@ -102,6 +101,45 @@ Once your device is connected and configuration is ready:
 4. The configuration is sent to the device
 
 The device stores the `config_id` and begins streaming input values.
+
+## I2C Display Modules
+
+I2C display modules let you show live simulator data — speed, brake pressure, gear position — on physical LED displays attached to your Arduino. Trenino supports **HT16K33**-based displays, which are common on 7-segment and 14-segment Adafruit backpacks.
+
+### Wiring
+
+Connect the display to your Arduino via I2C:
+
+| Display Pin | Arduino Nano/Uno | Arduino Mega |
+|-------------|-----------------|--------------|
+| SDA | A4 | 20 (SDA) |
+| SCL | A5 | 21 (SCL) |
+| VCC | 5V | 5V |
+| GND | GND | GND |
+
+Most HT16K33 boards have solder jumpers to set the I2C address (default `0x70`; jumpers change the lower bits to give addresses `0x70`–`0x77`).
+
+### Adding an I2C Module to a Configuration
+
+1. Open your device configuration (**Configurations** → select your config)
+2. Scroll to the **I2C Modules** section and click **Add Module**
+3. Configure:
+   - **Name** — optional friendly label (e.g., "Speed Display")
+   - **Chip** — `HT16K33` (currently the only supported chip)
+   - **I2C Address** — enter as decimal (`112`) or hex (`0x70`)
+   - **Brightness** — 0–100% slider (maps to hardware levels 0–15)
+   - **Digits** — number of digits on the display: `4` or `8`
+4. Click **Save**
+
+Each device can have multiple I2C modules as long as each uses a distinct address.
+
+### Testing a Display
+
+After saving, click **Test** next to the module in the I2C Modules table. This runs a brief display test sequence to confirm the wiring is correct.
+
+### Binding Simulator Data to a Display
+
+Once a module is configured, set up a **display binding** in your train configuration to show live values. See [Train Configuration — Display Bindings](train-configuration.md#display-bindings) for details.
 
 ## Calibrating Inputs
 
