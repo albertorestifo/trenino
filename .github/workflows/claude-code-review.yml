@@ -18,7 +18,7 @@ jobs:
       contents: read
       pull-requests: write
       issues: write
-      id-token: write
+      actions: read
 
     steps:
       - name: Harden Runner
@@ -36,19 +36,32 @@ jobs:
         uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          additional_permissions: |
+            actions: read
           prompt: |
-            REPO: ${{ github.repository }}
-            PR NUMBER: ${{ github.event.pull_request.number }}
+            Review PR #${{ github.event.pull_request.number }} in ${{ github.repository }}.
 
-            Perform a code review of this pull request. Focus on:
+            Start with: `gh pr diff ${{ github.event.pull_request.number }}` and `gh pr view ${{ github.event.pull_request.number }}`
 
-            1. **Code Quality** - Clean code, proper error handling, readability
-            2. **Security** - Potential vulnerabilities, input validation
-            3. **Performance** - Bottlenecks, inefficient queries
-            4. **Testing** - Adequate test coverage, edge cases
+            This is an Elixir/Phoenix project. Apply the project coding guidelines:
+            - Struct arguments must be pattern matched: `def fn(%MyStruct{} = s)`
+            - Float values must be rounded to 2 decimal places (`Float.round(v, 2)`)
+            - Protocol message encode/decode must use atom-based structs (no integer type fields)
+            - Avoid untyped maps; prefer structs or documented map types
 
-            Use inline comments for specific issues. Use a top-level comment for
-            general observations. Be concise.
+            Focus on:
+            1. **Correctness** — bugs, wrong logic, edge cases not handled
+            2. **Project guidelines** — violations of the rules above
+            3. **Security** — input validation, injection risks
+            4. **Testing** — missing coverage for new behaviour
+
+            Skip style nits. Only flag issues that matter.
+
+            Post a single review comment using:
+            `gh pr comment ${{ github.event.pull_request.number }} --body "..."`
+
+            Use a heredoc to handle special characters. Format as markdown with
+            sections for each concern. If there's nothing significant to flag, say so briefly.
           claude_args: |
-            --allowedTools "Bash(gh pr diff:*),Bash(gh pr view:*)"
+            --allowedTools "Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr comment:*)"
 
