@@ -103,10 +103,19 @@ pub fn run() {
                 }
             };
 
+            // Resolve the directory containing this executable. The Elixir backend
+            // uses APP_PATH to locate bundled sidecars (avrdude, keystroke) that
+            // Tauri places next to the main executable in the installation directory.
+            let app_dir = std::env::current_exe()
+                .ok()
+                .and_then(|p| p.parent().map(|d| d.to_string_lossy().into_owned()))
+                .unwrap_or_default();
+
             let (mut _rx, child) = match sidecar
                 .env("PORT", BACKEND_PORT.to_string())
                 .env("MIX_ENV", "prod")
                 .env("BURRITO", "1")
+                .env("APP_PATH", app_dir)
                 .spawn()
             {
                 Ok(result) => result,

@@ -12,6 +12,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- **Windows firmware flashing: avrdude now found correctly** — `APP_PATH` is passed from the Tauri wrapper to the Elixir backend at startup, allowing the bundled avrdude to be located in the installation directory (root cause of all boards failing to flash on Windows, [#76](https://github.com/albertorestifo/trenino/issues/76))
+- **Windows firmware flashing: removed fragile `-U` path workaround** — avrdude 8.x handles Windows drive-letter paths natively; the relative-path transformation that broke on cross-drive setups has been removed
+- Serial connection: device discovery now runs in a background Task so the Connection GenServer stays responsive during the DTR settle delay and identity handshake
+- Firmware upload: cancelled or timed-out uploads now correctly kill the avrdude process; previously, cancelling left avrdude running and released the serial port prematurely
+- Protocol: replaced O(n²) binary concatenation in COBS encoding with an O(n) list accumulator
+- Intermittent Connection GenServer test failures resolved (stale port state between tests)
+
 ### Removed
 
 ## [0.7.3] - 2026-05-03
