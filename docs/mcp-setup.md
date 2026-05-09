@@ -10,6 +10,7 @@ Trenino includes a built-in MCP (Model Context Protocol) server that lets you us
 - **Configure button mappings** — "this button should toggle the headlights" and Claude will create the binding with the correct mode and endpoint
 - **Create command sequences** — "create a startup sequence that turns on the battery, then the pantograph, then the main breaker with delays between each"
 - **Write and manage Lua scripts** — "create a script that flashes my warning LED when speed exceeds 100 km/h" and Claude will write, create, and enable the script for you
+- **Set up display bindings** — "show the current speed on my 7-segment display" and Claude will find the speed endpoint, your display module, and create the binding with the right format string
 - **Experiment with controls** — read and write simulator values in real-time to test what endpoints do before committing to a configuration
 
 ## Setup
@@ -104,19 +105,20 @@ Claude will:
 
 ## Available Tools
 
-Claude has access to 29 tools for interacting with Trenino:
+Claude has access to 37 tools for interacting with Trenino:
 
 | Category | Tools |
 |----------|-------|
 | Simulator | Browse endpoints, read values, write values |
 | Trains | List trains, get full train configuration |
 | Elements | List, create, delete buttons and levers |
-| Devices | List devices, list inputs, list outputs |
+| Devices | List devices, list inputs, list outputs; list, create, update, delete I2C modules |
 | Detection | Detect hardware inputs (button/lever) |
 | Output Bindings | List, create, update, delete |
 | Button Bindings | Get, create, update, delete |
 | Sequences | List, create, update, delete |
 | Scripts | List, get, create, update, delete Lua scripts |
+| Display Bindings | List, create, update, delete display bindings |
 
 ## Tips
 
