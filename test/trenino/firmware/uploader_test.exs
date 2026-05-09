@@ -260,19 +260,9 @@ defmodule Trenino.Firmware.UploaderTest do
   end
 
   describe "avrdude_hex_path/1" do
-    test "returns path unchanged on non-Windows" do
-      # On macOS/Linux the path must be returned as-is — it has no drive colon
+    test "returns path unchanged on any OS" do
       path = "/var/trenino/firmware/v1.0.0_uno.hex"
       assert Uploader.avrdude_hex_path(path) == path
-    end
-
-    test "avrdude_hex_path/1 result never contains a bare drive-letter colon" do
-      # On any OS the result should not look like "X:..." where X is a single letter
-      path = "/tmp/firmware.hex"
-      result = Uploader.avrdude_hex_path(path)
-
-      refute Regex.match?(~r/^[A-Za-z]:/, result),
-             "Path #{inspect(result)} starts with a drive-letter colon"
     end
   end
 
