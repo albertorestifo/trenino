@@ -247,7 +247,7 @@ SSE (Server-Sent Events) transport implementing Model Context Protocol:
 |----------|-------------|
 | `/mcp/sse` | SSE endpoint for MCP server |
 
-Supports 29 tools across 9 categories for AI-powered train configuration. See [MCP Setup Guide](../docs/mcp-setup.md) for details.
+Supports 37 tools across 10 categories for AI-powered train configuration. See [MCP Setup Guide](../docs/mcp-setup.md) for details.
 
 ## Event Broadcasting (PubSub)
 

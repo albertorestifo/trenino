@@ -40,6 +40,7 @@ Other microcontrollers with USB serial and ADC inputs may work if you flash the 
 |------|-------------|----------|
 | Analog | 10-bit ADC (0-1023) | Potentiometers, throttle levers |
 | Digital | On/Off state | Buttons, momentary switches, toggle switches |
+| Matrix | Grid of digital inputs via row/column GPIO pins | Button matrices, arcade panels |
 
 ## Creating a Device Configuration
 
@@ -127,8 +128,11 @@ Most HT16K33 boards have solder jumpers to set the I2C address (default `0x70`; 
    - **Name** — optional friendly label (e.g., "Speed Display")
    - **Chip** — `HT16K33` (currently the only supported chip)
    - **I2C Address** — enter as decimal (`112`) or hex (`0x70`)
+   - **Display Type** — `14-segment` (alphanumeric, default) or `7-segment` (numeric only)
    - **Brightness** — 0–100% slider (maps to hardware levels 0–15)
    - **Digits** — number of digits on the display: `4` or `8`
+   - **Right-align** — align text to the right of the display (useful for numbers; enabled by default)
+   - **Decimal point** — enable if your display has a dot segment between digits
 4. Click **Save**
 
 Each device can have multiple I2C modules as long as each uses a distinct address.

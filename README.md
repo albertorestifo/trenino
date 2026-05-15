@@ -31,6 +31,7 @@ Build your own train controls with real throttle levers, brake handles, switches
 - **Guided calibration** — step-by-step process to calibrate your levers and controls
 - **Auto-detection** — automatically recognizes which train you're driving and loads the right configuration
 - **Visual control mapping** — map any hardware input to simulator controls using the built-in API explorer
+- **I2C display modules** — show live simulator data (speed, brake pressure, gear position) on HT16K33 7- or 14-segment LED displays wired to your Arduino
 - **Lua scripting** — write custom logic to flash warning LEDs, react to speed changes, automate sequences, and more ([scripting guide](docs/lua-scripting.md))
 - **AI-assisted setup** — describe what you want in plain language and let Claude configure your train via [MCP integration](docs/mcp-setup.md)
 
