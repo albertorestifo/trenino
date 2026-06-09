@@ -171,7 +171,6 @@ defmodule TreninoWeb.LeverSetupWizard do
   # Edit mode is enabled when the lever has been at least partially configured
   # (endpoints set OR calibration done), allowing non-linear navigation
   defp has_existing_config?(nil), do: false
-  defp has_existing_config?(%Ecto.Association.NotLoaded{}), do: false
 
   defp has_existing_config?(config) do
     # Consider it "existing" if either:
@@ -182,7 +181,6 @@ defmodule TreninoWeb.LeverSetupWizard do
 
   # Compute which steps are already configured when entering edit mode
   defp compute_configured_steps(nil, _input_id), do: MapSet.new()
-  defp compute_configured_steps(%Ecto.Association.NotLoaded{}, _input_id), do: MapSet.new()
 
   defp compute_configured_steps(config, input_id) do
     steps = MapSet.new()

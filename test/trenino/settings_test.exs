@@ -38,8 +38,12 @@ defmodule Trenino.SettingsTest do
 
   describe "set_error_reporting/1" do
     test "rejects values other than :enabled or :disabled" do
+      # Build the atom at runtime so the value is typed as atom() rather than
+      # the literal :maybe — this exercises the runtime guard, not the compiler.
+      invalid_value = String.to_atom("maybe")
+
       assert_raise FunctionClauseError, fn ->
-        Settings.set_error_reporting(:maybe)
+        Settings.set_error_reporting(invalid_value)
       end
     end
 

@@ -28,8 +28,6 @@ defmodule TreninoWeb.OutputBindingWizard do
 
   use TreninoWeb, :live_component
 
-  require Logger
-
   alias Trenino.Train
   alias Trenino.Train.OutputBinding
   alias Trenino.Train.OutputController

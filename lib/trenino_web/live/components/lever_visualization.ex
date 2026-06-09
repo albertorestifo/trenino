@@ -247,8 +247,6 @@ defmodule TreninoWeb.LeverVisualization do
     String.slice(desc, 0, 6) <> "…"
   end
 
-  defp format_range(nil, _), do: ""
-
   defp format_range(%{min: min, max: max}, total_travel) when total_travel > 0 do
     min_pct = Float.round(min / total_travel * 100, 0)
     max_pct = Float.round(max / total_travel * 100, 0)

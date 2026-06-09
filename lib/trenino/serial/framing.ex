@@ -121,7 +121,7 @@ defmodule Trenino.Serial.Framing do
       raise ArgumentError, "Incomplete COBS frame"
     end
 
-    <<block::binary-size(len), remaining::binary>> = rest
+    <<block::binary-size(^len), remaining::binary>> = rest
 
     new_acc = acc <> block
 

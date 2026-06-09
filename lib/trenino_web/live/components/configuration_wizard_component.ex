@@ -963,7 +963,7 @@ defmodule TreninoWeb.ConfigurationWizardComponent do
               <option value="momentary" selected={@binding_mode == :momentary}>
                 Momentary (repeat while held)
               </option>
-              <option value="sequence" selected={@binding_mode == :sequence}>
+              <option value="sequence" selected={false}>
                 Sequence (execute commands)
               </option>
               <option value="keystroke" selected={@binding_mode == :keystroke}>
@@ -1352,9 +1352,6 @@ defmodule TreninoWeb.ConfigurationWizardComponent do
 
   defp mode_description(:momentary),
     do: "Repeats ON value while held. Use for: horn, bell, announcements"
-
-  defp mode_description(:sequence),
-    do: "Executes a command sequence. Use for: startup procedures, multi-step operations"
 
   defp mode_description(:keystroke),
     do: "Simulates a keyboard key. Use for: controls that respond better to keyboard input"

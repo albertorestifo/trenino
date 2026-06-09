@@ -428,5 +428,4 @@ defmodule TreninoWeb.CalibrationWizard do
   end
 
   defp format_error({:error, reason}), do: inspect(reason)
-  defp format_error(_), do: "Unknown error"
 end

@@ -226,7 +226,6 @@ defmodule Trenino.Simulator.Client do
         case Map.values(values) do
           [value | _] when is_binary(value) -> {:ok, value}
           [value | _] -> {:ok, to_string(value)}
-          _ -> {:error, :invalid_value}
         end
 
       {:ok, _} ->

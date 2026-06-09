@@ -80,7 +80,7 @@ defmodule Trenino.Serial.FramingTest do
 
     # Send all but the last byte (the 0 delimiter)
     partial_len = byte_size(framed) - 1
-    <<partial::binary-size(partial_len), _::binary>> = framed
+    <<partial::binary-size(^partial_len), _::binary>> = framed
 
     assert {:in_frame, [], %Framing.State{buffer: ^partial}} =
              Framing.remove_framing(partial, state)

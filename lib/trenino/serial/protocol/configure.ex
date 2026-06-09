@@ -156,7 +156,7 @@ defmodule Trenino.Serial.Protocol.Configure do
     expected_size = num_row_pins + num_col_pins
 
     if byte_size(rest) == expected_size do
-      <<row_pins_binary::binary-size(num_row_pins), col_pins_binary::binary-size(num_col_pins)>> =
+      <<row_pins_binary::binary-size(^num_row_pins), col_pins_binary::binary-size(^num_col_pins)>> =
         rest
 
       row_pins = :binary.bin_to_list(row_pins_binary)
