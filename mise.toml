@@ -1,6 +1,6 @@
 [tools]
-elixir = "1.19"
-erlang = "28.2"
+elixir = "1.20"
+erlang = "29"
 node = "latest"
 zig = "0.15"
 rust = "1.91"
