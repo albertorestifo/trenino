@@ -6,8 +6,8 @@ Guide for developers contributing to Trenino.
 
 ### Prerequisites
 
-- Elixir 1.15+
-- Erlang/OTP 26+
+- Elixir 1.20
+- Erlang/OTP 29
 - Node.js (for asset compilation)
 - SQLite3
 
