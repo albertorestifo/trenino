@@ -98,7 +98,7 @@ Claude will browse the simulator API tree, find the wiper endpoint, and set the 
 > "Create a script for the BR 442 that turns on my warning LED when speed exceeds 100 km/h, and turns it off when speed drops below 95."
 
 Claude will:
-1. Look up the speed endpoint for that train (`CurrentDrivableActor.Function.HUD_GetSpeed`)
+1. Look up the speed endpoint for that train (`CurrentDrivableActor.Function.HUD_GetSpeed`, which returns m/s — Claude will convert to km/h automatically)
 2. Find your warning LED output ID
 3. Write the Lua script with hysteresis logic
 4. Create and enable the script with the speed endpoint as the trigger

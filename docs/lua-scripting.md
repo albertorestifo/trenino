@@ -125,9 +125,12 @@ Turn on a warning LED when the train exceeds 100 km/h.
 
 **Trigger:** `CurrentDrivableActor.Function.HUD_GetSpeed`
 
+> `HUD_GetSpeed` returns speed in **meters per second**. Multiply by 3.6 to convert to km/h.
+
 ```lua
 function on_change(event)
-  if event.value and event.value > 100 then
+  local speed_kmh = (event.value or 0) * 3.6
+  if speed_kmh > 100 then
     output.set(3, true)
   else
     output.set(3, false)

@@ -135,4 +135,4 @@ Once Trenino is running and your hardware is connected:
 
 ## For Developers
 
-If you want to contribute to Trenino or run it from source, see the [Development Guide](development.md). You'll need Elixir 1.15+, Erlang/OTP 26+, and Node.js.
+If you want to contribute to Trenino or run it from source, see the [Development Guide](development.md). You'll need Elixir 1.20, Erlang/OTP 29, and Node.js.

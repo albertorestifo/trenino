@@ -208,22 +208,25 @@ For firmware developers implementing the trenino protocol:
 
 ### Message Format
 
-```
-[START_BYTE] [TYPE] [PAYLOAD...] [END_BYTE]
-```
+Messages are framed using COBS encoding over UART.
 
 ### Message Types
 
-| Type | Direction | Payload |
-|------|-----------|---------|
-| 0x01 | Request | None |
-| 0x01 | Response | Signature bytes |
-| 0x02 | To Device | config_id (4 bytes) + pin + type + sensitivity |
-| 0x03 | From Device | None (acknowledgment) |
-| 0x04 | Both | None (heartbeat) |
-| 0x05 | From Device | config_id (4 bytes) + pin + value (2 bytes signed) |
+| Type | Name | Direction | Description |
+|------|------|-----------|-------------|
+| 0x00 | IdentityRequest | App → Device | Request device identity |
+| 0x01 | IdentityResponse | Device → App | Device signature (config_id) |
+| 0x02 | Configure | App → Device | Send input config and I2C module definitions |
+| 0x03 | ConfigurationStored | Device → App | Configuration acknowledged |
+| 0x04 | ConfigurationError | Device → App | Configuration rejected |
+| 0x05 | InputValue | Device → App | Real-time input reading |
+| 0x06 | Heartbeat | Both | Keep-alive ping/pong |
+| 0x07 | SetOutput | App → Device | Set a digital output pin on/off |
+| 0x0D | WriteSegments | App → Device | Write segment bytes to an I2C display |
+| 0x0E | SetModuleBrightness | App → Device | Set I2C display brightness (0–15) |
+| 0x0F | ModuleError | Device → App | I2C module error report |
 
-### Input Value Message
+### Input Value Message (0x05)
 
 ```
 Byte 0: Message type (0x05)
