@@ -138,6 +138,21 @@ function on_change(event)
 end
 ```
 
+### Speed on an I2C display
+
+Show current speed in km/h on a 7-segment display. The speed endpoint returns m/s, so multiply by 3.6.
+
+**Trigger:** `CurrentDrivableActor.Function.HUD_GetSpeed`
+
+```lua
+function on_change(event)
+  local speed_kmh = math.floor((event.value or 0) * 3.6)
+  display.set(0x70, tostring(speed_kmh))
+end
+```
+
+> Use `display.set()` like this when you need computed values or unit conversions on a display. For simple endpoint mirroring without any math, [display bindings](train-configuration.md#display-bindings) require no scripting at all.
+
 ### Blinking LED
 
 Blink an LED on and off every 500ms. Click **Run** to start the blink loop.

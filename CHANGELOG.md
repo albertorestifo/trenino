@@ -13,12 +13,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **`display.set(i2c_address, text)` in Lua scripting** — write arbitrary text directly to an I2C display from a script
 - 8 new MCP tools: `list_i2c_modules`, `create_i2c_module`, `update_i2c_module`, `delete_i2c_module`, `list_display_bindings`, `create_display_binding`, `update_display_binding`, `delete_display_binding`
 
-### Changed
-
-### Fixed
-
-### Removed
-
 ## [0.7.4] - unreleased
 
 ### Fixed
