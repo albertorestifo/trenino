@@ -8,7 +8,6 @@ Guide for developers contributing to Trenino.
 
 - Elixir 1.20
 - Erlang/OTP 29
-- Node.js (for asset compilation)
 - SQLite3
 
 ### Optional: Keystroke Simulation Support

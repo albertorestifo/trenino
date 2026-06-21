@@ -80,8 +80,7 @@ All boards can be flashed directly from Trenino.
 ```bash
 git clone https://github.com/albertorestifo/trenino.git
 cd trenino
-mix deps.get
-mix ecto.setup
+mix setup
 mix phx.server
 ```
 

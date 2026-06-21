@@ -131,6 +131,7 @@ Most HT16K33 boards have solder jumpers to set the I2C address (default `0x70`; 
    - **Display Type** — `14-segment` (alphanumeric, default) or `7-segment` (numeric only)
    - **Brightness** — 0–100% slider (maps to hardware levels 0–15)
    - **Digits** — number of digits on the display: `4` or `8`
+   - **Minimum value** — clamp values below this number to zero before display (default `0`). Useful when the simulator endpoint can return negative values — for example, a reverser reads -1.0 to 1.0, so setting minimum value to `0` prevents negative numbers appearing on the display
    - **Right-align** — align text to the right of the display (useful for numbers; enabled by default)
    - **Decimal point** — enable if your display has a dot segment between digits
 4. Click **Save**
