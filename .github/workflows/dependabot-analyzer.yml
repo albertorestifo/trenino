@@ -27,7 +27,7 @@ jobs:
           egress-policy: audit
 
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
         with:
           # SECURITY: Explicitly checkout the base branch, NOT the PR head.
           # With pull_request_target, secrets are available. Checking out
