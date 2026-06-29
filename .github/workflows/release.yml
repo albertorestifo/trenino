@@ -122,7 +122,7 @@ jobs:
           version: 0.15.2
 
       - name: Cache Mix dependencies
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: deps
           key: ${{ runner.os }}-deps-${{ hashFiles('**/mix.lock') }}
@@ -251,7 +251,7 @@ jobs:
     steps:
       - name: Cache VC++ Redistributable
         id: cache-vcredist
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: vc_redist.x64.exe
           key: vcredist-x64-2022
