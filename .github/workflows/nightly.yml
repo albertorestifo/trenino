@@ -30,7 +30,7 @@ jobs:
     steps:
       - name: Restore cached SHA
         id: cache-sha
-        uses: actions/cache/restore@v5
+        uses: actions/cache/restore@v6
         with:
           path: nightly-last-sha.txt
           key: nightly-sha-dummy
@@ -104,7 +104,7 @@ jobs:
           version: 0.15.2
 
       - name: Cache Mix dependencies
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: deps
           key: ${{ runner.os }}-deps-${{ hashFiles('**/mix.lock') }}
@@ -238,7 +238,7 @@ jobs:
     steps:
       - name: Cache VC++ Redistributable
         id: cache-vcredist
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: vc_redist.x64.exe
           key: vcredist-x64-2022
@@ -436,7 +436,7 @@ jobs:
         run: echo "${{ github.sha }}" > nightly-last-sha.txt
 
       - name: Cache SHA for next run
-        uses: actions/cache/save@v5
+        uses: actions/cache/save@v6
         with:
           path: nightly-last-sha.txt
           key: nightly-sha-${{ github.run_id }}
