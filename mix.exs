@@ -85,7 +85,7 @@ defmodule Trenino.MixProject do
       {:bandit, "~> 1.5"},
       {:circuits_uart, "~> 1.5"},
       {:req, "~> 0.6.1"},
-      {:lua, "~> 0.4.0"},
+      {:lua, "~> 1.0.1"},
       {:polymorphic_embed, "~> 5.0"},
       {:mimic, "~> 2.0", only: :test},
       {:usage_rules, "~> 1.2", only: :dev},
