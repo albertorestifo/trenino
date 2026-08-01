@@ -4,6 +4,7 @@ defmodule Trenino.Train.ButtonControllerTest do
   alias Trenino.Hardware
   alias Trenino.Train, as: TrainContext
   alias Trenino.Train.ButtonController
+  alias Trenino.VirtualJoystick
 
   # These tests run the ButtonController in isolation
   # They test the state management and binding loading logic
@@ -65,6 +66,43 @@ defmodule Trenino.Train.ButtonControllerTest do
       assert state.active_train.id == train.id
       # Button inputs use input_id as key
       assert Map.has_key?(state.binding_lookup, input.id)
+    end
+  end
+
+  describe "vJoy destination replacement" do
+    setup do
+      start_supervised!(ButtonController)
+
+      {:ok, train} = TrainContext.create_train(%{name: "Test Train", identifier: "test_train"})
+      {:ok, element} = TrainContext.create_element(train.id, %{name: "Horn", type: :button})
+      {:ok, device} = Hardware.create_device(%{name: "Test Device"})
+
+      {:ok, input} =
+        Hardware.create_input(device.id, %{pin: 5, input_type: :button, debounce: 20})
+
+      {:ok, _mapping} =
+        VirtualJoystick.put_mapping(input.id, %{target_type: :button, button: 1})
+
+      send(Process.whereis(ButtonController), {:train_changed, train})
+      Process.sleep(50)
+
+      %{element: element, input: input}
+    end
+
+    test "reloads the active controller after replacing a vJoy mapping", %{
+      element: element,
+      input: input
+    } do
+      assert {:ok, _binding} =
+               TrainContext.create_button_binding(
+                 element.id,
+                 input.id,
+                 %{endpoint: "CurrentDrivableActor/Horn.InputValue"},
+                 replace?: true
+               )
+
+      Process.sleep(50)
+      assert Map.has_key?(ButtonController.get_state().binding_lookup, input.id)
     end
   end
 

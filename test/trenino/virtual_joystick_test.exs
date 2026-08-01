@@ -3,6 +3,7 @@ defmodule Trenino.VirtualJoystickTest do
 
   alias Trenino.VirtualJoystick
   alias Trenino.VirtualJoystick.{Configuration, Mapping}
+  alias Trenino.Train, as: TrainContext
 
   describe "get_configuration/0" do
     test "creates the singleton configuration with its defaults" do
@@ -204,5 +205,183 @@ defmodule Trenino.VirtualJoystickTest do
       assert deleted.id == mapping.id
       assert {:error, :not_found} = VirtualJoystick.get_mapping(mapping.id)
     end
+  end
+
+  describe "exclusive input destinations" do
+    test "rejects a virtual axis mapping for an API-bound input unless replacement removes every enabled lever binding" do
+      input = analog_input_fixture()
+      unrelated_input = analog_input_fixture(%{pin: 3})
+      first_config = lever_config_fixture("First", "first")
+      second_config = lever_config_fixture("Second", "second")
+      unrelated_config = lever_config_fixture("Unrelated", "unrelated")
+
+      assert {:ok, _} = TrainContext.bind_input(first_config.id, input.id)
+      assert {:ok, _} = TrainContext.bind_input(second_config.id, input.id)
+
+      assert {:ok, unrelated_binding} =
+               TrainContext.bind_input(unrelated_config.id, unrelated_input.id)
+
+      assert {:error, :destination_conflict} =
+               VirtualJoystick.put_mapping(input.id, %{target_type: :axis, axis: :x})
+
+      assert {:ok, _mapping} =
+               VirtualJoystick.put_mapping(input.id, %{target_type: :axis, axis: :x},
+                 replace?: true
+               )
+
+      assert {:error, :not_found} = TrainContext.get_binding(first_config.id)
+      assert {:error, :not_found} = TrainContext.get_binding(second_config.id)
+      assert {:ok, retained} = TrainContext.get_binding(unrelated_config.id)
+      assert retained.id == unrelated_binding.id
+    end
+
+    test "rejects a virtual button mapping for an API-bound input unless replacement removes enabled button bindings" do
+      input = button_input_fixture()
+      unrelated_input = button_input_fixture(%{pin: 4})
+      element = button_element_fixture("Horn", "horn")
+      unrelated_element = button_element_fixture("Bell", "bell")
+
+      assert {:ok, _} =
+               TrainContext.create_button_binding(element.id, input.id, %{
+                 endpoint: "Horn.InputValue"
+               })
+
+      assert {:ok, unrelated_binding} =
+               TrainContext.create_button_binding(unrelated_element.id, unrelated_input.id, %{
+                 endpoint: "Bell.InputValue"
+               })
+
+      assert {:error, :destination_conflict} =
+               VirtualJoystick.put_mapping(input.id, %{target_type: :button, button: 1})
+
+      assert {:ok, _mapping} =
+               VirtualJoystick.put_mapping(input.id, %{target_type: :button, button: 1},
+                 replace?: true
+               )
+
+      assert {:error, :not_found} = TrainContext.get_button_binding(element.id)
+      assert {:ok, retained} = TrainContext.get_button_binding(unrelated_element.id)
+      assert retained.id == unrelated_binding.id
+    end
+
+    test "binding a lever input mapped to vJoy requires replacement and preserves unrelated mappings" do
+      mapped_input = analog_input_fixture()
+      unrelated_input = analog_input_fixture(%{pin: 3})
+      config = lever_config_fixture("Throttle", "throttle")
+
+      assert {:ok, mapping} =
+               VirtualJoystick.put_mapping(mapped_input.id, %{target_type: :axis, axis: :x})
+
+      assert {:ok, unrelated_mapping} =
+               VirtualJoystick.put_mapping(unrelated_input.id, %{target_type: :axis, axis: :y})
+
+      assert {:error, :destination_conflict} = TrainContext.bind_input(config.id, mapped_input.id)
+
+      assert {:ok, _binding} = TrainContext.bind_input(config.id, mapped_input.id, replace?: true)
+      assert {:error, :not_found} = VirtualJoystick.get_mapping(mapping.id)
+      assert {:ok, retained} = VirtualJoystick.get_mapping(unrelated_mapping.id)
+      assert retained.id == unrelated_mapping.id
+    end
+
+    test "creating a button binding for a vJoy-mapped input requires replacement" do
+      mapped_input = button_input_fixture()
+      unrelated_input = button_input_fixture(%{pin: 4})
+      element = button_element_fixture("Horn", "horn")
+
+      assert {:ok, mapping} =
+               VirtualJoystick.put_mapping(mapped_input.id, %{target_type: :button, button: 1})
+
+      assert {:ok, _unrelated_mapping} =
+               VirtualJoystick.put_mapping(unrelated_input.id, %{target_type: :button, button: 2})
+
+      assert {:error, :destination_conflict} =
+               TrainContext.create_button_binding(element.id, mapped_input.id, %{
+                 endpoint: "Horn.InputValue"
+               })
+
+      assert {:ok, _binding} =
+               TrainContext.create_button_binding(
+                 element.id,
+                 mapped_input.id,
+                 %{endpoint: "Horn.InputValue"},
+                 replace?: true
+               )
+
+      assert {:error, :not_found} = VirtualJoystick.get_mapping(mapping.id)
+    end
+
+    test "updating a button binding to a vJoy-mapped input requires replacement" do
+      mapped_input = button_input_fixture()
+      current_input = button_input_fixture(%{pin: 4})
+      element = button_element_fixture("Horn", "horn")
+
+      assert {:ok, mapping} =
+               VirtualJoystick.put_mapping(mapped_input.id, %{target_type: :button, button: 1})
+
+      assert {:ok, binding} =
+               TrainContext.create_button_binding(element.id, current_input.id, %{
+                 endpoint: "Horn.InputValue"
+               })
+
+      assert {:error, :destination_conflict} =
+               TrainContext.update_button_binding(binding, %{input_id: mapped_input.id})
+
+      assert {:ok, updated} =
+               TrainContext.update_button_binding(binding, %{input_id: mapped_input.id},
+                 replace?: true
+               )
+
+      assert updated.input_id == mapped_input.id
+      assert {:error, :not_found} = VirtualJoystick.get_mapping(mapping.id)
+    end
+
+    test "keeps simulator bindings when a replacement mapping is invalid" do
+      input = analog_input_fixture()
+      config = lever_config_fixture("Throttle", "throttle")
+
+      assert {:ok, binding} = TrainContext.bind_input(config.id, input.id)
+
+      assert {:error, _changeset} =
+               VirtualJoystick.put_mapping(input.id, %{target_type: :axis, axis: :pov},
+                 replace?: true
+               )
+
+      assert {:ok, retained} = TrainContext.get_binding(config.id)
+      assert retained.id == binding.id
+    end
+
+    test "keeps a vJoy mapping when a replacement button binding is invalid" do
+      input = button_input_fixture()
+      element = button_element_fixture("Horn", "horn")
+
+      assert {:ok, mapping} =
+               VirtualJoystick.put_mapping(input.id, %{target_type: :button, button: 1})
+
+      assert {:error, _changeset} =
+               TrainContext.create_button_binding(element.id, input.id, %{}, replace?: true)
+
+      assert {:ok, retained} = VirtualJoystick.get_mapping(mapping.id)
+      assert retained.id == mapping.id
+    end
+  end
+
+  defp lever_config_fixture(name, identifier) do
+    {:ok, train} = TrainContext.create_train(%{name: name, identifier: identifier})
+    {:ok, element} = TrainContext.create_element(train.id, %{name: "Throttle", type: :lever})
+
+    {:ok, config} =
+      TrainContext.create_lever_config(element.id, %{
+        min_endpoint: "Throttle.MinValue",
+        max_endpoint: "Throttle.MaxValue",
+        value_endpoint: "Throttle.InputValue"
+      })
+
+    config
+  end
+
+  defp button_element_fixture(name, identifier) do
+    {:ok, train} = TrainContext.create_train(%{name: name, identifier: identifier})
+    {:ok, element} = TrainContext.create_element(train.id, %{name: name, type: :button})
+    element
   end
 end

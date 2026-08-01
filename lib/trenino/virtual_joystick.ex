@@ -7,6 +7,7 @@ defmodule Trenino.VirtualJoystick do
 
   alias Trenino.Hardware.Input
   alias Trenino.Repo
+  alias Trenino.Train.{ButtonInputBinding, LeverInputBinding}
   alias Trenino.VirtualJoystick.{Configuration, Mapping}
 
   @mapping_preloads [input: [:device, :calibration]]
@@ -48,34 +49,89 @@ defmodule Trenino.VirtualJoystick do
   end
 
   @spec put_mapping(integer(), map(), keyword()) ::
-          {:ok, Mapping.t()} | {:error, :not_found | Ecto.Changeset.t()}
+          {:ok, Mapping.t()} | {:error, :destination_conflict | :not_found | Ecto.Changeset.t()}
   def put_mapping(input_id, attrs, opts \\ []) do
-    _replace? = Keyword.get(opts, :replace?, false)
+    replace? = Keyword.get(opts, :replace?, false)
     attrs = Map.drop(attrs, [:input_id, "input_id"])
 
-    Repo.transaction(fn ->
-      input =
-        Input
-        |> where([input], input.id == ^input_id)
-        |> preload([:device, :calibration])
-        |> Repo.one()
+    case Repo.transaction(fn ->
+           input =
+             Input
+             |> where([input], input.id == ^input_id)
+             |> preload([:device, :calibration])
+             |> Repo.one()
 
-      if is_nil(input) do
-        Repo.rollback(:not_found)
-      end
+           if is_nil(input), do: Repo.rollback(:not_found)
 
-      mapping = Repo.get_by(Mapping, input_id: input.id)
+           mapping = Repo.get_by(Mapping, input_id: input.id)
 
-      mapping_changeset =
-        (mapping || %Mapping{input_id: input.id})
-        |> Mapping.changeset(attrs)
-        |> Mapping.validate_input_type(input)
+           mapping_changeset =
+             (mapping || %Mapping{input_id: input.id})
+             |> Mapping.changeset(attrs)
+             |> Mapping.validate_input_type(input)
 
-      case Repo.insert_or_update(mapping_changeset) do
-        {:ok, saved_mapping} -> Repo.preload(saved_mapping, @mapping_preloads)
-        {:error, changeset} -> Repo.rollback(changeset)
-      end
-    end)
+           if mapping_changeset.valid? do
+             replaced = maybe_replace_simulator_bindings(input.id, replace?)
+
+             case Repo.insert_or_update(mapping_changeset) do
+               {:ok, saved_mapping} -> {Repo.preload(saved_mapping, @mapping_preloads), replaced}
+               {:error, changeset} -> Repo.rollback(changeset)
+             end
+           else
+             Repo.rollback(mapping_changeset)
+           end
+         end) do
+      {:ok, {mapping, replaced}} ->
+        maybe_notify_replacement(replaced)
+        {:ok, mapping}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  defp maybe_replace_simulator_bindings(input_id, true) do
+    %{
+      lever?: delete_enabled_bindings(LeverInputBinding, input_id),
+      button?: delete_enabled_bindings(ButtonInputBinding, input_id)
+    }
+  end
+
+  defp maybe_replace_simulator_bindings(input_id, false) do
+    if simulator_binding_exists?(input_id), do: Repo.rollback(:destination_conflict)
+
+    %{lever?: false, button?: false}
+  end
+
+  defp simulator_binding_exists?(input_id) do
+    enabled_binding_exists?(LeverInputBinding, input_id) or
+      enabled_binding_exists?(ButtonInputBinding, input_id)
+  end
+
+  defp enabled_binding_exists?(binding, input_id) do
+    binding
+    |> where([binding], binding.input_id == ^input_id and binding.enabled == true)
+    |> Repo.exists?()
+  end
+
+  defp delete_enabled_bindings(binding, input_id) do
+    {count, _} =
+      binding
+      |> where([binding], binding.input_id == ^input_id and binding.enabled == true)
+      |> Repo.delete_all()
+
+    count > 0
+  end
+
+  defp maybe_notify_replacement(%{lever?: lever?, button?: button?}) do
+    if lever? and Process.whereis(Trenino.Train.LeverController),
+      do: Trenino.Train.LeverController.reload_bindings()
+
+    if button? and Process.whereis(Trenino.Train.ButtonController),
+      do: Trenino.Train.ButtonController.reload_bindings()
+
+    if (lever? or button?) and Process.whereis(Trenino.VirtualJoystick.Manager),
+      do: apply(Trenino.VirtualJoystick.Manager, :reload_mappings, [])
   end
 
   @spec delete_mapping(integer() | Mapping.t()) ::
