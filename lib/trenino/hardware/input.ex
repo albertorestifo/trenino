@@ -26,6 +26,7 @@ defmodule Trenino.Hardware.Input do
   alias Trenino.Hardware.Input.Calibration
   alias Trenino.Hardware.Matrix
   alias Trenino.Train.LeverInputBinding
+  alias Trenino.VirtualJoystick.Mapping
 
   @type t :: %__MODULE__{
           id: integer() | nil,
@@ -40,6 +41,7 @@ defmodule Trenino.Hardware.Input do
           matrix: Matrix.t() | Ecto.Association.NotLoaded.t() | nil,
           calibration: Calibration.t() | Ecto.Association.NotLoaded.t() | nil,
           lever_bindings: [LeverInputBinding.t()] | Ecto.Association.NotLoaded.t(),
+          virtual_joystick_mapping: Mapping.t() | Ecto.Association.NotLoaded.t() | nil,
           inserted_at: DateTime.t() | nil,
           updated_at: DateTime.t() | nil
         }
@@ -55,6 +57,7 @@ defmodule Trenino.Hardware.Input do
     belongs_to :matrix, Matrix
     has_one :calibration, Calibration
     has_many :lever_bindings, LeverInputBinding
+    has_one :virtual_joystick_mapping, Mapping
 
     timestamps(type: :utc_datetime)
   end
