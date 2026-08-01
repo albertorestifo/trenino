@@ -118,6 +118,22 @@ defmodule Trenino.VirtualJoystickTest do
       assert [only_mapping] = VirtualJoystick.list_mappings()
       assert only_mapping.id == first_mapping.id
     end
+
+    test "uses the input id argument instead of a caller-supplied input_id attribute" do
+      analog = analog_input_fixture()
+      button = button_input_fixture()
+
+      assert {:ok, mapping} =
+               VirtualJoystick.put_mapping(analog.id, %{
+                 input_id: button.id,
+                 target_type: :axis,
+                 axis: :x
+               })
+
+      assert mapping.input_id == analog.id
+      assert [only_mapping] = VirtualJoystick.list_mappings()
+      assert only_mapping.input_id == analog.id
+    end
   end
 
   describe "mapping database constraints" do

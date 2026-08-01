@@ -51,6 +51,7 @@ defmodule Trenino.VirtualJoystick do
           {:ok, Mapping.t()} | {:error, :not_found | Ecto.Changeset.t()}
   def put_mapping(input_id, attrs, opts \\ []) do
     _replace? = Keyword.get(opts, :replace?, false)
+    attrs = Map.drop(attrs, [:input_id, "input_id"])
 
     Repo.transaction(fn ->
       input =
