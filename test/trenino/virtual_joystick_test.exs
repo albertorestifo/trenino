@@ -4,6 +4,7 @@ defmodule Trenino.VirtualJoystickTest do
   alias Trenino.VirtualJoystick
   alias Trenino.VirtualJoystick.{Configuration, Mapping}
   alias Trenino.Train, as: TrainContext
+  alias Trenino.Train.LeverInputBinding
 
   describe "get_configuration/0" do
     test "creates the singleton configuration with its defaults" do
@@ -362,6 +363,31 @@ defmodule Trenino.VirtualJoystickTest do
 
       assert {:ok, retained} = VirtualJoystick.get_mapping(mapping.id)
       assert retained.id == mapping.id
+    end
+
+    test "enabling an inactive lever binding mapped to vJoy requires replacement" do
+      input = analog_input_fixture()
+      config = lever_config_fixture("Throttle", "throttle")
+
+      assert {:ok, mapping} =
+               VirtualJoystick.put_mapping(input.id, %{target_type: :axis, axis: :x})
+
+      assert {:ok, _binding} =
+               Repo.insert(
+                 LeverInputBinding.changeset(%LeverInputBinding{}, %{
+                   lever_config_id: config.id,
+                   input_id: input.id,
+                   enabled: false
+                 })
+               )
+
+      assert {:error, :destination_conflict} = TrainContext.set_binding_enabled(config.id, true)
+      assert {:ok, inactive} = TrainContext.get_binding(config.id)
+      assert inactive.enabled == false
+
+      assert {:ok, enabled} = TrainContext.set_binding_enabled(config.id, true, replace?: true)
+      assert enabled.enabled == true
+      assert {:error, :not_found} = VirtualJoystick.get_mapping(mapping.id)
     end
   end
 

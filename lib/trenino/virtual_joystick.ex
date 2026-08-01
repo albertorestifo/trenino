@@ -54,33 +54,36 @@ defmodule Trenino.VirtualJoystick do
     replace? = Keyword.get(opts, :replace?, false)
     attrs = Map.drop(attrs, [:input_id, "input_id"])
 
-    case Repo.transaction(fn ->
-           input =
-             Input
-             |> where([input], input.id == ^input_id)
-             |> preload([:device, :calibration])
-             |> Repo.one()
+    case Repo.transaction(
+           fn ->
+             input =
+               lock_input(input_id)
 
-           if is_nil(input), do: Repo.rollback(:not_found)
+             if is_nil(input), do: Repo.rollback(:not_found)
 
-           mapping = Repo.get_by(Mapping, input_id: input.id)
+             mapping = Repo.get_by(Mapping, input_id: input.id)
 
-           mapping_changeset =
-             (mapping || %Mapping{input_id: input.id})
-             |> Mapping.changeset(attrs)
-             |> Mapping.validate_input_type(input)
+             mapping_changeset =
+               (mapping || %Mapping{input_id: input.id})
+               |> Mapping.changeset(attrs)
+               |> Mapping.validate_input_type(input)
 
-           if mapping_changeset.valid? do
-             replaced = maybe_replace_simulator_bindings(input.id, replace?)
+             if mapping_changeset.valid? do
+               replaced = maybe_replace_simulator_bindings(input.id, replace?)
 
-             case Repo.insert_or_update(mapping_changeset) do
-               {:ok, saved_mapping} -> {Repo.preload(saved_mapping, @mapping_preloads), replaced}
-               {:error, changeset} -> Repo.rollback(changeset)
+               case Repo.insert_or_update(mapping_changeset) do
+                 {:ok, saved_mapping} ->
+                   {Repo.preload(saved_mapping, @mapping_preloads), replaced}
+
+                 {:error, changeset} ->
+                   Repo.rollback(changeset)
+               end
+             else
+               Repo.rollback(mapping_changeset)
              end
-           else
-             Repo.rollback(mapping_changeset)
-           end
-         end) do
+           end,
+           mode: :immediate
+         ) do
       {:ok, {mapping, replaced}} ->
         maybe_notify_replacement(replaced)
         {:ok, mapping}
@@ -101,6 +104,16 @@ defmodule Trenino.VirtualJoystick do
     if simulator_binding_exists?(input_id), do: Repo.rollback(:destination_conflict)
 
     %{lever?: false, button?: false}
+  end
+
+  # SQLite does not support `SELECT ... FOR UPDATE`. The surrounding immediate
+  # transaction acquires its writer lock before this lookup, serializing every
+  # destination change that shares this input.
+  defp lock_input(input_id) do
+    Input
+    |> where([input], input.id == ^input_id)
+    |> preload([:device, :calibration])
+    |> Repo.one()
   end
 
   defp simulator_binding_exists?(input_id) do

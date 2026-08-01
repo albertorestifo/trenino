@@ -14,11 +14,15 @@ defmodule Trenino.VirtualJoystick.Mapper do
   def axis_value(_raw_value, nil, _inverted, _range), do: {:error, :uncalibrated}
 
   def axis_value(raw_value, %Calibration{} = calibration, inverted, {minimum, maximum}) do
-    normalized =
-      Calculator.normalize(raw_value, calibration) / Calculator.total_travel(calibration)
+    case Calculator.total_travel(calibration) do
+      travel when travel > 0 ->
+        normalized = Calculator.normalize(raw_value, calibration) / travel
+        normalized = if inverted, do: 1 - normalized, else: normalized
 
-    normalized = if inverted, do: 1 - normalized, else: normalized
+        {:ok, round(minimum + normalized * (maximum - minimum))}
 
-    {:ok, round(minimum + normalized * (maximum - minimum))}
+      _ ->
+        {:error, :uncalibrated}
+    end
   end
 end

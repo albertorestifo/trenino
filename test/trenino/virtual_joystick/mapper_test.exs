@@ -39,6 +39,12 @@ defmodule Trenino.VirtualJoystick.MapperTest do
       assert {:error, :uncalibrated} = Mapper.axis_value(512, nil, false, {0, 32_768})
     end
 
+    test "returns uncalibrated for a persisted calibration with no travel" do
+      calibration = %Calibration{@calibration | max_value: 0}
+
+      assert {:error, :uncalibrated} = Mapper.axis_value(0, calibration, false, {0, 32_768})
+    end
+
     test "supports discovered vJoy ranges other than the common default" do
       assert {:ok, 7_500} = Mapper.axis_value(768, @calibration, false, {0, 10_000})
     end
