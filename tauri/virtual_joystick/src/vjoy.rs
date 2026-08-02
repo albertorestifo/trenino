@@ -144,7 +144,7 @@ mod windows {
     type Acquire = unsafe extern "C" fn(u32) -> i32;
     type Relinquish = unsafe extern "C" fn(u32);
     type AxisRangeFn = unsafe extern "C" fn(u32, u32, *mut i32) -> i32;
-    type Update = unsafe extern "C" fn(u32, *const JoystickPositionV3) -> i32;
+    type Update = unsafe extern "C" fn(u32, *mut JoystickPositionV3) -> i32;
 
     const _: () = assert!(std::mem::size_of::<JoystickPositionV3>() == 124);
     const _: () = assert!(std::mem::offset_of!(JoystickPositionV3, b_device) == 0);
@@ -263,7 +263,7 @@ mod windows {
             native.buttons = (1..=32).fold(0_u32, |bits, n| {
                 bits | ((report.button(n) as u32) << (n - 1))
             }) as i32;
-            if unsafe { (self.update_fn)(device as u32, &native) != 0 } {
+            if unsafe { (self.update_fn)(device as u32, &mut native) != 0 } {
                 Ok(())
             } else {
                 Err(err("UpdateVJD", "call returned false"))
