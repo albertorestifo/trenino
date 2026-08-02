@@ -1,5 +1,5 @@
 use std::cell::RefCell;
-use std::io::{self, Cursor, Write};
+use std::io::{self, BufRead, Cursor, Read, Write};
 use std::rc::Rc;
 
 use virtual_joystick::protocol::{
@@ -262,6 +262,50 @@ fn busy_device_is_rejected_without_an_acquisition_attempt() {
 }
 
 #[test]
+fn reset_before_hello_returns_not_ready_without_panicking() {
+    let fake = FakeVJoy::default();
+    let mut session = Session::new(fake);
+
+    let response = session
+        .handle_line(r#"{"command":"reset","request_id":51,"device":1}"#)
+        .response;
+
+    assert_eq!(
+        response,
+        Response::Error {
+            code: "not_ready",
+            message: "send hello before updating controls".to_string(),
+            request_id: Some(51),
+        }
+    );
+}
+
+#[test]
+fn axis_range_failure_after_acquire_relinquishes_the_device() {
+    let fake = FakeVJoy::default();
+    fake.state.borrow_mut().axis_range = Err(VJoyError::Sdk {
+        operation: "GetVJDAxisMin/GetVJDAxisMax",
+        message: "call returned false".to_string(),
+    });
+    let state = fake.state.clone();
+    let mut session = Session::new(fake);
+
+    let response = session
+        .handle_line(r#"{"command":"hello","protocol":1}"#)
+        .response;
+
+    assert!(matches!(
+        response,
+        Response::Error {
+            code: "sdk_error",
+            ..
+        }
+    ));
+    assert_eq!(state.borrow().acquire_calls, 1);
+    assert_eq!(state.borrow().relinquish_calls, 1);
+}
+
+#[test]
 fn device_removal_is_translated_and_keeps_the_request_id() {
     let (mut session, state) = ready_session();
     state.borrow_mut().update_error = Some(VJoyError::DeviceRemoved);
@@ -324,6 +368,78 @@ fn malformed_and_oversized_lines_return_errors_then_recover() {
     assert_eq!(lines[2]["event"], "ready");
     assert_eq!(lines[3]["event"], "stopped");
     assert_eq!(output.flushes, 4);
+}
+
+#[test]
+fn chunked_oversized_line_is_drained_then_next_command_is_processed() {
+    let fake = FakeVJoy::default();
+    let input = format!(
+        "{}\n{{\"command\":\"hello\",\"protocol\":{PROTOCOL_VERSION}}}\n{{\"command\":\"shutdown\"}}\n",
+        "x".repeat(MAX_LINE_BYTES + 4096)
+    );
+    let reader = ChunkedReader::new(input.into_bytes(), 37);
+    let mut output = FlushCountingWriter::default();
+
+    serve(reader, &mut output, fake).unwrap();
+
+    let lines: Vec<serde_json::Value> = String::from_utf8(output.bytes)
+        .unwrap()
+        .lines()
+        .map(|line| serde_json::from_str(line).unwrap())
+        .collect();
+    assert_eq!(lines.len(), 3);
+    assert_eq!(lines[0]["code"], "input_too_large");
+    assert_eq!(lines[1]["event"], "ready");
+    assert_eq!(lines[2]["event"], "stopped");
+}
+
+#[test]
+fn oversized_unterminated_line_emits_one_error_at_eof() {
+    let fake = FakeVJoy::default();
+    let reader = ChunkedReader::new(vec![b'x'; MAX_LINE_BYTES + 4096], 29);
+    let mut output = FlushCountingWriter::default();
+
+    serve(reader, &mut output, fake).unwrap();
+
+    let lines: Vec<serde_json::Value> = String::from_utf8(output.bytes)
+        .unwrap()
+        .lines()
+        .map(|line| serde_json::from_str(line).unwrap())
+        .collect();
+    assert_eq!(lines.len(), 1);
+    assert_eq!(lines[0]["code"], "input_too_large");
+}
+
+struct ChunkedReader {
+    cursor: Cursor<Vec<u8>>,
+    chunk_size: usize,
+}
+
+impl ChunkedReader {
+    fn new(bytes: Vec<u8>, chunk_size: usize) -> Self {
+        Self {
+            cursor: Cursor::new(bytes),
+            chunk_size,
+        }
+    }
+}
+
+impl Read for ChunkedReader {
+    fn read(&mut self, buffer: &mut [u8]) -> io::Result<usize> {
+        let limit = buffer.len().min(self.chunk_size);
+        self.cursor.read(&mut buffer[..limit])
+    }
+}
+
+impl BufRead for ChunkedReader {
+    fn fill_buf(&mut self) -> io::Result<&[u8]> {
+        let remaining = self.cursor.fill_buf()?;
+        Ok(&remaining[..remaining.len().min(self.chunk_size)])
+    }
+
+    fn consume(&mut self, amount: usize) {
+        self.cursor.consume(amount);
+    }
 }
 
 #[derive(Default)]

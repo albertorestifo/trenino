@@ -147,8 +147,11 @@ impl<T: VJoy> Session<T> {
                 ..
             } => self.mutate(request_id, |report| report.set_button(button, pressed)),
             Command::Reset { request_id, .. } => {
-                let range = self.range.expect("validated reset needs handshake");
-                self.mutate(request_id, |report| report.reset(range))
+                if let Some(range) = self.range {
+                    self.mutate(request_id, |report| report.reset(range))
+                } else {
+                    self.not_ready(request_id)
+                }
             }
             Command::Shutdown => {
                 if self.acquired {
@@ -183,22 +186,24 @@ impl<T: VJoy> Session<T> {
                     device: DEVICE,
                     request_id: None,
                 },
-                Ok(DeviceStatus::Free | DeviceStatus::Owned) => match self
-                    .vjoy
-                    .acquire(DEVICE)
-                    .and_then(|_| self.vjoy.axis_range(DEVICE, Axis::X))
-                {
-                    Ok(range) => {
-                        self.range = Some(range);
-                        self.report = Some(Report::centered(range));
-                        self.acquired = true;
-                        Response::Ready {
-                            protocol: PROTOCOL_VERSION,
-                            device: DEVICE,
-                            axis_min: range.min,
-                            axis_max: range.max,
+                Ok(DeviceStatus::Free | DeviceStatus::Owned) => match self.vjoy.acquire(DEVICE) {
+                    Ok(()) => match self.vjoy.axis_range(DEVICE, Axis::X) {
+                        Ok(range) => {
+                            self.range = Some(range);
+                            self.report = Some(Report::centered(range));
+                            self.acquired = true;
+                            Response::Ready {
+                                protocol: PROTOCOL_VERSION,
+                                device: DEVICE,
+                                axis_min: range.min,
+                                axis_max: range.max,
+                            }
                         }
-                    }
+                        Err(error) => {
+                            self.vjoy.relinquish(DEVICE);
+                            error_response(error, None)
+                        }
+                    },
                     Err(error) => error_response(error, None),
                 },
                 Err(error) => error_response(error, None),
@@ -218,14 +223,7 @@ impl<T: VJoy> Session<T> {
 
     fn mutate(&mut self, request_id: u64, change: impl FnOnce(&mut Report)) -> HandleResult {
         if !self.acquired {
-            return HandleResult {
-                response: Response::Error {
-                    code: "not_ready",
-                    message: "send hello before updating controls".into(),
-                    request_id: Some(request_id),
-                },
-                shutdown: false,
-            };
+            return self.not_ready(request_id);
         }
         let report = self
             .report
@@ -238,6 +236,17 @@ impl<T: VJoy> Session<T> {
         };
         HandleResult {
             response,
+            shutdown: false,
+        }
+    }
+
+    fn not_ready(&self, request_id: u64) -> HandleResult {
+        HandleResult {
+            response: Response::Error {
+                code: "not_ready",
+                message: "send hello before updating controls".into(),
+                request_id: Some(request_id),
+            },
             shutdown: false,
         }
     }
@@ -316,12 +325,10 @@ pub fn serve<R: BufRead, W: Write, T: VJoy>(
 ) -> io::Result<()> {
     let mut session = Session::new(vjoy);
     loop {
-        let mut bytes = Vec::with_capacity(MAX_LINE_BYTES + 1);
-        let read = input.read_until(b'\n', &mut bytes)?;
-        if read == 0 {
+        let Some(line) = read_bounded_line(&mut input)? else {
             break;
-        }
-        let result = if bytes.len() > MAX_LINE_BYTES {
+        };
+        let result = if line.oversized {
             HandleResult {
                 response: Response::InvalidCommand {
                     code: "input_too_large",
@@ -331,11 +338,9 @@ pub fn serve<R: BufRead, W: Write, T: VJoy>(
                 shutdown: false,
             }
         } else {
-            if bytes.ends_with(b"\n") {
+            let mut bytes = line.bytes;
+            if bytes.ends_with(b"\r") {
                 bytes.pop();
-                if bytes.ends_with(b"\r") {
-                    bytes.pop();
-                }
             }
             match std::str::from_utf8(&bytes) {
                 Ok(line) => session.handle_line(line),
@@ -357,4 +362,43 @@ pub fn serve<R: BufRead, W: Write, T: VJoy>(
         }
     }
     Ok(())
+}
+
+struct BoundedLine {
+    bytes: Vec<u8>,
+    oversized: bool,
+}
+
+fn read_bounded_line<R: BufRead>(input: &mut R) -> io::Result<Option<BoundedLine>> {
+    let mut bytes = Vec::with_capacity(MAX_LINE_BYTES);
+    let mut oversized = false;
+    let mut read_any = false;
+
+    loop {
+        let (consume, newline) = {
+            let available = input.fill_buf()?;
+            if available.is_empty() {
+                return if read_any {
+                    Ok(Some(BoundedLine { bytes, oversized }))
+                } else {
+                    Ok(None)
+                };
+            }
+            read_any = true;
+            let newline_at = available.iter().position(|byte| *byte == b'\n');
+            let content = newline_at.unwrap_or(available.len());
+            let consume = content + usize::from(newline_at.is_some());
+            if !oversized {
+                let remaining = MAX_LINE_BYTES.saturating_sub(bytes.len());
+                let stored = content.min(remaining);
+                bytes.extend_from_slice(&available[..stored]);
+                oversized = stored < content;
+            }
+            (consume, newline_at.is_some())
+        };
+        input.consume(consume);
+        if newline {
+            return Ok(Some(BoundedLine { bytes, oversized }));
+        }
+    }
 }

@@ -103,7 +103,7 @@ impl VJoy for NativeVJoy {
 #[cfg(windows)]
 mod windows {
     use super::*;
-    use libloading::{Library, Symbol};
+    use libloading::Library;
     use std::path::Path;
     #[repr(C)]
     struct JoystickPositionV2 {
@@ -119,21 +119,34 @@ mod windows {
         w_axis_z_rot: i32,
         w_slider: i32,
         w_dial: i32,
-        buttons: u32,
+        w_wheel: i32,
+        w_axis_vx: i32,
+        w_axis_vy: i32,
+        w_axis_vz: i32,
+        w_axis_vbrx: i32,
+        w_axis_vbry: i32,
+        w_axis_vbrz: i32,
+        buttons: i32,
         b_hats: u32,
         b_hats_ex1: u32,
         b_hats_ex2: u32,
         b_hats_ex3: u32,
-        l_buttons_ex1: u32,
-        l_buttons_ex2: u32,
-        l_buttons_ex3: u32,
+        l_buttons_ex1: i32,
+        l_buttons_ex2: i32,
+        l_buttons_ex3: i32,
     }
-    type Enabled = unsafe extern "system" fn() -> bool;
-    type Status = unsafe extern "system" fn(u32) -> i32;
-    type Acquire = unsafe extern "system" fn(u32) -> bool;
-    type Relinquish = unsafe extern "system" fn(u32);
-    type AxisRangeFn = unsafe extern "system" fn(u32, *mut i32, u32) -> bool;
-    type Update = unsafe extern "system" fn(u32, *const JoystickPositionV2) -> bool;
+    type Enabled = unsafe extern "C" fn() -> i32;
+    type Status = unsafe extern "C" fn(u32) -> i32;
+    type Acquire = unsafe extern "C" fn(u32) -> i32;
+    type Relinquish = unsafe extern "C" fn(u32);
+    type AxisRangeFn = unsafe extern "C" fn(u32, u32, *mut i32) -> i32;
+    type Update = unsafe extern "C" fn(u32, *const JoystickPositionV2) -> i32;
+
+    const _: () = assert!(std::mem::size_of::<JoystickPositionV2>() == 108);
+    const _: () = assert!(std::mem::offset_of!(JoystickPositionV2, w_axis_x) == 16);
+    const _: () = assert!(std::mem::offset_of!(JoystickPositionV2, w_wheel) == 48);
+    const _: () = assert!(std::mem::offset_of!(JoystickPositionV2, buttons) == 76);
+    const _: () = assert!(std::mem::offset_of!(JoystickPositionV2, l_buttons_ex1) == 96);
     pub struct NativeVJoy {
         _library: Library,
         enabled_fn: Enabled,
@@ -174,9 +187,7 @@ mod windows {
         name: &[u8],
         operation: &'static str,
     ) -> Result<T, VJoyError> {
-        Ok(*library
-            .get::<Symbol<T>>(name)
-            .map_err(|e| err(operation, e))?)
+        Ok(*library.get::<T>(name).map_err(|e| err(operation, e))?)
     }
     fn err(operation: &'static str, error: impl std::fmt::Display) -> VJoyError {
         VJoyError::Sdk {
@@ -198,7 +209,7 @@ mod windows {
     }
     impl VJoy for NativeVJoy {
         fn enabled(&mut self) -> Result<bool, VJoyError> {
-            Ok(unsafe { (self.enabled_fn)() })
+            Ok(unsafe { (self.enabled_fn)() != 0 })
         }
         fn status(&mut self, device: u8) -> Result<DeviceStatus, VJoyError> {
             Ok(match unsafe { (self.status_fn)(device as u32) } {
@@ -209,7 +220,7 @@ mod windows {
             })
         }
         fn acquire(&mut self, device: u8) -> Result<(), VJoyError> {
-            if unsafe { (self.acquire_fn)(device as u32) } {
+            if unsafe { (self.acquire_fn)(device as u32) != 0 } {
                 Ok(())
             } else {
                 Err(err("AcquireVJD", "call returned false"))
@@ -218,8 +229,8 @@ mod windows {
         fn axis_range(&mut self, device: u8, axis: Axis) -> Result<AxisRange, VJoyError> {
             let (mut min, mut max) = (0, 0);
             if unsafe {
-                (self.min_fn)(device as u32, &mut min, usage(axis))
-                    && (self.max_fn)(device as u32, &mut max, usage(axis))
+                (self.min_fn)(device as u32, usage(axis), &mut min) != 0
+                    && (self.max_fn)(device as u32, usage(axis), &mut max) != 0
             } {
                 Ok(AxisRange { min, max })
             } else {
@@ -240,7 +251,16 @@ mod windows {
                 w_axis_z_rot: report.axis(Axis::Rz),
                 w_slider: report.axis(Axis::Slider1),
                 w_dial: report.axis(Axis::Slider2),
-                buttons: (1..=32).fold(0, |bits, n| bits | ((report.button(n) as u32) << (n - 1))),
+                w_wheel: 0,
+                w_axis_vx: 0,
+                w_axis_vy: 0,
+                w_axis_vz: 0,
+                w_axis_vbrx: 0,
+                w_axis_vbry: 0,
+                w_axis_vbrz: 0,
+                buttons: (1..=32).fold(0_u32, |bits, n| {
+                    bits | ((report.button(n) as u32) << (n - 1))
+                }) as i32,
                 b_hats: 0,
                 b_hats_ex1: 0,
                 b_hats_ex2: 0,
@@ -249,7 +269,7 @@ mod windows {
                 l_buttons_ex2: 0,
                 l_buttons_ex3: 0,
             };
-            if unsafe { (self.update_fn)(device as u32, &native) } {
+            if unsafe { (self.update_fn)(device as u32, &native) != 0 } {
                 Ok(())
             } else {
                 Err(err("UpdateVJD", "call returned false"))
@@ -257,6 +277,23 @@ mod windows {
         }
         fn relinquish(&mut self, device: u8) {
             unsafe { (self.relinquish_fn)(device as u32) }
+        }
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::JoystickPositionV2;
+
+        #[test]
+        fn joystick_position_v2_matches_pinned_vjoy_header_layout() {
+            assert_eq!(std::mem::size_of::<JoystickPositionV2>(), 108);
+            assert_eq!(std::mem::offset_of!(JoystickPositionV2, b_device), 0);
+            assert_eq!(std::mem::offset_of!(JoystickPositionV2, w_axis_x), 16);
+            assert_eq!(std::mem::offset_of!(JoystickPositionV2, w_wheel), 48);
+            assert_eq!(std::mem::offset_of!(JoystickPositionV2, buttons), 76);
+            assert_eq!(std::mem::offset_of!(JoystickPositionV2, b_hats), 80);
+            assert_eq!(std::mem::offset_of!(JoystickPositionV2, l_buttons_ex1), 96);
+            assert_eq!(std::mem::offset_of!(JoystickPositionV2, l_buttons_ex3), 104);
         }
     }
 }
