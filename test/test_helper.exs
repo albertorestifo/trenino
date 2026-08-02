@@ -1,6 +1,8 @@
 # Ensure the application is started before setting up test infrastructure
 {:ok, _} = Application.ensure_all_started(:trenino)
 
+Code.require_file("support/fake_virtual_joystick.exs", __DIR__)
+
 Mimic.copy(Req, type_check: true)
 Mimic.copy(Trenino.Train.Identifier)
 Mimic.copy(Trenino.Simulator.Client)
