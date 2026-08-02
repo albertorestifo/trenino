@@ -106,7 +106,7 @@ mod windows {
     use libloading::Library;
     use std::path::Path;
     #[repr(C)]
-    struct JoystickPositionV2 {
+    struct JoystickPositionV3 {
         b_device: u8,
         w_throttle: i32,
         w_rudder: i32,
@@ -120,12 +120,12 @@ mod windows {
         w_slider: i32,
         w_dial: i32,
         w_wheel: i32,
+        w_accelerator: i32,
+        w_brake: i32,
+        w_clutch: i32,
+        w_steering: i32,
         w_axis_vx: i32,
         w_axis_vy: i32,
-        w_axis_vz: i32,
-        w_axis_vbrx: i32,
-        w_axis_vbry: i32,
-        w_axis_vbrz: i32,
         buttons: i32,
         b_hats: u32,
         b_hats_ex1: u32,
@@ -134,19 +134,29 @@ mod windows {
         l_buttons_ex1: i32,
         l_buttons_ex2: i32,
         l_buttons_ex3: i32,
+        w_axis_vz: i32,
+        w_axis_vbrx: i32,
+        w_axis_vbry: i32,
+        w_axis_vbrz: i32,
     }
     type Enabled = unsafe extern "C" fn() -> i32;
     type Status = unsafe extern "C" fn(u32) -> i32;
     type Acquire = unsafe extern "C" fn(u32) -> i32;
     type Relinquish = unsafe extern "C" fn(u32);
     type AxisRangeFn = unsafe extern "C" fn(u32, u32, *mut i32) -> i32;
-    type Update = unsafe extern "C" fn(u32, *const JoystickPositionV2) -> i32;
+    type Update = unsafe extern "C" fn(u32, *const JoystickPositionV3) -> i32;
 
-    const _: () = assert!(std::mem::size_of::<JoystickPositionV2>() == 108);
-    const _: () = assert!(std::mem::offset_of!(JoystickPositionV2, w_axis_x) == 16);
-    const _: () = assert!(std::mem::offset_of!(JoystickPositionV2, w_wheel) == 48);
-    const _: () = assert!(std::mem::offset_of!(JoystickPositionV2, buttons) == 76);
-    const _: () = assert!(std::mem::offset_of!(JoystickPositionV2, l_buttons_ex1) == 96);
+    const _: () = assert!(std::mem::size_of::<JoystickPositionV3>() == 124);
+    const _: () = assert!(std::mem::offset_of!(JoystickPositionV3, b_device) == 0);
+    const _: () = assert!(std::mem::offset_of!(JoystickPositionV3, w_axis_x) == 16);
+    const _: () = assert!(std::mem::offset_of!(JoystickPositionV3, w_wheel) == 48);
+    const _: () = assert!(std::mem::offset_of!(JoystickPositionV3, w_accelerator) == 52);
+    const _: () = assert!(std::mem::offset_of!(JoystickPositionV3, buttons) == 76);
+    const _: () = assert!(std::mem::offset_of!(JoystickPositionV3, b_hats) == 80);
+    const _: () = assert!(std::mem::offset_of!(JoystickPositionV3, l_buttons_ex1) == 96);
+    const _: () = assert!(std::mem::offset_of!(JoystickPositionV3, l_buttons_ex3) == 104);
+    const _: () = assert!(std::mem::offset_of!(JoystickPositionV3, w_axis_vz) == 108);
+    const _: () = assert!(std::mem::offset_of!(JoystickPositionV3, w_axis_vbrz) == 120);
     pub struct NativeVJoy {
         _library: Library,
         enabled_fn: Enabled,
@@ -238,37 +248,21 @@ mod windows {
             }
         }
         fn update(&mut self, device: u8, report: &Report) -> Result<(), VJoyError> {
-            let native = JoystickPositionV2 {
-                b_device: device,
-                w_throttle: 0,
-                w_rudder: 0,
-                w_aileron: 0,
-                w_axis_x: report.axis(Axis::X),
-                w_axis_y: report.axis(Axis::Y),
-                w_axis_z: report.axis(Axis::Z),
-                w_axis_x_rot: report.axis(Axis::Rx),
-                w_axis_y_rot: report.axis(Axis::Ry),
-                w_axis_z_rot: report.axis(Axis::Rz),
-                w_slider: report.axis(Axis::Slider1),
-                w_dial: report.axis(Axis::Slider2),
-                w_wheel: 0,
-                w_axis_vx: 0,
-                w_axis_vy: 0,
-                w_axis_vz: 0,
-                w_axis_vbrx: 0,
-                w_axis_vbry: 0,
-                w_axis_vbrz: 0,
-                buttons: (1..=32).fold(0_u32, |bits, n| {
-                    bits | ((report.button(n) as u32) << (n - 1))
-                }) as i32,
-                b_hats: 0,
-                b_hats_ex1: 0,
-                b_hats_ex2: 0,
-                b_hats_ex3: 0,
-                l_buttons_ex1: 0,
-                l_buttons_ex2: 0,
-                l_buttons_ex3: 0,
-            };
+            // The pinned SDK selects JOYSTICK API v3. Zero every unused field so the
+            // complete native report cannot carry indeterminate axis, hat, or button data.
+            let mut native: JoystickPositionV3 = unsafe { std::mem::zeroed() };
+            native.b_device = device;
+            native.w_axis_x = report.axis(Axis::X);
+            native.w_axis_y = report.axis(Axis::Y);
+            native.w_axis_z = report.axis(Axis::Z);
+            native.w_axis_x_rot = report.axis(Axis::Rx);
+            native.w_axis_y_rot = report.axis(Axis::Ry);
+            native.w_axis_z_rot = report.axis(Axis::Rz);
+            native.w_slider = report.axis(Axis::Slider1);
+            native.w_dial = report.axis(Axis::Slider2);
+            native.buttons = (1..=32).fold(0_u32, |bits, n| {
+                bits | ((report.button(n) as u32) << (n - 1))
+            }) as i32;
             if unsafe { (self.update_fn)(device as u32, &native) != 0 } {
                 Ok(())
             } else {
@@ -282,18 +276,23 @@ mod windows {
 
     #[cfg(test)]
     mod tests {
-        use super::JoystickPositionV2;
+        use super::JoystickPositionV3;
+
+        const _: () = assert!(std::mem::size_of::<JoystickPositionV3>() == 124);
 
         #[test]
-        fn joystick_position_v2_matches_pinned_vjoy_header_layout() {
-            assert_eq!(std::mem::size_of::<JoystickPositionV2>(), 108);
-            assert_eq!(std::mem::offset_of!(JoystickPositionV2, b_device), 0);
-            assert_eq!(std::mem::offset_of!(JoystickPositionV2, w_axis_x), 16);
-            assert_eq!(std::mem::offset_of!(JoystickPositionV2, w_wheel), 48);
-            assert_eq!(std::mem::offset_of!(JoystickPositionV2, buttons), 76);
-            assert_eq!(std::mem::offset_of!(JoystickPositionV2, b_hats), 80);
-            assert_eq!(std::mem::offset_of!(JoystickPositionV2, l_buttons_ex1), 96);
-            assert_eq!(std::mem::offset_of!(JoystickPositionV2, l_buttons_ex3), 104);
+        fn joystick_position_v3_matches_pinned_vjoy_header_layout() {
+            assert_eq!(std::mem::size_of::<JoystickPositionV3>(), 124);
+            assert_eq!(std::mem::offset_of!(JoystickPositionV3, b_device), 0);
+            assert_eq!(std::mem::offset_of!(JoystickPositionV3, w_axis_x), 16);
+            assert_eq!(std::mem::offset_of!(JoystickPositionV3, w_wheel), 48);
+            assert_eq!(std::mem::offset_of!(JoystickPositionV3, w_accelerator), 52);
+            assert_eq!(std::mem::offset_of!(JoystickPositionV3, buttons), 76);
+            assert_eq!(std::mem::offset_of!(JoystickPositionV3, b_hats), 80);
+            assert_eq!(std::mem::offset_of!(JoystickPositionV3, l_buttons_ex1), 96);
+            assert_eq!(std::mem::offset_of!(JoystickPositionV3, l_buttons_ex3), 104);
+            assert_eq!(std::mem::offset_of!(JoystickPositionV3, w_axis_vz), 108);
+            assert_eq!(std::mem::offset_of!(JoystickPositionV3, w_axis_vbrz), 120);
         }
     }
 }
