@@ -77,7 +77,7 @@ pub struct NativeVJoy;
 #[cfg(not(windows))]
 impl NativeVJoy {
     pub fn load() -> Result<Self, VJoyError> {
-        Err(VJoyError::UnsupportedPlatform)
+        Ok(Self)
     }
 }
 #[cfg(not(windows))]
