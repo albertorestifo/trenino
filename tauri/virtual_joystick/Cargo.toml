@@ -1,0 +1,25 @@
+[package]
+name = "virtual_joystick"
+version = "0.1.0"
+edition = "2021"
+description = "Persistent vJoy feeder sidecar for Trenino"
+authors = ["Alberto Restifo"]
+license = "CC-BY-NC-4.0"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[target.'cfg(windows)'.dependencies]
+libloading = "0.8"
+
+[[bin]]
+name = "virtual_joystick"
+path = "src/main.rs"
+
+[profile.release]
+panic = "abort"
+codegen-units = 1
+lto = true
+opt-level = "s"
+strip = true
