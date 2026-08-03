@@ -69,13 +69,22 @@ defmodule Trenino.VirtualJoystick.Configurator.SystemAdapter do
   @doc false
   def status(timeout_ms, operation)
       when is_integer(timeout_ms) and timeout_ms >= 0 and is_function(operation, 0) do
-    case bounded_operation(operation, timeout_ms) do
-      status
-      when status in [:driver_missing, :device_missing, :compatible, :incompatible, :busy] ->
-        status
+    deadline = System.monotonic_time(:millisecond) + timeout_ms
+    Process.put(:virtual_joystick_status_deadline, deadline)
 
-      _ ->
-        :driver_missing
+    try do
+      result = operation.()
+
+      case {result, System.monotonic_time(:millisecond) <= deadline} do
+        {status, true}
+        when status in [:driver_missing, :device_missing, :compatible, :incompatible, :busy] ->
+          status
+
+        _ ->
+          :driver_missing
+      end
+    after
+      Process.delete(:virtual_joystick_status_deadline)
     end
   end
 
@@ -127,6 +136,31 @@ defmodule Trenino.VirtualJoystick.Configurator.SystemAdapter do
   def monotonic_time, do: System.monotonic_time(:millisecond)
 
   @doc false
+  def run_executable(path, arguments, timeout)
+      when is_binary(path) and is_list(arguments) and
+             (timeout == :infinity or (is_integer(timeout) and timeout >= 0)) do
+    port =
+      Port.open({:spawn_executable, path}, [
+        :binary,
+        :stream,
+        :exit_status,
+        :use_stdio,
+        :stderr_to_stdout,
+        args: arguments
+      ])
+
+    pid = port |> Port.info(:os_pid) |> elem(1)
+    collect_command(port, pid, timeout, System.monotonic_time(:millisecond), "")
+  rescue
+    _ -> {:error, :launch_failed}
+  end
+
+  @doc false
+  def run_status_executable(path, arguments) do
+    run_executable(path, arguments, remaining_status_budget())
+  end
+
+  @doc false
   def trusted_file?(path, locations, reparse_probe \\ &native_reparse_point?/1)
 
   def trusted_file?(path, locations, reparse_probe)
@@ -146,20 +180,103 @@ defmodule Trenino.VirtualJoystick.Configurator.SystemAdapter do
 
   defp command(arguments) do
     if File.regular?(@powershell) do
-      System.cmd(@powershell, arguments, stderr_to_stdout: true)
+      case run_executable(@powershell, arguments, remaining_status_budget()) do
+        {:ok, output, status} -> {output, status}
+        {:error, _reason} -> {"", 1}
+      end
     else
       {"", 1}
     end
   end
 
-  defp bounded_operation(_operation, 0), do: :timeout
+  defp remaining_status_budget do
+    case Process.get(:virtual_joystick_status_deadline) do
+      nil -> :infinity
+      deadline -> max(deadline - System.monotonic_time(:millisecond), 0)
+    end
+  end
 
-  defp bounded_operation(operation, timeout_ms) do
-    task = Task.async(operation)
+  defp collect_command(port, pid, timeout, started, output) do
+    receive do
+      {^port, {:data, data}} ->
+        collect_command(port, pid, timeout, started, output <> data)
 
-    case Task.yield(task, timeout_ms) || Task.shutdown(task, :brutal_kill) do
-      {:ok, result} -> result
-      _ -> :timeout
+      {^port, {:exit_status, status}} ->
+        {:ok, output, status}
+    after
+      command_remaining(timeout, started) ->
+        terminate_and_reap(port, pid)
+        {:error, {:timeout, pid, output}}
+    end
+  end
+
+  defp command_remaining(:infinity, _started), do: :infinity
+
+  defp command_remaining(timeout, started) do
+    max(timeout - (System.monotonic_time(:millisecond) - started), 0)
+  end
+
+  defp terminate_and_reap(port, pid) do
+    if Port.info(port, :os_pid) == {:os_pid, pid}, do: terminate_process_tree(pid, :term)
+
+    unless await_exit(port, 500) do
+      if Port.info(port, :os_pid) == {:os_pid, pid}, do: terminate_process_tree(pid, :kill)
+      await_exit(port, 500)
+    end
+
+    if Port.info(port), do: Port.close(port)
+    :ok
+  end
+
+  defp terminate_process_tree(pid, signal) when is_integer(pid) and pid > 0 do
+    case :os.type() do
+      {:win32, _} -> terminate_windows_tree(pid)
+      {:unix, _} -> terminate_unix_tree(pid, signal)
+    end
+  end
+
+  defp terminate_windows_tree(pid) do
+    taskkill = ~S(C:\Windows\System32\taskkill.exe)
+
+    if File.regular?(taskkill) do
+      control_process(taskkill, ["/PID", Integer.to_string(pid), "/T", "/F"])
+    end
+  end
+
+  defp terminate_unix_tree(pid, signal) do
+    signal_arg = if signal == :kill, do: "-KILL", else: "-TERM"
+
+    if File.regular?("/usr/bin/pkill") do
+      control_process("/usr/bin/pkill", [signal_arg, "-P", Integer.to_string(pid)])
+    end
+
+    control_process("/bin/kill", [signal_arg, Integer.to_string(pid)])
+  end
+
+  defp control_process(path, arguments) do
+    port =
+      Port.open({:spawn_executable, path}, [
+        :binary,
+        :stream,
+        :exit_status,
+        :use_stdio,
+        :stderr_to_stdout,
+        args: arguments
+      ])
+
+    await_exit(port, 2_000)
+    if Port.info(port), do: Port.close(port)
+    :ok
+  rescue
+    _ -> :ok
+  end
+
+  defp await_exit(port, timeout) do
+    receive do
+      {^port, {:exit_status, _status}} -> true
+      {^port, {:data, _data}} -> await_exit(port, timeout)
+    after
+      timeout -> false
     end
   end
 

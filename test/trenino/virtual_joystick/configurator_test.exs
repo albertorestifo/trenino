@@ -269,8 +269,12 @@ defmodule Trenino.VirtualJoystick.ConfiguratorTest do
     File.write!(candidate, "test")
     on_exit(fn -> File.rm_rf!(anchor) end)
 
+    shell = System.find_executable("sh")
+
     slow_reparse_probe = fn _path ->
-      Process.sleep(150)
+      assert {:error, {:timeout, _pid, _output}} =
+               SystemAdapter.run_status_executable(shell, ["-c", "sleep 30"])
+
       false
     end
 
@@ -283,6 +287,30 @@ defmodule Trenino.VirtualJoystick.ConfiguratorTest do
     started = System.monotonic_time(:millisecond)
     assert SystemAdapter.status(40, operation) == :driver_missing
     assert System.monotonic_time(:millisecond) - started < 140
+  end
+
+  test "a timed out external command is terminated and reaped" do
+    if match?({:unix, _}, :os.type()) do
+      shell = System.find_executable("sh")
+
+      assert {:error, {:timeout, pid, output}} =
+               SystemAdapter.run_executable(
+                 shell,
+                 ["-c", "sleep 30 & child=$!; echo $child; wait"],
+                 30
+               )
+
+      child_pid = output |> String.trim() |> String.to_integer()
+
+      for terminated_pid <- [pid, child_pid] do
+        {_output, status} =
+          System.cmd("/bin/kill", ["-0", Integer.to_string(terminated_pid)],
+            stderr_to_stdout: true
+          )
+
+        assert status != 0
+      end
+    end
   end
 
   test "create refuses incompatible and busy devices without elevation", %{agent: agent} do
