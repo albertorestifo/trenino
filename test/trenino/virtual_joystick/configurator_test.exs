@@ -238,6 +238,53 @@ defmodule Trenino.VirtualJoystick.ConfiguratorTest do
     refute SystemAdapter.trusted_file?(candidate, [root], reparse_probe)
   end
 
+  test "trusted validation starts above a linked packaged resource parent" do
+    anchor = Path.join(System.tmp_dir!(), "trenino-anchor-#{System.unique_integer([:positive])}")
+
+    outside =
+      Path.join(System.tmp_dir!(), "trenino-parent-outside-#{System.unique_integer([:positive])}")
+
+    File.mkdir_p!(Path.join(anchor, "app"))
+    File.mkdir_p!(Path.join(outside, "resources"))
+    candidate = Path.join([outside, "resources", "vJoyConfig.exe"])
+    File.write!(candidate, "test")
+    File.ln_s!(outside, Path.join([anchor, "app", "priv"]))
+
+    on_exit(fn ->
+      File.rm_rf!(anchor)
+      File.rm_rf!(outside)
+    end)
+
+    escaped = Path.join([anchor, "app", "priv", "resources", "vJoyConfig.exe"])
+    declared_root = Path.join([anchor, "app", "priv", "resources"])
+    refute SystemAdapter.trusted_file?(escaped, [{anchor, declared_root}])
+  end
+
+  test "the status deadline includes a slow native reparse probe" do
+    anchor =
+      Path.join(System.tmp_dir!(), "trenino-slow-probe-#{System.unique_integer([:positive])}")
+
+    File.mkdir_p!(anchor)
+    candidate = Path.join(anchor, "vJoyInterface.dll")
+    File.write!(candidate, "test")
+    on_exit(fn -> File.rm_rf!(anchor) end)
+
+    slow_reparse_probe = fn _path ->
+      Process.sleep(150)
+      false
+    end
+
+    operation = fn ->
+      if SystemAdapter.trusted_file?(candidate, [anchor], slow_reparse_probe),
+        do: :compatible,
+        else: :driver_missing
+    end
+
+    started = System.monotonic_time(:millisecond)
+    assert SystemAdapter.status(40, operation) == :driver_missing
+    assert System.monotonic_time(:millisecond) - started < 140
+  end
+
   test "create refuses incompatible and busy devices without elevation", %{agent: agent} do
     for status <- [:incompatible, :busy] do
       Agent.update(agent, &%{&1 | statuses: [status], last_status: status, events: []})

@@ -63,12 +63,26 @@ defmodule Trenino.VirtualJoystick.Configurator.SystemAdapter do
   def status, do: status(5_000)
 
   def status(timeout_ms) when is_integer(timeout_ms) and timeout_ms >= 0 do
+    status(timeout_ms, &do_status/0)
+  end
+
+  @doc false
+  def status(timeout_ms, operation)
+      when is_integer(timeout_ms) and timeout_ms >= 0 and is_function(operation, 0) do
+    case bounded_operation(operation, timeout_ms) do
+      status
+      when status in [:driver_missing, :device_missing, :compatible, :incompatible, :busy] ->
+        status
+
+      _ ->
+        :driver_missing
+    end
+  end
+
+  defp do_status do
     case interface_directory() do
       {:ok, dll_directory} ->
-        case bounded_command(
-               ["-NoProfile", "-NonInteractive", "-Command", @status_script, dll_directory],
-               timeout_ms
-             ) do
+        case command(["-NoProfile", "-NonInteractive", "-Command", @status_script, dll_directory]) do
           {output, 0} -> parse_status(output)
           _ -> :driver_missing
         end
@@ -79,8 +93,8 @@ defmodule Trenino.VirtualJoystick.Configurator.SystemAdapter do
   end
 
   def configurator_path do
-    trusted_roots()
-    |> Enum.map(&Path.join(&1, "vJoyConfig.exe"))
+    trusted_locations()
+    |> Enum.map(fn {_anchor, root} -> Path.join(root, "vJoyConfig.exe") end)
     |> Enum.find(&trusted_file?/1)
     |> case do
       nil -> {:error, :configurator_not_found}
@@ -113,18 +127,18 @@ defmodule Trenino.VirtualJoystick.Configurator.SystemAdapter do
   def monotonic_time, do: System.monotonic_time(:millisecond)
 
   @doc false
-  def trusted_file?(path, roots, reparse_probe \\ &native_reparse_point?/1)
+  def trusted_file?(path, locations, reparse_probe \\ &native_reparse_point?/1)
 
-  def trusted_file?(path, roots, reparse_probe)
-      when is_binary(path) and is_list(roots) and is_function(reparse_probe, 1) do
+  def trusted_file?(path, locations, reparse_probe)
+      when is_binary(path) and is_list(locations) and is_function(reparse_probe, 1) do
     expanded = Path.expand(path)
 
     regular_file?(expanded) and
-      Enum.any?(roots, fn root ->
-        root = Path.expand(root)
+      Enum.any?(locations, fn location ->
+        {anchor, root} = normalize_location(location)
 
-        contained?(expanded, root) and
-          root
+        contained_or_same?(root, anchor) and contained?(expanded, root) and
+          anchor
           |> path_components_to(expanded)
           |> Enum.all?(&(not link_or_reparse?(&1, reparse_probe)))
       end)
@@ -138,19 +152,19 @@ defmodule Trenino.VirtualJoystick.Configurator.SystemAdapter do
     end
   end
 
-  defp bounded_command(_arguments, 0), do: {"", 1}
+  defp bounded_operation(_operation, 0), do: :timeout
 
-  defp bounded_command(arguments, timeout_ms) do
-    task = Task.async(fn -> command(arguments) end)
+  defp bounded_operation(operation, timeout_ms) do
+    task = Task.async(operation)
 
     case Task.yield(task, timeout_ms) || Task.shutdown(task, :brutal_kill) do
       {:ok, result} -> result
-      _ -> {"", 1}
+      _ -> :timeout
     end
   end
 
   defp trusted_file?(path) do
-    trusted_file?(path, trusted_roots())
+    trusted_file?(path, trusted_locations())
   end
 
   defp regular_file?(path) do
@@ -160,6 +174,15 @@ defmodule Trenino.VirtualJoystick.Configurator.SystemAdapter do
   defp contained?(path, root) do
     relative = Path.relative_to(path, root)
     relative != path and relative != ".." and not String.starts_with?(relative, "../")
+  end
+
+  defp contained_or_same?(path, root), do: path == root or contained?(path, root)
+
+  defp normalize_location({anchor, root}), do: {Path.expand(anchor), Path.expand(root)}
+
+  defp normalize_location(root) when is_binary(root) do
+    expanded = Path.expand(root)
+    {expanded, expanded}
   end
 
   defp path_components_to(root, path) do
@@ -190,8 +213,8 @@ defmodule Trenino.VirtualJoystick.Configurator.SystemAdapter do
   end
 
   defp interface_directory do
-    trusted_roots()
-    |> Enum.map(&Path.join(&1, "vJoyInterface.dll"))
+    trusted_locations()
+    |> Enum.map(fn {_anchor, root} -> Path.join(root, "vJoyInterface.dll") end)
     |> Enum.find(&trusted_file?/1)
     |> case do
       nil -> {:error, :interface_not_found}
@@ -199,7 +222,7 @@ defmodule Trenino.VirtualJoystick.Configurator.SystemAdapter do
     end
   end
 
-  defp trusted_roots do
+  defp trusted_locations do
     app_dir = Application.app_dir(:trenino)
 
     [
@@ -209,6 +232,7 @@ defmodule Trenino.VirtualJoystick.Configurator.SystemAdapter do
     ]
     |> Enum.map(&Path.expand/1)
     |> Enum.uniq()
+    |> Enum.map(&{Path.expand(app_dir), &1})
   end
 
   defp quote_argument(argument), do: ~s("#{String.replace(argument, "\"", "\\\"")}")
