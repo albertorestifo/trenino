@@ -2,6 +2,7 @@ defmodule Trenino.VirtualJoystick.ConfiguratorTest do
   use ExUnit.Case, async: false
 
   alias Trenino.VirtualJoystick.Configurator
+  alias Trenino.VirtualJoystick.Configurator.SystemAdapter
 
   defmodule FakePlatform do
     def windows?, do: Application.fetch_env!(:trenino, :virtual_joystick_test_windows)
@@ -17,18 +18,47 @@ defmodule Trenino.VirtualJoystick.ConfiguratorTest do
       end)
     end
 
+    def status(timeout) do
+      update(fn state ->
+        duration = List.first(state.status_durations) || 0
+        durations = if state.status_durations == [], do: [], else: tl(state.status_durations)
+
+        {probed_status, statuses, last_status} = next_status(state)
+        status = if duration > timeout, do: :driver_missing, else: probed_status
+
+        {status,
+         %{
+           state
+           | statuses: statuses,
+             last_status: last_status,
+             status_durations: durations,
+             now_ms: state.now_ms + min(duration, timeout),
+             last_status_timeout: timeout
+         }}
+      end)
+    end
+
     def configurator_path, do: get().configurator_path
 
     def elevate(path, arguments),
       do: update(fn state -> {state.result, record(state, {:elevate, path, arguments})} end)
 
     def sleep(milliseconds),
-      do: update(fn state -> {:ok, record(state, {:sleep, milliseconds})} end)
+      do:
+        update(fn state ->
+          {:ok,
+           state |> Map.update!(:now_ms, &(&1 + milliseconds)) |> record({:sleep, milliseconds})}
+        end)
+
+    def monotonic_time, do: get().now_ms
 
     defp get, do: Agent.get(agent(), & &1)
     defp update(fun), do: Agent.get_and_update(agent(), fun)
     defp agent, do: Application.fetch_env!(:trenino, :virtual_joystick_test_agent)
     defp record(state, event), do: Map.update!(state, :events, &(&1 ++ [event]))
+
+    defp next_status(%{statuses: [status | rest]}), do: {status, rest, status}
+    defp next_status(%{statuses: [], last_status: status}), do: {status, [], status}
   end
 
   setup do
@@ -39,7 +69,10 @@ defmodule Trenino.VirtualJoystick.ConfiguratorTest do
           last_status: :compatible,
           configurator_path: {:ok, ~S(C:\Program Files\Trenino\resources\vJoyConfig.exe)},
           result: {:ok, 0},
-          events: []
+          events: [],
+          now_ms: 0,
+          status_durations: [],
+          last_status_timeout: nil
         }
       end)
 
@@ -160,6 +193,49 @@ defmodule Trenino.VirtualJoystick.ConfiguratorTest do
     Agent.update(agent, &%{&1 | statuses: [], last_status: :device_missing})
     assert Configurator.wait_for(:compatible, 200) == {:error, :timeout}
     assert Agent.get(agent, & &1.events) == [{:sleep, 100}, {:sleep, 100}]
+  end
+
+  test "slow status probes consume the monotonic deadline", %{agent: agent} do
+    Agent.update(
+      agent,
+      &%{&1 | statuses: [:compatible], status_durations: [150], now_ms: 10, events: []}
+    )
+
+    assert Configurator.wait_for(:compatible, 100) == {:error, :timeout}
+    assert Agent.get(agent, & &1.events) == []
+    assert Agent.get(agent, & &1.last_status_timeout) == 100
+  end
+
+  test "trusted path validation rejects an intermediate symlink escape" do
+    root = Path.join(System.tmp_dir!(), "trenino-trusted-#{System.unique_integer([:positive])}")
+
+    outside =
+      Path.join(System.tmp_dir!(), "trenino-outside-#{System.unique_integer([:positive])}")
+
+    File.mkdir_p!(root)
+    File.mkdir_p!(outside)
+    File.write!(Path.join(outside, "vJoyConfig.exe"), "test")
+    File.ln_s!(outside, Path.join(root, "resources"))
+
+    on_exit(fn ->
+      File.rm_rf!(root)
+      File.rm_rf!(outside)
+    end)
+
+    escaped = Path.join([root, "resources", "vJoyConfig.exe"])
+    refute SystemAdapter.trusted_file?(escaped, [root])
+  end
+
+  test "trusted path validation rejects a Windows-style reparse component" do
+    root = Path.join(System.tmp_dir!(), "trenino-root-#{System.unique_integer([:positive])}")
+    resources = Path.join(root, "resources")
+    File.mkdir_p!(resources)
+    candidate = Path.join(resources, "vJoyConfig.exe")
+    File.write!(candidate, "test")
+    on_exit(fn -> File.rm_rf!(root) end)
+
+    reparse_probe = &(&1 == resources)
+    refute SystemAdapter.trusted_file?(candidate, [root], reparse_probe)
   end
 
   test "create refuses incompatible and busy devices without elevation", %{agent: agent} do

@@ -52,10 +52,23 @@ defmodule Trenino.VirtualJoystick.Configurator.SystemAdapter do
   } catch { 'driver_missing' }
   """
 
-  def status do
+  @reparse_script """
+  try {
+    $item = Get-Item -LiteralPath $args[0] -Force -ErrorAction Stop
+    if (($item.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) { exit 10 }
+    exit 0
+  } catch { exit 11 }
+  """
+
+  def status, do: status(5_000)
+
+  def status(timeout_ms) when is_integer(timeout_ms) and timeout_ms >= 0 do
     case interface_directory() do
       {:ok, dll_directory} ->
-        case command(["-NoProfile", "-NonInteractive", "-Command", @status_script, dll_directory]) do
+        case bounded_command(
+               ["-NoProfile", "-NonInteractive", "-Command", @status_script, dll_directory],
+               timeout_ms
+             ) do
           {output, 0} -> parse_status(output)
           _ -> :driver_missing
         end
@@ -76,7 +89,7 @@ defmodule Trenino.VirtualJoystick.Configurator.SystemAdapter do
   end
 
   def elevate(path, arguments) when is_list(arguments) do
-    if trusted_file?(path) do
+    if String.downcase(Path.basename(path)) == "vjoyconfig.exe" and trusted_file?(path) do
       quoted_arguments = Enum.map_join(arguments, " ", &quote_argument/1)
 
       case command([
@@ -97,6 +110,25 @@ defmodule Trenino.VirtualJoystick.Configurator.SystemAdapter do
   end
 
   def sleep(milliseconds), do: Process.sleep(milliseconds)
+  def monotonic_time, do: System.monotonic_time(:millisecond)
+
+  @doc false
+  def trusted_file?(path, roots, reparse_probe \\ &native_reparse_point?/1)
+
+  def trusted_file?(path, roots, reparse_probe)
+      when is_binary(path) and is_list(roots) and is_function(reparse_probe, 1) do
+    expanded = Path.expand(path)
+
+    regular_file?(expanded) and
+      Enum.any?(roots, fn root ->
+        root = Path.expand(root)
+
+        contained?(expanded, root) and
+          root
+          |> path_components_to(expanded)
+          |> Enum.all?(&(not link_or_reparse?(&1, reparse_probe)))
+      end)
+  end
 
   defp command(arguments) do
     if File.regular?(@powershell) do
@@ -106,18 +138,55 @@ defmodule Trenino.VirtualJoystick.Configurator.SystemAdapter do
     end
   end
 
-  defp trusted_file?(path) do
-    expanded = Path.expand(path)
+  defp bounded_command(_arguments, 0), do: {"", 1}
 
-    regular_file?(expanded) and
-      Enum.any?(trusted_roots(), fn root ->
-        relative = Path.relative_to(expanded, root)
-        relative != expanded and relative != ".." and not String.starts_with?(relative, "../")
-      end)
+  defp bounded_command(arguments, timeout_ms) do
+    task = Task.async(fn -> command(arguments) end)
+
+    case Task.yield(task, timeout_ms) || Task.shutdown(task, :brutal_kill) do
+      {:ok, result} -> result
+      _ -> {"", 1}
+    end
+  end
+
+  defp trusted_file?(path) do
+    trusted_file?(path, trusted_roots())
   end
 
   defp regular_file?(path) do
     match?({:ok, %File.Stat{type: :regular}}, File.lstat(path))
+  end
+
+  defp contained?(path, root) do
+    relative = Path.relative_to(path, root)
+    relative != path and relative != ".." and not String.starts_with?(relative, "../")
+  end
+
+  defp path_components_to(root, path) do
+    relative = Path.relative_to(path, root)
+
+    relative
+    |> Path.split()
+    |> Enum.scan(root, &Path.join(&2, &1))
+    |> then(&[root | &1])
+  end
+
+  defp link_or_reparse?(path, reparse_probe) do
+    match?({:ok, %File.Stat{type: :symlink}}, File.lstat(path)) or
+      match?({:ok, _target}, :file.read_link_all(String.to_charlist(path))) or
+      reparse_probe.(path)
+  end
+
+  defp native_reparse_point?(path) do
+    if match?({:win32, _}, :os.type()) do
+      case command(["-NoProfile", "-NonInteractive", "-Command", @reparse_script, path]) do
+        {_output, 0} -> false
+        {_output, 10} -> true
+        _ -> true
+      end
+    else
+      false
+    end
   end
 
   defp interface_directory do

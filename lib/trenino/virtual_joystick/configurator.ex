@@ -51,20 +51,26 @@ defmodule Trenino.VirtualJoystick.Configurator do
 
   def wait_for(expected, timeout_ms)
       when expected in @statuses and is_integer(timeout_ms) and timeout_ms >= 0 do
-    poll(expected, timeout_ms)
+    deadline = adapter().monotonic_time() + timeout_ms
+    poll(expected, deadline)
   end
 
-  defp poll(expected, remaining) do
-    if checked_status() == expected do
-      :ok
-    else
-      if remaining <= 0 do
+  defp poll(expected, deadline) do
+    remaining = max(deadline - adapter().monotonic_time(), 0)
+    current = checked_status(remaining)
+    after_probe = adapter().monotonic_time()
+
+    cond do
+      current == expected and after_probe <= deadline ->
+        :ok
+
+      after_probe >= deadline ->
         {:error, :timeout}
-      else
-        interval = min(@poll_interval, remaining)
+
+      true ->
+        interval = min(@poll_interval, deadline - after_probe)
         :ok = adapter().sleep(interval)
-        poll(expected, remaining - interval)
-      end
+        poll(expected, deadline)
     end
   end
 
@@ -88,6 +94,18 @@ defmodule Trenino.VirtualJoystick.Configurator do
 
   defp checked_status do
     case adapter().status() do
+      status when status in @statuses -> status
+      _ -> :driver_missing
+    end
+  end
+
+  defp checked_status(timeout) do
+    result =
+      if function_exported?(adapter(), :status, 1),
+        do: adapter().status(timeout),
+        else: adapter().status()
+
+    case result do
       status when status in @statuses -> status
       _ -> :driver_missing
     end
