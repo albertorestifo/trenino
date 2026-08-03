@@ -1,12 +1,12 @@
 defmodule Trenino.Test.FakeVirtualJoystick do
   @moduledoc false
 
-  def open(owner, path, _opts) do
+  def open(owner, path, opts) do
     handle = make_ref()
 
     send(
       Application.fetch_env!(:trenino, :virtual_joystick_fake_test),
-      {:opened, owner, handle, path}
+      {:opened, owner, handle, path, opts}
     )
 
     {:ok, handle}

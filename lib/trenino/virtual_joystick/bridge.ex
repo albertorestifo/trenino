@@ -31,8 +31,8 @@ defmodule Trenino.VirtualJoystick.Bridge do
   def binary_name,
     do:
       if(match?({:win32, _}, :os.type()),
-        do: "trenino-virtual-joystick.exe",
-        else: "trenino-virtual-joystick"
+        do: "virtual_joystick.exe",
+        else: "virtual_joystick"
       )
 
   def executable_path do
@@ -64,7 +64,7 @@ defmodule Trenino.VirtualJoystick.Bridge do
       )
 
     with {:ok, executable} <- executable(opts),
-         {:ok, handle} <- adapter.open(self(), executable, stderr: :separate) do
+         {:ok, handle} <- adapter.open(self(), executable, stderr: :separate, args: ["serve"]) do
       state = %{
         owner: owner,
         adapter: adapter,
@@ -74,6 +74,7 @@ defmodule Trenino.VirtualJoystick.Bridge do
         protocol: nil,
         device: @device,
         buffer: "",
+        discarding_line: false,
         next_id: 1,
         outstanding: %{},
         in_flight: %{},
@@ -165,11 +166,29 @@ defmodule Trenino.VirtualJoystick.Bridge do
   end
 
   defp consume(data, state) do
+    if state.discarding_line do
+      consume_discarded(data, state)
+    else
+      consume_buffer(data, state)
+    end
+  end
+
+  defp consume_discarded(data, state) do
+    case :binary.split(data, "\n") do
+      [_unterminated] ->
+        {:noreply, state}
+
+      [_discarded, rest] ->
+        consume_buffer(rest, %{state | discarding_line: false})
+    end
+  end
+
+  defp consume_buffer(data, state) do
     buffer = state.buffer <> data
 
     if byte_size(buffer) > @max_line_bytes and not String.contains?(buffer, "\n") do
       notify(state, {:protocol_error, :line_too_long})
-      {:noreply, %{state | buffer: ""}}
+      {:noreply, %{state | buffer: "", discarding_line: true}}
     else
       parts = String.split(buffer, "\n")
       rest = List.last(parts)
@@ -218,12 +237,26 @@ defmodule Trenino.VirtualJoystick.Bridge do
 
   defp handle_response(%{"event" => "device_removed"} = response, state) do
     notify(state, {:device_removed, response["device"]})
-    state
+
+    case response["request_id"] do
+      nil -> state
+      id -> acknowledge(state, id, {:error, :device_removed})
+    end
   end
 
   defp handle_response(%{"event" => "stopped"}, state) do
     Process.send_after(self(), :stop_after_reply, 0)
     %{state | state: :stopped}
+  end
+
+  defp handle_response(
+         %{"event" => event, "code" => code} = response,
+         %{state: :starting} = state
+       )
+       when event in ["invalid_command", "error"] do
+    reason = {:feeder_error, code, response["message"]}
+    notify(state, {:error, reason})
+    %{state | state: {:error, reason}}
   end
 
   defp handle_response(%{"request_id" => id} = response, state),

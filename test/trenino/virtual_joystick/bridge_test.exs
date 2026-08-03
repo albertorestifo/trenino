@@ -26,6 +26,40 @@ defmodule Trenino.VirtualJoystick.BridgeTest do
     assert {:ok, ^executable} = Bridge.executable_path()
   end
 
+  test "uses the Cargo binary name and launches the feeder in serve mode" do
+    expected =
+      if match?({:win32, _}, :os.type()), do: "virtual_joystick.exe", else: "virtual_joystick"
+
+    assert Bridge.binary_name() == expected
+
+    assert {:ok, bridge} =
+             Bridge.start_link(
+               owner: self(),
+               adapter: Fake,
+               executable: "/fake/virtual_joystick",
+               timeout: 100
+             )
+
+    assert_receive {:opened, ^bridge, _handle, "/fake/virtual_joystick", opts}
+    assert opts[:args] == ["serve"]
+  end
+
+  test "production adapter normalizes a successful Port.command result" do
+    {executable, args} =
+      case :os.type() do
+        {:win32, _} -> {System.find_executable("cmd"), ["/Q", "/D", "/C", "set /p line="]}
+        _ -> {System.find_executable("sh"), ["-c", "IFS= read -r line"]}
+      end
+
+    if executable do
+      assert {:ok, port} =
+               Trenino.VirtualJoystick.Bridge.PortAdapter.open(self(), executable, args: args)
+
+      assert :ok = Trenino.VirtualJoystick.Bridge.PortAdapter.send_line(port, "hello")
+      Trenino.VirtualJoystick.Bridge.PortAdapter.close(port)
+    end
+  end
+
   test "handshakes with protocol version 1 and reports ready" do
     {bridge, handle} = start_bridge()
     assert_sent(handle, %{"command" => "hello", "protocol" => 1})
@@ -53,6 +87,25 @@ defmodule Trenino.VirtualJoystick.BridgeTest do
 
     assert_receive {:virtual_joystick_bridge, {:error, {:protocol_mismatch, 2}}}
     assert {:error, {:protocol_mismatch, 2}} = Bridge.set_axis(bridge, :x, 12)
+  end
+
+  test "fails the handshake on uncorrelated sidecar errors" do
+    for event <- ["invalid_command", "error"] do
+      {bridge, handle} = start_bridge()
+
+      Fake.stdout(
+        bridge,
+        handle,
+        Jason.encode!(%{event: event, code: "invalid_command", message: "unsupported protocol"}) <>
+          "\n"
+      )
+
+      assert_receive {:virtual_joystick_bridge,
+                      {:error, {:feeder_error, "invalid_command", "unsupported protocol"}}}
+
+      assert {:error, {:feeder_error, "invalid_command", "unsupported protocol"}} =
+               Bridge.set_axis(bridge, :x, 12)
+    end
   end
 
   test "correlates command acknowledgements by request id" do
@@ -103,6 +156,37 @@ defmodule Trenino.VirtualJoystick.BridgeTest do
     assert Process.alive?(bridge)
   end
 
+  test "discards an oversized line through its terminating newline" do
+    {bridge, handle} = start_bridge()
+    assert_sent(handle, %{"command" => "hello"})
+    Fake.stdout(bridge, handle, String.duplicate("x", 16 * 1024 + 1))
+    assert_receive {:virtual_joystick_bridge, {:protocol_error, :line_too_long}}
+
+    ready = ~s({"event":"ready","protocol":1,"device":1,"axis_min":0,"axis_max":32768}\n)
+    Fake.stdout(bridge, handle, ready)
+    refute_receive {:virtual_joystick_bridge, {:ready, _}}
+    refute_receive {:virtual_joystick_bridge, {:protocol_error, _}}
+
+    Fake.stdout(bridge, handle, ready)
+    assert_receive {:virtual_joystick_bridge, {:ready, _}}
+  end
+
+  test "device removal immediately resolves its correlated caller" do
+    {bridge, handle} = ready_bridge()
+    task = Task.async(fn -> Bridge.set_axis(bridge, :z, 55) end)
+    command = assert_sent(handle, %{"command" => "set_axis"})
+
+    Fake.stdout(
+      bridge,
+      handle,
+      Jason.encode!(%{event: "device_removed", device: 1, request_id: command["request_id"]}) <>
+        "\n"
+    )
+
+    assert {:error, :device_removed} = Task.await(task)
+    assert_receive {:virtual_joystick_bridge, {:device_removed, 1}}
+  end
+
   test "returns tagged timeout errors and ignores late acknowledgements" do
     {bridge, handle} = ready_bridge()
     task = Task.async(fn -> Bridge.set_button(bridge, 2, true) end)
@@ -149,7 +233,7 @@ defmodule Trenino.VirtualJoystick.BridgeTest do
                timeout: 100
              )
 
-    assert_receive {:opened, ^bridge, handle, "/fake/virtual_joystick"}
+    assert_receive {:opened, ^bridge, handle, "/fake/virtual_joystick", _opts}
     {bridge, handle}
   end
 
