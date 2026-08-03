@@ -27,6 +27,25 @@ defmodule Trenino.VirtualJoystick do
     end
   end
 
+  @spec confirm_enabled(boolean()) :: {:ok, Configuration.t()} | {:error, Ecto.Changeset.t()}
+  def confirm_enabled(enabled?) when is_boolean(enabled?) do
+    get_configuration()
+    |> Configuration.changeset(%{enabled: enabled?})
+    |> Repo.update()
+  end
+
+  @spec status() :: Trenino.VirtualJoystick.Manager.State.status()
+  defdelegate status(), to: Trenino.VirtualJoystick.Manager
+
+  @spec subscribe() :: :ok | {:error, term()}
+  def subscribe, do: Phoenix.PubSub.subscribe(Trenino.PubSub, "virtual_joystick")
+
+  defdelegate enable(), to: Trenino.VirtualJoystick.Manager
+  defdelegate disable(), to: Trenino.VirtualJoystick.Manager
+  defdelegate retry(), to: Trenino.VirtualJoystick.Manager
+  defdelegate remove_leftover(), to: Trenino.VirtualJoystick.Manager
+  defdelegate reload_mappings(), to: Trenino.VirtualJoystick.Manager
+
   @spec list_mappings() :: [Mapping.t()]
   def list_mappings do
     Mapping
