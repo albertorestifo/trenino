@@ -17,6 +17,8 @@ Mimic.copy(Trenino.Serial.Discovery, type_check: true)
 Mimic.copy(Trenino.Firmware.Avrdude)
 Mimic.copy(Trenino.Firmware.AvrdudeRunner)
 Mimic.copy(Trenino.Serial.Connection)
+# Virtual joystick configuration tests inject their platform and system adapters
+# through application configuration so they never elevate or probe a real driver.
 
 # Build a pre-migrated template SQLite file once. Async DataCase tests
 # copy it to get an isolated per-test DB without paying the migration cost.
