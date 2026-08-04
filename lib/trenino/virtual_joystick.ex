@@ -36,6 +36,7 @@ defmodule Trenino.VirtualJoystick do
 
   @spec status() :: Trenino.VirtualJoystick.Manager.State.status()
   defdelegate status(), to: Trenino.VirtualJoystick.Manager
+  defdelegate status_details(), to: Trenino.VirtualJoystick.Manager
 
   @spec subscribe() :: :ok | {:error, term()}
   def subscribe, do: Phoenix.PubSub.subscribe(Trenino.PubSub, "virtual_joystick")
@@ -44,6 +45,7 @@ defmodule Trenino.VirtualJoystick do
   defdelegate disable(), to: Trenino.VirtualJoystick.Manager
   defdelegate retry(), to: Trenino.VirtualJoystick.Manager
   defdelegate remove_leftover(), to: Trenino.VirtualJoystick.Manager
+  defdelegate repair(), to: Trenino.VirtualJoystick.Manager
   defdelegate reload_mappings(), to: Trenino.VirtualJoystick.Manager
 
   @spec list_mappings() :: [Mapping.t()]

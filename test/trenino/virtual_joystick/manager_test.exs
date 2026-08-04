@@ -288,6 +288,19 @@ defmodule Trenino.VirtualJoystick.ManagerTest do
     assert_receive {:virtual_joystick_status_changed, :active}
   end
 
+  test "exposes status reasons and repair only rechecks incompatible installation state", %{
+    agent: agent
+  } do
+    Agent.update(agent, &%{&1 | requested?: false, device_status: :driver_missing})
+    pid = start_manager()
+    assert Manager.status_details(pid) == %{status: :error, reason: :driver_missing}
+
+    Agent.update(agent, &%{&1 | device_status: :compatible})
+    assert :ok = Manager.repair(pid)
+    assert Manager.status_details(pid) == %{status: :needs_cleanup, reason: :leftover_device}
+    refute_receive {:bridge_started, ^pid}
+  end
+
   test "loads mappings, subscribes once, uses handshake range, and activates cached raw state", %{
     agent: agent
   } do

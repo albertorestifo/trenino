@@ -5,33 +5,36 @@ defmodule TreninoWeb.VirtualJoystickLive do
   import TreninoWeb.Live.Components.VirtualJoystickMappingForm
 
   alias Trenino.Hardware
+  alias Trenino.Hardware.ConfigurationManager
   alias Trenino.Serial.Connection
   alias Trenino.VirtualJoystick
   alias Trenino.VirtualJoystick.Platform
+  alias Trenino.VirtualJoystick.Mapper
 
   @axes [
     {:x, "X"},
     {:y, "Y"},
     {:z, "Z"},
-    {:rx, "Rotation X"},
-    {:ry, "Rotation Y"},
-    {:rz, "Rotation Z"},
+    {:rx, "Rx"},
+    {:ry, "Ry"},
+    {:rz, "Rz"},
     {:slider_1, "Slider 1"},
     {:slider_2, "Slider 2"}
   ]
 
   @impl true
   def mount(_params, _session, socket) do
-    status =
+    details =
       if Platform.windows?() and Process.whereis(VirtualJoystick.Manager),
-        do: VirtualJoystick.status(),
-        else: :unsupported
+        do: VirtualJoystick.status_details(),
+        else: %{status: :unsupported, reason: nil}
 
     if connected?(socket) and Platform.windows?(), do: VirtualJoystick.subscribe()
 
     {:ok,
      socket
-     |> assign(:status, status)
+     |> assign(:status, details.status)
+     |> assign(:status_reason, details.reason)
      |> assign(:axes, @axes)
      |> assign(:mappings, VirtualJoystick.list_mappings())
      |> assign(
@@ -41,6 +44,7 @@ defmodule TreninoWeb.VirtualJoystickLive do
      |> assign(:mapping_kind, nil)
      |> assign(:editing_mapping, nil)
      |> assign(:preview, nil)
+     |> assign(:preview_source, nil)
      |> assign(:confirm_transition, false)
      |> assign(:pending_replacement, nil)
      |> assign(:mapping_error, nil)}
@@ -50,9 +54,18 @@ defmodule TreninoWeb.VirtualJoystickLive do
   def handle_info({:virtual_joystick_status_changed, status}, socket),
     do: {:noreply, assign(socket, :status, status)}
 
-  def handle_info({:input_value_updated, _port, _pin, raw}, socket) when is_number(raw) do
-    preview = raw |> Kernel./(1023) |> Kernel.*(100) |> round() |> max(0) |> min(100)
-    {:noreply, assign(socket, :preview, preview)}
+  def handle_info({:virtual_joystick_status_details_changed, details}, socket),
+    do: {:noreply, assign(socket, status: details.status, status_reason: details.reason)}
+
+  def handle_info({:input_value_updated, port, pin, raw}, socket) when is_number(raw) do
+    case socket.assigns.preview_source do
+      %{port: expected_port, input: %{pin: ^pin} = input}
+      when is_nil(expected_port) or expected_port == port ->
+        {:noreply, assign(socket, :preview, preview_value(input, raw))}
+
+      _ ->
+        {:noreply, socket}
+    end
   end
 
   def handle_info({:virtual_joystick_destination_conflict, input_id, attrs}, socket) do
@@ -86,12 +99,25 @@ defmodule TreninoWeb.VirtualJoystickLive do
 
   def handle_event("recover", _, socket) do
     _ =
-      if socket.assigns.status == :needs_cleanup,
-        do: VirtualJoystick.remove_leftover(),
-        else: VirtualJoystick.retry()
+      cond do
+        socket.assigns.status == :needs_cleanup ->
+          VirtualJoystick.remove_leftover()
+
+        socket.assigns.status == :error and
+            socket.assigns.status_reason in [:driver_missing, :incompatible] ->
+          VirtualJoystick.repair()
+
+        true ->
+          VirtualJoystick.retry()
+      end
 
     {:noreply, socket}
   end
+
+  def handle_event(event, _, %{assigns: %{status: status}} = socket)
+      when event in ["add-axis", "add-button", "edit-mapping", "delete-mapping", "save-mapping"] and
+             status in [:enabling, :disabling],
+      do: {:noreply, socket}
 
   def handle_event("add-axis", _, socket), do: {:noreply, open_form(socket, :axis, nil)}
   def handle_event("add-button", _, socket), do: {:noreply, open_form(socket, :button, nil)}
@@ -100,6 +126,18 @@ defmodule TreninoWeb.VirtualJoystickLive do
   def handle_event("edit-mapping", %{"id" => id}, socket) do
     mapping = Enum.find(socket.assigns.mappings, &(&1.id == String.to_integer(id)))
     {:noreply, open_form(socket, mapping.target_type, mapping)}
+  end
+
+  def handle_event("select-mapping-input", %{"mapping" => %{"input_id" => id}}, socket) do
+    {:noreply, select_preview_source(socket, String.to_integer(id))}
+  end
+
+  def handle_event("cancel-dialog", %{"key" => "Escape"}, socket) do
+    {:noreply,
+     socket
+     |> assign(:confirm_transition, false)
+     |> assign(:pending_replacement, nil)
+     |> close_form()}
   end
 
   def handle_event("delete-mapping", %{"id" => id}, socket) do
@@ -179,7 +217,8 @@ defmodule TreninoWeb.VirtualJoystickLive do
 
   @impl true
   def render(assigns) do
-    assigns = assign(assigns, :status_ui, status_ui(assigns.status))
+    assigns = assign(assigns, :status_ui, status_ui(assigns.status, assigns.status_reason))
+    assigns = assign(assigns, :transitioning, assigns.status in [:enabling, :disabling])
 
     ~H"""
     <main class="flex-1 p-4 sm:p-8">
@@ -228,6 +267,7 @@ defmodule TreninoWeb.VirtualJoystickLive do
             <h2 class="text-xl font-semibold">Axes</h2><button
               data-testid="add-axis-mapping"
               phx-click="add-axis"
+              disabled={@transitioning}
               class="btn btn-sm btn-outline"
             >Add axis</button>
           </div>
@@ -237,9 +277,10 @@ defmodule TreninoWeb.VirtualJoystickLive do
               data-testid={"axis-mapping-#{axis}"}
               class="flex min-h-12 items-center justify-between gap-3 px-4 py-3"
             >
-              <span class="font-medium">{label}</span><.mapping_value mapping={
-                find_axis(@mappings, axis)
-              } />
+              <span class="font-medium">{label}</span><.mapping_value
+                mapping={find_axis(@mappings, axis)}
+                transitioning={@transitioning}
+              />
             </div>
           </div>
         </section>
@@ -249,6 +290,7 @@ defmodule TreninoWeb.VirtualJoystickLive do
             <h2 class="text-xl font-semibold">Buttons</h2><button
               data-testid="add-button-mapping"
               phx-click="add-button"
+              disabled={@transitioning}
               class="btn btn-sm btn-outline"
             >Add button</button>
           </div>
@@ -258,7 +300,10 @@ defmodule TreninoWeb.VirtualJoystickLive do
               data-testid="button-target-option"
               class="flex min-h-11 items-center justify-between bg-base-100 px-4 py-2"
             >
-              <span>Button {number}</span><.mapping_value mapping={find_button(@mappings, number)} />
+              <span>Button {number}</span><.mapping_value
+                mapping={find_button(@mappings, number)}
+                transitioning={@transitioning}
+              />
             </div>
           </div>
         </section>
@@ -270,6 +315,8 @@ defmodule TreninoWeb.VirtualJoystickLive do
         inputs={compatible_inputs(@inputs, @mapping_kind)}
         mapping={@editing_mapping}
         preview={@preview}
+        selected_input_id={selected_input_id(@preview_source)}
+        transitioning={@transitioning}
       />
 
       <div
@@ -278,9 +325,16 @@ defmodule TreninoWeb.VirtualJoystickLive do
         role="dialog"
         aria-modal="true"
         aria-labelledby="transition-title"
+        phx-window-keydown="cancel-dialog"
+        phx-key="Escape"
+        phx-mounted={JS.push_focus() |> JS.focus_first()}
+        phx-remove={JS.pop_focus()}
       >
-        <div class="w-full max-w-md rounded-xl bg-base-100 p-6 shadow-xl">
-          <h2 id="transition-title" class="text-lg font-semibold">
+        <.focus_wrap
+          id="transition-dialog-focus"
+          class="w-full max-w-md rounded-xl bg-base-100 p-6 shadow-xl"
+        >
+          <h2 id="transition-title" tabindex="-1" class="text-lg font-semibold">
             {if @status == :active, do: "Disable virtual joystick?", else: "Enable virtual joystick?"}
           </h2><p class="mt-3 text-sm">
             Windows will request administrator permission to change the virtual joystick device.
@@ -291,7 +345,7 @@ defmodule TreninoWeb.VirtualJoystickLive do
               class="btn btn-ghost"
             >Cancel</button><button phx-click="confirm-transition" class="btn btn-primary">Continue</button>
           </div>
-        </div>
+        </.focus_wrap>
       </div>
 
       <div
@@ -300,9 +354,18 @@ defmodule TreninoWeb.VirtualJoystickLive do
         role="dialog"
         aria-modal="true"
         aria-labelledby="replacement-title"
+        phx-window-keydown="cancel-dialog"
+        phx-key="Escape"
+        phx-mounted={JS.push_focus() |> JS.focus_first()}
+        phx-remove={JS.pop_focus()}
       >
-        <div class="w-full max-w-md rounded-xl bg-base-100 p-6 shadow-xl">
-          <h2 id="replacement-title" class="text-lg font-semibold">Replace existing binding?</h2><p class="mt-3 text-sm">
+        <.focus_wrap
+          id="replacement-dialog-focus"
+          class="w-full max-w-md rounded-xl bg-base-100 p-6 shadow-xl"
+        >
+          <h2 id="replacement-title" tabindex="-1" class="text-lg font-semibold">
+            Replace existing binding?
+          </h2><p class="mt-3 text-sm">
             This input already controls a simulator or API binding. Replacing it will move the input to the virtual joystick.
           </p><div class="mt-6 flex justify-end gap-2">
             <button phx-click="cancel-mapping" class="btn btn-ghost">Cancel</button><button
@@ -311,11 +374,14 @@ defmodule TreninoWeb.VirtualJoystickLive do
               class="btn btn-primary"
             >Replace binding</button>
           </div>
-        </div>
+        </.focus_wrap>
       </div>
     </main>
     """
   end
+
+  attr :mapping, :any, required: true
+  attr :transitioning, :boolean, default: false
 
   defp mapping_value(assigns) do
     ~H"""
@@ -326,24 +392,36 @@ defmodule TreninoWeb.VirtualJoystickLive do
       data-testid={"edit-mapping-#{@mapping.id}"}
       phx-click="edit-mapping"
       phx-value-id={@mapping.id}
+      disabled={@transitioning}
       class="btn btn-ghost btn-xs"
     >Edit</button><button
       id={"delete-mapping-#{@mapping.id}"}
       data-testid={"delete-mapping-#{@mapping.id}"}
       phx-click="delete-mapping"
       phx-value-id={@mapping.id}
+      disabled={@transitioning}
       class="btn btn-ghost btn-xs"
     >Delete</button></span>
     """
   end
 
-  defp open_form(socket, kind, mapping),
-    do:
-      socket
-      |> assign(:mapping_kind, kind)
-      |> assign(:editing_mapping, mapping)
-      |> assign(:preview, nil)
-      |> assign(:mapping_error, nil)
+  defp open_form(socket, kind, mapping) do
+    Enum.each(Connection.list_devices(), fn device ->
+      if device.status == :connected, do: ConfigurationManager.subscribe_input_values(device.port)
+    end)
+
+    inputs = compatible_inputs(socket.assigns.inputs, kind)
+
+    selected =
+      if mapping, do: mapping.input_id, else: inputs |> List.first() |> then(&(&1 && &1.id))
+
+    socket
+    |> assign(:mapping_kind, kind)
+    |> assign(:editing_mapping, mapping)
+    |> assign(:preview, nil)
+    |> assign(:mapping_error, nil)
+    |> select_preview_source(selected)
+  end
 
   defp close_form(socket),
     do:
@@ -351,6 +429,7 @@ defmodule TreninoWeb.VirtualJoystickLive do
       |> assign(:mapping_kind, nil)
       |> assign(:editing_mapping, nil)
       |> assign(:preview, nil)
+      |> assign(:preview_source, nil)
 
   defp compatible_inputs(inputs, :axis), do: Enum.filter(inputs, &(&1.input_type == :analog))
   defp compatible_inputs(inputs, :button), do: Enum.filter(inputs, &(&1.input_type == :button))
@@ -371,7 +450,7 @@ defmodule TreninoWeb.VirtualJoystickLive do
   defp mapping_attrs(%{"target_type" => "button"} = params),
     do: %{target_type: :button, button: String.to_integer(params["button"]), inverted: false}
 
-  defp status_ui(:unsupported),
+  defp status_ui(:unsupported, _reason),
     do: %{
       label: "Unavailable",
       help: "Virtual joystick mode requires Windows 10 or 11.",
@@ -379,7 +458,7 @@ defmodule TreninoWeb.VirtualJoystickLive do
       recovery: nil
     }
 
-  defp status_ui(:off),
+  defp status_ui(:off, _reason),
     do: %{
       label: "Off",
       help: "No virtual joystick device is installed.",
@@ -387,7 +466,15 @@ defmodule TreninoWeb.VirtualJoystickLive do
       recovery: nil
     }
 
-  defp status_ui(:enabling),
+  defp status_ui(:enabling, :uac_cancelled),
+    do: %{
+      label: "Turning on",
+      help: "Permission was cancelled. No change was made.",
+      toggle: nil,
+      recovery: nil
+    }
+
+  defp status_ui(:enabling, _reason),
     do: %{
       label: "Turning on",
       help: "You can cancel the Windows prompt. No change will be made.",
@@ -395,7 +482,7 @@ defmodule TreninoWeb.VirtualJoystickLive do
       recovery: nil
     }
 
-  defp status_ui(:active),
+  defp status_ui(:active, _reason),
     do: %{
       label: "On",
       help: "Mapped controls are being sent to joystick device 1.",
@@ -403,7 +490,7 @@ defmodule TreninoWeb.VirtualJoystickLive do
       recovery: nil
     }
 
-  defp status_ui(:disabling),
+  defp status_ui(:disabling, _reason),
     do: %{
       label: "Turning off",
       help: "Removing the virtual joystick device.",
@@ -411,7 +498,15 @@ defmodule TreninoWeb.VirtualJoystickLive do
       recovery: nil
     }
 
-  defp status_ui(:needs_setup),
+  defp status_ui(:needs_setup, :uac_cancelled),
+    do: %{
+      label: "Setup needed",
+      help: "Permission was cancelled. No change was made.",
+      toggle: nil,
+      recovery: "Retry"
+    }
+
+  defp status_ui(:needs_setup, _reason),
     do: %{
       label: "Setup needed",
       help: "Windows did not finish creating the device.",
@@ -419,7 +514,7 @@ defmodule TreninoWeb.VirtualJoystickLive do
       recovery: "Retry"
     }
 
-  defp status_ui(:needs_cleanup),
+  defp status_ui(:needs_cleanup, _reason),
     do: %{
       label: "Cleanup needed",
       help: "A leftover device must be removed.",
@@ -427,7 +522,7 @@ defmodule TreninoWeb.VirtualJoystickLive do
       recovery: "Remove leftover device"
     }
 
-  defp status_ui(:degraded),
+  defp status_ui(:degraded, _reason),
     do: %{
       label: "Connection interrupted",
       help: "Trying to reconnect to the virtual joystick.",
@@ -435,11 +530,56 @@ defmodule TreninoWeb.VirtualJoystickLive do
       recovery: "Retry"
     }
 
-  defp status_ui(:error),
+  defp status_ui(:error, :driver_missing),
+    do: %{
+      label: "Needs attention",
+      help: "The vJoy driver is missing. Repair the Trenino installation, then check again.",
+      toggle: nil,
+      recovery: "Check installation"
+    }
+
+  defp status_ui(:error, :incompatible),
+    do: %{
+      label: "Needs attention",
+      help:
+        "Device 1 has incompatible controls. Correct its vJoy configuration, then check again.",
+      toggle: nil,
+      recovery: "Check configuration"
+    }
+
+  defp status_ui(:error, _reason),
     do: %{
       label: "Needs attention",
       help: "The virtual joystick could not be started.",
       toggle: nil,
       recovery: "Retry"
     }
+
+  defp select_preview_source(socket, nil), do: assign(socket, :preview_source, nil)
+
+  defp select_preview_source(socket, input_id) do
+    input = Enum.find(socket.assigns.inputs, &(&1.id == input_id))
+    port = input && port_for_input(input)
+    assign(socket, preview_source: input && %{input: input, port: port}, preview: nil)
+  end
+
+  defp port_for_input(input) do
+    Enum.find_value(Connection.list_devices(), fn device ->
+      if device.status == :connected and device.device_config_id == input.device.config_id,
+        do: device.port
+    end)
+  end
+
+  defp preview_value(%{input_type: :analog, calibration: calibration}, raw) do
+    case Mapper.axis_value(raw, calibration, false, {0, 100}) do
+      {:ok, percent} -> "#{percent}%"
+      _ -> "Unavailable"
+    end
+  end
+
+  defp preview_value(%{input_type: :button}, raw),
+    do: if(raw == 0, do: "Released", else: "Pressed")
+
+  defp selected_input_id(nil), do: nil
+  defp selected_input_id(%{input: input}), do: input.id
 end

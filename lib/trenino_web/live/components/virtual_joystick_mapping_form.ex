@@ -5,7 +5,9 @@ defmodule TreninoWeb.Live.Components.VirtualJoystickMappingForm do
   attr :kind, :atom, required: true
   attr :inputs, :list, required: true
   attr :mapping, :any, default: nil
-  attr :preview, :integer, default: nil
+  attr :preview, :string, default: nil
+  attr :selected_input_id, :integer, default: nil
+  attr :transitioning, :boolean, default: false
 
   def mapping_form(assigns) do
     assigns = assign(assigns, :axes, axis_options())
@@ -16,21 +18,40 @@ defmodule TreninoWeb.Live.Components.VirtualJoystickMappingForm do
       role="dialog"
       aria-modal="true"
       aria-labelledby="mapping-title"
+      phx-window-keydown="cancel-dialog"
+      phx-key="Escape"
+      phx-mounted={JS.push_focus() |> JS.focus_first()}
+      phx-remove={JS.pop_focus()}
     >
-      <div class="w-full max-w-md rounded-xl border border-base-300 bg-base-100 p-6 shadow-xl">
-        <h2 id="mapping-title" class="text-lg font-semibold">
+      <.focus_wrap
+        id="mapping-dialog-focus"
+        class="w-full max-w-md rounded-xl border border-base-300 bg-base-100 p-6 shadow-xl"
+      >
+        <h2 id="mapping-title" tabindex="-1" class="text-lg font-semibold">
           {if @mapping, do: "Edit mapping", else: "Add mapping"}
         </h2>
-        <form phx-submit="save-mapping" data-testid="mapping-form" class="mt-5 space-y-4">
+        <form
+          id="virtual-joystick-mapping-form"
+          phx-submit="save-mapping"
+          phx-change="select-mapping-input"
+          data-testid="mapping-form"
+          class="mt-5 space-y-4"
+        >
           <input :if={@mapping} type="hidden" name="mapping[id]" value={@mapping.id} />
           <input type="hidden" name="mapping[target_type]" value={@kind} />
           <label class="block">
             <span class="text-sm font-medium">Hardware input</span>
-            <select name="mapping[input_id]" class="select select-bordered mt-1 w-full" required>
+            <input :if={@mapping} type="hidden" name="mapping[input_id]" value={@mapping.input_id} />
+            <select
+              name={if @mapping, do: nil, else: "mapping[input_id]"}
+              class="select select-bordered mt-1 w-full"
+              required
+              disabled={not is_nil(@mapping) or @transitioning}
+            >
               <option
                 :for={input <- @inputs}
                 value={input.id}
-                selected={@mapping && @mapping.input_id == input.id}
+                selected={@selected_input_id == input.id}
               >
                 {input.device.name} · {input.name || "Pin #{input.pin}"}
               </option>
@@ -73,8 +94,8 @@ defmodule TreninoWeb.Live.Components.VirtualJoystickMappingForm do
             <span>Invert direction</span>
           </label>
           <p data-testid="input-preview" class="text-sm text-base-content/70">
-            Live input: {if is_integer(@preview),
-              do: "#{@preview}%",
+            Live input: {if is_binary(@preview),
+              do: @preview,
               else: "Move the control to preview it"}
           </p>
           <div class="flex justify-end gap-2 pt-2">
@@ -84,10 +105,10 @@ defmodule TreninoWeb.Live.Components.VirtualJoystickMappingForm do
               data-testid="cancel-mapping"
               class="btn btn-ghost"
             >Cancel</button>
-            <button type="submit" class="btn btn-primary">Save mapping</button>
+            <button type="submit" disabled={@transitioning} class="btn btn-primary">Save mapping</button>
           </div>
         </form>
-      </div>
+      </.focus_wrap>
     </div>
     """
   end
@@ -97,9 +118,9 @@ defmodule TreninoWeb.Live.Components.VirtualJoystickMappingForm do
       {"X", "x"},
       {"Y", "y"},
       {"Z", "z"},
-      {"Rotation X", "rx"},
-      {"Rotation Y", "ry"},
-      {"Rotation Z", "rz"},
+      {"Rx", "rx"},
+      {"Ry", "ry"},
+      {"Rz", "rz"},
       {"Slider 1", "slider_1"},
       {"Slider 2", "slider_2"}
     ]

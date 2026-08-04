@@ -78,10 +78,12 @@ defmodule Trenino.VirtualJoystick.Manager do
   end
 
   def status(server \\ __MODULE__), do: GenServer.call(server, :status)
+  def status_details(server \\ __MODULE__), do: GenServer.call(server, :status_details)
   def enable(server \\ __MODULE__), do: GenServer.call(server, :enable)
   def disable(server \\ __MODULE__), do: GenServer.call(server, :disable)
   def retry(server \\ __MODULE__), do: GenServer.call(server, :retry)
   def remove_leftover(server \\ __MODULE__), do: GenServer.call(server, :remove_leftover)
+  def repair(server \\ __MODULE__), do: GenServer.call(server, :repair)
 
   def reload_mappings(server \\ __MODULE__) do
     if process_alive?(server), do: GenServer.cast(server, :reload_mappings)
@@ -129,6 +131,9 @@ defmodule Trenino.VirtualJoystick.Manager do
   @impl true
   def handle_call(:status, _from, state), do: {:reply, state.status, state}
 
+  def handle_call(:status_details, _from, state),
+    do: {:reply, %{status: state.status, reason: state.reason}, state}
+
   def handle_call(command, _from, %State{status: status} = state)
       when command in [:enable, :disable, :retry, :remove_leftover] and
              status in [:enabling, :disabling] do
@@ -175,6 +180,12 @@ defmodule Trenino.VirtualJoystick.Manager do
   end
 
   def handle_call(:retry, _from, state), do: {:reply, {:error, :invalid_state}, state}
+
+  def handle_call(:repair, _from, %State{status: :error} = state) do
+    {:reply, :ok, reconcile_startup(state)}
+  end
+
+  def handle_call(:repair, _from, state), do: {:reply, {:error, :invalid_state}, state}
 
   @impl true
   def handle_cast(:reload_mappings, state), do: {:noreply, reload_runtime_mappings(state)}
@@ -530,7 +541,12 @@ defmodule Trenino.VirtualJoystick.Manager do
     %{state | bridge_pid: nil, axis_range: nil}
   end
 
-  defp set_status(%State{status: status} = state, status, reason), do: %{state | reason: reason}
+  defp set_status(%State{status: status, reason: reason} = state, status, reason), do: state
+
+  defp set_status(%State{status: status} = state, status, reason) do
+    broadcast_details(status, reason)
+    %{state | reason: reason}
+  end
 
   defp set_status(state, status, reason) do
     Phoenix.PubSub.broadcast(
@@ -539,7 +555,17 @@ defmodule Trenino.VirtualJoystick.Manager do
       {:virtual_joystick_status_changed, status}
     )
 
+    broadcast_details(status, reason)
+
     %{state | status: status, reason: reason}
+  end
+
+  defp broadcast_details(status, reason) do
+    Phoenix.PubSub.broadcast(
+      Trenino.PubSub,
+      @topic,
+      {:virtual_joystick_status_details_changed, %{status: status, reason: reason}}
+    )
   end
 
   defp process_alive?(server) when is_pid(server), do: Process.alive?(server)

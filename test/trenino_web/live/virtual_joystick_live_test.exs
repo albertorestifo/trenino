@@ -5,6 +5,9 @@ defmodule TreninoWeb.VirtualJoystickLiveTest do
   import Trenino.VirtualJoystickFixtures
 
   alias Ecto.Adapters.SQL.Sandbox
+  alias Trenino.Repo
+  alias Trenino.Train, as: TrainContext
+  alias Trenino.Train.LeverInputBinding
   alias Trenino.VirtualJoystick
 
   setup do
@@ -95,6 +98,8 @@ defmodule TreninoWeb.VirtualJoystickLiveTest do
     {:ok, view, _html} = live(conn, ~p"/virtual-joystick")
 
     view |> element("button[data-testid='add-axis-mapping']") |> render_click()
+    send(view.pid, {:input_value_updated, "COM7", input.pin + 1, 900})
+    assert has_element?(view, "[data-testid='input-preview']", "Move the control")
     send(view.pid, {:input_value_updated, "COM7", input.pin, 512})
     assert has_element?(view, "[data-testid='input-preview']", "50%")
 
@@ -108,6 +113,7 @@ defmodule TreninoWeb.VirtualJoystickLiveTest do
     mapping = hd(VirtualJoystick.list_mappings())
 
     view |> element("button[data-testid='edit-mapping-#{mapping.id}']") |> render_click()
+    assert has_element?(view, "select[disabled]")
 
     view
     |> form("[data-testid='mapping-form']",
@@ -139,16 +145,67 @@ defmodule TreninoWeb.VirtualJoystickLiveTest do
 
     assert has_element?(view, "[role='alert']", "already assigned")
 
-    # The destination-conflict branch is also exposed as a focused message and
-    # requires a distinct replacement action rather than an accidental retry.
-    send(
-      view.pid,
-      {:virtual_joystick_destination_conflict, second.id,
-       %{target_type: :axis, axis: :y, inverted: false}}
+    {:ok, train} = TrainContext.create_train(%{name: "Test train", identifier: "test-train"})
+    {:ok, element} = TrainContext.create_element(train.id, %{name: "Brake", type: :lever})
+
+    {:ok, config} =
+      TrainContext.create_lever_config(element.id, %{
+        min_endpoint: "Brake.MinValue",
+        max_endpoint: "Brake.MaxValue",
+        value_endpoint: "Brake.InputValue"
+      })
+
+    {:ok, _binding} =
+      Repo.insert(
+        LeverInputBinding.changeset(%LeverInputBinding{}, %{
+          lever_config_id: config.id,
+          input_id: second.id,
+          enabled: true
+        })
+      )
+
+    view
+    |> form("[data-testid='mapping-form']",
+      mapping: %{input_id: second.id, axis: "y", inverted: "false"}
     )
+    |> render_submit()
 
     assert has_element?(view, "[role='dialog']", "simulator or API")
     assert has_element?(view, "button[data-testid='confirm-replacement']", "Replace binding")
+  end
+
+  test "transition states disable every mapping mutation and status reasons guide recovery", %{
+    conn: conn
+  } do
+    input = analog_input_fixture(%{name: "Throttle"})
+    {:ok, mapping} = VirtualJoystick.put_mapping(input.id, %{target_type: :axis, axis: :rx})
+    {:ok, view, _html} = live(conn, ~p"/virtual-joystick")
+
+    send(view.pid, {:virtual_joystick_status_details_changed, %{status: :enabling, reason: nil}})
+    assert has_element?(view, "button[data-testid='add-axis-mapping'][disabled]")
+    assert has_element?(view, "button[data-testid='add-button-mapping'][disabled]")
+    assert has_element?(view, "button[data-testid='edit-mapping-#{mapping.id}'][disabled]")
+    assert has_element?(view, "button[data-testid='delete-mapping-#{mapping.id}'][disabled]")
+
+    send(
+      view.pid,
+      {:virtual_joystick_status_details_changed, %{status: :error, reason: :driver_missing}}
+    )
+
+    assert render(view) =~ "Repair the Trenino installation"
+
+    assert has_element?(
+             view,
+             "button[data-testid='virtual-joystick-recovery']",
+             "Check installation"
+           )
+
+    send(
+      view.pid,
+      {:virtual_joystick_status_details_changed, %{status: :needs_setup, reason: :uac_cancelled}}
+    )
+
+    assert render(view) =~ "Permission was cancelled. No change was made."
   end
 
   defp has_element_ids(view, selector) do
