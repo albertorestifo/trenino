@@ -126,6 +126,7 @@ defmodule TreninoWeb.NavComponents do
             <nav class="hidden sm:flex items-center gap-1">
               <.nav_tab path={~p"/"} label="Devices" current_path={@current_path} />
               <.nav_tab path={~p"/trains"} label="Trains" current_path={@current_path} />
+              <.nav_tab path={~p"/virtual-joystick"} label="Joystick" current_path={@current_path} />
             </nav>
           </div>
 
