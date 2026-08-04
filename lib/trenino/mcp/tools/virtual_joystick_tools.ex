@@ -199,7 +199,12 @@ defmodule Trenino.MCP.Tools.VirtualJoystickTools do
         []
         |> require_type(arguments, "input_id", &is_integer/1, "must be an integer")
         |> require_value(arguments, "axis", &(&1 in @axes), "must be a supported axis")
-        |> optional_value(arguments, "device_index", &(&1 == 1), "must be 1")
+        |> optional_value(
+          arguments,
+          "device_index",
+          &(is_integer(&1) and &1 === 1),
+          "must be the integer 1"
+        )
         |> optional_value(arguments, "inverted", &is_boolean/1, "must be a boolean")
         |> optional_value(arguments, "replace", &is_boolean/1, "must be a boolean")
 
@@ -223,7 +228,12 @@ defmodule Trenino.MCP.Tools.VirtualJoystickTools do
           &(is_integer(&1) and &1 in 1..32),
           "must be an integer from 1 to 32"
         )
-        |> optional_value(arguments, "device_index", &(&1 == 1), "must be 1")
+        |> optional_value(
+          arguments,
+          "device_index",
+          &(is_integer(&1) and &1 === 1),
+          "must be the integer 1"
+        )
         |> optional_value(arguments, "replace", &is_boolean/1, "must be a boolean")
 
       validation_outcome(errors)
