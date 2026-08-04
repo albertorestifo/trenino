@@ -16,7 +16,8 @@ defmodule Trenino.MCP.ToolRegistry do
     ScriptTools,
     SequenceTools,
     SimulatorTools,
-    TrainTools
+    TrainTools,
+    VirtualJoystickTools
   }
 
   @tool_modules [
@@ -29,7 +30,8 @@ defmodule Trenino.MCP.ToolRegistry do
     SequenceTools,
     ScriptTools,
     DetectionTools,
-    DisplayBindingTools
+    DisplayBindingTools,
+    VirtualJoystickTools
   ]
 
   @type tool_def :: %{
