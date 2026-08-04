@@ -247,10 +247,13 @@ defmodule Trenino.VirtualJoystick.ManagerTest do
       }
     )
 
+    Agent.update(agent, &%{&1 | bridge_results: [:ready, :ready]})
     pid = start_manager()
     assert eventually(fn -> Manager.status(pid) == :active end)
+    assert_receive {:bridge_started, ^pid}
     assert :ok = Manager.disable(pid)
-    assert eventually(fn -> Manager.status(pid) == :needs_cleanup end)
+    assert_receive {:bridge_started, ^pid}
+    assert eventually(fn -> Manager.status(pid) == :active end)
     refute_receive {:persisted, false}
   end
 
@@ -380,6 +383,28 @@ defmodule Trenino.VirtualJoystick.ManagerTest do
 
     send(pid, {:manager_transition_result, make_ref(), :enable, :ok})
     assert Manager.status(pid) == :active
+  end
+
+  test "device removal clears the stale bridge and follows compatible degraded recovery", %{
+    agent: agent
+  } do
+    Agent.update(
+      agent,
+      &%{&1 | requested?: true, device_status: :compatible, bridge_results: [:ready, :ready]}
+    )
+
+    pid = start_manager(retry_delays: [5])
+    assert eventually(fn -> Manager.status(pid) == :active end)
+    assert_receive {:bridge_started, ^pid}
+    old_bridge = :sys.get_state(pid).bridge_pid
+
+    send(pid, {:virtual_joystick_bridge, {:device_removed, 1}})
+    assert eventually(fn -> Manager.status(pid) == :degraded end)
+    assert :sys.get_state(pid).bridge_pid == nil
+    assert :sys.get_state(pid).axis_range == nil
+    assert_receive {:bridge_started, ^pid}, 100
+    assert eventually(fn -> Manager.status(pid) == :active end)
+    refute :sys.get_state(pid).bridge_pid == old_bridge
   end
 
   test "retry exhaustion reaches error and disable cancels pending retry", %{agent: agent} do

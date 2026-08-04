@@ -225,6 +225,16 @@ defmodule Trenino.VirtualJoystick.Manager do
     end
   end
 
+  def handle_info({:virtual_joystick_bridge, {:device_removed, device}}, state) do
+    state = %{state | bridge_pid: nil, axis_range: nil}
+
+    if state.requested? do
+      {:noreply, state |> set_status(:degraded, {:device_removed, device}) |> schedule_retry()}
+    else
+      {:noreply, state}
+    end
+  end
+
   def handle_info({:virtual_joystick_bridge, {:error, reason}}, state),
     do: {:noreply, bridge_start_failed(state, reason)}
 
@@ -335,6 +345,18 @@ defmodule Trenino.VirtualJoystick.Manager do
       end
 
     set_status(state, :off, nil)
+  end
+
+  defp finish_transition(state, :disable, {:error, :uac_cancelled}) do
+    state = clear_transition(state)
+
+    if state.requested? and state.configurator.status() == :compatible do
+      state
+      |> set_status(:degraded, :uac_cancelled)
+      |> start_bridge()
+    else
+      set_status(state, :needs_cleanup, :uac_cancelled)
+    end
   end
 
   defp finish_transition(state, action, {:error, reason}) when action in [:disable, :cleanup] do
