@@ -9,6 +9,10 @@ defmodule Trenino.MCP.Tools.VirtualJoystickToolsTest do
     def windows?, do: true
   end
 
+  defmodule NonWindowsPlatform do
+    def windows?, do: false
+  end
+
   defmodule OffContext do
     def get_configuration, do: %{enabled: false}
     def list_mappings, do: []
@@ -44,6 +48,8 @@ defmodule Trenino.MCP.Tools.VirtualJoystickToolsTest do
       tools = Map.new(VirtualJoystickTools.tools(), &{&1.name, &1.input_schema})
 
       assert map_size(tools) == 10
+      assert Map.has_key?(tools, "check_virtual_joystick_installation")
+      refute Map.has_key?(tools, "repair_virtual_joystick")
 
       assert tools["map_virtual_joystick_axis"] == %{
                type: "object",
@@ -182,8 +188,60 @@ defmodule Trenino.MCP.Tools.VirtualJoystickToolsTest do
     end
   end
 
+  describe "argument validation" do
+    test "rejects missing, mistyped, out-of-range, and extra mapping arguments without raising" do
+      cases = [
+        {"map_virtual_joystick_axis", %{"axis" => "x"}},
+        {"map_virtual_joystick_axis", %{"input_id" => "1", "axis" => "x"}},
+        {"map_virtual_joystick_axis", %{"input_id" => 1, "axis" => "pov"}},
+        {"map_virtual_joystick_axis", %{"input_id" => 1, "axis" => "x", "device_index" => 2}},
+        {"map_virtual_joystick_axis", %{"input_id" => 1, "axis" => "x", "inverted" => 1}},
+        {"map_virtual_joystick_axis", %{"input_id" => 1, "axis" => "x", "replace" => "true"}},
+        {"map_virtual_joystick_axis", %{"input_id" => 1, "axis" => "x", "command" => "cmd"}},
+        {"map_virtual_joystick_button", %{"button" => 1}},
+        {"map_virtual_joystick_button", %{"input_id" => 1, "button" => 0}},
+        {"map_virtual_joystick_button", %{"input_id" => 1, "button" => 33}},
+        {"map_virtual_joystick_button", %{"input_id" => 1, "button" => 1.0}},
+        {"map_virtual_joystick_button", %{"input_id" => 1, "button" => 1, "replace" => "false"}},
+        {"map_virtual_joystick_button", %{"input_id" => 1, "button" => 1, "extra" => true}},
+        {"delete_virtual_joystick_mapping", %{}},
+        {"delete_virtual_joystick_mapping", %{"id" => "1"}},
+        {"delete_virtual_joystick_mapping", %{"id" => 1, "extra" => true}}
+      ]
+
+      for {tool, arguments} <- cases do
+        assert {:ok, %{status: "error", reason: %{code: "validation_failed"}}} =
+                 VirtualJoystickTools.execute(tool, arguments)
+      end
+    end
+
+    test "rejects arguments for every parameterless tool" do
+      for tool <- ~w(
+        get_virtual_joystick_status
+        list_virtual_joystick_mappings
+        enable_virtual_joystick
+        disable_virtual_joystick
+        retry_virtual_joystick
+        cleanup_virtual_joystick
+        check_virtual_joystick_installation
+      ) do
+        assert {:ok, %{status: "error", reason: %{code: "validation_failed"}}} =
+                 VirtualJoystickTools.execute(tool, %{"extra" => true})
+      end
+    end
+  end
+
   describe "runtime tools" do
     test "reports unsupported status and lifecycle commands structurally" do
+      previous = Application.get_env(:trenino, :virtual_joystick_mcp_platform)
+      Application.put_env(:trenino, :virtual_joystick_mcp_platform, NonWindowsPlatform)
+
+      on_exit(fn ->
+        if previous,
+          do: Application.put_env(:trenino, :virtual_joystick_mcp_platform, previous),
+          else: Application.delete_env(:trenino, :virtual_joystick_mcp_platform)
+      end)
+
       assert {:ok, %{status: "unsupported", reason: nil}} =
                VirtualJoystickTools.execute("get_virtual_joystick_status", %{})
 
@@ -192,11 +250,28 @@ defmodule Trenino.MCP.Tools.VirtualJoystickToolsTest do
         disable_virtual_joystick
         retry_virtual_joystick
         cleanup_virtual_joystick
-        repair_virtual_joystick
+        check_virtual_joystick_installation
       ) do
         assert {:ok, %{status: "error", reason: %{code: "unsupported"}}} =
                  VirtualJoystickTools.execute(command, %{})
       end
+    end
+
+    test "reports a missing Manager on Windows as runtime unavailable" do
+      previous = Application.get_env(:trenino, :virtual_joystick_mcp_platform)
+      Application.put_env(:trenino, :virtual_joystick_mcp_platform, WindowsPlatform)
+
+      on_exit(fn ->
+        if previous,
+          do: Application.put_env(:trenino, :virtual_joystick_mcp_platform, previous),
+          else: Application.delete_env(:trenino, :virtual_joystick_mcp_platform)
+      end)
+
+      assert {:ok, %{status: "runtime_unavailable", reason: %{code: "manager_unavailable"}}} =
+               VirtualJoystickTools.execute("get_virtual_joystick_status", %{})
+
+      assert {:ok, %{status: "error", reason: %{code: "runtime_unavailable"}}} =
+               VirtualJoystickTools.execute("enable_virtual_joystick", %{})
     end
 
     test "enable and disable return transition acceptance without waiting for completion" do

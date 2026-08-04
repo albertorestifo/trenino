@@ -4,9 +4,18 @@ defmodule Trenino.MCP.Tools.VirtualJoystickTools do
   """
 
   alias Trenino.VirtualJoystick
-  alias Trenino.VirtualJoystick.Mapping
+  alias Trenino.VirtualJoystick.{Mapping, Platform}
 
   @axes ~w(x y z rx ry rz slider_1 slider_2)
+  @empty_tools ~w(
+    get_virtual_joystick_status
+    list_virtual_joystick_mappings
+    enable_virtual_joystick
+    disable_virtual_joystick
+    retry_virtual_joystick
+    cleanup_virtual_joystick
+    check_virtual_joystick_installation
+  )
 
   def tools do
     [
@@ -44,23 +53,33 @@ defmodule Trenino.MCP.Tools.VirtualJoystickTools do
         empty_schema()
       ),
       tool(
-        "repair_virtual_joystick",
-        "Repair virtual joystick setup after an error.",
+        "check_virtual_joystick_installation",
+        "Recheck the vJoy installation after the user completes driver repair.",
         empty_schema()
       )
     ]
   end
 
-  def execute("get_virtual_joystick_status", %{}) do
+  def execute(name, arguments) when is_binary(name) do
+    case validate_arguments(name, arguments) do
+      :ok -> do_execute(name, arguments)
+      {:error, errors} -> validation_result(errors)
+    end
+  end
+
+  defp do_execute("get_virtual_joystick_status", %{}) do
     details = status_details()
     {:ok, %{status: Atom.to_string(details.status), reason: reason(details.reason)}}
   end
 
-  def execute("list_virtual_joystick_mappings", %{}) do
+  defp do_execute("list_virtual_joystick_mappings", %{}) do
     {:ok, %{status: "ok", mappings: Enum.map(VirtualJoystick.list_mappings(), &serialize/1)}}
   end
 
-  def execute("map_virtual_joystick_axis", %{"input_id" => input_id, "axis" => axis} = args) do
+  defp do_execute(
+         "map_virtual_joystick_axis",
+         %{"input_id" => input_id, "axis" => axis} = args
+       ) do
     attrs = %{
       target_type: :axis,
       axis: axis,
@@ -71,10 +90,10 @@ defmodule Trenino.MCP.Tools.VirtualJoystickTools do
     put_mapping(input_id, attrs, args)
   end
 
-  def execute(
-        "map_virtual_joystick_button",
-        %{"input_id" => input_id, "button" => button} = args
-      ) do
+  defp do_execute(
+         "map_virtual_joystick_button",
+         %{"input_id" => input_id, "button" => button} = args
+       ) do
     attrs = %{
       target_type: :button,
       button: button,
@@ -84,7 +103,7 @@ defmodule Trenino.MCP.Tools.VirtualJoystickTools do
     put_mapping(input_id, attrs, args)
   end
 
-  def execute("delete_virtual_joystick_mapping", %{"id" => id}) do
+  defp do_execute("delete_virtual_joystick_mapping", %{"id" => id}) do
     case VirtualJoystick.delete_mapping(id) do
       {:ok, %Mapping{}} -> {:ok, %{status: "ok", reason: nil, deleted: true, id: id}}
       {:error, :not_found} -> error_result(:not_found)
@@ -92,11 +111,11 @@ defmodule Trenino.MCP.Tools.VirtualJoystickTools do
     end
   end
 
-  def execute("enable_virtual_joystick", %{}), do: lifecycle(:enable)
-  def execute("disable_virtual_joystick", %{}), do: lifecycle(:disable)
-  def execute("retry_virtual_joystick", %{}), do: lifecycle(:retry)
-  def execute("cleanup_virtual_joystick", %{}), do: lifecycle(:remove_leftover)
-  def execute("repair_virtual_joystick", %{}), do: lifecycle(:repair)
+  defp do_execute("enable_virtual_joystick", %{}), do: lifecycle(:enable)
+  defp do_execute("disable_virtual_joystick", %{}), do: lifecycle(:disable)
+  defp do_execute("retry_virtual_joystick", %{}), do: lifecycle(:retry)
+  defp do_execute("cleanup_virtual_joystick", %{}), do: lifecycle(:remove_leftover)
+  defp do_execute("check_virtual_joystick_installation", %{}), do: lifecycle(:repair)
 
   defp tool(name, description, schema),
     do: %{name: name, description: description, input_schema: schema}
@@ -165,12 +184,99 @@ defmodule Trenino.MCP.Tools.VirtualJoystickTools do
     end
   end
 
+  defp validate_arguments(name, arguments) when name in @empty_tools do
+    validate_object(arguments, [], [])
+  end
+
+  defp validate_arguments("map_virtual_joystick_axis", arguments) do
+    with :ok <-
+           validate_object(
+             arguments,
+             ["input_id", "axis"],
+             ["device_index", "inverted", "replace"]
+           ) do
+      errors =
+        []
+        |> require_type(arguments, "input_id", &is_integer/1, "must be an integer")
+        |> require_value(arguments, "axis", &(&1 in @axes), "must be a supported axis")
+        |> optional_value(arguments, "device_index", &(&1 == 1), "must be 1")
+        |> optional_value(arguments, "inverted", &is_boolean/1, "must be a boolean")
+        |> optional_value(arguments, "replace", &is_boolean/1, "must be a boolean")
+
+      validation_outcome(errors)
+    end
+  end
+
+  defp validate_arguments("map_virtual_joystick_button", arguments) do
+    with :ok <-
+           validate_object(
+             arguments,
+             ["input_id", "button"],
+             ["device_index", "replace"]
+           ) do
+      errors =
+        []
+        |> require_type(arguments, "input_id", &is_integer/1, "must be an integer")
+        |> require_value(
+          arguments,
+          "button",
+          &(is_integer(&1) and &1 in 1..32),
+          "must be an integer from 1 to 32"
+        )
+        |> optional_value(arguments, "device_index", &(&1 == 1), "must be 1")
+        |> optional_value(arguments, "replace", &is_boolean/1, "must be a boolean")
+
+      validation_outcome(errors)
+    end
+  end
+
+  defp validate_arguments("delete_virtual_joystick_mapping", arguments) do
+    with :ok <- validate_object(arguments, ["id"], []) do
+      []
+      |> require_type(arguments, "id", &is_integer/1, "must be an integer")
+      |> validation_outcome()
+    end
+  end
+
+  defp validate_object(arguments, required, optional) when is_map(arguments) do
+    keys = Map.keys(arguments)
+    missing = required -- keys
+    extra = keys -- (required ++ optional)
+
+    errors =
+      Enum.map(missing, &%{field: &1, message: "is required"}) ++
+        Enum.map(extra, &%{field: &1, message: "is not allowed"})
+
+    validation_outcome(errors)
+  end
+
+  defp validate_object(_arguments, _required, _optional),
+    do: {:error, [%{field: "arguments", message: "must be an object"}]}
+
+  defp require_type(errors, arguments, field, predicate, message),
+    do: require_value(errors, arguments, field, predicate, message)
+
+  defp require_value(errors, arguments, field, predicate, message) do
+    case Map.fetch(arguments, field) do
+      {:ok, value} -> if predicate.(value), do: errors, else: add_error(errors, field, message)
+      :error -> errors
+    end
+  end
+
+  defp optional_value(errors, arguments, field, predicate, message),
+    do: require_value(errors, arguments, field, predicate, message)
+
+  defp add_error(errors, field, message), do: [%{field: field, message: message} | errors]
+
+  defp validation_outcome([]), do: :ok
+  defp validation_outcome(errors), do: {:error, Enum.reverse(errors)}
+
   defp lifecycle(command) do
     result =
       if Process.whereis(Trenino.VirtualJoystick.Manager) do
         apply(VirtualJoystick, command, [])
       else
-        {:error, :unsupported}
+        if platform().windows?(), do: {:error, :runtime_unavailable}, else: {:error, :unsupported}
       end
 
     case result do
@@ -183,8 +289,20 @@ defmodule Trenino.MCP.Tools.VirtualJoystickTools do
     if Process.whereis(Trenino.VirtualJoystick.Manager) do
       VirtualJoystick.status_details()
     else
-      %{status: :unsupported, reason: nil}
+      if platform().windows?() do
+        %{status: :runtime_unavailable, reason: :manager_unavailable}
+      else
+        %{status: :unsupported, reason: nil}
+      end
     end
+  end
+
+  defp platform do
+    Application.get_env(:trenino, :virtual_joystick_mcp_platform, Platform)
+  end
+
+  defp validation_result(errors) when is_list(errors) do
+    {:ok, %{status: "error", reason: %{code: "validation_failed", errors: errors}}}
   end
 
   defp validation_result(%Ecto.Changeset{} = changeset) do
