@@ -94,11 +94,22 @@ defmodule TreninoWeb.VirtualJoystickLiveTest do
   end
 
   test "creates, edits, previews, and deletes a mapping", %{conn: conn} do
-    input = analog_input_fixture(%{name: "Brake"})
+    device = device_fixture()
+    input = analog_input_fixture(%{name: "Brake", device: device})
     {:ok, view, _html} = live(conn, ~p"/virtual-joystick")
 
     view |> element("button[data-testid='add-axis-mapping']") |> render_click()
     send(view.pid, {:input_value_updated, "COM7", input.pin + 1, 900})
+    assert has_element?(view, "[data-testid='input-preview']", "Move the control")
+    send(view.pid, {:input_value_updated, "COM7", input.pin, 512})
+    assert has_element?(view, "[data-testid='input-preview']", "Move the control")
+
+    send(view.pid, {
+      :devices_updated,
+      [%{port: "COM7", status: :connected, device_config_id: device.config_id}]
+    })
+
+    send(view.pid, {:input_value_updated, "COM8", input.pin, 512})
     assert has_element?(view, "[data-testid='input-preview']", "Move the control")
     send(view.pid, {:input_value_updated, "COM7", input.pin, 512})
     assert has_element?(view, "[data-testid='input-preview']", "50%")
@@ -172,6 +183,20 @@ defmodule TreninoWeb.VirtualJoystickLiveTest do
 
     assert has_element?(view, "[role='dialog']", "simulator or API")
     assert has_element?(view, "button[data-testid='confirm-replacement']", "Replace binding")
+
+    view |> element("button[data-testid='cancel-replacement']") |> render_click()
+    refute has_element?(view, "[role='dialog']", "simulator or API")
+
+    view
+    |> form("[data-testid='mapping-form']",
+      mapping: %{input_id: second.id, axis: "y", inverted: "false"}
+    )
+    |> render_submit()
+
+    send(view.pid, {:virtual_joystick_status_details_changed, %{status: :enabling, reason: nil}})
+    assert has_element?(view, "button[data-testid='confirm-replacement'][disabled]")
+    render_click(view, "confirm-replacement", %{})
+    refute Enum.any?(VirtualJoystick.list_mappings(), &(&1.input_id == second.id))
   end
 
   test "transition states disable every mapping mutation and status reasons guide recovery", %{
@@ -206,6 +231,22 @@ defmodule TreninoWeb.VirtualJoystickLiveTest do
     )
 
     assert render(view) =~ "Permission was cancelled. No change was made."
+
+    send(
+      view.pid,
+      {:virtual_joystick_status_details_changed, %{status: :off, reason: :uac_cancelled}}
+    )
+
+    assert render(view) =~
+             "Permission was cancelled. Virtual joystick remains off. No change was made."
+
+    send(
+      view.pid,
+      {:virtual_joystick_status_details_changed, %{status: :degraded, reason: :uac_cancelled}}
+    )
+
+    assert render(view) =~
+             "Permission was cancelled. Restoring the virtual joystick without changing Windows."
   end
 
   defp has_element_ids(view, selector) do

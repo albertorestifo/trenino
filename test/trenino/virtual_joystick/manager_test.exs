@@ -206,10 +206,16 @@ defmodule Trenino.VirtualJoystick.ManagerTest do
   end
 
   test "enable cancellation leaves confirmed off state and does not persist", %{agent: agent} do
+    Phoenix.PubSub.subscribe(Trenino.PubSub, "virtual_joystick")
     Agent.update(agent, &%{&1 | create_result: {:error, :uac_cancelled}})
     pid = start_manager()
     assert :ok = Manager.enable(pid)
     assert eventually(fn -> Manager.status(pid) == :off end)
+
+    assert_receive {:virtual_joystick_status_details_changed,
+                    %{status: :off, reason: :uac_cancelled}}
+
+    assert Manager.status_details(pid) == %{status: :off, reason: :uac_cancelled}
     refute_receive {:persisted, true}
   end
 

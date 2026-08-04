@@ -60,7 +60,7 @@ defmodule TreninoWeb.VirtualJoystickLive do
   def handle_info({:input_value_updated, port, pin, raw}, socket) when is_number(raw) do
     case socket.assigns.preview_source do
       %{port: expected_port, input: %{pin: ^pin} = input}
-      when is_nil(expected_port) or expected_port == port ->
+      when not is_nil(expected_port) and expected_port == port ->
         {:noreply, assign(socket, :preview, preview_value(input, raw))}
 
       _ ->
@@ -72,8 +72,14 @@ defmodule TreninoWeb.VirtualJoystickLive do
     {:noreply, assign(socket, :pending_replacement, {input_id, attrs})}
   end
 
-  def handle_info({:devices_updated, devices}, socket),
-    do: {:noreply, assign(socket, :nav_devices, devices)}
+  def handle_info({:devices_updated, devices}, socket) do
+    subscribe_connected_ports(devices)
+
+    {:noreply,
+     socket
+     |> assign(:nav_devices, devices)
+     |> refresh_preview_port(devices)}
+  end
 
   def handle_info({:simulator_status_changed, status}, socket),
     do: {:noreply, assign(socket, :nav_simulator_status, status)}
@@ -115,13 +121,23 @@ defmodule TreninoWeb.VirtualJoystickLive do
   end
 
   def handle_event(event, _, %{assigns: %{status: status}} = socket)
-      when event in ["add-axis", "add-button", "edit-mapping", "delete-mapping", "save-mapping"] and
+      when event in [
+             "add-axis",
+             "add-button",
+             "edit-mapping",
+             "delete-mapping",
+             "save-mapping",
+             "confirm-replacement"
+           ] and
              status in [:enabling, :disabling],
       do: {:noreply, socket}
 
   def handle_event("add-axis", _, socket), do: {:noreply, open_form(socket, :axis, nil)}
   def handle_event("add-button", _, socket), do: {:noreply, open_form(socket, :button, nil)}
   def handle_event("cancel-mapping", _, socket), do: {:noreply, close_form(socket)}
+
+  def handle_event("cancel-replacement", _, socket),
+    do: {:noreply, assign(socket, :pending_replacement, nil)}
 
   def handle_event("edit-mapping", %{"id" => id}, socket) do
     mapping = Enum.find(socket.assigns.mappings, &(&1.id == String.to_integer(id)))
@@ -368,9 +384,14 @@ defmodule TreninoWeb.VirtualJoystickLive do
           </h2><p class="mt-3 text-sm">
             This input already controls a simulator or API binding. Replacing it will move the input to the virtual joystick.
           </p><div class="mt-6 flex justify-end gap-2">
-            <button phx-click="cancel-mapping" class="btn btn-ghost">Cancel</button><button
+            <button
+              data-testid="cancel-replacement"
+              phx-click="cancel-replacement"
+              class="btn btn-ghost"
+            >Cancel</button><button
               data-testid="confirm-replacement"
               phx-click="confirm-replacement"
+              disabled={@transitioning}
               class="btn btn-primary"
             >Replace binding</button>
           </div>
@@ -406,9 +427,7 @@ defmodule TreninoWeb.VirtualJoystickLive do
   end
 
   defp open_form(socket, kind, mapping) do
-    Enum.each(Connection.list_devices(), fn device ->
-      if device.status == :connected, do: ConfigurationManager.subscribe_input_values(device.port)
-    end)
+    subscribe_connected_ports(Connection.list_devices())
 
     inputs = compatible_inputs(socket.assigns.inputs, kind)
 
@@ -455,6 +474,14 @@ defmodule TreninoWeb.VirtualJoystickLive do
       label: "Unavailable",
       help: "Virtual joystick mode requires Windows 10 or 11.",
       toggle: nil,
+      recovery: nil
+    }
+
+  defp status_ui(:off, :uac_cancelled),
+    do: %{
+      label: "Off",
+      help: "Permission was cancelled. Virtual joystick remains off. No change was made.",
+      toggle: "Enable",
       recovery: nil
     }
 
@@ -522,6 +549,14 @@ defmodule TreninoWeb.VirtualJoystickLive do
       recovery: "Remove leftover device"
     }
 
+  defp status_ui(:degraded, :uac_cancelled),
+    do: %{
+      label: "Connection interrupted",
+      help: "Permission was cancelled. Restoring the virtual joystick without changing Windows.",
+      toggle: nil,
+      recovery: "Retry"
+    }
+
   defp status_ui(:degraded, _reason),
     do: %{
       label: "Connection interrupted",
@@ -564,10 +599,31 @@ defmodule TreninoWeb.VirtualJoystickLive do
   end
 
   defp port_for_input(input) do
-    Enum.find_value(Connection.list_devices(), fn device ->
+    port_for_input(input, Connection.list_devices())
+  end
+
+  defp port_for_input(input, devices) do
+    Enum.find_value(devices, fn device ->
       if device.status == :connected and device.device_config_id == input.device.config_id,
         do: device.port
     end)
+  end
+
+  defp subscribe_connected_ports(devices) do
+    Enum.each(devices, fn device ->
+      if device.status == :connected, do: ConfigurationManager.subscribe_input_values(device.port)
+    end)
+  end
+
+  defp refresh_preview_port(%{assigns: %{preview_source: nil}} = socket, _devices), do: socket
+
+  defp refresh_preview_port(socket, devices) do
+    input = socket.assigns.preview_source.input
+
+    assign(socket,
+      preview_source: %{input: input, port: port_for_input(input, devices)},
+      preview: nil
+    )
   end
 
   defp preview_value(%{input_type: :analog, calibration: calibration}, raw) do
