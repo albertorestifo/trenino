@@ -76,7 +76,7 @@ pub trait VJoy {
 pub struct NativeVJoy;
 #[cfg(not(windows))]
 impl NativeVJoy {
-    pub fn load() -> Result<Self, VJoyError> {
+    pub fn load(_interface_path: &std::path::Path) -> Result<Self, VJoyError> {
         Ok(Self)
     }
 }
@@ -168,10 +168,10 @@ mod windows {
         update_fn: Update,
     }
     impl NativeVJoy {
-        pub fn load() -> Result<Self, VJoyError> {
+        pub fn load(interface_path: &Path) -> Result<Self, VJoyError> {
             unsafe {
-                let library =
-                    Library::new(Path::new("vJoyInterface.dll")).map_err(|e| err("load", e))?;
+                debug_assert!(interface_path.is_absolute());
+                let library = Library::new(interface_path).map_err(|e| err("load", e))?;
                 let enabled_fn = symbol(&library, b"vJoyEnabled\0", "vJoyEnabled")?;
                 let status_fn = symbol(&library, b"GetVJDStatus\0", "GetVJDStatus")?;
                 let acquire_fn = symbol(&library, b"AcquireVJD\0", "AcquireVJD")?;

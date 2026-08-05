@@ -1,11 +1,14 @@
 use std::io::{self, BufReader};
-use virtual_joystick::{protocol::serve, vjoy::NativeVJoy};
+use virtual_joystick::{protocol::serve, vjoy::NativeVJoy, vjoy_interface_path};
 fn main() {
-    if std::env::args().nth(1).as_deref() != Some("serve") {
-        eprintln!("usage: virtual_joystick serve");
-        std::process::exit(2);
-    }
-    let vjoy = match NativeVJoy::load() {
+    let interface_path = match vjoy_interface_path(std::env::args_os()) {
+        Ok(path) => path,
+        Err(message) => {
+            eprintln!("{message}");
+            std::process::exit(2);
+        }
+    };
+    let vjoy = match NativeVJoy::load(&interface_path) {
         Ok(vjoy) => vjoy,
         Err(error) => {
             eprintln!("failed to initialize vJoy: {error:?}");

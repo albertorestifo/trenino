@@ -90,3 +90,53 @@ Use a disposable Windows 10/11 x86-64 VM and retain the installer detail log:
 
 These observations must be attached to the release checklist/CI log before a
 Windows release is promoted.
+
+## Fix Round 1
+
+Packaging review identified two critical trust-boundary gaps and four related
+ownership/verification gaps. All were addressed:
+
+- The feeder no longer calls `LoadLibrary` with a bare DLL name. On Windows the
+  Elixir bridge resolves `vJoyInterface.dll` through the existing trusted,
+  reparse-safe packaged-resource resolver, passes it as the fixed
+  `--vjoy-interface` argument, and Rust requires an absolute path with the exact
+  DLL basename before loading that absolute path. CLI and bridge regressions
+  cover missing, relative, renamed, extra-argument and trusted-path cases.
+- vJoy resources and the sidecar moved from the base Tauri config to
+  `tauri.windows.conf.json`. Tauri documents that this file is automatically
+  merged only for Windows using JSON Merge Patch:
+  https://v2.tauri.app/develop/configuration-files/#platform-specific-configuration
+  The target-suffixed external binary follows Tauri's documented convention:
+  https://v2.tauri.app/develop/sidecar/
+- After the configurator has both exited successfully and device arrival is
+  confirmed, Trenino writes the fixed current-user registry marker
+  `VJoyDevice1CreatedByTrenino=1`. A normal confirmed delete clears it. Marker
+  write failure is explicit, and creation timeout never writes ownership.
+- NSIS now requires that persistent device marker as well as an exact normalized
+  descriptor before deleting device 1. A matching shared device alone is never
+  sufficient. Any remaining device, including a failed removal of device 1,
+  prevents driver removal.
+- Installer/uninstaller registry reads explicitly use the 64-bit view. An
+  unrecognized pre-existing vJoy service is treated as shared and is not
+  replaced or claimed. A prior Trenino driver marker survives upgrades. Driver
+  removal additionally requires the exact pinned version; ambiguity fails safe.
+- The installer validates Authenticode immediately before executing vJoy setup.
+  CI independently checks `Valid` status and the BRUNNER certificate subject.
+- Windows CI asserts the NSIS artifact exists, extracts it and its nested payload
+  to verify actual bundled resources/sidecar, launches the staged sidecar with
+  its absolute staged DLL for a JSON protocol hello, and uploads the installer.
+  It still performs no driver mutation.
+
+Fix-round verification on macOS:
+
+- Focused Elixir bridge/configurator suite: 38 passed.
+- Rust unit/integration suite: 16 passed, including two new CLI path tests.
+- Both Tauri JSON files parse; static assertions confirm no vJoy item is in the
+  base config and at least six vJoy/sidecar items are in the Windows overlay.
+- CI YAML parses, desktop build shell syntax passes, and `git diff --check`
+  passes.
+
+PowerShell execution, Authenticode validation, NSIS compilation/extraction, and
+the packaged Windows hello remain Windows CI checks and were not claimed as run
+on this macOS host. Real driver lifecycle validation remains confined to the
+disposable Windows VM checklist above.

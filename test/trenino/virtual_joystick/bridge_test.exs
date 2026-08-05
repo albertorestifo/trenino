@@ -44,6 +44,23 @@ defmodule Trenino.VirtualJoystick.BridgeTest do
     assert opts[:args] == ["serve"]
   end
 
+  test "passes only the trusted resolved vJoy interface path to the Windows feeder" do
+    dll = ~S(C:\Program Files\Trenino\resources\vJoyInterface.dll)
+    resolver = Module.concat(__MODULE__, InterfaceResolver)
+    Application.put_env(:trenino, :virtual_joystick_test_dll, dll)
+    on_exit(fn -> Application.delete_env(:trenino, :virtual_joystick_test_dll) end)
+
+    assert {:ok, ["serve", "--vjoy-interface", ^dll]} =
+             Bridge.feeder_arguments(true, resolver)
+
+    assert {:ok, ["serve"]} = Bridge.feeder_arguments(false, resolver)
+  end
+
+  defmodule InterfaceResolver do
+    def interface_path,
+      do: {:ok, Application.fetch_env!(:trenino, :virtual_joystick_test_dll)}
+  end
+
   test "production adapter normalizes a successful Port.command result" do
     {executable, args} =
       case :os.type() do

@@ -3,6 +3,7 @@ defmodule Trenino.VirtualJoystick.Bridge do
   use GenServer
 
   alias Trenino.VirtualJoystick.Bridge.PortAdapter
+  alias Trenino.VirtualJoystick.Configurator.SystemAdapter
 
   @protocol 1
   @device 1
@@ -64,7 +65,8 @@ defmodule Trenino.VirtualJoystick.Bridge do
       )
 
     with {:ok, executable} <- executable(opts),
-         {:ok, handle} <- adapter.open(self(), executable, stderr: :separate, args: ["serve"]) do
+         {:ok, arguments} <- feeder_arguments(windows?(), SystemAdapter),
+         {:ok, handle} <- adapter.open(self(), executable, stderr: :separate, args: arguments) do
       state = %{
         owner: owner,
         adapter: adapter,
@@ -340,6 +342,20 @@ defmodule Trenino.VirtualJoystick.Bridge do
       :error -> executable_path()
     end
   end
+
+  @doc false
+  def feeder_arguments(windows?, interface_adapter) when is_boolean(windows?) do
+    if windows? do
+      case interface_adapter.interface_path() do
+        {:ok, path} -> {:ok, ["serve", "--vjoy-interface", path]}
+        error -> error
+      end
+    else
+      {:ok, ["serve"]}
+    end
+  end
+
+  defp windows?, do: match?({:win32, _}, :os.type())
 
   defp app_path do
     case System.get_env("APP_PATH") do

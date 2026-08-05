@@ -54,6 +54,11 @@ jobs:
       - name: Run tests
         run: mix test
 
+      - name: Verify vJoy packaging is Windows-only
+        run: |
+          test "$(jq '[.bundle.externalBin[], .bundle.resources[]] | map(select(test("virtual_joystick|vJoy|THIRD_PARTY"))) | length' tauri/src-tauri/tauri.conf.json)" -eq 0
+          test "$(jq '[.bundle.externalBin[], .bundle.resources[]] | map(select(test("virtual_joystick|vJoy|THIRD_PARTY"))) | length' tauri/src-tauri/tauri.windows.conf.json)" -ge 6
+
   windows-package:
     name: Windows package (no driver mutation)
     runs-on: windows-latest
@@ -101,6 +106,10 @@ jobs:
           & ./scripts/download-vjoy.ps1 -Version 2.2.2.0-sdk -Url https://github.com/BrunnerInnovation/vJoy/releases/download/v2.2.2.0/SDK.zip -ExpectedSha256 0e796b185b66819d5fbeae645f3f038ecbfbbde837d3d3f06cba82ae1db07c67 -Destination "$resources/SDK.zip"
           & ./scripts/download-vjoy.ps1 -Version 2.2.2.0-license -Url https://raw.githubusercontent.com/BrunnerInnovation/vJoy/v2.2.2.0/LICENSE.txt -ExpectedSha256 7f0ed151caab68bbfd1a37727c8fe75c94be45aff98a88d63bc7e46e3fb0c5e1 -Destination "$resources/vJoy-LICENSE.txt"
           & ./scripts/download-vjoy.ps1 -Version 2.2.2.0 -Url https://invalid.example.invalid/unused -ExpectedSha256 ef569a3105cd301b89580f18f60c66b339e95296acf2c0dfcaf4b4bbf8ab68fe -Destination "$resources/vJoySetup.exe" -VerifyOnly
+          $signature = Get-AuthenticodeSignature -LiteralPath "$resources/vJoySetup.exe"
+          if ($signature.Status -ne 'Valid') { throw "vJoy installer Authenticode status is $($signature.Status)" }
+          if ($signature.SignerCertificate.Subject -notmatch 'BRUNNER') { throw "Unexpected vJoy signer: $($signature.SignerCertificate.Subject)" }
+          Write-Host "Verified vJoy signer: $($signature.SignerCertificate.Subject)"
 
       - name: Build and test native crates
         shell: pwsh
@@ -126,7 +135,49 @@ jobs:
             "tauri/src-tauri/binaries/virtual_joystick-x86_64-pc-windows-msvc.exe"
           )
           $expected | ForEach-Object { if (-not (Test-Path -LiteralPath $_ -PathType Leaf)) { throw "Missing packaged resource: $_" } }
-          Get-ChildItem tauri/src-tauri/target/release/bundle -Recurse | Select-Object FullName
+          $installer = Get-ChildItem tauri/src-tauri/target/release/bundle/nsis -Filter *.exe -File | Select-Object -First 1
+          if (-not $installer) { throw "NSIS installer artifact was not produced" }
+          $inspection = Join-Path $env:RUNNER_TEMP "trenino-nsis-inspection"
+          New-Item -ItemType Directory -Force $inspection | Out-Null
+          & 7z x -y "-o$inspection" $installer.FullName | Out-Null
+          Get-ChildItem $inspection -Recurse -Filter *.zip -File | ForEach-Object {
+            $expanded = Join-Path $inspection $_.BaseName
+            New-Item -ItemType Directory -Force $expanded | Out-Null
+            & 7z x -y "-o$expanded" $_.FullName | Out-Null
+          }
+          $listing = (Get-ChildItem $inspection -Recurse -File | ForEach-Object FullName) -join "`n"
+          @('vJoyConfig.exe', 'vJoyInterface.dll', 'vJoy-LICENSE.txt', 'THIRD_PARTY_NOTICES.md', 'virtual_joystick') | ForEach-Object {
+            if ($listing -notmatch [regex]::Escape($_)) { throw "Packaged NSIS artifact does not contain $_" }
+          }
+
+          $sidecar = (Resolve-Path 'tauri/src-tauri/binaries/virtual_joystick-x86_64-pc-windows-msvc.exe').Path
+          $dll = (Resolve-Path 'tauri/src-tauri/resources/vJoyInterface.dll').Path
+          $start = [Diagnostics.ProcessStartInfo]::new()
+          $start.FileName = $sidecar
+          $start.ArgumentList.Add('serve')
+          $start.ArgumentList.Add('--vjoy-interface')
+          $start.ArgumentList.Add($dll)
+          $start.UseShellExecute = $false
+          $start.RedirectStandardInput = $true
+          $start.RedirectStandardOutput = $true
+          $start.RedirectStandardError = $true
+          $process = [Diagnostics.Process]::Start($start)
+          $process.StandardInput.WriteLine('{"command":"hello","protocol":1}')
+          $response = $process.StandardOutput.ReadLine() | ConvertFrom-Json
+          if (-not $response.event) { throw "Packaged sidecar did not complete a protocol hello" }
+          $process.StandardInput.WriteLine('{"command":"shutdown"}')
+          $process.StandardInput.Close()
+          if (-not $process.WaitForExit(5000)) { $process.Kill(); throw "Packaged sidecar did not stop" }
+          if ($process.ExitCode -ne 0) { throw "Packaged sidecar exited $($process.ExitCode): $($process.StandardError.ReadToEnd())" }
+          Write-Host "Packaged sidecar hello event: $($response.event) / $($response.code)"
+          Write-Host "NSIS artifact: $($installer.FullName)"
+
+      - name: Upload Windows installer
+        uses: actions/upload-artifact@v6
+        with:
+          name: trenino-windows-nsis
+          path: tauri/src-tauri/target/release/bundle/nsis/*.exe
+          if-no-files-found: error
 
   # Real driver installation belongs in a self-hosted, disposable Windows VM.
   # It is intentionally absent from ordinary CI because driver mutation requires

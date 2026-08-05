@@ -40,6 +40,14 @@ defmodule Trenino.VirtualJoystick.ConfiguratorTest do
 
     def configurator_path, do: get().configurator_path
 
+    def mark_device_owned(owned) do
+      update(fn state ->
+        state = record(state, {:mark_device_owned, owned})
+        state = if state.marker_result == :ok, do: %{state | device_owned: owned}, else: state
+        {state.marker_result, state}
+      end)
+    end
+
     def elevate(path, arguments),
       do: update(fn state -> {state.result, record(state, {:elevate, path, arguments})} end)
 
@@ -69,6 +77,8 @@ defmodule Trenino.VirtualJoystick.ConfiguratorTest do
           last_status: :compatible,
           configurator_path: {:ok, ~S(C:\Program Files\Trenino\resources\vJoyConfig.exe)},
           result: {:ok, 0},
+          marker_result: :ok,
+          device_owned: false,
           events: [],
           now_ms: 0,
           status_durations: [],
@@ -132,6 +142,9 @@ defmodule Trenino.VirtualJoystick.ConfiguratorTest do
              "-p",
              "0"
            ]
+
+    assert Agent.get(agent, & &1.device_owned)
+    assert {:mark_device_owned, true} in Agent.get(agent, & &1.events)
   end
 
   test "delete targets only device 1", %{agent: agent} do
@@ -142,6 +155,23 @@ defmodule Trenino.VirtualJoystick.ConfiguratorTest do
 
     assert Configurator.delete() == :ok
     assert [{:elevate, _, ["-d", "1"]} | _] = Agent.get(agent, & &1.events)
+    refute Agent.get(agent, & &1.device_owned)
+    assert {:mark_device_owned, false} in Agent.get(agent, & &1.events)
+  end
+
+  test "does not record device ownership until creation is confirmed", %{agent: agent} do
+    Agent.update(agent, &%{&1 | statuses: [:device_missing], last_status: :device_missing})
+
+    assert Configurator.create() == {:error, :timeout}
+    refute Agent.get(agent, & &1.device_owned)
+    refute {:mark_device_owned, true} in Agent.get(agent, & &1.events)
+  end
+
+  test "marker persistence failure is explicit after confirmed creation", %{agent: agent} do
+    Agent.update(agent, &%{&1 | marker_result: {:error, :marker_write_failed}})
+
+    assert Configurator.create() == {:error, :marker_write_failed}
+    refute Agent.get(agent, & &1.device_owned)
   end
 
   test "already satisfied operations are idempotent and do not elevate", %{agent: agent} do
@@ -151,7 +181,7 @@ defmodule Trenino.VirtualJoystick.ConfiguratorTest do
 
     Agent.update(agent, &%{&1 | statuses: [:device_missing], last_status: :device_missing})
     assert Configurator.delete() == :ok
-    assert Agent.get(agent, & &1.events) == []
+    assert Agent.get(agent, & &1.events) == [{:mark_device_owned, false}]
   end
 
   test "hostile environment text cannot enter elevated executable arguments", %{agent: agent} do
@@ -168,6 +198,28 @@ defmodule Trenino.VirtualJoystick.ConfiguratorTest do
     [{:elevate, path, arguments} | _] = Agent.get(agent, & &1.events)
     refute String.contains?(path, hostile)
     refute Enum.any?(arguments, &String.contains?(&1, hostile))
+  end
+
+  test "device ownership uses only the fixed current-user registry marker" do
+    assert SystemAdapter.ownership_marker_arguments(true) == [
+             "ADD",
+             ~S(HKCU\Software\Trenino),
+             "/v",
+             "VJoyDevice1CreatedByTrenino",
+             "/t",
+             "REG_DWORD",
+             "/d",
+             "1",
+             "/f"
+           ]
+
+    assert SystemAdapter.ownership_marker_arguments(false) == [
+             "DELETE",
+             ~S(HKCU\Software\Trenino),
+             "/v",
+             "VJoyDevice1CreatedByTrenino",
+             "/f"
+           ]
   end
 
   test "maps Windows UAC cancellation", %{agent: agent} do

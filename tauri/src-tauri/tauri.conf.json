@@ -26,17 +26,11 @@
     "externalBin": [
       "binaries/trenino_backend",
       "binaries/avrdude",
-      "binaries/keystroke",
-      "binaries/virtual_joystick"
+      "binaries/keystroke"
     ],
     "resources": [
       "binaries/avrdude.conf",
-      "resources/vc_redist.x64.exe",
-      "resources/vJoySetup.exe",
-      "resources/vJoyConfig.exe",
-      "resources/vJoyInterface.dll",
-      "resources/vJoy-LICENSE.txt",
-      "resources/THIRD_PARTY_NOTICES.md"
+      "resources/vc_redist.x64.exe"
     ],
     "windows": {
       "nsis": {

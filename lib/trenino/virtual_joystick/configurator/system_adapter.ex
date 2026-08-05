@@ -2,6 +2,9 @@ defmodule Trenino.VirtualJoystick.Configurator.SystemAdapter do
   @moduledoc false
 
   @powershell ~S(C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe)
+  @registry ~S(C:\Windows\System32\reg.exe)
+  @ownership_key ~S(HKCU\Software\Trenino)
+  @ownership_value "VJoyDevice1CreatedByTrenino"
 
   @elevation_script """
   try {
@@ -89,8 +92,10 @@ defmodule Trenino.VirtualJoystick.Configurator.SystemAdapter do
   end
 
   defp do_status do
-    case interface_directory() do
-      {:ok, dll_directory} ->
+    case interface_path() do
+      {:ok, dll_path} ->
+        dll_directory = Path.dirname(dll_path)
+
         case command(["-NoProfile", "-NonInteractive", "-Command", @status_script, dll_directory]) do
           {output, 0} -> parse_status(output)
           _ -> :driver_missing
@@ -107,6 +112,16 @@ defmodule Trenino.VirtualJoystick.Configurator.SystemAdapter do
     |> Enum.find(&trusted_file?/1)
     |> case do
       nil -> {:error, :configurator_not_found}
+      path -> {:ok, path}
+    end
+  end
+
+  def interface_path do
+    trusted_locations()
+    |> Enum.map(fn {_anchor, root} -> Path.join(root, "vJoyInterface.dll") end)
+    |> Enum.find(&trusted_file?/1)
+    |> case do
+      nil -> {:error, :interface_not_found}
       path -> {:ok, path}
     end
   end
@@ -131,6 +146,29 @@ defmodule Trenino.VirtualJoystick.Configurator.SystemAdapter do
       {:error, :untrusted_configurator}
     end
   end
+
+  def mark_device_owned(true),
+    do: registry_command(ownership_marker_arguments(true))
+
+  def mark_device_owned(false),
+    do: registry_command(ownership_marker_arguments(false), allow_missing: true)
+
+  @doc false
+  def ownership_marker_arguments(true),
+    do: [
+      "ADD",
+      @ownership_key,
+      "/v",
+      @ownership_value,
+      "/t",
+      "REG_DWORD",
+      "/d",
+      "1",
+      "/f"
+    ]
+
+  def ownership_marker_arguments(false),
+    do: ["DELETE", @ownership_key, "/v", @ownership_value, "/f"]
 
   def sleep(milliseconds), do: Process.sleep(milliseconds)
   def monotonic_time, do: System.monotonic_time(:millisecond)
@@ -186,6 +224,26 @@ defmodule Trenino.VirtualJoystick.Configurator.SystemAdapter do
       end
     else
       {"", 1}
+    end
+  end
+
+  defp registry_command(arguments, opts \\ []) do
+    if File.regular?(@registry) do
+      case run_executable(@registry, arguments, 5_000) do
+        {:ok, _output, 0} ->
+          :ok
+
+        {:ok, output, 1} ->
+          if opts[:allow_missing] and
+               String.contains?(String.downcase(output), "unable to find"),
+             do: :ok,
+             else: {:error, :marker_write_failed}
+
+        _ ->
+          {:error, :marker_write_failed}
+      end
+    else
+      {:error, :marker_write_failed}
     end
   end
 
@@ -326,16 +384,6 @@ defmodule Trenino.VirtualJoystick.Configurator.SystemAdapter do
       end
     else
       false
-    end
-  end
-
-  defp interface_directory do
-    trusted_locations()
-    |> Enum.map(fn {_anchor, root} -> Path.join(root, "vJoyInterface.dll") end)
-    |> Enum.find(&trusted_file?/1)
-    |> case do
-      nil -> {:error, :interface_not_found}
-      path -> {:ok, Path.dirname(path)}
     end
   end
 

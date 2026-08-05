@@ -32,9 +32,17 @@ defmodule Trenino.VirtualJoystick.Configurator do
   def create do
     with :ok <- supported() do
       case checked_status() do
-        :compatible -> :ok
-        :device_missing -> configure(@create_arguments, :compatible)
-        status -> {:error, status}
+        :compatible ->
+          :ok
+
+        :device_missing ->
+          with :ok <- configure(@create_arguments, :compatible),
+               :ok <- adapter().mark_device_owned(true) do
+            :ok
+          end
+
+        status ->
+          {:error, status}
       end
     end
   end
@@ -42,9 +50,17 @@ defmodule Trenino.VirtualJoystick.Configurator do
   def delete do
     with :ok <- supported() do
       case checked_status() do
-        :device_missing -> :ok
-        :compatible -> configure(@delete_arguments, :device_missing)
-        status -> {:error, status}
+        :device_missing ->
+          adapter().mark_device_owned(false)
+
+        :compatible ->
+          with :ok <- configure(@delete_arguments, :device_missing),
+               :ok <- adapter().mark_device_owned(false) do
+            :ok
+          end
+
+        status ->
+          {:error, status}
       end
     end
   end
