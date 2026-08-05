@@ -53,3 +53,81 @@ jobs:
 
       - name: Run tests
         run: mix test
+
+  windows-package:
+    name: Windows package (no driver mutation)
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Elixir
+        uses: erlef/setup-beam@v1
+        with:
+          elixir-version: ${{ env.ELIXIR_VERSION }}
+          otp-version: ${{ env.OTP_VERSION }}
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - name: Install Tauri CLI and stage existing Windows prerequisite
+        shell: pwsh
+        run: |
+          cargo install tauri-cli --version "^2.0" --locked
+          Invoke-WebRequest -UseBasicParsing -Uri https://aka.ms/vs/17/release/vc_redist.x64.exe -OutFile tauri/src-tauri/resources/vc_redist.x64.exe
+
+      - name: Exercise checksum failure and success paths
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force "$env:RUNNER_TEMP\vjoy-test" | Out-Null
+          $fixtureUrl = 'https://raw.githubusercontent.com/BrunnerInnovation/vJoy/v2.2.2.0/LICENSE.txt'
+          $fixtureHash = '7f0ed151caab68bbfd1a37727c8fe75c94be45aff98a88d63bc7e46e3fb0c5e1'
+          & pwsh -NoProfile -NonInteractive -File ./scripts/download-vjoy.ps1 -Version fixture -Url $fixtureUrl -ExpectedSha256 ('0' * 64) -Destination "$env:RUNNER_TEMP\vjoy-test\destination.txt"
+          if ($LASTEXITCODE -eq 0) { throw "An incorrect checksum unexpectedly succeeded" }
+          if (Test-Path -LiteralPath "$env:RUNNER_TEMP\vjoy-test\destination.txt") { throw "A failed download created the destination" }
+          & ./scripts/download-vjoy.ps1 -Version fixture -Url $fixtureUrl -ExpectedSha256 $fixtureHash -Destination "$env:RUNNER_TEMP\vjoy-test\destination.txt"
+          & pwsh -NoProfile -NonInteractive -File ./scripts/download-vjoy.ps1 -Version fixture -Url $fixtureUrl -ExpectedSha256 ('0' * 64) -Destination "$env:RUNNER_TEMP\vjoy-test\destination.txt"
+          if ($LASTEXITCODE -eq 0) { throw "An incorrect replacement checksum unexpectedly succeeded" }
+          if ((Get-FileHash -Algorithm SHA256 "$env:RUNNER_TEMP\vjoy-test\destination.txt").Hash -ne $fixtureHash) { throw "A failed replacement changed the verified destination" }
+          & ./scripts/download-vjoy.ps1 -Version fixture -Url https://invalid.example.invalid/unused -ExpectedSha256 $fixtureHash -Destination "$env:RUNNER_TEMP\vjoy-test\destination.txt" -VerifyOnly
+
+      - name: Download and verify pinned vJoy release inputs
+        shell: pwsh
+        run: |
+          $resources = "tauri/src-tauri/resources"
+          & ./scripts/download-vjoy.ps1 -Version 2.2.2.0 -Url https://github.com/BrunnerInnovation/vJoy/releases/download/v2.2.2.0/vJoySetup_v2.2.2.0_Win10_Win11.exe -ExpectedSha256 ef569a3105cd301b89580f18f60c66b339e95296acf2c0dfcaf4b4bbf8ab68fe -Destination "$resources/vJoySetup.exe"
+          & ./scripts/download-vjoy.ps1 -Version 2.2.2.0-sdk -Url https://github.com/BrunnerInnovation/vJoy/releases/download/v2.2.2.0/SDK.zip -ExpectedSha256 0e796b185b66819d5fbeae645f3f038ecbfbbde837d3d3f06cba82ae1db07c67 -Destination "$resources/SDK.zip"
+          & ./scripts/download-vjoy.ps1 -Version 2.2.2.0-license -Url https://raw.githubusercontent.com/BrunnerInnovation/vJoy/v2.2.2.0/LICENSE.txt -ExpectedSha256 7f0ed151caab68bbfd1a37727c8fe75c94be45aff98a88d63bc7e46e3fb0c5e1 -Destination "$resources/vJoy-LICENSE.txt"
+          & ./scripts/download-vjoy.ps1 -Version 2.2.2.0 -Url https://invalid.example.invalid/unused -ExpectedSha256 ef569a3105cd301b89580f18f60c66b339e95296acf2c0dfcaf4b4bbf8ab68fe -Destination "$resources/vJoySetup.exe" -VerifyOnly
+
+      - name: Build and test native crates
+        shell: pwsh
+        run: |
+          cargo test --manifest-path tauri/virtual_joystick/Cargo.toml
+          cargo build --release --manifest-path tauri/virtual_joystick/Cargo.toml --target x86_64-pc-windows-msvc
+          cargo build --release --manifest-path tauri/keystroke/Cargo.toml --target x86_64-pc-windows-msvc
+
+      - name: Build Burrito and Tauri package
+        shell: bash
+        run: |
+          mix deps.get
+          ./scripts/build-desktop.sh
+
+      - name: Inspect packaged vJoy resources
+        shell: pwsh
+        run: |
+          $expected = @(
+            "tauri/src-tauri/resources/vJoyConfig.exe",
+            "tauri/src-tauri/resources/vJoyInterface.dll",
+            "tauri/src-tauri/resources/vJoy-LICENSE.txt",
+            "tauri/src-tauri/resources/THIRD_PARTY_NOTICES.md",
+            "tauri/src-tauri/binaries/virtual_joystick-x86_64-pc-windows-msvc.exe"
+          )
+          $expected | ForEach-Object { if (-not (Test-Path -LiteralPath $_ -PathType Leaf)) { throw "Missing packaged resource: $_" } }
+          Get-ChildItem tauri/src-tauri/target/release/bundle -Recurse | Select-Object FullName
+
+  # Real driver installation belongs in a self-hosted, disposable Windows VM.
+  # It is intentionally absent from ordinary CI because driver mutation requires
+  # elevation/reboots and could damage shared hosted-runner state.
