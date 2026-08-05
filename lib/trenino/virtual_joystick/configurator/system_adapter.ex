@@ -233,11 +233,8 @@ defmodule Trenino.VirtualJoystick.Configurator.SystemAdapter do
         {:ok, _output, 0} ->
           :ok
 
-        {:ok, output, 1} ->
-          if opts[:allow_missing] and
-               String.contains?(String.downcase(output), "unable to find"),
-             do: :ok,
-             else: {:error, :marker_write_failed}
+        {:ok, _output, 1} ->
+          normalize_marker_exit(1, opts[:allow_missing] || false)
 
         _ ->
           {:error, :marker_write_failed}
@@ -246,6 +243,11 @@ defmodule Trenino.VirtualJoystick.Configurator.SystemAdapter do
       {:error, :marker_write_failed}
     end
   end
+
+  @doc false
+  def normalize_marker_exit(0, _allow_missing), do: :ok
+  def normalize_marker_exit(1, true), do: :ok
+  def normalize_marker_exit(_exit_code, _allow_missing), do: {:error, :marker_write_failed}
 
   defp remaining_status_budget do
     case Process.get(:virtual_joystick_status_deadline) do

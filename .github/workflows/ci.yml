@@ -150,8 +150,10 @@ jobs:
             if ($listing -notmatch [regex]::Escape($_)) { throw "Packaged NSIS artifact does not contain $_" }
           }
 
-          $sidecar = (Resolve-Path 'tauri/src-tauri/binaries/virtual_joystick-x86_64-pc-windows-msvc.exe').Path
-          $dll = (Resolve-Path 'tauri/src-tauri/resources/vJoyInterface.dll').Path
+          $sidecar = (Get-ChildItem $inspection -Recurse -Filter 'virtual_joystick*.exe' -File | Select-Object -First 1).FullName
+          $dll = (Get-ChildItem $inspection -Recurse -Filter 'vJoyInterface.dll' -File | Select-Object -First 1).FullName
+          if (-not $sidecar -or -not $dll) { throw "Installed-layout sidecar/DLL pair was not extracted" }
+          if ((Split-Path -Leaf (Split-Path -Parent $dll)) -ne 'resources') { throw "vJoyInterface.dll is not in the installed resources directory" }
           $start = [Diagnostics.ProcessStartInfo]::new()
           $start.FileName = $sidecar
           $start.ArgumentList.Add('serve')

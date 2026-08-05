@@ -222,6 +222,12 @@ defmodule Trenino.VirtualJoystick.ConfiguratorTest do
            ]
   end
 
+  test "deleting an absent ownership marker is locale-independent and idempotent" do
+    assert SystemAdapter.normalize_marker_exit(1, true) == :ok
+    assert SystemAdapter.normalize_marker_exit(1, false) == {:error, :marker_write_failed}
+    assert SystemAdapter.normalize_marker_exit(5, true) == {:error, :marker_write_failed}
+  end
+
   test "maps Windows UAC cancellation", %{agent: agent} do
     Agent.update(agent, &%{&1 | result: {:error, 1223}})
     assert Configurator.create() == {:error, :uac_cancelled}

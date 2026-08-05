@@ -27,9 +27,18 @@
   ReadRegDWORD $3 HKLM "${TRENINO_REGISTRY_KEY}" "VJoyInstalledByTrenino"
   ReadRegStr $0 HKLM "${VJOY_UNINSTALL_KEY}" "DisplayVersion"
   ${If} $0 == "${VJOY_VERSION}"
-    DetailPrint "Compatible vJoy ${VJOY_VERSION} is already installed; preserving shared ownership."
-    ${If} $3 != 1
-      WriteRegDWORD HKLM "${TRENINO_REGISTRY_KEY}" "VJoyInstalledByTrenino" 0
+    ; A matching uninstall string alone can be stale. Require the running kernel
+    ; service, its signed pinned-version image, and a successful feeder API probe.
+    nsExec::ExecToStack 'powershell.exe -NoProfile -NonInteractive -Command "$$d=Get-CimInstance Win32_SystemDriver -Filter $\"Name='vjoy'$\" -ErrorAction SilentlyContinue; if (-not $$d -or $$d.State -ne $\"Running$\") { exit 1 }; $$p=$$d.PathName.Trim($\"`\"$\"); if (-not (Test-Path -LiteralPath $$p)) { exit 1 }; $$f=(Get-Item -LiteralPath $$p).VersionInfo.FileVersion; $$s=Get-AuthenticodeSignature -LiteralPath $$p; if ($$f -notlike $\"2.2.2.0*$\" -or $$s.Status -ne $\"Valid$\") { exit 1 }; $$r=& $\"$INSTDIR\resources\vJoyConfig.exe$\" -t -c 2>$$null; $$t=$$r -join $\" $\"; if ($$LASTEXITCODE -ne 0 -or $$t -notmatch $\"Product ID:$\" -or $$t -match $\"not installed|disabled|Failed$\") { exit 1 }; exit 0"'
+    Pop $5
+    Pop $6
+    ${If} $5 == 0
+      DetailPrint "Verified running signed vJoy ${VJOY_VERSION} driver and feeder API; preserving ownership."
+      ${If} $3 != 1
+        WriteRegDWORD HKLM "${TRENINO_REGISTRY_KEY}" "VJoyInstalledByTrenino" 0
+      ${EndIf}
+    ${Else}
+      Abort "A stale or incompatible vJoy ${VJOY_VERSION} installation was detected. Repair or remove vJoy, then run Trenino setup again. No driver changes were made."
     ${EndIf}
   ${Else}
     ; A service without the exact 64-bit uninstall entry may be an alternate-view
@@ -38,8 +47,7 @@
     ReadRegStr $4 HKLM "SYSTEM\CurrentControlSet\Services\vjoy" "ImagePath"
     ${If} $4 != ""
     ${AndIf} $3 != 1
-      DetailPrint "A non-matching vJoy driver service already exists; preserving it as shared state."
-      WriteRegDWORD HKLM "${TRENINO_REGISTRY_KEY}" "VJoyInstalledByTrenino" 0
+      Abort "An existing vJoy driver could not be verified as the supported signed version. Repair or remove it, then run Trenino setup again. No driver changes were made."
     ${Else}
       DetailPrint "Installing pinned signed vJoy ${VJOY_VERSION} runtime..."
       nsExec::ExecToStack 'powershell.exe -NoProfile -NonInteractive -Command "if ((Get-AuthenticodeSignature -LiteralPath $\"$INSTDIR\resources\vJoySetup.exe$\").Status -eq $\"Valid$\") { exit 0 } else { exit 1 }"'
@@ -100,25 +108,41 @@
       DetailPrint "Owned-driver marker exists but exact vJoy version is unverified; retaining driver."
       Goto vjoy_driver_cleanup_done
     ${EndIf}
-    ; Any remaining report for devices 1..16 means vJoy is shared (or device 1
-    ; removal failed), so the driver must remain installed.
-    nsExec::ExecToStack 'powershell.exe -NoProfile -NonInteractive -Command "$$r=& $\"$INSTDIR\resources\vJoyConfig.exe$\" -t 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 -c 2>$$null; if (($$r -join $\" $\" ) -match $\"vJoyConfig$\") { exit 1 } else { exit 0 }"'
+    ; Exit 0 means a healthy API probe and all 16 statuses explicitly MISSING.
+    ; Exit 1 means devices exist. Exit 2 means disabled/missing/error: retain.
+    nsExec::ExecToStack 'powershell.exe -NoProfile -NonInteractive -Command "$$r=& $\"$INSTDIR\resources\vJoyConfig.exe$\" -t -c 2>$$null; $$t=$$r -join $\" $\"; if ($$LASTEXITCODE -ne 0 -or $$t -notmatch $\"Product ID:$\" -or $$t -match $\"not installed|disabled|Failed$\") { exit 2 }; $$missing=([regex]::Matches($$t,$\"Status:\s+MISSING$\")).Count; if ($$missing -eq 16) { exit 0 } else { exit 1 }"'
     Pop $1
     Pop $2
     ${If} $1 == 0
-      ReadRegStr $2 HKLM "${VJOY_UNINSTALL_KEY}" "QuietUninstallString"
-      ${If} $2 == ""
-        ReadRegStr $2 HKLM "${VJOY_UNINSTALL_KEY}" "UninstallString"
-      ${EndIf}
-      ${If} $2 != ""
-        DetailPrint "No shared vJoy devices remain; removing the Trenino-owned driver."
-        ExecWait '$2 /VERYSILENT /NORESTART /SUPPRESSMSGBOXES' $3
-        DetailPrint "vJoy uninstaller exited with code $3."
-      ${Else}
-        DetailPrint "Trenino owns vJoy but its registered uninstaller is missing; leaving the driver installed."
-      ${EndIf}
+      ; Device absence cannot prove that no other application depends on vJoy.
+      ; Silent uninstall always retains it; interactive removal defaults to No.
+      IfSilent vjoy_retain_silent
+      MessageBox MB_YESNO|MB_DEFBUTTON2|MB_ICONQUESTION "Trenino installed the vJoy driver and no configured devices remain. Other applications may still depend on it. Remove the shared vJoy driver?" IDYES vjoy_remove_confirmed
+      Goto vjoy_retain_choice
+      vjoy_retain_silent:
+        DetailPrint "Silent uninstall: retaining vJoy because exclusive dependency ownership cannot be proven."
+        Goto vjoy_driver_cleanup_done
+      vjoy_retain_choice:
+        DetailPrint "User chose to retain the potentially shared vJoy driver."
+        Goto vjoy_driver_cleanup_done
+      vjoy_remove_confirmed:
+        ReadRegStr $2 HKLM "${VJOY_UNINSTALL_KEY}" "QuietUninstallString"
+        ${If} $2 == ""
+          ReadRegStr $2 HKLM "${VJOY_UNINSTALL_KEY}" "UninstallString"
+        ${EndIf}
+        ${If} $2 != ""
+          DetailPrint "User explicitly chose to remove the Trenino-installed vJoy driver."
+          ExecWait '$2 /VERYSILENT /NORESTART /SUPPRESSMSGBOXES' $3
+          DetailPrint "vJoy uninstaller exited with code $3."
+        ${Else}
+          DetailPrint "Registered vJoy uninstaller is missing; retaining the driver."
+        ${EndIf}
     ${Else}
-      DetailPrint "Other vJoy devices exist; retaining the shared driver."
+      ${If} $1 == 1
+        DetailPrint "One or more vJoy devices exist; retaining the shared driver."
+      ${Else}
+        DetailPrint "vJoy API/device enumeration was not known-good; retaining the driver."
+      ${EndIf}
     ${EndIf}
   ${Else}
     DetailPrint "vJoy was not installed by Trenino; retaining the shared driver."

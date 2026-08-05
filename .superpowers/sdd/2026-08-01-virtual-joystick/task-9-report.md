@@ -140,3 +140,36 @@ PowerShell execution, Authenticode validation, NSIS compilation/extraction, and
 the packaged Windows hello remain Windows CI checks and were not claimed as run
 on this macOS host. Real driver lifecycle validation remains confined to the
 disposable Windows VM checklist above.
+
+## Fix Round 2
+
+The second review focused on ambiguous Windows state. All such cases now retain
+shared state or stop before mutation:
+
+- A matching uninstall-registry version is insufficient. NSIS also requires a
+  running `vjoy` system driver, a present Authenticode-valid driver image with
+  the pinned file version, and a successful feeder API probe. Stale or
+  incompatible state aborts with repair/removal guidance. An unrecognized
+  existing vJoy service also aborts rather than being accepted or claimed.
+- Zero devices is accepted only after a healthy all-device API report with all
+  sixteen statuses explicitly `MISSING`. Devices, disabled/missing driver text,
+  nonzero exit, or malformed output retain the driver.
+- Device absence cannot establish exclusive application dependency ownership.
+  Interactive uninstall asks before removing the Trenino-installed driver and
+  defaults to retain; silent uninstall always retains it and logs why.
+- Registry marker deletion exit code 1 is treated as locale-independent,
+  idempotent absence. Other failure codes remain errors, with a pure regression
+  for the policy.
+- CI launches the sidecar and DLL extracted from the actual nested NSIS payload
+  and asserts that the DLL is in the installed `resources` layout.
+
+Fix-round verification on macOS:
+
+- Focused Elixir bridge/configurator suite: 39 passed.
+- Rust suite: 16 passed.
+- Windows cross-target Rust check passed.
+- Tauri JSON isolation, CI YAML, shell syntax, and diff checks passed.
+
+NSIS compilation and PowerShell/CIM/Authenticode probes require Windows CI.
+Real install, repair, prompt, silent-retain, and driver lifecycle observations
+remain required on the disposable Windows VM.
