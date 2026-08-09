@@ -59,6 +59,36 @@ Download from [avrdudes/avrdude releases](https://github.com/avrdudes/avrdude/re
 
 The desktop app bundles avrdude automatically, so end users don't need to install it separately.
 
+### Windows Virtual Joystick Development
+
+The native feeder is a standalone Rust crate. Build or test it without starting
+Phoenix:
+
+```bash
+mix virtual_joystick
+mix virtual_joystick --debug
+cargo test --manifest-path tauri/virtual_joystick/Cargo.toml
+```
+
+On Windows the bridge passes an absolute, trusted packaged-resource path to the
+sidecar, which requires `serve --vjoy-interface <absolute DLL path>`. Do not
+restore bare-name DLL loading or accept executable/DLL paths from UI or MCP
+input. Non-Windows builds compile the unsupported adapter but do not bundle the
+Windows sidecar or vJoy resources.
+
+Tests that install/remove the driver or create real Windows devices must use the
+`@tag :windows_vjoy_integration` convention and run only on the disposable,
+elevated Windows VM:
+
+```bash
+mix test --only windows_vjoy_integration
+```
+
+Ordinary hosted CI must remain non-mutating. Its Windows packaging job verifies
+downloads and Authenticode, builds both native crates and the Tauri/NSIS package,
+inspects the packaged layout, and performs a sidecar handshake without
+installing the driver.
+
 ### Using mise (Recommended)
 
 The project includes `.mise.toml` for version management:
@@ -338,6 +368,36 @@ The desktop app bundles:
 - **avrdude** - AVR programmer for firmware uploads
 - **avrdude.conf** - Configuration file for avrdude
 - **keystroke** - Keyboard input simulator for keystroke button bindings
+- **virtual_joystick** (Windows only) - persistent vJoy feeder sidecar
+- **vJoy runtime** (Windows only) - pinned signed installer, configurator, x64
+  feeder DLL, license, and third-party notices
+
+### Updating the pinned vJoy release
+
+Do not use an unversioned release URL. Review the BrunnerInnovation release,
+license, signing identity, SDK ABI, and configurator command line first. Download
+the installer, SDK, and tagged license independently; calculate SHA-256 for each;
+then update all matching pins in:
+
+- `scripts/build-desktop.sh`
+- `tauri/src-tauri/resources/vjoy.sha256`
+- `tauri/src-tauri/Cargo.toml` package metadata
+- `.github/workflows/ci.yml`
+- `tauri/src-tauri/resources/THIRD_PARTY_NOTICES.md`
+
+Exercise `scripts/download-vjoy.ps1` with both a wrong and correct checksum. A
+mismatch must not replace an existing verified artifact. Run the Windows package
+job and retain its uploaded NSIS artifact before performing the elevated VM
+checklist.
+
+### Shared vJoy state during uninstall
+
+Trenino removes device 1 only when its persistent ownership marker and exact
+descriptor both match. It never removes a driver it did not install. Even when
+Trenino owns the driver and a healthy API probe reports zero devices, interactive
+uninstall asks the user and defaults to retaining the potentially shared driver;
+silent uninstall always retains it. Missing, disabled, incompatible, or otherwise
+ambiguous driver state is retained with an installer log entry.
 
 ## Deployment
 

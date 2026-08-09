@@ -8,6 +8,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **Windows virtual joystick mode** — map calibrated analog inputs and digital
+  controls to one removable DirectInput vJoy device with eight conventional axes
+  and 32 buttons; includes standalone mappings, explicit destination replacement,
+  live preview, recovery actions, MCP tools, and ownership-safe signed-driver
+  packaging
 - **I2C display module support** — attach HT16K33 LED display drivers to Arduino devices via I2C; each module is configured with a chip address, brightness (0–15), digit count (4 or 8), display type (7-segment or 14-segment), and optional decimal-point and right-alignment settings
 - **Display bindings** — bind simulator endpoint values to I2C display modules on a per-train basis; format numbers with `{value}` (raw) or `{value:.Nf}` (N decimal places, e.g. `{value:.0f}` for integers); bindings activate automatically when a matching train is loaded and blank the display on deactivation
 - **`display.set(i2c_address, text)` in Lua scripting** — write arbitrary text directly to an I2C display from a script

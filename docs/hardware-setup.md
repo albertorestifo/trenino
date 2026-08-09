@@ -181,6 +181,28 @@ After calibration, you'll see:
 - **Max Value** - Highest detected ADC reading
 - **Detected Notches** - If your input has detents, they're automatically found
 
+## Mapping Inputs to the Windows Virtual Joystick
+
+On Windows 10/11, a calibrated analog input can drive one of eight conventional
+axes: X, Y, Z, Rx, Ry, Rz, Slider 1, or Slider 2. A digital input can drive one
+of 32 buttons. Analog values reuse the saved calibration and may be inverted;
+buttons mirror their physical pressed/released state, including maintained
+switches.
+
+Open **Virtual joystick**, add a mapping, select the source input, and select an
+unused target. A source and a target can each appear only once. An input cannot
+simultaneously drive a simulator/API or keystroke binding and the virtual
+joystick. If it already has a destination, Trenino shows the conflict and
+requires explicit replacement confirmation.
+
+Mappings can be prepared while the mode is off. Enabling or disabling the
+device itself requires a Windows UAC prompt. If hardware disconnects while the
+mode is active, Trenino releases mapped buttons and centers axes from that
+hardware without disturbing controls sourced from other connected hardware.
+
+For Windows verification and recovery steps, see
+[Windows Virtual Joystick Mode](getting-started.md#windows-virtual-joystick-mode).
+
 ## Troubleshooting
 
 ### Device Not Appearing
