@@ -90,6 +90,12 @@ jobs:
       - name: Exercise checksum failure and success paths
         shell: pwsh
         run: |
+          New-Item -ItemType Directory -Force "$env:RUNNER_TEMP\avrdude-test" | Out-Null
+          & pwsh -NoProfile -NonInteractive -File ./scripts/download-avrdude.ps1 -Version 8.1 -ExpectedSha256 ('0' * 64) -DestinationDirectory "$env:RUNNER_TEMP\avrdude-test" -TargetTriple fixture
+          if ($LASTEXITCODE -eq 0) { throw "An incorrect avrdude checksum unexpectedly succeeded" }
+          if (Test-Path -LiteralPath "$env:RUNNER_TEMP\avrdude-test\avrdude-fixture.exe") { throw "A failed avrdude download created the executable" }
+          if (Test-Path -LiteralPath "$env:RUNNER_TEMP\avrdude-test\avrdude.conf") { throw "A failed avrdude download created the configuration" }
+
           New-Item -ItemType Directory -Force "$env:RUNNER_TEMP\vjoy-test" | Out-Null
           $fixtureUrl = 'https://raw.githubusercontent.com/BrunnerInnovation/vJoy/v2.2.2.0/LICENSE.txt'
           $fixtureHash = '7f0ed151caab68bbfd1a37727c8fe75c94be45aff98a88d63bc7e46e3fb0c5e1'

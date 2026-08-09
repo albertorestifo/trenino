@@ -55,6 +55,22 @@ defmodule Trenino.CI.BuildDesktopScriptTest do
     assert downloader =~ "Join-Path $destination 'avrdude.conf'"
   end
 
+  test "Windows CI exercises avrdude checksum failure without staging files" do
+    workflow = File.read!(Path.join([File.cwd!(), ".github", "workflows", "ci.yml"]))
+
+    assert workflow =~
+             ~S|-File ./scripts/download-avrdude.ps1 -Version 8.1 -ExpectedSha256 ('0' * 64) -DestinationDirectory "$env:RUNNER_TEMP\avrdude-test" -TargetTriple fixture|
+
+    assert workflow =~
+             ~S|if ($LASTEXITCODE -eq 0) { throw "An incorrect avrdude checksum unexpectedly succeeded" }|
+
+    assert workflow =~
+             ~S|if (Test-Path -LiteralPath "$env:RUNNER_TEMP\avrdude-test\avrdude-fixture.exe") { throw "A failed avrdude download created the executable" }|
+
+    assert workflow =~
+             ~S|if (Test-Path -LiteralPath "$env:RUNNER_TEMP\avrdude-test\avrdude.conf") { throw "A failed avrdude download created the configuration" }|
+  end
+
   test "Unix backend sidecar is staged without an executable suffix" do
     binaries_dir = stage_backend_for("Linux")
 
