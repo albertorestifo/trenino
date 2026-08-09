@@ -122,6 +122,8 @@ jobs:
           cargo build --release --manifest-path tauri/keystroke/Cargo.toml --target x86_64-pc-windows-msvc
 
       - name: Build Burrito and Tauri package
+        env:
+          BURRITO_TARGET: windows_x86_64
         shell: bash
         run: |
           mix deps.get

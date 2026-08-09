@@ -14,4 +14,11 @@ defmodule Trenino.CI.BurritoPrerequisitesTest do
              "#{workflow}.yml must not configure Zig outside the shared action"
     end
   end
+
+  test "Windows CI pins Burrito to the Windows release target" do
+    contents = File.read!(Path.join([File.cwd!(), ".github", "workflows", "ci.yml"]))
+
+    assert contents =~
+             "      - name: Build Burrito and Tauri package\n        env:\n          BURRITO_TARGET: windows_x86_64\n"
+  end
 end
