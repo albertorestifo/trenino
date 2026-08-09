@@ -108,7 +108,8 @@ if [ "$PLATFORM" = "x86_64-pc-windows-msvc" ]; then
     fi
     trap 'if [ -n "${VJOY_STAGE:-}" ] && [ -d "$VJOY_STAGE" ]; then rm -r "$VJOY_STAGE"; fi' EXIT
 
-    powershell.exe -NoProfile -NonInteractive -Command "Expand-Archive -LiteralPath '$RESOURCES_DIR/SDK.zip' -DestinationPath '$VJOY_STAGE/sdk' -Force"
+    mkdir -p "$VJOY_STAGE/sdk"
+    7z x -y -o"$VJOY_STAGE/sdk" "$RESOURCES_DIR/SDK.zip" >/dev/null
     cp "$VJOY_STAGE/sdk/SDK/lib/x64/vJoyInterface.dll" "$RESOURCES_DIR/vJoyInterface.dll"
 
     # GitHub's Windows runners and the documented release environment include
