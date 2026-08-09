@@ -15,7 +15,7 @@ Create a repository-local composite action at `.github/actions/setup-burrito/act
 The action will:
 
 - install the repository's pinned Zig version, `0.15.2`, through `mlugg/setup-zig@v2`;
-- install `xz` explicitly when running on Windows;
+- install the official native Windows XZ Utils `5.8.3` archive from the Tukaani project's GitHub release, verify its published SHA-256 checksum, and expose only its x86-64 binary directory on `PATH`;
 - verify that `zig` and `xz` both resolve from `PATH` and can execute;
 - fail before dependency compilation or release assembly with a direct diagnostic if either prerequisite is unavailable.
 
@@ -27,11 +27,11 @@ Each Burrito-producing job will invoke the local action after checkout and langu
 
 Add a lightweight repository test that parses the three workflow files as text and asserts that every supported Burrito workflow calls `./.github/actions/setup-burrito`. The same test will assert that obsolete standalone `mlugg/setup-zig` steps are absent from those workflow files, ensuring the pinned version stays owned by the composite action.
 
-The test is intentionally static: it verifies repository wiring quickly on any development platform. The real Windows GitHub Actions job remains the end-to-end proof that Chocolatey installation, `PATH` propagation, Burrito packaging, Tauri packaging, and artifact inspection work together.
+The test is intentionally static: it verifies repository wiring quickly on any development platform. The real Windows GitHub Actions job remains the end-to-end proof that the verified XZ download, `PATH` propagation, Burrito packaging, Tauri packaging, and artifact inspection work together.
 
 ## Error Handling
 
-Installation failures stop the job immediately. Verification prints the resolved Zig and xz versions, giving logs enough information to distinguish package installation, `PATH`, and version problems. No fallback download or silent continuation is allowed.
+Installation or checksum failures stop the job immediately. Verification prints the resolved Zig and xz versions, giving logs enough information to distinguish download, integrity, `PATH`, and version problems. No fallback download or silent continuation is allowed.
 
 ## Verification
 

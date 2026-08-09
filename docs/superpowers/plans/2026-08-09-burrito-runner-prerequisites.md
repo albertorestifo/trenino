@@ -11,7 +11,7 @@
 ## Global Constraints
 
 - Pin Zig to exactly `0.15.2` in one place.
-- Install xz explicitly on Windows and verify xz on every runner.
+- Install XZ Utils `5.8.3` from the official Tukaani Windows archive on Windows, verify SHA-256 `8d0048ee51177b11ef1613959c2a268c951f4e7f6fb3706e681e00e34bb6d5e3`, and verify xz on every runner.
 - Preserve existing workflow matrices, release commands, caches, secrets, artifacts, Tauri packaging, and vJoy behavior.
 - Do not install or mutate the vJoy driver on GitHub-hosted runners.
 
@@ -74,7 +74,7 @@ git commit -m "test: require shared Burrito prerequisite setup"
 - Test: `test/ci/burrito_prerequisites_test.exs`
 
 **Interfaces:**
-- Consumes: GitHub runner OS, Chocolatey on Windows, `mlugg/setup-zig@v2`
+- Consumes: GitHub runner OS, the official Tukaani XZ Utils release archive on Windows, `mlugg/setup-zig@v2`
 - Produces: executable `zig` 0.15.2 and `xz` available on `PATH` before Burrito runs
 
 - [ ] **Step 1: Add the composite action**
@@ -91,7 +91,18 @@ runs:
     - name: Install xz on Windows
       if: runner.os == 'Windows'
       shell: pwsh
-      run: choco install xz -y --no-progress
+      run: |
+        $version = '5.8.3'
+        $expectedSha256 = '8d0048ee51177b11ef1613959c2a268c951f4e7f6fb3706e681e00e34bb6d5e3'
+        $archive = Join-Path $env:RUNNER_TEMP "xz-$version-windows.zip"
+        $destination = Join-Path $env:RUNNER_TEMP "xz-$version-windows"
+        Invoke-WebRequest -UseBasicParsing -Uri "https://github.com/tukaani-project/xz/releases/download/v$version/xz-$version-windows.zip" -OutFile $archive
+        $actualSha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $archive).Hash.ToLowerInvariant()
+        if ($actualSha256 -ne $expectedSha256) { throw "XZ archive SHA-256 mismatch: expected $expectedSha256, got $actualSha256" }
+        Expand-Archive -LiteralPath $archive -DestinationPath $destination -Force
+        $xzDirectory = Join-Path $destination 'bin_x86-64'
+        if (-not (Test-Path -LiteralPath (Join-Path $xzDirectory 'xz.exe') -PathType Leaf)) { throw 'XZ archive did not contain bin_x86-64/xz.exe' }
+        $xzDirectory | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
 
     - name: Setup Zig
       uses: mlugg/setup-zig@v2
