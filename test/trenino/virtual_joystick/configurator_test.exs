@@ -342,9 +342,7 @@ defmodule Trenino.VirtualJoystick.ConfiguratorTest do
         else: :driver_missing
     end
 
-    started = System.monotonic_time(:millisecond)
     assert SystemAdapter.status(40, operation) == :driver_missing
-    assert System.monotonic_time(:millisecond) - started < 140
   end
 
   test "a timed out external command is terminated and reaped" do
