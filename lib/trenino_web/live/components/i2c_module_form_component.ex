@@ -106,7 +106,13 @@ defmodule TreninoWeb.I2cModuleFormComponent do
   def render(assigns) do
     ~H"""
     <div>
-      <.form for={@form} phx-change="validate" phx-submit="save" phx-target={@myself}>
+      <.form
+        id="i2c-module-form"
+        for={@form}
+        phx-change="validate"
+        phx-submit="save"
+        phx-target={@myself}
+      >
         <div class="grid grid-cols-1 gap-4">
           <div>
             <.input field={@form[:name]} label="Name" placeholder="e.g. Speed display" />

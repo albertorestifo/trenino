@@ -928,7 +928,7 @@ defmodule TreninoWeb.ConfigurationWizardComponent do
         </div>
       </div>
 
-      <form phx-change="update_button_fields" phx-target={@myself}>
+      <form id="button-binding-fields-form" phx-change="update_button_fields" phx-target={@myself}>
         <!-- For sequence mode: only show Hardware Type -->
         <div :if={@binding_mode == :sequence}>
           <label class="label">
@@ -946,8 +946,8 @@ defmodule TreninoWeb.ConfigurationWizardComponent do
             {hardware_type_description(@hardware_type)}
           </p>
         </div>
-        
-    <!-- For other modes: show Button Mode + Hardware Type side by side -->
+
+        <!-- For other modes: show Button Mode + Hardware Type side by side -->
         <div :if={@binding_mode != :sequence} class="grid grid-cols-2 gap-4">
           <div>
             <label class="label">

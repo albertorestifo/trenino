@@ -608,7 +608,7 @@ defmodule TreninoWeb.FirmwareLive do
 
         <div :if={!@no_ports && !@uploading} class="mt-4 space-y-4">
           <%!-- Port selection --%>
-          <form phx-change="select_port" class="form-control">
+          <form id="port-selection-form" phx-change="select_port" class="form-control">
             <label class="label">
               <span class="label-text font-medium">Serial Port</span>
             </label>
@@ -633,7 +633,7 @@ defmodule TreninoWeb.FirmwareLive do
           </form>
 
           <%!-- Device selection --%>
-          <form phx-change="select_environment" class="form-control">
+          <form id="environment-selection-form" phx-change="select_environment" class="form-control">
             <label class="label">
               <span class="label-text font-medium">Device Type</span>
             </label>
@@ -685,8 +685,7 @@ defmodule TreninoWeb.FirmwareLive do
             class="progress progress-primary w-full"
             value={@progress.percent}
             max="100"
-          >
-          </progress>
+          ></progress>
 
           <p class="text-center text-xs text-base-content/60">
             Uploading to <span class="font-mono">{@selected_port}</span> - Do not disconnect

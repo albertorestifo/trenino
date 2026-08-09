@@ -161,6 +161,7 @@ defmodule TreninoWeb.SettingsLive do
         <section>
           <h2 class="text-base font-semibold mb-5">Simulator Connection</h2>
           <.form
+            id="simulator-form"
             for={%{}}
             as={:simulator}
             phx-submit="save_simulator"

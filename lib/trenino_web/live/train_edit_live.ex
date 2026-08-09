@@ -1397,7 +1397,12 @@ defmodule TreninoWeb.TrainEditLive do
   defp train_header(assigns) do
     ~H"""
     <header>
-      <.form for={@train_form} phx-change="validate_train" phx-submit="save_train">
+      <.form
+        id="train-form"
+        for={@train_form}
+        phx-change="validate_train"
+        phx-submit="save_train"
+      >
         <div>
           <label class="label">
             <span class="label-text">Train Name</span>
@@ -1886,7 +1891,12 @@ defmodule TreninoWeb.TrainEditLive do
       <div class="relative bg-base-100 rounded-xl shadow-xl w-full max-w-md mx-4 p-6">
         <h2 class="text-xl font-semibold mb-4">Add Element</h2>
 
-        <.form for={@form} phx-change="validate_element" phx-submit="add_element">
+        <.form
+          id="add-element-form"
+          for={@form}
+          phx-change="validate_element"
+          phx-submit="add_element"
+        >
           <div class="space-y-4">
             <div>
               <label class="label">

@@ -1076,7 +1076,7 @@ defmodule TreninoWeb.ConfigurationEditLive do
   defp device_header(assigns) do
     ~H"""
     <header>
-      <.form for={@device_form} phx-change="validate_device">
+      <.form id="device-form" for={@device_form} phx-change="validate_device">
         <div>
           <label class="label">
             <span class="label-text">Configuration Name</span>
@@ -1565,7 +1565,7 @@ defmodule TreninoWeb.ConfigurationEditLive do
       <div class="relative bg-base-100 rounded-xl shadow-xl w-full max-w-md mx-4 p-6 max-h-[90vh] overflow-y-auto">
         <h2 class="text-xl font-semibold mb-4">Add Input</h2>
 
-        <.form for={@form} phx-change="validate_input" phx-submit="add_input">
+        <.form id="add-input-form" for={@form} phx-change="validate_input" phx-submit="add_input">
           <div class="space-y-4">
             <div>
               <label class="label">
@@ -1672,7 +1672,12 @@ defmodule TreninoWeb.ConfigurationEditLive do
       <div class="relative bg-base-100 rounded-xl shadow-xl w-full max-w-md mx-4 p-6 max-h-[90vh] overflow-y-auto">
         <h2 class="text-xl font-semibold mb-4">Add Matrix</h2>
 
-        <form phx-change="validate_matrix_pins" phx-submit="add_matrix" class="space-y-4">
+        <form
+          id="add-matrix-form"
+          phx-change="validate_matrix_pins"
+          phx-submit="add_matrix"
+          class="space-y-4"
+        >
           <div class="bg-base-200 rounded-lg p-4">
             <p class="text-sm text-base-content/70 mb-3">
               Enter GPIO pin numbers for rows and columns, separated by commas.
@@ -1789,7 +1794,7 @@ defmodule TreninoWeb.ConfigurationEditLive do
       <div class="relative bg-base-100 rounded-xl shadow-xl w-full max-w-md mx-4 p-6">
         <h2 class="text-xl font-semibold mb-4">Add Output</h2>
 
-        <.form for={@form} phx-change="validate_output" phx-submit="add_output">
+        <.form id="add-output-form" for={@form} phx-change="validate_output" phx-submit="add_output">
           <div class="space-y-4">
             <div>
               <label class="label">

@@ -370,7 +370,7 @@ defmodule TreninoWeb.ScriptEditLive do
             </div>
           </div>
 
-          <form phx-submit="add_trigger" class="flex gap-2">
+          <form id="add-trigger-form" phx-submit="add_trigger" class="flex gap-2">
             <input
               type="text"
               name="value"

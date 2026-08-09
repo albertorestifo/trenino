@@ -520,7 +520,12 @@ defmodule TreninoWeb.OutputBindingWizard do
         </div>
       </div>
 
-      <form phx-change="update_condition" phx-target={@myself} class="space-y-4">
+      <form
+        id="output-binding-condition-form"
+        phx-change="update_condition"
+        phx-target={@myself}
+        class="space-y-4"
+      >
         <div>
           <label class="label"><span class="label-text font-medium">Binding Name</span></label>
           <input

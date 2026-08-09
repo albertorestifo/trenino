@@ -276,7 +276,12 @@ defmodule TreninoWeb.DisplayBindingWizard do
               </div>
             </div>
 
-            <form phx-change="update_config" phx-target={@myself} class="space-y-4">
+            <form
+              id="display-binding-config-form"
+              phx-change="update_config"
+              phx-target={@myself}
+              class="space-y-4"
+            >
               <div>
                 <label class="label"><span class="label-text font-medium">Binding Name</span></label>
                 <input
