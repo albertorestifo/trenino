@@ -72,6 +72,9 @@ jobs:
           elixir-version: ${{ env.ELIXIR_VERSION }}
           otp-version: ${{ env.OTP_VERSION }}
 
+      - name: Set up Burrito prerequisites
+        uses: ./.github/actions/setup-burrito
+
       - name: Set up Rust
         uses: dtolnay/rust-toolchain@stable
         with:

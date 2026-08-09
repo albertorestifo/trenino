@@ -1,0 +1,35 @@
+name: Setup Burrito prerequisites
+description: Install and verify the pinned tools required by Burrito
+
+runs:
+  using: composite
+  steps:
+    - name: Install xz on Windows
+      if: runner.os == 'Windows'
+      shell: pwsh
+      run: |
+        $version = '5.8.3'
+        $expectedSha256 = '8d0048ee51177b11ef1613959c2a268c951f4e7f6fb3706e681e00e34bb6d5e3'
+        $archive = Join-Path $env:RUNNER_TEMP "xz-$version-windows.zip"
+        $destination = Join-Path $env:RUNNER_TEMP "xz-$version-windows"
+        Invoke-WebRequest -UseBasicParsing -Uri "https://github.com/tukaani-project/xz/releases/download/v$version/xz-$version-windows.zip" -OutFile $archive
+        $actualSha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $archive).Hash.ToLowerInvariant()
+        if ($actualSha256 -ne $expectedSha256) { throw "XZ archive SHA-256 mismatch: expected $expectedSha256, got $actualSha256" }
+        Expand-Archive -LiteralPath $archive -DestinationPath $destination -Force
+        $xzDirectory = Join-Path $destination 'bin_x86-64'
+        if (-not (Test-Path -LiteralPath (Join-Path $xzDirectory 'xz.exe') -PathType Leaf)) { throw 'XZ archive did not contain bin_x86-64/xz.exe' }
+        $xzDirectory | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
+    - name: Setup Zig
+      uses: mlugg/setup-zig@v2
+      with:
+        version: 0.15.2
+
+    - name: Verify Burrito prerequisites
+      shell: bash
+      run: |
+        set -euo pipefail
+        command -v zig
+        zig version
+        command -v xz
+        xz --version
