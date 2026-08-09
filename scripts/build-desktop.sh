@@ -112,12 +112,12 @@ if [ "$PLATFORM" = "x86_64-pc-windows-msvc" ]; then
     7z x -y -o"$VJOY_STAGE/sdk" "$RESOURCES_DIR/SDK.zip" >/dev/null
     cp "$VJOY_STAGE/sdk/SDK/lib/x64/vJoyInterface.dll" "$RESOURCES_DIR/vJoyInterface.dll"
 
-    # GitHub's Windows runners and the documented release environment include
-    # 7-Zip, which can extract the Inno Setup payload without installing it.
-    mkdir "$VJOY_STAGE/installer"
-    7z x -y -o"$VJOY_STAGE/installer" "$RESOURCES_DIR/vJoySetup.exe" >/dev/null
-    VJOY_CONFIG=$(find "$VJOY_STAGE/installer" -type f -iname 'vJoyConfig.exe' | head -1)
-    if [ -z "$VJOY_CONFIG" ]; then
+    # vJoySetup.exe is an Inno Setup installer, so use its dedicated extractor.
+    # 7-Zip remains in use above for the SDK.zip archive.
+    mkdir -p "$VJOY_STAGE/installer"
+    innoextract --silent --extract --output-dir "$VJOY_STAGE/installer" "$RESOURCES_DIR/vJoySetup.exe"
+    VJOY_CONFIG="$VJOY_STAGE/installer/app/x64/vJoyConfig.exe"
+    if [ ! -f "$VJOY_CONFIG" ]; then
         echo "Error: vJoyConfig.exe was not found in the verified installer"
         exit 1
     fi

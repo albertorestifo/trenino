@@ -84,6 +84,7 @@ jobs:
         shell: pwsh
         run: |
           cargo install tauri-cli --version "^2.0" --locked
+          choco install innoextract --version 1.9 -y --no-progress
           Invoke-WebRequest -UseBasicParsing -Uri https://aka.ms/vs/17/release/vc_redist.x64.exe -OutFile tauri/src-tauri/resources/vc_redist.x64.exe
 
       - name: Exercise checksum failure and success paths

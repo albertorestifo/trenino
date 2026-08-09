@@ -21,4 +21,11 @@ defmodule Trenino.CI.BurritoPrerequisitesTest do
     assert contents =~
              "      - name: Build Burrito and Tauri package\n        env:\n          BURRITO_TARGET: windows_x86_64\n"
   end
+
+  test "Windows CI installs the pinned Inno Setup extractor" do
+    contents = File.read!(Path.join([File.cwd!(), ".github", "workflows", "ci.yml"]))
+
+    assert contents =~
+             "choco install innoextract --version 1.9 -y --no-progress"
+  end
 end
