@@ -57,6 +57,9 @@ if [ -d "$BURRITO_OUTPUT" ]; then
     BINARY=$(find "$BURRITO_OUTPUT" -type f -name "trenino_desktop*" | head -1)
     if [ -n "$BINARY" ]; then
         TARGET="$BINARIES_DIR/trenino_backend-$PLATFORM"
+        if [ "$PLATFORM" = "x86_64-pc-windows-msvc" ]; then
+            TARGET="$TARGET.exe"
+        fi
         cp "$BINARY" "$TARGET"
         chmod +x "$TARGET"
         echo "Copied: $TARGET"
