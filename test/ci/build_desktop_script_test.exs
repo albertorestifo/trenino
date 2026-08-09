@@ -31,6 +31,30 @@ defmodule Trenino.CI.BuildDesktopScriptTest do
     refute File.exists?(Path.join(binaries_dir, "trenino_backend-x86_64-pc-windows-msvc"))
   end
 
+  test "Windows avrdude sidecar and configuration are staged before Tauri builds" do
+    binaries_dir = stage_backend_for("MINGW64_NT-10.0")
+
+    assert File.read!(Path.join(binaries_dir, "avrdude-x86_64-pc-windows-msvc.exe")) ==
+             "avrdude"
+
+    assert File.read!(Path.join(binaries_dir, "avrdude.conf")) == "configuration"
+  end
+
+  test "Windows avrdude download is version-pinned and checksum-verified" do
+    contents = File.read!(Path.join([File.cwd!(), "scripts", "build-desktop.sh"]))
+    downloader = File.read!(Path.join([File.cwd!(), "scripts", "download-avrdude.ps1"]))
+
+    assert contents =~ ~s(AVRDUDE_VERSION="8.1")
+
+    assert contents =~
+             ~s(AVRDUDE_WINDOWS_X64_SHA256="e4d571d81fee3387d51bfdedd0b6565e4c201e974101cac2caec7adfd6201da3")
+
+    assert contents =~ "scripts/download-avrdude.ps1"
+    assert downloader =~ "Get-FileHash -LiteralPath $archive -Algorithm SHA256"
+    assert downloader =~ ~s("avrdude-$TargetTriple.exe")
+    assert downloader =~ "Join-Path $destination 'avrdude.conf'"
+  end
+
   test "Unix backend sidecar is staged without an executable suffix" do
     binaries_dir = stage_backend_for("Linux")
 
@@ -59,6 +83,11 @@ defmodule Trenino.CI.BuildDesktopScriptTest do
     write_executable!(Path.join(project_dir, "test-bin/cargo"), "#!/bin/sh\nexit 42\n")
 
     write_executable!(
+      Path.join(project_dir, "test-bin/powershell.exe"),
+      "#!/bin/sh\nmkdir -p \"$TEST_PROJECT_DIR/tauri/src-tauri/binaries\"\nprintf avrdude > \"$TEST_PROJECT_DIR/tauri/src-tauri/binaries/avrdude-x86_64-pc-windows-msvc.exe\"\nprintf configuration > \"$TEST_PROJECT_DIR/tauri/src-tauri/binaries/avrdude.conf\"\n"
+    )
+
+    write_executable!(
       Path.join(project_dir, "test-bin/uname"),
       "#!/bin/sh\nif [ \"$1\" = \"-s\" ]; then echo \"$TEST_UNAME_S\"; else echo x86_64; fi\n"
     )
@@ -67,7 +96,11 @@ defmodule Trenino.CI.BuildDesktopScriptTest do
 
     {output, status} =
       System.cmd("/bin/bash", [script],
-        env: [{"PATH", path}, {"TEST_UNAME_S", uname_s}],
+        env: [
+          {"PATH", path},
+          {"TEST_UNAME_S", uname_s},
+          {"TEST_PROJECT_DIR", project_dir}
+        ],
         stderr_to_stdout: true
       )
 

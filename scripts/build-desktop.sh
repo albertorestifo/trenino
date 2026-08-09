@@ -9,6 +9,8 @@ PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 TAURI_DIR="$PROJECT_DIR/tauri/src-tauri"
 BINARIES_DIR="$TAURI_DIR/binaries"
 RESOURCES_DIR="$TAURI_DIR/resources"
+AVRDUDE_VERSION="8.1"
+AVRDUDE_WINDOWS_X64_SHA256="e4d571d81fee3387d51bfdedd0b6565e4c201e974101cac2caec7adfd6201da3"
 VJOY_VERSION="2.2.2.0"
 VJOY_RELEASE_BASE="https://github.com/BrunnerInnovation/vJoy/releases/download/v$VJOY_VERSION"
 VJOY_INSTALLER_SHA256="ef569a3105cd301b89580f18f60c66b339e95296acf2c0dfcaf4b4bbf8ab68fe"
@@ -72,7 +74,13 @@ else
     exit 1
 fi
 
-# Step 4: Build keystroke utility
+# Step 4: Stage the pinned avrdude sidecar required by the Windows Tauri config.
+if [ "$PLATFORM" = "x86_64-pc-windows-msvc" ]; then
+    echo "==> Staging verified avrdude $AVRDUDE_VERSION sidecar..."
+    powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PROJECT_DIR/scripts/download-avrdude.ps1" -Version "$AVRDUDE_VERSION" -ExpectedSha256 "$AVRDUDE_WINDOWS_X64_SHA256" -DestinationDirectory "$BINARIES_DIR" -TargetTriple "$PLATFORM"
+fi
+
+# Step 5: Build keystroke utility
 echo "==> Building keystroke utility..."
 cd "$PROJECT_DIR/tauri/keystroke"
 cargo build --release
@@ -83,7 +91,7 @@ else
 fi
 echo "Copied keystroke to: $BINARIES_DIR/keystroke-$PLATFORM"
 
-# Step 5: Build the persistent virtual joystick sidecar on every platform.
+# Step 6: Build the persistent virtual joystick sidecar on every platform.
 # Non-Windows builds contain the sidecar's explicit unsupported-platform stub.
 echo "==> Building virtual joystick sidecar..."
 cd "$PROJECT_DIR/tauri/virtual_joystick"
@@ -95,7 +103,7 @@ else
 fi
 echo "Copied virtual joystick to: $BINARIES_DIR/virtual_joystick-$PLATFORM"
 
-# Step 6: Stage the pinned vJoy runtime for Windows. The release installer,
+# Step 7: Stage the pinned vJoy runtime for Windows. The release installer,
 # SDK and license are independently checksum verified before extraction.
 if [ "$PLATFORM" = "x86_64-pc-windows-msvc" ]; then
     echo "==> Staging verified vJoy $VJOY_VERSION runtime..."
@@ -131,7 +139,7 @@ if [ "$PLATFORM" = "x86_64-pc-windows-msvc" ]; then
     trap - EXIT
 fi
 
-# Step 7: Build Tauri application
+# Step 8: Build Tauri application
 echo "==> Building Tauri application..."
 cd "$TAURI_DIR"
 cargo tauri build
