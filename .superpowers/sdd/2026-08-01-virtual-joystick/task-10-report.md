@@ -40,3 +40,12 @@ disposable elevated Windows VM.
 The broader Task 10 format, native, `mix precommit`, packaging, and Windows VM
 verification are controller/release activities outside this documentation-only
 assignment. No Windows VM result is claimed here.
+
+## Fix Round 1
+
+- Clarified that virtual joystick driver lifecycle support requires the Windows
+  NSIS `.exe`; the MSI does not execute the vJoy install, ownership, or safe
+  shared-driver uninstall hooks.
+- Split recovery guidance: missing driver state uses **Check installation**;
+  incompatible device state uses **Check configuration**.
+- Re-ran diff and required-topic sanity checks. No Windows VM result is claimed.

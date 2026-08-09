@@ -10,13 +10,14 @@ Get Trenino up and running in minutes.
 That's it. The desktop app includes everything else: the Trenino backend, avrdude for firmware flashing, and all required runtimes.
 
 Virtual joystick mode is currently available only on Windows 10/11. Its signed
-vJoy driver is included in the Windows installer.
+vJoy driver is included in the Windows NSIS `.exe`. The MSI is not equivalent
+for this feature and does not manage the vJoy driver lifecycle.
 
 ## Installation
 
 Download the latest installer for your platform from the [Releases page](https://github.com/albertorestifo/trenino/releases):
 
-- **Windows**: Run the NSIS installer (`.exe`) or the MSI — the Visual C++ Redistributable is bundled, no separate install needed
+- **Windows**: Run the NSIS installer (`.exe`) or the MSI — the Visual C++ Redistributable is bundled, no separate install needed. To use virtual joystick mode, install with the NSIS `.exe`; the MSI does not execute Trenino's vJoy driver install, ownership, or shared-driver uninstall hooks.
 - **Linux**: Download the `.AppImage`, then mark it executable and run it:
   ```bash
   chmod +x Trenino_*.AppImage
@@ -113,6 +114,10 @@ fixed controls:
 - Axes: X, Y, Z, Rx, Ry, Rz, Slider 1, and Slider 2
 - Buttons: 1 through 32
 
+Install Trenino with the Windows NSIS `.exe` before using this mode. An MSI may
+be available for the main application, but it does not run the NSIS hooks that
+install, verify, track, and safely retain or remove the bundled vJoy driver.
+
 It is Windows-only and does not require Train Sim World or an active train
 configuration. Each physical input has one exclusive destination: it can be a
 simulator/API or keystroke binding, or a virtual joystick control, but never
@@ -156,10 +161,12 @@ remove it from Windows.
 - **Leftover device / Needs cleanup:** the saved mode is off but device 1 still
   exists. Choose **Remove leftover device** and accept UAC. Trenino refuses to
   delete a device with incompatible capabilities.
-- **Driver is missing or incompatible:** follow the screen's repair guidance,
-  repair or remove the conflicting vJoy installation, then choose
-  **Check installation**. Trenino does not silently replace unknown shared
-  driver state.
+- **Driver is missing:** confirm Trenino was installed with the Windows NSIS
+  `.exe`, repair that installation if necessary, then choose
+  **Check installation**.
+- **Device configuration is incompatible:** inspect or remove the conflicting
+  vJoy device configuration, then choose **Check configuration**. Trenino does
+  not silently replace unknown shared driver or device state.
 
 ## Next Steps
 
