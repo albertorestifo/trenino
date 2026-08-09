@@ -23,21 +23,25 @@ defmodule Trenino.Application do
         {Task.Supervisor, name: Trenino.TaskSupervisor},
         Trenino.Serial.Connection,
         Trenino.Hardware.ConfigurationManager,
+        virtual_joystick_manager_child(),
         Trenino.Hardware.Calibration.SessionSupervisor,
         Trenino.Firmware.UploadManager,
         Trenino.Train.Detection,
         Trenino.Train.Calibration.SessionSupervisor,
         # Start to serve requests, typically the last entry
         TreninoWeb.Endpoint
-      ] ++
+      ]
+      |> List.flatten()
+      |> Kernel.++(
         simulator_connection_child() ++
-        lever_controller_child() ++
-        button_controller_child() ++
-        output_controller_child() ++
-        display_controller_child() ++
-        script_runner_child() ++
-        update_checker_child() ++
-        app_version_checker_child()
+          lever_controller_child() ++
+          button_controller_child() ++
+          output_controller_child() ++
+          display_controller_child() ++
+          script_runner_child() ++
+          update_checker_child() ++
+          app_version_checker_child()
+      )
 
     # See https://hexdocs.pm/elixir/Supervisor.html
     # for other strategies and supported options
@@ -66,6 +70,14 @@ defmodule Trenino.Application do
   defp simulator_connection_child do
     if Application.get_env(:trenino, :start_simulator_connection, true) do
       [Trenino.Simulator.Connection]
+    else
+      []
+    end
+  end
+
+  defp virtual_joystick_manager_child do
+    if Application.get_env(:trenino, :start_virtual_joystick_manager, true) do
+      [Trenino.VirtualJoystick.Manager]
     else
       []
     end

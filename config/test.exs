@@ -73,6 +73,9 @@ config :trenino, :detection_grace_period_ms, 200
 # Skip initial connection delay in tests (1s in production)
 config :trenino, :connection_initial_delay_ms, 0
 
+config :trenino, :virtual_joystick_bridge_timeout_ms, 100
+config :trenino, :start_virtual_joystick_manager, false
+
 # Shorter call timeout in tests so port-timeout tests don't wait the full
 # production 5s. Production default stays 5000ms via Application.get_env.
 config :trenino, :serial_connection_call_timeout_ms, 500

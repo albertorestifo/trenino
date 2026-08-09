@@ -31,6 +31,7 @@ Build your own train controls with real throttle levers, brake handles, switches
 - **Guided calibration** — step-by-step process to calibrate your levers and controls
 - **Auto-detection** — automatically recognizes which train you're driving and loads the right configuration
 - **Visual control mapping** — map any hardware input to simulator controls using the built-in API explorer
+- **Windows virtual joystick** — expose selected calibrated levers and buttons as one removable DirectInput joystick with eight axes and 32 buttons, independently of Train Sim World
 - **I2C display modules** — show live simulator data (speed, brake pressure, gear position) on HT16K33 7- or 14-segment LED displays wired to your Arduino
 - **Lua scripting** — write custom logic to flash warning LEDs, react to speed changes, automate sequences, and more ([scripting guide](docs/lua-scripting.md))
 - **AI-assisted setup** — describe what you want in plain language and let Claude configure your train via [MCP integration](docs/mcp-setup.md)
@@ -42,11 +43,16 @@ Build your own train controls with real throttle levers, brake handles, switches
 - **Train Sim World 6** with the External Interface API enabled (see [below](#enabling-the-tsw-api))
 - **An Arduino board** — see [Supported Hardware](#supported-hardware)
 
+Virtual joystick mode additionally requires Windows 10 or 11. The signed vJoy
+runtime is included in the Windows NSIS `.exe`; no separate driver download is
+needed when that installer is used. The MSI does not manage the vJoy driver
+lifecycle. See [Getting Started](docs/getting-started.md#windows-virtual-joystick-mode).
+
 ### Installation
 
 Download the latest installer for your platform from the [Releases page](https://github.com/albertorestifo/trenino/releases):
 
-- **Windows**: NSIS installer (`.exe`) or MSI — the Visual C++ Redistributable is bundled, no separate install needed
+- **Windows**: NSIS installer (`.exe`) or MSI — the Visual C++ Redistributable is bundled, no separate install needed. Virtual joystick mode requires the NSIS `.exe`; the MSI does not run Trenino's vJoy install, ownership, or shared-driver uninstall hooks.
 - **Linux**: AppImage (`.AppImage`) — download, mark as executable, and run
 
 macOS builds are not provided as pre-built releases. See the [Development Guide](docs/development.md#building-the-desktop-app) to build from source.
