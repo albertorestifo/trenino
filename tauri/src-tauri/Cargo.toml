@@ -7,6 +7,12 @@ license = "CC-BY-NC-4.0"
 repository = "https://github.com/albertorestifo/trenino"
 edition = "2021"
 
+[package.metadata.vjoy]
+version = "2.2.2.0"
+release = "https://github.com/BrunnerInnovation/vJoy/releases/tag/v2.2.2.0"
+installer-sha256 = "ef569a3105cd301b89580f18f60c66b339e95296acf2c0dfcaf4b4bbf8ab68fe"
+sdk-sha256 = "0e796b185b66819d5fbeae645f3f038ecbfbbde837d3d3f06cba82ae1db07c67"
+
 [lib]
 name = "trenino_lib"
 crate-type = ["lib", "cdylib", "staticlib"]

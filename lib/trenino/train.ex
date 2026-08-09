@@ -9,15 +9,19 @@ defmodule Trenino.Train do
   import Ecto.Query
 
   alias Trenino.Hardware
+  alias Trenino.Hardware.Input
   alias Trenino.Repo
   alias Trenino.Simulator.Client
+  alias Trenino.VirtualJoystick.{Manager, Mapping}
 
   alias Trenino.Train.{
+    ButtonController,
     ButtonInputBinding,
     DisplayBinding,
     Element,
     Identifier,
     LeverConfig,
+    LeverController,
     LeverInputBinding,
     Notch,
     OutputBinding,
@@ -648,22 +652,27 @@ defmodule Trenino.Train do
   Creates a new binding or updates an existing one.
   """
   @spec bind_input(integer(), integer()) ::
-          {:ok, LeverInputBinding.t()} | {:error, Ecto.Changeset.t()}
+          {:ok, LeverInputBinding.t()} | {:error, :destination_conflict | Ecto.Changeset.t()}
   def bind_input(lever_config_id, input_id) do
-    case Repo.get_by(LeverInputBinding, lever_config_id: lever_config_id) do
-      nil ->
-        %LeverInputBinding{}
-        |> LeverInputBinding.changeset(%{
-          lever_config_id: lever_config_id,
-          input_id: input_id
-        })
-        |> Repo.insert()
+    bind_input(lever_config_id, input_id, [])
+  end
 
-      existing ->
-        existing
-        |> LeverInputBinding.changeset(%{input_id: input_id})
-        |> Repo.update()
-    end
+  @spec bind_input(integer(), integer(), keyword()) ::
+          {:ok, LeverInputBinding.t()} | {:error, :destination_conflict | Ecto.Changeset.t()}
+  def bind_input(lever_config_id, input_id, opts) do
+    changeset =
+      case Repo.get_by(LeverInputBinding, lever_config_id: lever_config_id) do
+        nil ->
+          LeverInputBinding.changeset(%LeverInputBinding{}, %{
+            lever_config_id: lever_config_id,
+            input_id: input_id
+          })
+
+        existing ->
+          LeverInputBinding.changeset(existing, %{input_id: input_id})
+      end
+
+    save_binding(changeset, opts)
   end
 
   @doc """
@@ -685,8 +694,16 @@ defmodule Trenino.Train do
   Enable or disable an input binding.
   """
   @spec set_binding_enabled(integer(), boolean()) ::
-          {:ok, LeverInputBinding.t()} | {:error, :not_found} | {:error, Ecto.Changeset.t()}
+          {:ok, LeverInputBinding.t()}
+          | {:error, :destination_conflict | :not_found | Ecto.Changeset.t()}
   def set_binding_enabled(lever_config_id, enabled) do
+    set_binding_enabled(lever_config_id, enabled, [])
+  end
+
+  @spec set_binding_enabled(integer(), boolean(), keyword()) ::
+          {:ok, LeverInputBinding.t()}
+          | {:error, :destination_conflict | :not_found | Ecto.Changeset.t()}
+  def set_binding_enabled(lever_config_id, enabled, opts) do
     case Repo.get_by(LeverInputBinding, lever_config_id: lever_config_id) do
       nil ->
         {:error, :not_found}
@@ -694,7 +711,7 @@ defmodule Trenino.Train do
       binding ->
         binding
         |> LeverInputBinding.changeset(%{enabled: enabled})
-        |> Repo.update()
+        |> save_binding(opts)
     end
   end
 
@@ -824,8 +841,14 @@ defmodule Trenino.Train do
   Merges `element_id` and `input_id` into `attrs` for the changeset.
   """
   @spec create_button_binding(integer(), integer(), map()) ::
-          {:ok, ButtonInputBinding.t()} | {:error, Ecto.Changeset.t()}
+          {:ok, ButtonInputBinding.t()} | {:error, :destination_conflict | Ecto.Changeset.t()}
   def create_button_binding(element_id, input_id, attrs) do
+    create_button_binding(element_id, input_id, attrs, [])
+  end
+
+  @spec create_button_binding(integer(), integer(), map(), keyword()) ::
+          {:ok, ButtonInputBinding.t()} | {:error, :destination_conflict | Ecto.Changeset.t()}
+  def create_button_binding(element_id, input_id, attrs, opts) do
     # Changesets require consistent key types (all atoms or all strings).
     # Since form params come as strings, ensure IDs use the same key type as attrs.
     params =
@@ -841,19 +864,103 @@ defmodule Trenino.Train do
 
     %ButtonInputBinding{}
     |> ButtonInputBinding.changeset(params)
-    |> Repo.insert()
+    |> save_binding(opts)
   end
 
   @doc """
   Update a button binding.
   """
   @spec update_button_binding(ButtonInputBinding.t(), map()) ::
-          {:ok, ButtonInputBinding.t()} | {:error, Ecto.Changeset.t()}
+          {:ok, ButtonInputBinding.t()} | {:error, :destination_conflict | Ecto.Changeset.t()}
   def update_button_binding(%ButtonInputBinding{} = binding, attrs) do
+    update_button_binding(binding, attrs, [])
+  end
+
+  @spec update_button_binding(ButtonInputBinding.t(), map(), keyword()) ::
+          {:ok, ButtonInputBinding.t()} | {:error, :destination_conflict | Ecto.Changeset.t()}
+  def update_button_binding(%ButtonInputBinding{} = binding, attrs, opts) do
     binding
     |> ButtonInputBinding.changeset(attrs)
-    |> Repo.update()
+    |> save_binding(opts)
   end
+
+  defp save_binding(changeset, opts) do
+    replace? = Keyword.get(opts, :replace?, false)
+    input_id = Ecto.Changeset.get_field(changeset, :input_id)
+    enabled? = Ecto.Changeset.get_field(changeset, :enabled)
+
+    transaction = fn -> persist_binding(changeset, input_id, enabled?, replace?) end
+
+    case Repo.transaction(transaction, mode: :immediate) do
+      {:ok, {binding, replaced?}} ->
+        maybe_notify_virtual_joystick_replacement(replaced?, binding)
+        {:ok, binding}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  defp persist_binding(
+         %Ecto.Changeset{valid?: false} = changeset,
+         _input_id,
+         _enabled?,
+         _replace?
+       ),
+       do: Repo.rollback(changeset)
+
+  defp persist_binding(%Ecto.Changeset{} = changeset, input_id, enabled?, replace?) do
+    lock_input(input_id)
+
+    replaced? =
+      if enabled?, do: maybe_replace_virtual_joystick_mapping(input_id, replace?), else: false
+
+    case Repo.insert_or_update(changeset) do
+      {:ok, binding} -> {binding, replaced?}
+      {:error, invalid_changeset} -> Repo.rollback(invalid_changeset)
+    end
+  end
+
+  defp maybe_replace_virtual_joystick_mapping(input_id, true) do
+    case Repo.get_by(Mapping, input_id: input_id) do
+      nil ->
+        false
+
+      mapping ->
+        {:ok, _mapping} = Repo.delete(mapping)
+        true
+    end
+  end
+
+  defp maybe_replace_virtual_joystick_mapping(input_id, false) do
+    if Repo.exists?(from(mapping in Mapping, where: mapping.input_id == ^input_id)),
+      do: Repo.rollback(:destination_conflict)
+
+    false
+  end
+
+  # SQLite has no row-lock syntax. The immediate transaction that surrounds this
+  # lookup takes the writer lock before either context can inspect or alter this
+  # input's destinations.
+  defp lock_input(input_id) do
+    Input
+    |> where([input], input.id == ^input_id)
+    |> Repo.one()
+  end
+
+  defp maybe_notify_virtual_joystick_replacement(true, %LeverInputBinding{}) do
+    if Process.whereis(LeverController), do: LeverController.reload_bindings()
+
+    if Process.whereis(Manager), do: Manager.reload_mappings()
+  end
+
+  defp maybe_notify_virtual_joystick_replacement(true, %ButtonInputBinding{}) do
+    if Process.whereis(ButtonController), do: ButtonController.reload_bindings()
+
+    if Process.whereis(Manager), do: Manager.reload_mappings()
+  end
+
+  defp maybe_notify_virtual_joystick_replacement(false, _binding), do: :ok
 
   @doc """
   Delete a button binding by element ID.
@@ -874,8 +981,16 @@ defmodule Trenino.Train do
   Enable or disable a button binding.
   """
   @spec set_button_binding_enabled(integer(), boolean()) ::
-          {:ok, ButtonInputBinding.t()} | {:error, :not_found} | {:error, Ecto.Changeset.t()}
+          {:ok, ButtonInputBinding.t()}
+          | {:error, :destination_conflict | :not_found | Ecto.Changeset.t()}
   def set_button_binding_enabled(element_id, enabled) do
+    set_button_binding_enabled(element_id, enabled, [])
+  end
+
+  @spec set_button_binding_enabled(integer(), boolean(), keyword()) ::
+          {:ok, ButtonInputBinding.t()}
+          | {:error, :destination_conflict | :not_found | Ecto.Changeset.t()}
+  def set_button_binding_enabled(element_id, enabled, opts) do
     case Repo.get_by(ButtonInputBinding, element_id: element_id) do
       nil ->
         {:error, :not_found}
@@ -883,7 +998,7 @@ defmodule Trenino.Train do
       binding ->
         binding
         |> ButtonInputBinding.changeset(%{enabled: enabled})
-        |> Repo.update()
+        |> save_binding(opts)
     end
   end
 

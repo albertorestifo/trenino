@@ -91,7 +91,9 @@ defmodule Trenino.Train.LeverController do
   """
   @spec reload_bindings() :: :ok
   def reload_bindings do
-    GenServer.cast(__MODULE__, :reload_bindings)
+    if Process.whereis(__MODULE__), do: GenServer.cast(__MODULE__, :reload_bindings)
+
+    :ok
   end
 
   # Server Callbacks

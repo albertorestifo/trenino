@@ -76,13 +76,32 @@ Communicates with Train Sim World's External Interface API.
 - **Connection** - GenServer managing connection health
 - **AutoConfig** - Windows auto-detection of API key from `CommAPIKey.txt`
 
+### Virtual Joystick Domain (`lib/trenino/virtual_joystick/`)
+
+Provides a standalone Windows DirectInput destination backed by vJoy device 1.
+
+- **Manager** owns lifecycle reconciliation, mappings, cached hardware state,
+  safe defaults, bridge restart/backoff, and the public runtime state machine.
+- **Bridge** owns a persistent external process through an Erlang Port, enforces
+  bounded JSON Lines framing, correlates acknowledgements, and coalesces newer
+  updates for an in-flight control.
+- **Configurator** performs fixed elevated create/delete commands, waits for
+  Windows enumeration, validates the exact eight-axis/32-button descriptor, and
+  records device ownership only after confirmed creation.
+- **Mapper** converts existing calibrated analog values to the axis range
+  reported by vJoy, with clamping and optional inversion.
+
+Every physical input is routed to exactly one destination. Context-level SQLite
+immediate transactions perform explicit replacement between simulator/API and
+virtual joystick mappings so UI and MCP callers cannot bypass exclusivity.
+
 ### MCP Domain (`lib/trenino/mcp/`)
 
 Model Context Protocol server for AI-powered configuration.
 
 - **Server** - MCP server implementation with SSE transport at `/mcp/sse`
 - **ToolRegistry** - Registry of available MCP tools organized by category
-- **Tools** - 37 tools across 10 categories:
+- **Tools** - 47 tools across 11 categories:
   - **SimulatorTools** - Browse endpoints, read/write simulator values
   - **TrainTools** - List trains and get configurations
   - **ElementTools** - Manage train buttons and levers
@@ -93,6 +112,8 @@ Model Context Protocol server for AI-powered configuration.
   - **SequenceTools** - CRUD operations for command sequences
   - **ScriptTools** - CRUD operations for Lua scripts
   - **DisplayBindingTools** - CRUD operations for display bindings
+  - **VirtualJoystickTools** - status, mapping, lifecycle, cleanup, and
+    installation-check operations for the standalone joystick destination
 
 ### Serial Domain (`lib/trenino/serial/`)
 
@@ -124,6 +145,25 @@ Low-level USB/UART communication with hardware devices.
 2. **Normalization** - Calibration data converts to 0.0-1.0
 3. **Notch Mapping** - LeverMapper finds notch and interpolates
 4. **API Call** - LeverController sends value to simulator
+
+### Hardware Input to Virtual Joystick
+
+```text
+ConfigurationManager input event
+  -> exclusive destination lookup
+  -> VirtualJoystick.Manager
+  -> VirtualJoystick.Bridge (persistent Port)
+  -> virtual_joystick.exe
+  -> trusted absolute vJoyInterface.dll
+  -> vJoy device 1 complete report
+```
+
+The native protocol is versioned UTF-8 JSON Lines over stdin/stdout. Commands
+include `hello`, `set_axis`, `set_button`, `reset`, and `shutdown`; mutations
+carry monotonically increasing request IDs. Diagnostics use stderr. The Rust
+sidecar owns one complete eight-axis/32-button report, so changing one control
+cannot reset another, and it acquires/releases an existing compatible device
+without creating, deleting, or stealing it.
 
 ### Train Detection Flow
 
@@ -157,6 +197,7 @@ Application
 ├── Trenino.Train.DisplayController (I2C display bindings, 200ms poll)
 ├── Trenino.Train.ScriptRunner (Lua script execution)
 ├── Trenino.Hardware.ConfigurationManager (input broadcasts)
+├── Trenino.VirtualJoystick.Manager (Windows vJoy lifecycle and routing)
 └── Calibration Supervisors
     ├── Trenino.Hardware.Calibration.SessionSupervisor
     └── Trenino.Train.Calibration.SessionSupervisor

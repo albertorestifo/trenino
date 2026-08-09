@@ -4,6 +4,7 @@ defmodule Trenino.TrainTest do
   alias Trenino.Hardware
   alias Trenino.Train, as: TrainContext
   alias Trenino.Train.{ButtonInputBinding, Element, LeverConfig, Notch, Train}
+  alias Trenino.VirtualJoystick
 
   describe "create_train/1" do
     test "creates a train with valid attributes" do
@@ -697,6 +698,28 @@ defmodule Trenino.TrainTest do
 
     test "returns error when no binding exists" do
       assert {:error, :not_found} = TrainContext.set_button_binding_enabled(999_999, true)
+    end
+
+    test "requires replacement before enabling a button binding mapped to vJoy", %{
+      element: element
+    } do
+      assert {:ok, binding} = TrainContext.get_button_binding(element.id)
+      assert {:ok, _inactive} = TrainContext.update_button_binding(binding, %{enabled: false})
+
+      assert {:ok, mapping} =
+               VirtualJoystick.put_mapping(binding.input_id, %{target_type: :button, button: 1})
+
+      assert {:error, :destination_conflict} =
+               TrainContext.set_button_binding_enabled(element.id, true)
+
+      assert {:ok, inactive} = TrainContext.get_button_binding(element.id)
+      assert inactive.enabled == false
+
+      assert {:ok, enabled} =
+               TrainContext.set_button_binding_enabled(element.id, true, replace?: true)
+
+      assert enabled.enabled == true
+      assert {:error, :not_found} = VirtualJoystick.get_mapping(mapping.id)
     end
   end
 
