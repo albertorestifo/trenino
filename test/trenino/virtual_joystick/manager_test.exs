@@ -56,34 +56,31 @@ defmodule Trenino.VirtualJoystick.ManagerTest do
 
       Agent.get_and_update(agent(), fn state ->
         send(state.test, {:bridge_started, owner})
-
-        case state.bridge_results do
-          [{:error, reason} | rest] ->
-            {{:error, reason}, %{state | bridge_results: rest}}
-
-          [result | rest] when result in [:ready, :silent] ->
-            pid = spawn_link(fn -> loop(state.test) end)
-
-            if result == :ready do
-              send(
-                owner,
-                {:virtual_joystick_bridge, {:ready, %{device: 1, axis_min: 0, axis_max: 32_767}}}
-              )
-            end
-
-            {{:ok, pid}, %{state | bridge_results: rest}}
-
-          [] ->
-            pid = spawn_link(fn -> loop(state.test) end)
-
-            send(
-              owner,
-              {:virtual_joystick_bridge, {:ready, %{device: 1, axis_min: 0, axis_max: 32_767}}}
-            )
-
-            {{:ok, pid}, state}
-        end
+        start_result(state, owner)
       end)
+    end
+
+    defp start_result(%{bridge_results: [{:error, reason} | rest]} = state, _owner),
+      do: {{:error, reason}, %{state | bridge_results: rest}}
+
+    defp start_result(%{bridge_results: [result | rest]} = state, owner)
+         when result in [:ready, :silent] do
+      pid = spawn_link(fn -> loop(state.test) end)
+      if result == :ready, do: send_ready(owner)
+      {{:ok, pid}, %{state | bridge_results: rest}}
+    end
+
+    defp start_result(%{bridge_results: []} = state, owner) do
+      pid = spawn_link(fn -> loop(state.test) end)
+      send_ready(owner)
+      {{:ok, pid}, state}
+    end
+
+    defp send_ready(owner) do
+      send(
+        owner,
+        {:virtual_joystick_bridge, {:ready, %{device: 1, axis_min: 0, axis_max: 32_767}}}
+      )
     end
 
     def set_axis(pid, axis, value), do: call(pid, {:axis, axis, value})

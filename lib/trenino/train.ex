@@ -12,14 +12,16 @@ defmodule Trenino.Train do
   alias Trenino.Hardware.Input
   alias Trenino.Repo
   alias Trenino.Simulator.Client
-  alias Trenino.VirtualJoystick.Mapping
+  alias Trenino.VirtualJoystick.{Manager, Mapping}
 
   alias Trenino.Train.{
+    ButtonController,
     ButtonInputBinding,
     DisplayBinding,
     Element,
     Identifier,
     LeverConfig,
+    LeverController,
     LeverInputBinding,
     Notch,
     OutputBinding,
@@ -887,32 +889,35 @@ defmodule Trenino.Train do
     input_id = Ecto.Changeset.get_field(changeset, :input_id)
     enabled? = Ecto.Changeset.get_field(changeset, :enabled)
 
-    case Repo.transaction(
-           fn ->
-             if changeset.valid? do
-               lock_input(input_id)
+    transaction = fn -> persist_binding(changeset, input_id, enabled?, replace?) end
 
-               replaced? =
-                 if enabled?,
-                   do: maybe_replace_virtual_joystick_mapping(input_id, replace?),
-                   else: false
-
-               case Repo.insert_or_update(changeset) do
-                 {:ok, binding} -> {binding, replaced?}
-                 {:error, changeset} -> Repo.rollback(changeset)
-               end
-             else
-               Repo.rollback(changeset)
-             end
-           end,
-           mode: :immediate
-         ) do
+    case Repo.transaction(transaction, mode: :immediate) do
       {:ok, {binding, replaced?}} ->
         maybe_notify_virtual_joystick_replacement(replaced?, binding)
         {:ok, binding}
 
       {:error, reason} ->
         {:error, reason}
+    end
+  end
+
+  defp persist_binding(
+         %Ecto.Changeset{valid?: false} = changeset,
+         _input_id,
+         _enabled?,
+         _replace?
+       ),
+       do: Repo.rollback(changeset)
+
+  defp persist_binding(%Ecto.Changeset{} = changeset, input_id, enabled?, replace?) do
+    lock_input(input_id)
+
+    replaced? =
+      if enabled?, do: maybe_replace_virtual_joystick_mapping(input_id, replace?), else: false
+
+    case Repo.insert_or_update(changeset) do
+      {:ok, binding} -> {binding, replaced?}
+      {:error, invalid_changeset} -> Repo.rollback(invalid_changeset)
     end
   end
 
@@ -944,19 +949,15 @@ defmodule Trenino.Train do
   end
 
   defp maybe_notify_virtual_joystick_replacement(true, %LeverInputBinding{}) do
-    if Process.whereis(Trenino.Train.LeverController),
-      do: Trenino.Train.LeverController.reload_bindings()
+    if Process.whereis(LeverController), do: LeverController.reload_bindings()
 
-    if Process.whereis(Trenino.VirtualJoystick.Manager),
-      do: apply(Trenino.VirtualJoystick.Manager, :reload_mappings, [])
+    if Process.whereis(Manager), do: Manager.reload_mappings()
   end
 
   defp maybe_notify_virtual_joystick_replacement(true, %ButtonInputBinding{}) do
-    if Process.whereis(Trenino.Train.ButtonController),
-      do: Trenino.Train.ButtonController.reload_bindings()
+    if Process.whereis(ButtonController), do: ButtonController.reload_bindings()
 
-    if Process.whereis(Trenino.VirtualJoystick.Manager),
-      do: apply(Trenino.VirtualJoystick.Manager, :reload_mappings, [])
+    if Process.whereis(Manager), do: Manager.reload_mappings()
   end
 
   defp maybe_notify_virtual_joystick_replacement(false, _binding), do: :ok

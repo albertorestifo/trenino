@@ -30,38 +30,44 @@ defmodule Trenino.VirtualJoystick.Configurator do
   end
 
   def create do
-    with :ok <- supported() do
-      case checked_status() do
-        :compatible ->
-          :ok
-
-        :device_missing ->
-          with :ok <- configure(@create_arguments, :compatible),
-               :ok <- adapter().mark_device_owned(true) do
-            :ok
-          end
-
-        status ->
-          {:error, status}
-      end
+    case supported() do
+      :ok -> create_supported()
+      {:error, reason} -> {:error, reason}
     end
   end
 
   def delete do
-    with :ok <- supported() do
-      case checked_status() do
-        :device_missing ->
-          adapter().mark_device_owned(false)
+    case supported() do
+      :ok -> delete_supported()
+      {:error, reason} -> {:error, reason}
+    end
+  end
 
-        :compatible ->
-          with :ok <- configure(@delete_arguments, :device_missing),
-               :ok <- adapter().mark_device_owned(false) do
-            :ok
-          end
+  defp create_supported do
+    case checked_status() do
+      :compatible -> :ok
+      :device_missing -> create_device()
+      status -> {:error, status}
+    end
+  end
 
-        status ->
-          {:error, status}
-      end
+  defp create_device do
+    with :ok <- configure(@create_arguments, :compatible) do
+      adapter().mark_device_owned(true)
+    end
+  end
+
+  defp delete_supported do
+    case checked_status() do
+      :device_missing -> adapter().mark_device_owned(false)
+      :compatible -> delete_device()
+      status -> {:error, status}
+    end
+  end
+
+  defp delete_device do
+    with :ok <- configure(@delete_arguments, :device_missing) do
+      adapter().mark_device_owned(false)
     end
   end
 
@@ -92,9 +98,8 @@ defmodule Trenino.VirtualJoystick.Configurator do
 
   defp configure(arguments, expected) do
     with {:ok, path} <- adapter().configurator_path(),
-         :ok <- elevate(path, arguments),
-         :ok <- wait_for(expected, @default_timeout) do
-      :ok
+         :ok <- elevate(path, arguments) do
+      wait_for(expected, @default_timeout)
     end
   end
 

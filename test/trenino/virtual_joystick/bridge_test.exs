@@ -3,6 +3,7 @@ defmodule Trenino.VirtualJoystick.BridgeTest do
 
   alias Trenino.Test.FakeVirtualJoystick, as: Fake
   alias Trenino.VirtualJoystick.Bridge
+  alias Trenino.VirtualJoystick.Bridge.PortAdapter
 
   setup do
     Application.put_env(:trenino, :virtual_joystick_fake_test, self())
@@ -70,10 +71,10 @@ defmodule Trenino.VirtualJoystick.BridgeTest do
 
     if executable do
       assert {:ok, port} =
-               Trenino.VirtualJoystick.Bridge.PortAdapter.open(self(), executable, args: args)
+               PortAdapter.open(self(), executable, args: args)
 
-      assert :ok = Trenino.VirtualJoystick.Bridge.PortAdapter.send_line(port, "hello")
-      Trenino.VirtualJoystick.Bridge.PortAdapter.close(port)
+      assert :ok = PortAdapter.send_line(port, "hello")
+      PortAdapter.close(port)
     end
   end
 

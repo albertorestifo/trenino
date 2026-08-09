@@ -8,8 +8,8 @@ defmodule TreninoWeb.VirtualJoystickLive do
   alias Trenino.Hardware.ConfigurationManager
   alias Trenino.Serial.Connection
   alias Trenino.VirtualJoystick
-  alias Trenino.VirtualJoystick.Platform
   alias Trenino.VirtualJoystick.Mapper
+  alias Trenino.VirtualJoystick.Platform
 
   @axes [
     {:x, "X"},

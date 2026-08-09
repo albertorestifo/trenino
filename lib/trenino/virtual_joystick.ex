@@ -7,8 +7,8 @@ defmodule Trenino.VirtualJoystick do
 
   alias Trenino.Hardware.Input
   alias Trenino.Repo
-  alias Trenino.Train.{ButtonInputBinding, LeverInputBinding}
-  alias Trenino.VirtualJoystick.{Configuration, Mapping}
+  alias Trenino.Train.{ButtonController, ButtonInputBinding, LeverController, LeverInputBinding}
+  alias Trenino.VirtualJoystick.{Configuration, Manager, Mapping}
 
   @mapping_preloads [input: [:device, :calibration]]
 
@@ -75,42 +75,35 @@ defmodule Trenino.VirtualJoystick do
     replace? = Keyword.get(opts, :replace?, false)
     attrs = Map.drop(attrs, [:input_id, "input_id"])
 
-    case Repo.transaction(
-           fn ->
-             input =
-               lock_input(input_id)
-
-             if is_nil(input), do: Repo.rollback(:not_found)
-
-             mapping = Repo.get_by(Mapping, input_id: input.id)
-
-             mapping_changeset =
-               (mapping || %Mapping{input_id: input.id})
-               |> Mapping.changeset(attrs)
-               |> Mapping.validate_input_type(input)
-
-             if mapping_changeset.valid? do
-               replaced = maybe_replace_simulator_bindings(input.id, replace?)
-
-               case Repo.insert_or_update(mapping_changeset) do
-                 {:ok, saved_mapping} ->
-                   {Repo.preload(saved_mapping, @mapping_preloads), replaced}
-
-                 {:error, changeset} ->
-                   Repo.rollback(changeset)
-               end
-             else
-               Repo.rollback(mapping_changeset)
-             end
-           end,
-           mode: :immediate
-         ) do
+    case Repo.transaction(fn -> persist_mapping(input_id, attrs, replace?) end, mode: :immediate) do
       {:ok, {mapping, replaced}} ->
         maybe_notify_replacement(replaced)
         {:ok, mapping}
 
       {:error, reason} ->
         {:error, reason}
+    end
+  end
+
+  defp persist_mapping(input_id, attrs, replace?) do
+    input = lock_input(input_id)
+    if is_nil(input), do: Repo.rollback(:not_found)
+
+    (Repo.get_by(Mapping, input_id: input.id) || %Mapping{input_id: input.id})
+    |> Mapping.changeset(attrs)
+    |> Mapping.validate_input_type(input)
+    |> save_mapping(input.id, replace?)
+  end
+
+  defp save_mapping(%Ecto.Changeset{valid?: false} = changeset, _input_id, _replace?),
+    do: Repo.rollback(changeset)
+
+  defp save_mapping(%Ecto.Changeset{} = changeset, input_id, replace?) do
+    replaced = maybe_replace_simulator_bindings(input_id, replace?)
+
+    case Repo.insert_or_update(changeset) do
+      {:ok, mapping} -> {Repo.preload(mapping, @mapping_preloads), replaced}
+      {:error, invalid_changeset} -> Repo.rollback(invalid_changeset)
     end
   end
 
@@ -158,14 +151,11 @@ defmodule Trenino.VirtualJoystick do
   end
 
   defp maybe_notify_replacement(%{lever?: lever?, button?: button?}) do
-    if lever? and Process.whereis(Trenino.Train.LeverController),
-      do: Trenino.Train.LeverController.reload_bindings()
+    if lever? and Process.whereis(LeverController), do: LeverController.reload_bindings()
 
-    if button? and Process.whereis(Trenino.Train.ButtonController),
-      do: Trenino.Train.ButtonController.reload_bindings()
+    if button? and Process.whereis(ButtonController), do: ButtonController.reload_bindings()
 
-    if (lever? or button?) and Process.whereis(Trenino.VirtualJoystick.Manager),
-      do: apply(Trenino.VirtualJoystick.Manager, :reload_mappings, [])
+    if (lever? or button?) and Process.whereis(Manager), do: Manager.reload_mappings()
   end
 
   @spec delete_mapping(integer() | Mapping.t()) ::

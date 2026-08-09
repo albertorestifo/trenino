@@ -1,10 +1,10 @@
 defmodule Trenino.VirtualJoystickTest do
   use Trenino.DataCase, async: true
 
-  alias Trenino.VirtualJoystick
-  alias Trenino.VirtualJoystick.{Configuration, Mapping}
   alias Trenino.Train, as: TrainContext
   alias Trenino.Train.LeverInputBinding
+  alias Trenino.VirtualJoystick
+  alias Trenino.VirtualJoystick.{Configuration, Mapping}
 
   describe "get_configuration/0" do
     test "creates the singleton configuration with its defaults" do
