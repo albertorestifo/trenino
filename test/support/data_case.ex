@@ -34,7 +34,7 @@ defmodule Trenino.DataCase do
   end
 
   setup tags do
-    if tags[:async] do
+    if tags[:async] || tags[:isolated_repo] do
       Trenino.DataCase.setup_isolated_repo()
     else
       Trenino.DataCase.setup_sandbox(tags)

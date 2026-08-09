@@ -7,7 +7,12 @@ defmodule Trenino.Firmware.ReleaseManifestIntegrationTest do
   release.json format from the trenino_firmware repository.
   """
 
-  use Trenino.DataCase, async: true
+  # DeviceRegistry is an application-wide GenServer backed by a named ETS table.
+  # Tests in this module replace its contents, so they must not overlap other tests
+  # that use the registry.
+  use Trenino.DataCase, async: false
+
+  @moduletag :isolated_repo
 
   alias Trenino.Firmware
   alias Trenino.Firmware.DeviceRegistry
