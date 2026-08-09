@@ -40,6 +40,12 @@ Trenino.Repo.put_dynamic_repo(template_pid)
 
 migrations_path = Application.app_dir(:trenino, "priv/repo/migrations")
 
+# The `mix test` alias migrates the main test database before ExUnit starts,
+# loading migration modules from the source `priv` directory. The template
+# migration below loads the same modules from the copied `_build` directory.
+# Unload the first set so Elixir does not report every migration as redefined.
+Trenino.Test.MigrationModuleIsolation.purge_loaded()
+
 Ecto.Migrator.run(Trenino.Repo, migrations_path, :up,
   all: true,
   dynamic_repo: template_pid
