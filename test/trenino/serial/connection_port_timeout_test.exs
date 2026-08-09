@@ -173,7 +173,9 @@ defmodule Trenino.Serial.Connection.PortTimeoutTest do
       fake_uart_pid = spawn(fn -> Process.sleep(:infinity) end)
 
       on_exit(fn ->
+        :ok = Supervisor.terminate_child(Trenino.Supervisor, Connection)
         if Process.alive?(fake_uart_pid), do: Process.exit(fake_uart_pid, :kill)
+        {:ok, _pid} = Supervisor.restart_child(Trenino.Supervisor, Connection)
       end)
 
       Circuits.UART
