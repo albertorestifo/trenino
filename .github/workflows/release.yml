@@ -206,6 +206,56 @@ jobs:
           path: tauri/keystroke/target/release/keystroke
           retention-days: 1
 
+  build-virtual-joystick:
+    name: Build Virtual Joystick (${{ matrix.target }})
+    needs: [verify-version]
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-2022
+            target: windows_x86_64
+            tauri_target: x86_64-pc-windows-msvc
+
+          - os: ubuntu-22.04
+            target: linux_x86_64
+            tauri_target: x86_64-unknown-linux-gnu
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.tauri_target }}
+
+      - name: Cache Rust
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: tauri/virtual_joystick -> target
+
+      - name: Build virtual joystick utility
+        working-directory: tauri/virtual_joystick
+        run: cargo build --release
+
+      - name: Upload virtual joystick binary (Windows)
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@v7
+        with:
+          name: virtual-joystick-${{ matrix.target }}
+          path: tauri/virtual_joystick/target/release/virtual_joystick.exe
+          retention-days: 1
+
+      - name: Upload virtual joystick binary (Unix)
+        if: runner.os != 'Windows'
+        uses: actions/upload-artifact@v7
+        with:
+          name: virtual-joystick-${{ matrix.target }}
+          path: tauri/virtual_joystick/target/release/virtual_joystick
+          retention-days: 1
+
   download-avrdude:
     name: Download avrdude (${{ matrix.target }})
     runs-on: ubuntu-latest
@@ -267,7 +317,7 @@ jobs:
 
   build-tauri:
     name: Build Tauri (${{ matrix.target }})
-    needs: [verify-version, build-elixir, build-keystroke, download-avrdude, download-vcredist]
+    needs: [verify-version, build-elixir, build-keystroke, build-virtual-joystick, download-avrdude, download-vcredist]
     runs-on: ${{ matrix.os }}
     permissions:
       contents: write
@@ -316,6 +366,12 @@ jobs:
           name: keystroke-${{ matrix.target }}
           path: tauri/src-tauri/binaries/keystroke-download
 
+      - name: Download virtual joystick
+        uses: actions/download-artifact@v8
+        with:
+          name: virtual-joystick-${{ matrix.target }}
+          path: tauri/src-tauri/binaries/virtual-joystick-download
+
       - name: Download VC++ Redistributable
         if: runner.os == 'Windows'
         uses: actions/download-artifact@v8
@@ -345,9 +401,14 @@ jobs:
           Move-Item -Path "tauri/src-tauri/binaries/keystroke-download/keystroke.exe" `
                     -Destination "tauri/src-tauri/binaries/keystroke-${{ matrix.tauri_target }}.exe"
 
+          # Prepare virtual joystick binary
+          Move-Item -Path "tauri/src-tauri/binaries/virtual-joystick-download/virtual_joystick.exe" `
+                    -Destination "tauri/src-tauri/binaries/virtual_joystick-${{ matrix.tauri_target }}.exe"
+
           # Clean up download folders
           Remove-Item -Recurse -Force "tauri/src-tauri/binaries/avrdude-download"
           Remove-Item -Recurse -Force "tauri/src-tauri/binaries/keystroke-download"
+          Remove-Item -Recurse -Force "tauri/src-tauri/binaries/virtual-joystick-download"
 
           Get-ChildItem tauri/src-tauri/binaries/
 
@@ -375,9 +436,15 @@ jobs:
              "tauri/src-tauri/binaries/keystroke-${{ matrix.tauri_target }}"
           chmod +x "tauri/src-tauri/binaries/keystroke-${{ matrix.tauri_target }}"
 
+          # Prepare virtual joystick binary
+          mv "tauri/src-tauri/binaries/virtual-joystick-download/virtual_joystick" \
+             "tauri/src-tauri/binaries/virtual_joystick-${{ matrix.tauri_target }}"
+          chmod +x "tauri/src-tauri/binaries/virtual_joystick-${{ matrix.tauri_target }}"
+
           # Clean up download folders
           rm -rf "tauri/src-tauri/binaries/avrdude-download"
           rm -rf "tauri/src-tauri/binaries/keystroke-download"
+          rm -rf "tauri/src-tauri/binaries/virtual-joystick-download"
 
           ls -la tauri/src-tauri/binaries/
 
