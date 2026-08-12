@@ -187,7 +187,7 @@ jobs:
           Write-Host "NSIS artifact: $($installer.FullName)"
 
       - name: Upload Windows installer
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: trenino-windows-nsis
           path: tauri/src-tauri/target/release/bundle/nsis/*.exe
