@@ -379,6 +379,16 @@ jobs:
           name: vcredist
           path: tauri/src-tauri/resources
 
+      - name: Install pinned vJoy extractor
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: choco install innoextract --version 1.9 -y --no-progress
+
+      - name: Stage verified vJoy resources
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./scripts/stage-vjoy-resources.ps1
+
       - name: Prepare binaries (Windows)
         if: runner.os == 'Windows'
         shell: pwsh

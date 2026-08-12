@@ -4,7 +4,7 @@
 
 **Goal:** Build and stage the virtual joystick sidecar in nightly and release Tauri packages.
 
-**Architecture:** Both workflows gain matching target-matrix build jobs and pass target-specific artifacts into their existing Tauri matrix jobs. A static ExUnit contract prevents the two workflows from drifting.
+**Architecture:** Both workflows gain matching target-matrix build jobs and pass target-specific artifacts into their existing Tauri matrix jobs. Windows builds also call one shared, checksum- and signer-verifying script to stage every vJoy resource named by the Tauri override. A static ExUnit contract prevents the two workflows from drifting.
 
 **Tech Stack:** GitHub Actions, Rust/Cargo, Elixir/ExUnit.
 
@@ -21,9 +21,9 @@
 **Files:**
 - Create: `test/ci/virtual_joystick_workflow_test.exs`
 
-- [ ] Assert nightly and release each define `build-virtual-joystick`, include it in `build-tauri.needs`, download `virtual-joystick-${{ matrix.target }}`, and stage `virtual_joystick-${{ matrix.tauri_target }}` with `.exe` only on Windows.
-- [ ] Run the focused test and confirm it fails because the workflow wiring is absent.
-- [ ] Commit as `test: require virtual joystick workflow artifacts`.
+- [x] Assert nightly and release each define `build-virtual-joystick`, include it in `build-tauri.needs`, download `virtual-joystick-${{ matrix.target }}`, and stage `virtual_joystick-${{ matrix.tauri_target }}` with `.exe` only on Windows.
+- [x] Run the focused test and confirm it fails because the workflow wiring is absent.
+- [x] Commit as `test: require virtual joystick workflow artifacts`.
 
 ### Task 2: Implement matching workflow jobs
 
@@ -31,14 +31,27 @@
 - Modify: `.github/workflows/nightly.yml`
 - Modify: `.github/workflows/release.yml`
 
-- [ ] Add matching virtual-joystick build matrices modeled on `build-keystroke`.
-- [ ] Add dependency, download, staging, permissions, and cleanup wiring to both Tauri jobs.
-- [ ] Run the focused test green.
-- [ ] Run action-validator/actionlint, strict Credo, full tests, formatting, and diff checks.
-- [ ] Commit as `ci: package virtual joystick in nightly releases`.
+- [x] Add matching virtual-joystick build matrices modeled on `build-keystroke`.
+- [x] Add dependency, download, staging, permissions, and cleanup wiring to both Tauri jobs.
+- [x] Run the focused test green.
+- [x] Run action-validator/actionlint, strict Credo, full tests, formatting, and diff checks.
+- [x] Commit as `ci: package virtual joystick in nightly releases`.
 
 ### Task 3: Hosted verification
 
 - [ ] Push `master` without force.
 - [ ] Manually dispatch Nightly Build and monitor every matrix job through installer upload.
 - [ ] Confirm the release workflow validates without dispatching/publishing a release.
+
+### Task 2b: Stage Windows vJoy resources
+
+**Files:**
+- Create: `scripts/stage-vjoy-resources.ps1`
+- Modify: `.github/workflows/nightly.yml`
+- Modify: `.github/workflows/release.yml`
+- Modify: `test/ci/virtual_joystick_workflow_test.exs`
+
+- [x] Require both workflows to install pinned `innoextract` and invoke the shared staging script.
+- [x] Download and verify the pinned installer, SDK, and license inputs.
+- [x] Verify the installer Authenticode signer and extract the required DLL and configuration utility.
+- [x] Run workflow validators, strict Credo, full tests, formatting, and diff checks.
