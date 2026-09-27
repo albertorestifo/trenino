@@ -118,7 +118,7 @@ defmodule Trenino.Train.DetectionTest do
       {:ok, train} =
         TrainContext.create_train(%{
           name: "Class 66",
-          identifier: "BR_Class_66_"
+          identifiers: [%{identifier: "BR_Class_66_"}]
         })
 
       # Test the matching logic through the context
@@ -137,7 +137,7 @@ defmodule Trenino.Train.DetectionTest do
       {:ok, train} =
         TrainContext.create_train(%{
           name: "Class 66",
-          identifier: "BR_Class_66"
+          identifiers: [%{identifier: "BR_Class_66"}]
         })
 
       Detection.subscribe()

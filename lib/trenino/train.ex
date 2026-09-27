@@ -80,10 +80,11 @@ defmodule Trenino.Train do
   end
 
   @doc """
-  Find a train whose identifier is a prefix of the detected identifier.
+  Find a train with an identifier that is a prefix of the detected identifier.
 
-  The stored identifier acts as a prefix matcher - any detected ObjectClass
-  that starts with the stored identifier will match that train.
+  Every identifier owned by a profile acts as an equivalent prefix matcher.
+  A profile is returned only once even when more than one of its identifiers
+  matches the detected ObjectClass.
 
   ## Returns
 
@@ -93,20 +94,22 @@ defmodule Trenino.Train do
 
   ## Examples
 
-      # Stored: "RVM_LIRREX_M9"
-      # Detected: "RVM_LIRREX_M9-A" -> matches
-      # Detected: "RVM_LIRREX_M9-B" -> matches
-      # Detected: "RVM_LIRREX_M7" -> no match
+      # Stored on one profile: "RVM_FSN_DB_BR423", "RVM_OTHER_DB_BR423"
+      # Detected: "RVM_FSN_DB_BR423-A" -> matches
+      # Detected: "RVM_OTHER_DB_BR423-B" -> matches the same profile
+      # Detected: "RVM_DB_BR430" -> no match
   """
   @spec get_train_by_identifier(String.t()) ::
           {:ok, Train.t()} | {:error, :not_found} | {:error, {:multiple_matches, [Train.t()]}}
   def get_train_by_identifier(detected_identifier) do
-    # Find all trains whose identifier is a prefix of the detected identifier
     matching_trains =
       Train
+      |> preload(:identifiers)
       |> Repo.all()
       |> Enum.filter(fn train ->
-        String.starts_with?(detected_identifier, train.identifier)
+        Enum.any?(train.identifiers, fn identifier ->
+          String.starts_with?(detected_identifier, identifier.identifier)
+        end)
       end)
       |> Enum.map(fn train -> Repo.preload(train, elements: :lever_config) end)
 
