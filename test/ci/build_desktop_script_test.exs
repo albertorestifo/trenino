@@ -147,8 +147,11 @@ defmodule Trenino.CI.BuildDesktopScriptTest do
     case :os.type() do
       {:win32, _} ->
         git = System.find_executable("git") || raise "Git is required to run shell script tests"
-        bash = Path.expand("../bin/bash.exe", Path.dirname(git))
-        if File.regular?(bash), do: bash, else: raise("Git Bash was not found at #{bash}")
+
+        ["../bin/bash.exe", "../../bin/bash.exe"]
+        |> Enum.map(&Path.expand(&1, Path.dirname(git)))
+        |> Enum.find(&File.regular?/1)
+        |> then(&(&1 || raise("Git Bash was not found relative to #{git}")))
 
       {:unix, _} ->
         System.find_executable("bash") || raise "Bash is required to run shell script tests"

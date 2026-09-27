@@ -415,8 +415,11 @@ defmodule Trenino.VirtualJoystick.ConfiguratorTest do
     case :os.type() do
       {:win32, _} ->
         git = System.find_executable("git") || raise "Git is required to run shell tests"
-        shell = Path.expand("../bin/sh.exe", Path.dirname(git))
-        if File.regular?(shell), do: shell, else: raise("Git shell was not found at #{shell}")
+
+        ["../bin/sh.exe", "../../bin/sh.exe"]
+        |> Enum.map(&Path.expand(&1, Path.dirname(git)))
+        |> Enum.find(&File.regular?/1)
+        |> then(&(&1 || raise("Git shell was not found relative to #{git}")))
 
       {:unix, _} ->
         System.find_executable("sh") || raise "A POSIX shell is required to run shell tests"
