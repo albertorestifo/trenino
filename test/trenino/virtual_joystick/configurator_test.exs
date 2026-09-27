@@ -270,10 +270,20 @@ defmodule Trenino.VirtualJoystick.ConfiguratorTest do
     outside =
       Path.join(System.tmp_dir!(), "trenino-outside-#{System.unique_integer([:positive])}")
 
-    File.mkdir_p!(root)
     File.mkdir_p!(outside)
     File.write!(Path.join(outside, "vJoyConfig.exe"), "test")
-    File.ln_s!(outside, Path.join(root, "resources"))
+
+    reparse_probe =
+      if match?({:win32, _}, :os.type()) do
+        resources = Path.expand(Path.join(root, "resources"))
+        File.mkdir_p!(resources)
+        File.cp!(Path.join(outside, "vJoyConfig.exe"), Path.join(resources, "vJoyConfig.exe"))
+        &(Path.expand(&1) == resources)
+      else
+        File.mkdir_p!(root)
+        File.ln_s!(outside, Path.join(root, "resources"))
+        fn _path -> false end
+      end
 
     on_exit(fn ->
       File.rm_rf!(root)
@@ -281,7 +291,7 @@ defmodule Trenino.VirtualJoystick.ConfiguratorTest do
     end)
 
     escaped = Path.join([root, "resources", "vJoyConfig.exe"])
-    refute SystemAdapter.trusted_file?(escaped, [root])
+    refute SystemAdapter.trusted_file?(escaped, [root], reparse_probe)
   end
 
   test "trusted path validation rejects a Windows-style reparse component" do
@@ -292,7 +302,7 @@ defmodule Trenino.VirtualJoystick.ConfiguratorTest do
     File.write!(candidate, "test")
     on_exit(fn -> File.rm_rf!(root) end)
 
-    reparse_probe = &(&1 == resources)
+    reparse_probe = &(Path.expand(&1) == Path.expand(resources))
     refute SystemAdapter.trusted_file?(candidate, [root], reparse_probe)
   end
 
@@ -302,11 +312,22 @@ defmodule Trenino.VirtualJoystick.ConfiguratorTest do
     outside =
       Path.join(System.tmp_dir!(), "trenino-parent-outside-#{System.unique_integer([:positive])}")
 
-    File.mkdir_p!(Path.join(anchor, "app"))
     File.mkdir_p!(Path.join(outside, "resources"))
     candidate = Path.join([outside, "resources", "vJoyConfig.exe"])
     File.write!(candidate, "test")
-    File.ln_s!(outside, Path.join([anchor, "app", "priv"]))
+
+    reparse_probe =
+      if match?({:win32, _}, :os.type()) do
+        priv = Path.expand(Path.join([anchor, "app", "priv"]))
+        resources = Path.join(priv, "resources")
+        File.mkdir_p!(resources)
+        File.cp!(candidate, Path.join(resources, "vJoyConfig.exe"))
+        &(Path.expand(&1) == priv)
+      else
+        File.mkdir_p!(Path.join(anchor, "app"))
+        File.ln_s!(outside, Path.join([anchor, "app", "priv"]))
+        fn _path -> false end
+      end
 
     on_exit(fn ->
       File.rm_rf!(anchor)
@@ -315,7 +336,7 @@ defmodule Trenino.VirtualJoystick.ConfiguratorTest do
 
     escaped = Path.join([anchor, "app", "priv", "resources", "vJoyConfig.exe"])
     declared_root = Path.join([anchor, "app", "priv", "resources"])
-    refute SystemAdapter.trusted_file?(escaped, [{anchor, declared_root}])
+    refute SystemAdapter.trusted_file?(escaped, [{anchor, declared_root}], reparse_probe)
   end
 
   test "the status deadline includes a slow native reparse probe" do
@@ -327,7 +348,7 @@ defmodule Trenino.VirtualJoystick.ConfiguratorTest do
     File.write!(candidate, "test")
     on_exit(fn -> File.rm_rf!(anchor) end)
 
-    shell = System.find_executable("sh")
+    shell = shell_executable!()
 
     slow_reparse_probe = fn _path ->
       assert {:error, {:timeout, _pid, _output}} =
@@ -388,5 +409,17 @@ defmodule Trenino.VirtualJoystick.ConfiguratorTest do
 
     assert Configurator.create() == {:error, :driver_missing}
     assert Agent.get(agent, & &1.events) == []
+  end
+
+  defp shell_executable! do
+    case :os.type() do
+      {:win32, _} ->
+        git = System.find_executable("git") || raise "Git is required to run shell tests"
+        shell = Path.expand("../bin/sh.exe", Path.dirname(git))
+        if File.regular?(shell), do: shell, else: raise("Git shell was not found at #{shell}")
+
+      {:unix, _} ->
+        System.find_executable("sh") || raise "A POSIX shell is required to run shell tests"
+    end
   end
 end

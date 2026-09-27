@@ -4,10 +4,17 @@ defmodule Trenino.Train.ButtonControllerTest do
   alias Trenino.Hardware
   alias Trenino.Train, as: TrainContext
   alias Trenino.Train.ButtonController
+  alias Trenino.Train.Detection
+  alias Trenino.Train.Detection.State, as: DetectionState
   alias Trenino.VirtualJoystick
 
   # These tests run the ButtonController in isolation
   # They test the state management and binding loading logic
+
+  setup do
+    :sys.replace_state(Process.whereis(Detection), fn _state -> %DetectionState{} end)
+    :ok
+  end
 
   describe "get_state/0" do
     setup do
