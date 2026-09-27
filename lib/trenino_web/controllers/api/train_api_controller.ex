@@ -2,26 +2,32 @@ defmodule TreninoWeb.Api.TrainApiController do
   use TreninoWeb, :controller
 
   alias Trenino.Train, as: TrainContext
+  alias Trenino.Train.Train
 
   def index(conn, _params) do
-    trains = TrainContext.list_trains()
+    trains = TrainContext.list_trains(preload: [:identifiers])
 
     json(conn, %{
       trains:
         Enum.map(trains, fn t ->
-          %{id: t.id, name: t.name, identifier: t.identifier, description: t.description}
+          %{
+            id: t.id,
+            name: t.name,
+            identifiers: Train.identifier_values(t),
+            description: t.description
+          }
         end)
     })
   end
 
   def show(conn, %{"id" => id}) do
-    case TrainContext.get_train(String.to_integer(id), preload: [:elements]) do
+    case TrainContext.get_train(String.to_integer(id), preload: [:elements, :identifiers]) do
       {:ok, train} ->
         json(conn, %{
           train: %{
             id: train.id,
             name: train.name,
-            identifier: train.identifier,
+            identifiers: Train.identifier_values(train),
             description: train.description,
             elements:
               Enum.map(train.elements, fn e ->

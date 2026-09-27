@@ -4,13 +4,14 @@ defmodule Trenino.MCP.Tools.TrainTools do
   """
 
   alias Trenino.Train, as: TrainContext
+  alias Trenino.Train.Train
 
   def tools do
     [
       %{
         name: "list_trains",
         description:
-          "List all configured trains. Returns id, name, identifier, and description for each train.",
+          "List all configured trains. Returns id, name, identifiers, and description for each train.",
         input_schema: %{
           type: "object",
           properties: %{}
@@ -34,16 +35,21 @@ defmodule Trenino.MCP.Tools.TrainTools do
 
   def execute("list_trains", _args) do
     trains =
-      TrainContext.list_trains()
+      TrainContext.list_trains(preload: [:identifiers])
       |> Enum.map(fn t ->
-        %{id: t.id, name: t.name, identifier: t.identifier, description: t.description}
+        %{
+          id: t.id,
+          name: t.name,
+          identifiers: Train.identifier_values(t),
+          description: t.description
+        }
       end)
 
     {:ok, %{trains: trains}}
   end
 
   def execute("get_train", %{"train_id" => train_id}) do
-    case TrainContext.get_train(train_id, preload: [:elements]) do
+    case TrainContext.get_train(train_id, preload: [:elements, :identifiers]) do
       {:ok, train} ->
         output_bindings =
           TrainContext.list_output_bindings(train.id)
@@ -62,7 +68,7 @@ defmodule Trenino.MCP.Tools.TrainTools do
            train: %{
              id: train.id,
              name: train.name,
-             identifier: train.identifier,
+             identifiers: Train.identifier_values(train),
              description: train.description,
              elements:
                Enum.map(train.elements, fn e ->
