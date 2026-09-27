@@ -26,6 +26,24 @@ defmodule Trenino.Train.TrainIdentifierPersistenceTest do
     assert %{identifiers: ["must have at least one identifier"]} = errors_on(changeset)
   end
 
+  test "refuses to remove the last persisted identifier" do
+    assert {:ok, train} =
+             TrainContext.create_train(%{
+               name: "BR 423",
+               identifiers: [%{identifier: "RVM_FSN_DB_BR423"}]
+             })
+
+    train = Repo.preload(train, :identifiers)
+
+    assert {:error, changeset} =
+             TrainContext.update_train(train, %{identifiers: []})
+
+    assert %{identifiers: ["must have at least one identifier"]} = errors_on(changeset)
+
+    assert {:ok, reloaded} = TrainContext.get_train(train.id, preload: [:identifiers])
+    assert Train.identifier_values(reloaded) == ["RVM_FSN_DB_BR423"]
+  end
+
   test "rejects a whitespace-only identifier" do
     assert {:error, changeset} =
              TrainContext.create_train(%{

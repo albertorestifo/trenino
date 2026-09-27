@@ -264,6 +264,38 @@ defmodule TreninoWeb.TrainEditLiveTest do
       {:ok, train} = TrainContext.get_train(train.id, preload: :identifiers)
       assert Train.identifier_values(train) == [second.identifier]
     end
+
+    test "does not remove the last persisted identifier", %{conn: conn} do
+      {:ok, train} =
+        TrainContext.create_train(%{
+          name: "BR 423",
+          identifiers: [%{identifier: "RVM_FSN_DB_BR423"}]
+        })
+
+      train = Trenino.Repo.preload(train, :identifiers, force: true)
+      [identifier] = train.identifiers
+      {:ok, view, _html} = live(conn, ~p"/trains/#{train.id}")
+
+      html =
+        render_submit(view, "save_train", %{
+          "train" => %{
+            "name" => "BR 423",
+            "identifiers" => %{
+              "0" => %{
+                "_persistent_id" => "0",
+                "id" => Integer.to_string(identifier.id),
+                "identifier" => identifier.identifier
+              }
+            },
+            "identifiers_sort" => ["0"],
+            "identifiers_drop" => ["0"]
+          }
+        })
+
+      assert html =~ "must have at least one identifier"
+      {:ok, reloaded} = TrainContext.get_train(train.id, preload: [:identifiers])
+      assert Train.identifier_values(reloaded) == ["RVM_FSN_DB_BR423"]
+    end
   end
 
   describe "button elements" do

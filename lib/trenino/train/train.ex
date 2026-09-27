@@ -54,9 +54,12 @@ defmodule Trenino.Train.Train do
   defp validate_identifier_collection(changeset) do
     case get_change(changeset, :identifiers) do
       identifiers when is_list(identifiers) ->
+        retained_identifiers =
+          Enum.reject(identifiers, &(&1.action in [:delete, :replace]))
+
         changeset
-        |> require_identifier(identifiers)
-        |> reject_duplicate_identifiers(identifiers)
+        |> require_identifier(retained_identifiers)
+        |> reject_duplicate_identifiers(retained_identifiers)
 
       nil ->
         case changeset.data do

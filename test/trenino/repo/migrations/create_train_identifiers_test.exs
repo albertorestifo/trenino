@@ -61,7 +61,7 @@ defmodule Trenino.Migrations.CreateTrainIdentifiersTest do
     SQL.query!(
       ctx.repo,
       "INSERT INTO trains (name, identifier, inserted_at, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
-      ["BR 423", "RVM_FSN_DB_BR423"]
+      ["BR 423", " RVM_FSN_DB_BR423 "]
     )
 
     [[train_id]] = SQL.query!(ctx.repo, "SELECT id FROM trains", []).rows
@@ -90,6 +90,26 @@ defmodule Trenino.Migrations.CreateTrainIdentifiersTest do
       without_module_conflict_warnings(fn ->
         Ecto.Migrator.run(Repo, ctx.migrations, :down,
           step: 1,
+          dynamic_repo: ctx.repo,
+          log: false
+        )
+      end)
+    end
+  end
+
+  test "rejects legacy identifiers that collide after trimming", ctx do
+    Enum.each(["RVM_FSN_DB_BR423", " RVM_FSN_DB_BR423 "], fn identifier ->
+      SQL.query!(
+        ctx.repo,
+        "INSERT INTO trains (name, identifier, inserted_at, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
+        [identifier, identifier]
+      )
+    end)
+
+    assert_raise RuntimeError, ~r/same normalized identifier.*RVM_FSN_DB_BR423/i, fn ->
+      without_module_conflict_warnings(fn ->
+        Ecto.Migrator.run(Repo, ctx.migrations, :up,
+          to: @migration_version,
           dynamic_repo: ctx.repo,
           log: false
         )
