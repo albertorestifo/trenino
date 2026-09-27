@@ -118,6 +118,7 @@ defmodule TreninoWeb.TrainEditLive do
   defp mount_existing(socket, train_id) do
     case TrainContext.get_train(train_id,
            preload: [
+             :identifiers,
              elements: [
                lever_config: [:notches, input_binding: [input: :device]],
                button_binding: [input: :device]
@@ -1434,16 +1435,53 @@ defmodule TreninoWeb.TrainEditLive do
         </div>
         <div class="mt-3">
           <label class="label">
-            <span class="label-text">Train Identifier</span>
+            <span class="label-text">Train Identifiers</span>
           </label>
-          <.input
-            field={@train_form[:identifier]}
-            type="text"
-            class="input input-bordered w-full font-mono"
-            placeholder="e.g., BR_Class_66"
-          />
+          <div class="space-y-2">
+            <.inputs_for :let={identifier_form} field={@train_form[:identifiers]}>
+              <div class="flex items-start gap-2">
+                <input
+                  type="hidden"
+                  name="train[identifiers_sort][]"
+                  value={identifier_form.index}
+                />
+                <.input
+                  field={identifier_form[:identifier]}
+                  type="text"
+                  class="input input-bordered w-full font-mono"
+                  placeholder="e.g., BR_Class_66"
+                />
+                <button
+                  type="button"
+                  name="train[identifiers_drop][]"
+                  value={identifier_form.index}
+                  phx-click={Phoenix.LiveView.JS.dispatch("change")}
+                  class="btn btn-ghost btn-sm text-error"
+                  aria-label="Remove identifier"
+                >
+                  <.icon name="hero-trash" class="w-4 h-4" />
+                </button>
+              </div>
+            </.inputs_for>
+            <input type="hidden" name="train[identifiers_drop][]" />
+            <button
+              type="button"
+              name="train[identifiers_sort][]"
+              value="new"
+              phx-click={Phoenix.LiveView.JS.dispatch("change")}
+              class="btn btn-ghost btn-sm"
+            >
+              <.icon name="hero-plus" class="w-4 h-4" /> Add identifier
+            </button>
+            <p
+              :for={{message, options} <- @train_form[:identifiers].errors}
+              class="text-sm text-error"
+            >
+              {TreninoWeb.CoreComponents.translate_error({message, options})}
+            </p>
+          </div>
           <p class="text-xs text-base-content/50 mt-1">
-            This identifier is used to automatically detect when this train is active in the simulator.
+            Every value is an equivalent prefix used to detect this train in the simulator.
           </p>
         </div>
         <div class="flex items-center gap-3 mt-4">
