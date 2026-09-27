@@ -8,23 +8,27 @@ defmodule Trenino.TrainTest do
 
   describe "create_train/1" do
     test "creates a train with valid attributes" do
-      attrs = %{name: "Class 66", identifier: "BR_Class_66", description: "Freight locomotive"}
+      attrs = %{
+        name: "Class 66",
+        identifiers: [%{identifier: "BR_Class_66"}],
+        description: "Freight locomotive"
+      }
 
       assert {:ok, %Train{} = train} = TrainContext.create_train(attrs)
       assert train.name == "Class 66"
-      assert train.identifier == "BR_Class_66"
+      assert Train.identifier_values(train) == ["BR_Class_66"]
       assert train.description == "Freight locomotive"
     end
 
     test "creates a train without description" do
-      attrs = %{name: "Class 66", identifier: "BR_Class_66"}
+      attrs = %{name: "Class 66", identifiers: [%{identifier: "BR_Class_66"}]}
 
       assert {:ok, %Train{} = train} = TrainContext.create_train(attrs)
       assert train.description == nil
     end
 
     test "returns error changeset with missing name" do
-      attrs = %{identifier: "BR_Class_66"}
+      attrs = %{identifiers: [%{identifier: "BR_Class_66"}]}
 
       assert {:error, changeset} = TrainContext.create_train(attrs)
       assert %{name: ["can't be blank"]} = errors_on(changeset)
@@ -34,21 +38,27 @@ defmodule Trenino.TrainTest do
       attrs = %{name: "Class 66"}
 
       assert {:error, changeset} = TrainContext.create_train(attrs)
-      assert %{identifier: ["can't be blank"]} = errors_on(changeset)
+      assert %{identifiers: ["must have at least one identifier"]} = errors_on(changeset)
     end
 
     test "enforces unique identifier" do
-      attrs = %{name: "Class 66", identifier: "BR_Class_66"}
+      attrs = %{name: "Class 66", identifiers: [%{identifier: "BR_Class_66"}]}
 
       assert {:ok, _train} = TrainContext.create_train(attrs)
       assert {:error, changeset} = TrainContext.create_train(attrs)
-      assert %{identifier: ["has already been taken"]} = errors_on(changeset)
+
+      assert %{identifiers: [%{identifier: ["has already been taken"]}]} =
+               errors_on(changeset)
     end
   end
 
   describe "get_train/2" do
     test "returns train by id" do
-      {:ok, train} = TrainContext.create_train(%{name: "Class 66", identifier: "BR_Class_66"})
+      {:ok, train} =
+        TrainContext.create_train(%{
+          name: "Class 66",
+          identifiers: [%{identifier: "BR_Class_66"}]
+        })
 
       assert {:ok, %Train{} = found} = TrainContext.get_train(train.id)
       assert found.id == train.id
@@ -60,7 +70,12 @@ defmodule Trenino.TrainTest do
     end
 
     test "preloads associations when requested" do
-      {:ok, train} = TrainContext.create_train(%{name: "Class 66", identifier: "BR_Class_66"})
+      {:ok, train} =
+        TrainContext.create_train(%{
+          name: "Class 66",
+          identifiers: [%{identifier: "BR_Class_66"}]
+        })
+
       {:ok, _element} = TrainContext.create_element(train.id, %{name: "Throttle", type: :lever})
 
       {:ok, found} = TrainContext.get_train(train.id, preload: [:elements])
@@ -71,7 +86,11 @@ defmodule Trenino.TrainTest do
 
   describe "get_train_by_identifier/1" do
     test "returns train with matching identifier" do
-      {:ok, train} = TrainContext.create_train(%{name: "Class 66", identifier: "BR_Class_66"})
+      {:ok, train} =
+        TrainContext.create_train(%{
+          name: "Class 66",
+          identifiers: [%{identifier: "BR_Class_66"}]
+        })
 
       assert {:ok, %Train{} = found} = TrainContext.get_train_by_identifier("BR_Class_66")
       assert found.id == train.id
@@ -82,7 +101,12 @@ defmodule Trenino.TrainTest do
     end
 
     test "preloads elements with lever_config" do
-      {:ok, train} = TrainContext.create_train(%{name: "Class 66", identifier: "BR_Class_66"})
+      {:ok, train} =
+        TrainContext.create_train(%{
+          name: "Class 66",
+          identifiers: [%{identifier: "BR_Class_66"}]
+        })
+
       {:ok, element} = TrainContext.create_element(train.id, %{name: "Throttle", type: :lever})
 
       {:ok, _config} =
@@ -101,14 +125,22 @@ defmodule Trenino.TrainTest do
 
   describe "update_train/2" do
     test "updates train with valid attributes" do
-      {:ok, train} = TrainContext.create_train(%{name: "Original", identifier: "BR_Class_66"})
+      {:ok, train} =
+        TrainContext.create_train(%{
+          name: "Original",
+          identifiers: [%{identifier: "BR_Class_66"}]
+        })
 
       assert {:ok, %Train{} = updated} = TrainContext.update_train(train, %{name: "Updated"})
       assert updated.name == "Updated"
     end
 
     test "updates description" do
-      {:ok, train} = TrainContext.create_train(%{name: "Class 66", identifier: "BR_Class_66"})
+      {:ok, train} =
+        TrainContext.create_train(%{
+          name: "Class 66",
+          identifiers: [%{identifier: "BR_Class_66"}]
+        })
 
       assert {:ok, %Train{} = updated} =
                TrainContext.update_train(train, %{description: "New description"})
@@ -119,14 +151,23 @@ defmodule Trenino.TrainTest do
 
   describe "delete_train/1" do
     test "deletes train" do
-      {:ok, train} = TrainContext.create_train(%{name: "Class 66", identifier: "BR_Class_66"})
+      {:ok, train} =
+        TrainContext.create_train(%{
+          name: "Class 66",
+          identifiers: [%{identifier: "BR_Class_66"}]
+        })
 
       assert {:ok, %Train{}} = TrainContext.delete_train(train)
       assert {:error, :not_found} = TrainContext.get_train(train.id)
     end
 
     test "cascade deletes associated elements" do
-      {:ok, train} = TrainContext.create_train(%{name: "Class 66", identifier: "BR_Class_66"})
+      {:ok, train} =
+        TrainContext.create_train(%{
+          name: "Class 66",
+          identifiers: [%{identifier: "BR_Class_66"}]
+        })
+
       {:ok, _element} = TrainContext.create_element(train.id, %{name: "Throttle", type: :lever})
 
       assert {:ok, _} = TrainContext.delete_train(train)
@@ -140,9 +181,9 @@ defmodule Trenino.TrainTest do
     end
 
     test "returns trains ordered by name" do
-      {:ok, _} = TrainContext.create_train(%{name: "Zebra", identifier: "id1"})
-      {:ok, _} = TrainContext.create_train(%{name: "Alpha", identifier: "id2"})
-      {:ok, _} = TrainContext.create_train(%{name: "Beta", identifier: "id3"})
+      {:ok, _} = TrainContext.create_train(%{name: "Zebra", identifiers: [%{identifier: "id1"}]})
+      {:ok, _} = TrainContext.create_train(%{name: "Alpha", identifiers: [%{identifier: "id2"}]})
+      {:ok, _} = TrainContext.create_train(%{name: "Beta", identifiers: [%{identifier: "id3"}]})
 
       trains = TrainContext.list_trains()
       names = Enum.map(trains, & &1.name)
@@ -151,7 +192,12 @@ defmodule Trenino.TrainTest do
     end
 
     test "preloads associations when requested" do
-      {:ok, train} = TrainContext.create_train(%{name: "Class 66", identifier: "BR_Class_66"})
+      {:ok, train} =
+        TrainContext.create_train(%{
+          name: "Class 66",
+          identifiers: [%{identifier: "BR_Class_66"}]
+        })
+
       {:ok, _element} = TrainContext.create_element(train.id, %{name: "Throttle", type: :lever})
 
       [found] = TrainContext.list_trains(preload: [:elements])
@@ -162,7 +208,12 @@ defmodule Trenino.TrainTest do
 
   describe "create_element/2" do
     test "creates element with valid attributes" do
-      {:ok, train} = TrainContext.create_train(%{name: "Class 66", identifier: "BR_Class_66"})
+      {:ok, train} =
+        TrainContext.create_train(%{
+          name: "Class 66",
+          identifiers: [%{identifier: "BR_Class_66"}]
+        })
+
       attrs = %{name: "Throttle", type: :lever}
 
       assert {:ok, %Element{} = element} = TrainContext.create_element(train.id, attrs)
@@ -172,7 +223,12 @@ defmodule Trenino.TrainTest do
     end
 
     test "accepts string type" do
-      {:ok, train} = TrainContext.create_train(%{name: "Class 66", identifier: "BR_Class_66"})
+      {:ok, train} =
+        TrainContext.create_train(%{
+          name: "Class 66",
+          identifiers: [%{identifier: "BR_Class_66"}]
+        })
+
       attrs = %{name: "Throttle", type: "lever"}
 
       assert {:ok, %Element{} = element} = TrainContext.create_element(train.id, attrs)
@@ -180,14 +236,22 @@ defmodule Trenino.TrainTest do
     end
 
     test "returns error changeset with missing name" do
-      {:ok, train} = TrainContext.create_train(%{name: "Class 66", identifier: "BR_Class_66"})
+      {:ok, train} =
+        TrainContext.create_train(%{
+          name: "Class 66",
+          identifiers: [%{identifier: "BR_Class_66"}]
+        })
 
       assert {:error, changeset} = TrainContext.create_element(train.id, %{type: :lever})
       assert %{name: ["can't be blank"]} = errors_on(changeset)
     end
 
     test "returns error changeset with missing type" do
-      {:ok, train} = TrainContext.create_train(%{name: "Class 66", identifier: "BR_Class_66"})
+      {:ok, train} =
+        TrainContext.create_train(%{
+          name: "Class 66",
+          identifiers: [%{identifier: "BR_Class_66"}]
+        })
 
       assert {:error, changeset} = TrainContext.create_element(train.id, %{name: "Throttle"})
       assert %{type: ["can't be blank"]} = errors_on(changeset)
@@ -196,13 +260,21 @@ defmodule Trenino.TrainTest do
 
   describe "list_elements/1" do
     test "returns empty list when no elements exist" do
-      {:ok, train} = TrainContext.create_train(%{name: "Class 66", identifier: "BR_Class_66"})
+      {:ok, train} =
+        TrainContext.create_train(%{
+          name: "Class 66",
+          identifiers: [%{identifier: "BR_Class_66"}]
+        })
 
       assert {:ok, []} = TrainContext.list_elements(train.id)
     end
 
     test "returns elements ordered by name" do
-      {:ok, train} = TrainContext.create_train(%{name: "Class 66", identifier: "BR_Class_66"})
+      {:ok, train} =
+        TrainContext.create_train(%{
+          name: "Class 66",
+          identifiers: [%{identifier: "BR_Class_66"}]
+        })
 
       {:ok, _} = TrainContext.create_element(train.id, %{name: "Throttle", type: :lever})
       {:ok, _} = TrainContext.create_element(train.id, %{name: "Brake", type: :lever})
@@ -215,7 +287,12 @@ defmodule Trenino.TrainTest do
     end
 
     test "preloads lever_config with notches" do
-      {:ok, train} = TrainContext.create_train(%{name: "Class 66", identifier: "BR_Class_66"})
+      {:ok, train} =
+        TrainContext.create_train(%{
+          name: "Class 66",
+          identifiers: [%{identifier: "BR_Class_66"}]
+        })
+
       {:ok, element} = TrainContext.create_element(train.id, %{name: "Throttle", type: :lever})
 
       {:ok, _config} =
@@ -234,7 +311,12 @@ defmodule Trenino.TrainTest do
 
   describe "get_element/2" do
     test "returns element by id" do
-      {:ok, train} = TrainContext.create_train(%{name: "Class 66", identifier: "BR_Class_66"})
+      {:ok, train} =
+        TrainContext.create_train(%{
+          name: "Class 66",
+          identifiers: [%{identifier: "BR_Class_66"}]
+        })
+
       {:ok, element} = TrainContext.create_element(train.id, %{name: "Throttle", type: :lever})
 
       assert {:ok, %Element{} = found} = TrainContext.get_element(element.id)
@@ -248,7 +330,12 @@ defmodule Trenino.TrainTest do
 
   describe "delete_element/1" do
     test "deletes element" do
-      {:ok, train} = TrainContext.create_train(%{name: "Class 66", identifier: "BR_Class_66"})
+      {:ok, train} =
+        TrainContext.create_train(%{
+          name: "Class 66",
+          identifiers: [%{identifier: "BR_Class_66"}]
+        })
+
       {:ok, element} = TrainContext.create_element(train.id, %{name: "Throttle", type: :lever})
 
       assert {:ok, %Element{}} = TrainContext.delete_element(element)
@@ -258,7 +345,12 @@ defmodule Trenino.TrainTest do
 
   describe "create_lever_config/2" do
     test "creates lever config with valid attributes" do
-      {:ok, train} = TrainContext.create_train(%{name: "Class 66", identifier: "BR_Class_66"})
+      {:ok, train} =
+        TrainContext.create_train(%{
+          name: "Class 66",
+          identifiers: [%{identifier: "BR_Class_66"}]
+        })
+
       {:ok, element} = TrainContext.create_element(train.id, %{name: "Throttle", type: :lever})
 
       attrs = %{
@@ -274,7 +366,12 @@ defmodule Trenino.TrainTest do
     end
 
     test "returns error changeset with missing required fields" do
-      {:ok, train} = TrainContext.create_train(%{name: "Class 66", identifier: "BR_Class_66"})
+      {:ok, train} =
+        TrainContext.create_train(%{
+          name: "Class 66",
+          identifiers: [%{identifier: "BR_Class_66"}]
+        })
+
       {:ok, element} = TrainContext.create_element(train.id, %{name: "Throttle", type: :lever})
 
       assert {:error, changeset} = TrainContext.create_lever_config(element.id, %{})
@@ -288,7 +385,12 @@ defmodule Trenino.TrainTest do
 
   describe "get_lever_config/1" do
     test "returns lever config by element id" do
-      {:ok, train} = TrainContext.create_train(%{name: "Class 66", identifier: "BR_Class_66"})
+      {:ok, train} =
+        TrainContext.create_train(%{
+          name: "Class 66",
+          identifiers: [%{identifier: "BR_Class_66"}]
+        })
+
       {:ok, element} = TrainContext.create_element(train.id, %{name: "Throttle", type: :lever})
 
       {:ok, config} =
@@ -303,14 +405,24 @@ defmodule Trenino.TrainTest do
     end
 
     test "returns error when no config exists" do
-      {:ok, train} = TrainContext.create_train(%{name: "Class 66", identifier: "BR_Class_66"})
+      {:ok, train} =
+        TrainContext.create_train(%{
+          name: "Class 66",
+          identifiers: [%{identifier: "BR_Class_66"}]
+        })
+
       {:ok, element} = TrainContext.create_element(train.id, %{name: "Throttle", type: :lever})
 
       assert {:error, :not_found} = TrainContext.get_lever_config(element.id)
     end
 
     test "preloads notches" do
-      {:ok, train} = TrainContext.create_train(%{name: "Class 66", identifier: "BR_Class_66"})
+      {:ok, train} =
+        TrainContext.create_train(%{
+          name: "Class 66",
+          identifiers: [%{identifier: "BR_Class_66"}]
+        })
+
       {:ok, element} = TrainContext.create_element(train.id, %{name: "Throttle", type: :lever})
 
       {:ok, config} =
@@ -334,7 +446,12 @@ defmodule Trenino.TrainTest do
 
   describe "save_calibration/2" do
     test "saves notches and sets calibrated_at" do
-      {:ok, train} = TrainContext.create_train(%{name: "Class 66", identifier: "BR_Class_66"})
+      {:ok, train} =
+        TrainContext.create_train(%{
+          name: "Class 66",
+          identifiers: [%{identifier: "BR_Class_66"}]
+        })
+
       {:ok, element} = TrainContext.create_element(train.id, %{name: "Throttle", type: :lever})
 
       {:ok, config} =
@@ -373,7 +490,12 @@ defmodule Trenino.TrainTest do
     end
 
     test "replaces existing notches" do
-      {:ok, train} = TrainContext.create_train(%{name: "Class 66", identifier: "BR_Class_66"})
+      {:ok, train} =
+        TrainContext.create_train(%{
+          name: "Class 66",
+          identifiers: [%{identifier: "BR_Class_66"}]
+        })
+
       {:ok, element} = TrainContext.create_element(train.id, %{name: "Throttle", type: :lever})
 
       {:ok, config} =
@@ -404,7 +526,12 @@ defmodule Trenino.TrainTest do
 
   describe "update_notch_description/2" do
     test "updates notch description" do
-      {:ok, train} = TrainContext.create_train(%{name: "Class 66", identifier: "BR_Class_66"})
+      {:ok, train} =
+        TrainContext.create_train(%{
+          name: "Class 66",
+          identifiers: [%{identifier: "BR_Class_66"}]
+        })
+
       {:ok, element} = TrainContext.create_element(train.id, %{name: "Throttle", type: :lever})
 
       {:ok, config} =
@@ -428,7 +555,12 @@ defmodule Trenino.TrainTest do
     end
 
     test "clears notch description with nil" do
-      {:ok, train} = TrainContext.create_train(%{name: "Class 66", identifier: "BR_Class_66"})
+      {:ok, train} =
+        TrainContext.create_train(%{
+          name: "Class 66",
+          identifiers: [%{identifier: "BR_Class_66"}]
+        })
+
       {:ok, element} = TrainContext.create_element(train.id, %{name: "Throttle", type: :lever})
 
       {:ok, config} =
@@ -454,7 +586,12 @@ defmodule Trenino.TrainTest do
 
   describe "create_element/2 for button type" do
     test "creates button element with valid attributes" do
-      {:ok, train} = TrainContext.create_train(%{name: "Class 66", identifier: "BR_Class_66"})
+      {:ok, train} =
+        TrainContext.create_train(%{
+          name: "Class 66",
+          identifiers: [%{identifier: "BR_Class_66"}]
+        })
+
       attrs = %{name: "Horn", type: :button}
 
       assert {:ok, %Element{} = element} = TrainContext.create_element(train.id, attrs)
@@ -464,7 +601,12 @@ defmodule Trenino.TrainTest do
     end
 
     test "accepts string button type" do
-      {:ok, train} = TrainContext.create_train(%{name: "Class 66", identifier: "BR_Class_66"})
+      {:ok, train} =
+        TrainContext.create_train(%{
+          name: "Class 66",
+          identifiers: [%{identifier: "BR_Class_66"}]
+        })
+
       attrs = %{name: "Horn", type: "button"}
 
       assert {:ok, %Element{} = element} = TrainContext.create_element(train.id, attrs)
@@ -474,7 +616,11 @@ defmodule Trenino.TrainTest do
 
   describe "list_elements/1 with button elements" do
     test "returns both lever and button elements" do
-      {:ok, train} = TrainContext.create_train(%{name: "Class 66", identifier: "BR_Class_66"})
+      {:ok, train} =
+        TrainContext.create_train(%{
+          name: "Class 66",
+          identifiers: [%{identifier: "BR_Class_66"}]
+        })
 
       {:ok, _} = TrainContext.create_element(train.id, %{name: "Throttle", type: :lever})
       {:ok, _} = TrainContext.create_element(train.id, %{name: "Horn", type: :button})
@@ -488,7 +634,12 @@ defmodule Trenino.TrainTest do
     end
 
     test "preloads button_binding for button elements" do
-      {:ok, train} = TrainContext.create_train(%{name: "Class 66", identifier: "BR_Class_66"})
+      {:ok, train} =
+        TrainContext.create_train(%{
+          name: "Class 66",
+          identifiers: [%{identifier: "BR_Class_66"}]
+        })
+
       {:ok, element} = TrainContext.create_element(train.id, %{name: "Horn", type: :button})
 
       {:ok, device} = Hardware.create_device(%{name: "Test Device"})
@@ -510,7 +661,12 @@ defmodule Trenino.TrainTest do
 
   describe "get_button_binding/1" do
     setup do
-      {:ok, train} = TrainContext.create_train(%{name: "Class 66", identifier: "BR_Class_66"})
+      {:ok, train} =
+        TrainContext.create_train(%{
+          name: "Class 66",
+          identifiers: [%{identifier: "BR_Class_66"}]
+        })
+
       {:ok, element} = TrainContext.create_element(train.id, %{name: "Horn", type: :button})
       {:ok, device} = Hardware.create_device(%{name: "Test Device"})
 
@@ -550,7 +706,12 @@ defmodule Trenino.TrainTest do
 
   describe "create_button_binding/3" do
     setup do
-      {:ok, train} = TrainContext.create_train(%{name: "Class 66", identifier: "BR_Class_66"})
+      {:ok, train} =
+        TrainContext.create_train(%{
+          name: "Class 66",
+          identifiers: [%{identifier: "BR_Class_66"}]
+        })
+
       {:ok, element} = TrainContext.create_element(train.id, %{name: "Horn", type: :button})
       {:ok, device} = Hardware.create_device(%{name: "Test Device"})
 
@@ -597,7 +758,12 @@ defmodule Trenino.TrainTest do
 
   describe "update_button_binding/2" do
     setup do
-      {:ok, train} = TrainContext.create_train(%{name: "Class 66", identifier: "BR_Class_66"})
+      {:ok, train} =
+        TrainContext.create_train(%{
+          name: "Class 66",
+          identifiers: [%{identifier: "BR_Class_66"}]
+        })
+
       {:ok, element} = TrainContext.create_element(train.id, %{name: "Horn", type: :button})
       {:ok, device} = Hardware.create_device(%{name: "Test Device"})
 
@@ -638,7 +804,12 @@ defmodule Trenino.TrainTest do
 
   describe "delete_button_binding/1" do
     setup do
-      {:ok, train} = TrainContext.create_train(%{name: "Class 66", identifier: "BR_Class_66"})
+      {:ok, train} =
+        TrainContext.create_train(%{
+          name: "Class 66",
+          identifiers: [%{identifier: "BR_Class_66"}]
+        })
+
       {:ok, element} = TrainContext.create_element(train.id, %{name: "Horn", type: :button})
       {:ok, device} = Hardware.create_device(%{name: "Test Device"})
 
@@ -665,7 +836,12 @@ defmodule Trenino.TrainTest do
 
   describe "set_button_binding_enabled/2" do
     setup do
-      {:ok, train} = TrainContext.create_train(%{name: "Class 66", identifier: "BR_Class_66"})
+      {:ok, train} =
+        TrainContext.create_train(%{
+          name: "Class 66",
+          identifiers: [%{identifier: "BR_Class_66"}]
+        })
+
       {:ok, element} = TrainContext.create_element(train.id, %{name: "Horn", type: :button})
       {:ok, device} = Hardware.create_device(%{name: "Test Device"})
 
@@ -725,7 +901,12 @@ defmodule Trenino.TrainTest do
 
   describe "list_button_bindings_for_train/1" do
     setup do
-      {:ok, train} = TrainContext.create_train(%{name: "Class 66", identifier: "BR_Class_66"})
+      {:ok, train} =
+        TrainContext.create_train(%{
+          name: "Class 66",
+          identifiers: [%{identifier: "BR_Class_66"}]
+        })
+
       {:ok, device} = Hardware.create_device(%{name: "Test Device"})
 
       {:ok, input1} =
@@ -762,7 +943,10 @@ defmodule Trenino.TrainTest do
 
     test "does not return bindings from other trains", %{train: train, input1: input1} do
       {:ok, other_train} =
-        TrainContext.create_train(%{name: "Other Train", identifier: "other_train"})
+        TrainContext.create_train(%{
+          name: "Other Train",
+          identifiers: [%{identifier: "other_train"}]
+        })
 
       {:ok, element1} = TrainContext.create_element(train.id, %{name: "Horn", type: :button})
 
@@ -808,7 +992,11 @@ defmodule Trenino.TrainTest do
 
   describe "list_button_elements/1" do
     test "returns only button elements" do
-      {:ok, train} = TrainContext.create_train(%{name: "Class 66", identifier: "BR_Class_66"})
+      {:ok, train} =
+        TrainContext.create_train(%{
+          name: "Class 66",
+          identifiers: [%{identifier: "BR_Class_66"}]
+        })
 
       {:ok, _} = TrainContext.create_element(train.id, %{name: "Throttle", type: :lever})
       {:ok, _} = TrainContext.create_element(train.id, %{name: "Horn", type: :button})
@@ -821,7 +1009,11 @@ defmodule Trenino.TrainTest do
     end
 
     test "returns elements ordered by name" do
-      {:ok, train} = TrainContext.create_train(%{name: "Class 66", identifier: "BR_Class_66"})
+      {:ok, train} =
+        TrainContext.create_train(%{
+          name: "Class 66",
+          identifiers: [%{identifier: "BR_Class_66"}]
+        })
 
       {:ok, _} = TrainContext.create_element(train.id, %{name: "Horn", type: :button})
       {:ok, _} = TrainContext.create_element(train.id, %{name: "Bell", type: :button})
@@ -834,7 +1026,11 @@ defmodule Trenino.TrainTest do
     end
 
     test "returns empty list when no button elements exist" do
-      {:ok, train} = TrainContext.create_train(%{name: "Class 66", identifier: "BR_Class_66"})
+      {:ok, train} =
+        TrainContext.create_train(%{
+          name: "Class 66",
+          identifiers: [%{identifier: "BR_Class_66"}]
+        })
 
       {:ok, _} = TrainContext.create_element(train.id, %{name: "Throttle", type: :lever})
 
@@ -848,7 +1044,11 @@ defmodule Trenino.TrainTest do
 
   describe "create_sequence/2" do
     test "creates a sequence with valid attributes" do
-      {:ok, train} = TrainContext.create_train(%{name: "Class 66", identifier: "BR_Class_66"})
+      {:ok, train} =
+        TrainContext.create_train(%{
+          name: "Class 66",
+          identifiers: [%{identifier: "BR_Class_66"}]
+        })
 
       assert {:ok, sequence} = TrainContext.create_sequence(train.id, %{name: "Door Open"})
       assert sequence.name == "Door Open"
@@ -856,14 +1056,22 @@ defmodule Trenino.TrainTest do
     end
 
     test "requires name" do
-      {:ok, train} = TrainContext.create_train(%{name: "Class 66", identifier: "BR_Class_66"})
+      {:ok, train} =
+        TrainContext.create_train(%{
+          name: "Class 66",
+          identifiers: [%{identifier: "BR_Class_66"}]
+        })
 
       assert {:error, changeset} = TrainContext.create_sequence(train.id, %{})
       assert "can't be blank" in errors_on(changeset).name
     end
 
     test "enforces unique name per train" do
-      {:ok, train} = TrainContext.create_train(%{name: "Class 66", identifier: "BR_Class_66"})
+      {:ok, train} =
+        TrainContext.create_train(%{
+          name: "Class 66",
+          identifiers: [%{identifier: "BR_Class_66"}]
+        })
 
       assert {:ok, _} = TrainContext.create_sequence(train.id, %{name: "Door Open"})
       assert {:error, changeset} = TrainContext.create_sequence(train.id, %{name: "Door Open"})
@@ -873,7 +1081,12 @@ defmodule Trenino.TrainTest do
 
   describe "get_sequence/1" do
     test "returns sequence with commands preloaded" do
-      {:ok, train} = TrainContext.create_train(%{name: "Class 66", identifier: "BR_Class_66"})
+      {:ok, train} =
+        TrainContext.create_train(%{
+          name: "Class 66",
+          identifiers: [%{identifier: "BR_Class_66"}]
+        })
+
       {:ok, sequence} = TrainContext.create_sequence(train.id, %{name: "Door Open"})
 
       {:ok, _} =
@@ -894,7 +1107,11 @@ defmodule Trenino.TrainTest do
 
   describe "list_sequences/1" do
     test "returns all sequences for a train" do
-      {:ok, train} = TrainContext.create_train(%{name: "Class 66", identifier: "BR_Class_66"})
+      {:ok, train} =
+        TrainContext.create_train(%{
+          name: "Class 66",
+          identifiers: [%{identifier: "BR_Class_66"}]
+        })
 
       {:ok, _} = TrainContext.create_sequence(train.id, %{name: "Door Open"})
       {:ok, _} = TrainContext.create_sequence(train.id, %{name: "Door Close"})
@@ -904,7 +1121,11 @@ defmodule Trenino.TrainTest do
     end
 
     test "returns sequences ordered by name" do
-      {:ok, train} = TrainContext.create_train(%{name: "Class 66", identifier: "BR_Class_66"})
+      {:ok, train} =
+        TrainContext.create_train(%{
+          name: "Class 66",
+          identifiers: [%{identifier: "BR_Class_66"}]
+        })
 
       {:ok, _} = TrainContext.create_sequence(train.id, %{name: "Zebra"})
       {:ok, _} = TrainContext.create_sequence(train.id, %{name: "Alpha"})
@@ -915,8 +1136,17 @@ defmodule Trenino.TrainTest do
     end
 
     test "does not return sequences from other trains" do
-      {:ok, train1} = TrainContext.create_train(%{name: "Class 66", identifier: "BR_Class_66"})
-      {:ok, train2} = TrainContext.create_train(%{name: "Class 43", identifier: "BR_Class_43"})
+      {:ok, train1} =
+        TrainContext.create_train(%{
+          name: "Class 66",
+          identifiers: [%{identifier: "BR_Class_66"}]
+        })
+
+      {:ok, train2} =
+        TrainContext.create_train(%{
+          name: "Class 43",
+          identifiers: [%{identifier: "BR_Class_43"}]
+        })
 
       {:ok, _} = TrainContext.create_sequence(train1.id, %{name: "Horn"})
       {:ok, _} = TrainContext.create_sequence(train2.id, %{name: "Bell"})
@@ -929,7 +1159,12 @@ defmodule Trenino.TrainTest do
 
   describe "set_sequence_commands/2" do
     test "sets commands with auto-assigned positions" do
-      {:ok, train} = TrainContext.create_train(%{name: "Class 66", identifier: "BR_Class_66"})
+      {:ok, train} =
+        TrainContext.create_train(%{
+          name: "Class 66",
+          identifiers: [%{identifier: "BR_Class_66"}]
+        })
+
       {:ok, sequence} = TrainContext.create_sequence(train.id, %{name: "Door Open"})
 
       commands = [
@@ -946,7 +1181,12 @@ defmodule Trenino.TrainTest do
     end
 
     test "replaces existing commands" do
-      {:ok, train} = TrainContext.create_train(%{name: "Class 66", identifier: "BR_Class_66"})
+      {:ok, train} =
+        TrainContext.create_train(%{
+          name: "Class 66",
+          identifiers: [%{identifier: "BR_Class_66"}]
+        })
+
       {:ok, sequence} = TrainContext.create_sequence(train.id, %{name: "Door Open"})
 
       {:ok, _} =
@@ -965,7 +1205,12 @@ defmodule Trenino.TrainTest do
     end
 
     test "rounds float values to 2 decimal places" do
-      {:ok, train} = TrainContext.create_train(%{name: "Class 66", identifier: "BR_Class_66"})
+      {:ok, train} =
+        TrainContext.create_train(%{
+          name: "Class 66",
+          identifiers: [%{identifier: "BR_Class_66"}]
+        })
+
       {:ok, sequence} = TrainContext.create_sequence(train.id, %{name: "Test"})
 
       {:ok, [cmd]} =
@@ -979,7 +1224,12 @@ defmodule Trenino.TrainTest do
 
   describe "add_sequence_command/2" do
     test "adds command at the end" do
-      {:ok, train} = TrainContext.create_train(%{name: "Class 66", identifier: "BR_Class_66"})
+      {:ok, train} =
+        TrainContext.create_train(%{
+          name: "Class 66",
+          identifiers: [%{identifier: "BR_Class_66"}]
+        })
+
       {:ok, sequence} = TrainContext.create_sequence(train.id, %{name: "Test"})
 
       {:ok, cmd1} =
@@ -995,7 +1245,12 @@ defmodule Trenino.TrainTest do
 
   describe "delete_sequence/1" do
     test "deletes sequence and its commands" do
-      {:ok, train} = TrainContext.create_train(%{name: "Class 66", identifier: "BR_Class_66"})
+      {:ok, train} =
+        TrainContext.create_train(%{
+          name: "Class 66",
+          identifiers: [%{identifier: "BR_Class_66"}]
+        })
+
       {:ok, sequence} = TrainContext.create_sequence(train.id, %{name: "Test"})
 
       {:ok, _} =

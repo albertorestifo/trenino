@@ -7,7 +7,9 @@ defmodule Trenino.MCP.Tools.ScriptToolsTest do
   @sample_code ~s|function on_change(event)\n  print(event.value)\nend|
 
   setup do
-    {:ok, train} = TrainContext.create_train(%{name: "Test Train", identifier: "test_train"})
+    {:ok, train} =
+      TrainContext.create_train(%{name: "Test Train", identifiers: [%{identifier: "test_train"}]})
+
     %{train: train}
   end
 

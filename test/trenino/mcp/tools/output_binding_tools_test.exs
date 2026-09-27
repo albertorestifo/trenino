@@ -6,7 +6,9 @@ defmodule Trenino.MCP.Tools.OutputBindingToolsTest do
   alias Trenino.Train, as: TrainContext
 
   setup do
-    {:ok, train} = TrainContext.create_train(%{name: "Test Train", identifier: "test_train"})
+    {:ok, train} =
+      TrainContext.create_train(%{name: "Test Train", identifiers: [%{identifier: "test_train"}]})
+
     {:ok, device} = Hardware.create_device(%{name: "Arduino Uno"})
     {:ok, output} = Hardware.create_output(device.id, %{pin: 13, name: "Red LED"})
     %{train: train, output: output}

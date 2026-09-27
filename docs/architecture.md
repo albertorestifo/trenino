@@ -54,7 +54,8 @@ Manages firmware releases, device definitions, and firmware uploads.
 
 Handles train configurations and input-to-lever mappings.
 
-- **Train** - Train configuration with unique identifier
+- **Train** - Train configuration with one or more equivalent identifier prefixes
+- **TrainIdentifier** - Globally unique prefix owned by exactly one train profile
 - **Element** - Cab elements (levers, buttons)
 - **LeverConfig** - API endpoints and notch definitions
 - **LeverInputBinding** - Maps hardware inputs to levers
@@ -208,7 +209,7 @@ Application
 ```
 devices                    trains
 ├── id                     ├── id
-├── config_id (unique)     ├── identifier (unique)
+├── config_id (unique)     ├── identifiers[]
 ├── name                   ├── name
 ├── inputs[]               ├── elements[]
 │   ├── pin                │   ├── name
@@ -241,6 +242,10 @@ firmware_releases          firmware_files
 ├── published_at           ├── environment (PlatformIO env)
 └── manifest_json          └── downloaded_at
 ```
+
+Train identifiers are stored in the normalized `train_identifiers` table. Each row
+belongs to one train, and a global unique index prevents the same exact prefix from
+being assigned to multiple profiles.
 
 ## Communication Protocols
 

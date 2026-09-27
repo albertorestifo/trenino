@@ -59,9 +59,15 @@ defmodule Trenino.Train.Train do
         |> reject_duplicate_identifiers(identifiers)
 
       nil ->
-        case changeset.data.identifiers do
-          [] -> add_error(changeset, :identifiers, "must have at least one identifier")
-          _loaded_or_not_loaded -> changeset
+        case changeset.data do
+          %__MODULE__{__meta__: %{state: :built}} ->
+            add_error(changeset, :identifiers, "must have at least one identifier")
+
+          %__MODULE__{identifiers: []} ->
+            add_error(changeset, :identifiers, "must have at least one identifier")
+
+          _loaded_or_not_loaded ->
+            changeset
         end
     end
   end

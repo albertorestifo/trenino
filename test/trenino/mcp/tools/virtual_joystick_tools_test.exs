@@ -144,7 +144,10 @@ defmodule Trenino.MCP.Tools.VirtualJoystickToolsTest do
 
     test "requires explicit replacement for a simulator destination" do
       input = analog_input_fixture()
-      {:ok, train} = TrainContext.create_train(%{name: "MCP", identifier: "mcp-exclusive"})
+
+      {:ok, train} =
+        TrainContext.create_train(%{name: "MCP", identifiers: [%{identifier: "mcp-exclusive"}]})
+
       {:ok, element} = TrainContext.create_element(train.id, %{name: "Throttle", type: :lever})
 
       {:ok, config} =

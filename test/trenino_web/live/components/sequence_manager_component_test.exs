@@ -15,7 +15,7 @@ defmodule TreninoWeb.SequenceManagerComponentTest do
     {:ok, train} =
       TrainContext.create_train(%{
         name: "Test Train",
-        identifier: "Test_Train_SeqMgr_#{System.unique_integer([:positive])}"
+        identifiers: [%{identifier: "Test_Train_SeqMgr_#{System.unique_integer([:positive])}"}]
       })
 
     # Create a sequence with some commands

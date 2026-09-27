@@ -3,6 +3,7 @@ defmodule Trenino.Migrations.CreateTrainIdentifiersTest do
 
   alias Ecto.Adapters.SQL
   alias Trenino.Repo
+  alias Trenino.Test.MigrationModuleIsolation
 
   @previous_version 20_260_801_000_000
   @migration_version 20_260_927_000_000
@@ -25,13 +26,15 @@ defmodule Trenino.Migrations.CreateTrainIdentifiersTest do
     previous_repo = Repo.get_dynamic_repo()
     migrations = Application.app_dir(:trenino, "priv/repo/migrations")
 
-    Trenino.Test.MigrationModuleIsolation.purge_loaded()
+    without_module_conflict_warnings(fn ->
+      Ecto.Migrator.run(Repo, migrations, :up,
+        to: @previous_version,
+        dynamic_repo: repo,
+        log: false
+      )
+    end)
 
-    Ecto.Migrator.run(Repo, migrations, :up,
-      to: @previous_version,
-      dynamic_repo: repo,
-      log: false
-    )
+    MigrationModuleIsolation.purge_loaded()
 
     Repo.put_dynamic_repo(repo)
 
@@ -63,11 +66,13 @@ defmodule Trenino.Migrations.CreateTrainIdentifiersTest do
 
     [[train_id]] = SQL.query!(ctx.repo, "SELECT id FROM trains", []).rows
 
-    Ecto.Migrator.run(Repo, ctx.migrations, :up,
-      to: @migration_version,
-      dynamic_repo: ctx.repo,
-      log: false
-    )
+    without_module_conflict_warnings(fn ->
+      Ecto.Migrator.run(Repo, ctx.migrations, :up,
+        to: @migration_version,
+        dynamic_repo: ctx.repo,
+        log: false
+      )
+    end)
 
     Repo.put_dynamic_repo(ctx.repo)
 
@@ -82,11 +87,24 @@ defmodule Trenino.Migrations.CreateTrainIdentifiersTest do
     refute "identifier" in Enum.map(columns, &Enum.at(&1, 1))
 
     assert_raise RuntimeError, ~r/cannot.*primary identifier/i, fn ->
-      Ecto.Migrator.run(Repo, ctx.migrations, :down,
-        step: 1,
-        dynamic_repo: ctx.repo,
-        log: false
-      )
+      without_module_conflict_warnings(fn ->
+        Ecto.Migrator.run(Repo, ctx.migrations, :down,
+          step: 1,
+          dynamic_repo: ctx.repo,
+          log: false
+        )
+      end)
+    end
+  end
+
+  defp without_module_conflict_warnings(fun) do
+    compiler_options = Code.compiler_options()
+
+    try do
+      Code.compiler_options(ignore_module_conflict: true)
+      fun.()
+    after
+      Code.compiler_options(compiler_options)
     end
   end
 end

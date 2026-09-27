@@ -16,7 +16,7 @@ defmodule TreninoWeb.EndpointSelectorComponentTest do
     {:ok, train} =
       TrainContext.create_train(%{
         name: "Test Train",
-        identifier: "Test_Train_Selector_#{System.unique_integer([:positive])}"
+        identifiers: [%{identifier: "Test_Train_Selector_#{System.unique_integer([:positive])}"}]
       })
 
     # Create a mock client

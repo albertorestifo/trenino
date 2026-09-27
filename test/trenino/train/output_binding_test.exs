@@ -9,7 +9,12 @@ defmodule Trenino.Train.OutputBindingTest do
     setup do
       {:ok, device} = Hardware.create_device(%{name: "Test Device"})
       {:ok, output} = Hardware.create_output(device.id, %{pin: 13, name: "Speed LED"})
-      {:ok, train} = TrainContext.create_train(%{name: "Test Train", identifier: "test_train"})
+
+      {:ok, train} =
+        TrainContext.create_train(%{
+          name: "Test Train",
+          identifiers: [%{identifier: "test_train"}]
+        })
 
       %{output: output, train: train, device: device}
     end
@@ -256,7 +261,12 @@ defmodule Trenino.Train.OutputBindingTest do
     setup do
       {:ok, device} = Hardware.create_device(%{name: "Test Device"})
       {:ok, output} = Hardware.create_output(device.id, %{pin: 13, name: "Speed LED"})
-      {:ok, train} = TrainContext.create_train(%{name: "Test Train", identifier: "test_train"})
+
+      {:ok, train} =
+        TrainContext.create_train(%{
+          name: "Test Train",
+          identifiers: [%{identifier: "test_train"}]
+        })
 
       %{output: output, train: train, device: device}
     end
@@ -287,7 +297,10 @@ defmodule Trenino.Train.OutputBindingTest do
 
     test "allows same output for different trains", %{output: output, train: train} do
       {:ok, train2} =
-        TrainContext.create_train(%{name: "Another Train", identifier: "another_train"})
+        TrainContext.create_train(%{
+          name: "Another Train",
+          identifiers: [%{identifier: "another_train"}]
+        })
 
       attrs1 = %{
         train_id: train.id,

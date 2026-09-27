@@ -6,9 +6,9 @@ This guide covers setting up train configurations and binding hardware inputs to
 
 Each train in Train Sim World has unique cab elements (throttle, reverser, brakes). Trenino stores configurations that map your hardware to these elements.
 
-### Train Identifier
+### Train Identifiers
 
-Trains are identified by a prefix derived from the simulator's formation data. For example:
+Trains are identified by one or more equivalent prefixes derived from the simulator's formation data. For example:
 
 ```
 Formation: ["Class_BR_DR4_08_A", "Class_BR_DR4_08_B", ...]
@@ -17,7 +17,9 @@ Identifier: "Class_BR_DR4"
 
 When you drive this train in the simulator, Trenino automatically activates the matching configuration.
 
-The identifier acts as a prefix — a single configuration for `RVM_LIRREX_M9` will match `RVM_LIRREX_M9-A`, `RVM_LIRREX_M9-B`, and other variants. This is useful for trains where different car variants form the same consist.
+Every identifier acts as a prefix — a configuration for `RVM_LIRREX_M9` will match `RVM_LIRREX_M9-A`, `RVM_LIRREX_M9-B`, and other variants. Multiple identifiers are peers; there is no primary identifier. This supports the same train being exposed under unrelated prefixes, such as `RVM_FSN_DB_BR423` and `RVM_OTHER_DB_BR423`, while sharing one hardware configuration.
+
+An exact identifier can belong to only one train profile. If prefixes from different profiles both match a detected value, Trenino reports the ambiguity instead of selecting one automatically.
 
 ## Creating a Train Configuration
 
@@ -34,7 +36,7 @@ The identifier acts as a prefix — a single configuration for `RVM_LIRREX_M9` w
 2. Click **New Train**
 3. Enter:
    - **Name** - Friendly name (e.g., "BR Class 66")
-   - **Identifier** - Must match simulator's ObjectClass prefix
+   - **Identifiers** - One or more equivalent simulator ObjectClass prefixes
 4. Save the train
 
 ## Adding Cab Elements
@@ -335,7 +337,7 @@ Common paths to explore:
 
 1. Verify simulator is running with External Interface enabled
 2. Check Trenino's simulator connection status
-3. Ensure the train identifier matches the `ObjectClass` prefix for your locomotive
+3. Ensure at least one train identifier matches the `ObjectClass` prefix for your locomotive
 
 ### Lever Not Responding
 

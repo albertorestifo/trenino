@@ -8,6 +8,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **Multiple identifiers per train profile** — configure equivalent ObjectClass prefixes such as `RVM_FSN_DB_BR423` and `RVM_OTHER_DB_BR423` once, with global exact-identifier ownership and explicit ambiguity handling for overlapping prefixes
 - **Windows virtual joystick mode** — map calibrated analog inputs and digital
   controls to one removable DirectInput vJoy device with eight conventional axes
   and 32 buttons; includes standalone mappings, explicit destination replacement,
@@ -17,6 +18,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **Display bindings** — bind simulator endpoint values to I2C display modules on a per-train basis; format numbers with `{value}` (raw) or `{value:.Nf}` (N decimal places, e.g. `{value:.0f}` for integers); bindings activate automatically when a matching train is loaded and blank the display on deactivation
 - **`display.set(i2c_address, text)` in Lua scripting** — write arbitrary text directly to an I2C display from a script
 - 8 new MCP tools: `list_i2c_modules`, `create_i2c_module`, `update_i2c_module`, `delete_i2c_module`, `list_display_bindings`, `create_display_binding`, `update_display_binding`, `delete_display_binding`
+
+### Changed
+
+- **Breaking HTTP and MCP train contract** — train payloads now expose a sorted `identifiers` array and no longer include the singular `identifier` field
 
 ## [0.7.4] - unreleased
 
