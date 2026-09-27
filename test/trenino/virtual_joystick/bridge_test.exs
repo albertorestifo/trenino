@@ -8,8 +8,15 @@ defmodule Trenino.VirtualJoystick.BridgeTest do
   setup do
     Application.put_env(:trenino, :virtual_joystick_fake_test, self())
 
+    Application.put_env(
+      :trenino,
+      :virtual_joystick_test_dll,
+      ~S(C:\Program Files\Trenino\resources\vJoyInterface.dll)
+    )
+
     on_exit(fn ->
       Application.delete_env(:trenino, :virtual_joystick_fake_test)
+      Application.delete_env(:trenino, :virtual_joystick_test_dll)
       System.delete_env("APP_PATH")
     end)
 
@@ -37,19 +44,31 @@ defmodule Trenino.VirtualJoystick.BridgeTest do
              Bridge.start_link(
                owner: self(),
                adapter: Fake,
+               interface_adapter: Trenino.VirtualJoystick.BridgeTest.InterfaceResolver,
                executable: "/fake/virtual_joystick",
                timeout: 100
              )
 
     assert_receive {:opened, ^bridge, _handle, "/fake/virtual_joystick", opts}
-    assert opts[:args] == ["serve"]
+
+    expected_args =
+      if match?({:win32, _}, :os.type()) do
+        [
+          "serve",
+          "--vjoy-interface",
+          Application.fetch_env!(:trenino, :virtual_joystick_test_dll)
+        ]
+      else
+        ["serve"]
+      end
+
+    assert opts[:args] == expected_args
   end
 
   test "passes only the trusted resolved vJoy interface path to the Windows feeder" do
     dll = ~S(C:\Program Files\Trenino\resources\vJoyInterface.dll)
     resolver = Module.concat(__MODULE__, InterfaceResolver)
     Application.put_env(:trenino, :virtual_joystick_test_dll, dll)
-    on_exit(fn -> Application.delete_env(:trenino, :virtual_joystick_test_dll) end)
 
     assert {:ok, ["serve", "--vjoy-interface", ^dll]} =
              Bridge.feeder_arguments(true, resolver)
@@ -247,6 +266,7 @@ defmodule Trenino.VirtualJoystick.BridgeTest do
              Bridge.start_link(
                owner: self(),
                adapter: Fake,
+               interface_adapter: Trenino.VirtualJoystick.BridgeTest.InterfaceResolver,
                executable: "/fake/virtual_joystick",
                timeout: 100
              )

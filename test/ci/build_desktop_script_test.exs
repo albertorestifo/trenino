@@ -72,15 +72,17 @@ defmodule Trenino.CI.BuildDesktopScriptTest do
   end
 
   test "Unix backend sidecar is staged without an executable suffix" do
-    binaries_dir = stage_backend_for("Linux")
+    {binaries_dir, output} = stage_backend_for("Linux", diagnostics: true)
 
-    assert File.read!(Path.join(binaries_dir, "trenino_backend-x86_64-unknown-linux-gnu")) ==
-             "backend"
+    target = Path.join(binaries_dir, "trenino_backend-x86_64-unknown-linux-gnu")
+    assert File.exists?(target), output
+
+    assert File.read!(target) == "backend"
 
     refute File.exists?(Path.join(binaries_dir, "trenino_backend-x86_64-unknown-linux-gnu.exe"))
   end
 
-  defp stage_backend_for(uname_s) do
+  defp stage_backend_for(uname_s, opts \\ []) do
     project_dir =
       Path.join(System.tmp_dir!(), "trenino-build-desktop-#{System.unique_integer([:positive])}")
 
@@ -108,12 +110,21 @@ defmodule Trenino.CI.BuildDesktopScriptTest do
       "#!/bin/sh\nif [ \"$1\" = \"-s\" ]; then echo \"$TEST_UNAME_S\"; else echo x86_64; fi\n"
     )
 
-    path = Path.join(project_dir, "test-bin") <> ":" <> System.fetch_env!("PATH")
+    path = shell_path(Path.join(project_dir, "test-bin")) <> ":" <> shell_system_path()
 
     {output, status} =
-      System.cmd("/bin/bash", [script],
+      System.cmd(
+        bash_executable!(),
+        [
+          "--noprofile",
+          "--norc",
+          "-c",
+          ~S(PATH="$1"; export PATH; exec "$2"),
+          "trenino-build-test",
+          path,
+          shell_path(script)
+        ],
         env: [
-          {"PATH", path},
           {"TEST_UNAME_S", uname_s},
           {"TEST_PROJECT_DIR", project_dir}
         ],
@@ -123,11 +134,46 @@ defmodule Trenino.CI.BuildDesktopScriptTest do
     assert status == 42
     assert output =~ "==> Building keystroke utility..."
 
-    Path.join(project_dir, "tauri/src-tauri/binaries")
+    binaries_dir = Path.join(project_dir, "tauri/src-tauri/binaries")
+    if opts[:diagnostics], do: {binaries_dir, output}, else: binaries_dir
   end
 
   defp write_executable!(path, contents) do
     File.write!(path, contents)
     File.chmod!(path, 0o755)
+  end
+
+  defp bash_executable! do
+    case :os.type() do
+      {:win32, _} ->
+        git = System.find_executable("git") || raise "Git is required to run shell script tests"
+
+        ["../bin/bash.exe", "../../bin/bash.exe"]
+        |> Enum.map(&Path.expand(&1, Path.dirname(git)))
+        |> Enum.find(&File.regular?/1)
+        |> then(&(&1 || raise("Git Bash was not found relative to #{git}")))
+
+      {:unix, _} ->
+        System.find_executable("bash") || raise "Bash is required to run shell script tests"
+    end
+  end
+
+  defp shell_path(path) do
+    case :os.type() do
+      {:win32, _} ->
+        path
+        |> String.replace("\\", "/")
+        |> then(fn <<drive, ?:, rest::binary>> -> "/#{String.downcase(<<drive>>)}#{rest}" end)
+
+      {:unix, _} ->
+        path
+    end
+  end
+
+  defp shell_system_path do
+    case :os.type() do
+      {:win32, _} -> "/usr/bin:/bin"
+      {:unix, _} -> System.fetch_env!("PATH")
+    end
   end
 end

@@ -4,10 +4,17 @@ defmodule Trenino.Train.ButtonControllerTest do
   alias Trenino.Hardware
   alias Trenino.Train, as: TrainContext
   alias Trenino.Train.ButtonController
+  alias Trenino.Train.Detection
+  alias Trenino.Train.Detection.State, as: DetectionState
   alias Trenino.VirtualJoystick
 
   # These tests run the ButtonController in isolation
   # They test the state management and binding loading logic
+
+  setup do
+    :sys.replace_state(Process.whereis(Detection), fn _state -> %DetectionState{} end)
+    :ok
+  end
 
   describe "get_state/0" do
     setup do
@@ -29,7 +36,12 @@ defmodule Trenino.Train.ButtonControllerTest do
     setup do
       start_supervised!(ButtonController)
 
-      {:ok, train} = TrainContext.create_train(%{name: "Test Train", identifier: "test_train"})
+      {:ok, train} =
+        TrainContext.create_train(%{
+          name: "Test Train",
+          identifiers: [%{identifier: "test_train"}]
+        })
+
       {:ok, element} = TrainContext.create_element(train.id, %{name: "Horn", type: :button})
       {:ok, device} = Hardware.create_device(%{name: "Test Device"})
 
@@ -73,7 +85,12 @@ defmodule Trenino.Train.ButtonControllerTest do
     setup do
       start_supervised!(ButtonController)
 
-      {:ok, train} = TrainContext.create_train(%{name: "Test Train", identifier: "test_train"})
+      {:ok, train} =
+        TrainContext.create_train(%{
+          name: "Test Train",
+          identifiers: [%{identifier: "test_train"}]
+        })
+
       {:ok, element} = TrainContext.create_element(train.id, %{name: "Horn", type: :button})
       {:ok, device} = Hardware.create_device(%{name: "Test Device"})
 
@@ -110,7 +127,12 @@ defmodule Trenino.Train.ButtonControllerTest do
     setup do
       start_supervised!(ButtonController)
 
-      {:ok, train} = TrainContext.create_train(%{name: "Test Train", identifier: "test_train"})
+      {:ok, train} =
+        TrainContext.create_train(%{
+          name: "Test Train",
+          identifiers: [%{identifier: "test_train"}]
+        })
+
       {:ok, element} = TrainContext.create_element(train.id, %{name: "Horn", type: :button})
       {:ok, device} = Hardware.create_device(%{name: "Test Device"})
 
@@ -184,7 +206,12 @@ defmodule Trenino.Train.ButtonControllerTest do
     setup do
       start_supervised!(ButtonController)
 
-      {:ok, train} = TrainContext.create_train(%{name: "Test Train", identifier: "test_train"})
+      {:ok, train} =
+        TrainContext.create_train(%{
+          name: "Test Train",
+          identifiers: [%{identifier: "test_train"}]
+        })
+
       {:ok, element} = TrainContext.create_element(train.id, %{name: "Horn", type: :button})
       {:ok, device} = Hardware.create_device(%{name: "Test Device"})
 
@@ -219,7 +246,12 @@ defmodule Trenino.Train.ButtonControllerTest do
     setup do
       start_supervised!(ButtonController)
 
-      {:ok, train} = TrainContext.create_train(%{name: "Test Train", identifier: "test_train"})
+      {:ok, train} =
+        TrainContext.create_train(%{
+          name: "Test Train",
+          identifiers: [%{identifier: "test_train"}]
+        })
+
       {:ok, element} = TrainContext.create_element(train.id, %{name: "Horn", type: :button})
       {:ok, device} = Hardware.create_device(%{name: "Test Device"})
 
@@ -297,7 +329,12 @@ defmodule Trenino.Train.ButtonControllerTest do
     setup do
       start_supervised!(ButtonController)
 
-      {:ok, train} = TrainContext.create_train(%{name: "Test Train", identifier: "test_train"})
+      {:ok, train} =
+        TrainContext.create_train(%{
+          name: "Test Train",
+          identifiers: [%{identifier: "test_train"}]
+        })
+
       {:ok, element} = TrainContext.create_element(train.id, %{name: "Horn", type: :button})
       {:ok, device} = Hardware.create_device(%{name: "Test Device"})
 
@@ -430,7 +467,12 @@ defmodule Trenino.Train.ButtonControllerTest do
     setup do
       start_supervised!(ButtonController)
 
-      {:ok, train} = TrainContext.create_train(%{name: "Test Train", identifier: "test_train"})
+      {:ok, train} =
+        TrainContext.create_train(%{
+          name: "Test Train",
+          identifiers: [%{identifier: "test_train"}]
+        })
+
       {:ok, element} = TrainContext.create_element(train.id, %{name: "Light", type: :button})
       {:ok, device} = Hardware.create_device(%{name: "Test Device"})
 
@@ -488,7 +530,12 @@ defmodule Trenino.Train.ButtonControllerTest do
     setup do
       start_supervised!(ButtonController)
 
-      {:ok, train} = TrainContext.create_train(%{name: "Test Train", identifier: "test_train"})
+      {:ok, train} =
+        TrainContext.create_train(%{
+          name: "Test Train",
+          identifiers: [%{identifier: "test_train"}]
+        })
+
       {:ok, element} = TrainContext.create_element(train.id, %{name: "Door", type: :button})
       {:ok, device} = Hardware.create_device(%{name: "Test Device"})
 

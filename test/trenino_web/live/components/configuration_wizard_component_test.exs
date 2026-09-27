@@ -17,7 +17,7 @@ defmodule TreninoWeb.ConfigurationWizardComponentTest do
     {:ok, train} =
       TrainContext.create_train(%{
         name: "Test Train",
-        identifier: "Test_Train_Wizard_#{System.unique_integer([:positive])}"
+        identifiers: [%{identifier: "Test_Train_Wizard_#{System.unique_integer([:positive])}"}]
       })
 
     {:ok, lever_element} =

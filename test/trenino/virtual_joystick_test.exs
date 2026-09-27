@@ -392,7 +392,9 @@ defmodule Trenino.VirtualJoystickTest do
   end
 
   defp lever_config_fixture(name, identifier) do
-    {:ok, train} = TrainContext.create_train(%{name: name, identifier: identifier})
+    {:ok, train} =
+      TrainContext.create_train(%{name: name, identifiers: [%{identifier: identifier}]})
+
     {:ok, element} = TrainContext.create_element(train.id, %{name: "Throttle", type: :lever})
 
     {:ok, config} =
@@ -406,7 +408,9 @@ defmodule Trenino.VirtualJoystickTest do
   end
 
   defp button_element_fixture(name, identifier) do
-    {:ok, train} = TrainContext.create_train(%{name: name, identifier: identifier})
+    {:ok, train} =
+      TrainContext.create_train(%{name: name, identifiers: [%{identifier: identifier}]})
+
     {:ok, element} = TrainContext.create_element(train.id, %{name: name, type: :button})
     element
   end

@@ -10,8 +10,17 @@ defmodule Trenino.MCP.Tools.TrainToolsTest do
     end
 
     test "returns all trains" do
-      {:ok, _} = TrainContext.create_train(%{name: "BR 146.2", identifier: "br146"})
-      {:ok, _} = TrainContext.create_train(%{name: "Class 66", identifier: "class66"})
+      {:ok, _} =
+        TrainContext.create_train(%{
+          name: "BR 146.2",
+          identifiers: [%{identifier: "br146"}]
+        })
+
+      {:ok, _} =
+        TrainContext.create_train(%{
+          name: "Class 66",
+          identifiers: [%{identifier: "class66"}]
+        })
 
       assert {:ok, %{trains: trains}} = TrainTools.execute("list_trains", %{})
       assert length(trains) == 2
@@ -25,7 +34,10 @@ defmodule Trenino.MCP.Tools.TrainToolsTest do
       {:ok, train} =
         TrainContext.create_train(%{
           name: "BR 146.2",
-          identifier: "br146",
+          identifiers: [
+            %{identifier: "RVM_OTHER_DB_BR423"},
+            %{identifier: "RVM_FSN_DB_BR423"}
+          ],
           description: "Electric loco"
         })
 
@@ -33,20 +45,31 @@ defmodule Trenino.MCP.Tools.TrainToolsTest do
 
       assert result.id == train.id
       assert result.name == "BR 146.2"
-      assert result.identifier == "br146"
+      assert result.identifiers == ["RVM_FSN_DB_BR423", "RVM_OTHER_DB_BR423"]
+      refute Map.has_key?(result, :identifier)
       assert result.description == "Electric loco"
     end
   end
 
   describe "get_train" do
     test "returns train with elements and bindings" do
-      {:ok, train} = TrainContext.create_train(%{name: "BR 146.2", identifier: "br146"})
+      {:ok, train} =
+        TrainContext.create_train(%{
+          name: "BR 146.2",
+          identifiers: [
+            %{identifier: "RVM_OTHER_DB_BR423"},
+            %{identifier: "RVM_FSN_DB_BR423"}
+          ]
+        })
+
       {:ok, _element} = TrainContext.create_element(train.id, %{name: "Horn", type: :button})
       {:ok, _element} = TrainContext.create_element(train.id, %{name: "Throttle", type: :lever})
 
       assert {:ok, %{train: result}} = TrainTools.execute("get_train", %{"train_id" => train.id})
 
       assert result.name == "BR 146.2"
+      assert result.identifiers == ["RVM_FSN_DB_BR423", "RVM_OTHER_DB_BR423"]
+      refute Map.has_key?(result, :identifier)
       assert length(result.elements) == 2
 
       element_names = Enum.map(result.elements, & &1.name)
@@ -60,7 +83,11 @@ defmodule Trenino.MCP.Tools.TrainToolsTest do
     end
 
     test "includes output bindings, button bindings, and sequences" do
-      {:ok, train} = TrainContext.create_train(%{name: "Test", identifier: "test"})
+      {:ok, train} =
+        TrainContext.create_train(%{
+          name: "Test",
+          identifiers: [%{identifier: "test"}]
+        })
 
       {:ok, %{train: result}} = TrainTools.execute("get_train", %{"train_id" => train.id})
 

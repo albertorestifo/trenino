@@ -22,7 +22,12 @@ defmodule Trenino.Train.OutputControllerTest do
     setup do
       {:ok, device} = Hardware.create_device(%{name: "Test Device"})
       {:ok, output} = Hardware.create_output(device.id, %{pin: 13, name: "Test LED"})
-      {:ok, train} = TrainContext.create_train(%{name: "Test Train", identifier: "test_train"})
+
+      {:ok, train} =
+        TrainContext.create_train(%{
+          name: "Test Train",
+          identifiers: [%{identifier: "test_train"}]
+        })
 
       %{output: output, train: train, device: device}
     end
@@ -144,7 +149,12 @@ defmodule Trenino.Train.OutputControllerTest do
     setup do
       {:ok, device} = Hardware.create_device(%{name: "Test Device"})
       {:ok, output} = Hardware.create_output(device.id, %{pin: 13, name: "Test LED"})
-      {:ok, train} = TrainContext.create_train(%{name: "Test Train", identifier: "test_train"})
+
+      {:ok, train} =
+        TrainContext.create_train(%{
+          name: "Test Train",
+          identifiers: [%{identifier: "test_train"}]
+        })
 
       %{output: output, train: train, device: device}
     end
@@ -198,7 +208,12 @@ defmodule Trenino.Train.OutputControllerTest do
     setup do
       {:ok, device} = Hardware.create_device(%{name: "Test Device"})
       {:ok, output} = Hardware.create_output(device.id, %{pin: 13, name: "Test LED"})
-      {:ok, train} = TrainContext.create_train(%{name: "Test Train", identifier: "test_train"})
+
+      {:ok, train} =
+        TrainContext.create_train(%{
+          name: "Test Train",
+          identifiers: [%{identifier: "test_train"}]
+        })
 
       %{output: output, train: train, device: device}
     end

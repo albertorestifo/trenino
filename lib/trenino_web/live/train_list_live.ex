@@ -12,6 +12,7 @@ defmodule TreninoWeb.TrainListLive do
 
   alias Trenino.Serial.Connection
   alias Trenino.Train, as: TrainContext
+  alias Trenino.Train.Train
 
   @impl true
   def mount(_params, _session, socket) do
@@ -19,7 +20,7 @@ defmodule TreninoWeb.TrainListLive do
       TrainContext.subscribe()
     end
 
-    trains = TrainContext.list_trains(preload: [:elements])
+    trains = TrainContext.list_trains(preload: [:elements, :identifiers])
     current_identifier = TrainContext.get_current_identifier()
     active_train = TrainContext.get_active_train()
 
@@ -144,7 +145,7 @@ defmodule TreninoWeb.TrainListLive do
             navigate_to={~p"/trains/#{train.id}"}
             title={train.name}
             description={train.description}
-            metadata={[train.identifier, element_count_text(length(train.elements))]}
+            metadata={Train.identifier_values(train) ++ [element_count_text(length(train.elements))]}
           />
         </div>
       </div>
@@ -163,12 +164,14 @@ defmodule TreninoWeb.TrainListLive do
         <h3 class="font-semibold">Multiple Trains Match</h3>
         <p class="text-sm">
           The detected identifier "<span class="font-mono">{@identifier}</span>" matches multiple train configurations.
-          Each train identifier must be a unique prefix.
+          Identifiers must not match more than one train profile.
         </p>
         <ul class="text-sm mt-2 list-disc list-inside">
           <li :for={train <- @trains}>
             <span class="font-semibold">{train.name}</span>
-            <span class="text-base-content/60">({train.identifier})</span>
+            <span class="text-base-content/60">
+              ({Enum.join(Train.identifier_values(train), ", ")})
+            </span>
           </li>
         </ul>
       </div>

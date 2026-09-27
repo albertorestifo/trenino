@@ -13,7 +13,12 @@ defmodule Trenino.Train.ButtonInputBindingTest do
       {:ok, input} =
         Hardware.create_input(device.id, %{pin: 5, input_type: :button, debounce: 20})
 
-      {:ok, train} = TrainContext.create_train(%{name: "Test Train", identifier: "test_train"})
+      {:ok, train} =
+        TrainContext.create_train(%{
+          name: "Test Train",
+          identifiers: [%{identifier: "test_train"}]
+        })
+
       {:ok, element} = TrainContext.create_element(train.id, %{name: "Horn", type: :button})
 
       %{input: input, element: element}
@@ -130,7 +135,12 @@ defmodule Trenino.Train.ButtonInputBindingTest do
       {:ok, input} =
         Hardware.create_input(device.id, %{pin: 5, input_type: :button, debounce: 20})
 
-      {:ok, train} = TrainContext.create_train(%{name: "Test Train", identifier: "test_train"})
+      {:ok, train} =
+        TrainContext.create_train(%{
+          name: "Test Train",
+          identifiers: [%{identifier: "test_train"}]
+        })
+
       {:ok, element} = TrainContext.create_element(train.id, %{name: "Horn", type: :button})
 
       %{input: input, element: element, train: train}
@@ -231,7 +241,9 @@ defmodule Trenino.Train.ButtonInputBindingTest do
       {:ok, input} =
         Hardware.create_input(device.id, %{pin: 5, input_type: :button, debounce: 20})
 
-      {:ok, train} = TrainContext.create_train(%{name: "Test Train", identifier: "seq_test"})
+      {:ok, train} =
+        TrainContext.create_train(%{name: "Test Train", identifiers: [%{identifier: "seq_test"}]})
+
       {:ok, element} = TrainContext.create_element(train.id, %{name: "Door", type: :button})
       {:ok, sequence} = TrainContext.create_sequence(train.id, %{name: "Open Door"})
       {:ok, sequence2} = TrainContext.create_sequence(train.id, %{name: "Close Door"})

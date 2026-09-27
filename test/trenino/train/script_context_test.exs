@@ -5,7 +5,9 @@ defmodule Trenino.Train.ScriptContextTest do
   alias Trenino.Train.Script
 
   setup do
-    {:ok, train} = TrainContext.create_train(%{name: "Test Train", identifier: "test_train"})
+    {:ok, train} =
+      TrainContext.create_train(%{name: "Test Train", identifiers: [%{identifier: "test_train"}]})
+
     %{train: train}
   end
 

@@ -56,6 +56,7 @@ defmodule Trenino.VirtualJoystick.Bridge do
   def init(opts) do
     owner = Keyword.fetch!(opts, :owner)
     adapter = Keyword.get(opts, :adapter, PortAdapter)
+    interface_adapter = Keyword.get(opts, :interface_adapter, SystemAdapter)
 
     timeout =
       Keyword.get(
@@ -65,7 +66,7 @@ defmodule Trenino.VirtualJoystick.Bridge do
       )
 
     with {:ok, executable} <- executable(opts),
-         {:ok, arguments} <- feeder_arguments(windows?(), SystemAdapter),
+         {:ok, arguments} <- feeder_arguments(windows?(), interface_adapter),
          {:ok, handle} <- adapter.open(self(), executable, stderr: :separate, args: arguments) do
       state = %{
         owner: owner,

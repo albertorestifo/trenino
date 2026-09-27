@@ -14,7 +14,7 @@ defmodule Trenino.Train.Calibration.LeverSessionTest do
     {:ok, train} =
       Train.create_train(%{
         name: "Test Train",
-        identifier: "Test_Train_#{System.unique_integer([:positive])}"
+        identifiers: [%{identifier: "Test_Train_#{System.unique_integer([:positive])}"}]
       })
 
     {:ok, element} =

@@ -156,7 +156,9 @@ defmodule TreninoWeb.VirtualJoystickLiveTest do
 
     assert has_element?(view, "[role='alert']", "already assigned")
 
-    {:ok, train} = TrainContext.create_train(%{name: "Test train", identifier: "test-train"})
+    {:ok, train} =
+      TrainContext.create_train(%{name: "Test train", identifiers: [%{identifier: "test-train"}]})
+
     {:ok, element} = TrainContext.create_element(train.id, %{name: "Brake", type: :lever})
 
     {:ok, config} =

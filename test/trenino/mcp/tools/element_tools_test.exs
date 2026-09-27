@@ -5,7 +5,9 @@ defmodule Trenino.MCP.Tools.ElementToolsTest do
   alias Trenino.Train, as: TrainContext
 
   setup do
-    {:ok, train} = TrainContext.create_train(%{name: "BR 146.2", identifier: "br146"})
+    {:ok, train} =
+      TrainContext.create_train(%{name: "BR 146.2", identifiers: [%{identifier: "br146"}]})
+
     %{train: train}
   end
 
@@ -41,7 +43,9 @@ defmodule Trenino.MCP.Tools.ElementToolsTest do
     end
 
     test "does not return elements from other trains", %{train: train} do
-      {:ok, other_train} = TrainContext.create_train(%{name: "Class 66", identifier: "class66"})
+      {:ok, other_train} =
+        TrainContext.create_train(%{name: "Class 66", identifiers: [%{identifier: "class66"}]})
+
       {:ok, _} = TrainContext.create_element(train.id, %{name: "Horn", type: :button})
       {:ok, _} = TrainContext.create_element(other_train.id, %{name: "Brake", type: :lever})
 

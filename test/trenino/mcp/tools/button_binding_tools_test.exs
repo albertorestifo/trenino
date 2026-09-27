@@ -6,7 +6,9 @@ defmodule Trenino.MCP.Tools.ButtonBindingToolsTest do
   alias Trenino.Train, as: TrainContext
 
   setup do
-    {:ok, train} = TrainContext.create_train(%{name: "Test Train", identifier: "test_train"})
+    {:ok, train} =
+      TrainContext.create_train(%{name: "Test Train", identifiers: [%{identifier: "test_train"}]})
+
     {:ok, element} = TrainContext.create_element(train.id, %{name: "Horn", type: :button})
     {:ok, device} = Hardware.create_device(%{name: "Arduino Uno"})
 

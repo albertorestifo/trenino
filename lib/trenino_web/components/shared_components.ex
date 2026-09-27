@@ -241,7 +241,7 @@ defmodule TreninoWeb.SharedComponents do
         navigate_to={~p"/trains/\#{train.id}"}
         title={train.name}
         description={train.description}
-        metadata={[train.identifier, "3 elements"]}
+        metadata={Train.identifier_values(train) ++ ["3 elements"]}
       />
 
   """

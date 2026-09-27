@@ -19,7 +19,9 @@ defmodule TreninoWeb.LeverSetupWizardTest do
       {:ok, train} =
         TrainContext.create_train(%{
           name: "Test Train",
-          identifier: "Test_Train_EditMode_#{System.unique_integer([:positive])}"
+          identifiers: [
+            %{identifier: "Test_Train_EditMode_#{System.unique_integer([:positive])}"}
+          ]
         })
 
       {:ok, lever_element} =
@@ -328,7 +330,9 @@ defmodule TreninoWeb.LeverSetupWizardTest do
       {:ok, train} =
         TrainContext.create_train(%{
           name: "Test Train",
-          identifier: "Test_Train_LeverType_#{System.unique_integer([:positive])}"
+          identifiers: [
+            %{identifier: "Test_Train_LeverType_#{System.unique_integer([:positive])}"}
+          ]
         })
 
       {:ok, lever_element} =
@@ -409,7 +413,9 @@ defmodule TreninoWeb.LeverSetupWizardTest do
       {:ok, train} =
         TrainContext.create_train(%{
           name: "Test Train",
-          identifier: "Test_Train_Deps_#{System.unique_integer([:positive])}"
+          identifiers: [
+            %{identifier: "Test_Train_Deps_#{System.unique_integer([:positive])}"}
+          ]
         })
 
       {:ok, lever_element} =

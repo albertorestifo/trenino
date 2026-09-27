@@ -5,6 +5,7 @@ defmodule TreninoWeb.TrainEditLiveTest do
 
   alias Trenino.Hardware
   alias Trenino.Train, as: TrainContext
+  alias Trenino.Train.Train
 
   # Sample state that NotchMappingSession broadcasts with events
   @sample_notch_mapping_state %{
@@ -64,7 +65,9 @@ defmodule TreninoWeb.TrainEditLiveTest do
       {:ok, train} =
         TrainContext.create_train(%{
           name: "Test Train",
-          identifier: "Test_Train_#{System.unique_integer([:positive])}"
+          identifiers: [
+            %{identifier: "Test_Train_#{System.unique_integer([:positive])}"}
+          ]
         })
 
       {:ok, view, _html} = live(conn, ~p"/trains/#{train.id}")
@@ -138,7 +141,7 @@ defmodule TreninoWeb.TrainEditLiveTest do
       # The identifier should be pre-filled in the form
       {:ok, _view, html} = live(conn, ~p"/trains/new?identifier=BR_Class_66")
 
-      # Verify the identifier field is pre-filled with the detected train identifier
+      assert html =~ ~s(name="train[identifiers][0][identifier]")
       assert html =~ ~s(value="BR_Class_66")
     end
 
@@ -146,11 +149,9 @@ defmodule TreninoWeb.TrainEditLiveTest do
       {:ok, _view, html} = live(conn, ~p"/trains/new")
 
       # The identifier field should be empty when no identifier is passed
-      assert html =~ "Train Identifier"
+      assert html =~ "Train Identifiers"
       assert html =~ ~s(placeholder="e.g., BR_Class_66")
-      # Verify the identifier input has an empty value
-      assert html =~ ~s(name="train[identifier]")
-      assert html =~ ~s(id="train_identifier" value="")
+      assert html =~ ~s(name="train[identifiers][0][identifier]")
     end
 
     test "saves train with pre-filled identifier from query params", %{conn: conn} do
@@ -163,11 +164,137 @@ defmodule TreninoWeb.TrainEditLiveTest do
       )
       |> render_submit()
 
-      # Verify the train was created with the pre-filled identifier
-      [train] = TrainContext.list_trains()
-      assert train.identifier == "BR_Class_66"
+      [train] = TrainContext.list_trains(preload: :identifiers)
+      assert Train.identifier_values(train) == ["BR_Class_66"]
       assert train.name == "Class 66"
       assert train.description == "British freight locomotive"
+    end
+
+    test "creates a train with two equivalent identifiers", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/trains/new")
+
+      render_submit(view, "save_train", %{
+        "train" => %{
+          name: "BR 423",
+          identifiers: %{
+            "0" => %{identifier: "RVM_OTHER_DB_BR423"},
+            "1" => %{identifier: "RVM_FSN_DB_BR423"}
+          },
+          identifiers_sort: ["0", "1"]
+        }
+      })
+
+      [train] = TrainContext.list_trains(preload: :identifiers)
+
+      assert Train.identifier_values(train) == [
+               "RVM_FSN_DB_BR423",
+               "RVM_OTHER_DB_BR423"
+             ]
+    end
+
+    test "cannot save a train without any identifiers", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/trains/new")
+
+      html =
+        render_submit(view, "save_train", %{
+          "train" => %{name: "No aliases", identifiers_drop: ["0"]}
+        })
+
+      assert html =~ "must have at least one identifier"
+      assert TrainContext.list_trains() == []
+    end
+
+    test "renders a conflicting identifier error", %{conn: conn} do
+      {:ok, _train} =
+        TrainContext.create_train(%{
+          name: "Existing",
+          identifiers: [%{identifier: "RVM_SHARED"}]
+        })
+
+      {:ok, view, _html} = live(conn, ~p"/trains/new")
+
+      html =
+        view
+        |> form("#train-form",
+          train: %{
+            name: "Conflict",
+            identifiers: %{"0" => %{identifier: "RVM_SHARED"}},
+            identifiers_sort: ["0"]
+          }
+        )
+        |> render_submit()
+
+      assert html =~ "has already been taken"
+    end
+
+    test "removes one identifier while keeping another", %{conn: conn} do
+      {:ok, train} =
+        TrainContext.create_train(%{
+          name: "BR 423",
+          identifiers: [
+            %{identifier: "RVM_FSN_DB_BR423"},
+            %{identifier: "RVM_OTHER_DB_BR423"}
+          ]
+        })
+
+      train = Trenino.Repo.preload(train, :identifiers, force: true)
+      [first, second] = train.identifiers
+      {:ok, view, _html} = live(conn, ~p"/trains/#{train.id}")
+
+      render_submit(view, "save_train", %{
+        "train" => %{
+          "name" => "BR 423",
+          "identifiers" => %{
+            "0" => %{
+              "_persistent_id" => "0",
+              "id" => Integer.to_string(first.id),
+              "identifier" => first.identifier
+            },
+            "1" => %{
+              "_persistent_id" => "1",
+              "id" => Integer.to_string(second.id),
+              "identifier" => second.identifier
+            }
+          },
+          "identifiers_sort" => ["0", "1"],
+          "identifiers_drop" => ["0"]
+        }
+      })
+
+      {:ok, train} = TrainContext.get_train(train.id, preload: :identifiers)
+      assert Train.identifier_values(train) == [second.identifier]
+    end
+
+    test "does not remove the last persisted identifier", %{conn: conn} do
+      {:ok, train} =
+        TrainContext.create_train(%{
+          name: "BR 423",
+          identifiers: [%{identifier: "RVM_FSN_DB_BR423"}]
+        })
+
+      train = Trenino.Repo.preload(train, :identifiers, force: true)
+      [identifier] = train.identifiers
+      {:ok, view, _html} = live(conn, ~p"/trains/#{train.id}")
+
+      html =
+        render_submit(view, "save_train", %{
+          "train" => %{
+            "name" => "BR 423",
+            "identifiers" => %{
+              "0" => %{
+                "_persistent_id" => "0",
+                "id" => Integer.to_string(identifier.id),
+                "identifier" => identifier.identifier
+              }
+            },
+            "identifiers_sort" => ["0"],
+            "identifiers_drop" => ["0"]
+          }
+        })
+
+      assert html =~ "must have at least one identifier"
+      {:ok, reloaded} = TrainContext.get_train(train.id, preload: [:identifiers])
+      assert Train.identifier_values(reloaded) == ["RVM_FSN_DB_BR423"]
     end
   end
 
@@ -176,7 +303,9 @@ defmodule TreninoWeb.TrainEditLiveTest do
       {:ok, train} =
         TrainContext.create_train(%{
           name: "Test Train",
-          identifier: "Test_Train_Button_#{System.unique_integer([:positive])}"
+          identifiers: [
+            %{identifier: "Test_Train_Button_#{System.unique_integer([:positive])}"}
+          ]
         })
 
       %{conn: conn, train: train}
@@ -265,7 +394,9 @@ defmodule TreninoWeb.TrainEditLiveTest do
       {:ok, train} =
         TrainContext.create_train(%{
           name: "Test Train",
-          identifier: "Test_Train_Notches_#{System.unique_integer([:positive])}"
+          identifiers: [
+            %{identifier: "Test_Train_Notches_#{System.unique_integer([:positive])}"}
+          ]
         })
 
       # Create lever element
