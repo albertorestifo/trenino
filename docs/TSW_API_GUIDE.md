@@ -1,8 +1,8 @@
-# Train Sim World 6 External Interface API - Quick Reference Guide
+# Train Sim World External Interface API - Quick Reference Guide
 
 ## Overview
 
-The TSW6 External Interface API allows external applications to read real-time simulation data and control train cab elements via JSON over TCP.
+The Train Sim World 6 and 7 External Interface APIs allow external applications to read real-time simulation data and control train cab elements via JSON over TCP.
 
 ---
 
@@ -12,7 +12,7 @@ The TSW6 External Interface API allows external applications to read real-time s
 
 Add `-HTTPAPI` to Steam launch options:
 
-1. Right-click TSW6 in Steam
+1. Right-click Train Sim World 6 or 7 in Steam
 2. Select Properties
 3. Go to General tab
 4. Add `-HTTPAPI` to Launch Options
@@ -23,7 +23,8 @@ After launching the game once with the flag, find `CommAPIKey.txt`:
 
 | Build Type      | Location                                                              |
 | --------------- | --------------------------------------------------------------------- |
-| **Release**     | `Documents\My Games\TrainSimWorld6\Saved\Config\CommAPIKey.txt`       |
+| **TSW7 release** | `Documents\My Games\TrainSimWorld7\Saved\Config\CommAPIKey.txt`      |
+| **TSW6 release** | `Documents\My Games\TrainSimWorld6\Saved\Config\CommAPIKey.txt`      |
 | **Development** | `[Install Dir]\WindowsNoEditor\TS2Prototype\Saved\Config\CommAPIKey.txt` |
 
 The key is a base64-encoded string like: `7I0HydlP4d4/66aQPrrHg43N4X5Y+6gCnRIjtIAOwA8=`

@@ -225,10 +225,9 @@ defmodule TreninoWeb.SettingsLive do
                 <%= if @api_key_status == :found_in_file do %>
                   Enter a new key to override the one read from your Train Simulator folder.
                 <% else %>
-                  Found at
-                  <span class="font-mono break-all">
-                    Documents\My Games\TrainSimWorld6\Saved\Config\CommAPIKey.txt
-                  </span>
+                  Trenino checks the <span class="font-mono break-all">TrainSimWorld7</span>
+                  folder first, then <span class="font-mono break-all">TrainSimWorld6</span>, under
+                  <span class="font-mono break-all">Documents\My Games</span>
                   on the PC running Train Simulator.
                 <% end %>
               </div>

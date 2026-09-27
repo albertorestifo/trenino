@@ -34,7 +34,7 @@ Train Sim World ships with an External Interface API that Trenino uses to read a
 2. In the **General** tab, add `-HTTPAPI` to **Launch Options**
 3. Launch the game once — this generates the API key file
 
-On Windows, Trenino detects the API key automatically from `Documents\My Games\TrainSimWorld6\Saved\Config\CommAPIKey.txt`. On other platforms, enter the key manually in **Settings** → Simulator Connection.
+On Windows, Trenino detects the API key automatically from `Documents\My Games\TrainSimWorld7\Saved\Config\CommAPIKey.txt`, falling back to the equivalent `TrainSimWorld6` folder. On other platforms, enter the key manually in **Settings** → Simulator Connection.
 
 ## Firmware
 
@@ -181,7 +181,7 @@ remove it from Windows.
 
 - Ensure Train Sim World is running with `-HTTPAPI` in launch options
 - Check that no firewall is blocking port 31270
-- On Windows, verify `Documents\My Games\TrainSimWorld6\Saved\Config\CommAPIKey.txt` exists; Trenino reads it automatically
+- On Windows, verify `CommAPIKey.txt` exists under `Documents\My Games\TrainSimWorld7\Saved\Config` or `Documents\My Games\TrainSimWorld6\Saved\Config`; Trenino reads it automatically
 - Open **Settings** and check that the simulator URL is correct (default `http://localhost:31270`)
 
 ### Device Not Found

@@ -8,6 +8,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **Train Sim World 7 support** — automatically detect `CommAPIKey.txt` from the
+  `TrainSimWorld7` user directory while retaining Train Sim World 6 fallback
 - **Windows virtual joystick mode** — map calibrated analog inputs and digital
   controls to one removable DirectInput vJoy device with eight conventional axes
   and 32 buttons; includes standalone mappings, explicit destination replacement,
