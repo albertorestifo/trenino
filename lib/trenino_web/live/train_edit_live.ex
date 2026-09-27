@@ -28,7 +28,8 @@ defmodule TreninoWeb.TrainEditLive do
     LeverConfig,
     LeverInputBinding,
     OutputController,
-    Train
+    Train,
+    TrainIdentifier
   }
 
   alias Trenino.Train.LeverController
@@ -70,7 +71,12 @@ defmodule TreninoWeb.TrainEditLive do
         ""
       end
 
-    train = %Train{name: suggested_name, description: nil, identifier: identifier}
+    train = %Train{
+      name: suggested_name,
+      description: nil,
+      identifiers: [%TrainIdentifier{identifier: identifier}]
+    }
+
     changeset = Train.changeset(train, %{})
 
     {:ok,
