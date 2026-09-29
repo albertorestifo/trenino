@@ -314,6 +314,7 @@ jobs:
         include:
           - os: windows-2022
             target: windows_x86_64
+            artifact_name: Trenino-nightly-windows-x86_64
             elixir_binary: trenino_desktop_windows_x86_64.exe
             tauri_target: x86_64-pc-windows-msvc
             tauri_args: ""
@@ -321,6 +322,7 @@ jobs:
 
           - os: ubuntu-22.04
             target: linux_x86_64
+            artifact_name: Trenino-nightly-linux-x86_64
             elixir_binary: trenino_desktop_linux_x86_64
             tauri_target: x86_64-unknown-linux-gnu
             tauri_args: "--bundles appimage"
@@ -492,14 +494,32 @@ jobs:
           tauriScript: npx tauri
           args: ${{ matrix.tauri_args }}
 
+      - name: Prepare clearly named Windows downloads
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force "nightly-artifacts" | Out-Null
+          $nsis = Get-ChildItem "tauri/src-tauri/target/release/bundle/nsis" -Filter "*.exe" -File | Select-Object -First 1
+          $msi = Get-ChildItem "tauri/src-tauri/target/release/bundle/msi" -Filter "*.msi" -File | Select-Object -First 1
+          if (-not $nsis) { throw "The Windows NSIS installer was not produced." }
+          if (-not $msi) { throw "The Windows MSI installer was not produced." }
+          Copy-Item -LiteralPath $nsis.FullName -Destination "nightly-artifacts/Trenino-nightly-windows-x86_64-setup.exe"
+          Copy-Item -LiteralPath $msi.FullName -Destination "nightly-artifacts/Trenino-nightly-windows-x86_64.msi"
+
+      - name: Prepare clearly named Linux download
+        if: runner.os == 'Linux'
+        run: |
+          mkdir -p nightly-artifacts
+          appimage=$(find tauri/src-tauri/target/release/bundle/appimage -maxdepth 1 -type f -name '*.AppImage' -print -quit)
+          test -n "$appimage"
+          cp "$appimage" nightly-artifacts/Trenino-nightly-linux-x86_64.AppImage
+
       - name: Upload Tauri installers
         uses: actions/upload-artifact@v7
         with:
-          name: tauri-installers-${{ matrix.target }}
-          path: |
-            tauri/src-tauri/target/release/bundle/nsis/*.exe
-            tauri/src-tauri/target/release/bundle/msi/*.msi
-            tauri/src-tauri/target/release/bundle/appimage/*.AppImage
+          name: ${{ matrix.artifact_name }}
+          path: nightly-artifacts/*
+          if-no-files-found: error
           retention-days: 7
 
   update-nightly-sha:

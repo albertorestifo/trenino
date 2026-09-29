@@ -38,7 +38,13 @@
         WriteRegDWORD HKLM "${TRENINO_REGISTRY_KEY}" "VJoyInstalledByTrenino" 0
       ${EndIf}
     ${Else}
-      Abort "A stale or incompatible vJoy ${VJOY_VERSION} installation was detected. Repair or remove vJoy, then run Trenino setup again. No driver changes were made."
+      DetailPrint "WARNING: A stale or incompatible vJoy ${VJOY_VERSION} installation was detected; preserving it as shared system state."
+      ${If} $3 != 1
+        WriteRegDWORD HKLM "${TRENINO_REGISTRY_KEY}" "VJoyInstalledByTrenino" 0
+      ${EndIf}
+      IfSilent vjoy_stale_warning_done
+      MessageBox MB_OK|MB_ICONEXCLAMATION "Trenino was installed, but the existing vJoy driver could not be verified. No driver changes were made. Virtual joystick mode will remain unavailable until vJoy is repaired or removed."
+      vjoy_stale_warning_done:
     ${EndIf}
   ${Else}
     ; A service without the exact 64-bit uninstall entry may be an alternate-view
@@ -47,7 +53,11 @@
     ReadRegStr $4 HKLM "SYSTEM\CurrentControlSet\Services\vjoy" "ImagePath"
     ${If} $4 != ""
     ${AndIf} $3 != 1
-      Abort "An existing vJoy driver could not be verified as the supported signed version. Repair or remove it, then run Trenino setup again. No driver changes were made."
+      DetailPrint "WARNING: An existing vJoy driver could not be verified as the supported signed version; preserving it as shared system state."
+      WriteRegDWORD HKLM "${TRENINO_REGISTRY_KEY}" "VJoyInstalledByTrenino" 0
+      IfSilent vjoy_unverified_warning_done
+      MessageBox MB_OK|MB_ICONEXCLAMATION "Trenino was installed, but the existing vJoy driver is not the supported signed version. No driver changes were made. Virtual joystick mode will remain unavailable until vJoy is repaired or removed."
+      vjoy_unverified_warning_done:
     ${Else}
       DetailPrint "Installing pinned signed vJoy ${VJOY_VERSION} runtime..."
       nsExec::ExecToStack 'powershell.exe -NoProfile -NonInteractive -Command "if ((Get-AuthenticodeSignature -LiteralPath $\"$INSTDIR\resources\vJoySetup.exe$\").Status -eq $\"Valid$\") { exit 0 } else { exit 1 }"'
