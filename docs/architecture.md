@@ -145,7 +145,7 @@ Low-level USB/UART communication with hardware devices.
 1. **Raw Input** - Hardware sends 16-bit ADC value (0-1023)
 2. **Normalization** - Calibration data converts to 0.0-1.0
 3. **Notch Mapping** - LeverMapper finds notch and interpolates
-4. **API Call** - LeverController sends value to simulator
+4. **API Call** - LeverController sends the latest value to the simulator
 
 ### Hardware Input to Virtual Joystick
 

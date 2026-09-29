@@ -20,7 +20,13 @@ defmodule Trenino.Train.LeverController do
   2. Check if there's an enabled binding for this input on the active train
   3. Normalize the raw value using calibration (0.0-1.0)
   4. Map through LeverMapper to get simulator value
-  5. Send value to simulator via Client
+  5. Send the latest value to the simulator
+
+  Smooth levers jitter many times per second. Each simulator write is a blocking
+  HTTP request, so doing it in this process would queue every intermediate sample
+  and replay them FIFO. The write runs under `Task.Supervisor`. While it is in
+  flight, a newer sample replaces that lever's pending value. Only the latest
+  value is sent. Other levers are not blocked by it.
   """
 
   use GenServer
@@ -55,19 +61,21 @@ defmodule Trenino.Train.LeverController do
             }
           }
 
+    @type pending_write :: {LeverConfig.t(), float(), Task.t()}
+
     @type t :: %__MODULE__{
             active_train: Train.Train.t() | nil,
             input_lookup: input_lookup(),
             binding_lookup: binding_lookup(),
             subscribed_ports: MapSet.t(String.t()),
-            last_sent_values: %{integer() => float()}
+            pending: %{integer() => pending_write()}
           }
 
     defstruct active_train: nil,
               input_lookup: %{},
               binding_lookup: %{},
               subscribed_ports: MapSet.new(),
-              last_sent_values: %{}
+              pending: %{}
   end
 
   # Client API
@@ -138,14 +146,12 @@ defmodule Trenino.Train.LeverController do
   @impl true
   def handle_info({:train_changed, nil}, %State{} = state) do
     Logger.info("[LeverController] Train deactivated, clearing bindings")
-
-    {:noreply, %{state | active_train: nil, binding_lookup: %{}, last_sent_values: %{}}}
+    {:noreply, %{state | active_train: nil, binding_lookup: %{}, pending: %{}}}
   end
 
   def handle_info({:train_changed, train}, %State{} = state) do
     Logger.info("[LeverController] Train activated: #{train.name}")
-    new_state = load_bindings_for_train(state, train)
-    {:noreply, new_state}
+    {:noreply, load_bindings_for_train(state, train)}
   end
 
   def handle_info({:train_detected, _}, %State{} = state) do
@@ -167,10 +173,17 @@ defmodule Trenino.Train.LeverController do
   # Input value updates
   @impl true
   def handle_info({:input_value_updated, port, pin, raw_value}, %State{} = state) do
-    case handle_input_update(state, port, pin, raw_value) do
-      {:ok, new_state} -> {:noreply, new_state}
-      :skip -> {:noreply, state}
-    end
+    {:noreply, apply_input_update(state, port, pin, raw_value)}
+  end
+
+  def handle_info({ref, result}, %State{} = state) when is_reference(ref) do
+    Process.demonitor(ref, [:flush])
+    {:noreply, finish_write(state, ref, result)}
+  end
+
+  def handle_info({:DOWN, ref, :process, _pid, reason}, %State{} = state) do
+    Logger.warning("[LeverController] Simulator write crashed: #{inspect(reason)}")
+    {:noreply, finish_write(state, ref, :error)}
   end
 
   # Catch-all for unknown messages
@@ -231,50 +244,86 @@ defmodule Trenino.Train.LeverController do
     binding_lookup =
       bindings
       |> Enum.filter(& &1.enabled)
-      |> Enum.map(fn binding ->
+      |> Map.new(fn binding ->
         {binding.input_id, %{lever_config: binding.lever_config, binding: binding}}
       end)
-      |> Map.new()
 
     Logger.info(
       "[LeverController] Loaded #{map_size(binding_lookup)} enabled bindings for train #{train.name}"
     )
 
-    %{state | active_train: train, binding_lookup: binding_lookup, last_sent_values: %{}}
+    %{state | active_train: train, binding_lookup: binding_lookup, pending: %{}}
   end
 
-  defp handle_input_update(%State{active_train: nil}, _port, _pin, _raw_value) do
-    :skip
-  end
-
-  defp handle_input_update(%State{} = state, port, pin, raw_value) do
-    with {:ok, input_info} <- Map.fetch(state.input_lookup, {port, pin}),
-         {:ok, binding_info} <- Map.fetch(state.binding_lookup, input_info.input_id) do
-      handle_analog_input(state, input_info, binding_info, raw_value)
-    else
-      :error -> :skip
+  defp apply_input_update(%State{} = state, port, pin, raw_value) do
+    case resolve_simulator_value(state, port, pin, raw_value) do
+      {:ok, lever_config, sim_value} -> enqueue_value(state, lever_config, sim_value)
+      :skip -> state
     end
   end
 
-  defp handle_analog_input(%State{} = state, input_info, binding_info, raw_value) do
-    with {:ok, normalized} <- normalize_value(raw_value, input_info.calibration),
+  defp resolve_simulator_value(%State{active_train: nil}, _port, _pin, _raw_value), do: :skip
+
+  defp resolve_simulator_value(%State{} = state, port, pin, raw_value) do
+    with {:ok, input_info} <- Map.fetch(state.input_lookup, {port, pin}),
+         {:ok, binding_info} <- Map.fetch(state.binding_lookup, input_info.input_id),
+         {:ok, normalized} <- normalize_value(raw_value, input_info.calibration),
          {:ok, sim_value} <- LeverMapper.map_input(binding_info.lever_config, normalized) do
-      maybe_send_value(state, binding_info.lever_config, sim_value)
+      {:ok, binding_info.lever_config, sim_value}
     else
+      :error -> :skip
       {:error, _reason} -> :skip
     end
   end
 
-  defp maybe_send_value(%State{} = state, %LeverConfig{} = lever_config, sim_value) do
-    if Map.get(state.last_sent_values, lever_config.id) != sim_value do
-      send_to_simulator(lever_config, sim_value)
+  # One in-flight write per lever. A newer sample replaces the pending value so
+  # a slow simulator response cannot replay a FIFO of jitter.
+  defp enqueue_value(%State{} = state, %LeverConfig{id: id} = lever_config, sim_value) do
+    case Map.get(state.pending, id) do
+      nil ->
+        start_write(state, lever_config, sim_value)
 
-      {:ok,
-       %{state | last_sent_values: Map.put(state.last_sent_values, lever_config.id, sim_value)}}
-    else
-      :skip
+      {_config, _value, task} ->
+        %{state | pending: Map.put(state.pending, id, {lever_config, sim_value, task})}
     end
   end
+
+  defp start_write(%State{} = state, %LeverConfig{id: id} = lever_config, sim_value) do
+    task =
+      Task.Supervisor.async_nolink(Trenino.TaskSupervisor, fn ->
+        case send_to_simulator(lever_config, sim_value) do
+          :ok -> {:ok, id, sim_value}
+          error -> {error, id, sim_value}
+        end
+      end)
+
+    put_in(state.pending[id], {lever_config, sim_value, task})
+  end
+
+  defp finish_write(%State{} = state, ref, {:ok, id, written}) do
+    case Map.get(state.pending, id) do
+      {%LeverConfig{}, latest, %Task{ref: ^ref}} when latest == written ->
+        %{state | pending: Map.delete(state.pending, id)}
+
+      {%LeverConfig{} = lever_config, latest, %Task{ref: ^ref}} ->
+        start_write(%{state | pending: Map.delete(state.pending, id)}, lever_config, latest)
+
+      _ ->
+        state
+    end
+  end
+
+  defp finish_write(%State{} = state, ref, {_error, id, _written}) do
+    case Map.pop(state.pending, id) do
+      {{%LeverConfig{} = lever_config, latest, %Task{ref: ^ref}}, pending} ->
+        start_write(%{state | pending: pending}, lever_config, latest)
+
+      {_, _} ->
+        state
+    end
+  end
+
+  defp finish_write(%State{} = state, _ref, _result), do: state
 
   # Normalizes a raw hardware value to a 0.0-1.0 float for lever mapping.
   #
@@ -303,7 +352,7 @@ defmodule Trenino.Train.LeverController do
   end
 
   defp send_to_simulator(%LeverConfig{value_endpoint: endpoint}, value) do
-    case get_simulator_client() do
+    case simulator_client() do
       {:ok, client} ->
         case SimulatorClient.set(client, endpoint, value) do
           {:ok, _response} ->
@@ -322,7 +371,7 @@ defmodule Trenino.Train.LeverController do
     end
   end
 
-  defp get_simulator_client do
+  defp simulator_client do
     case SimulatorConnection.get_status() do
       %ConnectionState{status: :connected, client: client} when client != nil ->
         {:ok, client}
