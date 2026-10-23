@@ -17,7 +17,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Train_Sim_World-6-blue" alt="TSW6">
+  <img src="https://img.shields.io/badge/Train_Sim_World-6_%26_7-blue" alt="TSW6 and TSW7">
   <img src="https://img.shields.io/badge/License-CC%20BY--NC-green" alt="License">
 </p>
 
@@ -40,7 +40,7 @@ Build your own train controls with real throttle levers, brake handles, switches
 
 ### Requirements
 
-- **Train Sim World 6** with the External Interface API enabled (see [below](#enabling-the-tsw-api))
+- **Train Sim World 6 or 7** with the External Interface API enabled (see [below](#enabling-the-tsw-api))
 - **An Arduino board** — see [Supported Hardware](#supported-hardware)
 
 Virtual joystick mode additionally requires Windows 10 or 11. The signed vJoy
@@ -59,9 +59,9 @@ macOS builds are not provided as pre-built releases. See the [Development Guide]
 
 ### Enabling the TSW API
 
-Train Sim World 6 ships with an External Interface API for third-party apps. To enable it:
+Train Sim World 6 and 7 ship with an External Interface API for third-party apps. To enable it:
 
-1. Right-click **Train Sim World 6** in Steam → **Properties**
+1. Right-click **Train Sim World 6 or 7** in Steam → **Properties**
 2. In the **General** tab, add `-HTTPAPI` to **Launch Options**
 3. Launch the game once to generate the API key
 

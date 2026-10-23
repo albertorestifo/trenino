@@ -43,6 +43,8 @@ defmodule Trenino.Train.LeverController do
   alias Trenino.Train
   alias Trenino.Train.{LeverConfig, LeverInputBinding, LeverMapper}
 
+  @retry_delays [200, 400, 800]
+
   defmodule State do
     @moduledoc false
 
@@ -61,21 +63,29 @@ defmodule Trenino.Train.LeverController do
             }
           }
 
-    @type pending_write :: {LeverConfig.t(), float(), Task.t()}
+    @type pending_write :: {LeverConfig.t(), float(), Task.t() | nil}
 
     @type t :: %__MODULE__{
             active_train: Train.Train.t() | nil,
             input_lookup: input_lookup(),
             binding_lookup: binding_lookup(),
             subscribed_ports: MapSet.t(String.t()),
-            pending: %{integer() => pending_write()}
+            pending: %{integer() => pending_write()},
+            retries: %{
+              integer() => %{
+                attempts: non_neg_integer(),
+                timer: reference() | nil,
+                token: reference() | nil
+              }
+            }
           }
 
     defstruct active_train: nil,
               input_lookup: %{},
               binding_lookup: %{},
               subscribed_ports: MapSet.new(),
-              pending: %{}
+              pending: %{},
+              retries: %{}
   end
 
   # Client API
@@ -110,6 +120,7 @@ defmodule Trenino.Train.LeverController do
   def init(:ok) do
     # Subscribe to train detection
     Train.subscribe()
+    SimulatorConnection.subscribe()
 
     # Subscribe to device connection updates
     SerialConnection.subscribe()
@@ -146,7 +157,8 @@ defmodule Trenino.Train.LeverController do
   @impl true
   def handle_info({:train_changed, nil}, %State{} = state) do
     Logger.info("[LeverController] Train deactivated, clearing bindings")
-    {:noreply, %{state | active_train: nil, binding_lookup: %{}, pending: %{}}}
+    state = cancel_pending(state)
+    {:noreply, %{state | active_train: nil, binding_lookup: %{}}}
   end
 
   def handle_info({:train_changed, train}, %State{} = state) do
@@ -168,6 +180,35 @@ defmodule Trenino.Train.LeverController do
   def handle_info({:devices_updated, _devices}, %State{} = state) do
     # Rebuild input lookup when devices change
     {:noreply, rebuild_input_lookup(state)}
+  end
+
+  def handle_info(
+        {:simulator_status_changed, %ConnectionState{status: :connected}},
+        %State{} = state
+      ) do
+    state =
+      Enum.reduce(state.pending, state, fn
+        {id, {config, value, nil}}, acc -> start_write(clear_retry(acc, id), config, value)
+        {id, _write}, acc -> clear_retry(acc, id)
+      end)
+
+    {:noreply, state}
+  end
+
+  def handle_info({:simulator_status_changed, %ConnectionState{}}, %State{} = state) do
+    {:noreply, cancel_retry_timers(state)}
+  end
+
+  def handle_info({:retry_write, id, token}, %State{} = state) do
+    case {Map.get(state.retries, id), Map.get(state.pending, id)} do
+      {%{token: ^token}, {config, value, nil}} ->
+        state = put_in(state.retries[id].timer, nil)
+        state = put_in(state.retries[id].token, nil)
+        {:noreply, start_write(state, config, value)}
+
+      _ ->
+        {:noreply, state}
+    end
   end
 
   # Input value updates
@@ -239,6 +280,7 @@ defmodule Trenino.Train.LeverController do
   end
 
   defp load_bindings_for_train(%State{} = state, train) do
+    state = cancel_pending(state)
     bindings = Train.list_bindings_for_train(train.id)
 
     binding_lookup =
@@ -279,23 +321,29 @@ defmodule Trenino.Train.LeverController do
   # One in-flight write per lever. A newer sample replaces the pending value so
   # a slow simulator response cannot replay a FIFO of jitter.
   defp enqueue_value(%State{} = state, %LeverConfig{id: id} = lever_config, sim_value) do
-    case Map.get(state.pending, id) do
-      nil ->
-        start_write(state, lever_config, sim_value)
+    case {Map.get(state.pending, id), Map.get(state.retries, id)} do
+      {{_, _, task}, %{timer: timer}} when is_reference(timer) ->
+        put_in(state.pending[id], {lever_config, sim_value, task})
 
-      {_config, _value, task} ->
-        %{state | pending: Map.put(state.pending, id, {lever_config, sim_value, task})}
+      {{_, _, %Task{} = task}, _} ->
+        put_in(state.pending[id], {lever_config, sim_value, task})
+
+      _ ->
+        start_write(clear_retry(state, id), lever_config, sim_value)
     end
   end
 
   defp start_write(%State{} = state, %LeverConfig{id: id} = lever_config, sim_value) do
     task =
-      Task.Supervisor.async_nolink(Trenino.TaskSupervisor, fn ->
-        case send_to_simulator(lever_config, sim_value) do
-          :ok -> {:ok, id, sim_value}
-          error -> {error, id, sim_value}
-        end
-      end)
+      case simulator_client() do
+        {:ok, client} ->
+          Task.Supervisor.async_nolink(Trenino.TaskSupervisor, fn ->
+            {send_to_simulator(client, lever_config, sim_value), id, sim_value}
+          end)
+
+        :error ->
+          nil
+      end
 
     put_in(state.pending[id], {lever_config, sim_value, task})
   end
@@ -303,27 +351,72 @@ defmodule Trenino.Train.LeverController do
   defp finish_write(%State{} = state, ref, {:ok, id, written}) do
     case Map.get(state.pending, id) do
       {%LeverConfig{}, latest, %Task{ref: ^ref}} when latest == written ->
-        %{state | pending: Map.delete(state.pending, id)}
+        %{clear_retry(state, id) | pending: Map.delete(state.pending, id)}
 
       {%LeverConfig{} = lever_config, latest, %Task{ref: ^ref}} ->
-        start_write(%{state | pending: Map.delete(state.pending, id)}, lever_config, latest)
+        start_write(
+          %{clear_retry(state, id) | pending: Map.delete(state.pending, id)},
+          lever_config,
+          latest
+        )
 
       _ ->
         state
     end
   end
 
-  defp finish_write(%State{} = state, ref, {_error, id, _written}) do
-    case Map.pop(state.pending, id) do
-      {{%LeverConfig{} = lever_config, latest, %Task{ref: ^ref}}, pending} ->
-        start_write(%{state | pending: pending}, lever_config, latest)
+  # Keep the latest target through failures. Delayed retries are bounded, and
+  # disconnected controllers wait for reconnect instead of spawning writers.
+  defp finish_write(%State{} = state, ref, _result) do
+    Enum.reduce(state.pending, state, fn
+      {id, {config, value, %Task{ref: ^ref}}}, acc ->
+        acc |> put_in([Access.key(:pending), id], {config, value, nil}) |> schedule_retry(id)
 
-      {_, _} ->
-        state
+      _, acc ->
+        acc
+    end)
+  end
+
+  defp schedule_retry(state, id) do
+    retry = Map.get(state.retries, id, %{attempts: 0, timer: nil, token: nil})
+
+    with delay when is_integer(delay) <- Enum.at(@retry_delays, retry.attempts),
+         {:ok, _client} <- simulator_client() do
+      token = make_ref()
+      timer = Process.send_after(self(), {:retry_write, id, token}, delay)
+      put_in(state.retries[id], %{attempts: retry.attempts + 1, timer: timer, token: token})
+    else
+      _ -> state
     end
   end
 
-  defp finish_write(%State{} = state, _ref, _result), do: state
+  defp clear_retry(state, id) do
+    case Map.get(state.retries, id) do
+      %{timer: timer} when is_reference(timer) -> Process.cancel_timer(timer)
+      _ -> :ok
+    end
+
+    %{state | retries: Map.delete(state.retries, id)}
+  end
+
+  defp cancel_retry_timers(state) do
+    retries =
+      Map.new(state.retries, fn {id, retry} ->
+        if retry.timer, do: Process.cancel_timer(retry.timer)
+        {id, %{retry | timer: nil, token: nil}}
+      end)
+
+    %{state | retries: retries}
+  end
+
+  defp cancel_pending(%State{} = state) do
+    Enum.each(state.pending, fn
+      {_, {_, _, %Task{} = task}} -> Task.shutdown(task, :brutal_kill)
+      _ -> :ok
+    end)
+
+    %{cancel_retry_timers(state) | pending: %{}, retries: %{}}
+  end
 
   # Normalizes a raw hardware value to a 0.0-1.0 float for lever mapping.
   #
@@ -351,23 +444,15 @@ defmodule Trenino.Train.LeverController do
     end
   end
 
-  defp send_to_simulator(%LeverConfig{value_endpoint: endpoint}, value) do
-    case simulator_client() do
-      {:ok, client} ->
-        case SimulatorClient.set(client, endpoint, value) do
-          {:ok, _response} ->
-            :ok
+  defp send_to_simulator(client, %LeverConfig{value_endpoint: endpoint}, value) do
+    case SimulatorClient.set(client, endpoint, value) do
+      {:ok, _response} ->
+        :ok
 
-          {:error, reason} ->
-            Logger.warning(
-              "[LeverController] Failed to send value to simulator: #{inspect(reason)}"
-            )
+      {:error, reason} ->
+        Logger.warning("[LeverController] Failed to send value to simulator: #{inspect(reason)}")
 
-            :error
-        end
-
-      :error ->
-        :skip
+        :error
     end
   end
 

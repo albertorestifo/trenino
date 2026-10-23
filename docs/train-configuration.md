@@ -193,21 +193,25 @@ Display bindings connect simulator endpoint values to I2C display modules on you
 Before creating display bindings:
 1. At least one I2C display module must be configured on your device — see [I2C Display Modules](hardware-setup.md#i2c-display-modules)
 2. Your train configuration must exist and be open in the train edit page
+3. Connect Train Sim World in **Settings** to browse simulator values
 
 ### Adding a Display Binding
 
 1. Open your train configuration
-2. Scroll to the **Display Bindings** section and click **Add Binding**
+2. Open **Displays & lights**, then add a display binding
 3. Configure:
    - **Name** — optional label (e.g., "Speed", "Brake Pressure")
    - **I2C Module** — select the display to write to
    - **Endpoint** — the simulator API path whose value you want to show (use the API Explorer to find paths)
-   - **Format** — how to render the value (see below)
+   - **Decimal places** — how many fractional digits to show
+   - **Custom format** — optional advanced formatting (see below)
 4. Save the binding
 
 ### Format Strings
 
 The format string controls how the numeric value is rendered before being sent to the display.
+Use the decimal-place control for ordinary numbers. Custom value tokens accept
+0 through 10 decimal places; invalid tokens show a validation error.
 
 | Token | Output | Example value | Result |
 |-------|--------|---------------|--------|
@@ -224,6 +228,8 @@ You can mix static text with the token: for example, `{value:.0f}` shows just th
 
 - Bindings activate automatically when their train's configuration becomes active
 - The display is polled every 200 ms and updated only when the value changes
+- Failed writes are retried on later polls; reconnecting hardware refreshes the
+  display even if the simulator value has not changed
 - When the train is deactivated, all bound displays are blanked
 - A train can have one binding per I2C module
 

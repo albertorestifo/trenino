@@ -282,7 +282,7 @@ defmodule Trenino.Hardware.ConfigurationManager do
     end
   end
 
-  defp validate_configuration([], [], _i2c_modules), do: {:error, :no_inputs}
+  defp validate_configuration([], [], []), do: {:error, :no_inputs}
   defp validate_configuration(_inputs, _matrices, _i2c_modules), do: :ok
 
   defp send_configuration_messages(port, config_id, inputs, matrices, i2c_modules) do

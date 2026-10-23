@@ -1028,10 +1028,26 @@ defmodule TreninoWeb.ConfigurationEditLive do
     />
 
     <%!-- I2C module modal --%>
-    <div :if={@i2c_modal_open} class="modal modal-open">
-      <div class="modal-box">
-        <h3 class="font-bold text-lg mb-4">
-          {if @i2c_modal_module, do: "Edit I2C Module", else: "Add I2C Module"}
+    <div
+      :if={@i2c_modal_open}
+      id="i2c-display-dialog"
+      class="modal modal-open"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="i2c-display-title"
+      phx-window-keydown="close_i2c_modal"
+      phx-key="Escape"
+      phx-mounted={
+        JS.push_focus(
+          to: if(@i2c_modal_module, do: "#edit-display-#{@i2c_modal_module.id}", else: "#add-display")
+        )
+        |> JS.focus(to: "#i2c-display-title")
+      }
+      phx-remove={JS.pop_focus()}
+    >
+      <.focus_wrap id="i2c-display-focus" class="modal-box">
+        <h3 id="i2c-display-title" class="font-bold text-lg mb-4" tabindex="-1">
+          {if @i2c_modal_module, do: "Edit display", else: "Add display"}
         </h3>
         <.live_component
           module={TreninoWeb.I2cModuleFormComponent}
@@ -1039,8 +1055,8 @@ defmodule TreninoWeb.ConfigurationEditLive do
           i2c_module={@i2c_modal_module}
           device_id={@device.id}
         />
-      </div>
-      <div class="modal-backdrop" phx-click="close_i2c_modal" />
+      </.focus_wrap>
+      <div class="modal-backdrop" phx-click="close_i2c_modal" aria-hidden="true" />
     </div>
 
     <.live_component
@@ -1481,23 +1497,21 @@ defmodule TreninoWeb.ConfigurationEditLive do
     ~H"""
     <div>
       <div class="flex items-center justify-between mb-4">
-        <h3 class="text-base font-semibold">I2C Modules</h3>
+        <h3 class="text-base font-semibold">Displays</h3>
         <button
           type="button"
+          id="add-display"
           phx-click="open_add_i2c_modal"
           class="btn btn-outline btn-sm"
           disabled={@new_mode}
         >
-          <.icon name="hero-plus" class="w-4 h-4" /> Add Module
+          <.icon name="hero-plus" class="w-4 h-4" /> Add display
         </button>
       </div>
 
-      <.empty_collection_state
-        :if={Enum.empty?(@i2c_modules)}
-        icon="hero-cpu-chip"
-        message="No I2C modules configured"
-        submessage="Add a display module to show simulator values"
-      />
+      <p :if={Enum.empty?(@i2c_modules)} class="py-3 text-sm text-base-content/60">
+        No displays configured. Add a display to show simulator values.
+      </p>
 
       <div :if={not Enum.empty?(@i2c_modules)} class="overflow-x-auto">
         <table class="table table-sm bg-base-100 rounded-lg">
@@ -1532,7 +1546,9 @@ defmodule TreninoWeb.ConfigurationEditLive do
               <td>
                 <div class="flex gap-1">
                   <button
+                    id={"edit-display-#{mod.id}"}
                     phx-click="open_edit_i2c_modal"
+                    aria-label={"Edit display #{mod.name || I2cModule.format_i2c_address(mod.i2c_address)}"}
                     phx-value-id={mod.id}
                     class="btn btn-ghost btn-xs"
                   >
@@ -1540,8 +1556,9 @@ defmodule TreninoWeb.ConfigurationEditLive do
                   </button>
                   <button
                     phx-click="delete_i2c_module"
+                    aria-label={"Delete display #{mod.name || I2cModule.format_i2c_address(mod.i2c_address)}"}
                     phx-value-id={mod.id}
-                    data-confirm="Delete this I2C module?"
+                    data-confirm="Delete this display?"
                     class="btn btn-ghost btn-xs text-error"
                   >
                     <.icon name="hero-trash" class="w-3.5 h-3.5" />

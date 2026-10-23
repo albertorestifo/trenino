@@ -266,9 +266,9 @@ defmodule TreninoWeb.SharedComponents do
       <div class="flex items-start justify-between gap-4 p-5">
         <div class="flex-1">
           <div class="flex items-center gap-2">
-            <h3 class="font-medium truncate group-hover:text-primary transition-colors">
+            <h2 class="font-medium truncate transition-colors">
               {@title}
-            </h3>
+            </h2>
             <span
               :if={@active}
               class="badge badge-success badge-sm flex items-center gap-1"
@@ -355,7 +355,7 @@ defmodule TreninoWeb.SharedComponents do
 
   def page_header(assigns) do
     ~H"""
-    <header class="mb-8 flex items-center justify-between">
+    <header class="mb-8 flex flex-wrap items-center justify-between gap-4">
       <div>
         <h1 class="text-2xl font-semibold">{@title}</h1>
         <p class="text-sm text-base-content/70 mt-1">{@subtitle}</p>

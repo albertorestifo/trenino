@@ -22,10 +22,10 @@ defmodule TreninoWeb.NavComponents do
       class="bg-info text-info-content px-4 sm:px-8"
       role="alert"
     >
-      <div class="max-w-2xl mx-auto py-2 flex items-center justify-between gap-4">
-        <div class="flex items-center gap-3">
+      <div class="max-w-2xl mx-auto py-2 flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
+        <div class="flex min-w-0 items-center gap-3">
           <.icon name="hero-arrow-up-circle" class="w-5 h-5 flex-shrink-0" />
-          <div class="text-sm">
+          <div class="min-w-0 break-words text-sm">
             <span class="font-medium">New version available:</span>
             <span class="ml-1">v{@update.version}</span>
           </div>
@@ -69,10 +69,10 @@ defmodule TreninoWeb.NavComponents do
       class="bg-primary text-primary-content px-4 sm:px-8"
       role="alert"
     >
-      <div class="max-w-2xl mx-auto py-2 flex items-center justify-between gap-4">
-        <div class="flex items-center gap-3">
+      <div class="max-w-2xl mx-auto py-2 flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
+        <div class="flex min-w-0 items-center gap-3">
           <.icon name="hero-arrow-down-tray" class="w-5 h-5 flex-shrink-0" />
-          <div class="text-sm">
+          <div class="min-w-0 break-words text-sm">
             <span class="font-medium">Firmware update available:</span>
             <span class="ml-1">v{@update.version}</span>
           </div>
@@ -120,17 +120,20 @@ defmodule TreninoWeb.NavComponents do
     <.firmware_update_banner update={@firmware_update} checking={@firmware_checking} />
     <header class="bg-base-100 border-b border-base-300 sticky top-0 z-50">
       <div class="px-4 sm:px-8">
-        <div class="max-w-2xl mx-auto py-3 flex items-center">
-          <div class="flex-1 flex items-center gap-6">
-            <.link navigate={~p"/"} class="text-lg font-semibold">Trenino</.link>
-            <nav class="hidden sm:flex items-center gap-1">
+        <div class="max-w-2xl mx-auto py-3 flex flex-wrap items-center gap-y-3">
+          <div class="contents">
+            <.link navigate={~p"/"} class="flex-1 sm:flex-none sm:mr-6 text-lg font-semibold">Trenino</.link>
+            <nav
+              aria-label="Primary navigation"
+              class="order-last w-full sm:order-none sm:w-auto flex items-center gap-1"
+            >
               <.nav_tab path={~p"/"} label="Devices" current_path={@current_path} />
               <.nav_tab path={~p"/trains"} label="Trains" current_path={@current_path} />
               <.nav_tab path={~p"/virtual-joystick"} label="Joystick" current_path={@current_path} />
             </nav>
           </div>
 
-          <div class="flex-none flex items-center gap-2">
+          <div class="sm:ml-auto flex-none flex items-center gap-2">
             <.link
               navigate={~p"/settings"}
               class="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-base-200 hover:bg-base-300 transition-colors duration-150"
@@ -145,6 +148,7 @@ defmodule TreninoWeb.NavComponents do
               <button
                 phx-click="nav_toggle_dropdown"
                 class="flex items-center gap-2 px-3 py-2 rounded-lg bg-base-200 hover:bg-base-300 transition-colors duration-150"
+                aria-label="Connected devices"
                 aria-expanded={@dropdown_open}
                 aria-haspopup="menu"
               >
@@ -171,7 +175,10 @@ defmodule TreninoWeb.NavComponents do
           </div>
         </div>
       </div>
-      <.sim_status_banner status={@simulator_status.status} />
+      <.sim_status_banner
+        :if={not String.starts_with?(@current_path, "/virtual-joystick")}
+        status={@simulator_status.status}
+      />
     </header>
     """
   end
@@ -196,8 +203,9 @@ defmodule TreninoWeb.NavComponents do
     ~H"""
     <.link
       navigate={@path}
+      aria-current={@is_active && "page"}
       class={[
-        "px-3 py-1.5 rounded-lg text-sm font-medium transition-colors",
+        "px-3 py-2.5 sm:py-1.5 rounded-lg text-sm font-medium transition-colors",
         if(@is_active,
           do: "bg-primary text-primary-content",
           else: "text-base-content/70 hover:text-base-content hover:bg-base-200"
@@ -214,15 +222,13 @@ defmodule TreninoWeb.NavComponents do
   defp sim_status_banner(assigns) do
     ~H"""
     <div
-      class={[
-        "overflow-hidden transition-[max-height] duration-200 ease-out",
-        if(@status in [:error, :disconnected, :needs_config], do: "max-h-10", else: "max-h-0")
-      ]}
+      :if={@status in [:error, :disconnected, :needs_config]}
+      id="simulator-status-banner"
       role="status"
       aria-live="polite"
     >
       <div class={["px-4 sm:px-8", sim_banner_bg(@status)]}>
-        <div class="max-w-2xl mx-auto py-1 flex items-center justify-between gap-4">
+        <div class="max-w-2xl mx-auto py-1 flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
           <div class="flex items-center gap-2">
             <.icon name={sim_banner_icon(@status)} class="w-3.5 h-3.5 flex-shrink-0 opacity-75" />
             <span class="text-xs">{sim_banner_message(@status)}</span>
@@ -304,7 +310,7 @@ defmodule TreninoWeb.NavComponents do
   defp device_dropdown(assigns) do
     ~H"""
     <div
-      class="absolute top-full right-0 mt-1 w-80 bg-base-100 border border-base-300 rounded-xl shadow-xl z-50"
+      class="absolute top-full right-0 mt-1 w-80 max-w-[calc(100vw-2rem)] bg-base-100 border border-base-300 rounded-xl shadow-xl z-50"
       phx-click-away="nav_close_dropdown"
     >
       <div class="p-4 border-b border-base-300 space-y-2">

@@ -17,6 +17,8 @@ defmodule TreninoWeb.SettingsLive do
      |> assign(:error_reporting_enabled, Settings.error_reporting?())
      |> assign(:simulator_url, Settings.simulator_url())
      |> assign(:api_key_status, api_key_status())
+     |> assign(:connection_result, nil)
+     |> assign(:connection_test_ref, nil)
      |> assign(:url_error, nil)}
   end
 
@@ -95,13 +97,16 @@ defmodule TreninoWeb.SettingsLive do
         end
 
         SimulatorConnection.reconfigure()
+        test_ref = make_ref()
+        Process.send_after(self(), {:connection_test_timeout, test_ref}, 15_000)
 
         {:noreply,
          socket
          |> assign(:simulator_url, Settings.simulator_url())
          |> assign(:api_key_status, api_key_status())
          |> assign(:url_error, nil)
-         |> put_flash(:info, "Simulator configuration saved")}
+         |> assign(:connection_result, "Settings saved. Testing connection…")
+         |> assign(:connection_test_ref, test_ref)}
 
       error ->
         {:noreply, assign(socket, :url_error, error)}
@@ -116,11 +121,50 @@ defmodule TreninoWeb.SettingsLive do
 
   @impl true
   def handle_info({:simulator_status_changed, status}, socket) do
-    {:noreply, assign(socket, :nav_simulator_status, status)}
+    socket = assign(socket, :nav_simulator_status, status)
+
+    if socket.assigns.connection_result do
+      {:noreply,
+       socket
+       |> assign(:connection_result, connection_feedback(status))
+       |> assign(
+         :connection_test_ref,
+         if(status.status == :connecting, do: socket.assigns.connection_test_ref)
+       )}
+    else
+      {:noreply, socket}
+    end
+  end
+
+  def handle_info(
+        {:connection_test_timeout, ref},
+        %{assigns: %{connection_test_ref: ref}} = socket
+      ) do
+    {:noreply,
+     socket
+     |> assign(:connection_test_ref, nil)
+     |> assign(
+       :connection_result,
+       "Settings saved. No connection result received. Check that Train Sim World is running with its API enabled, then try again."
+     )}
   end
 
   @impl true
   def handle_info(_msg, socket), do: {:noreply, socket}
+
+  defp connection_feedback(%{status: :connected}), do: "Connected to Train Sim World."
+  defp connection_feedback(%{status: :connecting}), do: "Settings saved. Testing connection…"
+
+  defp connection_feedback(%{status: :error, last_error: :invalid_key}),
+    do:
+      "Settings saved. The API key was rejected. Copy the key from Train Sim World and try again."
+
+  defp connection_feedback(%{status: :needs_config}),
+    do: "Settings saved. Add an API key from Train Sim World, then test the connection again."
+
+  defp connection_feedback(_status),
+    do:
+      "Settings saved. Could not connect to Train Sim World. Check the URL, start the game with its API enabled, and try again."
 
   @impl true
   def render(assigns) do
@@ -198,14 +242,14 @@ defmodule TreninoWeb.SettingsLive do
                   <div class="flex items-center gap-2 px-3 py-2 mb-3 text-sm bg-base-200 rounded border border-base-300">
                     <.icon name="hero-check-circle" class="w-4 h-4 text-base-content/70 shrink-0" />
                     <span class="text-base-content/70">
-                      Found in your Train Simulator folder, updated automatically.
+                      Found in your Train Sim World folder, updated automatically.
                     </span>
                   </div>
                 <% :missing -> %>
                   <div class="alert alert-warning px-3 py-2 mb-3 text-sm">
                     <.icon name="hero-exclamation-triangle" class="w-4 h-4 shrink-0" />
                     <span>
-                      Not found in your Train Simulator folder. Enter a key below.
+                      Not found in your Train Sim World folder. Enter a key below.
                     </span>
                   </div>
                 <% :unsupported_platform -> %>
@@ -221,21 +265,33 @@ defmodule TreninoWeb.SettingsLive do
                 placeholder="Leave blank to keep current value"
                 class="input input-bordered w-full font-mono"
               />
-              <div class="mt-1.5 text-xs text-base-content/50">
-                <%= if @api_key_status == :found_in_file do %>
-                  Enter a new key to override the one read from your Train Simulator folder.
+              <div id="api-key-help" class="mt-1.5 text-xs text-base-content/70">
+                <%= if @api_key_status == :unsupported_platform do %>
+                  On the Windows PC running Train Sim World, copy the key from
+                  <span class="font-mono break-all">Documents\My Games\TrainSimWorld7\Saved\Config\CommAPIKey.txt</span>
+                  (or <span class="font-mono">TrainSimWorld6</span>) and paste it here.
                 <% else %>
-                  Trenino checks the <span class="font-mono break-all">TrainSimWorld7</span>
-                  folder first, then <span class="font-mono break-all">TrainSimWorld6</span>, under
+                  Trenino checks <span class="font-mono">TrainSimWorld7</span>
+                  first, then <span class="font-mono">TrainSimWorld6</span>, under
                   <span class="font-mono break-all">Documents\My Games</span>
-                  on the PC running Train Simulator.
+                  for <span class="font-mono break-all">Saved\Config\CommAPIKey.txt</span>.
+                  A key entered here overrides the detected key.
                 <% end %>
               </div>
             </div>
 
+            <p
+              :if={@connection_result}
+              id="simulator-connection-result"
+              role="status"
+              aria-live="polite"
+              class="mb-4 text-sm text-base-content/80"
+            >
+              {@connection_result}
+            </p>
             <div class="flex justify-end">
-              <button type="submit" class="btn btn-primary" phx-disable-with="Saving...">
-                Save
+              <button type="submit" class="btn btn-primary" phx-disable-with="Saving and testing...">
+                Save and test connection
               </button>
             </div>
           </.form>

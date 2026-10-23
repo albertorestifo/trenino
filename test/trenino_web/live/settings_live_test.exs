@@ -6,11 +6,60 @@ defmodule TreninoWeb.SettingsLiveTest do
   alias Ecto.Adapters.SQL.Sandbox
   alias Trenino.Settings
 
+  setup :set_mimic_global
+
   setup do
     Sandbox.mode(Trenino.Repo, {:shared, self()})
     # Pass the consent gate
     {:ok, _} = Settings.set_error_reporting(:disabled)
     :ok
+  end
+
+  test "save and test connection reports the actual connection outcome", %{conn: conn} do
+    expect(Trenino.Simulator.Connection, :reconfigure, fn -> :ok end)
+    {:ok, view, _} = live(conn, ~p"/settings")
+    assert has_element?(view, "button[type='submit']", "Save and test connection")
+
+    view
+    |> form("#simulator-form", simulator: %{url: "http://localhost:31270", api_key: "test"})
+    |> render_submit()
+
+    assert has_element?(
+             view,
+             "#simulator-connection-result[role='status']",
+             "Settings saved. Testing connection"
+           )
+
+    send(
+      view.pid,
+      {:simulator_status_changed,
+       %Trenino.Simulator.ConnectionState{status: :error, last_error: :invalid_key}}
+    )
+
+    assert has_element?(view, "#simulator-connection-result", "API key was rejected")
+
+    send(
+      view.pid,
+      {:simulator_status_changed, %Trenino.Simulator.ConnectionState{status: :connected}}
+    )
+
+    assert has_element?(view, "#simulator-connection-result", "Connected to Train Sim World")
+  end
+
+  test "non-Windows key instructions explain copying from the simulator PC", %{conn: conn} do
+    {:ok, view, _} = live(conn, ~p"/settings")
+    assert has_element?(view, "#api-key-help", "On the Windows PC running Train Sim World")
+    assert has_element?(view, "#api-key-help", "CommAPIKey.txt")
+  end
+
+  test "Windows key instructions describe local automatic discovery", %{conn: conn} do
+    stub(Trenino.Settings.Simulator, :windows?, fn -> true end)
+    stub(Trenino.Settings.Simulator, :read_from_file, fn -> {:ok, "found-key"} end)
+    {:ok, view, _} = live(conn, ~p"/settings")
+    assert has_element?(view, "#api-key-help", "Trenino checks")
+    assert has_element?(view, "#api-key-help", "TrainSimWorld7")
+    assert has_element?(view, "#api-key-help", "TrainSimWorld6")
+    refute has_element?(view, "#api-key-help", "copy the key")
   end
 
   describe "mount/3" do

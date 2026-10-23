@@ -29,7 +29,10 @@ defmodule Trenino.Train.TrainIdentifier do
   def changeset(%__MODULE__{} = train_identifier, attrs) do
     train_identifier
     |> cast(attrs, [:identifier])
-    |> update_change(:identifier, &String.trim/1)
+    |> update_change(:identifier, fn
+      nil -> nil
+      identifier -> String.trim(identifier)
+    end)
     |> validate_required([:identifier])
     |> unique_constraint(:identifier)
   end

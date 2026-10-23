@@ -123,20 +123,20 @@ Most HT16K33 boards have solder jumpers to set the I2C address (default `0x70`; 
 ### Adding an I2C Module to a Configuration
 
 1. Open your device configuration (**Configurations** → select your config)
-2. Scroll to the **I2C Modules** section and click **Add Module**
+2. Open the **Displays** section and click **Add display**
 3. Configure:
    - **Name** — optional friendly label (e.g., "Speed Display")
-   - **Chip** — `HT16K33` (currently the only supported chip)
    - **I2C Address** — enter as decimal (`112`) or hex (`0x70`)
    - **Display Type** — `14-segment` (alphanumeric, default) or `7-segment` (numeric only)
-   - **Brightness** — 0–100% slider (maps to hardware levels 0–15)
+   - **Advanced display settings: Brightness** — 0–100% slider (maps to hardware levels 0–15)
    - **Digits** — number of digits on the display: `4` or `8`
-   - **Minimum value** — clamp values below this number to zero before display (default `0`). Useful when the simulator endpoint can return negative values — for example, a reverser reads -1.0 to 1.0, so setting minimum value to `0` prevents negative numbers appearing on the display
+   - **Minimum value** — clamp values below this number to the chosen minimum before display (default `0`). Leave it blank to allow negative values without a lower limit. Useful when the simulator endpoint can return negative values — for example, a reverser reads -1.0 to 1.0, so setting minimum value to `0` prevents negative numbers appearing on the display
    - **Right-align** — align text to the right of the display (useful for numbers; enabled by default)
    - **Decimal point** — enable if your display has a dot segment between digits
-4. Click **Save**
+4. Click **Add display** (or **Save** when editing)
 
 Each device can have multiple I2C modules as long as each uses a distinct address.
+A configuration can contain only displays; adding a dummy input is unnecessary.
 
 ### Testing a Display
 
@@ -194,6 +194,11 @@ unused target. A source and a target can each appear only once. An input cannot
 simultaneously drive a simulator/API or keystroke binding and the virtual
 joystick. If it already has a destination, Trenino shows the conflict and
 requires explicit replacement confirmation.
+
+Mappings can be prepared offline, including on other operating systems. Joystick
+activation requires Windows 10 or 11. The page shows assigned mappings and capacity;
+expand the available targets to inspect unused axes and buttons. Connect the source
+hardware before using live preview.
 
 Mappings can be prepared while the mode is off. Enabling or disabling the
 device itself requires a Windows UAC prompt. If hardware disconnects while the

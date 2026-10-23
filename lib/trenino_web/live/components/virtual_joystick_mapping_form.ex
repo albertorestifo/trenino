@@ -6,6 +6,8 @@ defmodule TreninoWeb.Live.Components.VirtualJoystickMappingForm do
   attr :inputs, :list, required: true
   attr :mapping, :any, default: nil
   attr :preview, :string, default: nil
+  attr :preview_hint, :string, default: "Move the control to preview it."
+  attr :return_focus_id, :string, default: "add-mapping"
   attr :selected_input_id, :integer, default: nil
   attr :transitioning, :boolean, default: false
 
@@ -20,12 +22,12 @@ defmodule TreninoWeb.Live.Components.VirtualJoystickMappingForm do
       aria-labelledby="mapping-title"
       phx-window-keydown="cancel-dialog"
       phx-key="Escape"
-      phx-mounted={JS.push_focus() |> JS.focus_first()}
+      phx-mounted={JS.push_focus(to: "##{@return_focus_id}") |> JS.focus_first()}
       phx-remove={JS.pop_focus()}
     >
       <.focus_wrap
         id="mapping-dialog-focus"
-        class="w-full max-w-md rounded-xl border border-base-300 bg-base-100 p-6 shadow-xl"
+        class="max-h-[calc(100dvh-2rem)] overflow-y-auto w-full max-w-md rounded-xl border border-base-300 bg-base-100 p-6 shadow-xl"
       >
         <h2 id="mapping-title" tabindex="-1" class="text-lg font-semibold">
           {if @mapping, do: "Edit mapping", else: "Add mapping"}
@@ -39,7 +41,13 @@ defmodule TreninoWeb.Live.Components.VirtualJoystickMappingForm do
         >
           <input :if={@mapping} type="hidden" name="mapping[id]" value={@mapping.id} />
           <input type="hidden" name="mapping[target_type]" value={@kind} />
-          <label class="block">
+          <p :if={@inputs == []} class="text-sm text-base-content/70">
+            {if @kind == :axis,
+              do: "No analog inputs are configured yet.",
+              else: "No button inputs are configured yet."}
+            <.link id="mapping-input-setup" navigate={~p"/"} class="underline underline-offset-2">Set up hardware inputs</.link>
+          </p>
+          <label :if={@inputs != []} class="block">
             <span class="text-sm font-medium">Hardware input</span>
             <input :if={@mapping} type="hidden" name="mapping[input_id]" value={@mapping.input_id} />
             <select
@@ -96,7 +104,7 @@ defmodule TreninoWeb.Live.Components.VirtualJoystickMappingForm do
           <p data-testid="input-preview" class="text-sm text-base-content/70">
             Live input: {if is_binary(@preview),
               do: @preview,
-              else: "Move the control to preview it"}
+              else: @preview_hint}
           </p>
           <div class="flex justify-end gap-2 pt-2">
             <button
@@ -105,7 +113,7 @@ defmodule TreninoWeb.Live.Components.VirtualJoystickMappingForm do
               data-testid="cancel-mapping"
               class="btn btn-ghost"
             >Cancel</button>
-            <button type="submit" disabled={@transitioning} class="btn btn-primary">Save mapping</button>
+            <button type="submit" disabled={@transitioning or @inputs == []} class="btn btn-primary">Save mapping</button>
           </div>
         </form>
       </.focus_wrap>

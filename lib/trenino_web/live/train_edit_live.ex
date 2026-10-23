@@ -86,6 +86,8 @@ defmodule TreninoWeb.TrainEditLive do
      |> assign(:elements, [])
      |> assign(:new_mode, true)
      |> assign(:active_train, TrainContext.get_active_train())
+     |> assign(:current_identifier, TrainContext.get_current_identifier())
+     |> assign(:display_hardware_available, Hardware.list_all_i2c_modules() != [])
      |> assign(:modal_open, false)
      |> assign(:element_form, to_form(Element.changeset(%Element{}, %{type: :lever})))
      |> assign(:show_delete_modal, false)
@@ -144,6 +146,8 @@ defmodule TreninoWeb.TrainEditLive do
          |> assign(:elements, train.elements)
          |> assign(:new_mode, false)
          |> assign(:active_train, TrainContext.get_active_train())
+         |> assign(:current_identifier, TrainContext.get_current_identifier())
+         |> assign(:display_hardware_available, Hardware.list_all_i2c_modules() != [])
          |> assign(:modal_open, false)
          |> assign(:element_form, to_form(Element.changeset(%Element{}, %{type: :lever})))
          |> assign(:show_delete_modal, false)
@@ -223,6 +227,37 @@ defmodule TreninoWeb.TrainEditLive do
   @impl true
   def handle_event("save_train", %{"train" => params}, socket) do
     save_train(socket, params)
+  end
+
+  @impl true
+  def handle_event("use_current_train_id", _params, socket) do
+    identifier = socket.assigns.current_identifier
+
+    if socket.assigns.nav_simulator_status.status == :connected and is_binary(identifier) and
+         identifier != "" do
+      changeset = socket.assigns.train_form.source
+      identifiers = Ecto.Changeset.get_field(changeset, :identifiers, [])
+      values = Enum.map(identifiers, & &1.identifier)
+
+      identifiers =
+        cond do
+          identifier in values -> identifiers
+          values == [""] or values == [nil] -> [%TrainIdentifier{identifier: identifier}]
+          true -> identifiers ++ [%TrainIdentifier{identifier: identifier}]
+        end
+
+      params = %{
+        "name" => Ecto.Changeset.get_field(changeset, :name),
+        "description" => Ecto.Changeset.get_field(changeset, :description),
+        "identifiers" => Enum.map(identifiers, &Map.take(&1, [:id, :identifier]))
+      }
+
+      changeset = Train.changeset(socket.assigns.train, params)
+
+      {:noreply, assign(socket, :train_form, to_form(changeset))}
+    else
+      {:noreply, socket}
+    end
   end
 
   # Element management
@@ -427,8 +462,14 @@ defmodule TreninoWeb.TrainEditLive do
   def handle_event("open_add_display_binding", _params, socket) do
     simulator_status = socket.assigns.nav_simulator_status
 
-    if simulator_status.status != :connected or simulator_status.client == nil do
-      {:noreply, put_flash(socket, :error, "Connect to the simulator to add display bindings")}
+    if simulator_status.status != :connected or simulator_status.client == nil or
+         not socket.assigns.display_hardware_available do
+      {:noreply,
+       put_flash(
+         socket,
+         :error,
+         "Connect the simulator and add a hardware display before creating a binding"
+       )}
     else
       {:noreply,
        socket |> assign(:show_display_wizard, true) |> assign(:display_wizard_binding, nil)}
@@ -511,8 +552,19 @@ defmodule TreninoWeb.TrainEditLive do
   end
 
   @impl true
-  def handle_info({:train_detected, %{train: train}}, socket) do
-    {:noreply, assign(socket, :active_train, train)}
+  def handle_info({:train_detected, %{train: train} = detected}, socket) do
+    {:noreply,
+     socket
+     |> assign(:active_train, train)
+     |> assign(
+       :current_identifier,
+       Map.get(detected, :identifier, socket.assigns.current_identifier)
+     )}
+  end
+
+  @impl true
+  def handle_info({:multiple_trains_match, %{identifier: identifier}}, socket) do
+    {:noreply, assign(socket, :current_identifier, identifier)}
   end
 
   @impl true
@@ -1268,7 +1320,7 @@ defmodule TreninoWeb.TrainEditLive do
     ~H"""
     <.breadcrumb items={[
       %{label: "Trains", path: ~p"/trains"},
-      %{label: @train.name || "New Train"}
+      %{label: if(@new_mode, do: "New train", else: @train.name)}
     ]} />
 
     <main class="flex-1 p-4 sm:p-8">
@@ -1278,6 +1330,8 @@ defmodule TreninoWeb.TrainEditLive do
           train_form={@train_form}
           is_active={@is_active}
           new_mode={@new_mode}
+          current_identifier={@current_identifier}
+          simulator_connected={@nav_simulator_status.status == :connected}
         />
 
         <div
@@ -1290,34 +1344,74 @@ defmodule TreninoWeb.TrainEditLive do
           </span>
         </div>
 
-        <div :if={not @new_mode} class="bg-base-200/50 rounded-xl p-6 mt-6">
-          <.elements_section elements={@elements} is_active={@is_active} />
-        </div>
-
-        <.live_component
+        <nav
           :if={not @new_mode}
-          module={SequenceManagerComponent}
-          id="sequence-manager"
-          train_id={@train.id}
-          sequences={@sequences}
-          client={@nav_simulator_status.client}
-          explorer_event={@sequence_manager_event}
-        />
+          aria-label="Train configuration sections"
+          class="flex flex-wrap gap-2 mt-6 border-b border-base-300 pb-3 text-sm"
+        >
+          <a href="#controls" class="btn btn-ghost btn-sm">Controls</a>
+          <a href="#displays-lights" class="btn btn-ghost btn-sm">Displays &amp; lights</a>
+          <a href="#automation" class="btn btn-ghost btn-sm">Automation</a>
+        </nav>
 
-        <div :if={not @new_mode} class="bg-base-200/50 rounded-xl p-6 mt-6">
-          <.output_bindings_section
-            output_bindings={@output_bindings}
-            simulator_connected={@nav_simulator_status.status == :connected}
-          />
-        </div>
+        <section
+          :if={not @new_mode}
+          id="controls"
+          class="scroll-mt-36 mt-6"
+          aria-labelledby="controls-title"
+        >
+          <h2 id="controls-title" class="text-lg font-semibold mb-3">Controls</h2>
+          <div class="bg-base-200/50 rounded-xl p-4 sm:p-6">
+            <.elements_section elements={@elements} is_active={@is_active} />
+          </div>
+        </section>
 
-        <div :if={not @new_mode} class="bg-base-200/50 rounded-xl p-6 mt-6">
-          <.display_bindings_section display_bindings={@display_bindings} />
-        </div>
+        <section
+          :if={not @new_mode}
+          id="displays-lights"
+          class="scroll-mt-36 mt-8"
+          aria-labelledby="displays-lights-title"
+        >
+          <h2 id="displays-lights-title" class="text-lg font-semibold mb-3">Displays &amp; lights</h2>
+          <div class="bg-base-200/50 rounded-xl p-4 sm:p-6 space-y-6">
+            <.display_bindings_section
+              display_bindings={@display_bindings}
+              simulator_connected={@nav_simulator_status.status == :connected}
+              hardware_available={@display_hardware_available}
+            />
+            <div class="border-t border-base-300 pt-6">
+              <.output_bindings_section
+                output_bindings={@output_bindings}
+                simulator_connected={@nav_simulator_status.status == :connected}
+              />
+            </div>
+          </div>
+        </section>
 
-        <div :if={not @new_mode} class="bg-base-200/50 rounded-xl p-6 mt-6">
-          <.scripts_section scripts={@scripts} train_id={@train.id} />
-        </div>
+        <section
+          :if={not @new_mode}
+          id="automation"
+          class="scroll-mt-36 mt-8"
+          aria-labelledby="automation-title"
+        >
+          <h2 id="automation-title" class="text-lg font-semibold mb-3">Automation</h2>
+          <details open={not Enum.empty?(@sequences)} class="py-3">
+            <summary class="cursor-pointer text-base font-semibold">
+              Sequences ({length(@sequences)})
+            </summary>
+            <.live_component
+              module={SequenceManagerComponent}
+              id="sequence-manager"
+              train_id={@train.id}
+              sequences={@sequences}
+              client={@nav_simulator_status.client}
+              explorer_event={@sequence_manager_event}
+            />
+          </details>
+          <div class="bg-base-200/50 rounded-xl p-4 sm:p-6 mt-4">
+            <.scripts_section scripts={@scripts} train_id={@train.id} />
+          </div>
+        </section>
 
         <.danger_zone
           :if={not @new_mode}
@@ -1383,7 +1477,7 @@ defmodule TreninoWeb.TrainEditLive do
     />
 
     <.live_component
-      :if={@show_display_wizard and @nav_simulator_status.client != nil}
+      :if={@show_display_wizard}
       module={TreninoWeb.DisplayBindingWizard}
       id="display-binding-wizard"
       train_id={@train.id}
@@ -1401,9 +1495,13 @@ defmodule TreninoWeb.TrainEditLive do
   attr :is_active, :boolean, required: true
   attr :new_mode, :boolean, required: true
 
+  attr :current_identifier, :string, default: nil
+  attr :simulator_connected, :boolean, default: false
+
   defp train_header(assigns) do
     ~H"""
     <header>
+      <h1 class="text-2xl font-semibold mb-4">{if @new_mode, do: "New train", else: "Edit train"}</h1>
       <.form
         id="train-form"
         for={@train_form}
@@ -1411,10 +1509,8 @@ defmodule TreninoWeb.TrainEditLive do
         phx-submit="save_train"
       >
         <div>
-          <label class="label">
-            <span class="label-text">Train Name</span>
-          </label>
           <.input
+            label="Train Name"
             field={@train_form[:name]}
             type="text"
             class="input input-bordered w-full text-lg font-semibold"
@@ -1422,10 +1518,8 @@ defmodule TreninoWeb.TrainEditLive do
           />
         </div>
         <div class="mt-3">
-          <label class="label">
-            <span class="label-text">Description</span>
-          </label>
           <.input
+            label="Description"
             field={@train_form[:description]}
             type="textarea"
             class="textarea textarea-bordered w-full resize-none"
@@ -1434,9 +1528,26 @@ defmodule TreninoWeb.TrainEditLive do
           />
         </div>
         <div class="mt-3">
-          <label class="label">
-            <span class="label-text">Train Identifiers</span>
-          </label>
+          <h2 class="text-sm font-medium mb-2">Train Identifiers</h2>
+          <p id="train-identifiers-hint" class="text-xs text-base-content/60 mb-3">
+            Use the simulator train ID shown on the Trains page, or connect to use it here. Each entry matches any train ID that starts with that text. Keep the full ID for one variant, or shorten the end to match several variants.
+          </p>
+          <div :if={@simulator_connected && @current_identifier} class="mb-3 space-y-2">
+            <p class="text-xs text-base-content/60">
+              Current simulator train ID:
+              <span class="font-mono break-all">{@current_identifier}</span>
+            </p>
+            <button
+              id="use-current-train-id"
+              type="button"
+              phx-click="use_current_train_id"
+              class="btn btn-outline btn-sm"
+            >Use current train ID</button>
+          </div>
+          <p :if={not @simulator_connected} class="text-xs text-base-content/60 mb-3">
+            <.link navigate={~p"/settings"} class="link">Connect to the simulator</.link>
+            to use the current train ID, or enter one below.
+          </p>
           <div class="space-y-2">
             <.inputs_for :let={identifier_form} field={@train_form[:identifiers]}>
               <div class="flex items-start gap-2">
@@ -1445,19 +1556,31 @@ defmodule TreninoWeb.TrainEditLive do
                   name="train[identifiers_sort][]"
                   value={identifier_form.index}
                 />
-                <.input
-                  field={identifier_form[:identifier]}
-                  type="text"
-                  class="input input-bordered w-full font-mono"
-                  placeholder="e.g., BR_Class_66"
-                />
+                <div class="flex-1 min-w-0">
+                  <.input
+                    field={identifier_form[:identifier]}
+                    type="text"
+                    label={"Identifier #{identifier_form.index + 1}"}
+                    aria-describedby="train-identifiers-hint"
+                    class="input input-bordered w-full font-mono"
+                    placeholder="e.g., BR_Class_66"
+                  />
+                </div>
                 <button
                   type="button"
                   name="train[identifiers_drop][]"
                   value={identifier_form.index}
                   phx-click={Phoenix.LiveView.JS.dispatch("change")}
-                  class="btn btn-ghost btn-sm text-error"
-                  aria-label="Remove identifier"
+                  class="btn btn-ghost btn-sm text-error mt-6 shrink-0"
+                  disabled={
+                    length(Ecto.Changeset.get_field(@train_form.source, :identifiers, [])) <= 1
+                  }
+                  title={
+                    if length(Ecto.Changeset.get_field(@train_form.source, :identifiers, [])) <= 1,
+                      do: "Keep at least one identifier",
+                      else: "Remove identifier"
+                  }
+                  aria-label={"Remove identifier #{identifier_form.index + 1}"}
                 >
                   <.icon name="hero-trash" class="w-4 h-4" />
                 </button>
@@ -1480,9 +1603,6 @@ defmodule TreninoWeb.TrainEditLive do
               {TreninoWeb.CoreComponents.translate_error({message, options})}
             </p>
           </div>
-          <p class="text-xs text-base-content/50 mt-1">
-            Every value is an equivalent prefix used to detect this train in the simulator.
-          </p>
         </div>
         <div class="flex items-center gap-3 mt-4">
           <span :if={@is_active} class="badge badge-success badge-sm gap-1">
@@ -1503,12 +1623,11 @@ defmodule TreninoWeb.TrainEditLive do
 
   defp elements_section(assigns) do
     ~H"""
-    <div class="mb-6">
+    <div>
       <.section_header title="Elements" action_label="Add Element" on_action="open_add_element_modal" />
 
-      <.empty_collection_state
+      <.compact_empty_state
         :if={Enum.empty?(@elements)}
-        icon="hero-adjustments-horizontal"
         message="No elements configured"
         submessage="Add elements to control train functions"
       />
@@ -1548,9 +1667,8 @@ defmodule TreninoWeb.TrainEditLive do
         on_action="open_add_output_binding"
       />
 
-      <.empty_collection_state
+      <.compact_empty_state
         :if={Enum.empty?(@output_bindings)}
-        icon="hero-light-bulb"
         message="No output bindings configured"
         submessage="Bind outputs to API values to control LEDs based on simulator data"
       />
@@ -1614,71 +1732,84 @@ defmodule TreninoWeb.TrainEditLive do
   end
 
   attr :display_bindings, :list, required: true
+  attr :simulator_connected, :boolean, required: true
+  attr :hardware_available, :boolean, required: true
 
   defp display_bindings_section(assigns) do
     ~H"""
     <div>
-      <.section_header
-        title="Display Bindings"
-        action_label="Add Display Binding"
-        on_action="open_add_display_binding"
-      />
-
-      <.empty_collection_state
-        :if={Enum.empty?(@display_bindings)}
-        icon="hero-cpu-chip"
-        message="No display bindings configured"
-        submessage="Bind simulator values to I2C displays to show numbers on hardware"
-      />
-
-      <div :if={not Enum.empty?(@display_bindings)} class="overflow-x-auto">
-        <table class="table table-sm bg-base-100 rounded-lg">
-          <thead>
-            <tr class="bg-base-200">
-              <th>Name</th>
-              <th>Endpoint</th>
-              <th>Format</th>
-              <th>Display</th>
-              <th class="w-24"></th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr :for={binding <- @display_bindings} class="hover:bg-base-200/50">
-              <td class="font-medium">{binding.name}</td>
-              <td class="font-mono text-xs max-w-[180px] truncate" title={binding.endpoint}>
-                {binding.endpoint}
-              </td>
-              <td class="font-mono text-xs">{binding.format_string}</td>
-              <td class="text-sm text-base-content/60">
-                {if binding.i2c_module,
-                  do: binding.i2c_module.name || "Module #{binding.i2c_module_id}",
-                  else: "—"}
-              </td>
-              <td>
-                <div class="flex gap-1">
-                  <button
-                    phx-click="configure_display_binding"
-                    phx-value-id={binding.id}
-                    class="btn btn-ghost btn-xs"
-                    title="Configure"
-                  >
-                    <.icon name="hero-cog-6-tooth" class="w-4 h-4" />
-                  </button>
-                  <button
-                    phx-click="delete_display_binding"
-                    phx-value-id={binding.id}
-                    class="btn btn-ghost btn-xs text-error"
-                    title="Delete"
-                    data-confirm="Delete this display binding?"
-                  >
-                    <.icon name="hero-trash" class="w-4 h-4" />
-                  </button>
-                </div>
-              </td>
-            </tr>
-          </tbody>
-        </table>
+      <div class="flex flex-wrap items-center justify-between gap-3 mb-3">
+        <h3 class="text-base font-semibold">Displays</h3>
+        <button
+          type="button"
+          id="add-display-binding"
+          phx-click="open_add_display_binding"
+          class="btn btn-outline btn-sm"
+          disabled={not @simulator_connected or not @hardware_available}
+          aria-describedby="display-prerequisites"
+        >
+          <.icon name="hero-plus" class="w-4 h-4" /> Add display binding
+        </button>
       </div>
+      <div id="display-prerequisites" class="text-sm text-base-content/70 space-y-2">
+        <p :if={not @simulator_connected}>
+          <.link navigate={~p"/settings"} class="link">Connect to the simulator</.link>
+          to choose a value for your display.
+        </p>
+        <p :if={not @hardware_available}>
+          <.link navigate={~p"/"} class="link">Add a display to a hardware configuration</.link>
+          before creating a binding.
+        </p>
+      </div>
+      <p :if={Enum.empty?(@display_bindings)} class="text-sm text-base-content/60 py-3">
+        No display bindings configured. Show simulator values on your hardware displays.
+      </p>
+      <ul :if={not Enum.empty?(@display_bindings)} class="divide-y divide-base-300">
+        <li :for={binding <- @display_bindings} class="py-4 space-y-3">
+          <div class="min-w-0">
+            <p class="font-medium break-words">{binding.name}</p>
+            <p class="text-xs text-base-content/60 mt-1 break-words">
+              {if binding.i2c_module,
+                do: binding.i2c_module.name || "Display #{binding.i2c_module_id}",
+                else: "Display unavailable"}
+            </p>
+            <p class="font-mono text-xs break-all mt-2">{binding.endpoint}</p>
+            <p class="font-mono text-xs text-base-content/60 mt-1">{binding.format_string}</p>
+          </div>
+          <div class="flex flex-wrap gap-2">
+            <button
+              id={"edit-display-binding-#{binding.id}"}
+              phx-click="configure_display_binding"
+              phx-value-id={binding.id}
+              class="btn btn-ghost btn-sm"
+              aria-label={"Edit display binding #{binding.name}"}
+            >
+              <.icon name="hero-pencil" class="w-4 h-4" /> Edit
+            </button>
+            <button
+              phx-click="delete_display_binding"
+              phx-value-id={binding.id}
+              class="btn btn-ghost btn-sm text-error"
+              aria-label={"Delete display binding #{binding.name}"}
+              data-confirm="Delete this display binding?"
+            >
+              <.icon name="hero-trash" class="w-4 h-4" /> Delete
+            </button>
+          </div>
+        </li>
+      </ul>
+    </div>
+    """
+  end
+
+  attr :message, :string, required: true
+  attr :submessage, :string, default: nil
+
+  defp compact_empty_state(assigns) do
+    ~H"""
+    <div class="py-3 text-sm text-base-content/60">
+      <p>{@message}</p>
+      <p :if={@submessage} class="text-xs mt-1">{@submessage}</p>
     </div>
     """
   end
@@ -1696,9 +1827,8 @@ defmodule TreninoWeb.TrainEditLive do
         </.link>
       </div>
 
-      <.empty_collection_state
+      <.compact_empty_state
         :if={Enum.empty?(@scripts)}
-        icon="hero-code-bracket"
         message="No scripts configured"
         submessage="Add Lua scripts to automate actions based on simulator data"
       />

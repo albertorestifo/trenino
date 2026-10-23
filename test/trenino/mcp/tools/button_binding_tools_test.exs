@@ -23,6 +23,39 @@ defmodule Trenino.MCP.Tools.ButtonBindingToolsTest do
     %{train: train, element: element, input: input}
   end
 
+  test "returns a readable destination conflict on creation", %{element: element, input: input} do
+    {:ok, _} = Trenino.VirtualJoystick.put_mapping(input.id, %{target_type: :button, button: 1})
+
+    assert {:error, message} =
+             ButtonBindingTools.execute("create_button_binding", %{
+               "element_id" => element.id,
+               "input_id" => input.id,
+               "mode" => "simple",
+               "endpoint" => "Horn.InputValue"
+             })
+
+    assert message =~ "joystick"
+  end
+
+  test "returns a readable destination conflict when enabling", %{element: element, input: input} do
+    {:ok, _} =
+      TrainContext.create_button_binding(element.id, input.id, %{
+        mode: :simple,
+        endpoint: "Horn.InputValue",
+        enabled: false
+      })
+
+    {:ok, _} = Trenino.VirtualJoystick.put_mapping(input.id, %{target_type: :button, button: 1})
+
+    assert {:error, message} =
+             ButtonBindingTools.execute("update_button_binding", %{
+               "element_id" => element.id,
+               "enabled" => true
+             })
+
+    assert message =~ "joystick"
+  end
+
   describe "get_button_binding" do
     test "returns error when no binding exists", %{element: element} do
       assert {:error, message} =

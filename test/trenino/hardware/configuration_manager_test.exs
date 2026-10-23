@@ -82,6 +82,46 @@ defmodule Trenino.Hardware.ConfigurationManagerTest do
     end
   end
 
+  test "deploys a device containing only an I2C display" do
+    Mimic.set_mimic_global()
+    Mimic.stub(Circuits.UART, :enumerate, fn -> %{} end)
+    {:ok, device} = Hardware.create_device(%{name: "Display only"})
+
+    {:ok, _} =
+      Hardware.create_i2c_module(device.id, %{
+        name: "Speed",
+        module_chip: :ht16k33,
+        i2c_address: 0x70,
+        params: %{
+          brightness: 8,
+          num_digits: 4,
+          display_type: :fourteen_segment,
+          has_dot: true,
+          align_right: true
+        }
+      })
+
+    port = unique_port()
+    test_pid = self()
+
+    Mimic.stub(Trenino.Serial.Connection, :send_message, fn ^port, message ->
+      send(test_pid, {:configuration_message, message})
+      :ok
+    end)
+
+    assert {:ok, config_id} = ConfigurationManager.apply_configuration(port, device.id)
+
+    assert_receive {:configuration_message,
+                    %Trenino.Serial.Protocol.Configure{config_id: ^config_id, total_parts: 1}}
+
+    send(
+      ConfigurationManager,
+      {:serial_message, port, %ConfigurationStored{config_id: config_id}}
+    )
+
+    :sys.get_state(ConfigurationManager)
+  end
+
   describe "get_input_values/1" do
     test "returns empty map when no values stored" do
       port = unique_port()

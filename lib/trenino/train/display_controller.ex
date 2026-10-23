@@ -15,6 +15,8 @@ defmodule Trenino.Train.DisplayController do
   alias Trenino.Hardware.HT16K33
   alias Trenino.Hardware.HT16K33.Params, as: HT16K33Params
   alias Trenino.Hardware.I2cModule
+  alias Trenino.Serial.Connection, as: SerialConnection
+  alias Trenino.Serial.Protocol.SetModuleBrightness
   alias Trenino.Simulator.Client, as: SimulatorClient
   alias Trenino.Simulator.Connection, as: SimulatorConnection
   alias Trenino.Simulator.ConnectionState
@@ -61,6 +63,9 @@ defmodule Trenino.Train.DisplayController do
   @impl true
   def init(:ok) do
     Train.subscribe()
+    SimulatorConnection.subscribe()
+    SerialConnection.subscribe()
+    ConfigurationManager.subscribe_configuration()
     state = %State{}
 
     state =
@@ -95,6 +100,30 @@ defmodule Trenino.Train.DisplayController do
 
   def handle_info({:train_detected, _}, %State{} = state), do: {:noreply, state}
   def handle_info({:detection_error, _}, %State{} = state), do: {:noreply, state}
+
+  def handle_info(
+        {:simulator_status_changed, %ConnectionState{status: :connected}},
+        %State{active_train: train} = state
+      )
+      when not is_nil(train) do
+    state = cleanup(state)
+    {:noreply, load_bindings_for_train(state, train)}
+  end
+
+  def handle_info({:devices_updated, _devices}, %State{} = state) do
+    {:noreply, invalidate_displays(state)}
+  end
+
+  def handle_info(
+        {:configuration_applied, _port, _device, _config_id},
+        %State{active_train: train} = state
+      )
+      when not is_nil(train) do
+    # Configuration deployment may change or remove modules. Do not blank old
+    # addresses after deployment; reload persisted settings before replaying.
+    state = cleanup(state, false)
+    {:noreply, load_bindings_for_train(state, train)}
+  end
 
   def handle_info(:poll_displays, %State{} = state) do
     state = poll_and_update(state)
@@ -162,10 +191,13 @@ defmodule Trenino.Train.DisplayController do
     end
   end
 
-  defp cleanup(%State{poll_timer: timer, subscriptions: subs, bindings: bindings} = state) do
+  defp cleanup(
+         %State{poll_timer: timer, subscriptions: subs, bindings: bindings} = state,
+         blank? \\ true
+       ) do
     if timer, do: Process.cancel_timer(timer)
 
-    Enum.each(bindings, fn {_id, info} -> blank_display(info.binding) end)
+    if blank?, do: Enum.each(bindings, fn {_id, info} -> blank_display(info.binding) end)
 
     case get_simulator_client() do
       {:ok, client} ->
@@ -179,6 +211,7 @@ defmodule Trenino.Train.DisplayController do
   end
 
   defp schedule_poll(%State{bindings: b} = state) when map_size(b) > 0 do
+    if state.poll_timer, do: Process.cancel_timer(state.poll_timer)
     %{state | poll_timer: Process.send_after(self(), :poll_displays, @poll_interval_ms)}
   end
 
@@ -222,24 +255,47 @@ defmodule Trenino.Train.DisplayController do
       clamped = clamp_to_min(value, info.binding.i2c_module.params)
       text = DisplayFormatter.format(info.binding.format_string, clamped)
 
-      if text != info.last_text do
-        send_to_display(info.binding, text)
-        %{acc | bindings: Map.put(acc.bindings, id, %{info | last_text: text})}
-      else
-        acc
-      end
+      update_display(acc, id, info, text)
     end)
   end
 
-  defp send_to_display(%DisplayBinding{i2c_module: %I2cModule{} = mod}, text) do
+  defp update_display(state, _id, %{last_text: text}, text), do: state
+
+  defp update_display(state, id, info, text) do
+    case send_to_display(info.binding, text, info.last_text == nil) do
+      :ok -> %{state | bindings: Map.put(state.bindings, id, %{info | last_text: text})}
+      _ -> state
+    end
+  end
+
+  defp invalidate_displays(%State{} = state) do
+    bindings = Map.new(state.bindings, fn {id, info} -> {id, %{info | last_text: nil}} end)
+    %{state | bindings: bindings}
+  end
+
+  defp send_to_display(%DisplayBinding{i2c_module: %I2cModule{} = mod}, text, initialize?) do
     port = ConfigurationManager.config_id_to_port(mod.device.config_id)
 
     if port do
       chip_mod = chip_module(mod.module_chip)
       bytes = chip_mod.encode_string(text, mod.params)
-      Hardware.write_segments(port, mod.i2c_address, bytes)
+
+      with :ok <- set_brightness(port, mod, initialize?) do
+        Hardware.write_segments(port, mod.i2c_address, bytes)
+      end
+    else
+      {:error, :disconnected}
     end
   end
+
+  defp set_brightness(port, %I2cModule{} = mod, true) do
+    SerialConnection.send_message(port, %SetModuleBrightness{
+      i2c_address: mod.i2c_address,
+      brightness: mod.params.brightness
+    })
+  end
+
+  defp set_brightness(_port, %I2cModule{}, false), do: :ok
 
   defp blank_display(%DisplayBinding{i2c_module: %I2cModule{} = mod}) do
     port = ConfigurationManager.config_id_to_port(mod.device.config_id)

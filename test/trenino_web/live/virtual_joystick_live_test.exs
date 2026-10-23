@@ -24,11 +24,85 @@ defmodule TreninoWeb.VirtualJoystickLiveTest do
     assert has_element?(
              view,
              "[data-testid='virtual-joystick-status'][aria-live='polite']",
-             "Unavailable"
+             "Windows required to activate"
            )
 
-    assert has_element?(view, "[data-testid='virtual-joystick-toggle'][disabled]")
+    refute has_element?(view, "[data-testid='virtual-joystick-toggle']")
     assert html =~ "Windows 10 or 11"
+  end
+
+  test "starts with assigned mappings and reveals unused capacity on demand", %{conn: conn} do
+    input = analog_input_fixture(%{name: "Throttle"})
+    {:ok, _} = VirtualJoystick.put_mapping(input.id, %{target_type: :axis, axis: :x})
+    {:ok, view, _} = live(conn, ~p"/virtual-joystick")
+
+    assert has_element?(view, "#mapping-capacity", "1 of 8 axes")
+    assert has_element?(view, "#mapping-capacity", "0 of 32 buttons")
+    assert has_element?(view, "[data-testid='axis-mapping-x']", "Throttle")
+    refute has_element?(view, "[data-testid='axis-mapping-y']")
+    view |> element("#toggle-target-inventory") |> render_click()
+    assert has_element?(view, "[data-testid='axis-mapping-y']", "Not assigned")
+
+    assert length(
+             LazyHTML.query(
+               LazyHTML.from_fragment(render(view)),
+               "[data-testid='button-target-option']"
+             )
+             |> LazyHTML.to_tree()
+           ) == 32
+  end
+
+  test "offers offline setup and device-specific preview guidance", %{conn: conn} do
+    device = device_fixture(%{name: "Cab panel"})
+    analog_input_fixture(%{name: "Throttle", device: device})
+    {:ok, view, _} = live(conn, ~p"/virtual-joystick")
+    assert has_element?(view, "#offline-mapping-help", "configure mappings")
+    view |> element("[data-testid='add-mapping']") |> render_click()
+    view |> element("[data-testid='add-axis-mapping']") |> render_click()
+    assert has_element?(view, "[data-testid='input-preview']", "Connect Cab panel")
+
+    assert has_element?(
+             view,
+             "[data-testid='mapping-form'] button[type='submit']:not([disabled])"
+           )
+  end
+
+  test "empty mapping inputs point to hardware setup", %{conn: conn} do
+    {:ok, view, _} = live(conn, ~p"/virtual-joystick")
+    view |> element("[data-testid='add-mapping']") |> render_click()
+    view |> element("[data-testid='add-axis-mapping']") |> render_click()
+    assert has_element?(view, "#mapping-input-setup[href='/']", "Set up hardware inputs")
+    assert has_element?(view, "[data-testid='mapping-form'] button[type='submit'][disabled]")
+  end
+
+  test "axis target and inversion changes are safe without eligible inputs", %{conn: conn} do
+    {:ok, view, _} = live(conn, ~p"/virtual-joystick")
+    open_mapping(view, :axis)
+
+    view |> form("[data-testid='mapping-form']", mapping: %{axis: "y"}) |> render_change()
+    view |> form("[data-testid='mapping-form']", mapping: %{inverted: "true"}) |> render_change()
+
+    assert has_element?(view, "#mapping-input-setup", "Set up hardware inputs")
+    assert has_element?(view, "[data-testid='mapping-form'] button[type='submit'][disabled]")
+    assert has_element?(view, "[data-testid='input-preview']", "Choose a hardware input")
+  end
+
+  test "button target changes are safe without eligible inputs", %{conn: conn} do
+    {:ok, view, _} = live(conn, ~p"/virtual-joystick")
+    open_mapping(view, :button)
+
+    view |> form("[data-testid='mapping-form']", mapping: %{button: "7"}) |> render_change()
+
+    assert has_element?(view, "#mapping-input-setup", "Set up hardware inputs")
+    assert has_element?(view, "[data-testid='mapping-form'] button[type='submit'][disabled]")
+  end
+
+  test "joystick does not escalate unrelated simulator failures", %{conn: conn} do
+    {:ok, view, _} = live(conn, ~p"/virtual-joystick")
+    send(view.pid, {:simulator_status_changed, %{status: :error}})
+    refute has_element?(view, "#simulator-status-banner")
+    refute has_element?(view, "header [role='status']", "Simulator connection failed")
+    assert has_element?(view, "nav[aria-label='Primary navigation'] a[href='/trains']")
   end
 
   test "renders every manager state with only its permitted recovery action", %{conn: conn} do
@@ -80,16 +154,16 @@ defmodule TreninoWeb.VirtualJoystickLiveTest do
     button_input_fixture(%{device: device, name: "Acknowledge", pin: 4})
 
     {:ok, view, _html} = live(conn, ~p"/virtual-joystick")
-    view |> element("button[data-testid='add-axis-mapping']") |> render_click()
+    open_mapping(view, :axis)
 
     assert has_element?(view, "[data-testid='axis-target-option']", "Slider 2")
     assert has_element?(view, "option", "Cab controls · Throttle")
     refute render(view) =~ "Cab controls · Acknowledge"
 
     view |> element("button[data-testid='cancel-mapping']") |> render_click()
-    view |> element("button[data-testid='add-button-mapping']") |> render_click()
+    open_mapping(view, :button)
 
-    assert length(has_element_ids(view, "[data-testid='button-target-option']")) == 32
+    assert has_element?(view, "option", "Button 32")
     assert has_element?(view, "option", "Cab controls · Acknowledge")
   end
 
@@ -98,11 +172,11 @@ defmodule TreninoWeb.VirtualJoystickLiveTest do
     input = analog_input_fixture(%{name: "Brake", device: device})
     {:ok, view, _html} = live(conn, ~p"/virtual-joystick")
 
-    view |> element("button[data-testid='add-axis-mapping']") |> render_click()
+    open_mapping(view, :axis)
     send(view.pid, {:input_value_updated, "COM7", input.pin + 1, 900})
-    assert has_element?(view, "[data-testid='input-preview']", "Move the control")
+    assert has_element?(view, "[data-testid='input-preview']", "Connect")
     send(view.pid, {:input_value_updated, "COM7", input.pin, 512})
-    assert has_element?(view, "[data-testid='input-preview']", "Move the control")
+    assert has_element?(view, "[data-testid='input-preview']", "Connect")
 
     send(view.pid, {
       :devices_updated,
@@ -134,7 +208,7 @@ defmodule TreninoWeb.VirtualJoystickLiveTest do
 
     assert has_element?(view, "[data-testid='axis-mapping-y']", "Inverted")
     view |> element("button[data-testid='delete-mapping-#{mapping.id}']") |> render_click()
-    assert has_element?(view, "[data-testid='axis-mapping-y']", "Not assigned")
+    refute has_element?(view, "[data-testid='axis-mapping-y']")
   end
 
   test "shows duplicate targets and requires explicit simulator destination replacement", %{
@@ -146,7 +220,7 @@ defmodule TreninoWeb.VirtualJoystickLiveTest do
     {:ok, _} = VirtualJoystick.put_mapping(first.id, %{target_type: :axis, axis: :x})
 
     {:ok, view, _html} = live(conn, ~p"/virtual-joystick")
-    view |> element("button[data-testid='add-axis-mapping']") |> render_click()
+    open_mapping(view, :axis)
 
     view
     |> form("[data-testid='mapping-form']",
@@ -208,6 +282,7 @@ defmodule TreninoWeb.VirtualJoystickLiveTest do
     {:ok, mapping} = VirtualJoystick.put_mapping(input.id, %{target_type: :axis, axis: :rx})
     {:ok, view, _html} = live(conn, ~p"/virtual-joystick")
 
+    view |> element("[data-testid='add-mapping']") |> render_click()
     send(view.pid, {:virtual_joystick_status_details_changed, %{status: :enabling, reason: nil}})
     assert has_element?(view, "button[data-testid='add-axis-mapping'][disabled]")
     assert has_element?(view, "button[data-testid='add-button-mapping'][disabled]")
@@ -251,10 +326,8 @@ defmodule TreninoWeb.VirtualJoystickLiveTest do
              "Permission was cancelled. Restoring the virtual joystick without changing Windows."
   end
 
-  defp has_element_ids(view, selector) do
-    testid =
-      Regex.run(~r/data-testid='([^']+)'/, selector, capture: :all_but_first) |> List.first()
-
-    Regex.scan(~r/data-testid="#{Regex.escape(testid)}"/, render(view))
+  defp open_mapping(view, kind) do
+    view |> element("[data-testid='add-mapping']") |> render_click()
+    view |> element("[data-testid='add-#{kind}-mapping']") |> render_click()
   end
 end

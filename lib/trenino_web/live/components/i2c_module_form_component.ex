@@ -74,12 +74,6 @@ defmodule TreninoWeb.I2cModuleFormComponent do
     pct = parse_pct(Map.get(raw, "brightness_pct"))
     brightness = round(pct * 15 / 100)
 
-    min_value =
-      case Float.parse(Map.get(raw, "min_value", "0")) do
-        {f, _} -> f
-        :error -> 0.0
-      end
-
     %{
       name: Map.get(raw, "name"),
       module_chip: Map.get(raw, "module_chip"),
@@ -90,10 +84,16 @@ defmodule TreninoWeb.I2cModuleFormComponent do
         display_type: Map.get(raw, "display_type"),
         has_dot: Map.get(raw, "has_dot") == "true",
         align_right: Map.get(raw, "align_right") == "true",
-        min_value: min_value
+        min_value: normalize_minimum(Map.get(raw, "min_value", "0"))
       }
     }
   end
+
+  defp normalize_minimum(value) when is_binary(value) do
+    if String.trim(value) == "", do: nil, else: value
+  end
+
+  defp normalize_minimum(value), do: value
 
   defp parse_pct(val) do
     case Integer.parse(val || "53") do
@@ -104,6 +104,8 @@ defmodule TreninoWeb.I2cModuleFormComponent do
 
   @impl true
   def render(assigns) do
+    assigns = assign(assigns, :params_form, params_form(assigns.form))
+
     ~H"""
     <div>
       <.form
@@ -113,63 +115,57 @@ defmodule TreninoWeb.I2cModuleFormComponent do
         phx-submit="save"
         phx-target={@myself}
       >
-        <div class="grid grid-cols-1 gap-4">
-          <div>
-            <.input field={@form[:name]} label="Name" placeholder="e.g. Speed display" />
-          </div>
-          <div>
-            <label class="label"><span class="label-text font-medium">Chip</span></label>
-            <select name="i2c_module[module_chip]" class="select select-bordered w-full">
-              <option value="ht16k33" selected={to_string(@form[:module_chip].value) == "ht16k33"}>
-                HT16K33
-              </option>
-            </select>
-          </div>
-          <div>
-            <label class="label">
-              <span class="label-text font-medium">I2C Address</span>
-              <span class="label-text-alt text-base-content/50">
-                decimal or hex (e.g. 112 or 0x70)
-              </span>
-            </label>
-            <input
-              type="text"
-              name="i2c_module[i2c_address_raw]"
-              value={@i2c_address_input}
-              placeholder="0x70"
-              class="input input-bordered w-full"
-            />
-            <p
-              :for={msg <- @form[:i2c_address].errors |> Enum.map(&elem(&1, 0))}
-              class="mt-1 text-sm text-error"
-            >
-              {msg}
-            </p>
-          </div>
-          <div>
-            <label class="label"><span class="label-text font-medium">Display Type</span></label>
-            <select name="i2c_module[display_type]" class="select select-bordered w-full">
-              <option
-                value="fourteen_segment"
-                selected={current_display_type(@form) != "seven_segment"}
-              >
-                14-segment (alphanumeric)
-              </option>
-              <option
-                value="seven_segment"
-                selected={current_display_type(@form) == "seven_segment"}
-              >
-                7-segment
-              </option>
-            </select>
-          </div>
-          <div class="grid grid-cols-2 gap-4">
-            <div>
-              <label class="label">
-                <span class="label-text font-medium">Brightness</span>
-                <span class="label-text-alt text-base-content/50">{@brightness_pct}%</span>
-              </label>
+        <div class="space-y-4">
+          <.input field={@form[:name]} label="Name" placeholder="e.g. Speed display" />
+          <input type="hidden" name="i2c_module[module_chip]" value="ht16k33" />
+          <p class="text-xs text-base-content/60">Uses an HT16K33 display driver.</p>
+          <.input
+            id="display-type"
+            type="select"
+            name="i2c_module[display_type]"
+            label="Display type"
+            value={current_display_type(@form)}
+            options={[
+              {"14-segment (letters and numbers)", "fourteen_segment"},
+              {"7-segment (numbers)", "seven_segment"}
+            ]}
+          />
+          <.input
+            id="display-address"
+            type="text"
+            name="i2c_module[i2c_address_raw]"
+            value={@i2c_address_input}
+            label="I2C address"
+            placeholder="0x70"
+            class="input input-bordered w-full font-mono"
+            aria-describedby="display-address-hint"
+            errors={
+              Enum.map(@form[:i2c_address].errors, &TreninoWeb.CoreComponents.translate_error/1)
+            }
+          />
+          <p id="display-address-hint" class="text-xs text-base-content/60">
+            Find this on the display board or its wiring guide. Enter decimal (112) or hex (0x70).
+          </p>
+          <.input
+            id="display-digits"
+            type="select"
+            name="i2c_module[num_digits]"
+            label="Digits"
+            value={current_num_digits(@form)}
+            options={[{"4 digits", 4}, {"8 digits", 8}]}
+          />
+          <details
+            id="display-advanced"
+            open={not @params_form.source.valid?}
+            class="border-t border-base-300 pt-3"
+          >
+            <summary class="cursor-pointer font-medium text-sm py-2">
+              Advanced display settings
+            </summary>
+            <div class="space-y-4 pt-3">
+              <label for="display-brightness" class="block text-sm">Brightness ({@brightness_pct}%)</label>
               <input
+                id="display-brightness"
                 type="range"
                 name="i2c_module[brightness_pct]"
                 value={@brightness_pct}
@@ -177,55 +173,37 @@ defmodule TreninoWeb.I2cModuleFormComponent do
                 max="100"
                 class="range range-sm w-full"
               />
-            </div>
-            <div>
-              <label class="label"><span class="label-text font-medium">Digits</span></label>
-              <select name="i2c_module[num_digits]" class="select select-bordered w-full">
-                <option value="4" selected={current_num_digits(@form) == 4}>4 digits</option>
-                <option value="8" selected={current_num_digits(@form) == 8}>8 digits</option>
-              </select>
-            </div>
-          </div>
-          <div>
-            <label class="label">
-              <span class="label-text font-medium">Minimum value</span>
-              <span class="label-text-alt text-base-content/50">Clamp negative values (e.g. 0)</span>
-            </label>
-            <input
-              type="text"
-              name="i2c_module[min_value]"
-              value={current_min_value(@form)}
-              placeholder="0"
-              class="input input-bordered w-full"
-            />
-          </div>
-          <div class="flex flex-col gap-2">
-            <label class="flex items-center gap-3 cursor-pointer">
-              <input
+              <.input
+                id="display-minimum"
+                type="text"
+                field={@params_form[:min_value]}
+                label="Minimum value"
+                aria-describedby="display-minimum-hint"
+              />
+              <p id="display-minimum-hint" class="text-xs text-base-content/60">
+                Values below this limit are shown at the limit. Leave blank for no limit.
+              </p>
+              <.input
+                id="display-align-right"
                 type="checkbox"
                 name="i2c_module[align_right]"
-                value="true"
+                label="Right-align value"
                 checked={current_align_right(@form)}
-                class="checkbox"
               />
-              <span class="label-text font-medium">Right-align value</span>
-            </label>
-            <label class="flex items-center gap-3 cursor-pointer">
-              <input
+              <.input
+                id="display-has-dot"
                 type="checkbox"
                 name="i2c_module[has_dot]"
-                value="true"
+                label="Display has a decimal point"
                 checked={current_has_dot(@form)}
-                class="checkbox"
               />
-              <span class="label-text font-medium">Has decimal point (dot)</span>
-            </label>
-          </div>
+            </div>
+          </details>
         </div>
         <div class="flex justify-end gap-2 mt-6">
           <button type="button" phx-click="close_i2c_modal" class="btn btn-ghost">Cancel</button>
-          <button type="submit" class="btn btn-primary">
-            {if @i2c_module, do: "Save", else: "Add"}
+          <button type="submit" class="btn btn-primary" phx-disable-with="Saving…">
+            {if @i2c_module, do: "Save display", else: "Add display"}
           </button>
         </div>
       </.form>
@@ -233,26 +211,29 @@ defmodule TreninoWeb.I2cModuleFormComponent do
     """
   end
 
-  defp current_params(%{data: %{params: %HT16K33Params{} = p}}), do: p
-  defp current_params(_form), do: %HT16K33Params{}
+  defp params_form(%Phoenix.HTML.Form{source: %Ecto.Changeset{} = changeset}) do
+    params_changeset =
+      case Ecto.Changeset.get_field(changeset, :params) do
+        %Ecto.Changeset{} = params -> params
+        %HT16K33Params{} = params -> HT16K33Params.changeset(params, %{})
+        _ -> HT16K33Params.changeset(%HT16K33Params{}, %{})
+      end
 
-  defp current_display_type(form) do
-    form |> current_params() |> Map.get(:display_type) |> to_string()
+    to_form(params_changeset, as: :i2c_module)
   end
 
-  defp current_num_digits(form) do
-    form |> current_params() |> Map.get(:num_digits)
+  defp current_params(%Phoenix.HTML.Form{source: %Ecto.Changeset{} = changeset}) do
+    case Ecto.Changeset.get_field(changeset, :params) do
+      %Ecto.Changeset{} = params -> Ecto.Changeset.apply_changes(params)
+      %HT16K33Params{} = params -> params
+      _ -> %HT16K33Params{}
+    end
   end
 
-  defp current_min_value(form) do
-    form |> current_params() |> Map.get(:min_value, 0.0)
-  end
+  defp current_display_type(form),
+    do: form |> current_params() |> Map.get(:display_type) |> to_string()
 
-  defp current_align_right(form) do
-    form |> current_params() |> Map.get(:align_right, true)
-  end
-
-  defp current_has_dot(form) do
-    form |> current_params() |> Map.get(:has_dot, false)
-  end
+  defp current_num_digits(form), do: form |> current_params() |> Map.get(:num_digits)
+  defp current_align_right(form), do: form |> current_params() |> Map.get(:align_right)
+  defp current_has_dot(form), do: form |> current_params() |> Map.get(:has_dot)
 end

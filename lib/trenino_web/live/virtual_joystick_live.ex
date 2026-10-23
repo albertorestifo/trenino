@@ -41,6 +41,8 @@ defmodule TreninoWeb.VirtualJoystickLive do
        :inputs,
        Hardware.list_all_inputs(include_uncalibrated: true, include_virtual_buttons: true)
      )
+     |> assign(:show_mapping_choices, false)
+     |> assign(:show_unused_targets, false)
      |> assign(:mapping_kind, nil)
      |> assign(:editing_mapping, nil)
      |> assign(:preview, nil)
@@ -122,6 +124,7 @@ defmodule TreninoWeb.VirtualJoystickLive do
 
   def handle_event(event, _, %{assigns: %{status: status}} = socket)
       when event in [
+             "add-mapping",
              "add-axis",
              "add-button",
              "edit-mapping",
@@ -131,6 +134,12 @@ defmodule TreninoWeb.VirtualJoystickLive do
            ] and
              status in [:enabling, :disabling],
       do: {:noreply, socket}
+
+  def handle_event("add-mapping", _, socket),
+    do: {:noreply, assign(socket, :show_mapping_choices, !socket.assigns.show_mapping_choices)}
+
+  def handle_event("toggle-target-inventory", _, socket),
+    do: {:noreply, assign(socket, :show_unused_targets, !socket.assigns.show_unused_targets)}
 
   def handle_event("add-axis", _, socket), do: {:noreply, open_form(socket, :axis, nil)}
   def handle_event("add-button", _, socket), do: {:noreply, open_form(socket, :button, nil)}
@@ -144,8 +153,14 @@ defmodule TreninoWeb.VirtualJoystickLive do
     {:noreply, open_form(socket, mapping.target_type, mapping)}
   end
 
-  def handle_event("select-mapping-input", %{"mapping" => %{"input_id" => id}}, socket) do
-    {:noreply, select_preview_source(socket, String.to_integer(id))}
+  def handle_event("select-mapping-input", %{"mapping" => params}, socket) do
+    input_id =
+      case Integer.parse(params["input_id"] || "") do
+        {id, ""} -> id
+        _ -> nil
+      end
+
+    {:noreply, select_preview_source(socket, input_id)}
   end
 
   def handle_event("cancel-dialog", %{"key" => "Escape"}, socket) do
@@ -260,6 +275,7 @@ defmodule TreninoWeb.VirtualJoystickLive do
               <p class="mt-1 text-sm text-base-content/70">{@status_ui.help}</p>
             </div>
             <button
+              :if={@status != :unsupported}
               data-testid="virtual-joystick-toggle"
               phx-click="show-transition-confirmation"
               disabled={is_nil(@status_ui.toggle)}
@@ -276,52 +292,103 @@ defmodule TreninoWeb.VirtualJoystickLive do
           >{@status_ui.recovery}</button>
         </section>
 
+        <p id="offline-mapping-help" class="mt-4 text-sm text-base-content/70">
+          You can configure mappings with hardware disconnected and the joystick off.
+          Train Sim World is not needed for joystick mode.
+        </p>
+
         <p :if={@mapping_error} role="alert" class="alert alert-error mt-5">{@mapping_error}</p>
 
-        <section class="mt-8">
-          <div class="flex items-center justify-between">
-            <h2 class="text-xl font-semibold">Axes</h2><button
+        <section class="mt-8" aria-labelledby="mappings-heading">
+          <div class="flex flex-wrap items-center justify-between gap-3">
+            <h2 id="mappings-heading" class="text-xl font-semibold">Mappings</h2>
+            <button
+              id="add-mapping"
+              data-testid="add-mapping"
+              phx-click="add-mapping"
+              aria-expanded={@show_mapping_choices}
+              aria-controls="mapping-kind-choices"
+              disabled={@transitioning}
+              class="btn btn-primary btn-sm"
+            >Add mapping</button>
+          </div>
+          <p id="mapping-capacity" class="mt-2 text-sm text-base-content/70">
+            {Enum.count(@mappings, &(&1.target_type == :axis))} of 8 axes · {Enum.count(
+              @mappings,
+              &(&1.target_type == :button)
+            )} of 32 buttons assigned
+          </p>
+          <div
+            :if={@show_mapping_choices}
+            id="mapping-kind-choices"
+            class="mt-4 flex flex-wrap items-center gap-2"
+          >
+            <span class="mr-1 text-sm">Map a hardware input to:</span>
+            <button
               data-testid="add-axis-mapping"
               phx-click="add-axis"
               disabled={@transitioning}
               class="btn btn-sm btn-outline"
-            >Add axis</button>
-          </div>
-          <div class="mt-3 divide-y divide-base-300 rounded-xl border border-base-300">
-            <div
-              :for={{axis, label} <- @axes}
-              data-testid={"axis-mapping-#{axis}"}
-              class="flex min-h-12 items-center justify-between gap-3 px-4 py-3"
-            >
-              <span class="font-medium">{label}</span><.mapping_value
-                mapping={find_axis(@mappings, axis)}
-                transitioning={@transitioning}
-              />
-            </div>
-          </div>
-        </section>
-
-        <section class="mt-8">
-          <div class="flex items-center justify-between">
-            <h2 class="text-xl font-semibold">Buttons</h2><button
+            >Axis</button>
+            <button
               data-testid="add-button-mapping"
               phx-click="add-button"
               disabled={@transitioning}
               class="btn btn-sm btn-outline"
-            >Add button</button>
+            >Button</button>
           </div>
-          <div class="mt-3 grid grid-cols-1 gap-px overflow-hidden rounded-xl border border-base-300 bg-base-300 sm:grid-cols-2">
-            <div
-              :for={number <- 1..32}
-              data-testid="button-target-option"
-              class="flex min-h-11 items-center justify-between bg-base-100 px-4 py-2"
-            >
-              <span>Button {number}</span><.mapping_value
-                mapping={find_button(@mappings, number)}
-                transitioning={@transitioning}
-              />
+          <p
+            :if={@mappings == [] and not @show_unused_targets}
+            class="mt-5 text-sm text-base-content/70"
+          >
+            No mappings yet. Add an axis for a lever or a button for a switch.
+          </p>
+
+          <div
+            :if={@show_unused_targets or Enum.any?(@mappings, &(&1.target_type == :axis))}
+            class="mt-5"
+          >
+            <h3 class="text-base font-semibold">Axes</h3>
+            <div class="mt-2 divide-y divide-base-300 rounded-xl border border-base-300">
+              <div
+                :for={{axis, label} <- @axes}
+                :if={@show_unused_targets or find_axis(@mappings, axis)}
+                data-testid={"axis-mapping-#{axis}"}
+                class="flex min-h-12 flex-wrap items-center justify-between gap-3 px-4 py-3"
+              >
+                <span class="font-medium">{label}</span>
+                <.mapping_value mapping={find_axis(@mappings, axis)} transitioning={@transitioning} />
+              </div>
             </div>
           </div>
+          <div
+            :if={@show_unused_targets or Enum.any?(@mappings, &(&1.target_type == :button))}
+            class="mt-5"
+          >
+            <h3 class="text-base font-semibold">Buttons</h3>
+            <div class="mt-2 divide-y divide-base-300 rounded-xl border border-base-300">
+              <div
+                :for={number <- 1..32}
+                :if={@show_unused_targets or find_button(@mappings, number)}
+                data-testid="button-target-option"
+                class="flex min-h-11 flex-wrap items-center justify-between gap-3 px-4 py-3"
+              >
+                <span>Button {number}</span>
+                <.mapping_value
+                  mapping={find_button(@mappings, number)}
+                  transitioning={@transitioning}
+                />
+              </div>
+            </div>
+          </div>
+          <button
+            id="toggle-target-inventory"
+            phx-click="toggle-target-inventory"
+            aria-expanded={@show_unused_targets}
+            class="btn btn-ghost btn-sm mt-4"
+          >
+            {if @show_unused_targets, do: "Hide unused targets", else: "Show unused targets"}
+          </button>
         </section>
       </div>
 
@@ -331,6 +398,10 @@ defmodule TreninoWeb.VirtualJoystickLive do
         inputs={compatible_inputs(@inputs, @mapping_kind)}
         mapping={@editing_mapping}
         preview={@preview}
+        preview_hint={preview_hint(@preview_source)}
+        return_focus_id={
+          if @editing_mapping, do: "edit-mapping-#{@editing_mapping.id}", else: "add-mapping"
+        }
         selected_input_id={selected_input_id(@preview_source)}
         transitioning={@transitioning}
       />
@@ -407,7 +478,7 @@ defmodule TreninoWeb.VirtualJoystickLive do
   defp mapping_value(assigns) do
     ~H"""
     <span :if={is_nil(@mapping)} class="text-sm text-base-content/50">Not assigned</span>
-    <span :if={@mapping} class="flex items-center gap-2 text-sm"><span>{@mapping.input.name ||
+    <span :if={@mapping} class="flex min-w-0 flex-wrap items-center gap-2 text-sm"><span class="break-words">{@mapping.input.name ||
       "Pin #{@mapping.input.pin}"}{if @mapping.inverted, do: " · Inverted"}</span><button
       id={"edit-mapping-#{@mapping.id}"}
       data-testid={"edit-mapping-#{@mapping.id}"}
@@ -435,6 +506,7 @@ defmodule TreninoWeb.VirtualJoystickLive do
       if mapping, do: mapping.input_id, else: inputs |> List.first() |> then(&(&1 && &1.id))
 
     socket
+    |> assign(:show_mapping_choices, false)
     |> assign(:mapping_kind, kind)
     |> assign(:editing_mapping, mapping)
     |> assign(:preview, nil)
@@ -471,8 +543,8 @@ defmodule TreninoWeb.VirtualJoystickLive do
 
   defp status_ui(:unsupported, _reason),
     do: %{
-      label: "Unavailable",
-      help: "Virtual joystick mode requires Windows 10 or 11.",
+      label: "Windows required to activate",
+      help: "Activation requires Windows 10 or 11. You can still configure mappings here.",
       toggle: nil,
       recovery: nil
     }
@@ -635,6 +707,17 @@ defmodule TreninoWeb.VirtualJoystickLive do
 
   defp preview_value(%{input_type: :button}, raw),
     do: if(raw == 0, do: "Released", else: "Pressed")
+
+  defp preview_hint(nil), do: "Choose a hardware input to preview it."
+
+  defp preview_hint(%{input: input, port: nil}),
+    do:
+      "Connect #{input.device.name} to preview this input. You can save the mapping while disconnected."
+
+  defp preview_hint(%{input: %{input_type: :analog, calibration: nil}}),
+    do: "Calibrate this input in its hardware configuration to preview the axis."
+
+  defp preview_hint(_source), do: "Move the control to preview it."
 
   defp selected_input_id(nil), do: nil
   defp selected_input_id(%{input: input}), do: input.id

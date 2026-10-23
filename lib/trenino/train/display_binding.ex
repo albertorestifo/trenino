@@ -16,6 +16,7 @@ defmodule Trenino.Train.DisplayBinding do
   import Ecto.Changeset
 
   alias Trenino.Hardware.I2cModule
+  alias Trenino.Train.DisplayFormatter
   alias Trenino.Train.Train
 
   @type t :: %__MODULE__{
@@ -53,6 +54,12 @@ defmodule Trenino.Train.DisplayBinding do
     |> validate_required([:train_id, :i2c_module_id, :endpoint, :format_string])
     |> validate_length(:name, max: 100)
     |> validate_length(:format_string, min: 1, max: 200)
+    |> validate_change(:format_string, fn :format_string, format ->
+      case DisplayFormatter.validate_format(format) do
+        :ok -> []
+        {:error, message} -> [format_string: message]
+      end
+    end)
     |> foreign_key_constraint(:train_id)
     |> foreign_key_constraint(:i2c_module_id)
     |> unique_constraint([:train_id, :i2c_module_id])

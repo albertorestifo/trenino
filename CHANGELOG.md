@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+Release target: **0.8.0**.
+
 ### Added
 
 - **Train Sim World 7 support** — automatically detect `CommAPIKey.txt` from the
@@ -23,13 +25,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- Setup pages now show actionable connection prerequisites, compact joystick mappings, accessible display dialogs, wider train identifiers, and navigation that remains available in narrow windows.
+- Display binding setup starts with the physical display and offers decimal-place controls before custom formatting.
+- Settings now saves and tests the simulator connection with inline results and platform-specific API-key instructions.
+- Updated advisory-affected Hex dependencies to compatible releases.
 - **Breaking HTTP and MCP train contract** — train payloads now expose a sorted `identifiers` array and no longer include the singular `identifier` field
 
 ### Fixed
 
+- Lever writes recover after failed tasks and pause after connection failures instead of retrying continuously.
+- Display settings retain edits during validation, including unchecked options.
+- Display-only hardware configurations can deploy without dummy inputs.
+- Display reconnection replays unchanged values; unsuccessful writes are no longer cached as delivered.
+- Invalid display precision is rejected before saving and cannot crash the preview.
+- MCP button-binding destination conflicts return a recoverable message.
+- Application and installer metadata consistently identify the upcoming release as 0.8.0.
 - Smooth lever movement no longer queues every jitter sample to Train Sim World. While a write is in flight, Trenino keeps only the latest value for that lever, so a slow simulator response cannot build up seconds of cab lag
 
-## [0.7.4] - unreleased
+## [0.7.4] - 2026-05-09
 
 ### Fixed
 
