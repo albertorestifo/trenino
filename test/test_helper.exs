@@ -1,6 +1,11 @@
 # Ensure the application is started before setting up test infrastructure
 {:ok, _} = Application.ensure_all_started(:trenino)
 
+# Discovery timers must not outlive the test that owns the UART stubs. Tests
+# exercising the real Connection start it under their ExUnit supervisor.
+# Stop the application child before installing Mimic's hardware guards.
+:ok = Supervisor.terminate_child(Trenino.Supervisor, Trenino.Serial.Connection)
+
 Code.require_file("support/fake_virtual_joystick.exs", __DIR__)
 
 Mimic.copy(Req, type_check: true)
