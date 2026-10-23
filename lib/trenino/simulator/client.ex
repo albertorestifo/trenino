@@ -59,7 +59,7 @@ defmodule Trenino.Simulator.Client do
         base_url: base_url,
         headers: [{"DTGCommKey", api_key}],
         # Enable connection pooling to avoid socket exhaustion during rapid requests
-        pool_timeout: 5_000,
+        finch: [pool_timeout: 5_000],
         receive_timeout: 10_000,
         # Reduce retry attempts and delays for faster failure detection
         retry: :transient,
@@ -87,7 +87,7 @@ defmodule Trenino.Simulator.Client do
     fast_req =
       Req.merge(client.req,
         receive_timeout: 1_000,
-        pool_timeout: 500,
+        finch: [pool_timeout: 500],
         max_retries: 0,
         retry: false
       )

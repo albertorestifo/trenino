@@ -52,7 +52,7 @@ lifecycle. See [Getting Started](docs/getting-started.md#windows-virtual-joystic
 
 Download the latest installer for your platform from the [Releases page](https://github.com/albertorestifo/trenino/releases):
 
-- **Windows**: NSIS installer (`.exe`) or MSI — the Visual C++ Redistributable is bundled, no separate install needed. Virtual joystick mode requires the NSIS `.exe`; the MSI does not run Trenino's vJoy install, ownership, or shared-driver uninstall hooks.
+- **Windows 10/11**: NSIS installer (`.exe`) or MSI — the Visual C++ Redistributable is bundled, no separate install needed. Virtual joystick mode requires the NSIS `.exe`; the MSI does not run Trenino's vJoy install, ownership, or shared-driver uninstall hooks.
 - **Linux**: AppImage (`.AppImage`) — download, mark as executable, and run
 
 macOS builds are not provided as pre-built releases. See the [Development Guide](docs/development.md#building-the-desktop-app) to build from source.

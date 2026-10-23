@@ -21,6 +21,7 @@ defmodule Trenino.Simulator.ClientTest do
 
       assert client.req.options.base_url == @base_url
       assert client.req.headers["dtgcommkey"] == [@api_key]
+      assert client.req.options.finch[:pool_timeout] == 5_000
     end
   end
 
@@ -38,7 +39,7 @@ defmodule Trenino.Simulator.ClientTest do
       fast = Client.with_fast_timeouts(client)
 
       assert fast.req.options.receive_timeout == 1_000
-      assert fast.req.options.pool_timeout == 500
+      assert fast.req.options.finch[:pool_timeout] == 500
       assert fast.req.options.max_retries == 0
       assert fast.req.options.retry == false
     end

@@ -372,30 +372,25 @@ defmodule Trenino.Firmware.UpdateCheckerTest do
         pid -> GenServer.stop(pid, :normal, 100)
       end
 
-      # Ensure Connection GenServer is running
-      case GenServer.whereis(Trenino.Serial.Connection) do
-        nil ->
-          {:ok, _pid} = start_supervised(Trenino.Serial.Connection)
-
-        _pid ->
-          :ok
-      end
+      # These notification tests supply device events directly. Keep serial
+      # discovery out of the async fixture and grant each checker this stub.
+      stub(Trenino.Serial.Connection, :connected_devices, fn -> [] end)
 
       :ok
     end
 
     test "get_update_status returns :no_update when no devices connected" do
+      assert Process.whereis(Trenino.Serial.Connection) == nil
+
       # Start with a known version but no devices
-      {:ok, _pid} =
-        start_supervised({UpdateChecker, [auto_check: false, initial_version: "2.0.0"]})
+      start_device_update_checker(auto_check: false, initial_version: "2.0.0")
 
       # Even if we have a latest version, no devices means no update needed
       assert UpdateChecker.get_update_status() == :no_update
     end
 
     test "does not broadcast update when no devices are connected" do
-      {:ok, _pid} =
-        start_supervised({UpdateChecker, [auto_check: false, min_check_interval_ms: 0]})
+      start_device_update_checker(auto_check: false, min_check_interval_ms: 0)
 
       UpdateChecker.subscribe()
 
@@ -411,8 +406,7 @@ defmodule Trenino.Firmware.UpdateCheckerTest do
     end
 
     test "broadcasts update when device connects with older firmware" do
-      {:ok, _pid} =
-        start_supervised({UpdateChecker, [auto_check: false, initial_version: "2.0.0"]})
+      start_device_update_checker(auto_check: false, initial_version: "2.0.0")
 
       UpdateChecker.subscribe()
 
@@ -425,8 +419,7 @@ defmodule Trenino.Firmware.UpdateCheckerTest do
     end
 
     test "does not broadcast when device has same or newer firmware" do
-      {:ok, _pid} =
-        start_supervised({UpdateChecker, [auto_check: false, initial_version: "1.0.0"]})
+      start_device_update_checker(auto_check: false, initial_version: "1.0.0")
 
       UpdateChecker.subscribe()
 
@@ -439,8 +432,7 @@ defmodule Trenino.Firmware.UpdateCheckerTest do
     end
 
     test "dismisses notification when device with older firmware disconnects" do
-      {:ok, _pid} =
-        start_supervised({UpdateChecker, [auto_check: false, initial_version: "2.0.0"]})
+      start_device_update_checker(auto_check: false, initial_version: "2.0.0")
 
       UpdateChecker.subscribe()
 
@@ -457,8 +449,7 @@ defmodule Trenino.Firmware.UpdateCheckerTest do
     end
 
     test "shows notification again when new device connects needing update" do
-      {:ok, _pid} =
-        start_supervised({UpdateChecker, [auto_check: false, initial_version: "2.0.0"]})
+      start_device_update_checker(auto_check: false, initial_version: "2.0.0")
 
       UpdateChecker.subscribe()
 
@@ -520,6 +511,12 @@ defmodule Trenino.Firmware.UpdateCheckerTest do
       assert version_needs_update?("1.0.0", "invalid")
       assert version_needs_update?("1.0", "2.0.0")
     end
+  end
+
+  defp start_device_update_checker(opts) do
+    pid = start_supervised!({UpdateChecker, opts})
+    allow(Trenino.Serial.Connection, self(), pid)
+    pid
   end
 
   # Helper to build a test device struct

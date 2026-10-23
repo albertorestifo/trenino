@@ -17,10 +17,8 @@ defmodule Trenino.Serial.Connection.PortTimeoutTest do
     # Prevent automatic discovery from interfering with our test
     stub(Circuits.UART, :enumerate, fn -> %{} end)
 
-    # Ensure the Connection GenServer is alive before each test
-    conn_pid = GenServer.whereis(Connection)
-    assert conn_pid != nil
-    assert Process.alive?(conn_pid)
+    # ExUnit stops this process and its discovery timers before the next test.
+    conn_pid = start_supervised!(Connection)
 
     %{conn_pid: conn_pid}
   end
@@ -94,16 +92,6 @@ defmodule Trenino.Serial.Connection.PortTimeoutTest do
   end
 
   describe "list_devices when Connection GenServer is blocked" do
-    # Previous tests (nav_hook, port_timeout) leave state in the GenServer.
-    # Wait for any cleanup tasks to finish (transitional → failed), then clear
-    # all failed ports so the blocking cast below is not ignored by should_connect?.
-    setup do
-      wait_for_no_transitional_ports()
-      GenServer.cast(Connection, :scan)
-      Connection.list_devices()
-      :ok
-    end
-
     test "returns empty list instead of crashing when GenServer is busy" do
       fake_pid = spawn(fn -> Process.sleep(:infinity) end)
 
@@ -132,10 +120,8 @@ defmodule Trenino.Serial.Connection.PortTimeoutTest do
       assert {:ok, devices} = result
       assert devices == []
 
-      # Kill and restart the blocked GenServer while stubs are still active,
-      # so the restarted GenServer uses stubbed enumerate (returns %{})
-      # instead of attempting real UART operations
-      kill_and_restart_connection(fake_pid)
+      stop_supervised!(Connection)
+      Process.exit(fake_pid, :kill)
     end
 
     test "connected_devices returns empty list when GenServer is busy" do
@@ -161,7 +147,8 @@ defmodule Trenino.Serial.Connection.PortTimeoutTest do
       assert {:ok, devices} = result
       assert devices == []
 
-      kill_and_restart_connection(fake_pid)
+      stop_supervised!(Connection)
+      Process.exit(fake_pid, :kill)
     end
   end
 
@@ -173,9 +160,7 @@ defmodule Trenino.Serial.Connection.PortTimeoutTest do
       fake_uart_pid = spawn(fn -> Process.sleep(:infinity) end)
 
       on_exit(fn ->
-        :ok = Supervisor.terminate_child(Trenino.Supervisor, Connection)
         if Process.alive?(fake_uart_pid), do: Process.exit(fake_uart_pid, :kill)
-        {:ok, _pid} = Supervisor.restart_child(Trenino.Supervisor, Connection)
       end)
 
       Circuits.UART
@@ -270,68 +255,6 @@ defmodule Trenino.Serial.Connection.PortTimeoutTest do
       # Port must NOT have been moved to :connected by the stale result
       if matching, do: assert(matching.status != :connected)
       assert Process.alive?(conn_pid)
-    end
-  end
-
-  # Poll until no port is in a transitional state (connecting/discovering/disconnecting).
-  # This ensures cleanup tasks from previous tests have fully completed before
-  # the blocking tests clear state and cast their own blocking connect.
-  defp wait_for_no_transitional_ports(attempts \\ 20) do
-    devices = Connection.list_devices()
-    transitional = [:connecting, :discovering, :disconnecting]
-
-    if attempts > 0 and Enum.any?(devices, &(&1.status in transitional)) do
-      Process.sleep(50)
-      wait_for_no_transitional_ports(attempts - 1)
-    end
-  end
-
-  # Kill the blocked Connection GenServer, clean up the fake UART process,
-  # and wait for the supervisor to restart a fresh, responsive GenServer.
-  # Must be called while Mimic stubs are still active so the restarted
-  # GenServer's initial discovery timer fires with stubbed enumerate.
-  defp kill_and_restart_connection(fake_pid) do
-    old_pid = GenServer.whereis(Connection)
-    Process.exit(fake_pid, :kill)
-
-    if old_pid do
-      Process.exit(old_pid, :kill)
-      wait_for_genserver_restart(old_pid)
-
-      # The restarted GenServer schedules discovery at 1 second.
-      # Wait for it to fire while stubs are still active, preventing
-      # real UART operations from blocking the GenServer after cleanup.
-      Process.sleep(1_200)
-
-      # Sync barrier to ensure the discovery has been fully processed
-      Connection.list_devices()
-    end
-  end
-
-  defp wait_for_genserver_restart(old_pid, attempts \\ 20) do
-    if attempts <= 0 do
-      raise "Connection GenServer did not restart in time"
-    end
-
-    case GenServer.whereis(Connection) do
-      nil ->
-        Process.sleep(50)
-        wait_for_genserver_restart(old_pid, attempts - 1)
-
-      ^old_pid ->
-        Process.sleep(50)
-        wait_for_genserver_restart(old_pid, attempts - 1)
-
-      _new_pid ->
-        # Verify it's responsive
-        try do
-          Connection.list_devices()
-          :ok
-        catch
-          :exit, _ ->
-            Process.sleep(50)
-            wait_for_genserver_restart(old_pid, attempts - 1)
-        end
     end
   end
 end

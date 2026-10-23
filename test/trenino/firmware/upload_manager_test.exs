@@ -15,6 +15,7 @@ defmodule Trenino.Firmware.UploadManagerTest do
 
   setup do
     stub(Circuits.UART, :enumerate, fn -> %{} end)
+    start_supervised!(Connection)
     stub(Trenino.Firmware.Avrdude, :executable_path, fn -> {:ok, "/fake/avrdude"} end)
     stub(Trenino.Firmware.Avrdude, :conf_path, fn -> {:error, :not_found} end)
     load_test_devices()

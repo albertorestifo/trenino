@@ -20,6 +20,7 @@ defmodule TreninoWeb.NavHookTest do
 
     # Prevent automatic discovery from interfering
     stub(Circuits.UART, :enumerate, fn -> %{} end)
+    start_supervised!(Connection)
 
     :ok
   end
