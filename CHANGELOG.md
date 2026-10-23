@@ -29,6 +29,7 @@ Release target: **0.8.0**.
 - Display binding setup starts with the physical display and offers decimal-place controls before custom formatting.
 - Settings now saves and tests the simulator connection with inline results and platform-specific API-key instructions.
 - Updated advisory-affected Hex dependencies to compatible releases.
+- Updated the Tauri stack, Req, Sentry and Burrito; aligned local/CI Zig to 0.16.0 and migrated Req pool timeout configuration. Windows desktop builds now require Windows 10 or 11.
 - **Breaking HTTP and MCP train contract** — train payloads now expose a sorted `identifiers` array and no longer include the singular `identifier` field
 
 ### Fixed

@@ -230,8 +230,9 @@ defmodule Trenino.VirtualJoystick.ManagerTest do
     Agent.update(agent, &%{&1 | requested?: true, device_status: :compatible})
     pid = start_manager()
     assert eventually(fn -> Manager.status(pid) == :active end)
+    Trenino.VirtualJoystick.subscribe()
     assert :ok = Manager.disable(pid)
-    assert Manager.status(pid) == :disabling
+    assert_receive {:virtual_joystick_status_changed, :disabling}
     assert_receive {:bridge_command, bridge, :reset}
     assert_receive {:bridge_command, ^bridge, :shutdown}
     assert_receive :delete_called
