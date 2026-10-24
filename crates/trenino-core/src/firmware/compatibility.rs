@@ -73,9 +73,6 @@ impl FirmwareVersion {
         !self.pre.is_empty()
     }
 
-    fn same_core(&self, other: &Self) -> bool {
-        (self.major, self.minor, self.patch) == (other.major, other.minor, other.patch)
-    }
 }
 
 fn parse_number(value: &str) -> Result<u64, RequirementError> {
@@ -118,9 +115,15 @@ impl PartialOrd for FirmwareVersion {
 }
 
 #[derive(Clone, Debug)]
-struct Bound {
-    op: Op,
-    version: FirmwareVersion,
+enum Bound {
+    Compare { op: Op, version: FirmwareVersion },
+    /// Pessimistic `~>` range. The upper bound is the Elixir translation
+    /// `{major+1 | minor+1, 0, 0, pre: [0]}`, which also excludes prereleases
+    /// of the upper-bound core version.
+    Pessimistic {
+        lower: FirmwareVersion,
+        upper: FirmwareVersion,
+    },
 }
 #[derive(Clone, Copy, Debug)]
 enum Op {
@@ -196,10 +199,9 @@ impl FirmwareRequirement {
                 };
                 let (version, supplied) = parse_requirement_version(version_text, op_text == "~>")?;
                 if op_text == "~>" {
-                    bounds.push(Bound {
-                        op: Op::Ge,
-                        version: version.clone(),
-                    });
+                    // Elixir translates `~> x.y` to `>= x.y.0 and < {x+1}.0.0-0`
+                    // and `~> x.y.z` to `>= x.y.z and < x.{y+1}.0-0`: the upper
+                    // bound is a prerelease of the next core version.
                     let upper = if supplied <= 2 {
                         let major = version
                             .major
@@ -209,7 +211,7 @@ impl FirmwareRequirement {
                             major,
                             minor: 0,
                             patch: 0,
-                            pre: vec![],
+                            pre: vec![Identifier::Numeric(0)],
                         }
                     } else {
                         let minor = version
@@ -220,12 +222,12 @@ impl FirmwareRequirement {
                             major: version.major,
                             minor,
                             patch: 0,
-                            pre: vec![],
+                            pre: vec![Identifier::Numeric(0)],
                         }
                     };
-                    bounds.push(Bound {
-                        op: Op::Lt,
-                        version: upper,
+                    bounds.push(Bound::Pessimistic {
+                        lower: version,
+                        upper,
                     });
                 } else {
                     let op = match op_text {
@@ -236,7 +238,7 @@ impl FirmwareRequirement {
                         "<=" => Op::Le,
                         _ => unreachable!(),
                     };
-                    bounds.push(Bound { op, version });
+                    bounds.push(Bound::Compare { op, version });
                 }
             }
             if bounds.is_empty() {
@@ -249,6 +251,13 @@ impl FirmwareRequirement {
             any: false,
         })
     }
+    /// Matches with the legacy application's policy:
+    /// `Version.match?(version, requirement, allow_pre: false)`.
+    ///
+    /// Prerelease admission is per operator, exactly as in the Elixir oracle:
+    /// `>`, `>=` and `~>` admit a prerelease candidate only when the
+    /// requirement operand is itself a prerelease, while `<`, `<=` and `==`
+    /// are plain comparisons that a below-bound prerelease can satisfy.
     pub fn matches(&self, input: &str) -> bool {
         let Ok(version) = FirmwareVersion::parse(input) else {
             return false;
@@ -257,21 +266,29 @@ impl FirmwareRequirement {
             return true;
         }
         self.alternatives.iter().any(|group| {
-            let prerelease_is_admitted = !version.is_prerelease()
-                || group.iter().any(|bound| bound.version.same_core(&version));
-            prerelease_is_admitted
-                && group.iter().all(|bound| {
-                    let ord = version.cmp(&bound.version);
-                    match bound.op {
+            group.iter().all(|bound| match bound {
+                Bound::Compare { op, version: spec } => {
+                    let ord = version.cmp(spec);
+                    match op {
                         Op::Eq => ord == Ordering::Equal,
-                        Op::Gt => ord == Ordering::Greater,
-                        Op::Ge => ord != Ordering::Less,
+                        Op::Gt => ord == Ordering::Greater && admits_prerelease(&version, spec),
+                        Op::Ge => ord != Ordering::Less && admits_prerelease(&version, spec),
                         Op::Lt => ord == Ordering::Less,
                         Op::Le => ord != Ordering::Greater,
                     }
-                })
+                }
+                Bound::Pessimistic { lower, upper } => {
+                    version.cmp(lower) != Ordering::Less
+                        && version.cmp(upper) == Ordering::Less
+                        && admits_prerelease(&version, lower)
+                }
+            })
         })
     }
+}
+
+fn admits_prerelease(candidate: &FirmwareVersion, bound: &FirmwareVersion) -> bool {
+    !candidate.is_prerelease() || bound.is_prerelease()
 }
 
 fn parse_requirement_version(
@@ -281,15 +298,18 @@ fn parse_requirement_version(
     if input.starts_with('v') {
         return Err(RequirementError::UnsupportedSyntax);
     }
-    let value = input;
-    let core = value.split(['-', '+']).next().unwrap_or(value);
+    let core = input.split(['-', '+']).next().unwrap_or(input);
     let count = core.split('.').count();
     if (allow_partial && !(2..=3).contains(&count)) || (!allow_partial && count != 3) {
         return Err(RequirementError::InvalidRequirement);
     }
-    let complete = match count {
-        2 if allow_partial => format!("{value}.0"),
-        _ => value.to_owned(),
+    let complete = if count == 2 && allow_partial {
+        // Complete the missing patch component inside the core version and
+        // reattach any prerelease/build suffix: `1.2-rc.1` -> `1.2.0-rc.1`.
+        let suffix = &input[core.len()..];
+        format!("{core}.0{suffix}")
+    } else {
+        input.to_owned()
     };
     Ok((FirmwareVersion::parse(&complete)?, count))
 }

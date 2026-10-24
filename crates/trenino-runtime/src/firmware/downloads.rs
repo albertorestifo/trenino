@@ -120,7 +120,34 @@ impl FirmwareDownloader {
             app_dir.join("priv").join("firmware_cache")
         }
     }
+    /// Immutable cache path bound to the selected remote asset.
+    ///
+    /// The file name extends the legacy `v{version}_{environment-or-board}.hex`
+    /// convention with a key derived from the asset provenance, so two pinned
+    /// selections that share a version/environment but differ in remote asset
+    /// never share a mutable destination: publishing one leaves the bytes the
+    /// other already received untouched.
     pub fn cache_path(&self, selection: &FirmwareSelection) -> Result<PathBuf, DownloadError> {
+        let (version, identifier) = self.validated_cache_stem(selection)?;
+        let key = asset_key(selection);
+        Ok(self
+            .cache_dir
+            .join(format!("v{version}_{identifier}.{key}.hex")))
+    }
+    /// Legacy `v{version}_{environment-or-board}.hex` location. Files written
+    /// by the legacy Elixir downloader (or the receipt-based Rust scheme that
+    /// preceded asset-bound paths) live here and are only ever read, never
+    /// replaced, so results returned for them stay immutable.
+    fn legacy_cache_path(&self, selection: &FirmwareSelection) -> Result<PathBuf, DownloadError> {
+        let (version, identifier) = self.validated_cache_stem(selection)?;
+        Ok(self
+            .cache_dir
+            .join(format!("v{version}_{identifier}.hex")))
+    }
+    fn validated_cache_stem(
+        &self,
+        selection: &FirmwareSelection,
+    ) -> Result<(String, String), DownloadError> {
         let asset = selection
             .device
             .asset
@@ -133,9 +160,7 @@ impl FirmwareDownloader {
         {
             return Err(DownloadError::InvalidPath);
         }
-        Ok(self
-            .cache_dir
-            .join(format!("v{}_{}.hex", selection.version, identifier)))
+        Ok((selection.version.clone(), identifier.to_owned()))
     }
     pub async fn download(
         &self,
@@ -156,20 +181,32 @@ impl FirmwareDownloader {
                 .clone()
         };
         let _same_asset = lock.lock().await;
-        if valid_cache(&destination, asset.size, self.max_bytes) {
-            let receipt_file = receipt_path(&destination);
-            if receipt_matches(&receipt_file, selection) {
+        if valid_cache(&destination, asset.size, self.max_bytes)
+            && receipt_matches(&receipt_path(&destination), selection)
+        {
+            return Ok(DownloadResult {
+                path: destination,
+                provenance: CacheProvenance::ReceiptMatched,
+            });
+        }
+        // Legacy destinations are only read, never replaced, so they keep
+        // satisfying every selection that already received them.
+        if let Ok(legacy) = self.legacy_cache_path(selection) {
+            if valid_cache(&legacy, asset.size, self.max_bytes)
+                && receipt_matches(&receipt_path(&legacy), selection)
+            {
                 return Ok(DownloadResult {
-                    path: destination,
+                    path: legacy,
                     provenance: CacheProvenance::ReceiptMatched,
                 });
             }
-            if !receipt_file.exists()
+            if valid_cache(&legacy, asset.size, self.max_bytes)
+                && !receipt_path(&legacy).exists()
                 && self.legacy_policy == LegacyCachePolicy::AllowUnverifiedMatchingPath
                 && is_unambiguous_legacy_cache(selection, asset.size)
             {
                 return Ok(DownloadResult {
-                    path: destination,
+                    path: legacy,
                     provenance: CacheProvenance::LegacyUnverified,
                 });
             }
@@ -230,6 +267,12 @@ impl FirmwareDownloader {
             .sync_all()
             .map_err(|_| DownloadError::CacheIo)?;
         drop(receipt_file);
+        // Publication replaces the data first and the receipt second. Both
+        // live at an asset-bound destination, so a receipt-replacement failure
+        // can only leave the previous receipt of this very identity beside
+        // freshly fetched bytes of the same identity — never another asset's
+        // receipt over these bytes, and never a valid receipt over missing
+        // bytes (an unpublished first download simply re-downloads).
         atomic_replace(cleanup.path(), &destination)?;
         cleanup.disarm();
         atomic_replace(receipt_cleanup.path(), &receipt_path(&destination))?;
@@ -286,6 +329,30 @@ fn receipt_path(path: &Path) -> PathBuf {
     let mut name = path.file_name().unwrap_or_default().to_os_string();
     name.push(".trenino-meta.json");
     path.with_file_name(name)
+}
+/// Stable key for the selected asset's provenance (the same fields a cache
+/// receipt certifies). Deterministic across runs so an offline downloader
+/// instance resolves the same immutable cache entry.
+fn asset_key(selection: &FirmwareSelection) -> String {
+    let receipt = cache_receipt(selection);
+    let github_asset_id = receipt
+        .github_asset_id
+        .map_or_else(|| "-".into(), |id| id.to_string());
+    let size = receipt
+        .size
+        .map_or_else(|| "-".into(), |size| size.to_string());
+    let identity = format!(
+        "{}\u{1f}{}\u{1f}{}\u{1f}{}\u{1f}{}",
+        receipt.release_id, github_asset_id, receipt.download_url, receipt.filename, size
+    );
+    format!("{:016x}", fnv1a64(identity.as_bytes()))
+}
+/// FNV-1a 64-bit: a small, fixed, dependency-free digest that is stable
+/// across processes, platforms and releases — unlike `DefaultHasher`.
+fn fnv1a64(bytes: &[u8]) -> u64 {
+    bytes.iter().fold(0xcbf2_9ce4_8422_2325, |hash, byte| {
+        (hash ^ u64::from(*byte)).wrapping_mul(0x0000_0100_0000_01b3)
+    })
 }
 fn cache_receipt(selection: &FirmwareSelection) -> CacheReceipt {
     let asset = selection

@@ -121,6 +121,16 @@ fn one_redirect(location: String) -> Url {
     });
     Url::parse(&format!("http://{addr}/redirect")).unwrap()
 }
+/// Rejected redirect target that keeps the counting listener's full
+/// host-and-port authority while adding disallowed userinfo, so a zero-hit
+/// assertion proves the boundary blocked the real listener, not some other
+/// port.
+fn disallowed_with_userinfo(target: &Url) -> String {
+    let mut disallowed = target.clone();
+    disallowed.set_username("user").unwrap();
+    disallowed.set_password(Some("pass")).unwrap();
+    disallowed.to_string()
+}
 fn counted_http(body: &'static str) -> (Url, Arc<std::sync::atomic::AtomicUsize>) {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let addr = listener.local_addr().unwrap();
@@ -131,14 +141,30 @@ fn counted_http(body: &'static str) -> (Url, Arc<std::sync::atomic::AtomicUsize>
         for _ in 0..200 {
             if let Ok((mut stream, _)) = listener.accept() {
                 count.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-                let mut request = [0u8; 512];
-                let _ = stream.read(&mut request);
+                // Drain the request and close cleanly so concurrent clients
+                // never observe a reset racing the response bytes.
+                stream.set_nonblocking(false).unwrap();
+                let mut request = Vec::new();
+                let mut chunk = [0u8; 512];
+                while let Ok(n) = stream.read(&mut chunk) {
+                    if n == 0 {
+                        break;
+                    }
+                    request.extend_from_slice(&chunk[..n]);
+                    if request.windows(4).any(|window| window == b"\r\n\r\n") {
+                        break;
+                    }
+                }
                 write!(
                     stream,
                     "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
                     body.len()
                 )
                 .unwrap();
+                stream.flush().unwrap();
+                let _ = stream.shutdown(std::net::Shutdown::Write);
+                let mut drain = [0u8; 512];
+                while matches!(stream.read(&mut drain), Ok(n) if n > 0) {}
                 break;
             }
             thread::sleep(Duration::from_millis(1));
@@ -389,7 +415,7 @@ async fn downloader_publishes_only_complete_files_and_reuses_offline_cache() {
 }
 
 #[tokio::test]
-async fn same_cache_path_with_changed_remote_asset_id_does_not_reuse_old_bytes() {
+async fn downloading_a_replacement_asset_never_mutates_a_previously_returned_path() {
     let tmp = TempDir::new().unwrap();
     let first = selection(
         "1.2.3",
@@ -398,17 +424,73 @@ async fn same_cache_path_with_changed_remote_asset_id_does_not_reuse_old_bytes()
         Some(4),
     );
     let downloader = FirmwareDownloader::new(http_client(), tmp.path(), 1024, 2);
-    let first_path = downloader.download(&first).await.unwrap().path;
+    let first_result = downloader.download(&first).await.unwrap();
     let mut replacement = first.clone();
     replacement.device.asset.as_mut().unwrap().github_asset_id = Some(23);
     replacement.device.asset.as_mut().unwrap().download_url = fake_http(vec![(200, "NEW!".into())]);
-    let second_path = downloader.download(&replacement).await.unwrap().path;
-    assert_eq!(second_path, first_path);
-    assert_eq!(std::fs::read(second_path).unwrap(), b"NEW!");
+    let replacement_result = downloader.download(&replacement).await.unwrap();
+    // Different remote assets get distinct immutable destinations even for the
+    // same version/environment: consuming the retained first result after the
+    // replacement completes still yields the first asset's bytes.
+    assert_ne!(replacement_result.path, first_result.path);
+    assert_eq!(std::fs::read(&first_result.path).unwrap(), b"OLD!");
+    assert_eq!(std::fs::read(&replacement_result.path).unwrap(), b"NEW!");
+    // The first asset's association still reuses its own bytes offline.
+    let offline = FirmwareDownloader::new(http_client(), tmp.path(), 1024, 2);
+    let cached = offline.download(&first).await.unwrap();
+    assert_eq!(cached.path, first_result.path);
+    assert_eq!(
+        cached.provenance,
+        trenino_runtime::firmware::CacheProvenance::ReceiptMatched
+    );
+    assert_eq!(std::fs::read(&cached.path).unwrap(), b"OLD!");
 }
 
 #[tokio::test]
-async fn concurrent_different_assets_for_one_final_path_are_serialized_and_each_fetched() {
+async fn failed_receipt_publication_never_falsely_certifies_cache_bytes() {
+    let tmp = TempDir::new().unwrap();
+    let selected = selection(
+        "1.2.3",
+        "uno",
+        fake_http(vec![(200, "AAAA".into()), (200, "AAAA".into())]),
+        Some(4),
+    );
+    let downloader = FirmwareDownloader::new(http_client(), tmp.path(), 1024, 1);
+    let destination = downloader.cache_path(&selected).unwrap();
+    let file_name = destination.file_name().unwrap().to_str().unwrap().to_owned();
+    let receipt = destination.with_file_name(format!("{file_name}.trenino-meta.json"));
+    // A directory squatting the receipt name makes the receipt replacement
+    // fail deterministically on every platform (rename never replaces a
+    // directory), like a held Windows share-mode handle on the receipt file.
+    std::fs::create_dir(&receipt).unwrap();
+    assert_eq!(
+        downloader.download(&selected).await.unwrap_err(),
+        trenino_runtime::firmware::DownloadError::CacheIo
+    );
+    // The data file was published, but no readable receipt certifies it, so a
+    // retry must not report a receipt hit for those bytes.
+    assert!(std::fs::read(&destination).is_ok());
+    assert!(serde_json::from_slice::<serde_json::Value>(
+        &std::fs::read(&receipt).unwrap_or_default()
+    )
+    .is_err());
+    assert!(downloader.download(&selected).await.is_err());
+    // A different asset publishes independently and never touches the failed
+    // destination, and no owned partial files are left behind.
+    let mut other = selected.clone();
+    other.device.asset.as_mut().unwrap().github_asset_id = Some(99);
+    other.device.asset.as_mut().unwrap().download_url = fake_http(vec![(200, "BBBB".into())]);
+    let other_result = downloader.download(&other).await.unwrap();
+    assert_eq!(std::fs::read(&other_result.path).unwrap(), b"BBBB");
+    assert_eq!(std::fs::read(&destination).unwrap(), b"AAAA");
+    assert!(std::fs::read_dir(tmp.path())
+        .unwrap()
+        .filter_map(Result::ok)
+        .all(|entry| !entry.file_name().to_string_lossy().contains(".partial")));
+}
+
+#[tokio::test]
+async fn concurrent_different_assets_for_one_environment_are_each_fetched_once() {
     let tmp = TempDir::new().unwrap();
     let (url_a, hits_a) = counted_http("AAAA");
     let (url_b, hits_b) = counted_http("BBBB");
@@ -424,14 +506,20 @@ async fn concurrent_different_assets_for_one_final_path_are_serialized_and_each_
     let (a, b) = tokio::join!(async move { d1.download(&s1).await }, async move {
         d2.download(&s2).await
     });
+    let a = a.unwrap();
+    let b = b.unwrap();
+    // Each pinned asset resolves its own immutable destination and bytes.
     assert_eq!(
-        a.unwrap().provenance,
+        a.provenance,
         trenino_runtime::firmware::CacheProvenance::Downloaded
     );
     assert_eq!(
-        b.unwrap().provenance,
+        b.provenance,
         trenino_runtime::firmware::CacheProvenance::Downloaded
     );
+    assert_ne!(a.path, b.path);
+    assert_eq!(std::fs::read(&a.path).unwrap(), b"AAAA");
+    assert_eq!(std::fs::read(&b.path).unwrap(), b"BBBB");
     assert_eq!(hits_a.load(std::sync::atomic::Ordering::SeqCst), 1);
     assert_eq!(hits_b.load(std::sync::atomic::Ordering::SeqCst), 1);
 }
@@ -592,20 +680,14 @@ async fn downloader_rejects_non_loopback_http_urls() {
 async fn firmware_http_boundary_blocks_disallowed_redirect_hops_and_bounds_chains() {
     let client = FirmwareHttpClient::new(Duration::from_secs(1)).unwrap();
     let (target, hits) = counted_http("unsafe");
-    let blocked = one_redirect(format!(
-        "http://user:pass@{}/target",
-        target.host_str().unwrap()
-    ));
+    let blocked = one_redirect(disallowed_with_userinfo(&target));
     assert!(client.get(&blocked).unwrap().send().await.is_err());
     tokio::time::sleep(Duration::from_millis(20)).await;
     assert_eq!(hits.load(std::sync::atomic::Ordering::SeqCst), 0);
 
     let tmp = TempDir::new().unwrap();
     let (download_target, download_hits) = counted_http("unsafe");
-    let download_redirect = one_redirect(format!(
-        "http://user:pass@{}/target",
-        download_target.host_str().unwrap()
-    ));
+    let download_redirect = one_redirect(disallowed_with_userinfo(&download_target));
     let selected = selection("1.2.3", "uno", download_redirect, Some(4));
     let downloader = FirmwareDownloader::new(client.clone(), tmp.path(), 1024, 1);
     assert!(downloader.download(&selected).await.is_err());
@@ -664,15 +746,19 @@ fn cache_path_prefers_environment_and_falls_back_to_board_type() {
     );
     selected.device.asset.as_mut().unwrap().board_type = "legacy_board".into();
     let downloader = FirmwareDownloader::new(http_client(), tmp.path(), 1024, 1);
-    assert!(downloader
-        .cache_path(&selected)
-        .unwrap()
-        .ends_with("v1.2.3_uno.hex"));
+    let named = |path: std::path::PathBuf| path.file_name().unwrap().to_str().unwrap().to_owned();
+    // Asset-bound names extend the legacy stem with a provenance key.
+    let environment_name = named(downloader.cache_path(&selected).unwrap());
+    let key = environment_name
+        .strip_prefix("v1.2.3_uno.")
+        .and_then(|stem| stem.strip_suffix(".hex"))
+        .unwrap();
+    assert_eq!(key.len(), 16);
+    assert!(key.bytes().all(|byte| byte.is_ascii_hexdigit()));
     selected.device.asset.as_mut().unwrap().environment = None;
-    assert!(downloader
-        .cache_path(&selected)
-        .unwrap()
-        .ends_with("v1.2.3_legacy_board.hex"));
+    let board_name = named(downloader.cache_path(&selected).unwrap());
+    assert!(board_name.starts_with("v1.2.3_legacy_board."));
+    assert!(board_name.ends_with(".hex"));
     let build_version = selection(
         "1.2.3+build.1",
         "uno",
@@ -680,6 +766,13 @@ fn cache_path_prefers_environment_and_falls_back_to_board_type() {
         Some(4),
     );
     assert!(downloader.cache_path(&build_version).is_ok());
+    // Two remote assets for one environment resolve distinct destinations.
+    let mut other = selected.clone();
+    other.device.asset.as_mut().unwrap().github_asset_id = Some(99);
+    assert_ne!(
+        downloader.cache_path(&selected).unwrap(),
+        downloader.cache_path(&other).unwrap()
+    );
 }
 
 #[test]
