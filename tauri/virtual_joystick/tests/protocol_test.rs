@@ -21,9 +21,12 @@ struct FakeState {
     enabled: Result<bool, VJoyError>,
     status: Result<DeviceStatus, VJoyError>,
     axis_range: Result<AxisRange, VJoyError>,
+    axis_range_override: Option<(Axis, AxisRange)>,
     update_error: Option<VJoyError>,
     acquire_calls: usize,
+    acquired_devices: Vec<u8>,
     relinquish_calls: usize,
+    relinquished_devices: Vec<u8>,
     reports: Vec<Report>,
 }
 
@@ -34,9 +37,12 @@ impl Default for FakeVJoy {
                 enabled: Ok(true),
                 status: Ok(DeviceStatus::Free),
                 axis_range: Ok(RANGE),
+                axis_range_override: None,
                 update_error: None,
                 acquire_calls: 0,
+                acquired_devices: Vec::new(),
                 relinquish_calls: 0,
+                relinquished_devices: Vec::new(),
                 reports: Vec::new(),
             })),
         }
@@ -52,13 +58,21 @@ impl VJoy for FakeVJoy {
         self.state.borrow().status.clone()
     }
 
-    fn acquire(&mut self, _device: u8) -> Result<(), VJoyError> {
-        self.state.borrow_mut().acquire_calls += 1;
+    fn acquire(&mut self, device: u8) -> Result<(), VJoyError> {
+        let mut state = self.state.borrow_mut();
+        state.acquire_calls += 1;
+        state.acquired_devices.push(device);
         Ok(())
     }
 
-    fn axis_range(&mut self, _device: u8, _axis: Axis) -> Result<AxisRange, VJoyError> {
-        self.state.borrow().axis_range.clone()
+    fn axis_range(&mut self, _device: u8, axis: Axis) -> Result<AxisRange, VJoyError> {
+        let state = self.state.borrow();
+        if let Some((override_axis, range)) = state.axis_range_override {
+            if axis == override_axis {
+                return Ok(range);
+            }
+        }
+        state.axis_range.clone()
     }
 
     fn update(&mut self, _device: u8, report: &Report) -> Result<(), VJoyError> {
@@ -70,8 +84,10 @@ impl VJoy for FakeVJoy {
         Ok(())
     }
 
-    fn relinquish(&mut self, _device: u8) {
-        self.state.borrow_mut().relinquish_calls += 1;
+    fn relinquish(&mut self, device: u8) {
+        let mut state = self.state.borrow_mut();
+        state.relinquish_calls += 1;
+        state.relinquished_devices.push(device);
     }
 }
 
@@ -92,7 +108,10 @@ fn ready_session() -> (Session<FakeVJoy>, Rc<RefCell<FakeState>>) {
 fn deserializes_each_supported_command() {
     assert_eq!(
         parse_command(r#"{"command":"hello","protocol":1}"#, None).unwrap(),
-        Command::Hello { protocol: 1 }
+        Command::Hello {
+            protocol: 1,
+            device: None,
+        }
     );
     assert_eq!(
         parse_command(
@@ -138,11 +157,197 @@ fn deserializes_each_supported_command() {
 }
 
 #[test]
+fn hello_selects_a_valid_device_and_legacy_hello_defaults_to_device_one() {
+    let fake = FakeVJoy::default();
+    let state = fake.state.clone();
+    let mut selected = Session::new(fake);
+    assert_eq!(
+        selected
+            .handle_line(r#"{"command":"hello","protocol":1,"device":7}"#)
+            .response,
+        Response::Ready {
+            protocol: PROTOCOL_VERSION,
+            device: 7,
+            axis_min: RANGE.min,
+            axis_max: RANGE.max,
+        }
+    );
+    assert_eq!(state.borrow().acquired_devices, [7]);
+
+    let response = selected
+        .handle_line(r#"{"command":"set_axis","request_id":1,"device":7,"axis":"x","value":123}"#)
+        .response;
+    assert_eq!(response, Response::Applied { request_id: 1 });
+    assert_eq!(state.borrow().reports.last().unwrap().axis(Axis::X), 123);
+
+    assert!(matches!(
+        selected
+            .handle_line(
+                r#"{"command":"set_axis","request_id":2,"device":1,"axis":"x","value":123}"#
+            )
+            .response,
+        Response::InvalidCommand { .. }
+    ));
+
+    let mut legacy = Session::new(FakeVJoy::default());
+    assert_eq!(
+        legacy
+            .handle_line(r#"{"command":"hello","protocol":1}"#)
+            .response,
+        Response::Ready {
+            protocol: PROTOCOL_VERSION,
+            device: 1,
+            axis_min: RANGE.min,
+            axis_max: RANGE.max,
+        }
+    );
+}
+
+#[test]
+fn busy_selected_device_is_not_acquired() {
+    let fake = FakeVJoy::default();
+    fake.state.borrow_mut().status = Ok(DeviceStatus::Busy);
+    let state = fake.state.clone();
+    let mut session = Session::new(fake);
+
+    assert_eq!(
+        session
+            .handle_line(r#"{"command":"hello","protocol":1,"device":12}"#)
+            .response,
+        Response::DeviceBusy { device: 12 }
+    );
+    assert!(state.borrow().acquired_devices.is_empty());
+}
+
+#[test]
+fn device_selection_rejects_zero_and_ids_above_sixteen() {
+    for device in [0, 17] {
+        let mut session = Session::new(FakeVJoy::default());
+        let response = session
+            .handle_line(&format!(
+                r#"{{"command":"hello","protocol":1,"device":{device}}}"#
+            ))
+            .response;
+
+        assert!(matches!(
+            response,
+            Response::InvalidCommand {
+                code: "invalid_command",
+                ..
+            }
+        ));
+    }
+}
+
+#[test]
+fn each_successful_hello_sends_an_initial_neutral_report() {
+    let fake = FakeVJoy::default();
+    let state = fake.state.clone();
+    let mut session = Session::new(fake);
+
+    assert!(matches!(
+        session
+            .handle_line(r#"{"command":"hello","protocol":1,"device":9}"#)
+            .response,
+        Response::Ready { device: 9, .. }
+    ));
+
+    let state = state.borrow();
+    assert_eq!(state.reports.len(), 1);
+    assert!(Axis::ALL
+        .iter()
+        .all(|axis| state.reports[0].axis(*axis) == 16_383));
+    assert!((1..=32).all(|button| !state.reports[0].button(button)));
+}
+
+#[test]
+fn inconsistent_axis_ranges_relinquish_the_selected_device() {
+    let fake = FakeVJoy::default();
+    fake.state.borrow_mut().axis_range_override = Some((
+        Axis::Slider2,
+        AxisRange {
+            min: 0,
+            max: 65_535,
+        },
+    ));
+    let state = fake.state.clone();
+    let mut session = Session::new(fake);
+
+    assert!(matches!(
+        session
+            .handle_line(r#"{"command":"hello","protocol":1,"device":8}"#)
+            .response,
+        Response::Error {
+            code: "sdk_error",
+            ..
+        }
+    ));
+    assert_eq!(state.borrow().relinquished_devices, [8]);
+}
+
+#[test]
+fn failed_initial_neutral_report_relinquishes_the_selected_device() {
+    let fake = FakeVJoy::default();
+    fake.state.borrow_mut().update_error = Some(VJoyError::Sdk {
+        operation: "UpdateVJD",
+        message: "call returned false".into(),
+    });
+    let state = fake.state.clone();
+    let mut session = Session::new(fake);
+
+    assert!(matches!(
+        session
+            .handle_line(r#"{"command":"hello","protocol":1,"device":5}"#)
+            .response,
+        Response::Error {
+            code: "sdk_error",
+            ..
+        }
+    ));
+    assert_eq!(state.borrow().relinquished_devices, [5]);
+}
+
+#[test]
+fn eof_relinquishes_the_acquired_device() {
+    let fake = FakeVJoy::default();
+    let state = fake.state.clone();
+    let input = Cursor::new(b"{\"command\":\"hello\",\"protocol\":1,\"device\":11}\n".to_vec());
+    let mut output = FlushCountingWriter::default();
+
+    serve(input, &mut output, fake).unwrap();
+
+    assert_eq!(state.borrow().relinquished_devices, [11]);
+}
+
+#[test]
+fn a_ready_session_cannot_switch_its_selected_device() {
+    let mut session = Session::new(FakeVJoy::default());
+    session.handle_line(r#"{"command":"hello","protocol":1,"device":3}"#);
+
+    assert!(matches!(
+        session
+            .handle_line(r#"{"command":"hello","protocol":1,"device":4}"#)
+            .response,
+        Response::InvalidCommand { .. }
+    ));
+}
+
+#[test]
+fn centered_report_midpoint_handles_the_full_signed_range() {
+    let report = Report::centered(AxisRange {
+        min: i32::MIN,
+        max: i32::MAX,
+    });
+
+    assert_eq!(report.axis(Axis::X), -1);
+}
+
+#[test]
 fn rejects_unsupported_protocol_device_axis_button_and_value() {
     let invalid = [
         (r#"{"command":"hello","protocol":2}"#, None),
         (
-            r#"{"command":"set_axis","request_id":1,"device":2,"axis":"x","value":1}"#,
+            r#"{"command":"set_axis","request_id":1,"device":17,"axis":"x","value":1}"#,
             Some(RANGE),
         ),
         (
@@ -205,8 +410,8 @@ fn preserves_the_complete_report_across_individual_updates() {
         .handle_line(r#"{"command":"set_axis","request_id":3,"device":1,"axis":"y","value":2000}"#);
 
     let state = state.borrow();
-    assert_eq!(state.reports.len(), 3);
-    let third = &state.reports[2];
+    assert_eq!(state.reports.len(), 4);
+    let third = &state.reports[3];
     assert_eq!(third.axis(Axis::X), 1000);
     assert_eq!(third.axis(Axis::Y), 2000);
     assert!(third.button(4));
@@ -321,6 +526,56 @@ fn device_removal_is_translated_and_keeps_the_request_id() {
             request_id: Some(77),
         }
     );
+    assert_eq!(state.borrow().relinquished_devices, [1]);
+    assert_eq!(
+        session
+            .handle_line(
+                r#"{"command":"set_axis","request_id":78,"device":1,"axis":"x","value":101}"#
+            )
+            .response,
+        Response::InvalidCommand {
+            code: "invalid_command",
+            message: "send hello before setting axes".into(),
+            request_id: Some(78),
+        }
+    );
+}
+
+#[test]
+fn failed_device_update_relinquishes_its_explicit_selection() {
+    let fake = FakeVJoy::default();
+    let state = fake.state.clone();
+    let mut session = Session::new(fake);
+    session.handle_line(r#"{"command":"hello","protocol":1,"device":13}"#);
+    state.borrow_mut().update_error = Some(VJoyError::Sdk {
+        operation: "UpdateVJD",
+        message: "call returned false".into(),
+    });
+
+    assert!(matches!(
+        session
+            .handle_line(
+                r#"{"command":"set_axis","request_id":79,"device":13,"axis":"x","value":101}"#
+            )
+            .response,
+        Response::Error {
+            code: "sdk_error",
+            request_id: Some(79),
+            ..
+        }
+    ));
+    assert_eq!(state.borrow().relinquished_devices, [13]);
+    let response = session
+        .handle_line(r#"{"command":"set_axis","request_id":80,"device":13,"axis":"x","value":102}"#)
+        .response;
+    assert!(matches!(
+        response,
+        Response::InvalidCommand {
+            code: "invalid_command",
+            message,
+            request_id: Some(80),
+        } if message == "send hello before setting axes"
+    ));
 }
 
 #[test]

@@ -41,6 +41,8 @@ impl Axis {
 pub enum Command {
     Hello {
         protocol: u16,
+        #[serde(default)]
+        device: Option<u8>,
     },
     SetAxis {
         request_id: u64,
@@ -103,6 +105,7 @@ pub struct HandleResult {
 
 pub struct Session<T: VJoy> {
     vjoy: T,
+    selected_device: Option<u8>,
     range: Option<AxisRange>,
     report: Option<Report>,
     acquired: bool,
@@ -112,6 +115,7 @@ impl<T: VJoy> Session<T> {
     pub fn new(vjoy: T) -> Self {
         Self {
             vjoy,
+            selected_device: None,
             range: None,
             report: None,
             acquired: false,
@@ -133,21 +137,35 @@ impl<T: VJoy> Session<T> {
             }
         };
         match command {
-            Command::Hello { .. } => self.hello(),
+            Command::Hello { device, .. } => self.hello(device.unwrap_or(DEVICE)),
             Command::SetAxis {
                 request_id,
+                device,
                 axis,
                 value,
-                ..
-            } => self.mutate(request_id, |report| report.set_axis(axis, value)),
+            } => {
+                if let Some(result) = self.validate_selected_device(device, request_id) {
+                    result
+                } else {
+                    self.mutate(request_id, |report| report.set_axis(axis, value))
+                }
+            }
             Command::SetButton {
                 request_id,
+                device,
                 button,
                 pressed,
-                ..
-            } => self.mutate(request_id, |report| report.set_button(button, pressed)),
-            Command::Reset { request_id, .. } => {
-                if let Some(range) = self.range {
+            } => {
+                if let Some(result) = self.validate_selected_device(device, request_id) {
+                    result
+                } else {
+                    self.mutate(request_id, |report| report.set_button(button, pressed))
+                }
+            }
+            Command::Reset { request_id, device } => {
+                if let Some(result) = self.validate_selected_device(device, request_id) {
+                    result
+                } else if let Some(range) = self.range {
                     self.mutate(request_id, |report| report.reset(range))
                 } else {
                     self.not_ready(request_id)
@@ -155,8 +173,7 @@ impl<T: VJoy> Session<T> {
             }
             Command::Shutdown => {
                 if self.acquired {
-                    self.vjoy.relinquish(DEVICE);
-                    self.acquired = false;
+                    self.release_selected_device();
                 }
                 HandleResult {
                     response: Response::Stopped,
@@ -166,13 +183,16 @@ impl<T: VJoy> Session<T> {
         }
     }
 
-    fn hello(&mut self) -> HandleResult {
+    fn hello(&mut self, device: u8) -> HandleResult {
         if self.acquired {
+            if self.selected_device != Some(device) {
+                return invalid_device_selection(device, self.selected_device);
+            }
             let range = self.range.expect("acquired sessions have a range");
             return HandleResult {
                 response: Response::Ready {
                     protocol: PROTOCOL_VERSION,
-                    device: DEVICE,
+                    device,
                     axis_min: range.min,
                     axis_max: range.max,
                 },
@@ -180,44 +200,95 @@ impl<T: VJoy> Session<T> {
             };
         }
         let response = match self.vjoy.enabled() {
-            Ok(true) => match self.vjoy.status(DEVICE) {
-                Ok(DeviceStatus::Busy) => Response::DeviceBusy { device: DEVICE },
+            Ok(true) => match self.vjoy.status(device) {
+                Ok(DeviceStatus::Busy) => Response::DeviceBusy { device },
                 Ok(DeviceStatus::Missing) => Response::DeviceRemoved {
-                    device: DEVICE,
+                    device,
                     request_id: None,
                 },
-                Ok(DeviceStatus::Free | DeviceStatus::Owned) => match self.vjoy.acquire(DEVICE) {
-                    Ok(()) => match self.vjoy.axis_range(DEVICE, Axis::X) {
+                Ok(DeviceStatus::Free | DeviceStatus::Owned) => match self.vjoy.acquire(device) {
+                    Ok(()) => match self.axis_range(device) {
                         Ok(range) => {
-                            self.range = Some(range);
-                            self.report = Some(Report::centered(range));
-                            self.acquired = true;
-                            Response::Ready {
-                                protocol: PROTOCOL_VERSION,
-                                device: DEVICE,
-                                axis_min: range.min,
-                                axis_max: range.max,
+                            let report = Report::centered(range);
+                            match self.vjoy.update(device, &report) {
+                                Ok(()) => {
+                                    self.range = Some(range);
+                                    self.report = Some(report);
+                                    self.selected_device = Some(device);
+                                    self.acquired = true;
+                                    Response::Ready {
+                                        protocol: PROTOCOL_VERSION,
+                                        device,
+                                        axis_min: range.min,
+                                        axis_max: range.max,
+                                    }
+                                }
+                                Err(error) => {
+                                    self.vjoy.relinquish(device);
+                                    error_response(error, None, device)
+                                }
                             }
                         }
                         Err(error) => {
-                            self.vjoy.relinquish(DEVICE);
-                            error_response(error, None)
+                            self.vjoy.relinquish(device);
+                            error_response(error, None, device)
                         }
                     },
-                    Err(error) => error_response(error, None),
+                    Err(error) => error_response(error, None, device),
                 },
-                Err(error) => error_response(error, None),
+                Err(error) => error_response(error, None, device),
             },
             Ok(false) => Response::Error {
                 code: "vjoy_disabled",
                 message: "vJoy is not enabled".into(),
                 request_id: None,
             },
-            Err(error) => error_response(error, None),
+            Err(error) => error_response(error, None, device),
         };
         HandleResult {
             response,
             shutdown: false,
+        }
+    }
+
+    fn axis_range(&mut self, device: u8) -> Result<AxisRange, VJoyError> {
+        let mut expected = None;
+        for axis in Axis::ALL {
+            let range = self.vjoy.axis_range(device, axis)?;
+            if range.min > range.max {
+                return Err(VJoyError::Sdk {
+                    operation: "axis_range",
+                    message: format!("axis {axis:?} has an inverted range"),
+                });
+            }
+            match expected {
+                None => expected = Some(range),
+                Some(first) if first == range => {}
+                Some(_) => {
+                    return Err(VJoyError::Sdk {
+                        operation: "axis_range",
+                        message: "all axes must use the same logical range".into(),
+                    });
+                }
+            }
+        }
+        expected.ok_or_else(|| VJoyError::Sdk {
+            operation: "axis_range",
+            message: "device has no axes".into(),
+        })
+    }
+
+    fn validate_selected_device(&self, device: u8, request_id: u64) -> Option<HandleResult> {
+        match self.selected_device {
+            Some(selected) if selected != device => Some(HandleResult {
+                response: Response::InvalidCommand {
+                    code: "invalid_command",
+                    message: format!("session is using device {selected}, not device {device}"),
+                    request_id: Some(request_id),
+                },
+                shutdown: false,
+            }),
+            _ => None,
         }
     }
 
@@ -230,14 +301,28 @@ impl<T: VJoy> Session<T> {
             .as_mut()
             .expect("acquired sessions have reports");
         change(report);
-        let response = match self.vjoy.update(DEVICE, report) {
+        let device = self.selected_device.unwrap_or(DEVICE);
+        let response = match self.vjoy.update(device, report) {
             Ok(()) => Response::Applied { request_id },
-            Err(error) => error_response(error, Some(request_id)),
+            Err(error) => {
+                self.release_selected_device();
+                error_response(error, Some(request_id), device)
+            }
         };
         HandleResult {
             response,
             shutdown: false,
         }
+    }
+
+    fn release_selected_device(&mut self) {
+        if let Some(device) = self.selected_device {
+            self.vjoy.relinquish(device);
+        }
+        self.acquired = false;
+        self.selected_device = None;
+        self.range = None;
+        self.report = None;
     }
 
     fn not_ready(&self, request_id: u64) -> HandleResult {
@@ -252,11 +337,26 @@ impl<T: VJoy> Session<T> {
     }
 }
 
+impl<T: VJoy> Drop for Session<T> {
+    fn drop(&mut self) {
+        if self.acquired {
+            self.release_selected_device();
+        }
+    }
+}
+
 pub fn parse_command(line: &str, range: Option<AxisRange>) -> Result<Command, String> {
     let command: Command = serde_json::from_str(line).map_err(|error| error.to_string())?;
     match command {
-        Command::Hello { protocol } if protocol != PROTOCOL_VERSION => {
+        Command::Hello { protocol, .. } if protocol != PROTOCOL_VERSION => {
             Err(format!("unsupported protocol version {protocol}"))
+        }
+        Command::Hello {
+            device: Some(device),
+            ..
+        } => {
+            validate_device(device)?;
+            Ok(command)
         }
         Command::SetAxis { device, value, .. } => {
             validate_device(device)?;
@@ -287,10 +387,10 @@ pub fn parse_command(line: &str, range: Option<AxisRange>) -> Result<Command, St
 }
 
 fn validate_device(device: u8) -> Result<(), String> {
-    if device == DEVICE {
+    if (1..=16).contains(&device) {
         Ok(())
     } else {
-        Err("only device 1 is supported".into())
+        Err("device must be between 1 and 16".into())
     }
 }
 fn request_id(line: &str) -> Option<u64> {
@@ -299,12 +399,23 @@ fn request_id(line: &str) -> Option<u64> {
         .get("request_id")?
         .as_u64()
 }
-fn error_response(error: VJoyError, request_id: Option<u64>) -> Response {
-    match error {
-        VJoyError::DeviceRemoved => Response::DeviceRemoved {
-            device: DEVICE,
-            request_id,
+fn invalid_device_selection(device: u8, selected: Option<u8>) -> HandleResult {
+    HandleResult {
+        response: Response::InvalidCommand {
+            code: "invalid_command",
+            message: format!(
+                "session is already using device {}, not device {device}",
+                selected.unwrap_or(DEVICE)
+            ),
+            request_id: None,
         },
+        shutdown: false,
+    }
+}
+
+fn error_response(error: VJoyError, request_id: Option<u64>, device: u8) -> Response {
+    match error {
+        VJoyError::DeviceRemoved => Response::DeviceRemoved { device, request_id },
         VJoyError::UnsupportedPlatform => Response::Error {
             code: "unsupported_platform",
             message: "vJoy is supported only on Windows".into(),

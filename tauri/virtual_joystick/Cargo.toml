@@ -6,12 +6,15 @@ description = "Persistent vJoy feeder sidecar for Trenino"
 authors = ["Alberto Restifo"]
 license = "CC-BY-NC-4.0"
 
+# This standalone worker is built independently from the root workspace.
+[workspace]
+
 [dependencies]
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
 [target.'cfg(windows)'.dependencies]
-libloading = "0.8"
+vjoy = { path = "../../vendor/vjoy" }
 
 [[bin]]
 name = "virtual_joystick"
