@@ -240,7 +240,10 @@ mod tests {
         });
 
         assert_eq!(failure.code, "internal");
-        assert_eq!(failure.message, "The service could not complete the request.");
+        assert_eq!(
+            failure.message,
+            "The service could not complete the request."
+        );
         assert!(failure.field_errors.is_empty());
         assert!(failure.retryable);
     }

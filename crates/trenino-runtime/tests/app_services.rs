@@ -142,7 +142,10 @@ fn configured_api_key_path_and_database_key_are_never_returned_in_snapshots() {
     std::fs::write(&key_path, "file-secret\n").unwrap();
     let services = AppServices::open_full(dir.path().join("trial.db"), Some(key_path)).unwrap();
     services.set_api_key("db-secret").unwrap();
-    assert_eq!(services.simulator_api_key().unwrap().as_deref(), Some("db-secret"));
+    assert_eq!(
+        services.simulator_api_key().unwrap().as_deref(),
+        Some("db-secret")
+    );
 
     let snapshot = services.get_settings().unwrap();
     assert!(snapshot.value.simulator.api_key_configured);
@@ -270,7 +273,11 @@ fn concurrent_consent_changes_keep_committed_values_paired_with_unique_revisions
         assert_eq!(*revision, offset as u64 + 1);
         assert_eq!(
             *consent,
-            if *enabled { ConsentState::Enabled } else { ConsentState::Disabled }
+            if *enabled {
+                ConsentState::Enabled
+            } else {
+                ConsentState::Disabled
+            }
         );
     }
     let latest = services.get_settings().unwrap();
