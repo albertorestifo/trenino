@@ -326,6 +326,7 @@ dependencies = [
 name = "vjoy"
 version = "0.7.1"
 dependencies = [
+ "libloading",
  "log",
  "profiling",
  "thiserror",

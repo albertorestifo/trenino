@@ -1,5 +1,5 @@
 use std::cell::RefCell;
-use std::io::{self, BufRead, Cursor, Read, Write};
+use std::io::{self, BufRead, BufReader, Cursor, Read, Write};
 use std::rc::Rc;
 
 use virtual_joystick::protocol::{
@@ -22,11 +22,15 @@ struct FakeState {
     status: Result<DeviceStatus, VJoyError>,
     axis_range: Result<AxisRange, VJoyError>,
     axis_range_override: Option<(Axis, AxisRange)>,
+    fail_neutral_updates: usize,
+    fail_active_updates: usize,
     update_error: Option<VJoyError>,
+    relinquish_error: Option<VJoyError>,
     acquire_calls: usize,
     acquired_devices: Vec<u8>,
     relinquish_calls: usize,
     relinquished_devices: Vec<u8>,
+    events: Vec<String>,
     reports: Vec<Report>,
 }
 
@@ -38,11 +42,15 @@ impl Default for FakeVJoy {
                 status: Ok(DeviceStatus::Free),
                 axis_range: Ok(RANGE),
                 axis_range_override: None,
+                fail_neutral_updates: 0,
+                fail_active_updates: 0,
                 update_error: None,
+                relinquish_error: None,
                 acquire_calls: 0,
                 acquired_devices: Vec::new(),
                 relinquish_calls: 0,
                 relinquished_devices: Vec::new(),
+                events: Vec::new(),
                 reports: Vec::new(),
             })),
         }
@@ -77,17 +85,53 @@ impl VJoy for FakeVJoy {
 
     fn update(&mut self, _device: u8, report: &Report) -> Result<(), VJoyError> {
         let mut state = self.state.borrow_mut();
-        if let Some(error) = state.update_error.clone() {
-            return Err(error);
+        let neutral = Axis::ALL.iter().all(|axis| {
+            let range = state
+                .axis_range_override
+                .filter(|(override_axis, _)| override_axis == axis)
+                .map(|(_, range)| range)
+                .unwrap_or(RANGE);
+            let center =
+                (i64::from(range.min) + (i64::from(range.max) - i64::from(range.min)) / 2) as i32;
+            report.axis(*axis) == center
+        }) && (1..=32).all(|button| !report.button(button));
+        state.events.push(if neutral {
+            "neutral".into()
+        } else {
+            "update".into()
+        });
+        if neutral && state.fail_neutral_updates > 0 {
+            state.fail_neutral_updates -= 1;
+            return Err(VJoyError::Sdk {
+                operation: "UpdateVJD",
+                message: "neutral report rejected".into(),
+            });
+        }
+        if !neutral && state.fail_active_updates > 0 {
+            state.fail_active_updates -= 1;
+            return Err(state.update_error.clone().unwrap_or(VJoyError::Sdk {
+                operation: "UpdateVJD",
+                message: "active report rejected".into(),
+            }));
+        }
+        if !neutral {
+            if let Some(error) = state.update_error.clone() {
+                return Err(error);
+            }
         }
         state.reports.push(report.clone());
         Ok(())
     }
 
-    fn relinquish(&mut self, device: u8) {
+    fn relinquish(&mut self, device: u8) -> Result<(), VJoyError> {
         let mut state = self.state.borrow_mut();
+        state.events.push(format!("relinquish:{device}"));
         state.relinquish_calls += 1;
         state.relinquished_devices.push(device);
+        if let Some(error) = state.relinquish_error.clone() {
+            return Err(error);
+        }
+        Ok(())
     }
 }
 
@@ -288,10 +332,7 @@ fn inconsistent_axis_ranges_relinquish_the_selected_device() {
 #[test]
 fn failed_initial_neutral_report_relinquishes_the_selected_device() {
     let fake = FakeVJoy::default();
-    fake.state.borrow_mut().update_error = Some(VJoyError::Sdk {
-        operation: "UpdateVJD",
-        message: "call returned false".into(),
-    });
+    fake.state.borrow_mut().fail_neutral_updates = 1;
     let state = fake.state.clone();
     let mut session = Session::new(fake);
 
@@ -305,6 +346,10 @@ fn failed_initial_neutral_report_relinquishes_the_selected_device() {
         }
     ));
     assert_eq!(state.borrow().relinquished_devices, [5]);
+    assert_eq!(
+        state.borrow().events,
+        ["neutral", "neutral", "relinquish:5"]
+    );
 }
 
 #[test]
@@ -317,12 +362,28 @@ fn eof_relinquishes_the_acquired_device() {
     serve(input, &mut output, fake).unwrap();
 
     assert_eq!(state.borrow().relinquished_devices, [11]);
+    assert_eq!(
+        state.borrow().events,
+        ["neutral", "neutral", "relinquish:11"]
+    );
 }
 
 #[test]
 fn a_ready_session_cannot_switch_its_selected_device() {
     let mut session = Session::new(FakeVJoy::default());
     session.handle_line(r#"{"command":"hello","protocol":1,"device":3}"#);
+
+    assert_eq!(
+        session
+            .handle_line(r#"{"command":"hello","protocol":1,"device":3}"#)
+            .response,
+        Response::Ready {
+            protocol: PROTOCOL_VERSION,
+            device: 3,
+            axis_min: RANGE.min,
+            axis_max: RANGE.max,
+        }
+    );
 
     assert!(matches!(
         session
@@ -449,6 +510,83 @@ fn shutdown_relinquishes_the_device_and_stops_the_server() {
     assert_eq!(result.response, Response::Stopped);
     assert!(result.shutdown);
     assert_eq!(state.borrow().relinquish_calls, 1);
+    assert_eq!(
+        state.borrow().events,
+        ["neutral", "neutral", "relinquish:1"]
+    );
+}
+
+#[test]
+fn nonneutral_shutdown_neutralizes_before_releasing_selected_device_once() {
+    let fake = FakeVJoy::default();
+    let state = fake.state.clone();
+    let mut session = Session::new(fake);
+    session.handle_line(r#"{"command":"hello","protocol":1,"device":16}"#);
+    session.handle_line(
+        r#"{"command":"set_button","request_id":1,"device":16,"button":32,"pressed":true}"#,
+    );
+
+    let result = session.handle_line(r#"{"command":"shutdown"}"#);
+    assert_eq!(result.response, Response::Stopped);
+    assert!(result.shutdown);
+    assert_eq!(
+        state.borrow().events,
+        ["neutral", "update", "neutral", "relinquish:16"]
+    );
+    assert_eq!(state.borrow().relinquish_calls, 1);
+    assert!(state.borrow().reports.last().unwrap().button(32) == false);
+}
+
+#[test]
+fn shutdown_reports_neutralize_and_relinquish_failures_but_still_releases_once() {
+    let fake = FakeVJoy::default();
+    let state = fake.state.clone();
+    let mut session = Session::new(fake);
+    session.handle_line(r#"{"command":"hello","protocol":1,"device":12}"#);
+    session.handle_line(
+        r#"{"command":"set_button","request_id":1,"device":12,"button":2,"pressed":true}"#,
+    );
+    {
+        let mut state = state.borrow_mut();
+        state.fail_neutral_updates = 1;
+        state.relinquish_error = Some(VJoyError::Sdk {
+            operation: "RelinquishVJD",
+            message: "failed".into(),
+        });
+    }
+
+    let result = session.handle_line(r#"{"command":"shutdown"}"#);
+    assert!(result.shutdown);
+    assert!(matches!(
+        result.response,
+        Response::Error {
+            code: "shutdown_failed",
+            message,
+            request_id: None,
+        } if message.contains("neutral report rejected") && message.contains("RelinquishVJD")
+    ));
+    assert_eq!(
+        state.borrow().events,
+        ["neutral", "update", "neutral", "relinquish:12"]
+    );
+    assert_eq!(state.borrow().relinquish_calls, 1);
+}
+
+#[test]
+fn direct_session_drop_neutralizes_then_relinquishes_once() {
+    let fake = FakeVJoy::default();
+    let state = fake.state.clone();
+    let mut session = Session::new(fake);
+    session.handle_line(r#"{"command":"hello","protocol":1,"device":14}"#);
+    session
+        .handle_line(r#"{"command":"set_axis","request_id":1,"device":14,"axis":"x","value":12}"#);
+    drop(session);
+
+    assert_eq!(
+        state.borrow().events,
+        ["neutral", "update", "neutral", "relinquish:14"]
+    );
+    assert_eq!(state.borrow().relinquish_calls, 1);
 }
 
 #[test]
@@ -502,12 +640,13 @@ fn axis_range_failure_after_acquire_relinquishes_the_device() {
     assert!(matches!(
         response,
         Response::Error {
-            code: "sdk_error",
+            code: "cleanup_failed",
             ..
         }
     ));
     assert_eq!(state.borrow().acquire_calls, 1);
     assert_eq!(state.borrow().relinquish_calls, 1);
+    assert_eq!(state.borrow().events, ["relinquish:1"]);
 }
 
 #[test]
@@ -565,6 +704,10 @@ fn failed_device_update_relinquishes_its_explicit_selection() {
         }
     ));
     assert_eq!(state.borrow().relinquished_devices, [13]);
+    assert_eq!(
+        state.borrow().events,
+        ["neutral", "update", "neutral", "relinquish:13"]
+    );
     let response = session
         .handle_line(r#"{"command":"set_axis","request_id":80,"device":13,"axis":"x","value":102}"#)
         .response;
@@ -665,9 +808,135 @@ fn oversized_unterminated_line_emits_one_error_at_eof() {
     assert_eq!(lines[0]["code"], "input_too_large");
 }
 
+#[test]
+fn accepts_exact_limit_and_crlf_lines_and_rejects_invalid_utf8() {
+    let hello = format!(r#"{{"command":"hello","protocol":{PROTOCOL_VERSION}}}"#);
+    let mut input = hello.clone();
+    input.push_str(&" ".repeat(MAX_LINE_BYTES - hello.len()));
+    input.push('\n');
+    input.push_str(&hello);
+    input.push_str("\r\n");
+    let mut input = input.into_bytes();
+    input.extend_from_slice(&[0xFF, b'\n']);
+    input.extend_from_slice(b"{\"command\":\"shutdown\"}\n");
+
+    let fake = FakeVJoy::default();
+    let mut output = FlushCountingWriter::default();
+    serve(Cursor::new(input), &mut output, fake).unwrap();
+
+    let lines: Vec<serde_json::Value> = String::from_utf8(output.bytes)
+        .unwrap()
+        .lines()
+        .map(|line| serde_json::from_str(line).unwrap())
+        .collect();
+    assert_eq!(lines.len(), 4);
+    assert_eq!(lines[0]["event"], "ready");
+    assert_eq!(lines[1]["event"], "ready");
+    assert_eq!(lines[2]["event"], "invalid_command");
+    assert_eq!(lines[3]["event"], "stopped");
+}
+
+#[test]
+fn input_error_after_acquisition_still_neutralizes_and_releases() {
+    let fake = FakeVJoy::default();
+    let state = fake.state.clone();
+    let input = BufReader::new(ErrorAfterLine::new(
+        b"{\"command\":\"hello\",\"protocol\":1,\"device\":15}\n".to_vec(),
+    ));
+    let mut output = FlushCountingWriter::default();
+
+    assert!(serve(input, &mut output, fake).is_err());
+    assert_eq!(
+        state.borrow().events,
+        ["neutral", "neutral", "relinquish:15"]
+    );
+    assert_eq!(state.borrow().relinquish_calls, 1);
+}
+
+#[test]
+fn output_write_and_flush_errors_after_acquisition_still_clean_up() {
+    for fail_flush in [false, true] {
+        let fake = FakeVJoy::default();
+        let state = fake.state.clone();
+        let input = Cursor::new(b"{\"command\":\"hello\",\"protocol\":1,\"device\":10}\n".to_vec());
+        let mut output = FailingWriter::new(!fail_flush, fail_flush);
+
+        assert!(serve(input, &mut output, fake).is_err());
+        assert_eq!(
+            state.borrow().events,
+            ["neutral", "neutral", "relinquish:10"]
+        );
+        assert_eq!(state.borrow().relinquish_calls, 1);
+    }
+}
+
 struct ChunkedReader {
     cursor: Cursor<Vec<u8>>,
     chunk_size: usize,
+}
+
+struct ErrorAfterLine {
+    bytes: Cursor<Vec<u8>>,
+    emitted_error: bool,
+}
+
+impl ErrorAfterLine {
+    fn new(bytes: Vec<u8>) -> Self {
+        Self {
+            bytes: Cursor::new(bytes),
+            emitted_error: false,
+        }
+    }
+}
+
+impl Read for ErrorAfterLine {
+    fn read(&mut self, buffer: &mut [u8]) -> io::Result<usize> {
+        if self.bytes.position() < self.bytes.get_ref().len() as u64 {
+            return self.bytes.read(buffer);
+        }
+        self.emitted_error = true;
+        Err(io::Error::new(
+            io::ErrorKind::Other,
+            "injected read failure",
+        ))
+    }
+}
+
+struct FailingWriter {
+    fail_write: bool,
+    fail_flush: bool,
+}
+
+impl FailingWriter {
+    fn new(fail_write: bool, fail_flush: bool) -> Self {
+        Self {
+            fail_write,
+            fail_flush,
+        }
+    }
+}
+
+impl Write for FailingWriter {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        if self.fail_write {
+            return Err(io::Error::new(
+                io::ErrorKind::Other,
+                "injected write failure",
+            ));
+        }
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        if self.fail_flush {
+            Err(io::Error::new(
+                io::ErrorKind::Other,
+                "injected flush failure",
+            ))
+        } else {
+            Ok(())
+        }
+    }
 }
 
 impl ChunkedReader {

@@ -55,6 +55,9 @@ path = "tests/test.rs"
 [dependencies.log]
 version = "0.4.17"
 
+[dependencies.libloading]
+version = "0.8"
+
 [dependencies.profiling]
 version = "1.0.8"
 

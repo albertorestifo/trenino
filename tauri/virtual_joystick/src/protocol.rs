@@ -172,11 +172,20 @@ impl<T: VJoy> Session<T> {
                 }
             }
             Command::Shutdown => {
-                if self.acquired {
-                    self.release_selected_device();
-                }
+                let cleanup = if self.acquired {
+                    self.release_selected_device()
+                } else {
+                    Ok(())
+                };
                 HandleResult {
-                    response: Response::Stopped,
+                    response: cleanup.map_or_else(
+                        |message| Response::Error {
+                            code: "shutdown_failed",
+                            message,
+                            request_id: None,
+                        },
+                        |_| Response::Stopped,
+                    ),
                     shutdown: true,
                 }
             }
@@ -207,33 +216,37 @@ impl<T: VJoy> Session<T> {
                     request_id: None,
                 },
                 Ok(DeviceStatus::Free | DeviceStatus::Owned) => match self.vjoy.acquire(device) {
-                    Ok(()) => match self.axis_range(device) {
-                        Ok(range) => {
-                            let report = Report::centered(range);
-                            match self.vjoy.update(device, &report) {
-                                Ok(()) => {
-                                    self.range = Some(range);
-                                    self.report = Some(report);
-                                    self.selected_device = Some(device);
-                                    self.acquired = true;
-                                    Response::Ready {
-                                        protocol: PROTOCOL_VERSION,
-                                        device,
-                                        axis_min: range.min,
-                                        axis_max: range.max,
+                    Ok(()) => {
+                        // Track ownership before any operation that may fail so
+                        // every post-acquisition exit neutralizes and releases.
+                        self.selected_device = Some(device);
+                        self.acquired = true;
+                        match self.axis_range(device) {
+                            Ok(range) => {
+                                self.range = Some(range);
+                                let report = Report::centered(range);
+                                match self.vjoy.update(device, &report) {
+                                    Ok(()) => {
+                                        self.report = Some(report);
+                                        Response::Ready {
+                                            protocol: PROTOCOL_VERSION,
+                                            device,
+                                            axis_min: range.min,
+                                            axis_max: range.max,
+                                        }
+                                    }
+                                    Err(error) => {
+                                        let cleanup = self.release_selected_device();
+                                        error_with_cleanup(error, None, device, cleanup)
                                     }
                                 }
-                                Err(error) => {
-                                    self.vjoy.relinquish(device);
-                                    error_response(error, None, device)
-                                }
+                            }
+                            Err(error) => {
+                                let cleanup = self.release_selected_device();
+                                error_with_cleanup(error, None, device, cleanup)
                             }
                         }
-                        Err(error) => {
-                            self.vjoy.relinquish(device);
-                            error_response(error, None, device)
-                        }
-                    },
+                    }
                     Err(error) => error_response(error, None, device),
                 },
                 Err(error) => error_response(error, None, device),
@@ -305,8 +318,8 @@ impl<T: VJoy> Session<T> {
         let response = match self.vjoy.update(device, report) {
             Ok(()) => Response::Applied { request_id },
             Err(error) => {
-                self.release_selected_device();
-                error_response(error, Some(request_id), device)
+                let cleanup = self.release_selected_device();
+                error_with_cleanup(error, Some(request_id), device, cleanup)
             }
         };
         HandleResult {
@@ -315,10 +328,29 @@ impl<T: VJoy> Session<T> {
         }
     }
 
-    fn release_selected_device(&mut self) {
-        if let Some(device) = self.selected_device {
-            self.vjoy.relinquish(device);
+    fn release_selected_device(&mut self) -> Result<(), String> {
+        let Some(device) = self.selected_device else {
+            self.clear_selection();
+            return Ok(());
+        };
+
+        let neutralize_error = self.vjoy.neutralize(device).err();
+        let relinquish_error = self.vjoy.relinquish(device).err();
+        self.clear_selection();
+
+        let errors = [neutralize_error, relinquish_error]
+            .into_iter()
+            .flatten()
+            .map(|error| format!("{error:?}"))
+            .collect::<Vec<_>>();
+        if errors.is_empty() {
+            Ok(())
+        } else {
+            Err(errors.join("; "))
         }
+    }
+
+    fn clear_selection(&mut self) {
         self.acquired = false;
         self.selected_device = None;
         self.range = None;
@@ -340,7 +372,7 @@ impl<T: VJoy> Session<T> {
 impl<T: VJoy> Drop for Session<T> {
     fn drop(&mut self) {
         if self.acquired {
-            self.release_selected_device();
+            let _ = self.release_selected_device();
         }
     }
 }
@@ -424,6 +456,22 @@ fn error_response(error: VJoyError, request_id: Option<u64>, device: u8) -> Resp
         VJoyError::Sdk { operation, message } => Response::Error {
             code: "sdk_error",
             message: format!("{operation}: {message}"),
+            request_id,
+        },
+    }
+}
+
+fn error_with_cleanup(
+    error: VJoyError,
+    request_id: Option<u64>,
+    device: u8,
+    cleanup: Result<(), String>,
+) -> Response {
+    match cleanup {
+        Ok(()) => error_response(error, request_id, device),
+        Err(cleanup_error) => Response::Error {
+            code: "cleanup_failed",
+            message: format!("operation failed: {error:?}; cleanup failed: {cleanup_error}"),
             request_id,
         },
     }

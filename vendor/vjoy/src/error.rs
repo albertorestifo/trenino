@@ -22,6 +22,9 @@ pub enum AppError {
     #[error("device with ID {0} was not found.")]
     DeviceNotFound(u32),
 
+    #[error("device {0} is not compatible with the requested configuration: {1}")]
+    DeviceConfigurationIncompatible(u32, String),
+
     #[error("axis {1} of Device {0} could not be found.")]
     AxisNotFound(u32, u32),
 
@@ -55,4 +58,10 @@ pub enum FFIError {
 
     #[error("range for axis {1} of Device {0} could not be read.")]
     AxisRangeCouldNotBeRead(u32, u32),
+
+    #[error("required vJoyInterface.dll export {0} is missing")]
+    RequiredExportMissing(&'static str),
+
+    #[error("device {0} returned an invalid count from {1}: {2}")]
+    DeviceConfigurationQueryFailed(u32, &'static str, i32),
 }
