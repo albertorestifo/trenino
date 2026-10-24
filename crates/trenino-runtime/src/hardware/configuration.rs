@@ -12,6 +12,11 @@ pub trait ConfigurationPort {
 
 /// Implemented by the single runtime repository adapter; this module owns no database.
 pub trait ConfigurationRepository {
+    /// Persists the confirmed configuration identity as one atomic storage mutation
+    /// (for example a single `update_device` commit of the config patch). Called only
+    /// after the device acknowledged the exact ConfigId and only while the connection
+    /// generation still matches, never across a serial ACK wait. Stale or duplicate
+    /// confirmations for a mismatched device or config generation must fail.
     fn confirm_configuration(
         &mut self,
         device_id: EntityId,
