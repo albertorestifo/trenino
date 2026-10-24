@@ -10,6 +10,7 @@ use std::{
 
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindowBuilder};
+use tauri_plugin_dialog::{DialogExt, MessageDialogButtons};
 use trenino_core::ui::{SettingsView, UiChange, UiFailure, UiSnapshot};
 use trenino_core::{AppError, Topic};
 use trenino_runtime::lifecycle::{ShutdownCoordinator, ShutdownParticipant};
@@ -27,6 +28,7 @@ pub(crate) struct RustAppState {
     shutdown_lock: Mutex<()>,
     shutdown: ShutdownCoordinator,
     stopping: AtomicBool,
+    startup_failure_pending: AtomicBool,
 }
 
 impl RustAppState {
@@ -38,6 +40,7 @@ impl RustAppState {
             shutdown_lock: Mutex::new(()),
             shutdown: ShutdownCoordinator::default(),
             stopping: AtomicBool::new(false),
+            startup_failure_pending: AtomicBool::new(false),
         }
     }
 
@@ -240,6 +243,43 @@ fn selected_trial_database_path(
     Ok(default_path)
 }
 
+fn dispatch_startup_failure(
+    error: &trenino_runtime::storage::StorageError,
+    present: impl FnOnce(&str),
+) {
+    let message = match error {
+        trenino_runtime::storage::StorageError::LegacyUpgradeRequired => {
+            "This database contains existing Trenino data. Keep using the current Trenino app, or create a backup and run the explicit maintenance upgrade before starting the Rust trial."
+        }
+        trenino_runtime::storage::StorageError::BootstrapUpgradeRequired => {
+            "This database contains existing profile or settings data. It was preserved. Keep using the current Trenino app, or create a backup and run the explicit maintenance upgrade before starting the Rust trial."
+        }
+        trenino_runtime::storage::StorageError::AlreadyRunning => {
+            "This Trenino database is already open in another application instance. Close that instance and try again."
+        }
+        _ => "The Rust trial could not open its local database. Check access to app-local data and try again.",
+    };
+    present(message);
+}
+
+fn show_startup_failure(app: &tauri::AppHandle, message: &str) {
+    let exit_app = app.clone();
+    if let Some(state) = app.try_state::<RustAppState>() {
+        state.startup_failure_pending.store(true, Ordering::Release);
+    }
+    app.dialog()
+        .message(message.to_owned())
+        .buttons(MessageDialogButtons::Ok)
+        .show(move |_| {
+            if let Some(state) = exit_app.try_state::<RustAppState>() {
+                state
+                    .startup_failure_pending
+                    .store(false, Ordering::Release);
+            }
+            exit_app.exit(1);
+        });
+}
+
 fn simulator_key_file(app: &AppHandle) -> Option<PathBuf> {
     let manual = std::env::var_os("TRENINO_TSW_API_KEY_FILE").map(PathBuf::from);
     if manual.is_some() {
@@ -389,6 +429,7 @@ pub(crate) fn run() {
     let builder = tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_dialog::init())
         .manage(RustAppState::empty())
         .invoke_handler(tauri::generate_handler![
             ui_get_settings,
@@ -400,15 +441,39 @@ pub(crate) fn run() {
             ui_unsubscribe,
         ])
         .setup(|app| {
+            let db_path = match trial_database_path(app.handle()) {
+                Ok(path) => path,
+                Err(_) => {
+                    show_startup_failure(
+                        app.handle(),
+                        "The Rust trial could not resolve its local data directory. Check your user profile permissions and try again.",
+                    );
+                    return Ok(());
+                }
+            };
+            let services = match AppServices::open_full(db_path, simulator_key_file(app.handle())) {
+                Ok(services) => services,
+                Err(error) => {
+                    dispatch_startup_failure(&error, |message| {
+                        show_startup_failure(app.handle(), message)
+                    });
+                    return Ok(());
+                }
+            };
+            if app
+                .state::<RustAppState>()
+                .install(services)
+                .is_err()
+            {
+                show_startup_failure(
+                    app.handle(),
+                    "The Rust trial could not initialize its application services. Restart the application and try again.",
+                );
+                return Ok(());
+            }
+
             #[cfg(feature = "desktop-updater")]
             updater::setup(app)?;
-
-            let db_path = trial_database_path(app.handle())?;
-            let services = AppServices::open_full(db_path, simulator_key_file(app.handle()))
-                .map_err(|error| std::io::Error::other(error.to_string()))?;
-            app.state::<RustAppState>()
-                .install(services)
-                .map_err(std::io::Error::other)?;
 
             WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
                 .title("Trenino")
@@ -423,7 +488,9 @@ pub(crate) fn run() {
     builder.run(|app_handle, event| match event {
         tauri::RunEvent::ExitRequested { api, .. } => {
             if let Some(state) = app_handle.try_state::<RustAppState>() {
-                if state.shutdown().is_err() {
+                if state.startup_failure_pending.load(Ordering::Acquire)
+                    || state.shutdown().is_err()
+                {
                     api.prevent_exit();
                 }
             }
@@ -489,23 +556,52 @@ mod tests {
 
     #[test]
     fn trial_database_override_must_be_absolute_and_never_falls_back() {
-        let default = PathBuf::from("C:/app/local/rust-trial/trenino.db");
+        let directory = tempfile::tempdir().unwrap();
+        let default = directory.path().join("app/local/rust-trial/trenino.db");
         assert!(
             selected_trial_database_path(Some(PathBuf::from("relative.db")), default.clone())
                 .is_err()
         );
+        let override_path = directory.path().join("isolated/trial.db");
         assert_eq!(
-            selected_trial_database_path(
-                Some(PathBuf::from("C:/isolated/trial.db")),
-                default.clone()
-            )
-            .unwrap(),
-            PathBuf::from("C:/isolated/trial.db")
+            selected_trial_database_path(Some(override_path.clone()), default.clone()).unwrap(),
+            override_path
         );
         assert_eq!(
             selected_trial_database_path(None, default.clone()).unwrap(),
             default
         );
+    }
+
+    #[test]
+    fn startup_schema_refusal_is_actionable_and_reaches_the_dialog_presenter() {
+        let mut shown = None;
+        dispatch_startup_failure(
+            &trenino_runtime::storage::StorageError::LegacyUpgradeRequired,
+            |message| shown = Some(message.to_owned()),
+        );
+        let shown = shown.expect("startup refusal should be presented");
+        assert!(shown.contains("backup"));
+        assert!(shown.contains("maintenance upgrade"));
+        assert!(!shown.contains("legacy.db"));
+    }
+
+    #[test]
+    fn bootstrap_schema_refusal_explains_that_existing_data_was_preserved() {
+        let mut shown = None;
+        dispatch_startup_failure(
+            &trenino_runtime::storage::StorageError::BootstrapUpgradeRequired,
+            |message| shown = Some(message.to_owned()),
+        );
+        let shown = shown.expect("startup refusal should be presented");
+        assert!(shown.contains("preserved"));
+        assert!(shown.contains("backup"));
+    }
+
+    #[test]
+    fn startup_failure_state_can_follow_normal_exit_without_installed_services() {
+        let state = RustAppState::empty();
+        state.shutdown().unwrap();
     }
 
     #[test]

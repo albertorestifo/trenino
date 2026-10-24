@@ -2,6 +2,7 @@ use tempfile::tempdir;
 use trenino_core::{ui::ConsentState, Topic};
 use trenino_runtime::app::AppServices;
 use trenino_runtime::settings::resolve_api_key_file;
+use trenino_runtime::settings::Settings;
 
 #[test]
 fn fresh_trial_database_uses_full_schema_and_publishes_database_backed_snapshots() {
@@ -312,4 +313,134 @@ fn full_runtime_owns_database_path_for_its_lifetime() {
     assert!(AppServices::open_full(&path, None).is_err());
     drop(first);
     AppServices::open_full(&path, None).unwrap();
+}
+
+#[test]
+fn direct_database_open_cannot_admit_a_second_full_v2_writer() {
+    let dir = tempdir().unwrap();
+    let path = dir.path().join("direct-owner.db");
+    let services = AppServices::open_full(&path, None).unwrap();
+    services.set_consent(true).unwrap();
+
+    assert!(matches!(
+        trenino_runtime::storage::Database::open_full(&path),
+        Err(trenino_runtime::storage::StorageError::AlreadyRunning)
+    ));
+    assert!(matches!(
+        trenino_runtime::storage::Database::open(&path),
+        Err(trenino_runtime::storage::StorageError::AlreadyRunning)
+    ));
+    assert_eq!(services.get_settings().unwrap().revision.0, 1);
+}
+
+#[test]
+fn hard_link_alias_cannot_admit_a_second_full_v2_writer() {
+    let dir = tempdir().unwrap();
+    let path = dir.path().join("primary.db");
+    let alias_dir = dir.path().join("separate-directory");
+    std::fs::create_dir_all(&alias_dir).unwrap();
+    let alias = alias_dir.join("alias.db");
+    let services = AppServices::open_full(&path, None).unwrap();
+    services.set_consent(true).unwrap();
+    std::fs::hard_link(&path, &alias).unwrap();
+
+    assert!(matches!(
+        AppServices::open_full(&alias, None),
+        Err(trenino_runtime::storage::StorageError::AlreadyRunning)
+    ));
+    assert!(matches!(
+        trenino_runtime::storage::Database::open(&alias),
+        Err(trenino_runtime::storage::StorageError::AlreadyRunning)
+    ));
+    assert_eq!(services.get_settings().unwrap().revision.0, 1);
+}
+
+#[test]
+fn partial_or_malformed_runtime_metadata_is_rejected_without_rewrites() {
+    for (name, key, value) in [
+        ("missing-epoch", "__runtime.epoch", None),
+        ("missing-revision", "__runtime.revision.settings", None),
+        ("malformed-epoch", "__runtime.epoch", Some("not-a-counter")),
+        (
+            "malformed-revision",
+            "__runtime.revision.settings",
+            Some("01"),
+        ),
+    ] {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join(format!("{name}.db"));
+        drop(AppServices::open_full(&path, None).unwrap());
+        let conn = rusqlite::Connection::open(&path).unwrap();
+        if let Some(value) = value {
+            conn.execute(
+                "UPDATE app_settings SET value=?1 WHERE key=?2",
+                (value, key),
+            )
+            .unwrap();
+        } else {
+            conn.execute("DELETE FROM app_settings WHERE key=?1", [key])
+                .unwrap();
+        }
+        let before = conn
+            .prepare("SELECT key,value FROM app_settings WHERE key LIKE '__runtime.%' ORDER BY key")
+            .unwrap()
+            .query_map([], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+            })
+            .unwrap()
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
+        drop(conn);
+
+        assert!(AppServices::open_full(&path, None).is_err(), "{name}");
+        let conn = rusqlite::Connection::open(&path).unwrap();
+        let found = conn
+            .prepare("SELECT key,value FROM app_settings WHERE key LIKE '__runtime.%' ORDER BY key")
+            .unwrap()
+            .query_map([], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+            })
+            .unwrap()
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
+        assert_eq!(found, before, "{name}");
+    }
+}
+
+#[test]
+fn legacy_settings_and_raw_setting_mutations_cannot_bypass_full_v2_revisions() {
+    let dir = tempdir().unwrap();
+    let path = dir.path().join("settings-boundary.db");
+    let db = trenino_runtime::storage::Database::open_full(&path).unwrap();
+    db.allocate_epoch().unwrap();
+    let settings = Settings::new(db.clone());
+
+    settings.set_error_reporting_consent(true).unwrap();
+    assert!(settings.set_simulator_url("file:///etc/passwd").is_err());
+    settings.set_api_key("secret").unwrap();
+    assert!(db.set("simulator_url", "file:///etc/passwd").is_err());
+    assert!(db.set("__runtime.epoch", "99").is_err());
+    assert!(settings.set_value("__runtime.epoch", "99").is_err());
+    assert!(settings
+        .set_value("simulator_url", "file:///etc/passwd")
+        .is_err());
+    assert!(db
+        .set_with_revision("simulator_url", "file:///etc/passwd", "settings")
+        .is_err());
+    assert!(db
+        .set_with_revision("error_reporting", "true", "settings")
+        .is_err());
+    assert!(db
+        .set_with_revision("error_reporting", "enabled", "hardware")
+        .is_err());
+    assert!(db
+        .set_with_revision("__runtime.epoch", "99", "settings")
+        .is_err());
+
+    let (values, metadata) = db.settings_snapshot().unwrap();
+    assert_eq!(metadata.epoch, 1);
+    assert_eq!(metadata.revision, 2);
+    assert_eq!(values["error_reporting"], "enabled");
+    assert_eq!(values["simulator_api_key"], "secret");
+    assert!(!values.contains_key("simulator_url"));
 }

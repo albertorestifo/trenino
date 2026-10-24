@@ -3,9 +3,11 @@ mod migration;
 
 pub use migration::{LegacySchema, MigrationReport};
 
+use fs2::FileExt;
 use rusqlite::{Connection, OptionalExtension};
 use std::{
     collections::BTreeMap,
+    fs::{File, OpenOptions},
     path::Path,
     sync::{mpsc, Arc, Mutex},
     thread,
@@ -39,6 +41,7 @@ pub enum StorageError {
     InvalidBackupPath,
     Backup { detail: String },
     UnsupportedOperation { operation: &'static str },
+    InvalidSetting { key: &'static str },
     WorkerStopped,
     NotFound,
 }
@@ -103,6 +106,7 @@ impl std::fmt::Display for StorageError {
                 f,
                 "{operation} is not supported by the migrated database API"
             ),
+            Self::InvalidSetting { key } => write!(f, "invalid value for setting {key}"),
             Self::WorkerStopped => f.write_str("database worker stopped"),
             Self::NotFound => f.write_str("profile not found"),
         }
@@ -209,6 +213,17 @@ impl Database {
         let join = thread::Builder::new()
             .name("trenino-db".into())
             .spawn(move || {
+                let ownership = match open_database_ownership_file(&path) {
+                    Ok(file) => file,
+                    Err(error) => {
+                        let _ = ready_tx.send(Err(error));
+                        return;
+                    }
+                };
+                if ownership.try_lock_exclusive().is_err() {
+                    let _ = ready_tx.send(Err(StorageError::AlreadyRunning));
+                    return;
+                }
                 let opened = open_connection(&path, path_exists, require_full);
                 let (mut connection, mode) = match opened {
                     Ok(opened) => opened,
@@ -217,9 +232,17 @@ impl Database {
                         return;
                     }
                 };
+                if mode == SchemaMode::LegacyReadOnly && FileExt::unlock(&ownership).is_err() {
+                    let _ = ready_tx.send(Err(StorageError::WorkerStopped));
+                    return;
+                }
                 let _ = ready_tx.send(Ok(mode));
                 for request in request_rx {
                     handle_request(&mut connection, mode, request);
+                }
+                drop(connection);
+                if mode != SchemaMode::LegacyReadOnly {
+                    drop(ownership);
                 }
             })
             .map_err(|_| StorageError::WorkerStopped)?;
@@ -246,6 +269,17 @@ impl Database {
     pub fn set(&self, key: &str, value: &str) -> Result<(), StorageError> {
         self.ensure_writable()?;
         self.request(|reply| Request::Set(key.into(), value.into(), reply))
+    }
+
+    /// Update a named user preference. Full-v2 routes it through the same
+    /// validation and revision transaction used by AppServices; bootstrap
+    /// databases retain their explicit legacy setter behavior.
+    pub fn set_user_setting(&self, key: &str, value: &str) -> Result<(), StorageError> {
+        if self.full_schema {
+            self.set_with_revision(key, value, "settings").map(|_| ())
+        } else {
+            self.set(key, value)
+        }
     }
 
     pub fn count(&self) -> Result<u64, StorageError> {
@@ -353,6 +387,62 @@ impl Database {
             .map_err(|_| StorageError::WorkerStopped)?;
         reply_rx.recv().map_err(|_| StorageError::WorkerStopped)?
     }
+}
+
+fn open_database_ownership_file(path: &Path) -> DbResult<File> {
+    let database = OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .open(path)
+        .map_err(|_| StorageError::WorkerStopped)?;
+    let identity = database_file_identity(&database)?;
+    let lock_directory = std::env::temp_dir().join("trenino-runtime-db-locks");
+    std::fs::create_dir_all(&lock_directory).map_err(|_| StorageError::WorkerStopped)?;
+    OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .open(lock_directory.join(format!("{identity}.lock")))
+        .map_err(|_| StorageError::WorkerStopped)
+}
+
+#[cfg(unix)]
+fn database_file_identity(file: &File) -> DbResult<String> {
+    use std::os::unix::fs::MetadataExt;
+    let metadata = file.metadata().map_err(|_| StorageError::WorkerStopped)?;
+    Ok(format!("{}-{}", metadata.dev(), metadata.ino()))
+}
+
+#[cfg(windows)]
+fn database_file_identity(file: &File) -> DbResult<String> {
+    use std::{mem::MaybeUninit, os::windows::io::AsRawHandle};
+    use windows_sys::Win32::{
+        Foundation::HANDLE,
+        Storage::FileSystem::{GetFileInformationByHandle, BY_HANDLE_FILE_INFORMATION},
+    };
+    let mut information = MaybeUninit::<BY_HANDLE_FILE_INFORMATION>::uninit();
+    let succeeded = unsafe {
+        GetFileInformationByHandle(file.as_raw_handle() as HANDLE, information.as_mut_ptr())
+    };
+    if succeeded == 0 {
+        return Err(StorageError::WorkerStopped);
+    }
+    let information = unsafe { information.assume_init() };
+    Ok(format!(
+        "{:08x}-{:08x}{:08x}",
+        information.dwVolumeSerialNumber, information.nFileIndexHigh, information.nFileIndexLow
+    ))
+}
+
+#[cfg(not(any(unix, windows)))]
+fn database_file_identity(file: &File) -> DbResult<String> {
+    let _ = file;
+    Err(StorageError::UnsupportedOperation {
+        operation: "database file ownership on this platform",
+    })
 }
 
 fn open_connection(
@@ -490,10 +580,12 @@ fn handle_request(connection: &mut Connection, mode: SchemaMode, request: Reques
             let _ = reply.send(result);
         }
         Request::Set(key, value, reply) => {
-            let result = if mode == SchemaMode::LegacyReadOnly {
-                Err(StorageError::ReadOnlyLegacy)
-            } else {
-                set_value(connection, &key, &value)
+            let result = match mode {
+                SchemaMode::LegacyReadOnly => Err(StorageError::ReadOnlyLegacy),
+                SchemaMode::Full => Err(StorageError::UnsupportedOperation {
+                    operation: "raw full-v2 setting mutation",
+                }),
+                SchemaMode::Bootstrap => set_value(connection, &key, &value),
             };
             let _ = reply.send(result);
         }
@@ -503,7 +595,8 @@ fn handle_request(connection: &mut Connection, mode: SchemaMode, request: Reques
                     operation: "set_with_revision",
                 })
             } else {
-                set_and_bump(connection, &key, &value, &topic)
+                validate_full_setting(&key, &value, &topic)
+                    .and_then(|()| set_and_bump(connection, &key, &value, &topic))
             };
             let _ = reply.send(result);
         }
@@ -655,9 +748,7 @@ fn read_u64(connection: &Connection, key: &str, default: u64) -> DbResult<u64> {
         )
         .optional()?;
     match value {
-        Some(value) => value.parse().map_err(|_| StorageError::InvalidLegacyData {
-            detail: "runtime metadata is malformed".into(),
-        }),
+        Some(value) => parse_u64_metadata(&value),
         None => Ok(default),
     }
 }
@@ -675,7 +766,8 @@ fn revision(connection: &Connection, topic: &str) -> DbResult<RuntimeMetadata> {
 
 fn allocate_epoch(connection: &mut Connection) -> DbResult<u64> {
     let transaction = connection.transaction()?;
-    let current = read_u64(&transaction, "__runtime.epoch", 0)?;
+    let current = validate_runtime_metadata(&transaction)?;
+    let current = current.map_or(0, |metadata| metadata.epoch);
     let next = current
         .checked_add(1)
         .ok_or_else(|| StorageError::InvalidLegacyData {
@@ -697,8 +789,112 @@ fn allocate_epoch(connection: &mut Connection) -> DbResult<u64> {
     Ok(next)
 }
 
+fn parse_u64_metadata(value: &str) -> DbResult<u64> {
+    let parsed = value
+        .parse::<u64>()
+        .map_err(|_| StorageError::InvalidLegacyData {
+            detail: "runtime metadata is malformed".into(),
+        })?;
+    if parsed.to_string() != value {
+        return Err(StorageError::InvalidLegacyData {
+            detail: "runtime metadata is malformed".into(),
+        });
+    }
+    Ok(parsed)
+}
+
+fn validate_runtime_metadata(connection: &Connection) -> DbResult<Option<RuntimeMetadata>> {
+    let rows = connection
+        .prepare("SELECT key,value FROM app_settings WHERE key LIKE '__runtime.%'")?
+        .query_map([], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })?
+        .collect::<Result<Vec<_>, _>>()?;
+    if rows.is_empty() {
+        return Ok(None);
+    }
+    let mut known = BTreeMap::new();
+    known.insert("__runtime.epoch".to_owned(), None);
+    for topic in [
+        "settings", "hardware", "trains", "bindings", "scripts", "firmware",
+    ] {
+        known.insert(format!("__runtime.revision.{topic}"), None);
+    }
+    for (key, value) in rows {
+        let Some(slot) = known.get_mut(&key) else {
+            return Err(StorageError::InvalidLegacyData {
+                detail: "runtime metadata is incomplete or unknown".into(),
+            });
+        };
+        if slot.replace(parse_u64_metadata(&value)?).is_some() {
+            return Err(StorageError::InvalidLegacyData {
+                detail: "runtime metadata is duplicated".into(),
+            });
+        }
+    }
+    if known.values().any(Option::is_none) {
+        return Err(StorageError::InvalidLegacyData {
+            detail: "runtime metadata is incomplete".into(),
+        });
+    }
+    let epoch = known["__runtime.epoch"].unwrap();
+    if epoch == 0 {
+        return Err(StorageError::InvalidLegacyData {
+            detail: "runtime epoch has not been initialized".into(),
+        });
+    }
+    Ok(Some(RuntimeMetadata { epoch, revision: 0 }))
+}
+
+fn validate_full_setting(key: &str, value: &str, topic: &str) -> DbResult<()> {
+    if topic != "settings" {
+        return Err(StorageError::UnsupportedOperation {
+            operation: "setting revision topic",
+        });
+    }
+    match key {
+        "error_reporting" if matches!(value, "enabled" | "disabled") => Ok(()),
+        "simulator_url" => {
+            let parsed = reqwest::Url::parse(value.trim()).ok();
+            if parsed.as_ref().is_some_and(|parsed| {
+                matches!(parsed.scheme(), "http" | "https")
+                    && parsed.host_str().is_some()
+                    && parsed.username().is_empty()
+                    && parsed.password().is_none()
+                    && parsed.query().is_none()
+                    && parsed.fragment().is_none()
+            }) {
+                Ok(())
+            } else {
+                Err(StorageError::InvalidSetting {
+                    key: "simulator_url",
+                })
+            }
+        }
+        "simulator_api_key" if !value.trim().is_empty() && !value.contains('\0') => Ok(()),
+        "error_reporting" | "simulator_api_key" => Err(StorageError::InvalidSetting {
+            key: if key == "error_reporting" {
+                "error_reporting"
+            } else {
+                "simulator_api_key"
+            },
+        }),
+        _ if key.starts_with("__runtime.") => Err(StorageError::UnsupportedOperation {
+            operation: "reserved runtime metadata mutation",
+        }),
+        _ => Err(StorageError::UnsupportedOperation {
+            operation: "unknown full-v2 setting",
+        }),
+    }
+}
+
 fn bump_revision(connection: &mut Connection, topic: &str) -> DbResult<RuntimeMetadata> {
     let key = metadata_key(topic)?;
+    if validate_runtime_metadata(connection)?.is_none() {
+        return Err(StorageError::InvalidLegacyData {
+            detail: "runtime metadata has not been initialized".into(),
+        });
+    }
     let transaction = connection.transaction()?;
     let current = read_u64(&transaction, &key, 0)?;
     let next = current
@@ -725,6 +921,11 @@ fn set_and_bump(
     topic: &str,
 ) -> DbResult<RuntimeMetadata> {
     let revision_key = metadata_key(topic)?;
+    if validate_runtime_metadata(connection)?.is_none() {
+        return Err(StorageError::InvalidLegacyData {
+            detail: "runtime metadata has not been initialized".into(),
+        });
+    }
     let transaction = connection.transaction()?;
     transaction.execute(
         "INSERT INTO app_settings(key,value) VALUES(?1,?2) ON CONFLICT(key) DO UPDATE SET value=excluded.value",

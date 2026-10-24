@@ -12,6 +12,7 @@ static BUSY: AtomicBool = AtomicBool::new(false);
 pub fn setup(app: &mut tauri::App) -> tauri::Result<()> {
     app.handle()
         .plugin(tauri_plugin_updater::Builder::new().build())?;
+    #[cfg(not(feature = "rust-ui"))]
     app.handle().plugin(tauri_plugin_dialog::init())?;
     let help = SubmenuBuilder::new(app, "Help")
         .text("check_updates", "Check for Updates…")

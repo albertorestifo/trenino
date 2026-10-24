@@ -680,11 +680,25 @@ fn migrated_full_database_opens_writable_without_auto_migrating_legacy_open() {
         db.get("simulator_url").unwrap().as_deref(),
         Some("http://fixture.invalid")
     );
-    db.set("simulator_url", "http://rust.invalid").unwrap();
+    assert!(matches!(
+        db.set("simulator_url", "http://rust.invalid"),
+        Err(StorageError::UnsupportedOperation {
+            operation: "raw full-v2 setting mutation"
+        })
+    ));
+    assert_eq!(db.allocate_epoch().unwrap(), 1);
+    assert_eq!(db.revision("settings").unwrap(), 0);
+    assert_eq!(
+        db.get("simulator_url").unwrap().as_deref(),
+        Some("http://fixture.invalid")
+    );
+    db.set_user_setting("simulator_url", "http://rust.invalid")
+        .unwrap();
     assert_eq!(
         db.get("simulator_url").unwrap().as_deref(),
         Some("http://rust.invalid")
     );
+    assert_eq!(db.revision("settings").unwrap(), 1);
     assert_eq!(
         db.get_profile(trenino_core::EntityId(7))
             .unwrap()

@@ -57,7 +57,7 @@ impl Settings {
         }
     }
     pub fn set_error_reporting_consent(&self, enabled: bool) -> Result<(), StorageError> {
-        self.db.set(
+        self.db.set_user_setting(
             "error_reporting",
             if enabled { "enabled" } else { "disabled" },
         )
@@ -69,10 +69,10 @@ impl Settings {
             .unwrap_or_else(|| DEFAULT_SIMULATOR_URL.to_owned()))
     }
     pub fn set_simulator_url(&self, url: &str) -> Result<(), StorageError> {
-        self.db.set("simulator_url", url)
+        self.db.set_user_setting("simulator_url", url)
     }
     pub fn set_api_key(&self, key: &str) -> Result<(), StorageError> {
-        self.db.set("simulator_api_key", key)
+        self.db.set_user_setting("simulator_api_key", key)
     }
     pub fn api_key(&self) -> Result<Option<String>, StorageError> {
         if let Some(value) = self.db.get("simulator_api_key")? {

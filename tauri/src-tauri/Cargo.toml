@@ -19,10 +19,11 @@ crate-type = ["lib", "cdylib", "staticlib"]
 
 [features]
 desktop-updater = ["dep:tauri-plugin-updater", "dep:tauri-plugin-dialog"]
-rust-ui = ["dep:trenino-runtime", "dep:trenino-core"]
+rust-ui = ["dep:trenino-runtime", "dep:trenino-core", "dep:tauri-plugin-dialog"]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
+serde_json = "1"
 
 [dependencies]
 trenino-runtime = { path = "../../crates/trenino-runtime", optional = true }
