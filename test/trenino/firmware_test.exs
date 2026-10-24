@@ -273,24 +273,28 @@ defmodule Trenino.FirmwareTest do
   end
 
   describe "firmware_downloaded?/1" do
-    test "returns false when file not downloaded" do
-      {_release, [uno_file | _rest]} = create_release_with_files()
+    setup do
+      version = "0.0.0-firmware-test-#{System.unique_integer([:positive])}"
 
+      {_release, [uno_file | _rest]} =
+        create_release_with_files(%{version: version, tag_name: "v#{version}"})
+
+      path = FilePath.firmware_path(uno_file)
+      on_exit(fn -> File.rm(path) end)
+      %{uno_file: uno_file}
+    end
+
+    test "returns false when file not downloaded", %{uno_file: uno_file} do
       refute Firmware.firmware_downloaded?(uno_file)
     end
 
-    test "returns true when file exists on disk" do
-      {_release, [uno_file | _rest]} = create_release_with_files()
-
+    test "returns true when file exists on disk", %{uno_file: uno_file} do
       # Create the actual file on disk
       path = FilePath.firmware_path(uno_file)
       File.mkdir_p!(Path.dirname(path))
       File.write!(path, "test content")
 
       assert Firmware.firmware_downloaded?(uno_file)
-
-      # Cleanup
-      File.rm!(path)
     end
   end
 

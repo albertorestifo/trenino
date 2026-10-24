@@ -392,14 +392,34 @@ defmodule Trenino.VirtualJoystick.Configurator.SystemAdapter do
   defp trusted_locations do
     app_dir = Application.app_dir(:trenino)
 
-    [
-      Path.join([app_dir, "priv", "bin"]),
-      Path.join([app_dir, "priv", "resources"]),
-      Path.join(app_dir, "resources")
-    ]
-    |> Enum.map(&Path.expand/1)
-    |> Enum.uniq()
-    |> Enum.map(&{Path.expand(app_dir), &1})
+    bundled =
+      [
+        Path.join([app_dir, "priv", "bin"]),
+        Path.join([app_dir, "priv", "resources"]),
+        Path.join(app_dir, "resources")
+      ]
+      |> Enum.map(&Path.expand/1)
+      |> Enum.uniq()
+      |> Enum.map(&{Path.expand(app_dir), &1})
+
+    # Tauri installs native helpers beside its launcher, outside Burrito's
+    # extracted application directory. Only accept an absolute launcher path;
+    # never search PATH or the current working directory for elevated helpers.
+    installed =
+      case System.get_env("APP_PATH") do
+        path when is_binary(path) and path != "" ->
+          if Path.type(path) == :absolute do
+            anchor = Path.expand(path)
+            [{anchor, Path.join(anchor, "resources")}]
+          else
+            []
+          end
+
+        _ ->
+          []
+      end
+
+    installed ++ bundled
   end
 
   defp quote_argument(argument), do: ~s("#{String.replace(argument, "\"", "\\\"")}")

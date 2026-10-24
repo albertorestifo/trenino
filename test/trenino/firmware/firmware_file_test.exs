@@ -158,7 +158,8 @@ defmodule Trenino.Firmware.FirmwareFileTest do
 
   describe "downloaded?/1" do
     setup do
-      release = create_release()
+      version = "0.0.0-firmware-file-test-#{System.unique_integer([:positive])}"
+      release = %{create_release() | version: version}
       {:ok, release: release}
     end
 
@@ -179,13 +180,11 @@ defmodule Trenino.Firmware.FirmwareFileTest do
 
       # Create the actual file on disk
       path = FilePath.firmware_path(file)
+      on_exit(fn -> File.rm(path) end)
       File.mkdir_p!(Path.dirname(path))
       File.write!(path, "test content")
 
       assert FirmwareFile.downloaded?(file)
-
-      # Cleanup
-      File.rm!(path)
     end
   end
 

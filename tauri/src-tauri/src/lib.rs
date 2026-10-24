@@ -3,6 +3,11 @@ use tauri_plugin_shell::ShellExt;
 use tauri_plugin_shell::process::CommandChild;
 use std::sync::Mutex;
 use std::time::Duration;
+use std::sync::atomic::{AtomicBool, Ordering};
+#[cfg(feature = "desktop-updater")]
+mod updater;
+#[cfg(any(feature = "desktop-updater", test))]
+mod update_flow;
 
 const BACKEND_PORT: u16 = 4000;
 const MAX_RETRIES: u32 = 120; // 2 minutes max wait
@@ -10,6 +15,7 @@ const RETRY_DELAY_MS: u64 = 500;
 
 /// State to hold the backend sidecar process handle for cleanup on exit
 struct BackendProcess(Mutex<Option<CommandChild>>);
+struct BackendExited(AtomicBool);
 
 /// Check if the backend is fully ready (migrations complete) by checking health endpoint
 fn check_backend_ready() -> Result<bool, String> {
@@ -74,7 +80,10 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_shell::init())
         .manage(BackendProcess(Mutex::new(None)))
+        .manage(BackendExited(AtomicBool::new(false)))
         .setup(|app| {
+            #[cfg(feature = "desktop-updater")]
+            updater::setup(app)?;
             let handle = app.handle().clone();
 
             // Create splash screen window first
@@ -111,11 +120,19 @@ pub fn run() {
                 .and_then(|p| p.parent().map(|d| d.to_string_lossy().into_owned()))
                 .unwrap_or_default();
 
-            let (mut _rx, child) = match sidecar
+            let (mut rx, child) = match sidecar
                 .env("PORT", BACKEND_PORT.to_string())
                 .env("MIX_ENV", "prod")
                 .env("BURRITO", "1")
                 .env("APP_PATH", app_dir)
+                .env(
+                    "TRENINO_DISTRIBUTION",
+                    if cfg!(feature = "desktop-updater") {
+                        "tauri-updater"
+                    } else {
+                        "direct"
+                    },
+                )
                 .spawn()
             {
                 Ok(result) => result,
@@ -128,6 +145,15 @@ pub fn run() {
             // Store the child process handle in app state for cleanup on exit
             let backend_state: tauri::State<BackendProcess> = app.state();
             *backend_state.0.lock().unwrap() = Some(child);
+            let exit_handle = handle.clone();
+            tauri::async_runtime::spawn(async move {
+                while let Some(event) = rx.recv().await {
+                    if matches!(event, tauri_plugin_shell::process::CommandEvent::Terminated(_)) {
+                        exit_handle.state::<BackendExited>().0.store(true, Ordering::SeqCst);
+                        break;
+                    }
+                }
+            });
 
             // Wait for backend to be ready in a separate thread
             let splash_handle = splash_window;
