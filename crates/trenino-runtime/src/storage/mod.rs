@@ -44,6 +44,7 @@ pub enum StorageError {
     InvalidBackupPath,
     Backup { detail: String },
     UnsupportedOperation { operation: &'static str },
+    InvalidHardware { detail: String },
     InvalidSetting { key: &'static str },
     WorkerStopped,
     NotFound,
@@ -109,6 +110,7 @@ impl std::fmt::Display for StorageError {
                 f,
                 "{operation} is not supported by the migrated database API"
             ),
+            Self::InvalidHardware { detail } => write!(f, "invalid hardware record: {detail}"),
             Self::InvalidSetting { key } => write!(f, "invalid value for setting {key}"),
             Self::WorkerStopped => f.write_str("database worker stopped"),
             Self::NotFound => f.write_str("profile not found"),
@@ -184,7 +186,9 @@ struct Worker {
 
 #[cfg(unix)]
 struct DatabaseOwnership {
-    file: File,
+    /// Pins the database inode so its identity cannot be recycled while open.
+    _identity_file: File,
+    lock_file: File,
     locked: bool,
 }
 
@@ -407,11 +411,46 @@ impl Database {
 impl DatabaseOwnership {
     #[cfg(unix)]
     fn acquire(path: &Path) -> DbResult<Self> {
-        let file = open_database_identity_file(path)?;
+        let identity_file = open_database_identity_file(path)?;
+        #[cfg(target_os = "macos")]
+        let lock_file = {
+            // Darwin implements flock() on the same lock manager as SQLite's
+            // fcntl locks, so a held flock on the database file itself makes
+            // every SQLite write fail with SQLITE_BUSY. Lock an inode-keyed
+            // sidecar in the fixed /var/tmp directory instead: hard links and
+            // symlinks to the same database still contend, ownership stays
+            // independent of TMPDIR, and the lock dies with the process.
+            use std::os::unix::fs::MetadataExt;
+            let metadata = identity_file
+                .metadata()
+                .map_err(|_| StorageError::WorkerStopped)?;
+            let lock_path = Path::new("/var/tmp").join(format!(
+                "trenino-db-{:x}-{:x}.lock",
+                metadata.dev(),
+                metadata.ino()
+            ));
+            let file = OpenOptions::new()
+                .read(true)
+                .write(true)
+                .create(true)
+                .truncate(false)
+                .open(&lock_path)
+                .map_err(|_| StorageError::WorkerStopped)?;
+            file
+        };
+        #[cfg(not(target_os = "macos"))]
         // flock is keyed by the opened inode, so hard links contend here too.
-        file.try_lock_exclusive()
+        let lock_file = identity_file
+            .try_clone()
+            .map_err(|_| StorageError::WorkerStopped)?;
+        lock_file
+            .try_lock_exclusive()
             .map_err(|_| StorageError::AlreadyRunning)?;
-        Ok(Self { file, locked: true })
+        Ok(Self {
+            _identity_file: identity_file,
+            lock_file,
+            locked: true,
+        })
     }
 
     #[cfg(windows)]
@@ -455,7 +494,7 @@ impl DatabaseOwnership {
             return Ok(());
         }
         #[cfg(unix)]
-        FileExt::unlock(&self.file).map_err(|_| StorageError::WorkerStopped)?;
+        FileExt::unlock(&self.lock_file).map_err(|_| StorageError::WorkerStopped)?;
         #[cfg(windows)]
         if unsafe { windows_sys::Win32::System::Threading::ReleaseMutex(self.mutex) } == 0 {
             return Err(StorageError::WorkerStopped);

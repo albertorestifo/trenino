@@ -5,7 +5,7 @@ use super::{
 };
 use rusqlite::{params, OptionalExtension, Transaction};
 use serde::{Deserialize, Serialize};
-use std::{any::Any, sync::mpsc};
+use std::sync::mpsc;
 use trenino_core::{ConfigId, EntityId, OperationId};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -199,14 +199,13 @@ pub struct I2cModuleDraft {
     pub params: Option<Ht16k33Params>,
 }
 
-#[derive(Clone, Debug, Partial)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct HardwareSnapshot {
     pub devices: Vec<DeviceRecord>,
     pub inputs: Vec<InputRecord>,
     pub outputs: Vec<OutputRecord>,
     pub matrices: Vec<MatrixRecord>,
     pub i2c_modules: Vec<I2cModuleRecord>,
-    pub metadata: RuntimeMetadata,
 }
 
 impl Database {
@@ -235,7 +234,7 @@ impl Database {
         reply_rx.recv().map_err(|_| StorageError::WorkerStopped)?
     }
 
-    pub fn hardware_snapshot(&self) -> DbResult<HardwareSnapshot> {
+    pub fn hardware_snapshot(&self) -> DbResult<(HardwareSnapshot, RuntimeMetadata)> {
         self.hardware_call("hardware_snapshot", |connection| snapshot(connection))
     }
 
@@ -378,7 +377,7 @@ fn hardware_tx<T>(
     Ok(Mutation { record, receipt: MutationReceipt { operation_id, outcome: MutationOutcome::Committed, metadata: RuntimeMetadata { epoch, revision } } })
 }
 
-fn snapshot(connection: &mut Connection) -> DbResult<HardwareSnapshot> {
+fn snapshot(connection: &mut Connection) -> DbResult<(HardwareSnapshot, RuntimeMetadata)> {
     let tx = connection.transaction()?;
     if validate_runtime_metadata(&tx)?.is_none() {
         return Err(StorageError::InvalidLegacyData { detail: "runtime metadata has not been initialized".into() });
@@ -395,8 +394,9 @@ fn snapshot(connection: &mut Connection) -> DbResult<HardwareSnapshot> {
         i2c_modules.extend(i2c_modules_for_device_conn(&tx, device.id)?);
     }
     let metadata = RuntimeMetadata { epoch: read_u64(&tx, "__runtime.epoch", 0)?, revision: read_u64(&tx, &metadata_key("hardware")?, 0)? };
+    let snapshot = HardwareSnapshot { devices, inputs, outputs, matrices, i2c_modules };
     tx.commit()?;
-    Ok(HardwareSnapshot { devices, inputs, outputs, matrices, i2c_modules, metadata })
+    Ok((snapshot, metadata))
 }
 
 fn all_devices(c: &Connection) -> DbResult<Vec<DeviceRecord>> {
@@ -516,7 +516,18 @@ fn update_input(c:&mut Connection,op:OperationId,id:EntityId,d:InputDraft)->DbRe
 fn delete_input(c:&mut Connection,op:OperationId,id:EntityId)->DbResult<Mutation<InputRecord>> { hardware_tx(c,op,move|tx| { let r=input_row(tx,id)?.ok_or(StorageError::NotFound)?; tx.execute("DELETE FROM device_input_calibrations WHERE input_id=?1",[id.0])?; tx.execute("DELETE FROM device_inputs WHERE id=?1",[id.0])?; Ok(r) }) }
 
 fn get_output(c:&Connection,id:EntityId)->DbResult<Option<OutputRecord>> { c.query_row("SELECT id,pin,name,device_id FROM device_outputs WHERE id=?1",[id.0],|r|Ok(OutputRecord{id:EntityId(r.get(0)?),pin:r.get(1)?,name:r.get(2)?,device_id:EntityId(r.get(3)?)})).optional().map_err(StorageError::from) }
-fn outputs_for_device_conn(c:&Connection,id:EntityId)->DbResult<Vec<OutputRecord>> { let mut q=c.prepare("SELECT id,pin,name,device_id FROM device_outputs WHERE device_id=?1 ORDER BY pin,id")?; q.query_map([id.0],|r|Ok(OutputRecord{id:EntityId(r.get(0)?),pin:r.get(1)?,name:r.get(2)?,device_id:EntityId(r.get(3)?)}))?.collect::<Result<Vec<_>,_>>().map_err(StorageError::from) }
+fn outputs_for_device_conn(c: &Connection, id: EntityId) -> DbResult<Vec<OutputRecord>> {
+    let mut q = c.prepare("SELECT id,pin,name,device_id FROM device_outputs WHERE device_id=?1 ORDER BY pin,id")?;
+    let rows = q.query_map([id.0], |r| {
+        Ok(OutputRecord {
+            id: EntityId(r.get(0)?),
+            pin: r.get(1)?,
+            name: r.get(2)?,
+            device_id: EntityId(r.get(3)?),
+        })
+    })?;
+    rows.collect::<Result<Vec<_>, _>>().map_err(StorageError::from)
+}
 fn outputs_for_device(c:&Connection,id:EntityId)->DbResult<Vec<OutputRecord>> { outputs_for_device_conn(c,id) }
 fn write_output(tx:&Transaction<'_>,id:Option<EntityId>,device:EntityId,d:OutputDraft)->DbResult<OutputRecord>{
     if !(0..256).contains(&d.pin) {return Err(invalid("output pin must be between 0 and 255".into()));}
@@ -552,7 +563,34 @@ fn create_i2c_module(c:&mut Connection,op:OperationId,device:EntityId,d:I2cModul
 fn update_i2c_module(c:&mut Connection,op:OperationId,id:EntityId,d:I2cModuleDraft)->DbResult<Mutation<I2cModuleRecord>>{hardware_tx(c,op,move|tx|{let device=module_row(tx,id)?.ok_or(StorageError::NotFound)?.device_id;write_module(tx,Some(id),device,d)})}
 fn delete_i2c_module(c:&mut Connection,op:OperationId,id:EntityId)->DbResult<Mutation<I2cModuleRecord>>{hardware_tx(c,op,move|tx|{let r=module_row(tx,id)?.ok_or(StorageError::NotFound)?;tx.execute("DELETE FROM device_i2c_modules WHERE id=?1",[id.0])?;Ok(r)})}
 
-fn save_calibration(c:&mut Connection,op:OperationId,input:EntityId,value:CalibrationRecord)->DbResult<Mutation<CalibrationRow>>{hardware_tx(c,op,move|tx|{let exists:bool=tx.query_row("SELECT EXISTS(SELECT 1 FROM device_inputs WHERE id=?1)",[input.0],|r|r.get(0))?;if !exists{return Err(StorageError::ForeignKey{detail:"input does not exist".into()});}let now=timestamp();tx.execute("INSERT INTO device_input_calibrations(input_id,max_hardware_value,min_value,max_value,has_rollover,is_inverted,inserted_at,updated_at) VALUES(?1,?2,?3,?4,?5,?6,?7,?7) ON CONFLICT(input_id) DO UPDATE SET max_hardware_value=excluded.max_hardware_value,min_value=excluded.min_value,max_value=excluded.max_value,has_rollover=excluded.has_rollover,is_inverted=excluded.is_inverted,updated_at=excluded.updated_at",params![input.0,value.max_hardware_value,value.min_value,value.max_value,value.has_rollover,value.is_inverted,now])?;get_calibration(tx,input)?.ok_or(StorageError::NotFound)})}
+fn save_calibration(c: &mut Connection, op: OperationId, input: EntityId, value: CalibrationRecord) -> DbResult<Mutation<CalibrationRow>> {
+    hardware_tx(c, op, move |tx| {
+        let exists: bool = tx.query_row("SELECT EXISTS(SELECT 1 FROM device_inputs WHERE id=?1)", [input.0], |r| r.get(0))?;
+        if !exists { return Err(StorageError::ForeignKey { detail: "input does not exist".into() }); }
+        // The accepted schema carries only a plain index on input_id, so the
+        // one-row-per-input invariant is enforced by select-then-write on the
+        // single database worker rather than an ON CONFLICT upsert.
+        let existing = get_calibration(tx, input)?;
+        let now = timestamp();
+        let row = match existing {
+            Some(row) => {
+                tx.execute(
+                    "UPDATE device_input_calibrations SET input_id=?1,max_hardware_value=?2,min_value=?3,max_value=?4,has_rollover=?5,is_inverted=?6,updated_at=?7 WHERE id=?8",
+                    params![input.0, value.max_hardware_value, value.min_value, value.max_value, value.has_rollover, value.is_inverted, now, row.id.0],
+                )?;
+                CalibrationRow { id: row.id, input_id: Some(input), value }
+            }
+            None => {
+                tx.execute(
+                    "INSERT INTO device_input_calibrations(input_id,max_hardware_value,min_value,max_value,has_rollover,is_inverted,inserted_at,updated_at) VALUES(?1,?2,?3,?4,?5,?6,?7,?7)",
+                    params![input.0, value.max_hardware_value, value.min_value, value.max_value, value.has_rollover, value.is_inverted, now],
+                )?;
+                CalibrationRow { id: EntityId(tx.last_insert_rowid()), input_id: Some(input), value }
+            }
+        };
+        Ok(row)
+    })
+}
 
 fn timestamp()->String {
     let seconds=std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs() as i64;

@@ -21,7 +21,7 @@ fn typed_hardware_mutations_roundtrip_ids_and_bump_once() {
             name: "Panel".into(), description: Some("main".into()), config_id: Some(ConfigId::new(120).unwrap()),
         })
         .unwrap();
-    assert_eq!(device.config_id.unwrap().get(), 120);
+    assert_eq!(device.record.config_id.unwrap().get(), 120);
     assert_eq!(device.receipt.metadata.revision, initial.revision + 1);
     let input = db.create_input(OperationId(2), device.record.id, InputDraft {
         pin: 4, kind: InputKind::Analog, sensitivity: Some(10), debounce: None, name: Some("Lever".into()), matrix_id: None,
@@ -76,7 +76,7 @@ fn matrix_replacement_cascades_removed_input_bindings_but_preserves_unrelated_ro
     let created = db.create_matrix(OperationId(31), device.record.id, MatrixDraft { name: "Keys".into(), row_pins: vec![2], col_pins: vec![5, 6] }).unwrap();
     let kept = db.create_input(OperationId(32), device.record.id, InputDraft { pin: 10, kind: InputKind::Button, sensitivity: None, debounce: Some(10), name: None, matrix_id: None }).unwrap();
     let receipt = db.replace_matrix_children(OperationId(33), created.record.id, vec![2], vec![5]).unwrap();
-    assert_eq!(receipt.metadata.revision, created.receipt.metadata.revision + 1);
+    assert_eq!(receipt.receipt.metadata.revision, kept.receipt.metadata.revision + 1);
     assert!(db.get_input(EntityId(1_000_000)).unwrap().is_none());
     assert!(db.get_input(kept.record.id).unwrap().is_some());
 }
@@ -90,7 +90,7 @@ fn calibration_roundtrip_replaces_in_one_revision_and_missing_input_fails() {
     let first = db.save_calibration(OperationId(42), input.record.id, calibration.clone()).unwrap();
     let second = db.save_calibration(OperationId(43), input.record.id, CalibrationRecord { is_inverted: true, ..calibration.clone() }).unwrap();
     assert_eq!(first.record.id, second.record.id);
-    assert_eq!(db.get_input(input.record.id).unwrap().unwrap().calibration.unwrap().is_inverted, true);
+    assert_eq!(db.get_input(input.record.id).unwrap().unwrap().calibration.unwrap().value.is_inverted, true);
     assert_eq!(second.receipt.metadata.revision, first.receipt.metadata.revision + 1);
     assert!(matches!(db.save_calibration(OperationId(44), EntityId(99999), calibration), Err(StorageError::ForeignKey { .. })));
     assert_eq!(db.hardware_snapshot().unwrap().1.revision, second.receipt.metadata.revision);
