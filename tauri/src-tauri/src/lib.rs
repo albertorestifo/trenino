@@ -1,23 +1,37 @@
-use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
-use tauri_plugin_shell::ShellExt;
-use tauri_plugin_shell::process::CommandChild;
-use std::sync::Mutex;
-use std::time::Duration;
+#[cfg(not(feature = "rust-ui"))]
 use std::sync::atomic::{AtomicBool, Ordering};
-#[cfg(feature = "desktop-updater")]
-mod updater;
+#[cfg(not(feature = "rust-ui"))]
+use std::sync::Mutex;
+#[cfg(not(feature = "rust-ui"))]
+use std::time::Duration;
+#[cfg(not(feature = "rust-ui"))]
+use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
+#[cfg(not(feature = "rust-ui"))]
+use tauri_plugin_shell::process::CommandChild;
+#[cfg(not(feature = "rust-ui"))]
+use tauri_plugin_shell::ShellExt;
+#[cfg(feature = "rust-ui")]
+mod rust_ui;
 #[cfg(any(feature = "desktop-updater", test))]
 mod update_flow;
+#[cfg(feature = "desktop-updater")]
+mod updater;
 
+#[cfg(not(feature = "rust-ui"))]
 const BACKEND_PORT: u16 = 4000;
+#[cfg(not(feature = "rust-ui"))]
 const MAX_RETRIES: u32 = 120; // 2 minutes max wait
+#[cfg(not(feature = "rust-ui"))]
 const RETRY_DELAY_MS: u64 = 500;
 
 /// State to hold the backend sidecar process handle for cleanup on exit
+#[cfg(not(feature = "rust-ui"))]
 struct BackendProcess(Mutex<Option<CommandChild>>);
+#[cfg(not(feature = "rust-ui"))]
 struct BackendExited(AtomicBool);
 
 /// Check if the backend is fully ready (migrations complete) by checking health endpoint
+#[cfg(not(feature = "rust-ui"))]
 fn check_backend_ready() -> Result<bool, String> {
     let url = format!("http://localhost:{}/api/health", BACKEND_PORT);
     match reqwest::blocking::get(&url) {
@@ -37,6 +51,7 @@ fn check_backend_ready() -> Result<bool, String> {
 }
 
 /// Wait for the backend to become fully ready
+#[cfg(not(feature = "rust-ui"))]
 fn wait_for_backend(handle: &tauri::AppHandle) -> bool {
     // Get the splash window to update status
     let splash_window = handle.get_webview_window("splash");
@@ -75,6 +90,7 @@ fn wait_for_backend(handle: &tauri::AppHandle) -> bool {
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
+#[cfg(not(feature = "rust-ui"))]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
@@ -236,4 +252,10 @@ pub fn run() {
                 }
             }
         });
+}
+
+#[cfg(feature = "rust-ui")]
+#[cfg_attr(mobile, tauri::mobile_entry_point)]
+pub fn run() {
+    rust_ui::run()
 }

@@ -35,8 +35,15 @@ pub fn setup(app: &mut tauri::App) -> tauri::Result<()> {
 }
 
 async fn check(app: &tauri::AppHandle) -> Result<(), String> {
+    #[cfg(not(feature = "rust-ui"))]
     if app.state::<crate::BackendExited>().0.load(Ordering::SeqCst) {
         return Err("The backend has stopped. Restart Trenino before trying again.".into());
+    }
+    #[cfg(feature = "rust-ui")]
+    if !app.state::<crate::rust_ui::RustAppState>().accepts_work() {
+        return Err(
+            "The application is shutting down. Restart Trenino before trying again.".into(),
+        );
     }
     let update = app
         .updater_builder()
@@ -76,6 +83,7 @@ async fn check(app: &tauri::AppHandle) -> Result<(), String> {
     Ok(())
 }
 
+#[cfg(not(feature = "rust-ui"))]
 async fn shutdown_backend(app: &tauri::AppHandle) -> Result<(), String> {
     reqwest::Client::new()
         .post(format!(
@@ -95,4 +103,9 @@ async fn shutdown_backend(app: &tauri::AppHandle) -> Result<(), String> {
         tokio::time::sleep(Duration::from_millis(100)).await;
     }
     Err("Backend did not exit within 15 seconds; installation was cancelled.".into())
+}
+
+#[cfg(feature = "rust-ui")]
+async fn shutdown_backend(app: &tauri::AppHandle) -> Result<(), String> {
+    app.state::<crate::rust_ui::RustAppState>().shutdown()
 }

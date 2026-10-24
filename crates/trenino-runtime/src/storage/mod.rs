@@ -5,6 +5,7 @@ pub use migration::{LegacySchema, MigrationReport};
 
 use rusqlite::{Connection, OptionalExtension};
 use std::{
+    collections::BTreeMap,
     path::Path,
     sync::{mpsc, Arc, Mutex},
     thread,
@@ -20,6 +21,7 @@ const SETTINGS_SCHEMA: &str =
 const PROFILES_SCHEMA: &str =
     "CREATE TABLE profiles(id INTEGER PRIMARY KEY,name TEXT NOT NULL UNIQUE)";
 const PROFILE_SETTINGS_SCHEMA: &str = "CREATE TABLE profile_settings(profile_id INTEGER NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,key TEXT NOT NULL,value TEXT NOT NULL,PRIMARY KEY(profile_id,key))";
+const FULL_SCHEMA: &str = include_str!("schema/rust-full-v2.sql");
 
 #[derive(Debug)]
 pub enum StorageError {
@@ -28,6 +30,9 @@ pub enum StorageError {
     ForeignKey { detail: String },
     Constraint { detail: String },
     UnsupportedSchema { application_id: i64, version: i64 },
+    BootstrapUpgradeRequired,
+    LegacyUpgradeRequired,
+    AlreadyRunning,
     ReadOnlyLegacy,
     InvalidLegacyData { detail: String },
     BackupAlreadyExists,
@@ -76,6 +81,13 @@ impl std::fmt::Display for StorageError {
                 f,
                 "unsupported database schema (application_id={application_id}, version={version})"
             ),
+            Self::BootstrapUpgradeRequired => f.write_str(
+                "bootstrap-v1 data needs an explicit preservation-aware upgrade before Rust runtime startup",
+            ),
+            Self::LegacyUpgradeRequired => f.write_str(
+                "legacy database needs an explicit maintenance upgrade with a recoverable backup before Rust runtime startup",
+            ),
+            Self::AlreadyRunning => f.write_str("this database path is already owned by another runtime instance"),
             Self::ReadOnlyLegacy => {
                 f.write_str("legacy database is read-only until migration support is enabled")
             }
@@ -104,6 +116,29 @@ pub struct Profile {
     pub name: String,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ConfigurationRecord {
+    pub config_id: u32,
+    pub name: String,
+    pub description: Option<String>,
+    pub input_count: u32,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TrainRecord {
+    pub id: EntityId,
+    pub name: String,
+    pub description: Option<String>,
+    pub identifiers: Vec<String>,
+    pub element_count: u32,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RuntimeMetadata {
+    pub epoch: u64,
+    pub revision: u64,
+}
+
 type DbResult<T> = Result<T, StorageError>;
 type Reply<T> = mpsc::Sender<DbResult<T>>;
 
@@ -117,12 +152,19 @@ enum SchemaMode {
 enum Request {
     Get(String, Reply<Option<String>>),
     Set(String, String, Reply<()>),
+    SetAndBump(String, String, String, Reply<RuntimeMetadata>),
     Count(Reply<u64>),
     CreateProfile(String, Reply<Profile>),
     GetProfile(EntityId, Reply<Option<Profile>>),
     DeleteProfile(EntityId, Reply<()>),
     SetProfileValue(EntityId, String, String, Reply<()>),
     ProfileValue(EntityId, String, Reply<Option<String>>),
+    AllocateEpoch(Reply<u64>),
+    Revision(String, Reply<u64>),
+    BumpRevision(String, Reply<RuntimeMetadata>),
+    SettingsSnapshot(Reply<(BTreeMap<String, String>, RuntimeMetadata)>),
+    ConfigurationsSnapshot(Reply<(Vec<ConfigurationRecord>, RuntimeMetadata)>),
+    TrainsSnapshot(Reply<(Vec<TrainRecord>, RuntimeMetadata)>),
 }
 
 struct Worker {
@@ -149,14 +191,25 @@ pub struct Database {
 impl Database {
     /// Open the isolated Rust schema or recognize the exact latest Ecto schema as read-only.
     pub fn open(path: impl AsRef<Path>) -> Result<Self, StorageError> {
-        let path = path.as_ref().to_owned();
+        Self::open_with_schema(path.as_ref(), false)
+    }
+
+    /// Open an explicitly selected Rust full-v2 database. A fresh empty path is
+    /// initialized with the canonical full schema. Existing bootstrap-v1 data
+    /// is rejected so its profiles and settings cannot be silently discarded.
+    pub fn open_full(path: impl AsRef<Path>) -> Result<Self, StorageError> {
+        Self::open_with_schema(path.as_ref(), true)
+    }
+
+    fn open_with_schema(path: &Path, require_full: bool) -> Result<Self, StorageError> {
+        let path = path.to_owned();
         let path_exists = path.exists();
         let (ready_tx, ready_rx) = mpsc::channel();
         let (request_tx, request_rx) = mpsc::sync_channel(QUEUE_BOUND);
         let join = thread::Builder::new()
             .name("trenino-db".into())
             .spawn(move || {
-                let opened = open_connection(&path, path_exists);
+                let opened = open_connection(&path, path_exists, require_full);
                 let (mut connection, mode) = match opened {
                     Ok(opened) => opened,
                     Err(error) => {
@@ -197,6 +250,46 @@ impl Database {
 
     pub fn count(&self) -> Result<u64, StorageError> {
         self.request(Request::Count)
+    }
+
+    /// Increase the durable epoch under exclusive startup ownership. Topic
+    /// revisions are reset in the same transaction; exhaustion refuses startup.
+    pub fn allocate_epoch(&self) -> Result<u64, StorageError> {
+        self.request(Request::AllocateEpoch)
+    }
+
+    pub fn revision(&self, topic: &str) -> Result<u64, StorageError> {
+        self.request(|reply| Request::Revision(topic.into(), reply))
+    }
+
+    pub fn bump_revision(&self, topic: &str) -> Result<RuntimeMetadata, StorageError> {
+        self.request(|reply| Request::BumpRevision(topic.into(), reply))
+    }
+
+    pub fn settings_snapshot(
+        &self,
+    ) -> Result<(BTreeMap<String, String>, RuntimeMetadata), StorageError> {
+        self.request(Request::SettingsSnapshot)
+    }
+
+    pub fn configurations_snapshot(
+        &self,
+    ) -> Result<(Vec<ConfigurationRecord>, RuntimeMetadata), StorageError> {
+        self.request(Request::ConfigurationsSnapshot)
+    }
+
+    pub fn trains_snapshot(&self) -> Result<(Vec<TrainRecord>, RuntimeMetadata), StorageError> {
+        self.request(Request::TrainsSnapshot)
+    }
+
+    /// Commit a user-visible setting and its topic revision together.
+    pub fn set_with_revision(
+        &self,
+        key: &str,
+        value: &str,
+        topic: &str,
+    ) -> Result<RuntimeMetadata, StorageError> {
+        self.request(|reply| Request::SetAndBump(key.into(), value.into(), topic.into(), reply))
     }
 
     pub fn create_profile(&self, name: &str) -> Result<Profile, StorageError> {
@@ -262,7 +355,11 @@ impl Database {
     }
 }
 
-fn open_connection(path: &Path, path_exists: bool) -> DbResult<(Connection, SchemaMode)> {
+fn open_connection(
+    path: &Path,
+    path_exists: bool,
+    require_full: bool,
+) -> DbResult<(Connection, SchemaMode)> {
     let flags = if path_exists {
         rusqlite::OpenFlags::SQLITE_OPEN_READ_WRITE
     } else {
@@ -277,10 +374,17 @@ fn open_connection(path: &Path, path_exists: bool) -> DbResult<(Connection, Sche
     if application_id == 0 && version == 0 {
         let object_count = count_user_objects(&connection)?;
         if object_count == 0 {
+            if require_full {
+                create_full_schema(&mut connection)?;
+                return Ok((connection, SchemaMode::Full));
+            }
             create_rust_schema(&mut connection)?;
             return Ok((connection, SchemaMode::Bootstrap));
         }
         if migration::is_supported_legacy_schema(&connection)?.is_some() {
+            if require_full {
+                return Err(StorageError::LegacyUpgradeRequired);
+            }
             connection.pragma_update(None, "query_only", "ON")?;
             return Ok((connection, SchemaMode::LegacyReadOnly));
         }
@@ -288,6 +392,9 @@ fn open_connection(path: &Path, path_exists: bool) -> DbResult<(Connection, Sche
         && version == SCHEMA_VERSION
         && validate_rust_schema(&connection)?
     {
+        if require_full {
+            return Err(StorageError::BootstrapUpgradeRequired);
+        }
         return Ok((connection, SchemaMode::Bootstrap));
     } else if application_id == APP_ID
         && version == FULL_SCHEMA_VERSION
@@ -300,6 +407,19 @@ fn open_connection(path: &Path, path_exists: bool) -> DbResult<(Connection, Sche
         application_id,
         version,
     })
+}
+
+fn create_full_schema(connection: &mut Connection) -> DbResult<()> {
+    let transaction = connection.transaction()?;
+    transaction.execute_batch(FULL_SCHEMA)?;
+    transaction.execute(
+        "INSERT INTO rust_schema_migrations(version,name,applied_at) VALUES(2,'rust-full-v2-fresh',strftime('%Y-%m-%dT%H:%M:%fZ','now'))",
+        [],
+    )?;
+    transaction.pragma_update(None, "application_id", APP_ID)?;
+    transaction.pragma_update(None, "user_version", FULL_SCHEMA_VERSION)?;
+    transaction.commit()?;
+    Ok(())
 }
 
 fn count_user_objects(connection: &Connection) -> DbResult<i64> {
@@ -377,6 +497,16 @@ fn handle_request(connection: &mut Connection, mode: SchemaMode, request: Reques
             };
             let _ = reply.send(result);
         }
+        Request::SetAndBump(key, value, topic, reply) => {
+            let result = if mode != SchemaMode::Full {
+                Err(StorageError::UnsupportedOperation {
+                    operation: "set_with_revision",
+                })
+            } else {
+                set_and_bump(connection, &key, &value, &topic)
+            };
+            let _ = reply.send(result);
+        }
         Request::Count(reply) => {
             let result = connection
                 .query_row("SELECT count(*) FROM app_settings", [], |row| {
@@ -442,7 +572,243 @@ fn handle_request(connection: &mut Connection, mode: SchemaMode, request: Reques
                 .map_err(StorageError::from);
             let _ = reply.send(result);
         }
+        Request::AllocateEpoch(reply) => {
+            let result = if mode != SchemaMode::Full {
+                Err(StorageError::UnsupportedOperation {
+                    operation: "allocate_epoch",
+                })
+            } else {
+                allocate_epoch(connection)
+            };
+            let _ = reply.send(result);
+        }
+        Request::Revision(topic, reply) => {
+            let result = if mode != SchemaMode::Full {
+                Err(StorageError::UnsupportedOperation {
+                    operation: "revision",
+                })
+            } else {
+                revision(connection, &topic).map(|metadata| metadata.revision)
+            };
+            let _ = reply.send(result);
+        }
+        Request::BumpRevision(topic, reply) => {
+            let result = if mode != SchemaMode::Full {
+                Err(StorageError::UnsupportedOperation {
+                    operation: "bump_revision",
+                })
+            } else {
+                bump_revision(connection, &topic)
+            };
+            let _ = reply.send(result);
+        }
+        Request::SettingsSnapshot(reply) => {
+            let result = if mode != SchemaMode::Full {
+                Err(StorageError::UnsupportedOperation {
+                    operation: "settings_snapshot",
+                })
+            } else {
+                settings_snapshot(connection)
+            };
+            let _ = reply.send(result);
+        }
+        Request::ConfigurationsSnapshot(reply) => {
+            let result = if mode != SchemaMode::Full {
+                Err(StorageError::UnsupportedOperation {
+                    operation: "configurations_snapshot",
+                })
+            } else {
+                configurations_snapshot(connection)
+            };
+            let _ = reply.send(result);
+        }
+        Request::TrainsSnapshot(reply) => {
+            let result = if mode != SchemaMode::Full {
+                Err(StorageError::UnsupportedOperation {
+                    operation: "trains_snapshot",
+                })
+            } else {
+                trains_snapshot(connection)
+            };
+            let _ = reply.send(result);
+        }
     }
+}
+
+fn metadata_key(topic: &str) -> DbResult<String> {
+    match topic {
+        "settings" | "hardware" | "trains" | "bindings" | "scripts" | "firmware" => {
+            Ok(format!("__runtime.revision.{topic}"))
+        }
+        _ => Err(StorageError::UnsupportedOperation {
+            operation: "unknown_topic",
+        }),
+    }
+}
+
+fn read_u64(connection: &Connection, key: &str, default: u64) -> DbResult<u64> {
+    let value: Option<String> = connection
+        .query_row(
+            "SELECT value FROM app_settings WHERE key=?1",
+            [key],
+            |row| row.get(0),
+        )
+        .optional()?;
+    match value {
+        Some(value) => value.parse().map_err(|_| StorageError::InvalidLegacyData {
+            detail: "runtime metadata is malformed".into(),
+        }),
+        None => Ok(default),
+    }
+}
+
+fn metadata(connection: &Connection, topic: &str) -> DbResult<RuntimeMetadata> {
+    Ok(RuntimeMetadata {
+        epoch: read_u64(connection, "__runtime.epoch", 0)?,
+        revision: read_u64(connection, &metadata_key(topic)?, 0)?,
+    })
+}
+
+fn revision(connection: &Connection, topic: &str) -> DbResult<RuntimeMetadata> {
+    metadata(connection, topic)
+}
+
+fn allocate_epoch(connection: &mut Connection) -> DbResult<u64> {
+    let transaction = connection.transaction()?;
+    let current = read_u64(&transaction, "__runtime.epoch", 0)?;
+    let next = current
+        .checked_add(1)
+        .ok_or_else(|| StorageError::InvalidLegacyData {
+            detail: "runtime epoch counter is exhausted".into(),
+        })?;
+    transaction.execute(
+        "INSERT INTO app_settings(key,value) VALUES('__runtime.epoch',?1) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+        [next.to_string()],
+    )?;
+    for topic in [
+        "settings", "hardware", "trains", "bindings", "scripts", "firmware",
+    ] {
+        transaction.execute(
+            "INSERT INTO app_settings(key,value) VALUES(?1,'0') ON CONFLICT(key) DO UPDATE SET value='0'",
+            [metadata_key(topic)?],
+        )?;
+    }
+    transaction.commit()?;
+    Ok(next)
+}
+
+fn bump_revision(connection: &mut Connection, topic: &str) -> DbResult<RuntimeMetadata> {
+    let key = metadata_key(topic)?;
+    let transaction = connection.transaction()?;
+    let current = read_u64(&transaction, &key, 0)?;
+    let next = current
+        .checked_add(1)
+        .ok_or_else(|| StorageError::InvalidLegacyData {
+            detail: "topic revision counter is exhausted".into(),
+        })?;
+    transaction.execute(
+        "INSERT INTO app_settings(key,value) VALUES(?1,?2) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+        (&key, next.to_string()),
+    )?;
+    let epoch = read_u64(&transaction, "__runtime.epoch", 0)?;
+    transaction.commit()?;
+    Ok(RuntimeMetadata {
+        epoch,
+        revision: next,
+    })
+}
+
+fn set_and_bump(
+    connection: &mut Connection,
+    key: &str,
+    value: &str,
+    topic: &str,
+) -> DbResult<RuntimeMetadata> {
+    let revision_key = metadata_key(topic)?;
+    let transaction = connection.transaction()?;
+    transaction.execute(
+        "INSERT INTO app_settings(key,value) VALUES(?1,?2) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+        (key, value),
+    )?;
+    let revision = read_u64(&transaction, &revision_key, 0)?;
+    let next = revision
+        .checked_add(1)
+        .ok_or_else(|| StorageError::InvalidLegacyData {
+            detail: "topic revision counter is exhausted".into(),
+        })?;
+    transaction.execute(
+        "INSERT INTO app_settings(key,value) VALUES(?1,?2) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+        (&revision_key, next.to_string()),
+    )?;
+    let epoch = read_u64(&transaction, "__runtime.epoch", 0)?;
+    transaction.commit()?;
+    Ok(RuntimeMetadata {
+        epoch,
+        revision: next,
+    })
+}
+
+fn settings_snapshot(
+    connection: &Connection,
+) -> DbResult<(BTreeMap<String, String>, RuntimeMetadata)> {
+    let mut statement = connection.prepare(
+        "SELECT key,value FROM app_settings WHERE key NOT LIKE '__runtime.%' ORDER BY key",
+    )?;
+    let rows = statement.query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?;
+    let values = rows.collect::<Result<BTreeMap<String, String>, _>>()?;
+    Ok((values, metadata(connection, "settings")?))
+}
+
+fn configurations_snapshot(
+    connection: &Connection,
+) -> DbResult<(Vec<ConfigurationRecord>, RuntimeMetadata)> {
+    let mut statement = connection.prepare(
+        "SELECT config_id,COALESCE(name,''),description,(SELECT COUNT(*) FROM device_inputs WHERE device_id=devices.id) FROM devices WHERE config_id IS NOT NULL ORDER BY config_id",
+    )?;
+    let rows = statement.query_map([], |row| {
+        Ok(ConfigurationRecord {
+            config_id: row.get(0)?,
+            name: row.get(1)?,
+            description: row.get(2)?,
+            input_count: row.get(3)?,
+        })
+    })?;
+    Ok((
+        rows.collect::<Result<Vec<_>, _>>()?,
+        metadata(connection, "hardware")?,
+    ))
+}
+
+fn trains_snapshot(connection: &Connection) -> DbResult<(Vec<TrainRecord>, RuntimeMetadata)> {
+    let mut statement = connection.prepare(
+        "SELECT t.id,t.name,t.description,COUNT(DISTINCT e.id) FROM trains t LEFT JOIN train_elements e ON e.train_id=t.id GROUP BY t.id ORDER BY t.id",
+    )?;
+    let rows = statement.query_map([], |row| {
+        Ok((
+            EntityId(row.get(0)?),
+            row.get::<_, String>(1)?,
+            row.get::<_, Option<String>>(2)?,
+            row.get::<_, u32>(3)?,
+        ))
+    })?;
+    let mut trains = Vec::new();
+    for row in rows {
+        let (id, name, description, element_count) = row?;
+        let mut identifiers = connection.prepare(
+            "SELECT identifier FROM train_identifiers WHERE train_id=?1 ORDER BY identifier",
+        )?;
+        let identifiers = identifiers
+            .query_map([id.0], |row| row.get(0))?
+            .collect::<Result<Vec<String>, _>>()?;
+        trains.push(TrainRecord {
+            id,
+            name,
+            description,
+            identifiers,
+            element_count,
+        });
+    }
+    Ok((trains, metadata(connection, "trains")?))
 }
 
 fn set_value(connection: &mut Connection, key: &str, value: &str) -> DbResult<()> {

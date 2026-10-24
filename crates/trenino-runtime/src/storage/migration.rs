@@ -373,6 +373,9 @@ pub(super) fn validate_full_schema(connection: &Connection) -> DbResult<bool> {
             Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
         })?
         .collect::<Result<Vec<_>, _>>()?;
+    if ledger == [(2, "rust-full-v2-fresh".to_owned())] {
+        return Ok(ecto_versions_match(connection, &[])? && foreign_keys_are_valid(connection)?);
+    }
     Ok(ledger == [(1, "ecto-full-to-rust-v1".to_owned())]
         && ecto_versions_match(connection, ECTO_VERSION_CURRENT)?
         && foreign_keys_are_valid(connection)?)

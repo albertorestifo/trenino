@@ -1,7 +1,28 @@
 //! Durable application preferences. API keys are never included in public snapshots.
 use crate::storage::{Database, StorageError};
-use std::{collections::BTreeMap, path::PathBuf};
+use std::{
+    collections::BTreeMap,
+    path::{Path, PathBuf},
+};
 const DEFAULT_SIMULATOR_URL: &str = "http://localhost:31270";
+
+/// Resolve the legacy simulator key file. An explicit manual path takes
+/// precedence; otherwise TSW7 is preferred over TSW6 when both exist.
+pub fn resolve_api_key_file(documents_dir: &Path, manual_path: Option<PathBuf>) -> Option<PathBuf> {
+    if let Some(path) = manual_path {
+        return Some(path);
+    }
+    ["TrainSimWorld7", "TrainSimWorld6"]
+        .into_iter()
+        .map(|edition| {
+            documents_dir
+                .join("My Games")
+                .join(edition)
+                .join("Saved/Config/CommAPIKey.txt")
+        })
+        .find(|path| path.is_file())
+}
+
 #[derive(Clone)]
 pub struct Settings {
     db: Database,
