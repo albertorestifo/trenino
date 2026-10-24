@@ -28,6 +28,18 @@ fn v074_upgrade_keeps_domain_ids_relations_settings_and_wal_backup() {
     let backup = dir.path().join("v074.pre-rust.db");
     fixture(&path, V074_FIXTURE);
 
+    // Leave a deleted AUTOINCREMENT ID above the live rows. The upgrade must
+    // preserve SQLite's legitimate high-water mark.
+    let high_water = Connection::open(&path).unwrap();
+    high_water.execute(
+        "INSERT INTO trains(id,name,description,identifier,inserted_at,updated_at) VALUES(500,'Deleted high-water',NULL,'DELETED_HIGH_WATER','2026-05-01T12:00:00Z','2026-05-01T12:00:00Z')",
+        [],
+    ).unwrap();
+    high_water
+        .execute("DELETE FROM trains WHERE id=500", [])
+        .unwrap();
+    drop(high_water);
+
     // Keep a second handle open so this committed setting remains in the WAL
     // when the migration takes its SQLite backup.
     let wal_anchor = Connection::open(&path).unwrap();
@@ -92,6 +104,43 @@ fn v074_upgrade_keeps_domain_ids_relations_settings_and_wal_backup() {
             .unwrap(),
         (37, "RVM_FIXTURE".to_owned(), 47, 57, 67, 77, 87)
     );
+    assert_eq!(
+        upgraded
+            .query_row(
+                "SELECT id,code,triggers,inserted_at,updated_at FROM scripts WHERE id=87",
+                [],
+                |row| Ok((
+                    row.get::<_, i64>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, String>(3)?,
+                    row.get::<_, String>(4)?
+                ))
+            )
+            .unwrap(),
+        (
+            87,
+            "return true".to_owned(),
+            "[\"manual\"]".to_owned(),
+            "2026-05-01T12:00:00Z".to_owned(),
+            "2026-05-01T12:00:00Z".to_owned()
+        )
+    );
+    assert_eq!(
+        upgraded
+            .query_row(
+                "SELECT seq FROM sqlite_sequence WHERE name='trains'",
+                [],
+                |row| row.get::<_, i64>(0)
+            )
+            .unwrap(),
+        500
+    );
+    upgraded.execute(
+        "INSERT INTO trains(name,description,inserted_at,updated_at) VALUES('After migration',NULL,'2026-05-01T12:00:00Z','2026-05-01T12:00:00Z')",
+        [],
+    ).unwrap();
+    assert_eq!(upgraded.last_insert_rowid(), 501);
     assert_eq!(
         upgraded
             .query_row(
@@ -201,6 +250,14 @@ fn current_ecto_upgrade_preserves_vjoy_state_and_allows_devices_one_through_sixt
         r#"{"brightness":5,"num_digits":6,"display_type":"fourteen_segment","has_dot":false,"align_right":true,"min_value":0.0}"#
     );
     assert_eq!(
+        connection.query_row("SELECT id,device_id,name,module_chip,i2c_address,inserted_at,updated_at FROM device_i2c_modules WHERE id=57", [], |row| Ok((row.get::<_, i64>(0)?,row.get::<_, i64>(1)?,row.get::<_, String>(2)?,row.get::<_, String>(3)?,row.get::<_, i64>(4)?,row.get::<_, String>(5)?,row.get::<_, String>(6)?))).unwrap(),
+        (57, 7, "Cab display".to_owned(), "ht16k33".to_owned(), 112, "2026-05-01T12:00:00Z".to_owned(), "2026-05-01T12:00:00Z".to_owned())
+    );
+    assert_eq!(
+        connection.query_row("SELECT id,train_id,name,enabled,code,triggers,inserted_at,updated_at FROM scripts WHERE id=87", [], |row| Ok((row.get::<_, i64>(0)?,row.get::<_, i64>(1)?,row.get::<_, String>(2)?,row.get::<_, i64>(3)?,row.get::<_, String>(4)?,row.get::<_, String>(5)?,row.get::<_, String>(6)?,row.get::<_, String>(7)?))).unwrap(),
+        (87, 37, "Automation".to_owned(), 1, "return true".to_owned(), "[\"manual\"]".to_owned(), "2026-05-01T12:00:00Z".to_owned(), "2026-05-01T12:00:00Z".to_owned())
+    );
+    assert_eq!(
         connection
             .query_row(
                 "SELECT script_id FROM train_display_bindings WHERE id=58",
@@ -213,7 +270,7 @@ fn current_ecto_upgrade_preserves_vjoy_state_and_allows_devices_one_through_sixt
 }
 
 #[test]
-fn failed_data_transform_rolls_back_original_and_keeps_recoverable_backup() {
+fn invalid_train_identifier_is_refused_before_backup_and_mutation() {
     let dir = tempdir().unwrap();
     let path = dir.path().join("invalid.db");
     let backup = dir.path().join("invalid.pre-rust.db");
@@ -236,6 +293,7 @@ fn failed_data_transform_rolls_back_original_and_keeps_recoverable_backup() {
             .unwrap(),
         0
     );
+    assert!(!backup.exists());
     assert_eq!(
         original
             .query_row("SELECT identifier FROM trains WHERE id=37", [], |row| {
@@ -249,15 +307,6 @@ fn failed_data_transform_rolls_back_original_and_keeps_recoverable_backup() {
             .query_row("SELECT count(*) FROM sqlite_master WHERE type='table' AND name='rust_schema_migrations'", [], |row| row.get::<_, i64>(0))
             .unwrap(),
         0
-    );
-    let backup_db = Connection::open(&backup).unwrap();
-    assert_eq!(
-        backup_db
-            .query_row("SELECT identifier FROM trains WHERE id=37", [], |row| {
-                row.get::<_, String>(0)
-            })
-            .unwrap(),
-        "   "
     );
 }
 
@@ -296,13 +345,198 @@ fn normalized_train_identifier_collisions_are_refused_before_transforming_rows()
             .unwrap(),
         2
     );
+    assert!(!backup.exists());
+}
+
+#[test]
+fn rejects_reserved_source_sidecar_backup_paths_before_mutation() {
+    let dir = tempdir().unwrap();
+    let path = dir.path().join("source.db");
+    fixture(&path, CURRENT_FIXTURE);
+    let connection = Connection::open(&path).unwrap();
+    connection
+        .pragma_update(None, "journal_mode", "DELETE")
+        .unwrap();
+    drop(connection);
+    let expected_bytes = std::fs::read(&path).unwrap();
+
+    for suffix in ["-journal", "-wal", "-shm"] {
+        let backup = dir.path().join(format!("source.db{suffix}"));
+        assert!(matches!(
+            Database::migrate_legacy(&path, &backup),
+            Err(StorageError::InvalidBackupPath)
+        ));
+        assert!(!backup.exists());
+        assert_eq!(std::fs::read(&path).unwrap(), expected_bytes);
+        assert_eq!(
+            Connection::open(&path)
+                .unwrap()
+                .query_row("PRAGMA user_version", [], |row| row.get::<_, i64>(0))
+                .unwrap(),
+            0
+        );
+    }
+    #[cfg(windows)]
+    {
+        let backup = dir.path().join("SOURCE.DB-WAL");
+        assert!(matches!(
+            Database::migrate_legacy(&path, &backup),
+            Err(StorageError::InvalidBackupPath)
+        ));
+        assert!(!backup.exists());
+        assert_eq!(std::fs::read(&path).unwrap(), expected_bytes);
+    }
+}
+
+#[test]
+fn bare_relative_backup_filename_is_supported_and_source_alias_is_refused() {
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    let nonce = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_nanos();
+    let source_name = format!("storage-relative-{nonce}.db");
+    let backup_name = format!("storage-relative-{nonce}.backup.db");
+    let source = std::path::PathBuf::from(&source_name);
+    fixture(&source, CURRENT_FIXTURE);
+    let backup = std::path::PathBuf::from(&backup_name);
+    Database::migrate_legacy(&source, &backup).unwrap();
+    assert!(backup.exists());
+    std::fs::remove_file(&backup).unwrap();
+    std::fs::remove_file(&source).unwrap();
+
+    let source = std::path::PathBuf::from(&source_name);
+    fixture(&source, CURRENT_FIXTURE);
+    assert!(matches!(
+        Database::migrate_legacy(&source, &source),
+        Err(StorageError::InvalidBackupPath)
+    ));
+    let relative_sidecar = std::path::PathBuf::from(format!("{source_name}-wal"));
+    assert!(matches!(
+        Database::migrate_legacy(&source, &relative_sidecar),
+        Err(StorageError::InvalidBackupPath)
+    ));
     assert_eq!(
-        Connection::open(&backup)
+        Connection::open(&source)
             .unwrap()
-            .query_row("SELECT count(*) FROM trains", [], |row| row
-                .get::<_, i64>(0))
+            .query_row("PRAGMA user_version", [], |row| row.get::<_, i64>(0))
             .unwrap(),
-        2
+        0
+    );
+    std::fs::remove_file(source).unwrap();
+}
+
+#[test]
+fn malformed_domain_json_is_refused_before_backup_without_echoing_payload() {
+    for (table, column, id) in [
+        ("scripts", "triggers", 87),
+        ("device_i2c_modules", "params", 57),
+    ] {
+        let dir = tempdir().unwrap();
+        let path = dir.path().join("bad-json.db");
+        let backup = dir.path().join("bad-json.backup.db");
+        fixture(&path, CURRENT_FIXTURE);
+        let conn = Connection::open(&path).unwrap();
+        let sql = format!("UPDATE {table} SET {column}='SENSITIVE_MALFORMED_PAYLOAD' WHERE id=?1");
+        conn.execute(&sql, [id]).unwrap();
+        drop(conn);
+
+        let error = Database::migrate_legacy(&path, &backup).unwrap_err();
+        match error {
+            StorageError::InvalidLegacyData { detail } => {
+                assert!(detail.contains(table));
+                assert!(detail.contains(column));
+                assert!(detail.contains(&id.to_string()));
+                assert!(!detail.contains("SENSITIVE_MALFORMED_PAYLOAD"));
+            }
+            other => panic!("unexpected error: {other}"),
+        }
+        assert!(!backup.exists());
+        let unchanged = Connection::open(&path).unwrap();
+        assert_eq!(
+            unchanged
+                .query_row(
+                    &format!("SELECT {column} FROM {table} WHERE id=?1"),
+                    [id],
+                    |row| row.get::<_, String>(0)
+                )
+                .unwrap(),
+            "SENSITIVE_MALFORMED_PAYLOAD"
+        );
+        assert_eq!(
+            unchanged
+                .query_row("PRAGMA user_version", [], |row| row.get::<_, i64>(0))
+                .unwrap(),
+            0
+        );
+    }
+}
+
+#[test]
+fn nullable_params_and_valid_json_payloads_are_preserved_exactly() {
+    let dir = tempdir().unwrap();
+    let path = dir.path().join("nullable.db");
+    let backup = dir.path().join("nullable.backup.db");
+    fixture(&path, CURRENT_FIXTURE);
+    let conn = Connection::open(&path).unwrap();
+    conn.execute("UPDATE device_i2c_modules SET params=NULL WHERE id=57", [])
+        .unwrap();
+    conn.execute(
+        "UPDATE scripts SET triggers='[\"manual\",\"startup\"]' WHERE id=87",
+        [],
+    )
+    .unwrap();
+    drop(conn);
+
+    Database::migrate_legacy(&path, &backup).unwrap();
+    let upgraded = Connection::open(path).unwrap();
+    assert_eq!(
+        upgraded
+            .query_row(
+                "SELECT params FROM device_i2c_modules WHERE id=57",
+                [],
+                |row| row.get::<_, Option<String>>(0)
+            )
+            .unwrap(),
+        None
+    );
+    assert_eq!(
+        upgraded
+            .query_row("SELECT triggers FROM scripts WHERE id=87", [], |row| row
+                .get::<_, String>(
+                0
+            ))
+            .unwrap(),
+        "[\"manual\",\"startup\"]"
+    );
+}
+
+#[test]
+fn current_train_without_identifier_is_refused_before_backup() {
+    let dir = tempdir().unwrap();
+    let path = dir.path().join("missing-identifier.db");
+    let backup = dir.path().join("missing-identifier.backup.db");
+    fixture(&path, CURRENT_FIXTURE);
+    let conn = Connection::open(&path).unwrap();
+    conn.execute("DELETE FROM train_identifiers WHERE train_id=37", [])
+        .unwrap();
+    drop(conn);
+
+    assert!(
+        matches!(Database::migrate_legacy(&path, &backup), Err(StorageError::InvalidLegacyData { detail }) if detail.contains("train_identifiers"))
+    );
+    assert!(!backup.exists());
+    assert_eq!(
+        Connection::open(&path)
+            .unwrap()
+            .query_row(
+                "SELECT count(*) FROM train_identifiers WHERE train_id=37",
+                [],
+                |row| row.get::<_, i64>(0)
+            )
+            .unwrap(),
+        0
     );
 }
 

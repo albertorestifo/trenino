@@ -6,6 +6,9 @@ from pathlib import Path
 def populate(database: Path, is_current: bool) -> None:
     connection = sqlite3.connect(database)
     connection.execute("PRAGMA foreign_keys=ON")
+    connection.execute(
+        "UPDATE schema_migrations SET inserted_at='2026-01-01T00:00:00'"
+    )
     timestamp = "2026-05-01T12:00:00Z"
     connection.execute(
         "INSERT INTO devices(id,name,inserted_at,updated_at,config_id,description) VALUES(7,'Desktop',?,?,42,'fixture device')",
@@ -109,22 +112,26 @@ def export_schema(database: Path, destination: Path) -> None:
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--v074-db", type=Path, required=True)
-    parser.add_argument("--current-db", type=Path, required=True)
+    parser.add_argument("--v074-db", type=Path)
+    parser.add_argument("--current-db", type=Path)
     parser.add_argument("--fixture-dir", type=Path, required=True)
     parser.add_argument("--schema-dir", type=Path, required=True)
     args = parser.parse_args()
 
-    populate(args.v074_db, is_current=False)
-    populate(args.current_db, is_current=True)
-    export_schema(args.v074_db, args.schema_dir / "ecto-0.7.4.sql")
-    export_schema(args.current_db, args.schema_dir / "ecto-current.sql")
-    target = (args.schema_dir / "ecto-current.sql").read_text(encoding="utf-8")
-    target = target.replace("CHECK (device_index = 1)", "CHECK (device_index BETWEEN 1 AND 16)")
-    target += "\nCREATE TABLE rust_schema_migrations (version INTEGER PRIMARY KEY, name TEXT NOT NULL, applied_at TEXT NOT NULL);\n"
-    (args.schema_dir / "rust-full-v2.sql").write_text(
-        target, encoding="utf-8", newline="\n"
-    )
+    if args.v074_db is None and args.current_db is None:
+        parser.error("at least one of --v074-db or --current-db is required")
+    if args.v074_db is not None:
+        populate(args.v074_db, is_current=False)
+        export_schema(args.v074_db, args.schema_dir / "ecto-0.7.4.sql")
+    if args.current_db is not None:
+        populate(args.current_db, is_current=True)
+        export_schema(args.current_db, args.schema_dir / "ecto-current.sql")
+        target = (args.schema_dir / "ecto-current.sql").read_text(encoding="utf-8")
+        target = target.replace("CHECK (device_index = 1)", "CHECK (device_index BETWEEN 1 AND 16)")
+        target += "\nCREATE TABLE rust_schema_migrations (version INTEGER PRIMARY KEY, name TEXT NOT NULL, applied_at TEXT NOT NULL);\n"
+        (args.schema_dir / "rust-full-v2.sql").write_text(
+            target, encoding="utf-8", newline="\n"
+        )
     args.fixture_dir.mkdir(parents=True, exist_ok=True)
     print("Exported schemas and data from Ecto-migrated disposable databases.")
 
