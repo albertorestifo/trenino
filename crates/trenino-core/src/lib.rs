@@ -2,6 +2,7 @@
 pub mod shared;
 pub use shared::*;
 pub mod calibration;
+pub mod firmware;
 pub mod hardware;
 pub mod rounding;
 pub mod simulator;
