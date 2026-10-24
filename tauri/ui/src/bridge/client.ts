@@ -129,11 +129,12 @@ export function createBridge(ipc: IpcTransport): UiBridge {
         }
 
         fetchingSnapshot = true;
+        const snapshotRequest = stream.beginSnapshot();
         let retryRequired = false;
         try {
           const input = await ipc.invoke('ui_get_snapshot', { topic });
           if (!active) return;
-          const result = stream.installSnapshot(input);
+          const result = stream.installSnapshot(input, snapshotRequest);
           if (result.kind === 'invalid') {
             retryRequired = true;
             report(undefined, `The ${topic} service sent an invalid snapshot.`);

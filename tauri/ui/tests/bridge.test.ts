@@ -46,6 +46,36 @@ describe('bridge failure handling', () => {
 });
 
 describe('bridge subscription recovery', () => {
+  it('does not retry forever when a runtime restart retires a buffered gap', async () => {
+    vi.useFakeTimers();
+    const oldSnapshot: UiSnapshot<{ ok: boolean }> = { epoch: '9', topic: 'settings', revision: '4', value: { ok: true } };
+    const newSnapshot: UiSnapshot<{ ok: boolean }> = { epoch: '10', topic: 'settings', revision: '1', value: { ok: true } };
+    let changeHandler: ((payload: unknown) => void) | undefined;
+    let snapshotCalls = 0;
+    const listen: IpcTransport['listen'] = vi.fn(async (_name, handler) => {
+      changeHandler = handler;
+      return () => {};
+    });
+    const invoke = vi.fn(async (command: string, _args?: Record<string, unknown>) => {
+      if (command !== 'ui_get_snapshot') return undefined;
+      snapshotCalls += 1;
+      return snapshotCalls === 1 ? oldSnapshot : newSnapshot;
+    });
+    const bridge = createBridge(transport(invoke, listen));
+    const onValue = vi.fn();
+    const unsubscribe = await bridge.subscribe('settings', onValue, vi.fn());
+    await flushMicrotasks();
+    changeHandler?.({ epoch: '9', topic: 'settings', revision: '6', value: { ok: true } });
+    await flushMicrotasks();
+    expect(snapshotCalls).toBe(2);
+    expect(onValue).toHaveBeenLastCalledWith(newSnapshot);
+
+    await vi.advanceTimersByTimeAsync(5_000);
+    await flushMicrotasks();
+    expect(snapshotCalls).toBe(2);
+    unsubscribe();
+  });
+
   it('retries a failed first snapshot and applies the next authoritative snapshot', async () => {
     vi.useFakeTimers();
     let attempts = 0;

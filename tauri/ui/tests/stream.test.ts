@@ -48,6 +48,55 @@ describe('topic stream recovery', () => {
     expect(stream.accept(change('8', 'old', '200')).kind).toBe('ignored');
   });
 
+  it('retires buffered gap events when an authoritative snapshot changes epochs', () => {
+    const stream = new TopicStream<string>('settings');
+    stream.installSnapshot(snapshot('4', '9'));
+    expect(stream.accept(change('6', 'old-gap', '9')).kind).toBe('resync');
+    expect(stream.bufferedChangeCount).toBe(1);
+
+    const installed = stream.installSnapshot(snapshot('1', '10'));
+    expect(installed).toMatchObject({ kind: 'applied', value: { epoch: '10', revision: '1' } });
+    expect(stream.needsSnapshot()).toBe(false);
+    expect(stream.bufferedChangeCount).toBe(0);
+  });
+
+  it('keeps cross-epoch recovery required after pending-buffer eviction until the observed epoch is covered', () => {
+    const stream = new TopicStream<string>('settings');
+    stream.installSnapshot(snapshot('4', '9'));
+    const staleRequest = stream.beginSnapshot();
+    stream.accept(change('10', 'new-runtime', '10'));
+    for (let revision = 6; revision <= 135; revision += 1) stream.accept(change(String(revision), `old-${revision}`, '9'));
+
+    expect(stream.bufferedChangeCount).toBeLessThanOrEqual(MAX_BUFFERED_CHANGES);
+    const delayed = stream.installSnapshot(snapshot('134', '9'), staleRequest);
+    expect(delayed.kind).toBe('resync');
+    expect(stream.needsSnapshot()).toBe(true);
+
+    const recovered = stream.installSnapshot(snapshot('10', '10'), stream.beginSnapshot());
+    expect(recovered).toMatchObject({ kind: 'applied', value: { epoch: '10', revision: '10' } });
+    expect(stream.needsSnapshot()).toBe(false);
+    expect(stream.bufferedChangeCount).toBe(0);
+  });
+
+  it('retains an explicit recovery marker when the per-epoch high-water bound evicts unresolved state', () => {
+    const stream = new TopicStream<string>('settings');
+    stream.installSnapshot(snapshot('0', '9'));
+    const staleRequest = stream.beginSnapshot();
+    for (let epoch = 10; epoch <= 20; epoch += 1) {
+      for (let revision = 1; revision <= MAX_BUFFERED_CHANGES + 1; revision += 1) {
+        stream.accept(change(String(revision), `e${epoch}r${revision}`, String(epoch)));
+      }
+    }
+
+    const staleSnapshot = stream.installSnapshot(snapshot('1000', '100'), staleRequest);
+    expect(staleSnapshot.kind).toBe('resync');
+    expect(stream.needsSnapshot()).toBe(true);
+
+    const freshSnapshot = stream.installSnapshot(snapshot('1000', '100'), stream.beginSnapshot());
+    expect(freshSnapshot).toMatchObject({ kind: 'applied', value: { epoch: '100', revision: '1000' } });
+    expect(stream.needsSnapshot()).toBe(false);
+  });
+
   it('bounds pre-snapshot buffering while retaining enough high-water information', () => {
     const stream = new TopicStream<string>('settings');
     for (let revision = 1; revision <= 10_000; revision += 1) stream.accept(change(String(revision)));
