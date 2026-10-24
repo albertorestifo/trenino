@@ -8,7 +8,7 @@ const VERSION: i64 = 1;
 
 fn row_counts(connection: &Connection) -> Vec<(String, i64)> {
     let mut statement = connection
-        .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name")
+        .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT GLOB 'sqlite_*' ORDER BY name")
         .unwrap();
     let tables = statement
         .query_map([], |row| row.get::<_, String>(0))
@@ -37,8 +37,11 @@ fn stamped_rust_schema(path: &std::path::Path, mutation: &str) {
         "missing_profile_settings" => "CREATE TABLE app_settings(key TEXT PRIMARY KEY NOT NULL,value TEXT NOT NULL); CREATE TABLE profiles(id INTEGER PRIMARY KEY,name TEXT NOT NULL UNIQUE);",
         "missing_value_column" => "CREATE TABLE app_settings(key TEXT PRIMARY KEY NOT NULL); CREATE TABLE profiles(id INTEGER PRIMARY KEY,name TEXT NOT NULL UNIQUE); CREATE TABLE profile_settings(profile_id INTEGER NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,key TEXT NOT NULL,value TEXT NOT NULL,PRIMARY KEY(profile_id,key));",
         "missing_name_unique" => "CREATE TABLE app_settings(key TEXT PRIMARY KEY NOT NULL,value TEXT NOT NULL); CREATE TABLE profiles(id INTEGER PRIMARY KEY,name TEXT NOT NULL); CREATE TABLE profile_settings(profile_id INTEGER NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,key TEXT NOT NULL,value TEXT NOT NULL,PRIMARY KEY(profile_id,key));",
+        "quoted_type" => "CREATE TABLE app_settings(key TEXT PRIMARY KEY NOT NULL,value TEXT NOT NULL); CREATE TABLE profiles(id INTEGER PRIMARY KEY,name \"TEXT NOT NULL UNIQUE\"); CREATE TABLE profile_settings(profile_id INTEGER NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,key TEXT NOT NULL,value TEXT NOT NULL,PRIMARY KEY(profile_id,key));",
+        "collapsed_tokens" => "CREATE TABLE app_settings(key TEXT PRIMARY KEY NOT NULL,value TEXT NOT NULL); CREATE TABLE profiles(id INTEGER PRIMARY KEY,name TEXTNOTNULLUNIQUE); CREATE TABLE profile_settings(profile_id INTEGER NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,key TEXT NOT NULL,value TEXT NOT NULL,PRIMARY KEY(profile_id,key));",
         "missing_fk" => "CREATE TABLE app_settings(key TEXT PRIMARY KEY NOT NULL,value TEXT NOT NULL); CREATE TABLE profiles(id INTEGER PRIMARY KEY,name TEXT NOT NULL UNIQUE); CREATE TABLE profile_settings(profile_id INTEGER NOT NULL,key TEXT NOT NULL,value TEXT NOT NULL,PRIMARY KEY(profile_id,key));",
         "missing_cascade" => "CREATE TABLE app_settings(key TEXT PRIMARY KEY NOT NULL,value TEXT NOT NULL); CREATE TABLE profiles(id INTEGER PRIMARY KEY,name TEXT NOT NULL UNIQUE); CREATE TABLE profile_settings(profile_id INTEGER NOT NULL REFERENCES profiles(id),key TEXT NOT NULL,value TEXT NOT NULL,PRIMARY KEY(profile_id,key));",
+        "sqlitex_foreign" => "CREATE TABLE app_settings(key TEXT PRIMARY KEY NOT NULL,value TEXT NOT NULL); CREATE TABLE profiles(id INTEGER PRIMARY KEY,name TEXT NOT NULL UNIQUE); CREATE TABLE profile_settings(profile_id INTEGER NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,key TEXT NOT NULL,value TEXT NOT NULL,PRIMARY KEY(profile_id,key));",
         _ => "CREATE TABLE app_settings(key TEXT PRIMARY KEY NOT NULL,value TEXT NOT NULL); CREATE TABLE profiles(id INTEGER PRIMARY KEY,name TEXT NOT NULL UNIQUE); CREATE TABLE profile_settings(profile_id INTEGER NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,key TEXT NOT NULL,value TEXT NOT NULL,PRIMARY KEY(profile_id,key));",
     };
     conn.execute_batch(base).unwrap();
@@ -67,10 +70,15 @@ fn stamped_rust_schema(path: &std::path::Path, mutation: &str) {
         )
         .unwrap();
     }
-    if mutation == "unexpected_object" {
-        conn.execute_batch("CREATE TABLE unrelated(payload TEXT);")
+    if mutation == "unexpected_object" || mutation == "sqlitex_foreign" {
+        let name = if mutation == "sqlitex_foreign" {
+            "sqlitex_foreign"
+        } else {
+            "unrelated"
+        };
+        conn.execute_batch(&format!("CREATE TABLE {name}(payload TEXT);"))
             .unwrap();
-        conn.execute("INSERT INTO unrelated(payload) VALUES('kept')", [])
+        conn.execute(&format!("INSERT INTO {name}(payload) VALUES('kept')"), [])
             .unwrap();
     }
     conn.pragma_update(None, "application_id", APP_ID).unwrap();
@@ -83,14 +91,17 @@ fn stamped_but_malformed_rust_schemas_are_refused_without_mutation() {
         "missing_profile_settings",
         "missing_value_column",
         "missing_name_unique",
+        "quoted_type",
+        "collapsed_tokens",
         "missing_fk",
         "missing_cascade",
         "unexpected_object",
+        "sqlitex_foreign",
     ] {
         let dir = tempdir().unwrap();
         let path = dir.path().join("malformed.db");
         stamped_rust_schema(&path, mutation);
-        let before = Connection::open(&path).unwrap().query_row("SELECT group_concat(name, ',') FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' ORDER BY name", [], |r| r.get::<_, Option<String>>(0)).unwrap();
+        let before = Connection::open(&path).unwrap().query_row("SELECT group_concat(name, ',') FROM sqlite_master WHERE name NOT GLOB 'sqlite_*' ORDER BY name", [], |r| r.get::<_, Option<String>>(0)).unwrap();
         let data_before = row_counts(&Connection::open(&path).unwrap());
         assert!(
             matches!(
@@ -100,7 +111,7 @@ fn stamped_but_malformed_rust_schemas_are_refused_without_mutation() {
             "accepted mutation {mutation}"
         );
         let conn = Connection::open(&path).unwrap();
-        let after = conn.query_row("SELECT group_concat(name, ',') FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' ORDER BY name", [], |r| r.get::<_, Option<String>>(0)).unwrap();
+        let after = conn.query_row("SELECT group_concat(name, ',') FROM sqlite_master WHERE name NOT GLOB 'sqlite_*' ORDER BY name", [], |r| r.get::<_, Option<String>>(0)).unwrap();
         assert_eq!(after, before, "schema changed for {mutation}");
         assert_eq!(
             row_counts(&conn),
@@ -113,6 +124,37 @@ fn stamped_but_malformed_rust_schemas_are_refused_without_mutation() {
             VERSION
         );
     }
+}
+
+#[test]
+fn unstamped_database_with_legal_sqlitex_object_is_not_treated_as_empty() {
+    let dir = tempdir().unwrap();
+    let path = dir.path().join("sqlitex.db");
+    let conn = Connection::open(&path).unwrap();
+    conn.execute_batch("CREATE TABLE sqlitex_foreign(payload TEXT); INSERT INTO sqlitex_foreign VALUES('preserve');").unwrap();
+    drop(conn);
+
+    assert!(matches!(
+        Database::open(&path),
+        Err(StorageError::UnsupportedSchema { .. })
+    ));
+
+    let conn = Connection::open(&path).unwrap();
+    assert_eq!(
+        conn.query_row(
+            "SELECT count(*) FROM sqlite_master WHERE type='table' AND name='app_settings'",
+            [],
+            |row| row.get::<_, i64>(0)
+        )
+        .unwrap(),
+        0
+    );
+    assert_eq!(
+        conn.query_row("SELECT payload FROM sqlitex_foreign", [], |row| row
+            .get::<_, String>(0))
+            .unwrap(),
+        "preserve"
+    );
 }
 
 #[test]

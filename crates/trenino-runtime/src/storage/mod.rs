@@ -256,7 +256,7 @@ fn open_connection(path: &Path, path_exists: bool) -> DbResult<(Connection, bool
 
 fn count_user_objects(connection: &Connection) -> DbResult<i64> {
     Ok(connection.query_row(
-        "SELECT count(*) FROM sqlite_master WHERE name NOT LIKE 'sqlite_%'",
+        "SELECT count(*) FROM sqlite_master WHERE name NOT GLOB 'sqlite_*'",
         [],
         |row| row.get(0),
     )?)
@@ -275,7 +275,7 @@ fn create_rust_schema(connection: &mut Connection) -> DbResult<()> {
 
 fn validate_rust_schema(connection: &Connection) -> DbResult<bool> {
     let mut statement = connection.prepare(
-        "SELECT type, name, sql FROM sqlite_master WHERE name NOT LIKE 'sqlite_%' ORDER BY type,name",
+        "SELECT type, name, sql FROM sqlite_master WHERE name NOT GLOB 'sqlite_*' ORDER BY type,name",
     )?;
     let actual = statement
         .query_map([], |row| {
@@ -301,19 +301,11 @@ fn validate_rust_schema(connection: &Connection) -> DbResult<bool> {
         else {
             return Ok(false);
         };
-        if actual_kind != kind || normalize_schema(actual_schema) != normalize_schema(schema) {
+        if actual_kind != kind || actual_schema != schema {
             return Ok(false);
         }
     }
     Ok(true)
-}
-
-fn normalize_schema(schema: &str) -> String {
-    schema
-        .chars()
-        .filter(|character| !character.is_whitespace() && *character != '"' && *character != '`')
-        .flat_map(char::to_uppercase)
-        .collect()
 }
 
 fn is_current_ecto_schema(connection: &Connection) -> DbResult<bool> {
