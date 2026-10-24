@@ -96,7 +96,10 @@ fn newer_generation_reconfiguration_clears_old_tombstone() {
     assert!(cache.invalidate("COM-R2", 1));
     assert!(resolver.begin_reconfiguration("COM-R2", 2));
     assert!(cache.begin_reconfiguration("COM-R2", 2));
-    let id = InputIdentity { device_id: EntityId(1), input_id: EntityId(2) };
+    let id = InputIdentity {
+        device_id: EntityId(1),
+        input_id: EntityId(2),
+    };
     let config = ConfigId::new(2).unwrap();
     assert!(resolver.replace_port("COM-R2", 2, config, [(3, id)]));
     assert!(cache.activate("COM-R2", 2));
@@ -442,7 +445,10 @@ fn configuration_persistence_precedes_success_publication_and_route_activation()
             mappings: [(2, input)],
             timeout: Duration::from_millis(10),
         },
-        || { published = true; Ok(()) },
+        || {
+            published = true;
+            Ok(())
+        },
     );
     assert!(matches!(result, Err(ApplyError::Persist(_))));
     assert!(!published);
@@ -496,7 +502,10 @@ fn stale_configuration_ack_is_ignored_and_success_routes_only_after_persist() {
             mappings: [(7, input)],
             timeout: Duration::from_millis(50),
         },
-        || { published = true; Ok(()) },
+        || {
+            published = true;
+            Ok(())
+        },
     )
     .unwrap();
     assert_eq!(repo.confirmed, 1);
@@ -1397,7 +1406,9 @@ fn queued_handoff_pin_blocks_lease_release_until_reservation_released() {
         std::thread::sleep(Duration::from_millis(2));
     }
     assert!(transport.entered.load(Ordering::SeqCst));
-    let operation = handle.begin_handoff("WRITE-BLOCK", generation, &permit).unwrap();
+    let operation = handle
+        .begin_handoff("WRITE-BLOCK", generation, &permit)
+        .unwrap();
     assert!(
         handle.wait_handoff(operation, Duration::ZERO).is_none(),
         "handoff must still be queued behind the blocked scanner"
@@ -1758,8 +1769,14 @@ fn joined_worker_panic_is_reported_without_retry_and_other_owners_survive() {
     let deadline = std::time::Instant::now() + Duration::from_secs(2);
     let mut okay_generation = None;
     while okay_generation.is_none() {
-        assert!(std::time::Instant::now() < deadline, "ports never discovered");
-        if let Ok(PortEvent::Discovered { port, generation, .. }) = receive.try_recv() {
+        assert!(
+            std::time::Instant::now() < deadline,
+            "ports never discovered"
+        );
+        if let Ok(PortEvent::Discovered {
+            port, generation, ..
+        }) = receive.try_recv()
+        {
             if port == "OKAY" {
                 okay_generation = Some(generation);
             }
@@ -1794,7 +1811,12 @@ fn joined_worker_panic_is_reported_without_retry_and_other_owners_survive() {
     }
     assert!(panic_reported);
     handle
-        .send_message("OKAY", okay_generation, Message::Heartbeat, Duration::from_secs(1))
+        .send_message(
+            "OKAY",
+            okay_generation,
+            Message::Heartbeat,
+            Duration::from_secs(1),
+        )
         .expect("the healthy owner must stay operational");
     let shutdown = handle.shutdown();
     assert!(

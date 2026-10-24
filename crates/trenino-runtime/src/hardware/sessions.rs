@@ -398,8 +398,13 @@ impl HardwareSessions {
         &self,
         session: CalibrationSession,
     ) -> Result<Arc<Mutex<CalibrationSession>>, SessionError> {
-        let admission = self.admission_closed.lock().expect("session admission poisoned");
-        if *admission { return Err(SessionError::AdmissionClosed); }
+        let admission = self
+            .admission_closed
+            .lock()
+            .expect("session admission poisoned");
+        if *admission {
+            return Err(SessionError::AdmissionClosed);
+        }
         let mut sessions = self
             .calibrations
             .lock()
@@ -431,8 +436,13 @@ impl HardwareSessions {
     where
         F: FnOnce(DetectionOutcome) + Send + 'static,
     {
-        let admission = self.admission_closed.lock().expect("session admission poisoned");
-        if *admission { return Err(SessionError::AdmissionClosed); }
+        let admission = self
+            .admission_closed
+            .lock()
+            .expect("session admission poisoned");
+        if *admission {
+            return Err(SessionError::AdmissionClosed);
+        }
         let mut sessions = self
             .detections
             .lock()
@@ -707,7 +717,10 @@ impl HardwareSessions {
     }
 
     pub fn close_admission(&self) {
-        *self.admission_closed.lock().expect("session admission poisoned") = true;
+        *self
+            .admission_closed
+            .lock()
+            .expect("session admission poisoned") = true;
     }
 }
 

@@ -457,7 +457,12 @@ async fn failed_receipt_publication_never_falsely_certifies_cache_bytes() {
     );
     let downloader = FirmwareDownloader::new(http_client(), tmp.path(), 1024, 1);
     let destination = downloader.cache_path(&selected).unwrap();
-    let file_name = destination.file_name().unwrap().to_str().unwrap().to_owned();
+    let file_name = destination
+        .file_name()
+        .unwrap()
+        .to_str()
+        .unwrap()
+        .to_owned();
     let receipt = destination.with_file_name(format!("{file_name}.trenino-meta.json"));
     // A directory squatting the receipt name makes the receipt replacement
     // fail deterministically on every platform (rename never replaces a

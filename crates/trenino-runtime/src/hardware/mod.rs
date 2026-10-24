@@ -2,6 +2,7 @@
 //! explicitly begins periodic discovery and owns all port workers until shutdown.
 pub mod configuration;
 pub mod discovery;
+pub mod repository;
 pub mod service;
 pub mod sessions;
 pub mod transport;
@@ -305,7 +306,9 @@ impl OwnedPortTask {
             self.close_requested = true;
         }
         let Some(join) = self.join.as_ref() else {
-            return Err(io::Error::other("serial task join outcome was not recorded"));
+            return Err(io::Error::other(
+                "serial task join outcome was not recorded",
+            ));
         };
         let started = Instant::now();
         while !join.is_finished() {
@@ -317,20 +320,31 @@ impl OwnedPortTask {
             }
             std::thread::sleep(Duration::from_millis(10));
         }
-        let result = self.join.take().expect("join exists after finished check")
-            .join().map_err(|_| "serial task panicked".to_string());
+        let result = self
+            .join
+            .take()
+            .expect("join exists after finished check")
+            .join()
+            .map_err(|_| "serial task panicked".to_string());
         self.joined = Some(result.clone());
         result.map_err(io::Error::other)
     }
 
-    fn is_joined(&self) -> bool { self.join.is_none() && self.joined.is_some() }
+    fn is_joined(&self) -> bool {
+        self.join.is_none() && self.joined.is_some()
+    }
     fn expire_discovery(&mut self, now: Instant) -> bool {
-        if !self.discovery_timeout_reported && !self.discovery_complete.load(Ordering::Acquire) && now >= self.discovery_deadline {
+        if !self.discovery_timeout_reported
+            && !self.discovery_complete.load(Ordering::Acquire)
+            && now >= self.discovery_deadline
+        {
             self.discovery_timeout_reported = true;
             self.cancelled.store(true, Ordering::Release);
             self.failed.store(true, Ordering::Release);
             true
-        } else { false }
+        } else {
+            false
+        }
     }
 }
 
@@ -451,7 +465,9 @@ impl DiscoveryHandle {
         generation: u64,
         permit: &FirmwareHandoffPermit,
     ) -> Result<HandoffOperationId, String> {
-        let pin = permit.pin(port, generation).map_err(|error| format!("firmware lease does not authorize this port generation: {error:?}"))?;
+        let pin = permit.pin(port, generation).map_err(|error| {
+            format!("firmware lease does not authorize this port generation: {error:?}")
+        })?;
         if self
             .handoff_results
             .lock()
@@ -468,7 +484,12 @@ impl DiscoveryHandle {
                 .max(1),
         );
         self.commands
-            .try_send(RuntimeCommand::HandoffPort(port.to_owned(), generation, id, pin))
+            .try_send(RuntimeCommand::HandoffPort(
+                port.to_owned(),
+                generation,
+                id,
+                pin,
+            ))
             .map_err(|error| match error {
                 mpsc::TrySendError::Full(_) => "runtime command queue is full".to_string(),
                 mpsc::TrySendError::Disconnected(_) => "runtime stopped".to_string(),
@@ -519,7 +540,11 @@ impl DiscoveryHandle {
         handoff: PortHandoff,
         permit: &FirmwareHandoffPermit,
     ) -> Result<HandoffOperationId, String> {
-        let pin = permit.pin(&handoff.port, handoff.generation).map_err(|error| format!("firmware lease no longer authorizes this reservation: {error:?}"))?;
+        let pin = permit
+            .pin(&handoff.port, handoff.generation)
+            .map_err(|error| {
+                format!("firmware lease no longer authorizes this reservation: {error:?}")
+            })?;
         if self
             .release_results
             .lock()
@@ -588,7 +613,13 @@ impl DiscoveryHandle {
             join.join()
                 .map_err(|_| io::Error::other("discovery worker panicked"))?;
         }
-        if let Some(failure) = self.shutdown_failures.lock().expect("shutdown diagnostics poisoned").first().cloned() {
+        if let Some(failure) = self
+            .shutdown_failures
+            .lock()
+            .expect("shutdown diagnostics poisoned")
+            .first()
+            .cloned()
+        {
             return Err(io::Error::other(failure));
         }
         Ok(())

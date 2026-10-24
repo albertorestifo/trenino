@@ -72,7 +72,6 @@ impl FirmwareVersion {
     pub fn is_prerelease(&self) -> bool {
         !self.pre.is_empty()
     }
-
 }
 
 fn parse_number(value: &str) -> Result<u64, RequirementError> {
@@ -116,7 +115,10 @@ impl PartialOrd for FirmwareVersion {
 
 #[derive(Clone, Debug)]
 enum Bound {
-    Compare { op: Op, version: FirmwareVersion },
+    Compare {
+        op: Op,
+        version: FirmwareVersion,
+    },
     /// Pessimistic `~>` range. The upper bound is the Elixir translation
     /// `{major+1 | minor+1, 0, 0, pre: [0]}`, which also excludes prereleases
     /// of the upper-bound core version.

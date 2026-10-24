@@ -140,9 +140,7 @@ impl FirmwareDownloader {
     /// replaced, so results returned for them stay immutable.
     fn legacy_cache_path(&self, selection: &FirmwareSelection) -> Result<PathBuf, DownloadError> {
         let (version, identifier) = self.validated_cache_stem(selection)?;
-        Ok(self
-            .cache_dir
-            .join(format!("v{version}_{identifier}.hex")))
+        Ok(self.cache_dir.join(format!("v{version}_{identifier}.hex")))
     }
     fn validated_cache_stem(
         &self,

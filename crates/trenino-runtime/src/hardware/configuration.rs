@@ -88,7 +88,15 @@ where
     C: FnMut(EntityId, ConfigId) -> Result<(), String>,
     F: FnOnce() -> Result<(), ApplyError>,
 {
-    let ConfigurationApply { port_name, generation, device_id, config_id, messages, mappings, timeout } = request;
+    let ConfigurationApply {
+        port_name,
+        generation,
+        device_id,
+        config_id,
+        messages,
+        mappings,
+        timeout,
+    } = request;
     let port_name = port_name.as_str();
     if !resolver.begin_reconfiguration(port_name, generation)
         || !cache.begin_reconfiguration(port_name, generation)

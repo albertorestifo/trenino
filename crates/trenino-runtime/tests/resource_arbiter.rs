@@ -172,11 +172,19 @@ fn shutdown_cancels_active_lease_without_resuming_actuation() {
 #[test]
 fn firmware_handoff_pin_prevents_lease_release_until_reservation_cleanup() {
     let arbiter = ResourceArbiter::new(Arc::new(FakeConsumers(Arc::new(Mutex::new(Vec::new())))));
-    let lease = arbiter.acquire(LeaseKind::Firmware { port: "COM8".into(), generation: 9 }).unwrap();
+    let lease = arbiter
+        .acquire(LeaseKind::Firmware {
+            port: "COM8".into(),
+            generation: 9,
+        })
+        .unwrap();
     let permit = arbiter.firmware_handoff_permit(lease).unwrap();
     let pin = permit.pin("COM8", 9).unwrap();
     assert!(pin.authorizes("COM8", 9));
-    assert_eq!(arbiter.release(lease), Err(trenino_runtime::resource::ResourceError::Busy));
+    assert_eq!(
+        arbiter.release(lease),
+        Err(trenino_runtime::resource::ResourceError::Busy)
+    );
     drop(pin);
     arbiter.release(lease).unwrap();
 }

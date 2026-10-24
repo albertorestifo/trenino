@@ -412,9 +412,25 @@ where
                             &dispatcher_worker_tx,
                             &dispatcher_lookup_workers,
                         ),
-                        DispatcherMessage::ConfigurationLoaded { port, generation, identity, result } => {
-                            finish_discovery(&dispatcher_service, &dispatcher_state, port, generation, identity, result,
-                                &dispatcher_ack, &dispatcher_worker_tx, &dispatcher_lookup_workers);
+                        DispatcherMessage::ConfigurationLoaded {
+                            port,
+                            generation,
+                            identity,
+                            result,
+                        } => {
+                            finish_discovery(
+                                &dispatcher_service,
+                                &DiscoveryContext {
+                                    state: &dispatcher_state,
+                                    ack_inboxes: &dispatcher_ack,
+                                    dispatcher: &dispatcher_worker_tx,
+                                    lookup_workers: &dispatcher_lookup_workers,
+                                },
+                                port,
+                                generation,
+                                identity,
+                                result,
+                            );
                         }
                     }
                 }
@@ -497,13 +513,16 @@ where
         session: InputDetectionSession,
     ) -> Result<Arc<Mutex<InputDetectionSession>>, SessionError> {
         let admission = self.admission.lock().expect("hardware admission poisoned");
-        if *admission { return Err(SessionError::AdmissionClosed); }
+        if *admission {
+            return Err(SessionError::AdmissionClosed);
+        }
         let consumer = self.service.consumer.clone();
-        let result = self.service
-            .sessions
-            .insert_detection_with_callback(id, session, move |outcome| {
-                consumer.detection_outcome(id, outcome);
-            });
+        let result =
+            self.service
+                .sessions
+                .insert_detection_with_callback(id, session, move |outcome| {
+                    consumer.detection_outcome(id, outcome);
+                });
         drop(admission);
         result
     }
@@ -514,7 +533,9 @@ where
 
     pub fn scan_now(&self) -> Result<(), String> {
         let admission = self.admission.lock().expect("hardware admission poisoned");
-        if *admission { return Err("hardware service is shutting down".into()); }
+        if *admission {
+            return Err("hardware service is shutting down".into());
+        }
         self.scanner
             .lock()
             .expect("hardware scanner handle poisoned")
@@ -529,7 +550,9 @@ where
         timeout: Duration,
     ) -> Result<(), String> {
         let admission = self.admission.lock().expect("hardware admission poisoned");
-        if *admission { return Err("hardware service is shutting down".into()); }
+        if *admission {
+            return Err("hardware service is shutting down".into());
+        }
         self.scanner
             .lock()
             .expect("hardware scanner handle poisoned")
@@ -542,7 +565,9 @@ where
         generation: u64,
     ) -> Result<LeaseToken, ResourceError> {
         let admission = self.admission.lock().expect("hardware admission poisoned");
-        if *admission { return Err(ResourceError::Busy); }
+        if *admission {
+            return Err(ResourceError::Busy);
+        }
         self.service.arbiter.acquire(LeaseKind::Firmware {
             port: port.into(),
             generation,
@@ -556,7 +581,9 @@ where
         generation: u64,
     ) -> Result<HandoffOperationId, String> {
         let admission = self.admission.lock().expect("hardware admission poisoned");
-        if *admission { return Err("hardware service is shutting down".into()); }
+        if *admission {
+            return Err("hardware service is shutting down".into());
+        }
         let permit = self
             .service
             .arbiter
@@ -646,7 +673,10 @@ where
             .expect("device deletion fence poisoned")
             .begin(device_id);
         let connected_port = {
-            let state = self.state.lock().expect("hardware dispatcher state poisoned");
+            let state = self
+                .state
+                .lock()
+                .expect("hardware dispatcher state poisoned");
             state.ports.iter().find_map(|(port, current)| {
                 (current.device_id == Some(device_id)).then(|| port.clone())
             })
@@ -680,7 +710,9 @@ where
         session: CalibrationSession,
     ) -> Result<Arc<Mutex<CalibrationSession>>, SessionError> {
         let admission = self.admission.lock().expect("hardware admission poisoned");
-        if *admission { return Err(SessionError::AdmissionClosed); }
+        if *admission {
+            return Err(SessionError::AdmissionClosed);
+        }
         let port = session.port.clone();
         let generation = session.generation;
         let id = session.id;
@@ -827,7 +859,9 @@ where
             }
         }
         let ack = Arc::new(AckInbox::default());
-        self.ack_inboxes.lock().expect("ack inbox registry poisoned")
+        self.ack_inboxes
+            .lock()
+            .expect("ack inbox registry poisoned")
             .insert(request.port_name.clone(), ack.clone());
         let id = ConfigurationOperationId(
             self.next_operation
@@ -886,7 +920,9 @@ where
                             .confirm_configuration(device_id, config_id)
                     },
                     || {
-                        let mut state = commit_state.lock().expect("hardware dispatcher state poisoned");
+                        let mut state = commit_state
+                            .lock()
+                            .expect("hardware dispatcher state poisoned");
                         let Some(current) = state.ports.get_mut(&port_name) else {
                             return Err(ApplyError::StaleGeneration);
                         };
@@ -902,7 +938,8 @@ where
                             .is_blocked(device_id)
                         {
                             return Err(ApplyError::Commit(
-                                "device deletion is in progress; configuration commit refused".into(),
+                                "device deletion is in progress; configuration commit refused"
+                                    .into(),
                             ));
                         }
                         current.config_id = Some(config_id);
@@ -928,8 +965,13 @@ where
                     .lock()
                     .expect("active configuration port registry poisoned")
                     .remove(&port_name);
-                let mut inboxes = worker_ack_inboxes.lock().expect("ack inbox registry poisoned");
-                if inboxes.get(&port_name).is_some_and(|current| Arc::ptr_eq(current, &operation_ack)) {
+                let mut inboxes = worker_ack_inboxes
+                    .lock()
+                    .expect("ack inbox registry poisoned");
+                if inboxes
+                    .get(&port_name)
+                    .is_some_and(|current| Arc::ptr_eq(current, &operation_ack))
+                {
                     inboxes.remove(&port_name);
                 }
             })
@@ -942,7 +984,10 @@ where
                     .lock()
                     .expect("active configuration port registry poisoned")
                     .remove(&port_name_for_cleanup);
-                self.ack_inboxes.lock().expect("ack inbox registry poisoned").remove(&port_name_for_cleanup);
+                self.ack_inboxes
+                    .lock()
+                    .expect("ack inbox registry poisoned")
+                    .remove(&port_name_for_cleanup);
                 format!("failed to start configuration operation: {error}")
             })?;
         operations.insert(id, (cancelled, worker));
@@ -1002,7 +1047,12 @@ where
             .lock()
             .expect("hardware scanner handle poisoned")
             .shutdown()?;
-        for inbox in self.ack_inboxes.lock().expect("ack inbox registry poisoned").values() {
+        for inbox in self
+            .ack_inboxes
+            .lock()
+            .expect("ack inbox registry poisoned")
+            .values()
+        {
             inbox.close();
         }
         if let Some((sender, dispatcher)) = self
@@ -1021,9 +1071,16 @@ where
                 ));
             }
         }
-        let lookup_workers = std::mem::take(&mut *self.lookup_workers.lock().expect("lookup worker registry poisoned"));
+        let lookup_workers = std::mem::take(
+            &mut *self
+                .lookup_workers
+                .lock()
+                .expect("lookup worker registry poisoned"),
+        );
         for worker in lookup_workers {
-            if worker.join().is_err() { return Err(io::Error::other("hardware repository lookup panicked")); }
+            if worker.join().is_err() {
+                return Err(io::Error::other("hardware repository lookup panicked"));
+            }
         }
         let operations = std::mem::take(
             &mut *self
@@ -1098,21 +1155,32 @@ fn dispatch_event<T, R, C>(
             let worker = std::thread::Builder::new()
                 .name(format!("hardware-lookup-{port}-{generation}"))
                 .spawn(move || {
-                    let result = repository.lock().expect("hardware repository poisoned")
+                    let result = repository
+                        .lock()
+                        .expect("hardware repository poisoned")
                         .load_configuration(&lookup_port, &identity);
                     let _ = dispatcher.send(Some(DispatcherMessage::ConfigurationLoaded {
-                        port: lookup_port, generation, identity, result,
+                        port: lookup_port,
+                        generation,
+                        identity,
+                        result,
                     }));
                 });
             match worker {
                 Ok(worker) => {
                     // Finished handles are joined only at shutdown; prune them here so
                     // reconnect churn cannot grow the registry without bound.
-                    let mut workers = lookup_workers.lock().expect("lookup worker registry poisoned");
+                    let mut workers = lookup_workers
+                        .lock()
+                        .expect("lookup worker registry poisoned");
                     workers.retain(|joined| !joined.is_finished());
                     workers.push(worker);
                 }
-                Err(error) => service.consumer.protocol_error(&port, generation, &format!("failed to start configuration lookup: {error}")),
+                Err(error) => service.consumer.protocol_error(
+                    &port,
+                    generation,
+                    &format!("failed to start configuration lookup: {error}"),
+                ),
             }
         }
         PortEvent::Message {
@@ -1122,13 +1190,21 @@ fn dispatch_event<T, R, C>(
         } => {
             {
                 let mut ports = state.lock().expect("hardware dispatcher state poisoned");
-                let Some(current) = ports.ports.get_mut(&port) else { return; };
-                if current.generation != generation { return; }
+                let Some(current) = ports.ports.get_mut(&port) else {
+                    return;
+                };
+                if current.generation != generation {
+                    return;
+                }
                 if current.lookup_pending {
                     if current.pending_inputs.len() < EVENT_CAPACITY {
                         current.pending_inputs.push_back((pin, value));
                     } else {
-                        service.consumer.protocol_error(&port, generation, "discovery input backlog overflow");
+                        service.consumer.protocol_error(
+                            &port,
+                            generation,
+                            "discovery input backlog overflow",
+                        );
                     }
                     return;
                 }
@@ -1160,9 +1236,9 @@ fn dispatch_event<T, R, C>(
                     service.consumer.calibration_error(id, error);
                 }
             }
-            if let Some(identity) = identity.filter(|_| {
-                !service.arbiter.port_neutralization_failed(&port)
-            }) {
+            if let Some(identity) =
+                identity.filter(|_| !service.arbiter.port_neutralization_failed(&port))
+            {
                 let event = InputEvent {
                     port_generation: generation,
                     config_id: current.config_id.unwrap(),
@@ -1187,7 +1263,12 @@ fn dispatch_event<T, R, C>(
             message:
                 message @ (Message::ConfigurationStored { .. } | Message::ConfigurationError { .. }),
         } => {
-            if let Some(ack) = ack_inboxes.lock().expect("ack inbox registry poisoned").get(&port).cloned() {
+            if let Some(ack) = ack_inboxes
+                .lock()
+                .expect("ack inbox registry poisoned")
+                .get(&port)
+                .cloned()
+            {
                 if let Err(error) = ack.push(generation, message) {
                     service.consumer.protocol_error(&port, generation, &error);
                 }
@@ -1215,24 +1296,51 @@ fn dispatch_event<T, R, C>(
     }
 }
 
+/// Shared dispatcher plumbing handed to [`finish_discovery`] so the completion
+/// path stays within clippy's argument budget without splitting state.
+struct DiscoveryContext<'a> {
+    state: &'a Arc<Mutex<DispatcherState>>,
+    ack_inboxes: &'a AckInboxes,
+    dispatcher: &'a mpsc::SyncSender<Option<DispatcherMessage>>,
+    lookup_workers: &'a Arc<Mutex<Vec<JoinHandle<()>>>>,
+}
+
 fn finish_discovery<T, R, C>(
     service: &HardwareService<T, R, C>,
-    state: &Arc<Mutex<DispatcherState>>,
+    context: &DiscoveryContext<'_>,
     port: String,
     generation: u64,
     identity: Message,
     persisted: Result<Option<PersistedHardwareConfiguration>, String>,
-    ack_inboxes: &AckInboxes,
-    dispatcher: &mpsc::SyncSender<Option<DispatcherMessage>>,
-    lookup_workers: &Arc<Mutex<Vec<JoinHandle<()>>>>,
 ) where
     T: SerialTransport,
     R: HardwareRepository,
     C: HardwareConsumers,
 {
-    if !state.lock().expect("hardware dispatcher state poisoned").ports
-        .get(&port).is_some_and(|current| current.generation == generation) { return; }
-    let mut current = CurrentPort { generation, config_id: None, device_id: None, kinds: HashMap::new(), lookup_pending: false, pending_inputs: VecDeque::new() };
+    let DiscoveryContext {
+        state,
+        ack_inboxes,
+        dispatcher,
+        lookup_workers,
+    } = *context;
+    if state
+        .lock()
+        .expect("hardware dispatcher state poisoned")
+        .ports
+        .get(&port)
+        .is_none_or(|current| current.generation != generation)
+    {
+        return;
+    }
+
+    let mut current = CurrentPort {
+        generation,
+        config_id: None,
+        device_id: None,
+        kinds: HashMap::new(),
+        lookup_pending: false,
+        pending_inputs: VecDeque::new(),
+    };
     // Persisted configuration that matched the board identity; activation happens
     // below inside the dispatcher lock so the deletion fence is checked atomically.
     let mut validated: Option<PersistedHardwareConfiguration> = None;
@@ -1242,49 +1350,95 @@ fn finish_discovery<T, R, C>(
                 Message::IdentityResponse { config_id, .. } => ConfigId::new(*config_id).ok(),
                 _ => None,
             };
-            let mappings_valid = configuration.mappings.iter()
+            let mappings_valid = configuration
+                .mappings
+                .iter()
                 .all(|mapping| mapping.identity.device_id == configuration.device_id);
             if firmware_config == Some(configuration.config_id) && mappings_valid {
                 validated = Some(configuration);
             } else {
-                service.consumer.protocol_error(&port, generation, "persisted configuration does not match board identity");
+                service.consumer.protocol_error(
+                    &port,
+                    generation,
+                    "persisted configuration does not match board identity",
+                );
             }
         }
         Ok(None) => {}
-        Err(error) => service.consumer.protocol_error(&port, generation, &format!("configuration lookup failed: {error}")),
+        Err(error) => service.consumer.protocol_error(
+            &port,
+            generation,
+            &format!("configuration lookup failed: {error}"),
+        ),
     }
     service.cache.activate(&port, generation);
     let mut dispatcher_state = state.lock().expect("hardware dispatcher state poisoned");
-    if dispatcher_state.ports.get(&port).is_some_and(|current| current.generation == generation) {
+    if dispatcher_state
+        .ports
+        .get(&port)
+        .is_some_and(|current| current.generation == generation)
+    {
         if let Some(configuration) = validated {
             // Checked atomically with dispatcher insertion: a device deleted before
             // this point never activates, and a deletion starting after this point
             // observes the connected device and refuses to commit.
-            if service.device_deletion_fence
+            if service
+                .device_deletion_fence
                 .lock()
                 .expect("device deletion fence poisoned")
                 .is_blocked(configuration.device_id)
             {
-                service.consumer.protocol_error(&port, generation, "device is being deleted or was deleted; persisted configuration not activated");
+                service.consumer.protocol_error(
+                    &port,
+                    generation,
+                    "device is being deleted or was deleted; persisted configuration not activated",
+                );
             } else {
                 let device_id = configuration.device_id;
-                let mappings = configuration.mappings.iter().map(|mapping| (mapping.pin, mapping.identity));
-                if service.resolver.replace_port(&port, generation, configuration.config_id, mappings) {
+                let mappings = configuration
+                    .mappings
+                    .iter()
+                    .map(|mapping| (mapping.pin, mapping.identity));
+                if service.resolver.replace_port(
+                    &port,
+                    generation,
+                    configuration.config_id,
+                    mappings,
+                ) {
                     current.config_id = Some(configuration.config_id);
                     current.device_id = Some(device_id);
-                    current.kinds = configuration.mappings.into_iter().map(|mapping| (mapping.pin, mapping.kind)).collect();
+                    current.kinds = configuration
+                        .mappings
+                        .into_iter()
+                        .map(|mapping| (mapping.pin, mapping.kind))
+                        .collect();
                 }
             }
         }
-        if let Some(previous) = dispatcher_state.ports.get(&port) { current.pending_inputs = previous.pending_inputs.clone(); }
+        if let Some(previous) = dispatcher_state.ports.get(&port) {
+            current.pending_inputs = previous.pending_inputs.clone();
+        }
         dispatcher_state.ports.insert(port.clone(), current);
     }
-    let pending = dispatcher_state.ports.get_mut(&port).map(|current| std::mem::take(&mut current.pending_inputs)).unwrap_or_default();
+    let pending = dispatcher_state
+        .ports
+        .get_mut(&port)
+        .map(|current| std::mem::take(&mut current.pending_inputs))
+        .unwrap_or_default();
     drop(dispatcher_state);
     for (pin, value) in pending {
-        dispatch_event(service, state, ack_inboxes,
-            PortEvent::Message { port: port.clone(), generation, message: Message::InputValue { pin, value } },
-            dispatcher, lookup_workers);
+        dispatch_event(
+            service,
+            state,
+            ack_inboxes,
+            PortEvent::Message {
+                port: port.clone(),
+                generation,
+                message: Message::InputValue { pin, value },
+            },
+            dispatcher,
+            lookup_workers,
+        );
     }
 }
 
@@ -1311,25 +1465,35 @@ fn release_lost_calibration_after_fresh_input<T, R, C>(
         .sessions
         .calibration(session_id)
         .is_some_and(|session| {
-            matches!(session.lock().expect("calibration session poisoned").step(),
+            matches!(
+                session.lock().expect("calibration session poisoned").step(),
                 super::sessions::CalibrationStep::SourceLost
                     | super::sessions::CalibrationStep::Overflowed
                     | super::sessions::CalibrationStep::Complete
-                    | super::sessions::CalibrationStep::Cancelled)
+                    | super::sessions::CalibrationStep::Cancelled
+            )
         });
     if !terminal {
         return;
     }
     match service.arbiter.release(token) {
         Ok(()) => {
-            let mut leases = service.coordinated_consumers.calibration_lease.lock()
+            let mut leases = service
+                .coordinated_consumers
+                .calibration_lease
+                .lock()
                 .expect("calibration lease registry poisoned");
-            if leases.get(port).is_some_and(|(id, current)| *id == session_id && *current == token) {
+            if leases
+                .get(port)
+                .is_some_and(|(id, current)| *id == session_id && *current == token)
+            {
                 leases.remove(port);
             }
         }
         Err(error) => service.consumer.protocol_error(
-            port, 0, &format!("terminal calibration lease release stayed suspended: {error:?}"),
+            port,
+            0,
+            &format!("terminal calibration lease release stayed suspended: {error:?}"),
         ),
     }
 }
@@ -1341,15 +1505,25 @@ fn configuration_kinds(
     let mut kinds = HashMap::new();
     for message in messages {
         match message {
-            Message::ConfigureAnalog { pin, .. } => { kinds.insert(*pin, InputKind::Analog); }
-            Message::ConfigureButton { pin, .. } => { kinds.insert(*pin, InputKind::Button); }
-            Message::ConfigureMatrix { row_pins, col_pins, .. } => {
-                for pin in row_pins.iter().chain(col_pins) { kinds.insert(*pin, InputKind::Button); }
+            Message::ConfigureAnalog { pin, .. } => {
+                kinds.insert(*pin, InputKind::Analog);
+            }
+            Message::ConfigureButton { pin, .. } => {
+                kinds.insert(*pin, InputKind::Button);
+            }
+            Message::ConfigureMatrix {
+                row_pins, col_pins, ..
+            } => {
+                for pin in row_pins.iter().chain(col_pins) {
+                    kinds.insert(*pin, InputKind::Button);
+                }
             }
             _ => {}
         }
     }
-    for (pin, _) in mappings { kinds.entry(*pin).or_insert(InputKind::Any); }
+    for (pin, _) in mappings {
+        kinds.entry(*pin).or_insert(InputKind::Any);
+    }
     kinds
 }
 
@@ -1378,7 +1552,13 @@ fn mark_source_lost<T, R, C>(
         }
     };
     if removed {
-        if let Some(ack) = ack_inboxes.lock().expect("ack inbox registry poisoned").get(port) { ack.close(); }
+        if let Some(ack) = ack_inboxes
+            .lock()
+            .expect("ack inbox registry poisoned")
+            .get(port)
+        {
+            ack.close();
+        }
         service.resolver.invalidate_port(port, generation);
         service.cache.invalidate(port, generation);
         if let Err(error) = service.arbiter.neutralize_source(port, generation) {

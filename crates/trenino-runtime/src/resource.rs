@@ -54,9 +54,7 @@ impl FirmwareHandoffPermit {
         if self.port != port || self.generation != generation {
             return false;
         }
-        let state = self.state
-            .lock()
-            .expect("resource arbiter poisoned");
+        let state = self.state.lock().expect("resource arbiter poisoned");
         !state.transitioning
             && !state.fail_closed
             && matches!(
@@ -68,16 +66,29 @@ impl FirmwareHandoffPermit {
 
     pub fn pin(&self, port: &str, generation: u64) -> Result<FirmwareHandoffPin, ResourceError> {
         let mut state = self.state.lock().expect("resource arbiter poisoned");
-        if self.port != port || self.generation != generation || (state.shutting_down && !self.release_only) {
+        if self.port != port
+            || self.generation != generation
+            || (state.shutting_down && !self.release_only)
+        {
             return Err(ResourceError::Busy);
         }
-        if state.transitioning || state.fail_closed || !matches!(
-            &state.active,
-            Some((token, LeaseKind::Firmware { port: active_port, generation: active_generation }))
-                if *token == self.token && active_port == port && *active_generation == generation
-        ) { return Err(ResourceError::InvalidLease); }
+        if state.transitioning
+            || state.fail_closed
+            || !matches!(
+                &state.active,
+                Some((token, LeaseKind::Firmware { port: active_port, generation: active_generation }))
+                    if *token == self.token && active_port == port && *active_generation == generation
+            )
+        {
+            return Err(ResourceError::InvalidLease);
+        }
         *state.handoff_pins.entry(self.token).or_default() += 1;
-        Ok(FirmwareHandoffPin { state: self.state.clone(), token: self.token, port: self.port.clone(), generation: self.generation })
+        Ok(FirmwareHandoffPin {
+            state: self.state.clone(),
+            token: self.token,
+            port: self.port.clone(),
+            generation: self.generation,
+        })
     }
 }
 
@@ -91,7 +102,9 @@ pub struct FirmwareHandoffPin {
 
 impl FirmwareHandoffPin {
     pub fn authorizes(&self, port: &str, generation: u64) -> bool {
-        if self.port != port || self.generation != generation { return false; }
+        if self.port != port || self.generation != generation {
+            return false;
+        }
         let state = self.state.lock().expect("resource arbiter poisoned");
         matches!(&state.active, Some((token, LeaseKind::Firmware { port: active_port, generation: active_generation }))
             if *token == self.token && active_port == port && *active_generation == generation)
@@ -104,7 +117,9 @@ impl Drop for FirmwareHandoffPin {
         let mut state = self.state.lock().expect("resource arbiter poisoned");
         if let Some(count) = state.handoff_pins.get_mut(&self.token) {
             *count = count.saturating_sub(1);
-            if *count == 0 { state.handoff_pins.remove(&self.token); }
+            if *count == 0 {
+                state.handoff_pins.remove(&self.token);
+            }
         }
     }
 }
@@ -161,11 +176,18 @@ impl ResourceArbiter {
         self.create_handoff_permit(token, false)
     }
 
-    pub fn firmware_handoff_release_permit(&self, token: LeaseToken) -> Result<FirmwareHandoffPermit, ResourceError> {
+    pub fn firmware_handoff_release_permit(
+        &self,
+        token: LeaseToken,
+    ) -> Result<FirmwareHandoffPermit, ResourceError> {
         self.create_handoff_permit(token, true)
     }
 
-    fn create_handoff_permit(&self, token: LeaseToken, release_only: bool) -> Result<FirmwareHandoffPermit, ResourceError> {
+    fn create_handoff_permit(
+        &self,
+        token: LeaseToken,
+        release_only: bool,
+    ) -> Result<FirmwareHandoffPermit, ResourceError> {
         let state = self.state.lock().expect("resource arbiter poisoned");
         if state.transitioning || state.fail_closed || (state.shutting_down && !release_only) {
             return Err(ResourceError::Busy);
@@ -188,7 +210,11 @@ impl ResourceArbiter {
 
     pub fn acquire(&self, kind: LeaseKind) -> Result<LeaseToken, ResourceError> {
         let mut state = self.state.lock().expect("resource arbiter poisoned");
-        if state.transitioning || state.fail_closed || state.shutting_down || !state.neutralization_failures.is_empty() {
+        if state.transitioning
+            || state.fail_closed
+            || state.shutting_down
+            || !state.neutralization_failures.is_empty()
+        {
             return Err(ResourceError::Busy);
         }
         let same_port_calibration = match (&kind, &state.active) {
@@ -341,7 +367,11 @@ impl ResourceArbiter {
 
     pub fn is_suspended(&self) -> bool {
         let state = self.state.lock().expect("resource arbiter poisoned");
-        state.active.is_some() || state.fail_closed || state.transitioning || state.shutting_down || !state.neutralization_failures.is_empty()
+        state.active.is_some()
+            || state.fail_closed
+            || state.transitioning
+            || state.shutting_down
+            || !state.neutralization_failures.is_empty()
     }
 
     /// Ask consumers to neutralize a lost generation and retain failed acknowledgments
@@ -351,26 +381,37 @@ impl ResourceArbiter {
         let mut state = self.state.lock().expect("resource arbiter poisoned");
         match result {
             Ok(()) => {
-                state.neutralization_failures.retain(|(failed_port, failed_generation), _| {
-                    failed_port != port || *failed_generation > generation
-                });
+                state
+                    .neutralization_failures
+                    .retain(|(failed_port, failed_generation), _| {
+                        failed_port != port || *failed_generation > generation
+                    });
                 Ok(())
             }
             Err(error) => {
-                state.neutralization_failures.insert((port.to_owned(), generation), error.clone());
+                state
+                    .neutralization_failures
+                    .insert((port.to_owned(), generation), error.clone());
                 Err(ResourceError::ConsumerFailed(error))
             }
         }
     }
 
     pub fn port_neutralization_failed(&self, port: &str) -> bool {
-        self.state.lock().expect("resource arbiter poisoned")
-            .neutralization_failures.keys().any(|(failed_port, _)| failed_port == port)
+        self.state
+            .lock()
+            .expect("resource arbiter poisoned")
+            .neutralization_failures
+            .keys()
+            .any(|(failed_port, _)| failed_port == port)
     }
 
     /// Atomically stop new leases while leaving release/cleanup methods available.
     pub fn close_admission(&self) {
-        self.state.lock().expect("resource arbiter poisoned").shutting_down = true;
+        self.state
+            .lock()
+            .expect("resource arbiter poisoned")
+            .shutting_down = true;
         self.released.notify_all();
     }
 
@@ -386,7 +427,11 @@ impl ResourceArbiter {
             state.shutting_down = true;
             let active = state.active.clone();
             state.transitioning = true;
-            let failures = state.neutralization_failures.keys().cloned().collect::<Vec<_>>();
+            let failures = state
+                .neutralization_failures
+                .keys()
+                .cloned()
+                .collect::<Vec<_>>();
             (active, failures)
         };
         let transition = if let Some((_, kind)) = &active {
