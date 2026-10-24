@@ -1,6 +1,8 @@
 //! Dedicated SQLite owner with strict schema admission and owned results.
+mod hardware;
 mod migration;
 
+pub use hardware::*;
 pub use migration::{LegacySchema, MigrationReport};
 
 #[cfg(unix)]
@@ -170,7 +172,10 @@ enum Request {
     SettingsSnapshot(Reply<(BTreeMap<String, String>, RuntimeMetadata)>),
     ConfigurationsSnapshot(Reply<(Vec<ConfigurationRecord>, RuntimeMetadata)>),
     TrainsSnapshot(Reply<(Vec<TrainRecord>, RuntimeMetadata)>),
+    Hardware(HardwareJob),
 }
+
+type HardwareJob = Box<dyn FnOnce(&mut Connection, SchemaMode) + Send>;
 
 struct Worker {
     tx: Mutex<Option<mpsc::SyncSender<Request>>>,
@@ -403,6 +408,7 @@ impl DatabaseOwnership {
     #[cfg(unix)]
     fn acquire(path: &Path) -> DbResult<Self> {
         let file = open_database_identity_file(path)?;
+        // flock is keyed by the opened inode, so hard links contend here too.
         file.try_lock_exclusive()
             .map_err(|_| StorageError::AlreadyRunning)?;
         Ok(Self { file, locked: true })
@@ -418,6 +424,7 @@ impl DatabaseOwnership {
 
         let identity_file = open_database_identity_file(path)?;
         let identity = database_file_identity(&identity_file)?;
+        // Use the global kernel-object namespace rather than a path under TMP.
         let name = OsStr::new(&format!("Global\\TreninoRuntimeDb-{identity}"))
             .encode_wide()
             .chain(Some(0))
@@ -431,6 +438,7 @@ impl DatabaseOwnership {
             unsafe { windows_sys::Win32::Foundation::CloseHandle(mutex) };
             return Err(StorageError::AlreadyRunning);
         }
+        // WAIT_ABANDONED transfers ownership after a crashed worker exits.
         if wait != WAIT_OBJECT_0 && wait != WAIT_ABANDONED {
             unsafe { windows_sys::Win32::Foundation::CloseHandle(mutex) };
             return Err(StorageError::WorkerStopped);
@@ -796,6 +804,7 @@ fn handle_request(connection: &mut Connection, mode: SchemaMode, request: Reques
             };
             let _ = reply.send(result);
         }
+        Request::Hardware(job) => job(connection, mode),
     }
 }
 
