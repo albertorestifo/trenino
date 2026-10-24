@@ -1,4 +1,5 @@
 use super::output::SimValue;
+use crate::rounding::format_elixir_decimal;
 
 const FORMAT_ERROR: &str = "Use {value} or {value:.Nf}, with precision from 0 to 10";
 
@@ -31,8 +32,10 @@ pub fn format_display(format: &str, value: &SimValue) -> String {
                 .flatten();
             match (value, precision) {
                 (SimValue::Number(number), Some(precision)) if number.is_finite() => {
-                    output.push_str(&format_number(*number, precision))
+                    output.push_str(&format_elixir_decimal(*number, precision as u32).unwrap())
                 }
+                (SimValue::Integer(number), Some(precision)) => output
+                    .push_str(&format_elixir_decimal(*number as f64, precision as u32).unwrap()),
                 _ => output.push_str(&raw),
             }
             remaining = &remaining[end..];
@@ -67,16 +70,5 @@ fn valid_precision(s: &str) -> bool {
     )
 }
 fn raw_value(value: &SimValue) -> String {
-    match value {
-        // Elixir's Float.to_string keeps a decimal marker for integral floats.
-        SimValue::Number(n) => format!("{n:?}"),
-        SimValue::Bool(b) => b.to_string(),
-        SimValue::String(s) => s.clone(),
-        SimValue::Null => String::new(),
-    }
-}
-fn format_number(value: f64, precision: usize) -> String {
-    let factor = 10_f64.powi(precision as i32);
-    let rounded = (value * factor).round() / factor;
-    format!("{rounded:.precision$}")
+    value.to_legacy_string()
 }

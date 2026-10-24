@@ -158,7 +158,9 @@ fn display_format_matches_legacy_tokens_and_safe_invalid_precision() {
     assert_eq!(validate_format("{value:.10f}"), Ok(()));
     assert!(validate_format("{value:.2g}").is_err());
 }
-use trenino_core::calibration::analysis::{analyze_samples, LeverType, Sample, ZoneType};
+use trenino_core::calibration::analysis::{
+    analyze_samples, AnalysisError, LeverType, Sample, ZoneType,
+};
 
 #[test]
 fn analyzer_merges_no_snap_notches_and_preserves_gate_linear_hybrid_classification() {
@@ -331,7 +333,7 @@ fn sequence_button_cancels_momentary_on_release_and_starts_latching_off_sequence
         off_sequence: vec![command.clone()],
         ..binding
     };
-    let (_, release) = transition(
+    let (after_release, release) = transition(
         &latching,
         ButtonState {
             active: true,
@@ -341,11 +343,30 @@ fn sequence_button_cancels_momentary_on_release_and_starts_latching_off_sequence
     );
     assert_eq!(
         release,
-        vec![ButtonAction::StartSequence {
-            element_id: 9,
-            commands: vec![command]
-        }]
+        vec![
+            ButtonAction::CancelActive { element_id: 9 },
+            ButtonAction::StartSequence {
+                element_id: 9,
+                commands: vec![command]
+            }
+        ]
     );
+    assert!(after_release.active);
+
+    let no_off_sequence = ButtonBinding {
+        off_sequence: vec![],
+        ..latching
+    };
+    let (after_release, release) = transition(
+        &no_off_sequence,
+        ButtonState {
+            active: true,
+            last_sent_value: Some(1.0),
+        },
+        false,
+    );
+    assert_eq!(release, vec![ButtonAction::CancelActive { element_id: 9 }]);
+    assert!(!after_release.active);
 }
 
 #[test]
@@ -432,6 +453,7 @@ fn display_formatter_preserves_legacy_lexical_precision_rules() {
     assert!(validate_format("{value:.01f}").is_err());
     assert_eq!(format_display("{value}", &SimValue::Number(42.0)), "42.0");
 }
+use trenino_core::rounding::round_elixir;
 use trenino_core::simulator::Endpoint;
 
 #[test]
@@ -454,4 +476,126 @@ fn simulator_dtos_preserve_endpoint_text_and_reject_blank_or_non_finite_values()
     );
     assert!(serde_json::from_str::<Endpoint>("\"  \t\"").is_err());
     assert!(serde_json::to_string(&SimValue::Number(f64::INFINITY)).is_err());
+}
+
+#[test]
+fn elixir_rounding_matches_binary_float_ties_and_large_values() {
+    for (input, places, expected) in [
+        (0.015, 2, 0.01),
+        (-0.015, 2, -0.01),
+        (2.675, 2, 2.67),
+        (-2.675, 2, -2.67),
+        (0.15, 1, 0.1),
+        (-0.15, 1, -0.1),
+        (1.235, 2, 1.24),
+        (2.5, 0, 3.0),
+        (-2.5, 0, -3.0),
+        (1.0e20, 2, 1.0e20),
+    ] {
+        assert_eq!(
+            round_elixir(input, places),
+            Some(expected),
+            "{input} to {places}"
+        );
+    }
+    assert_eq!(round_elixir(f64::MAX, 2), Some(f64::MAX));
+    assert_eq!(round_elixir(f64::INFINITY, 2), None);
+}
+
+#[test]
+fn display_raw_token_preserves_json_integer_float_and_exponent_text() {
+    for (json, expected) in [
+        ("12", "12"),
+        ("12.0", "12.0"),
+        ("1.0e20", "1.0e20"),
+        ("1.0e-8", "1.0e-8"),
+    ] {
+        let value: SimValue = serde_json::from_str(json).unwrap();
+        assert_eq!(format_display("{value}", &value), expected);
+    }
+    assert_eq!(
+        format_display("{value:.2f}", &SimValue::Number(2.675)),
+        "2.67"
+    );
+}
+
+#[test]
+fn elixir_rounding_controls_mapping_and_analyzer_gate_threshold() {
+    let config = LeverConfig {
+        inverted: false,
+        notches: vec![Notch {
+            kind: NotchType::Linear,
+            input_min: Some(0.0),
+            input_max: Some(1.0),
+            sim_input_min: Some(0.0),
+            sim_input_max: Some(1.0),
+        }],
+    };
+    assert_eq!(map_input(&config, 0.015), Ok(0.01));
+
+    let samples = [
+        Sample {
+            set_input: 0.0,
+            actual_input: 0.0,
+            output: 0.0,
+            notch_index: 1,
+            snapped: false,
+        },
+        Sample {
+            set_input: 1.0,
+            actual_input: 1.0,
+            output: 0.15,
+            notch_index: 1,
+            snapped: false,
+        },
+    ];
+    let result = analyze_samples(&samples).unwrap();
+    assert_eq!(result.zones[0].kind, ZoneType::Gate);
+    assert_eq!(result.zones[0].value, Some(0.07));
+}
+
+#[test]
+fn analyzer_handles_equal_large_finite_gate_values_without_overflow() {
+    let samples = [
+        Sample {
+            set_input: 0.0,
+            actual_input: 0.0,
+            output: f64::MAX,
+            notch_index: 0,
+            snapped: false,
+        },
+        Sample {
+            set_input: 0.5,
+            actual_input: 0.5,
+            output: f64::MAX,
+            notch_index: 0,
+            snapped: false,
+        },
+    ];
+    let result = analyze_samples(&samples).unwrap();
+    assert_eq!(result.zones[0].value, Some(f64::MAX));
+}
+
+#[test]
+fn analyzer_rejects_non_finite_derived_zone_width() {
+    let samples = [
+        Sample {
+            set_input: 0.0,
+            actual_input: 0.0,
+            output: -f64::MAX,
+            notch_index: 0,
+            snapped: false,
+        },
+        Sample {
+            set_input: 0.5,
+            actual_input: 0.5,
+            output: f64::MAX,
+            notch_index: 0,
+            snapped: false,
+        },
+    ];
+    assert_eq!(
+        analyze_samples(&samples),
+        Err(AnalysisError::InvalidDerivedResult)
+    );
 }

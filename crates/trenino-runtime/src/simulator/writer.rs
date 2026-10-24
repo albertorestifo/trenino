@@ -40,6 +40,8 @@ enum Message {
         SimulatorWrite,
         oneshot::Sender<Result<WriteAck, WriterError>>,
     ),
+}
+enum Control {
     Advance(u64, oneshot::Sender<Result<(), WriterError>>),
 }
 #[derive(Clone)]
@@ -47,9 +49,12 @@ pub struct GenerationWriter {
     sender: mpsc::Sender<Message>,
     current: Arc<AtomicU64>,
     admission: Arc<Mutex<()>>,
+    transition: Arc<Mutex<()>>,
     queue_wait: Duration,
     closed: Arc<AtomicBool>,
     shutdown: watch::Sender<bool>,
+    ready: watch::Sender<bool>,
+    control: mpsc::UnboundedSender<Control>,
     worker: Arc<Mutex<Option<tokio::task::JoinHandle<()>>>>,
 }
 impl GenerationWriter {
@@ -74,12 +79,29 @@ impl GenerationWriter {
         let current = Arc::new(AtomicU64::new(generation));
         let fence = current.clone();
         let (shutdown, mut shutdown_receiver) = watch::channel(false);
+        let (ready, _) = watch::channel(false);
+        let worker_ready = ready.clone();
+        let (control, mut control_receiver) = mpsc::unbounded_channel();
         let worker = tokio::spawn(async move {
             loop {
                 let message = tokio::select! {
                     biased;
                     changed = shutdown_receiver.changed() => {
                         if changed.is_err() || *shutdown_receiver.borrow() { break; }
+                        continue;
+                    }
+                    control = control_receiver.recv() => {
+                        match control {
+                            Some(Control::Advance(generation, reply)) => {
+                                if fence.load(Ordering::Acquire) == generation {
+                                    worker_ready.send_replace(false);
+                                    let _ = reply.send(Ok(()));
+                                } else {
+                                    let _ = reply.send(Err(WriterError::GenerationWentBackwards));
+                                }
+                            }
+                            None => break,
+                        }
                         continue;
                     }
                     message = receiver.recv() => message,
@@ -106,14 +128,6 @@ impl GenerationWriter {
                         };
                         let _ = reply.send(result);
                     }
-                    Message::Advance(generation, reply) => {
-                        let result = if fence.load(Ordering::Acquire) == generation {
-                            Ok(())
-                        } else {
-                            Err(WriterError::GenerationWentBackwards)
-                        };
-                        let _ = reply.send(result);
-                    }
                 }
             }
         });
@@ -121,36 +135,57 @@ impl GenerationWriter {
             sender,
             current,
             admission: Arc::new(Mutex::new(())),
+            transition: Arc::new(Mutex::new(())),
             queue_wait,
             closed: Arc::new(AtomicBool::new(false)),
             shutdown,
+            ready,
+            control,
             worker: Arc::new(Mutex::new(Some(worker))),
         })
     }
     pub async fn write(&self, write: SimulatorWrite) -> Result<WriteAck, WriterError> {
-        let admission = self.admission.lock().await;
-        if self.closed.load(Ordering::Acquire) {
-            return Err(WriterError::Closed);
-        }
-        if self.current.load(Ordering::Acquire) != write.generation {
-            return Ok(WriteAck::Stale {
-                command_id: write.command_id,
-            });
-        }
-        let (reply, receive) = oneshot::channel();
-        tokio::time::timeout(
-            self.queue_wait,
-            self.sender.send(Message::Write(write, reply)),
-        )
-        .await
-        .map_err(|_| WriterError::QueueTimeout)?
-        .map_err(|_| WriterError::Closed)?;
-        drop(admission);
+        let deadline = tokio::time::Instant::now() + self.queue_wait;
+        let mut readiness = self.ready.subscribe();
+        let receive = loop {
+            let admission = tokio::time::timeout_at(deadline, self.admission.lock())
+                .await
+                .map_err(|_| WriterError::QueueTimeout)?;
+            if self.closed.load(Ordering::Acquire) {
+                return Err(WriterError::Closed);
+            }
+            if self.current.load(Ordering::Acquire) != write.generation {
+                return Ok(WriteAck::Stale {
+                    command_id: write.command_id,
+                });
+            }
+            if *readiness.borrow() {
+                drop(admission);
+                tokio::time::timeout_at(deadline, readiness.changed())
+                    .await
+                    .map_err(|_| WriterError::QueueTimeout)?
+                    .map_err(|_| WriterError::Closed)?;
+                continue;
+            }
+            let (reply, receive) = oneshot::channel();
+            tokio::time::timeout_at(
+                deadline,
+                self.sender.send(Message::Write(write.clone(), reply)),
+            )
+            .await
+            .map_err(|_| WriterError::QueueTimeout)?
+            .map_err(|_| WriterError::Closed)?;
+            drop(admission);
+            break receive;
+        };
         receive.await.map_err(|_| WriterError::Closed)?
     }
     /// Invalidate old writes immediately, then await the serialized HTTP worker barrier.
     pub async fn advance_generation(&self, generation: u64) -> Result<(), WriterError> {
-        let _admission = self.admission.lock().await;
+        let deadline = tokio::time::Instant::now() + self.queue_wait;
+        let _transition = tokio::time::timeout_at(deadline, self.transition.lock())
+            .await
+            .map_err(|_| WriterError::QueueTimeout)?;
         if self.closed.load(Ordering::Acquire) {
             return Err(WriterError::Closed);
         }
@@ -158,14 +193,16 @@ impl GenerationWriter {
             return Err(WriterError::GenerationWentBackwards);
         }
         self.current.store(generation, Ordering::Release);
+        self.ready.send_replace(true);
         let (reply, receive) = oneshot::channel();
-        tokio::time::timeout(
-            self.queue_wait,
-            self.sender.send(Message::Advance(generation, reply)),
-        )
-        .await
-        .map_err(|_| WriterError::QueueTimeout)?
-        .map_err(|_| WriterError::Closed)?;
+        if self
+            .control
+            .send(Control::Advance(generation, reply))
+            .is_err()
+        {
+            self.ready.send_replace(false);
+            return Err(WriterError::Closed);
+        }
         receive.await.map_err(|_| WriterError::Closed)?
     }
     pub fn generation(&self) -> u64 {
@@ -174,8 +211,8 @@ impl GenerationWriter {
 
     /// Stop admission and await the owned worker. Repeated calls are safe.
     pub async fn shutdown(&self) -> Result<(), WriterError> {
-        let _admission = self.admission.lock().await;
         if !self.closed.swap(true, Ordering::AcqRel) {
+            self.ready.send_replace(false);
             self.shutdown.send_replace(true);
         }
         let mut worker = self.worker.lock().await;

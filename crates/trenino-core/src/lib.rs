@@ -3,6 +3,7 @@ pub mod shared;
 pub use shared::*;
 pub mod calibration;
 pub mod hardware;
+pub mod rounding;
 pub mod simulator;
-pub mod ui;
 pub mod train;
+pub mod ui;

@@ -69,6 +69,193 @@ async fn simulator_client_preserves_fast_profile_and_rounds_number_strings() {
     assert_eq!(fast.get_float("Speed").await.unwrap(), 1.24);
 }
 
+#[tokio::test]
+async fn simulator_client_uses_elixir_ties_rejects_overflow_and_never_saturates_integers() {
+    let (url, _) = scripted_server(vec![
+        (200, r#"{"Values":{"V":2.675}}"#, None),
+        (200, r#"{"Values":{"V":1e307}}"#, None),
+        (200, r#"{"Values":{"V":1e20}}"#, None),
+        (200, r#"{"Values":{"V":9223372036854775807}}"#, None),
+        (200, r#"{"Values":{"V":9223372036854775808}}"#, None),
+    ]);
+    let client = SimulatorClient::new(&url, "key").unwrap();
+    assert_eq!(client.get_float("A").await.unwrap(), 2.67);
+    assert_eq!(client.get_float("A").await.unwrap(), 1e307);
+    assert_eq!(
+        client.get_int("A").await.unwrap_err(),
+        SimulatorError::InvalidValue
+    );
+    assert_eq!(client.get_int("A").await.unwrap(), i64::MAX);
+    assert_eq!(
+        client.get_int("A").await.unwrap_err(),
+        SimulatorError::InvalidValue
+    );
+}
+
+#[tokio::test]
+async fn simulator_string_reads_preserve_integer_float_and_exponent_lexemes() {
+    let (url, _) = scripted_server(vec![
+        (200, r#"{"Values":{"V":12}}"#, None),
+        (200, r#"{"Values":{"V":12.0}}"#, None),
+        (200, r#"{"Values":{"V":1.0e20}}"#, None),
+        (200, r#"{"Values":{"V":1.0e-8}}"#, None),
+    ]);
+    let client = SimulatorClient::with_profile(&url, "key", TimeoutProfile::Fast).unwrap();
+    assert_eq!(client.get_string("V").await.unwrap(), "12");
+    assert_eq!(client.get_string("V").await.unwrap(), "12.0");
+    assert_eq!(client.get_string("V").await.unwrap(), "1.0e20");
+    assert_eq!(client.get_string("V").await.unwrap(), "1.0e-8");
+}
+
+#[tokio::test]
+async fn simulator_client_classifies_non_json_statuses_before_decoding_the_body() {
+    let (url, _) = fake_server(403, "invalid key", None);
+    assert_eq!(
+        SimulatorClient::new(&url, "key").unwrap().info().await,
+        Err(SimulatorError::InvalidKey)
+    );
+    let (url, _) = fake_server(403, "", None);
+    assert_eq!(
+        SimulatorClient::new(&url, "key").unwrap().info().await,
+        Err(SimulatorError::InvalidKey)
+    );
+    let (url, _) = fake_server(503, "temporarily unavailable", None);
+    assert_eq!(
+        SimulatorClient::with_profile(&url, "key", TimeoutProfile::Fast)
+            .unwrap()
+            .info()
+            .await,
+        Err(SimulatorError::HttpStatus {
+            status: 503,
+            body: serde_json::Value::String("temporarily unavailable".into())
+        })
+    );
+    let (url, _) = fake_server(500, "", None);
+    assert_eq!(
+        SimulatorClient::with_profile(&url, "key", TimeoutProfile::Fast)
+            .unwrap()
+            .info()
+            .await,
+        Err(SimulatorError::HttpStatus {
+            status: 500,
+            body: serde_json::Value::String(String::new())
+        })
+    );
+}
+
+#[tokio::test]
+async fn normal_safe_reads_retry_transient_statuses_but_fast_reads_do_not() {
+    let (url, observed) = scripted_server(vec![
+        (503, "busy", None),
+        (200, r#"{"Result":"Success"}"#, None),
+    ]);
+    assert_eq!(
+        SimulatorClient::new(&url, "key")
+            .unwrap()
+            .info()
+            .await
+            .unwrap()["Result"],
+        "Success"
+    );
+    assert_eq!(
+        observed.recv_timeout(Duration::from_secs(1)).unwrap().1,
+        503
+    );
+    assert_eq!(
+        observed.recv_timeout(Duration::from_secs(1)).unwrap().1,
+        200
+    );
+
+    let (url, observed) = scripted_server(vec![(503, "busy", None)]);
+    let client = SimulatorClient::with_profile(&url, "key", TimeoutProfile::Fast).unwrap();
+    assert!(matches!(
+        client.info().await,
+        Err(SimulatorError::HttpStatus { status: 503, .. })
+    ));
+    assert_eq!(
+        observed.recv_timeout(Duration::from_secs(1)).unwrap().1,
+        503
+    );
+    assert!(observed.recv_timeout(Duration::from_millis(50)).is_err());
+}
+
+#[tokio::test]
+async fn normal_safe_reads_stop_after_two_transient_status_retries() {
+    let (url, observed) = scripted_server(vec![
+        (503, "unavailable", None),
+        (503, "still unavailable", None),
+        (503, "exhausted", None),
+    ]);
+    let client = SimulatorClient::new(&url, "key").unwrap();
+    assert_eq!(
+        client.info().await,
+        Err(SimulatorError::HttpStatus {
+            status: 503,
+            body: serde_json::Value::String("exhausted".into()),
+        })
+    );
+    for _ in 0..3 {
+        observed.recv_timeout(Duration::from_secs(2)).unwrap();
+    }
+}
+
+#[tokio::test]
+async fn simulator_paths_reject_dot_segments_and_redirects_do_not_forward_the_api_key() {
+    let client = SimulatorClient::new("http://127.0.0.1:1", "dummy-key").unwrap();
+    assert_eq!(
+        client.get("A/../../info").await,
+        Err(SimulatorError::InvalidPath)
+    );
+    assert_eq!(
+        client.list(Some("A/../B")).await,
+        Err(SimulatorError::InvalidPath)
+    );
+    assert_eq!(
+        client.set("A/../B", &serde_json::json!(1)).await,
+        Err(SimulatorError::InvalidPath)
+    );
+    assert_eq!(
+        client.subscribe("A/./B", 1).await,
+        Err(SimulatorError::InvalidPath)
+    );
+
+    let (destination_url, destination_seen) = fake_server(200, r#"{"Result":"Success"}"#, None);
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let source_url = format!("http://{}", listener.local_addr().unwrap());
+    thread::spawn(move || {
+        if let Ok((mut stream, _)) = listener.accept() {
+            let mut request = [0; 8192];
+            let _ = stream.read(&mut request);
+            let body = "redirect";
+            let response = format!(
+                "HTTP/1.1 302 Found\r\nLocation: {destination_url}/steal\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                body.len()
+            );
+            let _ = stream.write_all(response.as_bytes());
+        }
+    });
+    let result = SimulatorClient::new(&source_url, "dummy-key")
+        .unwrap()
+        .info()
+        .await;
+    assert!(matches!(
+        result,
+        Err(SimulatorError::HttpStatus { status: 302, .. })
+    ));
+    assert!(destination_seen
+        .recv_timeout(Duration::from_millis(50))
+        .is_err());
+}
+
+#[tokio::test]
+async fn simulator_path_encoding_preserves_valid_delimiters_and_unicode() {
+    let (url, observed) = scripted_server(vec![(200, r#"{"Result":"Success"}"#, None)]);
+    let client = SimulatorClient::with_profile(&url, "key", TimeoutProfile::Fast).unwrap();
+    client.get("Current/Trenño?x#y.InputValue").await.unwrap();
+    let request = observed.recv_timeout(Duration::from_secs(1)).unwrap().0;
+    assert!(request.starts_with("GET /get/Current/Tren%C3%B1o%3Fx%23y.InputValue "));
+}
+
 #[test]
 fn subscription_registry_deduplicates_per_lease_and_unsubscribes_only_after_last_owner() {
     let mut registry = SubscriptionRegistry::new(999);
@@ -85,7 +272,10 @@ fn subscription_registry_deduplicates_per_lease_and_unsubscribes_only_after_last
 #[tokio::test]
 async fn writer_generation_switch_waits_for_old_request_then_fences_queued_old_writes() {
     let (gate_tx, gate_rx) = mpsc::channel();
-    let (url, observed) = fake_server(200, r#"{"Result":"Success"}"#, Some(gate_rx));
+    let (url, observed) = scripted_server(vec![
+        (200, r#"{"Result":"Success"}"#, Some(gate_rx)),
+        (200, r#"{"Result":"Success"}"#, None),
+    ]);
     let client = SimulatorClient::new(&url, "key").unwrap();
     let writer = GenerationWriter::new(client, 1, 2).unwrap();
     let writer_for_task = writer.clone();
@@ -120,6 +310,11 @@ async fn writer_generation_switch_waits_for_old_request_then_fences_queued_old_w
     });
     tokio::time::sleep(Duration::from_millis(20)).await;
     assert!(!switch.is_finished());
+    assert_eq!(
+        writer.generation(),
+        2,
+        "old generation must fence at request time"
+    );
     gate_tx.send(()).unwrap();
     assert_eq!(
         task.await.unwrap().unwrap(),
@@ -182,6 +377,68 @@ async fn writer_queue_wait_is_bounded_separately_from_http_request_deadline() {
     gate_tx.send(()).unwrap();
     let _ = inflight.await.unwrap();
     let _ = queued.await.unwrap();
+}
+
+#[tokio::test]
+async fn writer_admission_deadline_covers_contention_for_the_admission_lock() {
+    let (gate_tx, gate_rx) = mpsc::channel();
+    let (url, observed) = scripted_server(vec![
+        (200, r#"{"Result":"Success"}"#, Some(gate_rx)),
+        (200, r#"{"Result":"Success"}"#, None),
+    ]);
+    let writer = GenerationWriter::new_with_queue_wait(
+        SimulatorClient::new(&url, "key").unwrap(),
+        1,
+        1,
+        Duration::from_millis(40),
+    )
+    .unwrap();
+    let active_writer = writer.clone();
+    let active = tokio::spawn(async move {
+        active_writer
+            .write(SimulatorWrite {
+                generation: 1,
+                command_id: 80,
+                endpoint: Endpoint::new("Active").unwrap(),
+                value: SimValue::Number(1.0),
+            })
+            .await
+    });
+    tokio::task::spawn_blocking(move || observed.recv_timeout(Duration::from_secs(2)).unwrap())
+        .await
+        .unwrap();
+    let start = tokio::time::Instant::now();
+    let mut waiters = Vec::new();
+    for command_id in 81..86 {
+        let writer = writer.clone();
+        waiters.push(tokio::spawn(async move {
+            writer
+                .write(SimulatorWrite {
+                    generation: 1,
+                    command_id,
+                    endpoint: Endpoint::new("Queued").unwrap(),
+                    value: SimValue::Number(command_id as f64),
+                })
+                .await
+        }));
+    }
+    tokio::time::sleep(Duration::from_millis(60)).await;
+    gate_tx.send(()).unwrap();
+    let mut timed_out = 0;
+    let mut admitted = 0;
+    for waiter in waiters {
+        let result = waiter.await.unwrap();
+        match result {
+            Err(WriterError::QueueTimeout) => timed_out += 1,
+            Ok(WriteAck::Applied { .. }) => admitted += 1,
+            other => panic!("unexpected admission result: {other:?}"),
+        }
+    }
+    assert!(start.elapsed() < Duration::from_millis(120));
+    assert_eq!(timed_out, 4);
+    assert_eq!(admitted, 1);
+    let _ = active.await.unwrap();
+    writer.shutdown().await.unwrap();
 }
 
 #[tokio::test]
@@ -284,6 +541,23 @@ fn connection_lifecycle_uses_thirty_second_health_and_two_second_transient_retry
     );
     assert_eq!(state.status, SimulatorStatus::Error);
 }
+
+#[test]
+fn invalid_key_is_a_permanent_health_failure() {
+    let mut state = ConnectionState::default();
+    state.connected(json!({"ok": true}));
+    assert_eq!(
+        state.after_health_check(Err(
+            trenino_runtime::simulator::connection::ConnectionError::InvalidKey
+        )),
+        HealthDecision::RetryAfter(Duration::from_secs(30))
+    );
+    assert_eq!(state.status, SimulatorStatus::Error);
+    assert_eq!(
+        state.last_error,
+        Some(trenino_runtime::simulator::connection::ConnectionError::InvalidKey)
+    );
+}
 fn fake_server_many(count: usize, body: &'static str) -> (String, mpsc::Receiver<String>) {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let address = listener.local_addr().unwrap();
@@ -300,6 +574,55 @@ fn fake_server_many(count: usize, body: &'static str) -> (String, mpsc::Receiver
         }
     });
     (format!("http://{address}"), observed_rx)
+}
+
+fn scripted_server(
+    responses: Vec<(u16, &'static str, Option<mpsc::Receiver<()>>)>,
+) -> (String, mpsc::Receiver<(String, u16)>) {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let address = listener.local_addr().unwrap();
+    let (observed_tx, observed_rx) = mpsc::channel();
+    thread::spawn(move || {
+        for (status, body, gate) in responses {
+            if let Ok((mut stream, _)) = listener.accept() {
+                let mut request = [0_u8; 8192];
+                let size = stream.read(&mut request).unwrap_or(0);
+                let request_text = String::from_utf8_lossy(&request[..size]).to_string();
+                let _ = observed_tx.send((request_text, status));
+                if let Some(gate) = gate {
+                    let _ = gate.recv_timeout(Duration::from_secs(2));
+                }
+                let reason = match status {
+                    200 => "OK",
+                    302 => "Found",
+                    403 => "Forbidden",
+                    500 => "Internal Server Error",
+                    503 => "Service Unavailable",
+                    _ => "Error",
+                };
+                let response = format!(
+                    "HTTP/1.1 {status} {reason}\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    body.len()
+                );
+                let _ = stream.write_all(response.as_bytes());
+            }
+        }
+    });
+    (format!("http://{address}"), observed_rx)
+}
+
+async fn recv_from_thread<T: Send + 'static>(
+    receiver: std::sync::Arc<std::sync::Mutex<mpsc::Receiver<T>>>,
+) -> T {
+    tokio::task::spawn_blocking(move || {
+        receiver
+            .lock()
+            .unwrap()
+            .recv_timeout(Duration::from_secs(2))
+            .unwrap()
+    })
+    .await
+    .unwrap()
 }
 
 #[tokio::test]
@@ -330,6 +653,139 @@ async fn subscription_service_creates_once_for_shared_endpoint_and_unsubscribes_
         .unwrap()
         .to_ascii_lowercase();
     assert!(cleanup.starts_with("delete /subscription?subscription=1000 "));
+}
+
+#[tokio::test]
+async fn cancelled_subscription_acquire_rolls_back_and_removes_orphan_lease() {
+    use trenino_runtime::simulator::subscriptions::SubscriptionService;
+    let (gate_tx, gate_rx) = mpsc::channel();
+    let (url, observed) = scripted_server(vec![
+        (200, r#"{"Result":"Success"}"#, Some(gate_rx)),
+        (200, r#"{"Result":"Success"}"#, None),
+    ]);
+    let service = std::sync::Arc::new(SubscriptionService::new(
+        std::sync::Arc::new(SimulatorClient::new(&url, "key").unwrap()),
+        999,
+    ));
+    let observed = std::sync::Arc::new(std::sync::Mutex::new(observed));
+    let pending_service = service.clone();
+    let pending = tokio::spawn(async move {
+        pending_service
+            .acquire("abandoned", 1, vec!["A".into()])
+            .await
+    });
+    let request = recv_from_thread(observed.clone()).await;
+    assert!(request
+        .0
+        .to_ascii_lowercase()
+        .starts_with("post /subscription/a?"));
+    pending.abort();
+    gate_tx.send(()).unwrap();
+    let cleanup = recv_from_thread(observed.clone()).await;
+    assert!(cleanup
+        .0
+        .to_ascii_lowercase()
+        .starts_with("delete /subscription?"));
+    assert_eq!(service.lease_count().await, 0);
+    service.shutdown().await.unwrap();
+}
+
+#[tokio::test]
+async fn cancelled_multi_id_cleanup_retains_each_id_until_success() {
+    use trenino_runtime::simulator::subscriptions::SubscriptionService;
+    let (first_gate_tx, first_gate_rx) = mpsc::channel();
+    let (second_gate_tx, second_gate_rx) = mpsc::channel();
+    let (url, observed) = scripted_server(vec![
+        (200, r#"{"Result":"Success"}"#, None),
+        (200, r#"{"Result":"Success"}"#, None),
+        (200, r#"{"Result":"Success"}"#, Some(first_gate_rx)),
+        (200, r#"{"Result":"Success"}"#, Some(second_gate_rx)),
+    ]);
+    let service = std::sync::Arc::new(SubscriptionService::new(
+        std::sync::Arc::new(SimulatorClient::new(&url, "key").unwrap()),
+        999,
+    ));
+    let observed = std::sync::Arc::new(std::sync::Mutex::new(observed));
+    let lease = service
+        .acquire("owner", 2, vec!["A".into(), "B".into()])
+        .await
+        .unwrap();
+    let release_service = service.clone();
+    let release = tokio::spawn(async move { release_service.release(lease).await });
+    let _ = recv_from_thread(observed.clone()).await;
+    let _ = recv_from_thread(observed.clone()).await;
+    let first_delete = recv_from_thread(observed.clone()).await;
+    assert!(first_delete
+        .0
+        .to_ascii_lowercase()
+        .contains("subscription=1000"));
+    release.abort();
+    first_gate_tx.send(()).unwrap();
+    let second_delete = recv_from_thread(observed.clone()).await;
+    assert!(second_delete
+        .0
+        .to_ascii_lowercase()
+        .contains("subscription=1001"));
+    second_gate_tx.send(()).unwrap();
+    assert_eq!(service.pending_cleanup_count().await, 0);
+    assert_eq!(service.lease_count().await, 0);
+    service.shutdown().await.unwrap();
+}
+
+#[tokio::test]
+async fn partial_subscribe_failure_cleans_created_and_ambiguous_ids() {
+    use trenino_runtime::simulator::subscriptions::SubscriptionService;
+    let (url, observed) = scripted_server(vec![
+        (200, r#"{"Result":"Success"}"#, None),
+        (500, "failed", None),
+        (200, r#"{"Result":"Success"}"#, None),
+        (200, r#"{"Result":"Success"}"#, None),
+    ]);
+    let service = SubscriptionService::new(
+        std::sync::Arc::new(SimulatorClient::new(&url, "key").unwrap()),
+        999,
+    );
+    assert!(service
+        .acquire("owner", 3, vec!["A".into(), "B".into()])
+        .await
+        .is_err());
+    assert_eq!(service.lease_count().await, 0);
+    assert_eq!(service.pending_cleanup_count().await, 0);
+    let requests: Vec<_> = (0..4)
+        .map(|_| {
+            observed
+                .recv_timeout(Duration::from_secs(2))
+                .unwrap()
+                .0
+                .to_ascii_lowercase()
+        })
+        .collect();
+    assert!(requests[2].starts_with("delete /subscription?"));
+    assert!(requests[3].starts_with("delete /subscription?"));
+    service.shutdown().await.unwrap();
+}
+
+#[tokio::test]
+async fn failed_unsubscribe_is_explicitly_retryable_without_new_consumers() {
+    use trenino_runtime::simulator::subscriptions::SubscriptionService;
+    let (url, observed) = scripted_server(vec![
+        (200, r#"{"Result":"Success"}"#, None),
+        (503, "try later", None),
+        (200, r#"{"Result":"Success"}"#, None),
+    ]);
+    let service = SubscriptionService::new(
+        std::sync::Arc::new(SimulatorClient::new(&url, "key").unwrap()),
+        999,
+    );
+    let lease = service.acquire("owner", 4, vec!["A".into()]).await.unwrap();
+    assert!(service.release(lease).await.is_err());
+    assert_eq!(service.pending_cleanup_count().await, 1);
+    service.retry_cleanup().await.unwrap();
+    assert_eq!(service.pending_cleanup_count().await, 0);
+    let _ = observed.recv_timeout(Duration::from_secs(1)).unwrap();
+    let _ = observed.recv_timeout(Duration::from_secs(1)).unwrap();
+    let _ = observed.recv_timeout(Duration::from_secs(1)).unwrap();
+    service.shutdown().await.unwrap();
 }
 use trenino_runtime::keyboard::{key_actions, Key, KeyAction, KeystrokeAction};
 

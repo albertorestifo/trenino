@@ -54,6 +54,7 @@ impl<'de> Deserialize<'de> for Endpoint {
 /// JSON-shaped simulator values. Numbers must be finite at serialization boundaries.
 #[derive(Clone, Debug, PartialEq)]
 pub enum SimValue {
+    Integer(i128),
     Number(f64),
     Bool(bool),
     String(String),
@@ -69,6 +70,30 @@ impl SimValue {
             Ok(Self::Number(value))
         } else {
             Err(SimValueError)
+        }
+    }
+
+    pub fn to_legacy_string(&self) -> String {
+        match self {
+            Self::Integer(value) => value.to_string(),
+            Self::Number(value) => {
+                let rendered = format!("{value:?}");
+                if let Some(exponent) = rendered.find(['e', 'E']) {
+                    let mantissa = &rendered[..exponent];
+                    if mantissa.contains('.') {
+                        rendered
+                    } else {
+                        format!("{mantissa}.0{}", &rendered[exponent..])
+                    }
+                } else if rendered.contains('.') {
+                    rendered
+                } else {
+                    format!("{rendered}.0")
+                }
+            }
+            Self::Bool(value) => value.to_string(),
+            Self::String(value) => value.clone(),
+            Self::Null => String::new(),
         }
     }
 }
@@ -87,6 +112,7 @@ impl Serialize for SimValue {
         S: Serializer,
     {
         match self {
+            Self::Integer(value) => serializer.serialize_i128(*value),
             Self::Number(value) if value.is_finite() => serializer.serialize_f64(*value),
             Self::Number(_) => Err(serde::ser::Error::custom(SimValueError)),
             Self::Bool(value) => serializer.serialize_bool(*value),
@@ -101,20 +127,53 @@ impl<'de> Deserialize<'de> for SimValue {
     where
         D: Deserializer<'de>,
     {
-        #[derive(Deserialize)]
-        #[serde(untagged)]
-        enum Repr {
-            Bool(bool),
-            Number(f64),
-            String(String),
-            Null(()),
+        struct SimValueVisitor;
+        impl<'de> de::Visitor<'de> for SimValueVisitor {
+            type Value = SimValue;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+                formatter.write_str("a finite JSON number, boolean, string, or null")
+            }
+
+            fn visit_i64<E>(self, value: i64) -> Result<Self::Value, E> {
+                Ok(SimValue::Integer(value.into()))
+            }
+
+            fn visit_u64<E>(self, value: u64) -> Result<Self::Value, E> {
+                Ok(SimValue::Integer(value.into()))
+            }
+
+            fn visit_f64<E>(self, value: f64) -> Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                SimValue::number(value).map_err(E::custom)
+            }
+
+            fn visit_bool<E>(self, value: bool) -> Result<Self::Value, E> {
+                Ok(SimValue::Bool(value))
+            }
+
+            fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                Ok(SimValue::String(value.to_owned()))
+            }
+
+            fn visit_string<E>(self, value: String) -> Result<Self::Value, E> {
+                Ok(SimValue::String(value))
+            }
+
+            fn visit_unit<E>(self) -> Result<Self::Value, E> {
+                Ok(SimValue::Null)
+            }
+
+            fn visit_none<E>(self) -> Result<Self::Value, E> {
+                Ok(SimValue::Null)
+            }
         }
 
-        match Repr::deserialize(deserializer)? {
-            Repr::Bool(value) => Ok(Self::Bool(value)),
-            Repr::Number(value) => Self::number(value).map_err(de::Error::custom),
-            Repr::String(value) => Ok(Self::String(value)),
-            Repr::Null(()) => Ok(Self::Null),
-        }
+        deserializer.deserialize_any(SimValueVisitor)
     }
 }

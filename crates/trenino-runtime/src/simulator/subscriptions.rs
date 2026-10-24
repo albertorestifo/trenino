@@ -1,9 +1,13 @@
 use super::client::{SimulatorClient, SimulatorError};
 use std::{
     collections::{HashMap, HashSet},
-    sync::Arc,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
+    time::Duration,
 };
-use tokio::sync::Mutex;
+use tokio::sync::{mpsc, oneshot, Mutex};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SubscriptionLease {
@@ -109,12 +113,23 @@ impl SubscriptionRegistry {
     pub fn lease_count(&self) -> usize {
         self.leases.len()
     }
+
+    fn release_all(&mut self) -> Vec<i64> {
+        let mut ids: Vec<_> = self.refs.values().map(|(id, _)| *id).collect();
+        ids.sort_unstable();
+        self.leases.clear();
+        self.refs.clear();
+        ids
+    }
 }
 
 #[derive(Debug)]
 pub enum SubscriptionServiceError {
     Registry(SubscriptionError),
     Simulator(SimulatorError),
+    Closed,
+    QueueTimeout,
+    PendingCleanup(Vec<i64>),
 }
 impl From<SubscriptionError> for SubscriptionServiceError {
     fn from(e: SubscriptionError) -> Self {
@@ -126,23 +141,42 @@ impl From<SimulatorError> for SubscriptionServiceError {
         Self::Simulator(e)
     }
 }
-#[derive(Default)]
-struct ServiceState {
-    registry: SubscriptionRegistry,
-    pending_cleanup: Vec<i64>,
+enum Command {
+    Acquire(
+        String,
+        u64,
+        Vec<String>,
+        oneshot::Sender<Result<(SubscriptionLease, oneshot::Sender<()>), SubscriptionServiceError>>,
+    ),
+    Release(
+        SubscriptionLease,
+        oneshot::Sender<Result<Vec<i64>, SubscriptionServiceError>>,
+    ),
+    RetryCleanup(oneshot::Sender<Result<(), SubscriptionServiceError>>),
+    Counts(oneshot::Sender<(usize, usize)>),
+    Shutdown(oneshot::Sender<Result<(), SubscriptionServiceError>>),
 }
 pub struct SubscriptionService {
-    client: Arc<SimulatorClient>,
-    state: Mutex<ServiceState>,
+    sender: mpsc::Sender<Command>,
+    admission: Mutex<()>,
+    closing: AtomicBool,
+    queue_wait: Duration,
+    worker: Arc<Mutex<Option<tokio::task::JoinHandle<()>>>>,
 }
 impl SubscriptionService {
     pub fn new(client: Arc<SimulatorClient>, first_id: i64) -> Self {
+        let (sender, receiver) = mpsc::channel(64);
+        let worker = tokio::spawn(run_service(
+            client.clone(),
+            SubscriptionRegistry::new(first_id),
+            receiver,
+        ));
         Self {
-            client,
-            state: Mutex::new(ServiceState {
-                registry: SubscriptionRegistry::new(first_id),
-                pending_cleanup: Vec::new(),
-            }),
+            sender,
+            admission: Mutex::new(()),
+            closing: AtomicBool::new(false),
+            queue_wait: client.queue_wait_budget(),
+            worker: Arc::new(Mutex::new(Some(worker))),
         }
     }
     pub async fn acquire(
@@ -151,52 +185,240 @@ impl SubscriptionService {
         generation: u64,
         endpoints: Vec<String>,
     ) -> Result<SubscriptionLease, SubscriptionServiceError> {
-        let mut state = self.state.lock().await;
-        let (lease, new) = state
-            .registry
-            .acquire_with_new(owner, generation, endpoints)?;
-        for (endpoint, id) in new {
-            if let Err(error) = self.client.subscribe(&endpoint, id).await {
-                if let Ok(cleanup) = state.registry.release(lease.clone()) {
-                    state.pending_cleanup.extend(cleanup)
-                }
-                let _ = cleanup_pending(&self.client, &mut state.pending_cleanup).await;
-                return Err(SubscriptionServiceError::Simulator(error));
-            }
-        }
+        let (reply, receive) = oneshot::channel();
+        self.send(Command::Acquire(owner.into(), generation, endpoints, reply))
+            .await?;
+        let (lease, confirmation) = receive
+            .await
+            .map_err(|_| SubscriptionServiceError::Closed)??;
+        confirmation
+            .send(())
+            .map_err(|_| SubscriptionServiceError::Closed)?;
         Ok(lease)
     }
     pub async fn release(
         &self,
         lease: SubscriptionLease,
     ) -> Result<Vec<i64>, SubscriptionServiceError> {
-        let mut state = self.state.lock().await;
-        let ids = state.registry.release(lease)?;
-        state.pending_cleanup.extend(ids.iter().copied());
-        cleanup_pending(&self.client, &mut state.pending_cleanup).await?;
-        Ok(ids)
+        let (reply, receive) = oneshot::channel();
+        self.send(Command::Release(lease, reply)).await?;
+        receive
+            .await
+            .map_err(|_| SubscriptionServiceError::Closed)?
     }
     pub async fn lease_count(&self) -> usize {
-        self.state.lock().await.registry.lease_count()
+        self.counts().await.0
+    }
+    pub async fn pending_cleanup_count(&self) -> usize {
+        self.counts().await.1
+    }
+
+    pub async fn retry_cleanup(&self) -> Result<(), SubscriptionServiceError> {
+        let (reply, receive) = oneshot::channel();
+        self.send_even_if_closing(Command::RetryCleanup(reply))
+            .await?;
+        receive
+            .await
+            .map_err(|_| SubscriptionServiceError::Closed)?
+    }
+
+    pub async fn shutdown(&self) -> Result<(), SubscriptionServiceError> {
+        self.closing.store(true, Ordering::Release);
+        let (reply, receive) = oneshot::channel();
+        let send_result = self.send_even_if_closing(Command::Shutdown(reply)).await;
+        if let Err(error) = send_result {
+            let mut worker = self.worker.lock().await;
+            if let Some(handle) = worker.as_mut() {
+                handle.await.map_err(|_| SubscriptionServiceError::Closed)?;
+                worker.take();
+                return Ok(());
+            }
+            return Err(error);
+        }
+        let result = receive
+            .await
+            .map_err(|_| SubscriptionServiceError::Closed)?;
+        if result.is_ok() {
+            let mut worker = self.worker.lock().await;
+            if let Some(handle) = worker.as_mut() {
+                handle.await.map_err(|_| SubscriptionServiceError::Closed)?;
+                worker.take();
+            }
+        }
+        result
+    }
+
+    async fn counts(&self) -> (usize, usize) {
+        let (reply, receive) = oneshot::channel();
+        if self
+            .send_even_if_closing(Command::Counts(reply))
+            .await
+            .is_err()
+        {
+            return (0, 0);
+        }
+        receive.await.unwrap_or((0, 0))
+    }
+
+    async fn send(&self, command: Command) -> Result<(), SubscriptionServiceError> {
+        self.send_with_closing_check(command, false).await
+    }
+
+    async fn send_even_if_closing(&self, command: Command) -> Result<(), SubscriptionServiceError> {
+        self.send_with_closing_check(command, true).await
+    }
+
+    async fn send_with_closing_check(
+        &self,
+        command: Command,
+        allow_closing: bool,
+    ) -> Result<(), SubscriptionServiceError> {
+        let deadline = tokio::time::Instant::now() + self.queue_wait;
+        let admission = tokio::time::timeout_at(deadline, self.admission.lock())
+            .await
+            .map_err(|_| SubscriptionServiceError::QueueTimeout)?;
+        if !allow_closing && self.closing.load(Ordering::Acquire) {
+            return Err(SubscriptionServiceError::Closed);
+        }
+        tokio::time::timeout_at(deadline, self.sender.send(command))
+            .await
+            .map_err(|_| SubscriptionServiceError::QueueTimeout)?
+            .map_err(|_| SubscriptionServiceError::Closed)?;
+        drop(admission);
+        Ok(())
     }
 }
-async fn cleanup_pending(
+
+async fn run_service(
+    client: Arc<SimulatorClient>,
+    mut registry: SubscriptionRegistry,
+    mut receiver: mpsc::Receiver<Command>,
+) {
+    let mut pending_cleanup = Vec::new();
+    while let Some(command) = receiver.recv().await {
+        match command {
+            Command::Acquire(owner, generation, endpoints, reply) => {
+                let result = acquire(
+                    &client,
+                    &mut registry,
+                    &mut pending_cleanup,
+                    owner,
+                    generation,
+                    endpoints,
+                )
+                .await;
+                match result {
+                    Ok(lease) => {
+                        let (confirmation, confirm_receive) = oneshot::channel();
+                        let confirmed = if reply.send(Ok((lease.clone(), confirmation))).is_ok() {
+                            confirm_receive.await.is_ok()
+                        } else {
+                            false
+                        };
+                        if !confirmed {
+                            rollback_lease(&client, &mut registry, &mut pending_cleanup, lease)
+                                .await;
+                        }
+                    }
+                    Err(error) => {
+                        let _ = reply.send(Err(error));
+                    }
+                }
+            }
+            Command::Release(lease, reply) => {
+                let result = match registry.release(lease) {
+                    Ok(ids) => {
+                        add_pending(&mut pending_cleanup, ids.clone());
+                        retry_pending(&client, &mut pending_cleanup)
+                            .await
+                            .map(|()| ids)
+                    }
+                    Err(error) => Err(error.into()),
+                };
+                let _ = reply.send(result);
+            }
+            Command::RetryCleanup(reply) => {
+                let _ = reply.send(retry_pending(&client, &mut pending_cleanup).await);
+            }
+            Command::Counts(reply) => {
+                let _ = reply.send((registry.lease_count(), pending_cleanup.len()));
+            }
+            Command::Shutdown(reply) => {
+                add_pending(&mut pending_cleanup, registry.release_all());
+                let result = retry_pending(&client, &mut pending_cleanup).await;
+                if pending_cleanup.is_empty() {
+                    let _ = reply.send(Ok(()));
+                    return;
+                }
+                let _ = reply.send(Err(SubscriptionServiceError::PendingCleanup(
+                    pending_cleanup.clone(),
+                )));
+                let _ = result;
+            }
+        }
+    }
+    add_pending(&mut pending_cleanup, registry.release_all());
+    let _ = retry_pending(&client, &mut pending_cleanup).await;
+}
+
+async fn acquire(
+    client: &SimulatorClient,
+    registry: &mut SubscriptionRegistry,
+    pending_cleanup: &mut Vec<i64>,
+    owner: String,
+    generation: u64,
+    endpoints: Vec<String>,
+) -> Result<SubscriptionLease, SubscriptionServiceError> {
+    let (lease, new) = registry.acquire_with_new(owner, generation, endpoints)?;
+    for (endpoint, id) in new {
+        if let Err(error) = client.subscribe(&endpoint, id).await {
+            if let Ok(ids) = registry.release(lease.clone()) {
+                add_pending(pending_cleanup, ids);
+            }
+            let _ = retry_pending(client, pending_cleanup).await;
+            return Err(error.into());
+        }
+    }
+    Ok(lease)
+}
+
+async fn rollback_lease(
+    client: &SimulatorClient,
+    registry: &mut SubscriptionRegistry,
+    pending_cleanup: &mut Vec<i64>,
+    lease: SubscriptionLease,
+) {
+    if let Ok(ids) = registry.release(lease) {
+        add_pending(pending_cleanup, ids);
+    }
+    let _ = retry_pending(client, pending_cleanup).await;
+}
+
+fn add_pending(pending: &mut Vec<i64>, ids: impl IntoIterator<Item = i64>) {
+    for id in ids {
+        if !pending.contains(&id) {
+            pending.push(id);
+        }
+    }
+}
+
+async fn retry_pending(
     client: &SimulatorClient,
     pending: &mut Vec<i64>,
 ) -> Result<(), SubscriptionServiceError> {
-    let mut still_pending = Vec::new();
+    let mut failures = Vec::new();
     let mut first_error = None;
-    for id in pending.drain(..) {
+    for id in pending.iter().copied() {
         if let Err(error) = client.unsubscribe(id).await {
             if first_error.is_none() {
-                first_error = Some(error)
+                first_error = Some(error);
             }
-            still_pending.push(id)
+            failures.push(id);
         }
     }
-    *pending = still_pending;
+    *pending = failures;
     if let Some(error) = first_error {
-        Err(SubscriptionServiceError::Simulator(error))
+        Err(error.into())
     } else {
         Ok(())
     }

@@ -26,18 +26,36 @@ pub fn evaluate_output(binding: &OutputBinding, value: &SimValue) -> bool {
         (OutputOperator::Gt, SimValue::Number(value)) => {
             binding.value_a.is_some_and(|a| *value > a)
         }
+        (OutputOperator::Gt, SimValue::Integer(value)) => {
+            binding.value_a.is_some_and(|a| (*value as f64) > a)
+        }
         (OutputOperator::Gte, SimValue::Number(value)) => {
             binding.value_a.is_some_and(|a| *value >= a)
+        }
+        (OutputOperator::Gte, SimValue::Integer(value)) => {
+            binding.value_a.is_some_and(|a| (*value as f64) >= a)
         }
         (OutputOperator::Lt, SimValue::Number(value)) => {
             binding.value_a.is_some_and(|a| *value < a)
         }
+        (OutputOperator::Lt, SimValue::Integer(value)) => {
+            binding.value_a.is_some_and(|a| (*value as f64) < a)
+        }
         (OutputOperator::Lte, SimValue::Number(value)) => {
             binding.value_a.is_some_and(|a| *value <= a)
+        }
+        (OutputOperator::Lte, SimValue::Integer(value)) => {
+            binding.value_a.is_some_and(|a| (*value as f64) <= a)
         }
         (OutputOperator::Between, SimValue::Number(value)) => {
             match (binding.value_a, binding.value_b) {
                 (Some(min), Some(max)) => *value >= min && *value <= max,
+                _ => false,
+            }
+        }
+        (OutputOperator::Between, SimValue::Integer(value)) => {
+            match (binding.value_a, binding.value_b) {
+                (Some(min), Some(max)) => (*value as f64) >= min && (*value as f64) <= max,
                 _ => false,
             }
         }

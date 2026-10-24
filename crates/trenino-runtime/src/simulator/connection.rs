@@ -75,6 +75,12 @@ impl ConnectionState {
                 self.last_error = None;
                 HealthDecision::CheckAfter(HEALTH_INTERVAL)
             }
+            Err(ConnectionError::InvalidKey) => {
+                self.status = SimulatorStatus::Error;
+                self.health_failures = 0;
+                self.last_error = Some(ConnectionError::InvalidKey);
+                HealthDecision::RetryAfter(HEALTH_INTERVAL)
+            }
             Err(error) => {
                 self.health_failures = self.health_failures.saturating_add(1);
                 self.last_error = Some(error);

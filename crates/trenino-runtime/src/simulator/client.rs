@@ -4,7 +4,10 @@ use reqwest::{
 };
 use serde_json::Value;
 use std::{fmt, time::Duration};
-use trenino_core::simulator::{Endpoint, SimValue};
+use trenino_core::{
+    rounding::round_elixir,
+    simulator::{Endpoint, SimValue},
+};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum TimeoutProfile {
@@ -36,6 +39,7 @@ impl TimeoutProfile {
 pub enum SimulatorError {
     InvalidUrl(String),
     InvalidKey,
+    InvalidPath,
     HttpStatus { status: u16, body: Value },
     Transport(String),
     InvalidJson(String),
@@ -85,6 +89,7 @@ impl SimulatorClient {
             .default_headers(headers)
             .connect_timeout(profile.request_deadline())
             .timeout(profile.request_deadline())
+            .redirect(reqwest::redirect::Policy::none())
             .pool_max_idle_per_host(8)
             .build()
             .map_err(|e| SimulatorError::Transport(e.to_string()))?;
@@ -105,29 +110,38 @@ impl SimulatorClient {
         self.request(Method::GET, "/info", &[], None, true).await
     }
     pub async fn list(&self, path: Option<&str>) -> Result<Value, SimulatorError> {
-        let path = path
-            .map(|p| format!("/list/{}", encode_path(p)))
-            .unwrap_or_else(|| "/list".into());
+        let path = match path {
+            Some(path) => operation_path("/list", path)?,
+            None => "/list".into(),
+        };
         self.request(Method::GET, &path, &[], None, true).await
     }
     pub async fn get(&self, path: &str) -> Result<Value, SimulatorError> {
-        self.request(
-            Method::GET,
-            &format!("/get/{}", encode_path(path)),
-            &[],
-            None,
-            true,
-        )
-        .await
+        let path = operation_path("/get", path)?;
+        self.request(Method::GET, &path, &[], None, true).await
     }
     pub async fn get_int(&self, path: &str) -> Result<i64, SimulatorError> {
         let response = self.get(path).await?;
         let value = first_value(&response)?;
         match value {
-            Value::Number(n) => n
-                .as_i64()
-                .or_else(|| n.as_f64().map(|v| v.trunc() as i64))
-                .ok_or(SimulatorError::InvalidValue),
+            Value::Number(n) => {
+                if let Some(value) = n.as_i64() {
+                    return Ok(value);
+                }
+                if let Some(value) = n.as_u64() {
+                    return i64::try_from(value).map_err(|_| SimulatorError::InvalidValue);
+                }
+                let value = n.as_f64().ok_or(SimulatorError::InvalidValue)?;
+                let truncated = value.trunc();
+                if !truncated.is_finite()
+                    || truncated < i64::MIN as f64
+                    || truncated >= 9_223_372_036_854_775_808.0
+                {
+                    Err(SimulatorError::InvalidValue)
+                } else {
+                    Ok(truncated as i64)
+                }
+            }
             Value::String(s) => s.parse().map_err(|_| SimulatorError::InvalidValue),
             _ => Err(SimulatorError::InvalidValue),
         }
@@ -143,23 +157,25 @@ impl SimulatorClient {
         if !n.is_finite() {
             return Err(SimulatorError::InvalidValue);
         }
-        Ok(round2(n))
+        round_elixir(n, 2).ok_or(SimulatorError::InvalidValue)
     }
     pub async fn get_string(&self, path: &str) -> Result<String, SimulatorError> {
         let response = self.get(path).await?;
         let value = first_value(&response)?;
         match value {
             Value::String(s) => Ok(s.clone()),
-            Value::Bool(b) => Ok(b.to_string()),
-            Value::Number(n) => Ok(n.to_string()),
-            Value::Null => Ok(String::new()),
+            Value::Bool(_) | Value::Number(_) | Value::Null => {
+                let value: SimValue = serde_json::from_value(value.clone())
+                    .map_err(|_| SimulatorError::InvalidValue)?;
+                Ok(value.to_legacy_string())
+            }
             _ => Err(SimulatorError::InvalidValue),
         }
     }
     pub async fn set(&self, path: &str, value: &Value) -> Result<Value, SimulatorError> {
         self.request(
             Method::PATCH,
-            &format!("/set/{}", encode_path(path)),
+            &operation_path("/set", path)?,
             &[("Value", value_to_query(value))],
             None,
             false,
@@ -175,6 +191,9 @@ impl SimulatorClient {
             return Err(SimulatorError::InvalidValue);
         }
         let value = match value {
+            SimValue::Integer(n) => {
+                serde_json::to_value(n).map_err(|_| SimulatorError::InvalidValue)?
+            }
             SimValue::Number(n) => Value::from(*n),
             SimValue::Bool(b) => Value::Bool(*b),
             SimValue::String(s) => Value::String(s.clone()),
@@ -185,7 +204,7 @@ impl SimulatorClient {
     pub async fn subscribe(&self, path: &str, id: i64) -> Result<Value, SimulatorError> {
         self.request(
             Method::POST,
-            &format!("/subscription/{}", encode_path(path)),
+            &operation_path("/subscription", path)?,
             &[("Subscription", id.to_string())],
             Some(""),
             false,
@@ -239,6 +258,14 @@ impl SimulatorClient {
                 request = request.body(body.to_owned());
             }
             match request.send().await {
+                Ok(response)
+                    if retry_safe
+                        && attempt < retries
+                        && is_transient_status(response.status()) =>
+                {
+                    drop(response);
+                    tokio::time::sleep(Duration::from_millis(100 * (attempt as u64 + 1))).await;
+                }
                 Ok(response) => return parse_response(response).await,
                 Err(e) if attempt < retries && (e.is_timeout() || e.is_connect()) => {
                     tokio::time::sleep(Duration::from_millis(100 * (attempt as u64 + 1))).await
@@ -251,20 +278,33 @@ impl SimulatorClient {
 }
 async fn parse_response(response: reqwest::Response) -> Result<Value, SimulatorError> {
     let status = response.status();
-    let body = response
-        .json::<Value>()
-        .await
-        .map_err(|e| SimulatorError::InvalidJson(e.to_string()))?;
-    if status == StatusCode::OK {
-        Ok(body)
-    } else if status == StatusCode::FORBIDDEN {
+    if status == StatusCode::FORBIDDEN {
         Err(SimulatorError::InvalidKey)
-    } else {
+    } else if status != StatusCode::OK {
+        let body = response
+            .bytes()
+            .await
+            .map(|bytes| error_body(&bytes))
+            .unwrap_or_else(|error| Value::String(format!("failed to read error body: {error}")));
         Err(SimulatorError::HttpStatus {
             status: status.as_u16(),
             body,
         })
+    } else {
+        let bytes = response
+            .bytes()
+            .await
+            .map_err(|error| SimulatorError::Transport(error.to_string()))?;
+        serde_json::from_slice(&bytes)
+            .map_err(|error| SimulatorError::InvalidJson(error.to_string()))
     }
+}
+fn error_body(bytes: &[u8]) -> Value {
+    serde_json::from_slice(bytes)
+        .unwrap_or_else(|_| Value::String(String::from_utf8_lossy(bytes).into_owned()))
+}
+fn is_transient_status(status: StatusCode) -> bool {
+    matches!(status.as_u16(), 408 | 429 | 500 | 502 | 503 | 504)
 }
 fn first_value(response: &Value) -> Result<&Value, SimulatorError> {
     response
@@ -280,9 +320,6 @@ fn value_to_query(value: &Value) -> String {
         _ => value.to_string(),
     }
 }
-fn round2(n: f64) -> f64 {
-    (n * 100.0).round() / 100.0
-}
 fn encode_path(path: &str) -> String {
     let mut out = String::new();
     for b in path.bytes() {
@@ -293,4 +330,11 @@ fn encode_path(path: &str) -> String {
         }
     }
     out
+}
+
+fn operation_path(prefix: &str, path: &str) -> Result<String, SimulatorError> {
+    if path.is_empty() || path.split('/').any(|segment| matches!(segment, "." | "..")) {
+        return Err(SimulatorError::InvalidPath);
+    }
+    Ok(format!("{prefix}/{}", encode_path(path)))
 }

@@ -1,3 +1,4 @@
+use crate::{rounding::round_elixir, simulator::SimValue};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
@@ -69,6 +70,7 @@ pub struct AnalysisResult {
 pub enum AnalysisError {
     EmptySamples,
     NonFiniteSample,
+    InvalidDerivedResult,
 }
 
 pub fn analyze_samples(samples: &[Sample]) -> Result<AnalysisResult, AnalysisError> {
@@ -103,11 +105,11 @@ pub fn analyze_samples(samples: &[Sample]) -> Result<AnalysisResult, AnalysisErr
         let notch_index = group[0].notch_index;
         if let Some(current) = zones.last_mut() {
             if (group[0].actual_input - current.actual_input_max).abs() <= SNAP_THRESHOLD {
-                merge(current, &group, notch_index);
+                merge(current, &group, notch_index)?;
                 continue;
             }
         }
-        zones.push(create_zone(&group, notch_index));
+        zones.push(create_zone(&group, notch_index)?);
     }
     let has_gate = zones.iter().any(|z| z.kind == ZoneType::Gate);
     let has_linear = zones.iter().any(|z| z.kind == ZoneType::Linear);
@@ -130,10 +132,15 @@ pub fn analyze_samples(samples: &[Sample]) -> Result<AnalysisResult, AnalysisErr
         .enumerate()
         .map(|(index, zone)| {
             let description = match zone.kind {
-                ZoneType::Gate => format!("Gate at output {:?}", zone.value.unwrap()),
-                ZoneType::Linear => {
-                    format!("Linear {:?} to {:?}", zone.output_min, zone.output_max)
-                }
+                ZoneType::Gate => format!(
+                    "Gate at output {}",
+                    SimValue::Number(zone.value.unwrap()).to_legacy_string()
+                ),
+                ZoneType::Linear => format!(
+                    "Linear {} to {}",
+                    SimValue::Number(zone.output_min).to_legacy_string(),
+                    SimValue::Number(zone.output_max).to_legacy_string()
+                ),
             };
             SuggestedNotch {
                 kind: zone.kind,
@@ -161,22 +168,20 @@ pub fn analyze_samples(samples: &[Sample]) -> Result<AnalysisResult, AnalysisErr
     })
 }
 
-fn zone_type(min: f64, max: f64) -> ZoneType {
-    let min = round1(min);
-    let max = round1(max);
-    if (max - min).abs() < GATE_RANGE_THRESHOLD {
+fn zone_type(min: f64, max: f64) -> Result<ZoneType, AnalysisError> {
+    let min = round_elixir(min, 1).ok_or(AnalysisError::InvalidDerivedResult)?;
+    let max = round_elixir(max, 1).ok_or(AnalysisError::InvalidDerivedResult)?;
+    let width = max - min;
+    if !width.is_finite() {
+        return Err(AnalysisError::InvalidDerivedResult);
+    }
+    Ok(if width.abs() < GATE_RANGE_THRESHOLD {
         ZoneType::Gate
     } else {
         ZoneType::Linear
-    }
+    })
 }
-fn round1(v: f64) -> f64 {
-    (v * 10.0).round() / 10.0
-}
-fn round2(v: f64) -> f64 {
-    (v * 100.0).round() / 100.0
-}
-fn create_zone(group: &[&Sample], index: i64) -> Zone {
+fn create_zone(group: &[&Sample], index: i64) -> Result<Zone, AnalysisError> {
     let output_min = group
         .iter()
         .map(|s| s.output)
@@ -187,10 +192,16 @@ fn create_zone(group: &[&Sample], index: i64) -> Zone {
         .map(|s| s.output)
         .max_by(f64::total_cmp)
         .unwrap();
-    let kind = zone_type(output_min, output_max);
-    Zone {
+    let kind = zone_type(output_min, output_max)?;
+    let value = if kind == ZoneType::Gate {
+        let midpoint = legacy_midpoint(output_min, output_max);
+        Some(round_elixir(midpoint, 2).ok_or(AnalysisError::InvalidDerivedResult)?)
+    } else {
+        None
+    };
+    Ok(Zone {
         kind,
-        value: (kind == ZoneType::Gate).then(|| round2((output_min + output_max) / 2.0)),
+        value,
         output_min,
         output_max,
         set_input_min: group
@@ -214,9 +225,9 @@ fn create_zone(group: &[&Sample], index: i64) -> Zone {
             .max_by(f64::total_cmp)
             .unwrap(),
         notch_indices: vec![index],
-    }
+    })
 }
-fn merge(zone: &mut Zone, group: &[&Sample], index: i64) {
+fn merge(zone: &mut Zone, group: &[&Sample], index: i64) -> Result<(), AnalysisError> {
     for sample in group {
         zone.output_min = zone.output_min.min(sample.output);
         zone.output_max = zone.output_max.max(sample.output);
@@ -225,8 +236,22 @@ fn merge(zone: &mut Zone, group: &[&Sample], index: i64) {
         zone.actual_input_min = zone.actual_input_min.min(sample.actual_input);
         zone.actual_input_max = zone.actual_input_max.max(sample.actual_input);
     }
-    zone.kind = zone_type(zone.output_min, zone.output_max);
-    zone.value =
-        (zone.kind == ZoneType::Gate).then(|| round2((zone.output_min + zone.output_max) / 2.0));
+    zone.kind = zone_type(zone.output_min, zone.output_max)?;
+    zone.value = if zone.kind == ZoneType::Gate {
+        let midpoint = legacy_midpoint(zone.output_min, zone.output_max);
+        Some(round_elixir(midpoint, 2).ok_or(AnalysisError::InvalidDerivedResult)?)
+    } else {
+        None
+    };
     zone.notch_indices.push(index);
+    Ok(())
+}
+
+fn legacy_midpoint(min: f64, max: f64) -> f64 {
+    let legacy = (min + max) / 2.0;
+    if legacy.is_finite() {
+        legacy
+    } else {
+        min / 2.0 + max / 2.0
+    }
 }

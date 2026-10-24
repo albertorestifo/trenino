@@ -152,14 +152,13 @@ fn release(binding: &ButtonBinding, mut state: ButtonState) -> (ButtonState, Vec
             state.active = false;
         }
         ButtonMode::Sequence => {
-            if state.active && binding.hardware_type == HardwareType::Momentary {
+            if state.active {
                 actions.push(ButtonAction::CancelActive {
                     element_id: binding.element_id,
                 });
                 state.active = false;
-            } else if binding.hardware_type == HardwareType::Latching
-                && !binding.off_sequence.is_empty()
-            {
+            }
+            if binding.hardware_type == HardwareType::Latching && !binding.off_sequence.is_empty() {
                 actions.push(ButtonAction::StartSequence {
                     element_id: binding.element_id,
                     commands: ordered_sequence(&binding.off_sequence),
