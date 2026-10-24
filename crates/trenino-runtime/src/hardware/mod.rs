@@ -889,6 +889,7 @@ impl<T: SerialTransport> HardwareRuntime<T> {
                         .collect::<Vec<_>>();
                     for port in removed {
                         let mut closed = false;
+                        let mut joined_failure = false;
                         if let Some(owner) = ports.get_mut(&port) {
                             let generation = owner.generation();
                             active_generations
@@ -896,14 +897,28 @@ impl<T: SerialTransport> HardwareRuntime<T> {
                                 .expect("generation registry poisoned")
                                 .remove(&port);
                             match owner.close(self.cleanup_deadline) {
-                                Err(error) => runtime_sink(PortEvent::Failed {
-                                    port: port.clone(),
-                                    generation,
-                                    reason: error.to_string(),
-                                }),
+                                Err(error) => {
+                                    runtime_sink(PortEvent::Failed {
+                                        port: port.clone(),
+                                        generation,
+                                        reason: error.to_string(),
+                                    });
+                                    // A joined worker (for example a panicked reader) has no
+                                    // handle left to retry; record the failure and remove only
+                                    // this owner. An unfinished owner stays quarantined until
+                                    // it can join, never dropping unrelated live owners.
+                                    if owner.is_joined() {
+                                        worker_shutdown_failures
+                                            .lock()
+                                            .expect("shutdown diagnostics poisoned")
+                                            .push(error.to_string());
+                                        closed = true;
+                                        joined_failure = true;
+                                    }
+                                }
                                 Ok(()) => closed = true,
                             }
-                            if closed {
+                            if closed && !joined_failure {
                                 runtime_sink(PortEvent::Closed {
                                     port: port.clone(),
                                     generation,

@@ -1335,3 +1335,475 @@ fn blocked_write_applies_bounded_command_backpressure() {
         .expect("command handle references must be released");
     handle.shutdown().unwrap();
 }
+
+#[test]
+fn queued_handoff_pin_blocks_lease_release_until_reservation_released() {
+    let transport = Arc::new(BlockingWriteTransport {
+        block: Arc::new(AtomicBool::new(true)),
+        entered: Arc::new(AtomicBool::new(false)),
+    });
+    let runtime = Arc::new(
+        HardwareRuntime::new(
+            transport.clone(),
+            DiscoveryTiming {
+                settle: Duration::ZERO,
+                read_timeout: Duration::from_millis(2),
+                attempts: 1,
+            },
+        )
+        .with_policy(
+            Duration::from_secs(60),
+            Duration::from_secs(1),
+            Duration::from_secs(1),
+        ),
+    );
+    let (events, receive) = mpsc::channel();
+    let handle = Arc::new(runtime.start(move |event| {
+        let _ = events.send(event);
+    }));
+    handle.scan_now().unwrap();
+    let generation = loop {
+        if let PortEvent::Discovered { generation, .. } =
+            receive.recv_timeout(Duration::from_secs(1)).unwrap()
+        {
+            break generation;
+        }
+    };
+    drop(receive);
+    let arbiter = ResourceArbiter::new(Arc::new(NoopResourceConsumers));
+    let lease = arbiter
+        .acquire(LeaseKind::Firmware {
+            port: "WRITE-BLOCK".into(),
+            generation,
+        })
+        .unwrap();
+    let permit = arbiter.firmware_handoff_permit(lease).unwrap();
+    // A blocked write keeps the scanner busy, so the handoff command stays queued.
+    let sender = {
+        let handle = handle.clone();
+        std::thread::spawn(move || {
+            handle.send_message(
+                "WRITE-BLOCK",
+                generation,
+                Message::Heartbeat,
+                Duration::from_secs(5),
+            )
+        })
+    };
+    for _ in 0..500 {
+        if transport.entered.load(Ordering::SeqCst) {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(2));
+    }
+    assert!(transport.entered.load(Ordering::SeqCst));
+    let operation = handle.begin_handoff("WRITE-BLOCK", generation, &permit).unwrap();
+    assert!(
+        handle.wait_handoff(operation, Duration::ZERO).is_none(),
+        "handoff must still be queued behind the blocked scanner"
+    );
+    // The queued handoff's lease pin prevents premature lease release.
+    assert!(matches!(
+        arbiter.release(lease),
+        Err(trenino_runtime::resource::ResourceError::Busy)
+    ));
+    transport.block.store(false, Ordering::SeqCst);
+    sender.join().unwrap().unwrap();
+    let handoff = handle
+        .wait_handoff(operation, Duration::from_secs(2))
+        .unwrap()
+        .unwrap();
+    // The live reservation keeps the lease pinned until the handoff is released.
+    assert!(matches!(
+        arbiter.release(lease),
+        Err(trenino_runtime::resource::ResourceError::Busy)
+    ));
+    let release = handle.begin_release_handoff(handoff, &permit).unwrap();
+    loop {
+        if let Some(result) = handle.release_result(release) {
+            result.unwrap();
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(2));
+    }
+    arbiter.release(lease).unwrap();
+    let mut handle = Arc::try_unwrap(handle)
+        .ok()
+        .expect("handle references must be released");
+    handle.shutdown().unwrap();
+}
+
+struct BlockedOpenTransport {
+    unblock: Arc<AtomicBool>,
+    entered: Arc<AtomicBool>,
+    opens: Arc<AtomicUsize>,
+}
+struct NeverRespondingPort;
+impl SerialIo for NeverRespondingPort {
+    fn read(&mut self, _buffer: &mut [u8]) -> io::Result<usize> {
+        Err(io::ErrorKind::TimedOut.into())
+    }
+    fn write_all(&mut self, _bytes: &[u8]) -> io::Result<()> {
+        Ok(())
+    }
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
+}
+impl SerialTransport for BlockedOpenTransport {
+    fn enumerate(&self) -> io::Result<Vec<String>> {
+        Ok(vec!["BLOCKED-OPEN".into()])
+    }
+    fn open(&self, _port: &str, _baud: u32, _timeout: Duration) -> io::Result<Box<dyn SerialIo>> {
+        self.entered.store(true, Ordering::SeqCst);
+        while self.unblock.load(Ordering::SeqCst) {
+            std::thread::sleep(Duration::from_millis(1));
+        }
+        self.opens.fetch_add(1, Ordering::SeqCst);
+        Ok(Box::new(NeverRespondingPort))
+    }
+}
+
+#[test]
+fn discovery_coordinator_deadline_reports_blocked_open_and_retains_owner() {
+    let transport = Arc::new(BlockedOpenTransport {
+        unblock: Arc::new(AtomicBool::new(true)),
+        entered: Arc::new(AtomicBool::new(false)),
+        opens: Arc::new(AtomicUsize::new(0)),
+    });
+    let runtime = Arc::new(
+        HardwareRuntime::new(
+            transport.clone(),
+            DiscoveryTiming {
+                settle: Duration::ZERO,
+                read_timeout: Duration::from_millis(2),
+                attempts: 1,
+            },
+        )
+        .with_policy(
+            Duration::from_secs(60),
+            Duration::from_secs(1),
+            Duration::from_millis(200),
+        )
+        .with_discovery_timeout(Duration::from_millis(150)),
+    );
+    let (events, receive) = mpsc::channel();
+    let mut handle = runtime.start(move |event| {
+        let _ = events.send(event);
+    });
+    handle.scan_now().unwrap();
+    for _ in 0..100 {
+        if transport.entered.load(Ordering::SeqCst) {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(2));
+    }
+    assert!(transport.entered.load(Ordering::SeqCst));
+    // The coordinator reports its deadline although the native open never returned.
+    let started = std::time::Instant::now();
+    let mut saw_deadline = false;
+    while !saw_deadline {
+        let event = receive
+            .recv_timeout(Duration::from_secs(2))
+            .expect("no discovery event was reported");
+        if let PortEvent::Failed { reason, .. } = &event {
+            if reason.contains("discovery coordinator deadline exceeded") {
+                saw_deadline = true;
+            }
+        }
+    }
+    assert!(started.elapsed() < Duration::from_secs(2));
+    assert_eq!(
+        transport.opens.load(Ordering::SeqCst),
+        0,
+        "the owner must be retained while its open is blocked"
+    );
+    transport.unblock.store(false, Ordering::SeqCst);
+    handle.shutdown().unwrap();
+}
+
+struct BlockedFlushTransport {
+    unblock: Arc<AtomicBool>,
+    entered: Arc<AtomicBool>,
+}
+struct BlockedFlushPort {
+    reads: VecDeque<Vec<u8>>,
+    unblock: Arc<AtomicBool>,
+    entered: Arc<AtomicBool>,
+    wrote_identity: bool,
+}
+impl SerialTransport for BlockedFlushTransport {
+    fn enumerate(&self) -> io::Result<Vec<String>> {
+        Ok(vec!["BLOCKED-FLUSH".into()])
+    }
+    fn open(&self, _port: &str, _baud: u32, _timeout: Duration) -> io::Result<Box<dyn SerialIo>> {
+        Ok(Box::new(BlockedFlushPort {
+            reads: VecDeque::new(),
+            unblock: self.unblock.clone(),
+            entered: self.entered.clone(),
+            wrote_identity: false,
+        }))
+    }
+}
+impl SerialIo for BlockedFlushPort {
+    fn read(&mut self, buffer: &mut [u8]) -> io::Result<usize> {
+        let Some(bytes) = self.reads.pop_front() else {
+            return Err(io::ErrorKind::TimedOut.into());
+        };
+        buffer[..bytes.len()].copy_from_slice(&bytes);
+        Ok(bytes.len())
+    }
+    fn write_all(&mut self, bytes: &[u8]) -> io::Result<()> {
+        let payload = FrameDecoder::default().push(bytes).remove(0).unwrap();
+        if let Message::IdentityRequest { request_id } = decode_message(&payload).unwrap() {
+            self.reads.push_back(FrameDecoder::encode_frame(
+                &encode_message(&Message::IdentityResponse {
+                    request_id,
+                    major: 1,
+                    minor: 0,
+                    patch: 0,
+                    config_id: 1,
+                })
+                .unwrap(),
+            ));
+            self.wrote_identity = true;
+        }
+        Ok(())
+    }
+    fn flush(&mut self) -> io::Result<()> {
+        if self.wrote_identity {
+            self.entered.store(true, Ordering::SeqCst);
+            while self.unblock.load(Ordering::SeqCst) {
+                std::thread::sleep(Duration::from_millis(1));
+            }
+        }
+        Ok(())
+    }
+}
+
+#[test]
+fn discovery_coordinator_deadline_covers_blocked_flush_after_identity_request() {
+    let transport = Arc::new(BlockedFlushTransport {
+        unblock: Arc::new(AtomicBool::new(true)),
+        entered: Arc::new(AtomicBool::new(false)),
+    });
+    let runtime = Arc::new(
+        HardwareRuntime::new(
+            transport.clone(),
+            DiscoveryTiming {
+                settle: Duration::ZERO,
+                read_timeout: Duration::from_millis(2),
+                attempts: 1,
+            },
+        )
+        .with_policy(
+            Duration::from_secs(60),
+            Duration::from_secs(1),
+            Duration::from_millis(200),
+        )
+        .with_discovery_timeout(Duration::from_millis(150)),
+    );
+    let (events, receive) = mpsc::channel();
+    let mut handle = runtime.start(move |event| {
+        let _ = events.send(event);
+    });
+    handle.scan_now().unwrap();
+    for _ in 0..100 {
+        if transport.entered.load(Ordering::SeqCst) {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(2));
+    }
+    assert!(transport.entered.load(Ordering::SeqCst));
+    let started = std::time::Instant::now();
+    let mut saw_deadline = false;
+    while !saw_deadline {
+        let event = receive
+            .recv_timeout(Duration::from_secs(2))
+            .expect("no discovery event was reported");
+        if let PortEvent::Failed { reason, .. } = &event {
+            if reason.contains("discovery coordinator deadline exceeded") {
+                saw_deadline = true;
+            }
+        }
+    }
+    assert!(started.elapsed() < Duration::from_secs(2));
+    transport.unblock.store(false, Ordering::SeqCst);
+    handle.shutdown().unwrap();
+}
+
+struct PanicTwoPortTransport {
+    drop_panic: Arc<AtomicBool>,
+    panic_read_started: Arc<AtomicBool>,
+}
+struct PanicPort {
+    reads: VecDeque<Vec<u8>>,
+    panic_read_started: Arc<AtomicBool>,
+    wrote_identity: bool,
+}
+struct OkayPort {
+    reads: VecDeque<Vec<u8>>,
+}
+impl SerialTransport for PanicTwoPortTransport {
+    fn enumerate(&self) -> io::Result<Vec<String>> {
+        Ok(if self.drop_panic.load(Ordering::SeqCst) {
+            vec!["OKAY".into()]
+        } else {
+            vec!["OKAY".into(), "PANIC".into()]
+        })
+    }
+    fn open(&self, port: &str, _baud: u32, _timeout: Duration) -> io::Result<Box<dyn SerialIo>> {
+        Ok(if port == "PANIC" {
+            Box::new(PanicPort {
+                reads: VecDeque::new(),
+                panic_read_started: self.panic_read_started.clone(),
+                wrote_identity: false,
+            })
+        } else {
+            Box::new(OkayPort {
+                reads: VecDeque::new(),
+            })
+        })
+    }
+}
+impl SerialIo for PanicPort {
+    fn read(&mut self, buffer: &mut [u8]) -> io::Result<usize> {
+        if let Some(bytes) = self.reads.pop_front() {
+            buffer[..bytes.len()].copy_from_slice(&bytes);
+            return Ok(bytes.len());
+        }
+        if !self.wrote_identity {
+            return Err(io::ErrorKind::TimedOut.into());
+        }
+        // Discovery consumed the identity response; the owned read loop panics.
+        self.panic_read_started.store(true, Ordering::SeqCst);
+        panic!("injected serial reader panic");
+    }
+    fn write_all(&mut self, bytes: &[u8]) -> io::Result<()> {
+        let payload = FrameDecoder::default().push(bytes).remove(0).unwrap();
+        if let Message::IdentityRequest { request_id } = decode_message(&payload).unwrap() {
+            self.reads.push_back(FrameDecoder::encode_frame(
+                &encode_message(&Message::IdentityResponse {
+                    request_id,
+                    major: 1,
+                    minor: 0,
+                    patch: 0,
+                    config_id: 1,
+                })
+                .unwrap(),
+            ));
+            self.wrote_identity = true;
+        }
+        Ok(())
+    }
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
+}
+impl SerialIo for OkayPort {
+    fn read(&mut self, buffer: &mut [u8]) -> io::Result<usize> {
+        let Some(bytes) = self.reads.pop_front() else {
+            return Err(io::ErrorKind::TimedOut.into());
+        };
+        buffer[..bytes.len()].copy_from_slice(&bytes);
+        Ok(bytes.len())
+    }
+    fn write_all(&mut self, bytes: &[u8]) -> io::Result<()> {
+        let payload = FrameDecoder::default().push(bytes).remove(0).unwrap();
+        if let Message::IdentityRequest { request_id } = decode_message(&payload).unwrap() {
+            self.reads.push_back(FrameDecoder::encode_frame(
+                &encode_message(&Message::IdentityResponse {
+                    request_id,
+                    major: 1,
+                    minor: 0,
+                    patch: 0,
+                    config_id: 1,
+                })
+                .unwrap(),
+            ));
+        }
+        Ok(())
+    }
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
+}
+
+#[test]
+fn joined_worker_panic_is_reported_without_retry_and_other_owners_survive() {
+    let transport = Arc::new(PanicTwoPortTransport {
+        drop_panic: Arc::new(AtomicBool::new(false)),
+        panic_read_started: Arc::new(AtomicBool::new(false)),
+    });
+    let runtime = Arc::new(
+        HardwareRuntime::new(
+            transport.clone(),
+            DiscoveryTiming {
+                settle: Duration::ZERO,
+                read_timeout: Duration::from_millis(2),
+                attempts: 1,
+            },
+        )
+        .with_policy(
+            Duration::from_secs(60),
+            Duration::from_secs(1),
+            Duration::from_millis(200),
+        ),
+    );
+    let (events, receive) = mpsc::channel();
+    let mut handle = runtime.start(move |event| {
+        let _ = events.send(event);
+    });
+    handle.scan_now().unwrap();
+    let deadline = std::time::Instant::now() + Duration::from_secs(2);
+    let mut okay_generation = None;
+    while okay_generation.is_none() {
+        assert!(std::time::Instant::now() < deadline, "ports never discovered");
+        if let Ok(PortEvent::Discovered { port, generation, .. }) = receive.try_recv() {
+            if port == "OKAY" {
+                okay_generation = Some(generation);
+            }
+        }
+        std::thread::sleep(Duration::from_millis(2));
+    }
+    let okay_generation = okay_generation.unwrap();
+    for _ in 0..500 {
+        if transport.panic_read_started.load(Ordering::SeqCst) {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(2));
+    }
+    assert!(
+        transport.panic_read_started.load(Ordering::SeqCst),
+        "panic port reader never ran"
+    );
+    // Unplug the panicked port; its joined-panic outcome must be reported once and
+    // must neither panic the scanner nor drop the healthy owner.
+    transport.drop_panic.store(true, Ordering::SeqCst);
+    handle.scan_now().unwrap();
+    let mut panic_reported = false;
+    while !panic_reported {
+        let event = receive
+            .recv_timeout(Duration::from_secs(2))
+            .expect("no cleanup event for the panicked port");
+        if let PortEvent::Failed { port, reason, .. } = &event {
+            if port == "PANIC" && reason.contains("serial task panicked") {
+                panic_reported = true;
+            }
+        }
+    }
+    assert!(panic_reported);
+    handle
+        .send_message("OKAY", okay_generation, Message::Heartbeat, Duration::from_secs(1))
+        .expect("the healthy owner must stay operational");
+    let shutdown = handle.shutdown();
+    assert!(
+        shutdown.is_err(),
+        "the joined panic must surface from shutdown instead of a false success"
+    );
+    // Retrying after the recorded join outcome must not unwrap a consumed handle.
+    assert!(handle.shutdown().is_err());
+    assert!(receive
+        .try_iter()
+        .any(|event| matches!(event, PortEvent::Closed { port, .. } if port == "OKAY")));
+}

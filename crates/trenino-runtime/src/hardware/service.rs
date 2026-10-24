@@ -75,6 +75,13 @@ pub trait HardwareRepository:
         port: &str,
         identity: &Message,
     ) -> Result<Option<PersistedHardwareConfiguration>, String>;
+
+    /// Commits the destructive device deletion as one atomic storage mutation.
+    /// Only [`HardwareServiceHandle::delete_device`] may call this, and only while it
+    /// holds the service's runtime exclusion fence across the connected-configuration
+    /// check and this commit; adapters must fail stale or duplicate attempts and never
+    /// re-check connectedness themselves.
+    fn delete_device_unchecked(&mut self, device_id: EntityId) -> Result<(), String>;
 }
 
 pub trait HardwareConsumers: ResourceConsumers {
@@ -121,6 +128,36 @@ struct AckState {
 struct AckInbox {
     state: Mutex<AckState>,
     changed: Condvar,
+}
+
+/// Fail-closed runtime exclusion guarding device deletion. `pending` counts deletions
+/// whose storage commit has not finished, blocking new persisted-configuration
+/// activation for that device across the check and the commit. `tombstones` block
+/// activation forever after a successful deletion so a repository lookup that started
+/// before the commit can never publish routes for the removed device afterwards.
+#[derive(Default)]
+struct DeviceDeletionFence {
+    pending: HashMap<EntityId, usize>,
+    tombstones: HashSet<EntityId>,
+}
+
+impl DeviceDeletionFence {
+    fn is_blocked(&self, device: EntityId) -> bool {
+        self.pending.contains_key(&device) || self.tombstones.contains(&device)
+    }
+
+    fn begin(&mut self, device: EntityId) {
+        *self.pending.entry(device).or_insert(0) += 1;
+    }
+
+    fn end(&mut self, device: EntityId) {
+        if let Some(count) = self.pending.get_mut(&device) {
+            *count -= 1;
+            if *count == 0 {
+                self.pending.remove(&device);
+            }
+        }
+    }
 }
 
 impl AckInbox {
@@ -283,6 +320,7 @@ where
     cache: Arc<InputValueCache>,
     coordinated_consumers: Arc<CoordinatedConsumers<C>>,
     arbiter: Arc<ResourceArbiter>,
+    device_deletion_fence: Arc<Mutex<DeviceDeletionFence>>,
     started: AtomicBool,
 }
 
@@ -326,6 +364,7 @@ where
             cache,
             coordinated_consumers,
             arbiter,
+            device_deletion_fence: Arc::new(Mutex::new(DeviceDeletionFence::default())),
             started: AtomicBool::new(false),
         }
     }
@@ -589,6 +628,53 @@ where
         self.service.arbiter.release(lease)
     }
 
+    /// Deletes one device while holding the service's fail-closed runtime exclusion
+    /// across both the connected-configuration check and the repository commit.
+    /// Persisted-configuration activation for the device is refused from the moment
+    /// the fence is taken (mirroring the Elixir `configuration_active?` refusal with
+    /// an actionable error naming the connected port), and a successful commit
+    /// tombstones the device so pre-deletion lookup results can never re-activate it.
+    pub fn delete_device(&self, device_id: EntityId) -> Result<(), String> {
+        let admission = self.admission.lock().expect("hardware admission poisoned");
+        if *admission {
+            return Err("hardware service is shutting down".into());
+        }
+        drop(admission);
+        let fence = self.service.device_deletion_fence.clone();
+        fence
+            .lock()
+            .expect("device deletion fence poisoned")
+            .begin(device_id);
+        let connected_port = {
+            let state = self.state.lock().expect("hardware dispatcher state poisoned");
+            state.ports.iter().find_map(|(port, current)| {
+                (current.device_id == Some(device_id)).then(|| port.clone())
+            })
+        };
+        if let Some(port) = connected_port {
+            fence
+                .lock()
+                .expect("device deletion fence poisoned")
+                .end(device_id);
+            return Err(format!(
+                "device {} is connected on port {port}; disconnect the board before deleting it",
+                device_id.0
+            ));
+        }
+        let committed = self
+            .service
+            .repository
+            .lock()
+            .expect("hardware repository poisoned")
+            .delete_device_unchecked(device_id);
+        let mut fence = fence.lock().expect("device deletion fence poisoned");
+        fence.end(device_id);
+        if committed.is_ok() {
+            fence.tombstones.insert(device_id);
+        }
+        committed
+    }
+
     pub fn start_calibration(
         &self,
         session: CalibrationSession,
@@ -705,6 +791,18 @@ where
         if *admission || self.stopping.load(Ordering::Acquire) {
             return Err("hardware service is shutting down".into());
         }
+        if self
+            .service
+            .device_deletion_fence
+            .lock()
+            .expect("device deletion fence poisoned")
+            .is_blocked(request.device_id)
+        {
+            return Err(format!(
+                "device {} is being deleted or was deleted",
+                request.device_id.0
+            ));
+        }
         let mut operations = self
             .configuration_operations
             .lock()
@@ -752,6 +850,7 @@ where
         let consumer = self.service.consumer.clone();
         let worker_cancelled = cancelled.clone();
         let worker_request = request;
+        let deletion_fence = self.service.device_deletion_fence.clone();
         let worker_active_ports = active_ports.clone();
         let worker_ack_inboxes = self.ack_inboxes.clone();
         let operation_ack = ack.clone();
@@ -794,10 +893,29 @@ where
                         if current.generation != generation {
                             return Err(ApplyError::StaleGeneration);
                         }
+                        // The deletion fence is checked atomically with dispatcher
+                        // activation: a device being deleted or already deleted can
+                        // never become the port's active configuration.
+                        if deletion_fence
+                            .lock()
+                            .expect("device deletion fence poisoned")
+                            .is_blocked(device_id)
+                        {
+                            return Err(ApplyError::Commit(
+                                "device deletion is in progress; configuration commit refused".into(),
+                            ));
+                        }
                         current.config_id = Some(config_id);
                         current.device_id = Some(device_id);
                         current.kinds = kinds;
                         drop(state);
+                        // A confirmed configuration proves the device still exists, so a
+                        // stale deletion tombstone from a previous lifecycle is cleared.
+                        deletion_fence
+                            .lock()
+                            .expect("device deletion fence poisoned")
+                            .tombstones
+                            .remove(&device_id);
                         consumer.configuration_applied(&port_name, generation, config_id);
                         Ok(())
                     },
@@ -987,7 +1105,13 @@ fn dispatch_event<T, R, C>(
                     }));
                 });
             match worker {
-                Ok(worker) => lookup_workers.lock().expect("lookup worker registry poisoned").push(worker),
+                Ok(worker) => {
+                    // Finished handles are joined only at shutdown; prune them here so
+                    // reconnect churn cannot grow the registry without bound.
+                    let mut workers = lookup_workers.lock().expect("lookup worker registry poisoned");
+                    workers.retain(|joined| !joined.is_finished());
+                    workers.push(worker);
+                }
                 Err(error) => service.consumer.protocol_error(&port, generation, &format!("failed to start configuration lookup: {error}")),
             }
         }
@@ -1109,6 +1233,9 @@ fn finish_discovery<T, R, C>(
     if !state.lock().expect("hardware dispatcher state poisoned").ports
         .get(&port).is_some_and(|current| current.generation == generation) { return; }
     let mut current = CurrentPort { generation, config_id: None, device_id: None, kinds: HashMap::new(), lookup_pending: false, pending_inputs: VecDeque::new() };
+    // Persisted configuration that matched the board identity; activation happens
+    // below inside the dispatcher lock so the deletion fence is checked atomically.
+    let mut validated: Option<PersistedHardwareConfiguration> = None;
     match persisted {
         Ok(Some(configuration)) => {
             let firmware_config = match &identity {
@@ -1118,12 +1245,7 @@ fn finish_discovery<T, R, C>(
             let mappings_valid = configuration.mappings.iter()
                 .all(|mapping| mapping.identity.device_id == configuration.device_id);
             if firmware_config == Some(configuration.config_id) && mappings_valid {
-                let mappings = configuration.mappings.iter().map(|mapping| (mapping.pin, mapping.identity));
-                if service.resolver.replace_port(&port, generation, configuration.config_id, mappings) {
-                    current.config_id = Some(configuration.config_id);
-                    current.device_id = Some(configuration.device_id);
-                    current.kinds = configuration.mappings.into_iter().map(|mapping| (mapping.pin, mapping.kind)).collect();
-                }
+                validated = Some(configuration);
             } else {
                 service.consumer.protocol_error(&port, generation, "persisted configuration does not match board identity");
             }
@@ -1134,6 +1256,26 @@ fn finish_discovery<T, R, C>(
     service.cache.activate(&port, generation);
     let mut dispatcher_state = state.lock().expect("hardware dispatcher state poisoned");
     if dispatcher_state.ports.get(&port).is_some_and(|current| current.generation == generation) {
+        if let Some(configuration) = validated {
+            // Checked atomically with dispatcher insertion: a device deleted before
+            // this point never activates, and a deletion starting after this point
+            // observes the connected device and refuses to commit.
+            if service.device_deletion_fence
+                .lock()
+                .expect("device deletion fence poisoned")
+                .is_blocked(configuration.device_id)
+            {
+                service.consumer.protocol_error(&port, generation, "device is being deleted or was deleted; persisted configuration not activated");
+            } else {
+                let device_id = configuration.device_id;
+                let mappings = configuration.mappings.iter().map(|mapping| (mapping.pin, mapping.identity));
+                if service.resolver.replace_port(&port, generation, configuration.config_id, mappings) {
+                    current.config_id = Some(configuration.config_id);
+                    current.device_id = Some(device_id);
+                    current.kinds = configuration.mappings.into_iter().map(|mapping| (mapping.pin, mapping.kind)).collect();
+                }
+            }
+        }
         if let Some(previous) = dispatcher_state.ports.get(&port) { current.pending_inputs = previous.pending_inputs.clone(); }
         dispatcher_state.ports.insert(port.clone(), current);
     }
