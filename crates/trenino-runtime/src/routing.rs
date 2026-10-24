@@ -1,10 +1,12 @@
 //! Generation-fenced mapping from firmware input values to persisted input rows.
+pub mod reconcile;
+
 use std::collections::HashMap;
 use std::sync::RwLock;
 
 use trenino_core::{ConfigId, EntityId};
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct InputIdentity {
     pub device_id: EntityId,
     pub input_id: EntityId,
