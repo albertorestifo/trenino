@@ -181,6 +181,7 @@ pub enum SessionError {
     Persist(String),
     DuplicateId,
     RegistryFull,
+    AdmissionClosed,
 }
 
 pub trait CalibrationRepository {
@@ -387,6 +388,7 @@ pub struct HardwareSessions {
     detections: Mutex<HashMap<SessionId, Arc<Mutex<InputDetectionSession>>>>,
     detection_workers: Mutex<HashMap<SessionId, std::thread::JoinHandle<()>>>,
     session_count: AtomicUsize,
+    admission_closed: Mutex<bool>,
 }
 
 const MAX_OWNED_SESSIONS: usize = 1024;
@@ -396,6 +398,8 @@ impl HardwareSessions {
         &self,
         session: CalibrationSession,
     ) -> Result<Arc<Mutex<CalibrationSession>>, SessionError> {
+        let admission = self.admission_closed.lock().expect("session admission poisoned");
+        if *admission { return Err(SessionError::AdmissionClosed); }
         let mut sessions = self
             .calibrations
             .lock()
@@ -427,6 +431,8 @@ impl HardwareSessions {
     where
         F: FnOnce(DetectionOutcome) + Send + 'static,
     {
+        let admission = self.admission_closed.lock().expect("session admission poisoned");
+        if *admission { return Err(SessionError::AdmissionClosed); }
         let mut sessions = self
             .detections
             .lock()
@@ -473,6 +479,7 @@ impl HardwareSessions {
             .lock()
             .expect("detection worker registry poisoned")
             .insert(id, worker);
+        drop(admission);
         Ok(session)
     }
 
@@ -665,6 +672,7 @@ impl HardwareSessions {
     }
 
     pub fn shutdown(&self) {
+        self.close_admission();
         for session in self
             .calibrations
             .lock()
@@ -696,6 +704,10 @@ impl HardwareSessions {
         for (_, worker) in workers {
             let _ = worker.join();
         }
+    }
+
+    pub fn close_admission(&self) {
+        *self.admission_closed.lock().expect("session admission poisoned") = true;
     }
 }
 

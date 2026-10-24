@@ -89,6 +89,27 @@ fn newer_connection_generation_can_reactivate_after_disconnect_tombstone() {
 }
 
 #[test]
+fn newer_generation_reconfiguration_clears_old_tombstone() {
+    let resolver = InputResolver::default();
+    let cache = InputValueCache::default();
+    assert!(resolver.invalidate_port("COM-R2", 1));
+    assert!(cache.invalidate("COM-R2", 1));
+    assert!(resolver.begin_reconfiguration("COM-R2", 2));
+    assert!(cache.begin_reconfiguration("COM-R2", 2));
+    let id = InputIdentity { device_id: EntityId(1), input_id: EntityId(2) };
+    let config = ConfigId::new(2).unwrap();
+    assert!(resolver.replace_port("COM-R2", 2, config, [(3, id)]));
+    assert!(cache.activate("COM-R2", 2));
+    assert_eq!(resolver.resolve("COM-R2", 2, config, 3), Some(id));
+    assert!(cache.update("COM-R2", 2, 3, 42));
+    assert_eq!(cache.snapshot("COM-R2", 2).get(&3), Some(&42));
+    assert!(resolver.invalidate_port("COM-R2", 2));
+    assert!(cache.invalidate("COM-R2", 2));
+    assert!(!resolver.begin_reconfiguration("COM-R2", 2));
+    assert!(!cache.begin_reconfiguration("COM-R2", 2));
+}
+
+#[test]
 fn cache_rejects_stale_generations_and_same_generation_samples_after_disconnect() {
     let cache = InputValueCache::default();
     assert!(cache.update("COM4", 8, 2, 40));
@@ -421,7 +442,7 @@ fn configuration_persistence_precedes_success_publication_and_route_activation()
             mappings: [(2, input)],
             timeout: Duration::from_millis(10),
         },
-        || published = true,
+        || { published = true; Ok(()) },
     );
     assert!(matches!(result, Err(ApplyError::Persist(_))));
     assert!(!published);
@@ -475,7 +496,7 @@ fn stale_configuration_ack_is_ignored_and_success_routes_only_after_persist() {
             mappings: [(7, input)],
             timeout: Duration::from_millis(50),
         },
-        || published = true,
+        || { published = true; Ok(()) },
     )
     .unwrap();
     assert_eq!(repo.confirmed, 1);

@@ -1,4 +1,5 @@
 //! Process-wide ownership for calibration and firmware access.
+use std::collections::HashMap;
 use std::sync::{Arc, Condvar, Mutex};
 use std::time::{Duration, Instant};
 
@@ -35,26 +36,25 @@ impl LeaseKind {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub struct LeaseToken(u64);
 
 /// Capability proving a live firmware lease for one exact port generation. It is
 /// borrowed from its arbiter so the lease cannot be released while handoff begins.
-pub struct FirmwareHandoffPermit<'a> {
-    arbiter: &'a ResourceArbiter,
+pub struct FirmwareHandoffPermit {
+    state: Arc<Mutex<State>>,
     token: LeaseToken,
     port: String,
     generation: u64,
+    release_only: bool,
 }
 
-impl FirmwareHandoffPermit<'_> {
+impl FirmwareHandoffPermit {
     pub fn authorizes(&self, port: &str, generation: u64) -> bool {
         if self.port != port || self.generation != generation {
             return false;
         }
-        let state = self
-            .arbiter
-            .state
+        let state = self.state
             .lock()
             .expect("resource arbiter poisoned");
         !state.transitioning
@@ -64,6 +64,48 @@ impl FirmwareHandoffPermit<'_> {
                 Some((token, LeaseKind::Firmware { port: active_port, generation: active_generation }))
                     if *token == self.token && active_port == port && *active_generation == generation
             )
+    }
+
+    pub fn pin(&self, port: &str, generation: u64) -> Result<FirmwareHandoffPin, ResourceError> {
+        let mut state = self.state.lock().expect("resource arbiter poisoned");
+        if self.port != port || self.generation != generation || (state.shutting_down && !self.release_only) {
+            return Err(ResourceError::Busy);
+        }
+        if state.transitioning || state.fail_closed || !matches!(
+            &state.active,
+            Some((token, LeaseKind::Firmware { port: active_port, generation: active_generation }))
+                if *token == self.token && active_port == port && *active_generation == generation
+        ) { return Err(ResourceError::InvalidLease); }
+        *state.handoff_pins.entry(self.token).or_default() += 1;
+        Ok(FirmwareHandoffPin { state: self.state.clone(), token: self.token, port: self.port.clone(), generation: self.generation })
+    }
+}
+
+/// An owned lease pin that survives command enqueue and reservation lifetime.
+pub struct FirmwareHandoffPin {
+    state: Arc<Mutex<State>>,
+    token: LeaseToken,
+    port: String,
+    generation: u64,
+}
+
+impl FirmwareHandoffPin {
+    pub fn authorizes(&self, port: &str, generation: u64) -> bool {
+        if self.port != port || self.generation != generation { return false; }
+        let state = self.state.lock().expect("resource arbiter poisoned");
+        matches!(&state.active, Some((token, LeaseKind::Firmware { port: active_port, generation: active_generation }))
+            if *token == self.token && active_port == port && *active_generation == generation)
+            && state.handoff_pins.get(&self.token).copied().unwrap_or(0) > 0
+    }
+}
+
+impl Drop for FirmwareHandoffPin {
+    fn drop(&mut self) {
+        let mut state = self.state.lock().expect("resource arbiter poisoned");
+        if let Some(count) = state.handoff_pins.get_mut(&self.token) {
+            *count = count.saturating_sub(1);
+            if *count == 0 { state.handoff_pins.remove(&self.token); }
+        }
     }
 }
 
@@ -83,13 +125,15 @@ struct State {
     transitioning: bool,
     release_in_progress: bool,
     shutting_down: bool,
+    neutralization_failures: HashMap<(String, u64), String>,
+    handoff_pins: HashMap<LeaseToken, usize>,
 }
 
 /// Every simulator/vJoy and hardware service must share the same arbiter instance.
 /// Its state lock and condition variable serialize lease transitions without holding
 /// the lock while consumer callbacks run.
 pub struct ResourceArbiter {
-    state: Mutex<State>,
+    state: Arc<Mutex<State>>,
     released: Condvar,
     consumers: Arc<dyn ResourceConsumers>,
     handoff_timeout: Duration,
@@ -98,7 +142,7 @@ pub struct ResourceArbiter {
 impl ResourceArbiter {
     pub fn new(consumers: Arc<dyn ResourceConsumers>) -> Self {
         Self {
-            state: Mutex::new(State::default()),
+            state: Arc::new(Mutex::new(State::default())),
             released: Condvar::new(),
             consumers,
             handoff_timeout: Duration::from_millis(5_000),
@@ -113,9 +157,17 @@ impl ResourceArbiter {
     pub fn firmware_handoff_permit(
         &self,
         token: LeaseToken,
-    ) -> Result<FirmwareHandoffPermit<'_>, ResourceError> {
+    ) -> Result<FirmwareHandoffPermit, ResourceError> {
+        self.create_handoff_permit(token, false)
+    }
+
+    pub fn firmware_handoff_release_permit(&self, token: LeaseToken) -> Result<FirmwareHandoffPermit, ResourceError> {
+        self.create_handoff_permit(token, true)
+    }
+
+    fn create_handoff_permit(&self, token: LeaseToken, release_only: bool) -> Result<FirmwareHandoffPermit, ResourceError> {
         let state = self.state.lock().expect("resource arbiter poisoned");
-        if state.transitioning || state.fail_closed || state.shutting_down {
+        if state.transitioning || state.fail_closed || (state.shutting_down && !release_only) {
             return Err(ResourceError::Busy);
         }
         let Some((active_token, LeaseKind::Firmware { port, generation })) = state.active.as_ref()
@@ -126,16 +178,17 @@ impl ResourceArbiter {
             return Err(ResourceError::InvalidLease);
         }
         Ok(FirmwareHandoffPermit {
-            arbiter: self,
+            state: self.state.clone(),
             token,
             port: port.clone(),
             generation: *generation,
+            release_only,
         })
     }
 
     pub fn acquire(&self, kind: LeaseKind) -> Result<LeaseToken, ResourceError> {
         let mut state = self.state.lock().expect("resource arbiter poisoned");
-        if state.transitioning || state.fail_closed {
+        if state.transitioning || state.fail_closed || state.shutting_down || !state.neutralization_failures.is_empty() {
             return Err(ResourceError::Busy);
         }
         let same_port_calibration = match (&kind, &state.active) {
@@ -244,6 +297,9 @@ impl ResourceArbiter {
         if *active_token != token {
             return Err(ResourceError::InvalidLease);
         }
+        if state.handoff_pins.get(&token).copied().unwrap_or(0) > 0 {
+            return Err(ResourceError::Busy);
+        }
         // A calibration being cancelled for firmware relinquishes ownership without
         // resuming actuation; the firmware handoff continues under the same suspension.
         if state.transitioning && !state.release_in_progress {
@@ -251,7 +307,7 @@ impl ResourceArbiter {
             self.released.notify_all();
             return Ok(());
         }
-        if state.transitioning || state.fail_closed {
+        if state.transitioning || state.fail_closed || !state.neutralization_failures.is_empty() {
             return Err(ResourceError::Busy);
         }
         if state.shutting_down {
@@ -285,14 +341,44 @@ impl ResourceArbiter {
 
     pub fn is_suspended(&self) -> bool {
         let state = self.state.lock().expect("resource arbiter poisoned");
-        state.active.is_some() || state.fail_closed || state.transitioning || state.shutting_down
+        state.active.is_some() || state.fail_closed || state.transitioning || state.shutting_down || !state.neutralization_failures.is_empty()
+    }
+
+    /// Ask consumers to neutralize a lost generation and retain failed acknowledgments
+    /// until a later explicit source-loss recovery succeeds.
+    pub fn neutralize_source(&self, port: &str, generation: u64) -> Result<(), ResourceError> {
+        let result = self.consumers.source_lost(port, generation);
+        let mut state = self.state.lock().expect("resource arbiter poisoned");
+        match result {
+            Ok(()) => {
+                state.neutralization_failures.retain(|(failed_port, failed_generation), _| {
+                    failed_port != port || *failed_generation > generation
+                });
+                Ok(())
+            }
+            Err(error) => {
+                state.neutralization_failures.insert((port.to_owned(), generation), error.clone());
+                Err(ResourceError::ConsumerFailed(error))
+            }
+        }
+    }
+
+    pub fn port_neutralization_failed(&self, port: &str) -> bool {
+        self.state.lock().expect("resource arbiter poisoned")
+            .neutralization_failures.keys().any(|(failed_port, _)| failed_port == port)
+    }
+
+    /// Atomically stop new leases while leaving release/cleanup methods available.
+    pub fn close_admission(&self) {
+        self.state.lock().expect("resource arbiter poisoned").shutting_down = true;
+        self.released.notify_all();
     }
 
     /// Stop lease admission and neutralize the active resource without resuming output.
     /// Shutdown deliberately leaves the arbiter suspended because no new sample owner
     /// will remain to establish a safe generation after the service closes.
     pub fn shutdown(&self) -> Result<(), ResourceError> {
-        let active = {
+        let (active, failures) = {
             let mut state = self.state.lock().expect("resource arbiter poisoned");
             if state.transitioning {
                 return Err(ResourceError::Busy);
@@ -300,20 +386,23 @@ impl ResourceArbiter {
             state.shutting_down = true;
             let active = state.active.clone();
             state.transitioning = true;
-            active
+            let failures = state.neutralization_failures.keys().cloned().collect::<Vec<_>>();
+            (active, failures)
         };
         let transition = if let Some((_, kind)) = &active {
             self.consumers
                 .cancel_calibration(kind.port())
                 .map_err(ResourceError::ConsumerFailed)
-                .and_then(|()| {
-                    self.consumers
-                        .source_lost(kind.port(), kind.generation())
-                        .map_err(ResourceError::ConsumerFailed)
-                })
+                .and_then(|()| self.neutralize_source(kind.port(), kind.generation()))
         } else {
             Ok(())
         };
+        let mut retry_failures = None;
+        for (port, generation) in failures {
+            if let Err(error) = self.neutralize_source(&port, generation) {
+                retry_failures = Some(error);
+            }
+        }
         let mut state = self.state.lock().expect("resource arbiter poisoned");
         state.transitioning = false;
         state.release_in_progress = false;
@@ -322,6 +411,6 @@ impl ResourceArbiter {
         }
         state.fail_closed = true;
         self.released.notify_all();
-        transition
+        transition.and_then(|()| retry_failures.map_or(Ok(()), Err))
     }
 }

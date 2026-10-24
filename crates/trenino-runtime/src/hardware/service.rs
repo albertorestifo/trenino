@@ -18,7 +18,8 @@ use crate::resource::{LeaseKind, LeaseToken, ResourceArbiter, ResourceConsumers,
 use crate::routing::{InputEvent, InputIdentity, InputResolver, InputValueCache};
 
 use super::configuration::{
-    apply_configuration, ApplyError, ConfigurationApply, ConfigurationPort, ConfigurationRepository,
+    apply_configuration_with, ApplyError, ConfigurationApply, ConfigurationPort,
+    ConfigurationRepository,
 };
 use super::discovery::DiscoveryTiming;
 use super::sessions::{
@@ -34,10 +35,21 @@ use super::{
 const EVENT_CAPACITY: usize = 4096;
 const ACK_CAPACITY: usize = 256;
 const MAX_OPERATIONS: usize = 1024;
-type DispatcherControl = (mpsc::SyncSender<Option<PortEvent>>, JoinHandle<()>);
+type DispatcherControl = (mpsc::SyncSender<Option<DispatcherMessage>>, JoinHandle<()>);
 type ConfigurationWorker = (Arc<AtomicBool>, JoinHandle<()>);
 type ConfigurationResults =
     Arc<Mutex<HashMap<ConfigurationOperationId, Option<Result<(), ApplyError>>>>>;
+type AckInboxes = Arc<Mutex<HashMap<String, Arc<AckInbox>>>>;
+
+enum DispatcherMessage {
+    Port(PortEvent),
+    ConfigurationLoaded {
+        port: String,
+        generation: u64,
+        identity: Message,
+        result: Result<Option<PersistedHardwareConfiguration>, String>,
+    },
+}
 
 #[derive(Clone, Debug)]
 pub struct PersistedInputMapping {
@@ -90,6 +102,8 @@ struct CurrentPort {
     config_id: Option<ConfigId>,
     device_id: Option<EntityId>,
     kinds: HashMap<u8, InputKind>,
+    lookup_pending: bool,
+    pending_inputs: VecDeque<(u8, i16)>,
 }
 
 #[derive(Default)]
@@ -336,23 +350,34 @@ where
                 "hardware service already started",
             ));
         }
-        let (event_tx, event_rx) = mpsc::sync_channel::<Option<PortEvent>>(EVENT_CAPACITY);
+        let (event_tx, event_rx) = mpsc::sync_channel::<Option<DispatcherMessage>>(EVENT_CAPACITY);
         let dispatcher_tx = event_tx.clone();
+        let dispatcher_worker_tx = dispatcher_tx.clone();
+        let lookup_workers = Arc::new(Mutex::new(Vec::<JoinHandle<()>>::new()));
+        let dispatcher_lookup_workers = lookup_workers.clone();
         let state = Arc::new(Mutex::new(DispatcherState::default()));
-        let ack = Arc::new(AckInbox::default());
+        let ack_inboxes = Arc::new(Mutex::new(HashMap::<String, Arc<AckInbox>>::new()));
         let dispatcher_service = self.clone();
         let dispatcher_state = state.clone();
-        let dispatcher_ack = ack.clone();
+        let dispatcher_ack = ack_inboxes.clone();
         let dispatcher = match std::thread::Builder::new()
             .name("hardware-dispatcher".into())
             .spawn(move || {
                 while let Ok(Some(event)) = event_rx.recv() {
-                    dispatch_event(
-                        &dispatcher_service,
-                        &dispatcher_state,
-                        &dispatcher_ack,
-                        event,
-                    );
+                    match event {
+                        DispatcherMessage::Port(event) => dispatch_event(
+                            &dispatcher_service,
+                            &dispatcher_state,
+                            &dispatcher_ack,
+                            event,
+                            &dispatcher_worker_tx,
+                            &dispatcher_lookup_workers,
+                        ),
+                        DispatcherMessage::ConfigurationLoaded { port, generation, identity, result } => {
+                            finish_discovery(&dispatcher_service, &dispatcher_state, port, generation, identity, result,
+                                &dispatcher_ack, &dispatcher_worker_tx, &dispatcher_lookup_workers);
+                        }
+                    }
                 }
             }) {
             Ok(dispatcher) => dispatcher,
@@ -370,19 +395,21 @@ where
         );
         let scanner = Arc::new(Mutex::new(runtime.start(move |event| {
             // Bounded backpressure preserves authoritative ordered events.
-            let _ = event_tx.send(Some(event));
+            let _ = event_tx.send(Some(DispatcherMessage::Port(event)));
         })));
         Ok(HardwareServiceHandle {
             service: self,
             scanner,
             state,
-            ack,
+            ack_inboxes,
             dispatcher_shutdown: Mutex::new(Some((dispatcher_tx, dispatcher))),
             configuration_operations: Mutex::new(HashMap::new()),
             active_configuration_ports: Arc::new(Mutex::new(HashSet::new())),
             operation_results: Arc::new(Mutex::new(HashMap::new())),
             next_operation: AtomicU64::new(0),
             stopping: Arc::new(AtomicBool::new(false)),
+            admission: Mutex::new(false),
+            lookup_workers,
         })
     }
 }
@@ -396,13 +423,15 @@ where
     service: Arc<HardwareService<T, R, C>>,
     scanner: Arc<Mutex<DiscoveryHandle>>,
     state: Arc<Mutex<DispatcherState>>,
-    ack: Arc<AckInbox>,
+    ack_inboxes: AckInboxes,
     dispatcher_shutdown: Mutex<Option<DispatcherControl>>,
     configuration_operations: Mutex<HashMap<ConfigurationOperationId, ConfigurationWorker>>,
     active_configuration_ports: Arc<Mutex<HashSet<String>>>,
     operation_results: ConfigurationResults,
     next_operation: AtomicU64,
     stopping: Arc<AtomicBool>,
+    admission: Mutex<bool>,
+    lookup_workers: Arc<Mutex<Vec<JoinHandle<()>>>>,
 }
 
 impl<T, R, C> HardwareServiceHandle<T, R, C>
@@ -428,12 +457,16 @@ where
         id: SessionId,
         session: InputDetectionSession,
     ) -> Result<Arc<Mutex<InputDetectionSession>>, SessionError> {
+        let admission = self.admission.lock().expect("hardware admission poisoned");
+        if *admission { return Err(SessionError::AdmissionClosed); }
         let consumer = self.service.consumer.clone();
-        self.service
+        let result = self.service
             .sessions
             .insert_detection_with_callback(id, session, move |outcome| {
                 consumer.detection_outcome(id, outcome);
-            })
+            });
+        drop(admission);
+        result
     }
 
     pub fn resource_arbiter(&self) -> Arc<ResourceArbiter> {
@@ -441,6 +474,8 @@ where
     }
 
     pub fn scan_now(&self) -> Result<(), String> {
+        let admission = self.admission.lock().expect("hardware admission poisoned");
+        if *admission { return Err("hardware service is shutting down".into()); }
         self.scanner
             .lock()
             .expect("hardware scanner handle poisoned")
@@ -454,6 +489,8 @@ where
         message: Message,
         timeout: Duration,
     ) -> Result<(), String> {
+        let admission = self.admission.lock().expect("hardware admission poisoned");
+        if *admission { return Err("hardware service is shutting down".into()); }
         self.scanner
             .lock()
             .expect("hardware scanner handle poisoned")
@@ -465,6 +502,8 @@ where
         port: impl Into<String>,
         generation: u64,
     ) -> Result<LeaseToken, ResourceError> {
+        let admission = self.admission.lock().expect("hardware admission poisoned");
+        if *admission { return Err(ResourceError::Busy); }
         self.service.arbiter.acquire(LeaseKind::Firmware {
             port: port.into(),
             generation,
@@ -477,6 +516,8 @@ where
         port: &str,
         generation: u64,
     ) -> Result<HandoffOperationId, String> {
+        let admission = self.admission.lock().expect("hardware admission poisoned");
+        if *admission { return Err("hardware service is shutting down".into()); }
         let permit = self
             .service
             .arbiter
@@ -516,7 +557,7 @@ where
         let permit = self
             .service
             .arbiter
-            .firmware_handoff_permit(lease)
+            .firmware_handoff_release_permit(lease)
             .map_err(|error| format!("firmware lease unavailable: {error:?}"))?;
         self.scanner
             .lock()
@@ -552,6 +593,8 @@ where
         &self,
         session: CalibrationSession,
     ) -> Result<Arc<Mutex<CalibrationSession>>, SessionError> {
+        let admission = self.admission.lock().expect("hardware admission poisoned");
+        if *admission { return Err(SessionError::AdmissionClosed); }
         let port = session.port.clone();
         let generation = session.generation;
         let id = session.id;
@@ -658,7 +701,8 @@ where
         &self,
         request: ConfigurationApply<Vec<(u8, InputIdentity)>>,
     ) -> Result<ConfigurationOperationId, String> {
-        if self.stopping.load(Ordering::Acquire) {
+        let admission = self.admission.lock().expect("hardware admission poisoned");
+        if *admission || self.stopping.load(Ordering::Acquire) {
             return Err("hardware service is shutting down".into());
         }
         let mut operations = self
@@ -684,6 +728,9 @@ where
                 return Err("configuration is already in progress for this port".into());
             }
         }
+        let ack = Arc::new(AckInbox::default());
+        self.ack_inboxes.lock().expect("ack inbox registry poisoned")
+            .insert(request.port_name.clone(), ack.clone());
         let id = ConfigurationOperationId(
             self.next_operation
                 .fetch_add(1, Ordering::Relaxed)
@@ -699,7 +746,6 @@ where
         let worker_result_map = result_map.clone();
         let scanner = self.scanner.clone();
         let state = self.state.clone();
-        let ack = self.ack.clone();
         let resolver = self.service.resolver.clone();
         let cache = self.service.cache.clone();
         let repository = self.service.repository.clone();
@@ -707,6 +753,8 @@ where
         let worker_cancelled = cancelled.clone();
         let worker_request = request;
         let worker_active_ports = active_ports.clone();
+        let worker_ack_inboxes = self.ack_inboxes.clone();
+        let operation_ack = ack.clone();
         let port_name_for_cleanup = worker_request.port_name.clone();
         let worker = std::thread::Builder::new()
             .name(format!("hardware-config-{}", id.0))
@@ -719,21 +767,41 @@ where
                     generation,
                     scanner,
                     state,
-                    ack,
+                    ack: operation_ack.clone(),
                     cancelled: worker_cancelled,
                     _consumer: std::marker::PhantomData,
                 };
-                let result = {
-                    let mut repository = repository.lock().expect("hardware repository poisoned");
-                    apply_configuration(
-                        &mut port,
-                        &mut *repository,
-                        &resolver,
-                        &cache,
-                        worker_request,
-                        || consumer.configuration_applied(&port_name, generation, config_id),
-                    )
-                };
+                let device_id = worker_request.device_id;
+                let kinds = configuration_kinds(&worker_request.messages, &worker_request.mappings);
+                let commit_state = port.state.clone();
+                let confirm_repository = repository.clone();
+                let result = apply_configuration_with(
+                    &mut port,
+                    &resolver,
+                    &cache,
+                    worker_request,
+                    move |device_id, config_id| {
+                        confirm_repository
+                            .lock()
+                            .expect("hardware repository poisoned")
+                            .confirm_configuration(device_id, config_id)
+                    },
+                    || {
+                        let mut state = commit_state.lock().expect("hardware dispatcher state poisoned");
+                        let Some(current) = state.ports.get_mut(&port_name) else {
+                            return Err(ApplyError::StaleGeneration);
+                        };
+                        if current.generation != generation {
+                            return Err(ApplyError::StaleGeneration);
+                        }
+                        current.config_id = Some(config_id);
+                        current.device_id = Some(device_id);
+                        current.kinds = kinds;
+                        drop(state);
+                        consumer.configuration_applied(&port_name, generation, config_id);
+                        Ok(())
+                    },
+                );
                 worker_result_map
                     .lock()
                     .expect("configuration result registry poisoned")
@@ -742,6 +810,10 @@ where
                     .lock()
                     .expect("active configuration port registry poisoned")
                     .remove(&port_name);
+                let mut inboxes = worker_ack_inboxes.lock().expect("ack inbox registry poisoned");
+                if inboxes.get(&port_name).is_some_and(|current| Arc::ptr_eq(current, &operation_ack)) {
+                    inboxes.remove(&port_name);
+                }
             })
             .map_err(|error| {
                 result_map
@@ -752,6 +824,7 @@ where
                     .lock()
                     .expect("active configuration port registry poisoned")
                     .remove(&port_name_for_cleanup);
+                self.ack_inboxes.lock().expect("ack inbox registry poisoned").remove(&port_name_for_cleanup);
                 format!("failed to start configuration operation: {error}")
             })?;
         operations.insert(id, (cancelled, worker));
@@ -792,7 +865,13 @@ where
     }
 
     pub fn shutdown(&mut self) -> io::Result<()> {
+        {
+            let mut admission = self.admission.lock().expect("hardware admission poisoned");
+            *admission = true;
+        }
         self.stopping.store(true, Ordering::Release);
+        self.service.sessions.close_admission();
+        self.service.arbiter.close_admission();
         for (cancelled, _) in self
             .configuration_operations
             .lock()
@@ -805,7 +884,9 @@ where
             .lock()
             .expect("hardware scanner handle poisoned")
             .shutdown()?;
-        self.ack.close();
+        for inbox in self.ack_inboxes.lock().expect("ack inbox registry poisoned").values() {
+            inbox.close();
+        }
         if let Some((sender, dispatcher)) = self
             .dispatcher_shutdown
             .get_mut()
@@ -821,6 +902,10 @@ where
                     "hardware dispatcher stopped before shutdown signal",
                 ));
             }
+        }
+        let lookup_workers = std::mem::take(&mut *self.lookup_workers.lock().expect("lookup worker registry poisoned"));
+        for worker in lookup_workers {
+            if worker.join().is_err() { return Err(io::Error::other("hardware repository lookup panicked")); }
         }
         let operations = std::mem::take(
             &mut *self
@@ -846,8 +931,10 @@ where
 fn dispatch_event<T, R, C>(
     service: &HardwareService<T, R, C>,
     state: &Arc<Mutex<DispatcherState>>,
-    ack: &Arc<AckInbox>,
+    ack_inboxes: &AckInboxes,
     event: PortEvent,
+    dispatcher: &mpsc::SyncSender<Option<DispatcherMessage>>,
+    lookup_workers: &Arc<Mutex<Vec<JoinHandle<()>>>>,
 ) where
     T: SerialTransport,
     R: HardwareRepository,
@@ -871,7 +958,7 @@ fn dispatch_event<T, R, C>(
                 state.ports.get(&port).map(|current| current.generation)
             };
             if let Some(previous_generation) = previous_generation {
-                mark_source_lost(service, state, &port, previous_generation);
+                mark_source_lost(service, state, ack_inboxes, &port, previous_generation);
             }
             {
                 let mut state = state.lock().expect("hardware dispatcher state poisoned");
@@ -882,80 +969,46 @@ fn dispatch_event<T, R, C>(
                         config_id: None,
                         device_id: None,
                         kinds: HashMap::new(),
+                        lookup_pending: true,
+                        pending_inputs: VecDeque::new(),
                     },
                 );
             }
-            let persisted = {
-                let mut repository = service
-                    .repository
-                    .lock()
-                    .expect("hardware repository poisoned");
-                repository.load_configuration(&port, &identity)
-            };
-            let mut current = CurrentPort {
-                generation,
-                config_id: None,
-                device_id: None,
-                kinds: HashMap::new(),
-            };
-            match persisted {
-                Ok(Some(configuration)) => {
-                    let firmware_config = match &identity {
-                        Message::IdentityResponse { config_id, .. } => {
-                            ConfigId::new(*config_id).ok()
-                        }
-                        _ => None,
-                    };
-                    let mappings_valid = configuration
-                        .mappings
-                        .iter()
-                        .all(|mapping| mapping.identity.device_id == configuration.device_id);
-                    if firmware_config == Some(configuration.config_id) && mappings_valid {
-                        let mappings = configuration
-                            .mappings
-                            .iter()
-                            .map(|mapping| (mapping.pin, mapping.identity));
-                        if service.resolver.replace_port(
-                            &port,
-                            generation,
-                            configuration.config_id,
-                            mappings,
-                        ) {
-                            current.config_id = Some(configuration.config_id);
-                            current.device_id = Some(configuration.device_id);
-                            current.kinds = configuration
-                                .mappings
-                                .into_iter()
-                                .map(|mapping| (mapping.pin, mapping.kind))
-                                .collect();
-                        }
-                    } else {
-                        service.consumer.protocol_error(
-                            &port,
-                            generation,
-                            "persisted configuration does not match board identity",
-                        );
-                    }
-                }
-                Ok(None) => {}
-                Err(error) => service.consumer.protocol_error(
-                    &port,
-                    generation,
-                    &format!("configuration lookup failed: {error}"),
-                ),
+            let repository = service.repository.clone();
+            let dispatcher = dispatcher.clone();
+            let lookup_port = port.clone();
+            let worker = std::thread::Builder::new()
+                .name(format!("hardware-lookup-{port}-{generation}"))
+                .spawn(move || {
+                    let result = repository.lock().expect("hardware repository poisoned")
+                        .load_configuration(&lookup_port, &identity);
+                    let _ = dispatcher.send(Some(DispatcherMessage::ConfigurationLoaded {
+                        port: lookup_port, generation, identity, result,
+                    }));
+                });
+            match worker {
+                Ok(worker) => lookup_workers.lock().expect("lookup worker registry poisoned").push(worker),
+                Err(error) => service.consumer.protocol_error(&port, generation, &format!("failed to start configuration lookup: {error}")),
             }
-            service.cache.activate(&port, generation);
-            state
-                .lock()
-                .expect("hardware dispatcher state poisoned")
-                .ports
-                .insert(port, current);
         }
         PortEvent::Message {
             port,
             generation,
             message: Message::InputValue { pin, value },
         } => {
+            {
+                let mut ports = state.lock().expect("hardware dispatcher state poisoned");
+                let Some(current) = ports.ports.get_mut(&port) else { return; };
+                if current.generation != generation { return; }
+                if current.lookup_pending {
+                    if current.pending_inputs.len() < EVENT_CAPACITY {
+                        current.pending_inputs.push_back((pin, value));
+                    } else {
+                        service.consumer.protocol_error(&port, generation, "discovery input backlog overflow");
+                    }
+                    return;
+                }
+            }
             let current = state
                 .lock()
                 .expect("hardware dispatcher state poisoned")
@@ -983,7 +1036,9 @@ fn dispatch_event<T, R, C>(
                     service.consumer.calibration_error(id, error);
                 }
             }
-            if let Some(identity) = identity {
+            if let Some(identity) = identity.filter(|_| {
+                !service.arbiter.port_neutralization_failed(&port)
+            }) {
                 let event = InputEvent {
                     port_generation: generation,
                     config_id: current.config_id.unwrap(),
@@ -991,7 +1046,7 @@ fn dispatch_event<T, R, C>(
                     value,
                 };
                 if let Err(error) = service.consumer.dispatch_input(identity, event) {
-                    mark_source_lost(service, state, &port, generation);
+                    mark_source_lost(service, state, ack_inboxes, &port, generation);
                     service.consumer.protocol_error(
                         &port,
                         generation,
@@ -1008,8 +1063,10 @@ fn dispatch_event<T, R, C>(
             message:
                 message @ (Message::ConfigurationStored { .. } | Message::ConfigurationError { .. }),
         } => {
-            if let Err(error) = ack.push(generation, message) {
-                service.consumer.protocol_error(&port, generation, &error);
+            if let Some(ack) = ack_inboxes.lock().expect("ack inbox registry poisoned").get(&port).cloned() {
+                if let Err(error) = ack.push(generation, message) {
+                    service.consumer.protocol_error(&port, generation, &error);
+                }
             }
         }
         PortEvent::Message { .. } => {}
@@ -1024,13 +1081,68 @@ fn dispatch_event<T, R, C>(
             reason,
         } => {
             if !port.is_empty() {
-                mark_source_lost(service, state, &port, generation);
+                mark_source_lost(service, state, ack_inboxes, &port, generation);
             }
             service.consumer.protocol_error(&port, generation, &reason);
         }
         PortEvent::Closed { port, generation } => {
-            mark_source_lost(service, state, &port, generation)
+            mark_source_lost(service, state, ack_inboxes, &port, generation)
         }
+    }
+}
+
+fn finish_discovery<T, R, C>(
+    service: &HardwareService<T, R, C>,
+    state: &Arc<Mutex<DispatcherState>>,
+    port: String,
+    generation: u64,
+    identity: Message,
+    persisted: Result<Option<PersistedHardwareConfiguration>, String>,
+    ack_inboxes: &AckInboxes,
+    dispatcher: &mpsc::SyncSender<Option<DispatcherMessage>>,
+    lookup_workers: &Arc<Mutex<Vec<JoinHandle<()>>>>,
+) where
+    T: SerialTransport,
+    R: HardwareRepository,
+    C: HardwareConsumers,
+{
+    if !state.lock().expect("hardware dispatcher state poisoned").ports
+        .get(&port).is_some_and(|current| current.generation == generation) { return; }
+    let mut current = CurrentPort { generation, config_id: None, device_id: None, kinds: HashMap::new(), lookup_pending: false, pending_inputs: VecDeque::new() };
+    match persisted {
+        Ok(Some(configuration)) => {
+            let firmware_config = match &identity {
+                Message::IdentityResponse { config_id, .. } => ConfigId::new(*config_id).ok(),
+                _ => None,
+            };
+            let mappings_valid = configuration.mappings.iter()
+                .all(|mapping| mapping.identity.device_id == configuration.device_id);
+            if firmware_config == Some(configuration.config_id) && mappings_valid {
+                let mappings = configuration.mappings.iter().map(|mapping| (mapping.pin, mapping.identity));
+                if service.resolver.replace_port(&port, generation, configuration.config_id, mappings) {
+                    current.config_id = Some(configuration.config_id);
+                    current.device_id = Some(configuration.device_id);
+                    current.kinds = configuration.mappings.into_iter().map(|mapping| (mapping.pin, mapping.kind)).collect();
+                }
+            } else {
+                service.consumer.protocol_error(&port, generation, "persisted configuration does not match board identity");
+            }
+        }
+        Ok(None) => {}
+        Err(error) => service.consumer.protocol_error(&port, generation, &format!("configuration lookup failed: {error}")),
+    }
+    service.cache.activate(&port, generation);
+    let mut dispatcher_state = state.lock().expect("hardware dispatcher state poisoned");
+    if dispatcher_state.ports.get(&port).is_some_and(|current| current.generation == generation) {
+        if let Some(previous) = dispatcher_state.ports.get(&port) { current.pending_inputs = previous.pending_inputs.clone(); }
+        dispatcher_state.ports.insert(port.clone(), current);
+    }
+    let pending = dispatcher_state.ports.get_mut(&port).map(|current| std::mem::take(&mut current.pending_inputs)).unwrap_or_default();
+    drop(dispatcher_state);
+    for (pin, value) in pending {
+        dispatch_event(service, state, ack_inboxes,
+            PortEvent::Message { port: port.clone(), generation, message: Message::InputValue { pin, value } },
+            dispatcher, lookup_workers);
     }
 }
 
@@ -1053,34 +1165,56 @@ fn release_lost_calibration_after_fresh_input<T, R, C>(
     let Some((session_id, token)) = lease else {
         return;
     };
-    let source_lost = service
+    let terminal = service
         .sessions
         .calibration(session_id)
         .is_some_and(|session| {
-            session.lock().expect("calibration session poisoned").step()
-                == super::sessions::CalibrationStep::SourceLost
+            matches!(session.lock().expect("calibration session poisoned").step(),
+                super::sessions::CalibrationStep::SourceLost
+                    | super::sessions::CalibrationStep::Overflowed
+                    | super::sessions::CalibrationStep::Complete
+                    | super::sessions::CalibrationStep::Cancelled)
         });
-    if !source_lost {
+    if !terminal {
         return;
     }
-    service
-        .coordinated_consumers
-        .calibration_lease
-        .lock()
-        .expect("calibration lease registry poisoned")
-        .remove(port);
-    if let Err(error) = service.arbiter.release(token) {
-        service.consumer.protocol_error(
-            port,
-            0,
-            &format!("calibration lease release stayed suspended: {error:?}"),
-        );
+    match service.arbiter.release(token) {
+        Ok(()) => {
+            let mut leases = service.coordinated_consumers.calibration_lease.lock()
+                .expect("calibration lease registry poisoned");
+            if leases.get(port).is_some_and(|(id, current)| *id == session_id && *current == token) {
+                leases.remove(port);
+            }
+        }
+        Err(error) => service.consumer.protocol_error(
+            port, 0, &format!("terminal calibration lease release stayed suspended: {error:?}"),
+        ),
     }
+}
+
+fn configuration_kinds(
+    messages: &[Message],
+    mappings: &[(u8, InputIdentity)],
+) -> HashMap<u8, InputKind> {
+    let mut kinds = HashMap::new();
+    for message in messages {
+        match message {
+            Message::ConfigureAnalog { pin, .. } => { kinds.insert(*pin, InputKind::Analog); }
+            Message::ConfigureButton { pin, .. } => { kinds.insert(*pin, InputKind::Button); }
+            Message::ConfigureMatrix { row_pins, col_pins, .. } => {
+                for pin in row_pins.iter().chain(col_pins) { kinds.insert(*pin, InputKind::Button); }
+            }
+            _ => {}
+        }
+    }
+    for (pin, _) in mappings { kinds.entry(*pin).or_insert(InputKind::Any); }
+    kinds
 }
 
 fn mark_source_lost<T, R, C>(
     service: &HardwareService<T, R, C>,
     state: &Arc<Mutex<DispatcherState>>,
+    ack_inboxes: &AckInboxes,
     port: &str,
     generation: u64,
 ) where
@@ -1102,11 +1236,15 @@ fn mark_source_lost<T, R, C>(
         }
     };
     if removed {
+        if let Some(ack) = ack_inboxes.lock().expect("ack inbox registry poisoned").get(port) { ack.close(); }
         service.resolver.invalidate_port(port, generation);
         service.cache.invalidate(port, generation);
-        service
-            .coordinated_consumers
-            .source_lost(port, generation)
-            .ok();
+        if let Err(error) = service.arbiter.neutralize_source(port, generation) {
+            service.consumer.protocol_error(
+                port,
+                generation,
+                &format!("source neutralization failed; resource remains suspended: {error:?}"),
+            );
+        }
     }
 }

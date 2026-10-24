@@ -28,6 +28,7 @@ pub enum ApplyError {
     DeviceRejected,
     Timeout,
     Persist(String),
+    Commit(String),
 }
 
 pub struct ConfigurationApply<I> {
@@ -54,17 +55,35 @@ where
     P: ConfigurationPort,
     R: ConfigurationRepository,
     I: IntoIterator<Item = (u8, InputIdentity)>,
-    F: FnOnce(),
+    F: FnOnce() -> Result<(), ApplyError>,
 {
-    let ConfigurationApply {
-        port_name,
-        generation,
-        device_id,
-        config_id,
-        messages,
-        mappings,
-        timeout,
-    } = request;
+    apply_configuration_with(
+        port,
+        resolver,
+        cache,
+        request,
+        |device_id, config_id| repository.confirm_configuration(device_id, config_id),
+        publish_success,
+    )
+}
+
+/// Configuration sequence with a short repository confirmation callback. The callback
+/// is invoked only after ACK and never while waiting on the serial port.
+pub fn apply_configuration_with<P, I, C, F>(
+    port: &mut P,
+    resolver: &InputResolver,
+    cache: &InputValueCache,
+    request: ConfigurationApply<I>,
+    mut confirm: C,
+    publish_success: F,
+) -> Result<(), ApplyError>
+where
+    P: ConfigurationPort,
+    I: IntoIterator<Item = (u8, InputIdentity)>,
+    C: FnMut(EntityId, ConfigId) -> Result<(), String>,
+    F: FnOnce() -> Result<(), ApplyError>,
+{
+    let ConfigurationApply { port_name, generation, device_id, config_id, messages, mappings, timeout } = request;
     let port_name = port_name.as_str();
     if !resolver.begin_reconfiguration(port_name, generation)
         || !cache.begin_reconfiguration(port_name, generation)
@@ -119,9 +138,7 @@ where
     if port.generation() != generation {
         return Err(ApplyError::StaleGeneration);
     }
-    repository
-        .confirm_configuration(device_id, config_id)
-        .map_err(ApplyError::Persist)?;
+    confirm(device_id, config_id).map_err(ApplyError::Persist)?;
     if port.generation() != generation {
         return Err(ApplyError::StaleGeneration);
     }
@@ -132,6 +149,10 @@ where
         resolver.invalidate_port(port_name, generation);
         return Err(ApplyError::StaleGeneration);
     }
-    publish_success();
+    if let Err(error) = publish_success() {
+        resolver.invalidate_port(port_name, generation);
+        cache.invalidate(port_name, generation);
+        return Err(error);
+    }
     Ok(())
 }

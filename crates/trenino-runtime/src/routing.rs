@@ -72,6 +72,9 @@ impl InputResolver {
         {
             return false;
         }
+        if state.generation != Some(generation) {
+            state.revoked = false;
+        }
         state.generation = Some(generation);
         state.routes = None;
         true
@@ -186,6 +189,9 @@ impl InputValueCache {
             || (state.generation == Some(generation) && state.revoked)
         {
             return false;
+        }
+        if state.generation != Some(generation) {
+            state.revoked = false;
         }
         state.generation = Some(generation);
         state.values = None;

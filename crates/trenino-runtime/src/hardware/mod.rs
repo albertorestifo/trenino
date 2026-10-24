@@ -12,7 +12,7 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{mpsc, Arc, Mutex};
 use std::time::{Duration, Instant};
 
-use crate::resource::FirmwareHandoffPermit;
+use crate::resource::{FirmwareHandoffPermit, FirmwareHandoffPin};
 use discovery::DiscoveryTiming;
 use transport::{eligible_ports, SerialTransport};
 use trenino_core::hardware::protocol::{decode_message, encode_message, FrameDecoder, Message};
@@ -73,6 +73,10 @@ pub struct OwnedPortTask {
     commands: mpsc::SyncSender<PortCommand>,
     join: Option<std::thread::JoinHandle<()>>,
     close_requested: bool,
+    joined: Option<Result<(), String>>,
+    discovery_deadline: Instant,
+    discovery_complete: Arc<AtomicBool>,
+    discovery_timeout_reported: bool,
 }
 
 impl OwnedPortTask {
@@ -81,6 +85,7 @@ impl OwnedPortTask {
         port: String,
         generation: u64,
         timing: DiscoveryTiming,
+        discovery_timeout: Duration,
         sink: F,
     ) -> Self
     where
@@ -93,6 +98,8 @@ impl OwnedPortTask {
         let worker_cancelled = cancelled.clone();
         let failed = Arc::new(AtomicBool::new(false));
         let worker_failed = failed.clone();
+        let discovery_complete = Arc::new(AtomicBool::new(false));
+        let worker_discovery_complete = discovery_complete.clone();
         let (commands, command_rx) = mpsc::sync_channel(PORT_COMMAND_CAPACITY);
         let join = std::thread::Builder::new()
             .name(format!("serial-{port}-{generation}"))
@@ -113,7 +120,7 @@ impl OwnedPortTask {
                 let discovery = match discovery::discover_owned(
                     serial.as_mut(),
                     timing,
-                    DISCOVERY_TIMEOUT,
+                    discovery_timeout,
                     || worker_cancelled.load(Ordering::Acquire),
                 ) {
                     Ok(discovery) => discovery,
@@ -129,6 +136,7 @@ impl OwnedPortTask {
                         return;
                     }
                 };
+                worker_discovery_complete.store(true, Ordering::Release);
                 sink(PortEvent::Discovered {
                     port: worker_port.clone(),
                     generation,
@@ -237,6 +245,10 @@ impl OwnedPortTask {
             commands,
             join: Some(join),
             close_requested: false,
+            joined: None,
+            discovery_deadline: Instant::now() + discovery_timeout,
+            discovery_complete,
+            discovery_timeout_reported: false,
         }
     }
 
@@ -284,12 +296,17 @@ impl OwnedPortTask {
     }
 
     pub fn close(&mut self, deadline: Duration) -> io::Result<()> {
+        if let Some(result) = &self.joined {
+            return result.clone().map_err(io::Error::other);
+        }
         self.cancelled.store(true, Ordering::Release);
         if !self.close_requested {
             let _ = self.commands.try_send(PortCommand::Close);
             self.close_requested = true;
         }
-        let join = self.join.as_ref().expect("port task already joined");
+        let Some(join) = self.join.as_ref() else {
+            return Err(io::Error::other("serial task join outcome was not recorded"));
+        };
         let started = Instant::now();
         while !join.is_finished() {
             if started.elapsed() >= deadline {
@@ -300,11 +317,20 @@ impl OwnedPortTask {
             }
             std::thread::sleep(Duration::from_millis(10));
         }
-        self.join
-            .take()
-            .expect("port task already joined")
-            .join()
-            .map_err(|_| io::Error::other("serial task panicked"))
+        let result = self.join.take().expect("join exists after finished check")
+            .join().map_err(|_| "serial task panicked".to_string());
+        self.joined = Some(result.clone());
+        result.map_err(io::Error::other)
+    }
+
+    fn is_joined(&self) -> bool { self.join.is_none() && self.joined.is_some() }
+    fn expire_discovery(&mut self, now: Instant) -> bool {
+        if !self.discovery_timeout_reported && !self.discovery_complete.load(Ordering::Acquire) && now >= self.discovery_deadline {
+            self.discovery_timeout_reported = true;
+            self.cancelled.store(true, Ordering::Release);
+            self.failed.store(true, Ordering::Release);
+            true
+        } else { false }
     }
 }
 
@@ -326,8 +352,8 @@ enum RuntimeCommand {
         Arc<AtomicBool>,
         mpsc::Sender<Result<(), String>>,
     ),
-    HandoffPort(String, u64, HandoffOperationId),
-    ReleaseHandoff(PortHandoff, HandoffOperationId),
+    HandoffPort(String, u64, HandoffOperationId, FirmwareHandoffPin),
+    ReleaseHandoff(PortHandoff, HandoffOperationId, FirmwareHandoffPin),
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -376,6 +402,7 @@ pub struct DiscoveryHandle {
     shutdown_deadline: Duration,
     handoff_results: Arc<Mutex<HashMap<HandoffOperationId, Result<PortHandoff, String>>>>,
     release_results: Arc<Mutex<HashMap<HandoffOperationId, Result<(), String>>>>,
+    shutdown_failures: Arc<Mutex<Vec<String>>>,
     next_handoff_operation: AtomicU64,
     next_release_operation: AtomicU64,
 }
@@ -422,11 +449,9 @@ impl DiscoveryHandle {
         &self,
         port: &str,
         generation: u64,
-        permit: &FirmwareHandoffPermit<'_>,
+        permit: &FirmwareHandoffPermit,
     ) -> Result<HandoffOperationId, String> {
-        if !permit.authorizes(port, generation) {
-            return Err("firmware lease does not authorize this port generation".into());
-        }
+        let pin = permit.pin(port, generation).map_err(|error| format!("firmware lease does not authorize this port generation: {error:?}"))?;
         if self
             .handoff_results
             .lock()
@@ -443,7 +468,7 @@ impl DiscoveryHandle {
                 .max(1),
         );
         self.commands
-            .try_send(RuntimeCommand::HandoffPort(port.to_owned(), generation, id))
+            .try_send(RuntimeCommand::HandoffPort(port.to_owned(), generation, id, pin))
             .map_err(|error| match error {
                 mpsc::TrySendError::Full(_) => "runtime command queue is full".to_string(),
                 mpsc::TrySendError::Disconnected(_) => "runtime stopped".to_string(),
@@ -492,11 +517,9 @@ impl DiscoveryHandle {
     pub fn begin_release_handoff(
         &self,
         handoff: PortHandoff,
-        permit: &FirmwareHandoffPermit<'_>,
+        permit: &FirmwareHandoffPermit,
     ) -> Result<HandoffOperationId, String> {
-        if !permit.authorizes(&handoff.port, handoff.generation) {
-            return Err("firmware lease no longer authorizes this reservation".into());
-        }
+        let pin = permit.pin(&handoff.port, handoff.generation).map_err(|error| format!("firmware lease no longer authorizes this reservation: {error:?}"))?;
         if self
             .release_results
             .lock()
@@ -513,7 +536,7 @@ impl DiscoveryHandle {
                 .max(1),
         );
         self.commands
-            .try_send(RuntimeCommand::ReleaseHandoff(handoff, operation))
+            .try_send(RuntimeCommand::ReleaseHandoff(handoff, operation, pin))
             .map_err(|error| match error {
                 mpsc::TrySendError::Full(_) => "runtime command queue is full".to_string(),
                 mpsc::TrySendError::Disconnected(_) => "runtime stopped".to_string(),
@@ -565,6 +588,9 @@ impl DiscoveryHandle {
             join.join()
                 .map_err(|_| io::Error::other("discovery worker panicked"))?;
         }
+        if let Some(failure) = self.shutdown_failures.lock().expect("shutdown diagnostics poisoned").first().cloned() {
+            return Err(io::Error::other(failure));
+        }
         Ok(())
     }
 }
@@ -576,6 +602,7 @@ pub struct HardwareRuntime<T: SerialTransport> {
     scan_interval: Duration,
     failure_retry: Duration,
     cleanup_deadline: Duration,
+    discovery_timeout: Duration,
 }
 
 impl<T: SerialTransport> HardwareRuntime<T> {
@@ -586,6 +613,7 @@ impl<T: SerialTransport> HardwareRuntime<T> {
             scan_interval: SCAN_INTERVAL,
             failure_retry: FAILURE_RETRY,
             cleanup_deadline: CLEANUP_DEADLINE,
+            discovery_timeout: DISCOVERY_TIMEOUT,
         }
     }
 
@@ -598,6 +626,11 @@ impl<T: SerialTransport> HardwareRuntime<T> {
         self.scan_interval = scan_interval;
         self.failure_retry = failure_retry;
         self.cleanup_deadline = cleanup_deadline;
+        self
+    }
+
+    pub fn with_discovery_timeout(mut self, timeout: Duration) -> Self {
+        self.discovery_timeout = timeout;
         self
     }
 
@@ -615,17 +648,20 @@ impl<T: SerialTransport> HardwareRuntime<T> {
         let (commands, command_rx) = mpsc::sync_channel(RUNTIME_COMMAND_CAPACITY);
         let runtime_sink = Arc::new(sink);
         let shutdown_deadline = self.cleanup_deadline;
+        let discovery_timeout = self.discovery_timeout;
         let handoff_results = Arc::new(Mutex::new(HashMap::new()));
         let worker_handoff_results = handoff_results.clone();
         let release_results = Arc::new(Mutex::new(HashMap::new()));
         let worker_release_results = release_results.clone();
+        let shutdown_failures = Arc::new(Mutex::new(Vec::new()));
+        let worker_shutdown_failures = shutdown_failures.clone();
         let join = std::thread::Builder::new()
             .name("hardware-discovery".into())
             .spawn(move || {
                 let generation_counter = AtomicU64::new(0);
                 let mut ports: HashMap<String, OwnedPortTask> = HashMap::new();
                 let mut retry_after: HashMap<String, Instant> = HashMap::new();
-                let mut reserved_ports: HashMap<String, PortHandoff> = HashMap::new();
+                let mut reserved_ports: HashMap<String, (PortHandoff, FirmwareHandoffPin)> = HashMap::new();
                 let active_generations = Arc::new(Mutex::new(HashMap::<String, u64>::new()));
                 let mut next_scan = Instant::now() + Duration::from_secs(1);
                 let mut shutting_down = false;
@@ -671,8 +707,10 @@ impl<T: SerialTransport> HardwareRuntime<T> {
                             };
                             let _ = reply.send(result);
                         }
-                        Ok(RuntimeCommand::HandoffPort(port, expected_generation, operation)) => {
-                            let result = if reserved_ports.contains_key(&port) {
+                        Ok(RuntimeCommand::HandoffPort(port, expected_generation, operation, pin)) => {
+                            let result = if !pin.authorizes(&port, expected_generation) {
+                                Err("firmware lease expired before port close".to_string())
+                            } else if reserved_ports.contains_key(&port) {
                                 Err("port is already reserved".to_string())
                             } else if let Some(mut task) = ports.remove(&port) {
                                 if task.generation() != expected_generation {
@@ -687,7 +725,7 @@ impl<T: SerialTransport> HardwareRuntime<T> {
                                         .remove(&port);
                                     match task.close(self.cleanup_deadline) {
                                         Ok(()) => {
-                                            reserved_ports.insert(port.clone(), handoff.clone());
+                                            reserved_ports.insert(port.clone(), (handoff.clone(), pin));
                                             runtime_sink(PortEvent::Closed {
                                                 port: port.clone(),
                                                 generation: handoff.generation,
@@ -695,7 +733,14 @@ impl<T: SerialTransport> HardwareRuntime<T> {
                                             Ok(handoff)
                                         }
                                         Err(error) => {
-                                            ports.insert(port.clone(), task);
+                                            if task.is_joined() {
+                                                let reason = error.to_string();
+                                                runtime_sink(PortEvent::Failed { port: port.clone(), generation: expected_generation, reason: reason.clone() });
+                                                worker_shutdown_failures.lock().expect("shutdown diagnostics poisoned").push(reason);
+                                                retry_after.insert(port.clone(), Instant::now() + self.failure_retry);
+                                            } else {
+                                                ports.insert(port.clone(), task);
+                                            }
                                             Err(error.to_string())
                                         }
                                     }
@@ -709,9 +754,9 @@ impl<T: SerialTransport> HardwareRuntime<T> {
                                 .insert(operation, result);
                             next_scan = Instant::now() + self.scan_interval;
                         }
-                        Ok(RuntimeCommand::ReleaseHandoff(handoff, operation)) => {
+                        Ok(RuntimeCommand::ReleaseHandoff(handoff, operation, pin)) => {
                             let result = match reserved_ports.get(&handoff.port) {
-                                Some(current) if current == &handoff => {
+                                Some((current, _)) if current == &handoff && pin.authorizes(&handoff.port, handoff.generation) => {
                                     reserved_ports.remove(&handoff.port);
                                     next_scan = Instant::now();
                                     Ok(())
@@ -724,6 +769,18 @@ impl<T: SerialTransport> HardwareRuntime<T> {
                                 .insert(operation, result);
                         }
                         Err(mpsc::RecvTimeoutError::Timeout) => {}
+                    }
+                    if !shutting_down {
+                        for (port, task) in &mut ports {
+                            if task.expire_discovery(Instant::now()) {
+                                active_generations.lock().expect("generation registry poisoned").remove(port);
+                                runtime_sink(PortEvent::Failed {
+                                    port: port.clone(),
+                                    generation: task.generation(),
+                                    reason: "discovery coordinator deadline exceeded; owner retained until join".into(),
+                                });
+                            }
+                        }
                     }
                     if shutting_down {
                         let mut closed_ports = Vec::new();
@@ -738,17 +795,21 @@ impl<T: SerialTransport> HardwareRuntime<T> {
                                     generation: task.generation(),
                                     reason: error.to_string(),
                                 });
+                                if task.is_joined() {
+                                    worker_shutdown_failures.lock().expect("shutdown diagnostics poisoned").push(error.to_string());
+                                    closed_ports.push((port.clone(), task.generation(), false));
+                                }
                             } else {
-                                closed_ports.push((port.clone(), task.generation()));
+                                closed_ports.push((port.clone(), task.generation(), true));
                             }
                         }
-                        for (port, generation) in closed_ports {
+                        for (port, generation, clean) in closed_ports {
                             ports.remove(&port);
                             active_generations
                                 .lock()
                                 .expect("generation registry poisoned")
                                 .remove(&port);
-                            runtime_sink(PortEvent::Closed { port, generation });
+                            if clean { runtime_sink(PortEvent::Closed { port, generation }); }
                         }
                         if ports.is_empty() && reserved_ports.is_empty() {
                             break;
@@ -773,6 +834,7 @@ impl<T: SerialTransport> HardwareRuntime<T> {
                         .collect::<Vec<_>>();
                     for port in failed_ports {
                         let mut closed = false;
+                        let mut joined_failure = false;
                         if let Some(task) = ports.get_mut(&port) {
                             let generation = task.generation();
                             active_generations
@@ -780,14 +842,17 @@ impl<T: SerialTransport> HardwareRuntime<T> {
                                 .expect("generation registry poisoned")
                                 .remove(&port);
                             match task.close(self.cleanup_deadline) {
-                                Err(error) => runtime_sink(PortEvent::Failed {
-                                    port: port.clone(),
-                                    generation,
-                                    reason: error.to_string(),
-                                }),
+                                Err(error) => {
+                                    runtime_sink(PortEvent::Failed { port: port.clone(), generation, reason: error.to_string() });
+                                    if task.is_joined() {
+                                        worker_shutdown_failures.lock().expect("shutdown diagnostics poisoned").push(error.to_string());
+                                        closed = true;
+                                        joined_failure = true;
+                                    }
+                                }
                                 Ok(()) => closed = true,
                             }
-                            if closed {
+                            if closed && !joined_failure {
                                 runtime_sink(PortEvent::Closed {
                                     port: port.clone(),
                                     generation,
@@ -878,6 +943,7 @@ impl<T: SerialTransport> HardwareRuntime<T> {
                             port.clone(),
                             generation,
                             self.discovery_timing,
+                            discovery_timeout,
                             move |event| {
                                 let current = event_generations
                                     .lock()
@@ -903,6 +969,7 @@ impl<T: SerialTransport> HardwareRuntime<T> {
             shutdown_deadline,
             handoff_results,
             release_results,
+            shutdown_failures,
             next_handoff_operation: AtomicU64::new(0),
             next_release_operation: AtomicU64::new(0),
         }
