@@ -132,14 +132,19 @@ fn current_ecto_schema_opens_read_only_and_reads_device_profile() {
     let path = dir.path().join("legacy.db");
     {
         let conn = rusqlite::Connection::open(&path).unwrap();
-        conn.execute_batch("CREATE TABLE schema_migrations(version INTEGER PRIMARY KEY, inserted_at TEXT); CREATE TABLE app_settings(key TEXT PRIMARY KEY, value TEXT NOT NULL); CREATE TABLE devices(id INTEGER PRIMARY KEY, name TEXT NOT NULL, description TEXT, config_id INTEGER NOT NULL, inserted_at TEXT, updated_at TEXT); CREATE TABLE train_identifiers(id INTEGER PRIMARY KEY); INSERT INTO schema_migrations VALUES(20260927000000,'now'); INSERT INTO devices(id,name,description,config_id) VALUES(17,'Desk','',71); INSERT INTO app_settings VALUES('simulator_url','http://example.test');").unwrap();
+        conn.pragma_update(None, "foreign_keys", "OFF").unwrap();
+        conn.execute_batch(include_str!("fixtures/storage/ecto-current.sql"))
+            .unwrap();
     }
     let db = Database::open(&path).unwrap();
     assert!(db.is_legacy_read_only());
-    assert_eq!(db.get_profile(EntityId(17)).unwrap().unwrap().name, "Desk");
+    assert_eq!(
+        db.get_profile(EntityId(7)).unwrap().unwrap().name,
+        "Desktop"
+    );
     assert_eq!(
         db.get("simulator_url").unwrap().as_deref(),
-        Some("http://example.test")
+        Some("http://fixture.invalid")
     );
     assert!(matches!(
         db.set("simulator_url", "changed"),
@@ -153,7 +158,7 @@ fn current_ecto_schema_opens_read_only_and_reads_device_profile() {
             |r| r.get::<_, String>(0)
         )
         .unwrap(),
-        "http://example.test"
+        "http://fixture.invalid"
     );
 }
 

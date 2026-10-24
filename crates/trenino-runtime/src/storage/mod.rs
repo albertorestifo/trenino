@@ -1,4 +1,8 @@
 //! Dedicated SQLite owner with strict schema admission and owned results.
+mod migration;
+
+pub use migration::{LegacySchema, MigrationReport};
+
 use rusqlite::{Connection, OptionalExtension};
 use std::{
     path::Path,
@@ -9,7 +13,7 @@ use trenino_core::EntityId;
 
 const APP_ID: i64 = 0x54524E52; // "TRNR"
 const SCHEMA_VERSION: i64 = 1;
-const LEGACY_CURRENT_VERSION: i64 = 20260927000000;
+const FULL_SCHEMA_VERSION: i64 = 2;
 const QUEUE_BOUND: usize = 64;
 const SETTINGS_SCHEMA: &str =
     "CREATE TABLE app_settings(key TEXT PRIMARY KEY NOT NULL,value TEXT NOT NULL)";
@@ -25,6 +29,11 @@ pub enum StorageError {
     Constraint { detail: String },
     UnsupportedSchema { application_id: i64, version: i64 },
     ReadOnlyLegacy,
+    InvalidLegacyData { detail: String },
+    BackupAlreadyExists,
+    InvalidBackupPath,
+    Backup { detail: String },
+    UnsupportedOperation { operation: &'static str },
     WorkerStopped,
     NotFound,
 }
@@ -70,6 +79,18 @@ impl std::fmt::Display for StorageError {
             Self::ReadOnlyLegacy => {
                 f.write_str("legacy database is read-only until migration support is enabled")
             }
+            Self::InvalidLegacyData { detail } => {
+                write!(f, "legacy data cannot be migrated: {detail}")
+            }
+            Self::BackupAlreadyExists => f.write_str("database backup path already exists"),
+            Self::InvalidBackupPath => {
+                f.write_str("database backup path must differ from the source database")
+            }
+            Self::Backup { detail } => write!(f, "could not create database backup: {detail}"),
+            Self::UnsupportedOperation { operation } => write!(
+                f,
+                "{operation} is not supported by the migrated database API"
+            ),
             Self::WorkerStopped => f.write_str("database worker stopped"),
             Self::NotFound => f.write_str("profile not found"),
         }
@@ -85,6 +106,13 @@ pub struct Profile {
 
 type DbResult<T> = Result<T, StorageError>;
 type Reply<T> = mpsc::Sender<DbResult<T>>;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum SchemaMode {
+    Bootstrap,
+    LegacyReadOnly,
+    Full,
+}
 
 enum Request {
     Get(String, Reply<Option<String>>),
@@ -115,6 +143,7 @@ impl Drop for Worker {
 pub struct Database {
     worker: Arc<Worker>,
     read_only: bool,
+    full_schema: bool,
 }
 
 impl Database {
@@ -128,27 +157,28 @@ impl Database {
             .name("trenino-db".into())
             .spawn(move || {
                 let opened = open_connection(&path, path_exists);
-                let (mut connection, legacy_read_only) = match opened {
+                let (mut connection, mode) = match opened {
                     Ok(opened) => opened,
                     Err(error) => {
                         let _ = ready_tx.send(Err(error));
                         return;
                     }
                 };
-                let _ = ready_tx.send(Ok(legacy_read_only));
+                let _ = ready_tx.send(Ok(mode));
                 for request in request_rx {
-                    handle_request(&mut connection, legacy_read_only, request);
+                    handle_request(&mut connection, mode, request);
                 }
             })
             .map_err(|_| StorageError::WorkerStopped)?;
 
-        let read_only = ready_rx.recv().map_err(|_| StorageError::WorkerStopped)??;
+        let mode = ready_rx.recv().map_err(|_| StorageError::WorkerStopped)??;
         Ok(Self {
             worker: Arc::new(Worker {
                 tx: Mutex::new(Some(request_tx)),
                 join: Mutex::new(Some(join)),
             }),
-            read_only,
+            read_only: mode == SchemaMode::LegacyReadOnly,
+            full_schema: mode == SchemaMode::Full,
         })
     }
 
@@ -170,7 +200,7 @@ impl Database {
     }
 
     pub fn create_profile(&self, name: &str) -> Result<Profile, StorageError> {
-        self.ensure_writable()?;
+        self.ensure_profile_api("create_profile")?;
         self.request(|reply| Request::CreateProfile(name.into(), reply))
     }
 
@@ -179,7 +209,7 @@ impl Database {
     }
 
     pub fn delete_profile(&self, id: EntityId) -> Result<(), StorageError> {
-        self.ensure_writable()?;
+        self.ensure_profile_api("delete_profile")?;
         self.request(|reply| Request::DeleteProfile(id, reply))
     }
 
@@ -189,11 +219,16 @@ impl Database {
         key: &str,
         value: &str,
     ) -> Result<(), StorageError> {
-        self.ensure_writable()?;
+        self.ensure_profile_api("set_profile_value")?;
         self.request(|reply| Request::SetProfileValue(id, key.into(), value.into(), reply))
     }
 
     pub fn profile_value(&self, id: EntityId, key: &str) -> Result<Option<String>, StorageError> {
+        if self.full_schema || self.read_only {
+            return Err(StorageError::UnsupportedOperation {
+                operation: "profile_value",
+            });
+        }
         self.request(|reply| Request::ProfileValue(id, key.into(), reply))
     }
 
@@ -202,6 +237,14 @@ impl Database {
             Err(StorageError::ReadOnlyLegacy)
         } else {
             Ok(())
+        }
+    }
+
+    fn ensure_profile_api(&self, operation: &'static str) -> Result<(), StorageError> {
+        if self.full_schema {
+            Err(StorageError::UnsupportedOperation { operation })
+        } else {
+            self.ensure_writable()
         }
     }
 
@@ -219,7 +262,7 @@ impl Database {
     }
 }
 
-fn open_connection(path: &Path, path_exists: bool) -> DbResult<(Connection, bool)> {
+fn open_connection(path: &Path, path_exists: bool) -> DbResult<(Connection, SchemaMode)> {
     let flags = if path_exists {
         rusqlite::OpenFlags::SQLITE_OPEN_READ_WRITE
     } else {
@@ -235,17 +278,22 @@ fn open_connection(path: &Path, path_exists: bool) -> DbResult<(Connection, bool
         let object_count = count_user_objects(&connection)?;
         if object_count == 0 {
             create_rust_schema(&mut connection)?;
-            return Ok((connection, false));
+            return Ok((connection, SchemaMode::Bootstrap));
         }
-        if is_current_ecto_schema(&connection)? {
+        if migration::is_supported_legacy_schema(&connection)?.is_some() {
             connection.pragma_update(None, "query_only", "ON")?;
-            return Ok((connection, true));
+            return Ok((connection, SchemaMode::LegacyReadOnly));
         }
     } else if application_id == APP_ID
         && version == SCHEMA_VERSION
         && validate_rust_schema(&connection)?
     {
-        return Ok((connection, false));
+        return Ok((connection, SchemaMode::Bootstrap));
+    } else if application_id == APP_ID
+        && version == FULL_SCHEMA_VERSION
+        && migration::validate_full_schema(&connection)?
+    {
+        return Ok((connection, SchemaMode::Full));
     }
 
     Err(StorageError::UnsupportedSchema {
@@ -308,45 +356,7 @@ fn validate_rust_schema(connection: &Connection) -> DbResult<bool> {
     Ok(true)
 }
 
-fn is_current_ecto_schema(connection: &Connection) -> DbResult<bool> {
-    let exists: i64 = connection.query_row(
-        "SELECT count(*) FROM sqlite_master WHERE type='table' AND name='schema_migrations'",
-        [],
-        |row| row.get(0),
-    )?;
-    if exists == 0 {
-        return Ok(false);
-    }
-    let latest: Option<i64> =
-        connection.query_row("SELECT max(version) FROM schema_migrations", [], |row| {
-            row.get(0)
-        })?;
-    if latest != Some(LEGACY_CURRENT_VERSION) {
-        return Ok(false);
-    }
-    let tables: i64 = connection.query_row(
-        "SELECT count(*) FROM sqlite_master WHERE type='table' AND name IN ('devices','app_settings','train_identifiers')",
-        [],
-        |row| row.get(0),
-    )?;
-    if tables != 3 {
-        return Ok(false);
-    }
-    let settings_columns = table_columns(connection, "app_settings")?;
-    let device_columns = table_columns(connection, "devices")?;
-    Ok(settings_columns.contains(&"key".to_owned())
-        && settings_columns.contains(&"value".to_owned())
-        && device_columns.contains(&"id".to_owned())
-        && device_columns.contains(&"name".to_owned()))
-}
-
-fn table_columns(connection: &Connection, table: &str) -> DbResult<Vec<String>> {
-    let mut statement = connection.prepare(&format!("PRAGMA table_info({table})"))?;
-    let rows = statement.query_map([], |row| row.get(1))?;
-    Ok(rows.collect::<Result<_, _>>()?)
-}
-
-fn handle_request(connection: &mut Connection, legacy_read_only: bool, request: Request) {
+fn handle_request(connection: &mut Connection, mode: SchemaMode, request: Request) {
     match request {
         Request::Get(key, reply) => {
             let result = connection
@@ -360,7 +370,7 @@ fn handle_request(connection: &mut Connection, legacy_read_only: bool, request: 
             let _ = reply.send(result);
         }
         Request::Set(key, value, reply) => {
-            let result = if legacy_read_only {
+            let result = if mode == SchemaMode::LegacyReadOnly {
                 Err(StorageError::ReadOnlyLegacy)
             } else {
                 set_value(connection, &key, &value)
@@ -376,7 +386,7 @@ fn handle_request(connection: &mut Connection, legacy_read_only: bool, request: 
             let _ = reply.send(result);
         }
         Request::CreateProfile(name, reply) => {
-            let result = if legacy_read_only {
+            let result = if mode != SchemaMode::Bootstrap {
                 Err(StorageError::ReadOnlyLegacy)
             } else {
                 create_profile(connection, name)
@@ -384,7 +394,7 @@ fn handle_request(connection: &mut Connection, legacy_read_only: bool, request: 
             let _ = reply.send(result);
         }
         Request::GetProfile(id, reply) => {
-            let table = if legacy_read_only {
+            let table = if mode != SchemaMode::Bootstrap {
                 "devices"
             } else {
                 "profiles"
@@ -402,7 +412,7 @@ fn handle_request(connection: &mut Connection, legacy_read_only: bool, request: 
             let _ = reply.send(result);
         }
         Request::DeleteProfile(id, reply) => {
-            let result = if legacy_read_only {
+            let result = if mode != SchemaMode::Bootstrap {
                 Err(StorageError::ReadOnlyLegacy)
             } else {
                 delete_profile(connection, id)
@@ -410,7 +420,7 @@ fn handle_request(connection: &mut Connection, legacy_read_only: bool, request: 
             let _ = reply.send(result);
         }
         Request::SetProfileValue(id, key, value, reply) => {
-            let result = if legacy_read_only {
+            let result = if mode != SchemaMode::Bootstrap {
                 Err(StorageError::ReadOnlyLegacy)
             } else {
                 set_profile_value(connection, id, &key, &value)
@@ -420,7 +430,11 @@ fn handle_request(connection: &mut Connection, legacy_read_only: bool, request: 
         Request::ProfileValue(id, key, reply) => {
             let result = connection
                 .query_row(
-                    "SELECT value FROM profile_settings WHERE profile_id=?1 AND key=?2",
+                    if mode == SchemaMode::Bootstrap {
+                        "SELECT value FROM profile_settings WHERE profile_id=?1 AND key=?2"
+                    } else {
+                        "SELECT NULL WHERE 0"
+                    },
                     (id.0, &key),
                     |row| row.get(0),
                 )
