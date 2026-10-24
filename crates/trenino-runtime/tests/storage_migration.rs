@@ -389,6 +389,71 @@ fn rejects_reserved_source_sidecar_backup_paths_before_mutation() {
 }
 
 #[test]
+fn rejects_destination_sidecar_paths_that_alias_the_source() {
+    for suffix in ["-journal", "-wal", "-shm"] {
+        let dir = tempdir().unwrap();
+        // The destination's `.` parent alias must normalize to the source's
+        // canonical parent before either path family is compared.
+        let backup = dir.path().join(".").join("backup.db");
+        let source = dir.path().join(format!("backup.db{suffix}"));
+        fixture(&source, CURRENT_FIXTURE);
+        let source_connection = Connection::open(&source).unwrap();
+        source_connection
+            .pragma_update(None, "journal_mode", "DELETE")
+            .unwrap();
+        drop(source_connection);
+        let bytes_before = std::fs::read(&source).unwrap();
+
+        assert!(matches!(
+            Database::migrate_legacy(&source, &backup),
+            Err(StorageError::InvalidBackupPath)
+        ));
+        assert!(!backup.exists());
+        assert_eq!(std::fs::read(&source).unwrap(), bytes_before);
+        let check = Connection::open(&source).unwrap();
+        assert_eq!(
+            check
+                .query_row("PRAGMA integrity_check", [], |row| row.get::<_, String>(0))
+                .unwrap(),
+            "ok"
+        );
+        assert_eq!(
+            check
+                .pragma_query_value(None, "user_version", |row| row.get::<_, i64>(0))
+                .unwrap(),
+            0
+        );
+    }
+
+    #[cfg(windows)]
+    {
+        let dir = tempdir().unwrap();
+        let source = dir.path().join("BACKUP.DB-JOURNAL");
+        let backup = dir.path().join("backup.db");
+        fixture(&source, CURRENT_FIXTURE);
+        let source_connection = Connection::open(&source).unwrap();
+        source_connection
+            .pragma_update(None, "journal_mode", "DELETE")
+            .unwrap();
+        drop(source_connection);
+        let bytes_before = std::fs::read(&source).unwrap();
+        assert!(matches!(
+            Database::migrate_legacy(&source, &backup),
+            Err(StorageError::InvalidBackupPath)
+        ));
+        assert_eq!(std::fs::read(&source).unwrap(), bytes_before);
+        assert!(!backup.exists());
+        assert_eq!(
+            Connection::open(&source)
+                .unwrap()
+                .query_row("PRAGMA integrity_check", [], |row| row.get::<_, String>(0))
+                .unwrap(),
+            "ok"
+        );
+    }
+}
+
+#[test]
 fn bare_relative_backup_filename_is_supported_and_source_alias_is_refused() {
     use std::time::{SystemTime, UNIX_EPOCH};
 

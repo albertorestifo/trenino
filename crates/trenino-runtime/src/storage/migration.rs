@@ -155,7 +155,11 @@ fn migrate_legacy_with_hooks(
         normalize_backup_path(backup_path).map_err(|detail| StorageError::Backup {
             detail: detail.to_string(),
         })?;
-    if conflicts_with_source_or_sidecar(&source_canonical, &backup_path)? {
+    if conflicts_with_source_or_sidecar(&source_canonical, &backup_path).map_err(|detail| {
+        StorageError::Backup {
+            detail: detail.to_string(),
+        }
+    })? {
         return Err(StorageError::InvalidBackupPath);
     }
     if backup_path.exists() {
@@ -215,6 +219,10 @@ fn migrate_legacy_with_hooks(
 }
 
 fn normalize_backup_path(path: &Path) -> std::io::Result<PathBuf> {
+    normalize_path_alias(path)
+}
+
+fn normalize_path_alias(path: &Path) -> std::io::Result<PathBuf> {
     let parent = path
         .parent()
         .filter(|parent| !parent.as_os_str().is_empty())
@@ -234,20 +242,31 @@ fn normalize_backup_path(path: &Path) -> std::io::Result<PathBuf> {
     }
 }
 
-fn conflicts_with_source_or_sidecar(source: &Path, backup: &Path) -> Result<bool, StorageError> {
-    let mut reserved = vec![source.to_owned()];
-    let Some(name) = source.file_name() else {
-        return Err(StorageError::InvalidBackupPath);
-    };
+fn conflicts_with_source_or_sidecar(source: &Path, backup: &Path) -> std::io::Result<bool> {
+    let source_family = path_family(source)?;
+    let backup_family = path_family(backup)?;
+    Ok(source_family.iter().any(|source_key| {
+        backup_family
+            .iter()
+            .any(|backup_key| source_key == backup_key)
+    }))
+}
+
+fn path_family(main: &Path) -> std::io::Result<Vec<String>> {
+    let main = normalize_path_alias(main)?;
+    let name = main.file_name().ok_or_else(|| {
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "database path has no file name",
+        )
+    })?;
+    let mut paths = vec![main.clone()];
     for suffix in ["-journal", "-wal", "-shm"] {
         let mut sidecar = name.to_os_string();
         sidecar.push(suffix);
-        reserved.push(source.with_file_name(sidecar));
+        paths.push(normalize_path_alias(&main.with_file_name(sidecar))?);
     }
-    let backup_key = path_comparison_key(backup);
-    Ok(reserved
-        .iter()
-        .any(|path| path_comparison_key(path) == backup_key))
+    Ok(paths.iter().map(|path| path_comparison_key(path)).collect())
 }
 
 fn path_comparison_key(path: &Path) -> String {
