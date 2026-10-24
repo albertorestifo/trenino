@@ -511,3 +511,34 @@ jobs:
           releaseBody: "See the release notes for details."
           releaseDraft: false
           prerelease: false
+
+      # This is an unsigned Partner Center submission artifact. Microsoft signs
+      # accepted MSIX submissions; never attach it as a public sideload release.
+      - name: Build Microsoft Store submission
+        if: runner.os == 'Windows' && vars.STORE_IDENTITY_NAME != ''
+        shell: pwsh
+        env:
+          STORE_IDENTITY_NAME: ${{ vars.STORE_IDENTITY_NAME }}
+          STORE_PUBLISHER: ${{ vars.STORE_PUBLISHER }}
+          STORE_PUBLISHER_DISPLAY_NAME: ${{ vars.STORE_PUBLISHER_DISPLAY_NAME }}
+          STORE_DISPLAY_NAME: ${{ vars.STORE_DISPLAY_NAME }}
+        run: |
+          foreach ($name in @('STORE_IDENTITY_NAME', 'STORE_PUBLISHER', 'STORE_PUBLISHER_DISPLAY_NAME', 'STORE_DISPLAY_NAME')) {
+            if (-not [Environment]::GetEnvironmentVariable($name)) { throw "Missing Partner Center identity value: $name" }
+          }
+          Push-Location tauri
+          try {
+            npx tauri build --no-bundle --features microsoft-store
+            if ($LASTEXITCODE -ne 0) { throw 'Store-feature Tauri build failed.' }
+          } finally { Pop-Location }
+          $version = [version](Get-Content tauri/src-tauri/tauri.conf.json -Raw | ConvertFrom-Json).version
+          $storeVersion = '{0}.{1}.{2}.0' -f ($version.Major + 1), $version.Minor, $version.Build
+          ./scripts/package-msix.ps1 -IdentityName $env:STORE_IDENTITY_NAME -Publisher $env:STORE_PUBLISHER -PublisherDisplayName $env:STORE_PUBLISHER_DISPLAY_NAME -DisplayName $env:STORE_DISPLAY_NAME -Version $storeVersion -OutputDirectory "$env:RUNNER_TEMP/store-submission"
+
+      - name: Upload unsigned Microsoft Store submission for review
+        if: runner.os == 'Windows' && vars.STORE_IDENTITY_NAME != ''
+        uses: actions/upload-artifact@v7
+        with:
+          name: microsoft-store-submission-windows-x64
+          path: ${{ runner.temp }}/store-submission/*.msix
+          if-no-files-found: error

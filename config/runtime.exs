@@ -22,6 +22,11 @@ if System.get_env("PHX_SERVER") || System.get_env("BURRITO") do
   config :trenino, TreninoWeb.Endpoint, server: true
 end
 
+# Store installations are updated by Windows; do not direct them to EXE downloads.
+if System.get_env("TRENINO_DISTRIBUTION") == "microsoft-store" do
+  config :trenino, :start_app_version_checker, false
+end
+
 # Sentry error tracking (Better Stack) — only active when SENTRY_DSN is set.
 # Set SENTRY_DSN during the release build in CI.
 if sentry_dsn = System.get_env("SENTRY_DSN") do

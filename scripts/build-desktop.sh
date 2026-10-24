@@ -133,6 +133,12 @@ if [ "$PLATFORM" = "x86_64-pc-windows-msvc" ]; then
         exit 1
     fi
     cp "$VJOY_CONFIG" "$RESOURCES_DIR/vJoyConfig.exe"
+    VJOY_INSTALL_DLL="$VJOY_STAGE/installer/app/x64/vJoyInstall.dll"
+    if [ ! -f "$VJOY_INSTALL_DLL" ]; then
+        echo "Error: vJoyInstall.dll was not found in the verified installer"
+        exit 1
+    fi
+    cp "$VJOY_INSTALL_DLL" "$RESOURCES_DIR/vJoyInstall.dll"
     rm "$RESOURCES_DIR/SDK.zip"
     rm -r "$VJOY_STAGE"
     unset VJOY_STAGE

@@ -116,6 +116,14 @@ pub fn run() {
                 .env("MIX_ENV", "prod")
                 .env("BURRITO", "1")
                 .env("APP_PATH", app_dir)
+                .env(
+                    "TRENINO_DISTRIBUTION",
+                    if cfg!(feature = "microsoft-store") {
+                        "microsoft-store"
+                    } else {
+                        "direct"
+                    },
+                )
                 .spawn()
             {
                 Ok(result) => result,

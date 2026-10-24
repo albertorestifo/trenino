@@ -17,6 +17,9 @@ sdk-sha256 = "0e796b185b66819d5fbeae645f3f038ecbfbbde837d3d3f06cba82ae1db07c67"
 name = "trenino_lib"
 crate-type = ["lib", "cdylib", "staticlib"]
 
+[features]
+microsoft-store = []
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
