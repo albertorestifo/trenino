@@ -334,7 +334,10 @@ impl<T: VJoy> Session<T> {
             return Ok(());
         };
 
-        let neutralize_error = self.vjoy.neutralize(device).err();
+        let neutralize_error = match self.range {
+            Some(range) => self.vjoy.update(device, &Report::centered(range)).err(),
+            None => self.vjoy.neutralize(device).err(),
+        };
         let relinquish_error = self.vjoy.relinquish(device).err();
         self.clear_selection();
 

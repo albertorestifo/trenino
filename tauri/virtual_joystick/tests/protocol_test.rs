@@ -573,6 +573,27 @@ fn shutdown_reports_neutralize_and_relinquish_failures_but_still_releases_once()
 }
 
 #[test]
+fn cleanup_uses_verified_ranges_if_later_range_queries_fail() {
+    let (mut session, state) = ready_session();
+    session.handle_line(
+        r#"{"command":"set_button","request_id":1,"device":1,"button":1,"pressed":true}"#,
+    );
+    state.borrow_mut().axis_range = Err(VJoyError::Sdk {
+        operation: "GetVJDAxisMin/GetVJDAxisMax",
+        message: "temporary query failure".into(),
+    });
+
+    assert_eq!(
+        session.handle_line(r#"{"command":"shutdown"}"#).response,
+        Response::Stopped
+    );
+    assert_eq!(
+        state.borrow().events,
+        ["neutral", "update", "neutral", "relinquish:1"]
+    );
+}
+
+#[test]
 fn direct_session_drop_neutralizes_then_relinquishes_once() {
     let fake = FakeVJoy::default();
     let state = fake.state.clone();

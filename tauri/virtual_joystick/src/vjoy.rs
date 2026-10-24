@@ -425,10 +425,7 @@ mod windows {
             assert_eq!(state.acquire_attempts, [16]);
             assert_eq!(state.acquired, [16]);
             assert_eq!(state.released, [16]);
-            assert_eq!(
-                state.range_axes,
-                [1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 8]
-            );
+            assert_eq!(state.range_axes, [1, 2, 3, 4, 5, 6, 7, 8]);
             assert_eq!(state.reports.len(), 5);
             assert_eq!(state.reports[2].0, 16);
             assert_eq!(state.reports[2].1.axis(Axis::Slider1), 70);
