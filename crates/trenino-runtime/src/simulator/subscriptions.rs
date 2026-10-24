@@ -222,16 +222,25 @@ impl SubscriptionService {
             .map_err(|_| SubscriptionServiceError::Closed)?
     }
 
+    /// Close admission and drain leases. If the bounded inbox is full, `QueueTimeout`
+    /// is retryable: the actor remains alive and a later shutdown call can be admitted.
     pub async fn shutdown(&self) -> Result<(), SubscriptionServiceError> {
         self.closing.store(true, Ordering::Release);
         let (reply, receive) = oneshot::channel();
         let send_result = self.send_even_if_closing(Command::Shutdown(reply)).await;
         if let Err(error) = send_result {
-            let mut worker = self.worker.lock().await;
-            if let Some(handle) = worker.as_mut() {
-                handle.await.map_err(|_| SubscriptionServiceError::Closed)?;
-                worker.take();
-                return Ok(());
+            if matches!(error, SubscriptionServiceError::QueueTimeout) {
+                // The command was not admitted, so the actor has not been asked to exit.
+                // Keep its handle intact and let the caller retry shutdown after the inbox drains.
+                return Err(error);
+            }
+            if matches!(error, SubscriptionServiceError::Closed) {
+                let mut worker = self.worker.lock().await;
+                if let Some(handle) = worker.as_mut() {
+                    handle.await.map_err(|_| SubscriptionServiceError::Closed)?;
+                    worker.take();
+                    return Ok(());
+                }
             }
             return Err(error);
         }

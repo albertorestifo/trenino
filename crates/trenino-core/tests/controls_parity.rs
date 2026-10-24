@@ -111,6 +111,46 @@ fn output_predicates_keep_boolean_and_numeric_types_separate_and_between_inclusi
 }
 
 #[test]
+fn output_integer_comparisons_preserve_precision_against_float_thresholds() {
+    let positive = SimValue::Integer(9_007_199_254_740_993);
+    let negative = SimValue::Integer(-9_007_199_254_740_993);
+    let binding = |operator, value_a, value_b| OutputBinding {
+        operator,
+        value_a: Some(value_a),
+        value_b,
+    };
+
+    assert!(evaluate_output(
+        &binding(OutputOperator::Gt, 9_007_199_254_740_992.0, None),
+        &positive
+    ));
+    assert!(!evaluate_output(
+        &binding(OutputOperator::Lte, 9_007_199_254_740_992.0, None),
+        &positive
+    ));
+    assert!(evaluate_output(
+        &binding(OutputOperator::Lt, -9_007_199_254_740_992.0, None),
+        &negative
+    ));
+    assert!(!evaluate_output(
+        &binding(OutputOperator::Gte, -9_007_199_254_740_992.0, None),
+        &negative
+    ));
+    assert!(evaluate_output(
+        &binding(
+            OutputOperator::Between,
+            9_007_199_254_740_992.0,
+            Some(9_007_199_254_740_994.0)
+        ),
+        &positive
+    ));
+    assert!(evaluate_output(
+        &binding(OutputOperator::Gt, 11.5, None),
+        &SimValue::Integer(12)
+    ));
+}
+
+#[test]
 fn identifier_matching_is_case_sensitive_deduplicated_per_profile_and_ambiguous_across_profiles() {
     let profiles = vec![
         TrainProfile {
@@ -517,6 +557,26 @@ fn display_raw_token_preserves_json_integer_float_and_exponent_text() {
         format_display("{value:.2f}", &SimValue::Number(2.675)),
         "2.67"
     );
+}
+
+#[test]
+fn display_float_notation_matches_elixir_shortest_notation_boundaries() {
+    for (value, expected) in [
+        (0.001, "0.001"),
+        (0.0009999999999999998, "9.999999999999998e-4"),
+        (-0.0009999999999999998, "-9.999999999999998e-4"),
+        (0.0001, "0.0001"),
+        (100_000_000_000_000.0, "1.0e14"),
+        (999_999_999_999_999.9, "999999999999999.9"),
+        (1_000_000_000_000_000.0, "1.0e15"),
+        (1_000_000_000_000_001.0, "1000000000000001.0"),
+        (1_000_000_000_001_000.0, "1.000000000001e15"),
+        (1.0e16, "1.0e16"),
+        (-1_000_000_000_000_000.0, "-1.0e15"),
+    ] {
+        let value = SimValue::Number(value);
+        assert_eq!(format_display("{value}", &value), expected);
+    }
 }
 
 #[test]

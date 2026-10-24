@@ -787,6 +787,54 @@ async fn failed_unsubscribe_is_explicitly_retryable_without_new_consumers() {
     let _ = observed.recv_timeout(Duration::from_secs(1)).unwrap();
     service.shutdown().await.unwrap();
 }
+
+#[tokio::test]
+async fn saturated_subscription_shutdown_returns_without_waiting_for_an_unrequested_exit() {
+    use trenino_runtime::simulator::subscriptions::{
+        SubscriptionService, SubscriptionServiceError,
+    };
+    let (gate_tx, gate_rx) = mpsc::channel();
+    let (url, observed) = fake_server(200, r#"{"Result":"Success"}"#, Some(gate_rx));
+    let service = std::sync::Arc::new(SubscriptionService::new(
+        std::sync::Arc::new(
+            SimulatorClient::with_profile(&url, "key", TimeoutProfile::Fast).unwrap(),
+        ),
+        999,
+    ));
+    let observed = std::sync::Arc::new(std::sync::Mutex::new(observed));
+    let acquiring_service = service.clone();
+    let acquiring = tokio::spawn(async move {
+        acquiring_service
+            .acquire("owner", 1, vec!["A".into()])
+            .await
+    });
+    assert!(recv_from_thread(observed)
+        .await
+        .to_ascii_lowercase()
+        .starts_with("post /subscription/a?"));
+
+    let mut counts = Vec::new();
+    for _ in 0..65 {
+        let service = service.clone();
+        counts.push(tokio::spawn(async move { service.lease_count().await }));
+    }
+    tokio::time::sleep(Duration::from_millis(50)).await;
+    assert!(counts.iter().all(|count| !count.is_finished()));
+
+    let first_shutdown = tokio::time::timeout(Duration::from_secs(1), service.shutdown()).await;
+    gate_tx.send(()).unwrap();
+    assert!(
+        matches!(
+            first_shutdown,
+            Ok(Err(SubscriptionServiceError::QueueTimeout))
+        ),
+        "first saturated shutdown must return a retryable admission error: {first_shutdown:?}"
+    );
+    assert!(acquiring.await.unwrap().is_ok());
+    for count in counts {
+        let _ = count.await.unwrap();
+    }
+}
 use trenino_runtime::keyboard::{key_actions, Key, KeyAction, KeystrokeAction};
 
 #[test]

@@ -76,25 +76,67 @@ impl SimValue {
     pub fn to_legacy_string(&self) -> String {
         match self {
             Self::Integer(value) => value.to_string(),
-            Self::Number(value) => {
-                let rendered = format!("{value:?}");
-                if let Some(exponent) = rendered.find(['e', 'E']) {
-                    let mantissa = &rendered[..exponent];
-                    if mantissa.contains('.') {
-                        rendered
-                    } else {
-                        format!("{mantissa}.0{}", &rendered[exponent..])
-                    }
-                } else if rendered.contains('.') {
-                    rendered
-                } else {
-                    format!("{rendered}.0")
-                }
-            }
+            Self::Number(value) => legacy_float_string(*value),
             Self::Bool(value) => value.to_string(),
             Self::String(value) => value.clone(),
             Self::Null => String::new(),
         }
+    }
+}
+
+fn legacy_float_string(value: f64) -> String {
+    if !value.is_finite() {
+        return format!("{value:?}");
+    }
+    let rendered = format!("{value:?}");
+    if value == 0.0 {
+        return rendered;
+    }
+    let (negative, unsigned) = rendered
+        .strip_prefix('-')
+        .map_or((false, rendered.as_str()), |unsigned| (true, unsigned));
+    let (mantissa, exponent) = unsigned
+        .split_once(['e', 'E'])
+        .map_or((unsigned, 0), |(mantissa, exponent)| {
+            (mantissa, exponent.parse::<i32>().unwrap_or(0))
+        });
+    let decimal_position = mantissa.find('.').unwrap_or(mantissa.len()) as i32;
+    let digits: String = mantissa.chars().filter(char::is_ascii_digit).collect();
+    let first_nonzero = digits.find(|digit| digit != '0').unwrap_or(0);
+    let mut significant = digits[first_nonzero..].trim_end_matches('0').to_owned();
+    if significant.is_empty() {
+        significant.push('0');
+    }
+    let exponent = exponent + decimal_position - first_nonzero as i32 - 1;
+    let sign = if negative { "-" } else { "" };
+    let mut scientific_mantissa = significant[..1].to_owned();
+    if significant.len() == 1 {
+        scientific_mantissa.push_str(".0");
+    } else {
+        scientific_mantissa.push('.');
+        scientific_mantissa.push_str(&significant[1..]);
+    }
+    let scientific = format!("{sign}{scientific_mantissa}e{exponent}");
+    let decimal_position = exponent + 1;
+    let fixed = if decimal_position <= 0 {
+        format!(
+            "{sign}0.{}{significant}",
+            "0".repeat((-decimal_position) as usize)
+        )
+    } else if decimal_position as usize >= significant.len() {
+        format!(
+            "{sign}{}{}.0",
+            significant,
+            "0".repeat(decimal_position as usize - significant.len())
+        )
+    } else {
+        let split = decimal_position as usize;
+        format!("{sign}{}.{}", &significant[..split], &significant[split..])
+    };
+    if scientific.len() < fixed.len() {
+        scientific
+    } else {
+        fixed
     }
 }
 
