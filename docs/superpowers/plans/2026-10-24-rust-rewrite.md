@@ -4,6 +4,8 @@
 
 **User decisions:** Retain Tauri and the existing UI experience. Use a small TypeScript frontend with all application logic in Rust. Have subagents examine and plan the functionality migrations, including whether vJoy can be replaced directly in Rust.
 
+**Implementation authorization:** User approved branch-based implementation with cheap concurrent coders, Astra track supervisors and independent correctness/adversarial reviews. Use the `vjoy` crate; retain the driver. Fixed device 1 is not a requirement: select a device explicitly, preserve ownership isolation and migrate existing configurations.
+
 ## Recommendation
 
 Keep Tauri as the desktop host, bundle a static TypeScript frontend, and replace the Phoenix/Elixir backend with in-process Rust services. Keep current screens, styling and workflows; port the HEEx/LiveView implementation rather than trying to run it without Elixir. Use the same domain services from desktop commands and the compatibility HTTP/MCP server.

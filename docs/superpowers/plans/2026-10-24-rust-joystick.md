@@ -13,7 +13,7 @@
 ## Global Constraints
 
 - Keep Tauri and existing user-facing workflows; the confirmed broader migration replaces LiveView with a TypeScript frontend and moves all application logic to Rust. Its UI plan owns rendering and transport.
-- Device index is exactly 1; axes are `x`, `y`, `z`, `rx`, `ry`, `rz`, `slider_1`, `slider_2`; buttons are 1 through 32; no POV or force feedback.
+- Device index is selected explicitly from 1 through 16; the user clarified that fixed device 1 is a legacy design choice, not a rewrite requirement. Migrate existing device-1 configurations without silently adopting/deleting other devices. Axes are `x`, `y`, `z`, `rx`, `ry`, `rz`, `slider_1`, `slider_2`; buttons are 1 through 32; no POV or force feedback.
 - Windows-only virtual joystick support; other platforms return `unsupported` without starting workers or packaging vJoy.
 - No new kernel-driver project, privileged resident service, Xbox emulation, or firmware changes in this workstream.
 - Preserve existing SQLite rows and constraints; do not silently change bindings or adopt another application's device.
@@ -168,6 +168,8 @@ Configurator interface: `probe(deadline: Instant) -> Result<DeviceProbe, Joystic
 - [ ] Run the full workspace checks required by the root migration, plus the existing Rust feeder suite and installer extraction checks. Only then remove dead Elixir joystick manager/bridge/configurator and standalone binary entry point, with equivalent UI/MCP tests retained. Commit the cutover with recorded Windows acceptance results.
 
 ## Dependencies and open evidence
+
+- Latest user direction supersedes fixed-device-1 assumptions in historical source, schema constraints and tasks above. The crate adapter supports selected IDs; subsequent configuration/schema/installer work must replace hardcoded device indices and device-1-only ownership markers with verified per-device records. Migration retains existing ID 1, and destructive operations still require ownership. Flexible selection does not authorize acquisition of every installed device.
 
 - Shared calibration, source identity/generation, routing transaction and repository interfaces must be aligned with sibling plans before implementation. The platform plan proposes `rusqlite` on a dedicated database worker; destination replacement uses one immediate transaction. This plan owns joystick-specific modules only.
 - Same-executable worker pipes in the actual Tauri release subsystem are a spike gate, not assumed complete. If unsupported by the current launcher arrangement, keep the existing sidecar temporarily; do not weaken native isolation to meet an artifact-count target.
