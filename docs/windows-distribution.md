@@ -1,6 +1,9 @@
 # Standard Tauri distribution and updates
 
-Use Tauri's built-in NSIS EXE / WiX MSI installers. The stable release workflow
+Use Tauri's built-in installers. **Choose the NSIS `.exe` for a normal Windows
+installation**: its hooks install the Visual C++ runtime and manage vJoy when
+safe. The WiX `.msi` does not run those prerequisite hooks; its prerequisites
+must already be provisioned separately. The stable release workflow
 enables `desktop-updater` and merges `tauri.updater.conf.json` to generate updater
 signatures. `tauri-action` uploads signatures and `latest.json`, preferring NSIS
 for Windows updates. Stable clients use the GitHub latest-release endpoint.
@@ -34,9 +37,10 @@ The Windows maintainer backup is outside the repository at
 Keep a separately secured, recoverable backup of both active key and password
 before the first public release. Losing them breaks updates for existing clients.
 `scripts/setup-updater-signing.ps1` reuses the active files, validates signing,
-and uploads secrets without printing private material. It requires npm dependencies
-and an authenticated GitHub CLI. It refuses to upload a key whose public half
-differs from the embedded verification key. Do not rotate the key casually after release.
+and uploads secrets without printing private material. It requires npm dependencies,
+Rust/Cargo, and an authenticated GitHub CLI. It verifies a signed fixture against
+the embedded public key before uploading either secret, as well as checking the
+public-key file. Do not rotate the key casually after release.
 
 These are **updater authenticity signatures**, not Windows Authenticode publisher
 certificates. Windows may still show publisher/SmartScreen warnings. No paid

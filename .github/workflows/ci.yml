@@ -66,10 +66,6 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: Reject mismatched updater signing keys without uploading secrets
-        shell: pwsh
-        run: ./scripts/test-updater-signing.ps1
-
       - name: Set up Elixir
         uses: erlef/setup-beam@v1
         with:
@@ -83,6 +79,19 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: x86_64-pc-windows-msvc
+
+      - name: Set up Node.js for signing regression tests
+        uses: actions/setup-node@v7
+        with:
+          node-version: 20
+
+      - name: Install pinned Tauri CLI dependencies
+        working-directory: tauri
+        run: npm ci
+
+      - name: Reject mismatched updater signing keys without uploading secrets
+        shell: pwsh
+        run: ./scripts/test-updater-signing.ps1
 
       - name: Install Tauri CLI and stage existing Windows prerequisite
         shell: pwsh

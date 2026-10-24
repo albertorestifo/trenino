@@ -1,0 +1,9 @@
+[package]
+name = "updater-signature-verifier"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+base64 = "=0.22.1"
+minisign-verify = "=0.3.0"

@@ -36,6 +36,11 @@ try {
     Copy-Item -LiteralPath (Join-Path $PSScriptRoot '../tauri/src-tauri/tauri.conf.json') -Destination $fixture
     & node $cli signer sign --private-key-path $key --password $password $fixture *> $null
     if ($LASTEXITCODE -ne 0) { throw 'Key could not sign the verification fixture; GitHub secrets unchanged.' }
+    # A .pub file can be stale: verify possession of the actual embedded key.
+    $config = Get-Content -Raw -LiteralPath (Join-Path $PSScriptRoot '../tauri/src-tauri/tauri.conf.json') | ConvertFrom-Json
+    $verifier = Join-Path $PSScriptRoot 'updater-signature-verifier/Cargo.toml'
+    & cargo run --quiet --locked --manifest-path $verifier -- $config.plugins.updater.pubkey $fixture "$fixture.sig"
+    if ($LASTEXITCODE -ne 0) { throw 'Fixture signature does not verify against the embedded updater public key. GitHub secrets unchanged.' }
     Get-Content -Raw -LiteralPath $key | & gh secret set TAURI_SIGNING_PRIVATE_KEY --repo $Repository
     if ($LASTEXITCODE -ne 0) { throw 'Private key upload failed.' }
     $password | & gh secret set TAURI_SIGNING_PRIVATE_KEY_PASSWORD --repo $Repository
