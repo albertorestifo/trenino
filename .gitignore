@@ -70,3 +70,7 @@ priv/firmware_cache
 # Git worktrees
 /.worktrees/
 .superpowers/
+
+# Rust workspace build output
+/target/
+/crates/*/target/

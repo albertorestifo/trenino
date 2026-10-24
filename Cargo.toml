@@ -1,0 +1,3 @@
+[workspace]
+members = ["crates/trenino-core", "crates/trenino-runtime"]
+resolver = "2"
