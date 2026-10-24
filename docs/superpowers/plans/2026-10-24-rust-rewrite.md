@@ -1,6 +1,6 @@
 # Trenino Rust rewrite: coordinated migration proposal
 
-**Status:** Planning only. No application code has been rewritten. Subsystem interfaces and library choices below are proposals to validate before implementation, not a claim that a buildable specification has already been approved.
+**Status:** Implementation in progress on `codex/rust-rewrite`. Initial Rust foundation and pure hardware modules are committed and undergoing independent review; the vJoy adapter is being implemented. The legacy application remains the default until runtime, UI, migration and packaging parity are verified. Unimplemented interfaces below remain design targets.
 
 **User decisions:** Retain Tauri and the existing UI experience. Use a small TypeScript frontend with all application logic in Rust. Have subagents examine and plan the functionality migrations, including whether vJoy can be replaced directly in Rust.
 
