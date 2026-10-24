@@ -53,10 +53,10 @@
     ReadRegStr $4 HKLM "SYSTEM\CurrentControlSet\Services\vjoy" "ImagePath"
     ${If} $4 != ""
     ${AndIf} $3 != 1
-      DetailPrint "WARNING: An existing vJoy driver could not be verified as the supported signed version; preserving it as shared system state."
+      DetailPrint "WARNING: Existing vJoy does not match the supported ${VJOY_VERSION} installation; preserving shared driver state."
       WriteRegDWORD HKLM "${TRENINO_REGISTRY_KEY}" "VJoyInstalledByTrenino" 0
       IfSilent vjoy_unverified_warning_done
-      MessageBox MB_OK|MB_ICONEXCLAMATION "Trenino was installed, but the existing vJoy driver is not the supported signed version. No driver changes were made. Virtual joystick mode will remain unavailable until vJoy is repaired or removed."
+      MessageBox MB_OK|MB_ICONEXCLAMATION "Trenino was installed successfully. An existing vJoy driver was found, but its version or installation state does not match the supported ${VJOY_VERSION} release. This does not mean the driver is unsigned. No shared driver changes were made. To use virtual joystick mode, review other apps that use vJoy and repair or upgrade it to ${VJOY_VERSION}."
       vjoy_unverified_warning_done:
     ${Else}
       DetailPrint "Installing pinned signed vJoy ${VJOY_VERSION} runtime..."

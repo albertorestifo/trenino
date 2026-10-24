@@ -66,9 +66,9 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - name: Validate MSIX packaging without installing drivers
+      - name: Reject mismatched updater signing keys without uploading secrets
         shell: pwsh
-        run: ./scripts/test-msix-packaging.ps1 -Pack
+        run: ./scripts/test-updater-signing.ps1
 
       - name: Set up Elixir
         uses: erlef/setup-beam@v1
@@ -205,34 +205,9 @@ jobs:
           path: tauri/src-tauri/target/release/bundle/nsis/*.exe
           if-no-files-found: error
 
-      - name: Build actual Microsoft Store submission
-        if: vars.STORE_IDENTITY_NAME != ''
+      - name: Test stable updater integration without signing or publishing
         shell: pwsh
-        env:
-          STORE_IDENTITY_NAME: ${{ vars.STORE_IDENTITY_NAME }}
-          STORE_PUBLISHER: ${{ vars.STORE_PUBLISHER }}
-          STORE_PUBLISHER_DISPLAY_NAME: ${{ vars.STORE_PUBLISHER_DISPLAY_NAME }}
-          STORE_DISPLAY_NAME: ${{ vars.STORE_DISPLAY_NAME }}
-        run: |
-          foreach ($name in @('STORE_IDENTITY_NAME', 'STORE_PUBLISHER', 'STORE_PUBLISHER_DISPLAY_NAME', 'STORE_DISPLAY_NAME')) {
-            if (-not [Environment]::GetEnvironmentVariable($name)) { throw "Missing Partner Center identity value: $name" }
-          }
-          Push-Location tauri
-          try {
-            cargo tauri build --no-bundle --features microsoft-store
-            if ($LASTEXITCODE -ne 0) { throw 'Store-feature Tauri build failed.' }
-          } finally { Pop-Location }
-          $version = [version](Get-Content tauri/src-tauri/tauri.conf.json -Raw | ConvertFrom-Json).version
-          $storeVersion = '{0}.{1}.{2}.0' -f ($version.Major + 1), $version.Minor, $version.Build
-          ./scripts/package-msix.ps1 -IdentityName $env:STORE_IDENTITY_NAME -Publisher $env:STORE_PUBLISHER -PublisherDisplayName $env:STORE_PUBLISHER_DISPLAY_NAME -DisplayName $env:STORE_DISPLAY_NAME -Version $storeVersion -OutputDirectory "$env:RUNNER_TEMP/store-submission"
-
-      - name: Upload unsigned Store package for validation
-        if: vars.STORE_IDENTITY_NAME != ''
-        uses: actions/upload-artifact@v7
-        with:
-          name: trenino-windows-store-validation
-          path: ${{ runner.temp }}/store-submission/*.msix
-          if-no-files-found: error
+        run: cargo test --manifest-path tauri/src-tauri/Cargo.toml --features desktop-updater
 
   # Real driver installation belongs in a self-hosted, disposable Windows VM.
   # It is intentionally absent from ordinary CI because driver mutation requires

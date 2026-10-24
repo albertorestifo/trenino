@@ -42,5 +42,7 @@ Test updater eligibility, cancellation, failures, and shutdown sequencing; valid
 release metadata/signatures and run CI plus a real Windows update smoke test.
 Existing installations need one manual upgrade to an updater-enabled build.
 Do not merge, publish a release, install a driver, or change the Store listing as
-part of configuration. Driver repair and the existing vJoy helper lookup issue
-remain separate from choosing the distribution/update mechanism.
+part of configuration. The user subsequently included the vJoy software fixes:
+repair installed-helper lookup, include the missing loader DLL, and correct
+misleading installer warnings. Mutating this PC's shared driver still requires
+a separate decision about other applications that may depend on it.

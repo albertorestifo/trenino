@@ -18,7 +18,7 @@ name = "trenino_lib"
 crate-type = ["lib", "cdylib", "staticlib"]
 
 [features]
-microsoft-store = []
+desktop-updater = ["dep:tauri-plugin-updater", "dep:tauri-plugin-dialog"]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
@@ -27,6 +27,8 @@ tauri-build = { version = "2", features = [] }
 tauri = { version = "2", features = ["webview-data-url"] }
 tauri-plugin-opener = "2"
 tauri-plugin-shell = "2"
+tauri-plugin-updater = { version = "2", optional = true }
+tauri-plugin-dialog = { version = "2", optional = true }
 tokio = { version = "1", features = ["time"] }
 reqwest = { version = "0.13", features = ["blocking"] }
 serde = { version = "1", features = ["derive"] }

@@ -22,8 +22,8 @@ if System.get_env("PHX_SERVER") || System.get_env("BURRITO") do
   config :trenino, TreninoWeb.Endpoint, server: true
 end
 
-# Store installations are updated by Windows; do not direct them to EXE downloads.
-if System.get_env("TRENINO_DISTRIBUTION") == "microsoft-store" do
+# Stable desktop builds use Tauri's native updater instead of duplicate web notices.
+if System.get_env("TRENINO_DISTRIBUTION") == "tauri-updater" do
   config :trenino, :start_app_version_checker, false
 end
 
