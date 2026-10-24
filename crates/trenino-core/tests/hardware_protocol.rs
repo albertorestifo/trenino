@@ -179,3 +179,34 @@ fn every_two_chunk_split_decodes_the_same_coalesced_stream() {
         );
     }
 }
+
+#[test]
+fn oversized_unterminated_frame_is_bounded_and_decoder_resynchronizes() {
+    let matrix = Message::ConfigureMatrix {
+        config_id: 7,
+        total_parts: 1,
+        part_number: 0,
+        row_pins: vec![1; 255],
+        col_pins: vec![2; 255],
+    };
+    let payload = encode_message(&matrix).unwrap();
+    assert_eq!(payload.len(), 520);
+    let frame = FrameDecoder::encode_frame(&payload);
+    assert_eq!(frame.len(), 524); // 523 encoded bytes plus the delimiter
+    let mut decoder = FrameDecoder::default();
+    assert_eq!(decoder.push(&frame), vec![Ok(payload)]);
+    assert_eq!(
+        decode_message(&encode_message(&matrix).unwrap()),
+        Ok(matrix)
+    );
+
+    let too_long = vec![0x55; 524];
+    let outcomes = decoder.push(&too_long);
+    assert_eq!(outcomes.len(), 1);
+    assert!(outcomes[0].is_err());
+    let recovery = FrameDecoder::encode_frame(&[6]);
+    assert_eq!(
+        decoder.push(&[&too_long[..0], &[0], &recovery].concat()),
+        vec![Ok(vec![6])]
+    );
+}

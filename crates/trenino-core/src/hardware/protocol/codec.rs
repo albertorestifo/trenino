@@ -385,7 +385,15 @@ pub fn decode_message(b: &[u8]) -> Result<Message, ProtocolError> {
 #[derive(Default)]
 pub struct FrameDecoder {
     buffer: Vec<u8>,
+    discarding: bool,
 }
+// Largest accepted payload is a ConfigureMatrix: type (1), config id (4),
+// part metadata/subtype/counts (5), and up to 255 row + 255 column bytes = 520.
+// WriteSegments is at most type + address + length + 16 data = 19 bytes, so
+// the matrix is the maximum accepted layout. The custom trailing-zero COBS
+// convention adds at most ceil(520 / 254) code bytes, so at most 523
+// non-delimiter encoded bytes are buffered.
+const MAX_ENCODED_FRAME_BYTES: usize = 523;
 impl FrameDecoder {
     pub fn encode_frame(payload: &[u8]) -> Vec<u8> {
         let mut raw = payload.to_vec();
@@ -417,6 +425,11 @@ impl FrameDecoder {
         let mut result = Vec::new();
         for b in bytes {
             if *b == 0 {
+                if self.discarding {
+                    self.discarding = false;
+                    self.buffer.clear();
+                    continue;
+                }
                 if self.buffer.is_empty() {
                     continue;
                 }
@@ -428,7 +441,16 @@ impl FrameDecoder {
                 }));
                 self.buffer.clear()
             } else {
-                self.buffer.push(*b)
+                if self.discarding {
+                    continue;
+                }
+                if self.buffer.len() == MAX_ENCODED_FRAME_BYTES {
+                    self.buffer.clear();
+                    self.discarding = true;
+                    result.push(Err(ProtocolError::InvalidMessage));
+                } else {
+                    self.buffer.push(*b)
+                }
             }
         }
         result
