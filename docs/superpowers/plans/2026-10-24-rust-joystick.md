@@ -6,7 +6,7 @@
 
 **Architecture:** Keep the signed vJoy kernel driver and reuse `tauri/virtual_joystick` as a Rust library. Put pure mapping/types in `crates/trenino-core`, lifecycle services in `crates/trenino-runtime`, and thin UI/entry-point integration in `tauri/src-tauri`. Run the native SDK in a headless mode of the same installed application executable to retain fault isolation without a second build artifact.
 
-**Tech Stack:** Existing Rust vJoy library, pinned vJoy 2.2.2.0 SDK/runtime, Windows APIs, shared runtime executor and persistence selected by the overall Rust migration.
+**Tech Stack:** User-selected `vjoy` crate, pinned vJoy 2.2.2.0 SDK/runtime, Windows APIs, shared runtime executor and persistence selected by the overall Rust migration. The crate adoption must preserve device-1-only ownership and quiet worker protocol output; upstream 0.7.1 requires a narrowly scoped selected-device/cleanup patch before use.
 
 **Spec:** `docs/superpowers/specs/2026-08-01-virtual-joystick-design.md`, with this plan's explicit architecture changes and safety corrections, coordinated with `docs/superpowers/plans/2026-10-24-rust-platform.md`. This is a planning deliverable, not authorization to implement or install drivers.
 
@@ -52,7 +52,7 @@ Research checked 2026-10-24. These recommendations infer engineering scope from 
 
 ### Existing Rust packages and newer alternatives
 
-The user has explicitly accepted retaining vJoy if no suitable existing Rust replacement is found. The existing [`vjoy` 0.7.1 Rust crate](https://docs.rs/vjoy/latest/vjoy/) wraps the SDK and explicitly requires installed vJoy 2.2.2.0; it can replace handwritten bindings, but cannot remove the driver. Evaluate it only if it reduces maintenance while preserving trusted DLL loading and existing ABI tests.
+The user has explicitly accepted retaining vJoy and requested using the [`vjoy` Rust crate](https://docs.rs/vjoy/latest/vjoy/) for control. Version 0.7.1 explicitly requires installed vJoy 2.2.2.0; it replaces handwritten control bindings, not the driver. Its constructor acquires all discoverable devices and cleanup prints to stdout. Adopt it through a narrowly scoped vendored patch providing selected-device acquisition and quiet cleanup, retaining upstream licenses/provenance and behavioral tests. Verify axis/report ordering against the pinned SDK. Keep necessary capability probes separate if the safe wrapper does not expose them; never acquire another application's device to accommodate the wrapper.
 
 [HIDMaestro](https://github.com/hifihedgehog/HIDMaestro) advertises virtual DirectInput/game controllers using user-mode infrastructure and provides a different native/.NET integration stack. It is a real alternative to investigate, not evidence of a ready pure-Rust drop-in. [LizardByte Virtual HID Driver](https://app.lizardbyte.dev/libvirtualhid/virtual-hid-driver/) likewise documents a UMDF2 driver package with a C++ client API, matching protocol requirements, AMD64 packaging and a required Windows license. Its process-owned cleanup is interesting, but descriptor equivalence, redistribution terms and clean-system compatibility would require a separate spike.
 
