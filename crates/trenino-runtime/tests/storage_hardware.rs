@@ -176,6 +176,8 @@ fn matrix_children_are_ordered_generated_and_replaced_atomically() {
         .replace_matrix_children(OperationId(22), matrix.id, vec![128], vec![5])
         .unwrap_err();
     assert!(matches!(bad, StorageError::InvalidHardware { .. }));
+    // The failed replacement must leave both matrix content and revision untouched.
+    assert_eq!(db.get_matrix(matrix.id).unwrap().unwrap(), matrix);
     assert_eq!(
         db.hardware_snapshot().unwrap().1.revision,
         created.receipt.metadata.revision
