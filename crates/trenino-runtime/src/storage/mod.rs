@@ -3,6 +3,7 @@ mod migration;
 
 pub use migration::{LegacySchema, MigrationReport};
 
+#[cfg(unix)]
 use fs2::FileExt;
 use rusqlite::{Connection, OptionalExtension};
 use std::{
@@ -176,6 +177,19 @@ struct Worker {
     join: Mutex<Option<thread::JoinHandle<()>>>,
 }
 
+#[cfg(unix)]
+struct DatabaseOwnership {
+    file: File,
+    locked: bool,
+}
+
+#[cfg(windows)]
+struct DatabaseOwnership {
+    _identity_file: File,
+    mutex: windows_sys::Win32::Foundation::HANDLE,
+    locked: bool,
+}
+
 impl Drop for Worker {
     fn drop(&mut self) {
         self.tx.get_mut().ok().and_then(Option::take);
@@ -213,17 +227,13 @@ impl Database {
         let join = thread::Builder::new()
             .name("trenino-db".into())
             .spawn(move || {
-                let ownership = match open_database_ownership_file(&path) {
+                let mut ownership = match DatabaseOwnership::acquire(&path) {
                     Ok(file) => file,
                     Err(error) => {
                         let _ = ready_tx.send(Err(error));
                         return;
                     }
                 };
-                if ownership.try_lock_exclusive().is_err() {
-                    let _ = ready_tx.send(Err(StorageError::AlreadyRunning));
-                    return;
-                }
                 let opened = open_connection(&path, path_exists, require_full);
                 let (mut connection, mode) = match opened {
                     Ok(opened) => opened,
@@ -232,7 +242,7 @@ impl Database {
                         return;
                     }
                 };
-                if mode == SchemaMode::LegacyReadOnly && FileExt::unlock(&ownership).is_err() {
+                if mode == SchemaMode::LegacyReadOnly && ownership.unlock().is_err() {
                     let _ = ready_tx.send(Err(StorageError::WorkerStopped));
                     return;
                 }
@@ -389,31 +399,82 @@ impl Database {
     }
 }
 
-fn open_database_ownership_file(path: &Path) -> DbResult<File> {
-    let database = OpenOptions::new()
-        .read(true)
-        .write(true)
-        .create(true)
-        .truncate(false)
-        .open(path)
-        .map_err(|_| StorageError::WorkerStopped)?;
-    let identity = database_file_identity(&database)?;
-    let lock_directory = std::env::temp_dir().join("trenino-runtime-db-locks");
-    std::fs::create_dir_all(&lock_directory).map_err(|_| StorageError::WorkerStopped)?;
+impl DatabaseOwnership {
+    #[cfg(unix)]
+    fn acquire(path: &Path) -> DbResult<Self> {
+        let file = open_database_identity_file(path)?;
+        file.try_lock_exclusive()
+            .map_err(|_| StorageError::AlreadyRunning)?;
+        Ok(Self { file, locked: true })
+    }
+
+    #[cfg(windows)]
+    fn acquire(path: &Path) -> DbResult<Self> {
+        use std::{ffi::OsStr, os::windows::ffi::OsStrExt, ptr};
+        use windows_sys::Win32::{
+            Foundation::{WAIT_ABANDONED, WAIT_OBJECT_0, WAIT_TIMEOUT},
+            System::Threading::{CreateMutexW, WaitForSingleObject},
+        };
+
+        let identity_file = open_database_identity_file(path)?;
+        let identity = database_file_identity(&identity_file)?;
+        let name = OsStr::new(&format!("Global\\TreninoRuntimeDb-{identity}"))
+            .encode_wide()
+            .chain(Some(0))
+            .collect::<Vec<_>>();
+        let mutex = unsafe { CreateMutexW(ptr::null(), 0, name.as_ptr()) };
+        if mutex.is_null() {
+            return Err(StorageError::WorkerStopped);
+        }
+        let wait = unsafe { WaitForSingleObject(mutex, 0) };
+        if wait == WAIT_TIMEOUT {
+            unsafe { windows_sys::Win32::Foundation::CloseHandle(mutex) };
+            return Err(StorageError::AlreadyRunning);
+        }
+        if wait != WAIT_OBJECT_0 && wait != WAIT_ABANDONED {
+            unsafe { windows_sys::Win32::Foundation::CloseHandle(mutex) };
+            return Err(StorageError::WorkerStopped);
+        }
+        Ok(Self {
+            _identity_file: identity_file,
+            mutex,
+            locked: true,
+        })
+    }
+
+    fn unlock(&mut self) -> DbResult<()> {
+        if !self.locked {
+            return Ok(());
+        }
+        #[cfg(unix)]
+        FileExt::unlock(&self.file).map_err(|_| StorageError::WorkerStopped)?;
+        #[cfg(windows)]
+        if unsafe { windows_sys::Win32::System::Threading::ReleaseMutex(self.mutex) } == 0 {
+            return Err(StorageError::WorkerStopped);
+        }
+        self.locked = false;
+        Ok(())
+    }
+}
+
+#[cfg(windows)]
+impl Drop for DatabaseOwnership {
+    fn drop(&mut self) {
+        if self.locked {
+            let _ = unsafe { windows_sys::Win32::System::Threading::ReleaseMutex(self.mutex) };
+        }
+        let _ = unsafe { windows_sys::Win32::Foundation::CloseHandle(self.mutex) };
+    }
+}
+
+fn open_database_identity_file(path: &Path) -> DbResult<File> {
     OpenOptions::new()
         .read(true)
         .write(true)
         .create(true)
         .truncate(false)
-        .open(lock_directory.join(format!("{identity}.lock")))
+        .open(path)
         .map_err(|_| StorageError::WorkerStopped)
-}
-
-#[cfg(unix)]
-fn database_file_identity(file: &File) -> DbResult<String> {
-    use std::os::unix::fs::MetadataExt;
-    let metadata = file.metadata().map_err(|_| StorageError::WorkerStopped)?;
-    Ok(format!("{}-{}", metadata.dev(), metadata.ino()))
 }
 
 #[cfg(windows)]
@@ -438,11 +499,21 @@ fn database_file_identity(file: &File) -> DbResult<String> {
 }
 
 #[cfg(not(any(unix, windows)))]
-fn database_file_identity(file: &File) -> DbResult<String> {
-    let _ = file;
-    Err(StorageError::UnsupportedOperation {
-        operation: "database file ownership on this platform",
-    })
+struct DatabaseOwnership;
+
+#[cfg(not(any(unix, windows)))]
+impl DatabaseOwnership {
+    fn acquire(_path: &Path) -> DbResult<Self> {
+        Err(StorageError::UnsupportedOperation {
+            operation: "database file ownership on this platform",
+        })
+    }
+
+    fn unlock(&mut self) -> DbResult<()> {
+        Err(StorageError::UnsupportedOperation {
+            operation: "database file ownership on this platform",
+        })
+    }
 }
 
 fn open_connection(

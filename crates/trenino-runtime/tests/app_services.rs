@@ -5,6 +5,89 @@ use trenino_runtime::settings::resolve_api_key_file;
 use trenino_runtime::settings::Settings;
 
 #[test]
+fn writable_database_owner_is_shared_across_processes_with_different_temp_dirs() {
+    let dir = tempdir().unwrap();
+    let path = dir.path().join("cross-process-owner.db");
+    let child_temp = dir.path().join("child-temp");
+    std::fs::create_dir_all(&child_temp).unwrap();
+    let alias_dir = dir.path().join("alias-directory");
+    std::fs::create_dir_all(&alias_dir).unwrap();
+    let alias = alias_dir.join("owner-alias.db");
+    let services = AppServices::open_full(&path, None).unwrap();
+    let committed = services.set_consent(true).unwrap();
+
+    run_cross_process_owner_probe(&path, &child_temp);
+    std::fs::hard_link(&path, &alias).unwrap();
+    run_cross_process_owner_probe(&alias, &child_temp);
+
+    assert_eq!(services.get_settings().unwrap(), committed);
+    assert_runtime_counters(&path, "1", "1");
+    drop(services);
+    assert_eq!(AppServices::open_full(&path, None).unwrap().epoch().0, 2);
+}
+
+fn run_cross_process_owner_probe(path: &std::path::Path, child_temp: &std::path::Path) {
+    let output = std::process::Command::new(std::env::current_exe().unwrap())
+        .arg("--exact")
+        .arg("cross_process_owner_child_probe")
+        .arg("--nocapture")
+        .env("TRENINO_TEST_OWNER_DB", path)
+        .env("TRENINO_TEST_CHILD_TEMP", child_temp)
+        .env("TMP", child_temp)
+        .env("TEMP", child_temp)
+        .env("TMPDIR", child_temp)
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "child probe failed:\n{}\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+fn assert_runtime_counters(path: &std::path::Path, epoch: &str, revision: &str) {
+    let conn = rusqlite::Connection::open(path).unwrap();
+    assert_eq!(
+        conn.query_row(
+            "SELECT value FROM app_settings WHERE key='__runtime.epoch'",
+            [],
+            |row| row.get::<_, String>(0),
+        )
+        .unwrap(),
+        epoch
+    );
+    assert_eq!(
+        conn.query_row(
+            "SELECT value FROM app_settings WHERE key='__runtime.revision.settings'",
+            [],
+            |row| row.get::<_, String>(0),
+        )
+        .unwrap(),
+        revision
+    );
+}
+
+#[test]
+fn cross_process_owner_child_probe() {
+    let Ok(path) = std::env::var("TRENINO_TEST_OWNER_DB") else {
+        return;
+    };
+    assert_eq!(
+        std::env::temp_dir(),
+        std::path::PathBuf::from(std::env::var_os("TRENINO_TEST_CHILD_TEMP").unwrap())
+    );
+    match trenino_runtime::storage::Database::open_full(path) {
+        Err(trenino_runtime::storage::StorageError::AlreadyRunning) => {}
+        Err(error) => panic!("child got unexpected open error: {error}"),
+        Ok(db) => {
+            let epoch = db.allocate_epoch().unwrap();
+            panic!("child admitted a second owner and advanced epoch to {epoch}");
+        }
+    }
+}
+
+#[test]
 fn fresh_trial_database_uses_full_schema_and_publishes_database_backed_snapshots() {
     let dir = tempdir().unwrap();
     let services = AppServices::open_full(dir.path().join("trial.db"), None).unwrap();
