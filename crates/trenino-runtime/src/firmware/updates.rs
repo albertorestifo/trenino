@@ -169,9 +169,10 @@ impl<R: FirmwareRepository> FirmwareUpdateScheduler<R> {
         })
     }
     pub fn dismiss(&mut self, devices: &[ConnectedFirmware]) -> Result<(), SchedulerError> {
-        let key = self
-            .notice(devices)
-            .map(|n| dismissal_key(&n.version, &n.outdated_devices));
+        let Some(notice) = self.notice(devices) else {
+            return Ok(());
+        };
+        let key = Some(dismissal_key(&notice.version, &notice.outdated_devices));
         self.repository.set_dismissed_notice(key.as_deref())?;
         self.dismissed_key = key;
         Ok(())

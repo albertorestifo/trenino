@@ -72,6 +72,10 @@ impl FirmwareVersion {
     pub fn is_prerelease(&self) -> bool {
         !self.pre.is_empty()
     }
+
+    fn same_core(&self, other: &Self) -> bool {
+        (self.major, self.minor, self.patch) == (other.major, other.minor, other.patch)
+    }
 }
 
 fn parse_number(value: &str) -> Result<u64, RequirementError> {
@@ -138,6 +142,7 @@ pub enum RequirementError {
     InvalidVersion,
     InvalidRequirement,
     UnsupportedSyntax,
+    RangeOverflow,
 }
 impl std::fmt::Display for RequirementError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -145,14 +150,15 @@ impl std::fmt::Display for RequirementError {
             Self::InvalidVersion => "invalid firmware version",
             Self::InvalidRequirement => "invalid firmware version requirement",
             Self::UnsupportedSyntax => "unsupported firmware requirement syntax",
+            Self::RangeOverflow => "firmware requirement range exceeds supported version bounds",
         })
     }
 }
 impl std::error::Error for RequirementError {}
 
 impl FirmwareRequirement {
-    /// Parse the subset used by Elixir `Version.Requirement`: comma/`and` conjunctions,
-    /// `or` alternatives, comparison operators and pessimistic `~>` ranges.
+    /// Parse the supported Elixir `Version.Requirement` grammar: exact versions,
+    /// `and`/`or`, comparison operators and pessimistic `~>` ranges.
     pub fn parse(value: Option<&str>) -> Result<Self, RequirementError> {
         let Some(value) = value else {
             return Ok(Self {
@@ -165,30 +171,54 @@ impl FirmwareRequirement {
         }
         let mut alternatives = Vec::new();
         for alternative in value.split(" or ") {
+            if alternative.trim().is_empty() {
+                return Err(RequirementError::InvalidRequirement);
+            }
             let mut bounds = Vec::new();
-            for raw in alternative.split(" and ").flat_map(|s| s.split(',')) {
+            for raw in alternative.split(" and ") {
                 let part = raw.trim();
-                let (op_text, version_text) = ["~>", ">=", "<=", "==", "=", ">", "<"]
+                if part.is_empty() || part.contains(',') {
+                    return Err(RequirementError::UnsupportedSyntax);
+                }
+                let parsed_op = ["~>", ">=", "<=", "==", ">", "<"]
                     .iter()
-                    .find_map(|op| part.strip_prefix(op).map(|v| (*op, v.trim())))
-                    .ok_or(RequirementError::UnsupportedSyntax)?;
-                let (version, supplied) = parse_requirement_version(version_text)?;
+                    .find_map(|op| part.strip_prefix(op).map(|v| (*op, v.trim())));
+                let (op_text, version_text) = match parsed_op {
+                    Some((op, version)) => (op, version),
+                    None if !part.starts_with('=')
+                        && !part.starts_with('!')
+                        && !part.starts_with('(')
+                        && !part.starts_with(')') =>
+                    {
+                        ("==", part)
+                    }
+                    None => return Err(RequirementError::UnsupportedSyntax),
+                };
+                let (version, supplied) = parse_requirement_version(version_text, op_text == "~>")?;
                 if op_text == "~>" {
                     bounds.push(Bound {
                         op: Op::Ge,
                         version: version.clone(),
                     });
                     let upper = if supplied <= 2 {
+                        let major = version
+                            .major
+                            .checked_add(1)
+                            .ok_or(RequirementError::RangeOverflow)?;
                         FirmwareVersion {
-                            major: version.major + 1,
+                            major,
                             minor: 0,
                             patch: 0,
                             pre: vec![],
                         }
                     } else {
+                        let minor = version
+                            .minor
+                            .checked_add(1)
+                            .ok_or(RequirementError::RangeOverflow)?;
                         FirmwareVersion {
                             major: version.major,
-                            minor: version.minor + 1,
+                            minor,
                             patch: 0,
                             pre: vec![],
                         }
@@ -199,7 +229,7 @@ impl FirmwareRequirement {
                     });
                 } else {
                     let op = match op_text {
-                        "=" | "==" => Op::Eq,
+                        "==" => Op::Eq,
                         ">" => Op::Gt,
                         ">=" => Op::Ge,
                         "<" => Op::Lt,
@@ -226,35 +256,39 @@ impl FirmwareRequirement {
         if self.any {
             return true;
         }
-        if version.is_prerelease() {
-            return false;
-        }
         self.alternatives.iter().any(|group| {
-            group.iter().all(|bound| {
-                let ord = version.cmp(&bound.version);
-                match bound.op {
-                    Op::Eq => ord == Ordering::Equal,
-                    Op::Gt => ord == Ordering::Greater,
-                    Op::Ge => ord != Ordering::Less,
-                    Op::Lt => ord == Ordering::Less,
-                    Op::Le => ord != Ordering::Greater,
-                }
-            })
+            let prerelease_is_admitted = !version.is_prerelease()
+                || group.iter().any(|bound| bound.version.same_core(&version));
+            prerelease_is_admitted
+                && group.iter().all(|bound| {
+                    let ord = version.cmp(&bound.version);
+                    match bound.op {
+                        Op::Eq => ord == Ordering::Equal,
+                        Op::Gt => ord == Ordering::Greater,
+                        Op::Ge => ord != Ordering::Less,
+                        Op::Lt => ord == Ordering::Less,
+                        Op::Le => ord != Ordering::Greater,
+                    }
+                })
         })
     }
 }
 
-fn parse_requirement_version(input: &str) -> Result<(FirmwareVersion, usize), RequirementError> {
+fn parse_requirement_version(
+    input: &str,
+    allow_partial: bool,
+) -> Result<(FirmwareVersion, usize), RequirementError> {
     if input.starts_with('v') {
         return Err(RequirementError::UnsupportedSyntax);
     }
     let value = input;
-    let count = value.split('-').next().unwrap_or(value).split('.').count();
-    if !(2..=3).contains(&count) {
+    let core = value.split(['-', '+']).next().unwrap_or(value);
+    let count = core.split('.').count();
+    if (allow_partial && !(2..=3).contains(&count)) || (!allow_partial && count != 3) {
         return Err(RequirementError::InvalidRequirement);
     }
     let complete = match count {
-        2 => format!("{value}.0"),
+        2 if allow_partial => format!("{value}.0"),
         _ => value.to_owned(),
     };
     Ok((FirmwareVersion::parse(&complete)?, count))

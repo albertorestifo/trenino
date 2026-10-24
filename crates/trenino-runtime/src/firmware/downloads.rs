@@ -1,10 +1,12 @@
+use super::FirmwareHttpClient;
 use super::FirmwareSelection;
-use reqwest::{Client, Url};
+use reqwest::Url;
+use serde::{Deserialize, Serialize};
 use std::time::Duration;
 use std::{
     collections::HashMap,
-    fs::{self, OpenOptions},
-    io::Write,
+    fs::{self, File, OpenOptions},
+    io::{ErrorKind, Write},
     path::{Path, PathBuf},
     sync::{
         atomic::{AtomicU64, Ordering},
@@ -23,6 +25,7 @@ pub enum DownloadError {
     Http,
     Status(u16),
     TooLarge,
+    EmptyAsset,
     LengthMismatch,
     CacheIo,
     Cancelled,
@@ -35,6 +38,7 @@ impl std::fmt::Display for DownloadError {
             Self::InvalidPath => f.write_str("firmware cache path is invalid"),
             Self::Http => f.write_str("firmware transfer failed"),
             Self::TooLarge => f.write_str("firmware asset exceeds the configured size limit"),
+            Self::EmptyAsset => f.write_str("firmware asset is empty"),
             Self::LengthMismatch => {
                 f.write_str("firmware asset length does not match release metadata")
             }
@@ -43,19 +47,48 @@ impl std::fmt::Display for DownloadError {
         }
     }
 }
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CacheProvenance {
+    Downloaded,
+    ReceiptMatched,
+    LegacyUnverified,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LegacyCachePolicy {
+    RejectUnverified,
+    AllowUnverifiedMatchingPath,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DownloadResult {
+    pub path: PathBuf,
+    pub provenance: CacheProvenance,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+struct CacheReceipt {
+    release_id: i64,
+    github_asset_id: Option<i64>,
+    download_url: String,
+    filename: String,
+    size: Option<u64>,
+}
 impl std::error::Error for DownloadError {}
 
 pub struct FirmwareDownloader {
-    client: Client,
+    client: FirmwareHttpClient,
     cache_dir: PathBuf,
     max_bytes: u64,
     concurrency: Arc<Semaphore>,
-    locks: Mutex<HashMap<i64, Arc<AsyncMutex<()>>>>,
+    locks: Mutex<HashMap<PathBuf, Arc<AsyncMutex<()>>>>,
     timeout: Duration,
+    legacy_policy: LegacyCachePolicy,
 }
 impl FirmwareDownloader {
     pub fn new(
-        client: Client,
+        client: FirmwareHttpClient,
         cache_dir: impl Into<PathBuf>,
         max_bytes: u64,
         max_concurrent: usize,
@@ -67,10 +100,15 @@ impl FirmwareDownloader {
             concurrency: Arc::new(Semaphore::new(max_concurrent.max(1))),
             locks: Mutex::new(HashMap::new()),
             timeout: Duration::from_secs(30),
+            legacy_policy: LegacyCachePolicy::RejectUnverified,
         }
     }
     pub fn with_timeout(mut self, timeout: Duration) -> Self {
         self.timeout = timeout;
+        self
+    }
+    pub fn with_legacy_cache_policy(mut self, policy: LegacyCachePolicy) -> Self {
+        self.legacy_policy = policy;
         self
     }
     /// Legacy location convention: production uses the user's `.trenino` cache;
@@ -97,9 +135,12 @@ impl FirmwareDownloader {
         }
         Ok(self
             .cache_dir
-            .join(format!("{}_{}.hex", selection.version, identifier)))
+            .join(format!("v{}_{}.hex", selection.version, identifier)))
     }
-    pub async fn download(&self, selection: &FirmwareSelection) -> Result<PathBuf, DownloadError> {
+    pub async fn download(
+        &self,
+        selection: &FirmwareSelection,
+    ) -> Result<DownloadResult, DownloadError> {
         let asset = selection
             .device
             .asset
@@ -110,13 +151,28 @@ impl FirmwareDownloader {
         let lock = {
             let mut locks = self.locks.lock().map_err(|_| DownloadError::CacheIo)?;
             locks
-                .entry(asset.id.0)
+                .entry(destination.clone())
                 .or_insert_with(|| Arc::new(AsyncMutex::new(())))
                 .clone()
         };
         let _same_asset = lock.lock().await;
         if valid_cache(&destination, asset.size, self.max_bytes) {
-            return Ok(destination);
+            let receipt_file = receipt_path(&destination);
+            if receipt_matches(&receipt_file, selection) {
+                return Ok(DownloadResult {
+                    path: destination,
+                    provenance: CacheProvenance::ReceiptMatched,
+                });
+            }
+            if !receipt_file.exists()
+                && self.legacy_policy == LegacyCachePolicy::AllowUnverifiedMatchingPath
+                && is_unambiguous_legacy_cache(selection, asset.size)
+            {
+                return Ok(DownloadResult {
+                    path: destination,
+                    provenance: CacheProvenance::LegacyUnverified,
+                });
+            }
         }
         let _permit = self
             .concurrency
@@ -124,11 +180,11 @@ impl FirmwareDownloader {
             .await
             .map_err(|_| DownloadError::Cancelled)?;
         fs::create_dir_all(&self.cache_dir).map_err(|_| DownloadError::CacheIo)?;
-        let partial = unique_partial(&destination);
-        let mut cleanup = PartialFile(Some(partial.clone()));
+        let (mut file, mut cleanup) = create_partial_file(&destination)?;
         let response = self
             .client
-            .get(asset.download_url.clone())
+            .get(&asset.download_url)
+            .map_err(|_| DownloadError::InvalidUrl)?
             .timeout(self.timeout)
             .send()
             .await
@@ -142,11 +198,6 @@ impl FirmwareDownloader {
                 return Err(DownloadError::LengthMismatch);
             }
         }
-        let mut file = OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .open(&partial)
-            .map_err(|_| DownloadError::CacheIo)?;
         let mut response = response;
         let mut transferred = 0u64;
         while let Some(chunk) = response.chunk().await.map_err(|_| DownloadError::Http)? {
@@ -163,14 +214,30 @@ impl FirmwareDownloader {
         if asset.size.is_some_and(|expected| expected != transferred) {
             return Err(DownloadError::LengthMismatch);
         }
+        if transferred == 0 {
+            return Err(DownloadError::EmptyAsset);
+        }
         file.sync_all().map_err(|_| DownloadError::CacheIo)?;
         drop(file);
-        if destination.exists() {
-            return Err(DownloadError::LengthMismatch);
-        }
-        fs::rename(&partial, &destination).map_err(|_| DownloadError::CacheIo)?;
-        cleanup.0 = None;
-        Ok(destination)
+        let receipt = cache_receipt(selection);
+        let receipt_bytes = serde_json::to_vec(&receipt).map_err(|_| DownloadError::CacheIo)?;
+        let (mut receipt_file, mut receipt_cleanup) =
+            create_partial_file(&receipt_path(&destination))?;
+        receipt_file
+            .write_all(&receipt_bytes)
+            .map_err(|_| DownloadError::CacheIo)?;
+        receipt_file
+            .sync_all()
+            .map_err(|_| DownloadError::CacheIo)?;
+        drop(receipt_file);
+        atomic_replace(cleanup.path(), &destination)?;
+        cleanup.disarm();
+        atomic_replace(receipt_cleanup.path(), &receipt_path(&destination))?;
+        receipt_cleanup.disarm();
+        Ok(DownloadResult {
+            path: destination,
+            provenance: CacheProvenance::Downloaded,
+        })
     }
 }
 
@@ -215,11 +282,127 @@ fn unique_partial(path: &Path) -> PathBuf {
     name.push(format!(".{}.{}.partial", std::process::id(), seq));
     path.with_file_name(name)
 }
+fn receipt_path(path: &Path) -> PathBuf {
+    let mut name = path.file_name().unwrap_or_default().to_os_string();
+    name.push(".trenino-meta.json");
+    path.with_file_name(name)
+}
+fn cache_receipt(selection: &FirmwareSelection) -> CacheReceipt {
+    let asset = selection
+        .device
+        .asset
+        .as_ref()
+        .expect("validated selection has asset");
+    CacheReceipt {
+        release_id: selection.release_id.0,
+        github_asset_id: asset.github_asset_id,
+        download_url: asset.download_url.to_string(),
+        filename: asset.filename.clone(),
+        size: asset.size,
+    }
+}
+fn receipt_matches(path: &Path, selection: &FirmwareSelection) -> bool {
+    fs::read(path)
+        .ok()
+        .and_then(|bytes| serde_json::from_slice::<CacheReceipt>(&bytes).ok())
+        .is_some_and(|stored| stored == cache_receipt(selection))
+}
+fn is_unambiguous_legacy_cache(selection: &FirmwareSelection, size: Option<u64>) -> bool {
+    let Some(asset) = selection.device.asset.as_ref() else {
+        return false;
+    };
+    let identifier = asset.environment.as_deref().unwrap_or(&asset.board_type);
+    size.is_some()
+        && selection.device.manifest.firmware_file == asset.filename
+        && selection.device.manifest.environment == identifier
+}
+fn create_partial_file(path: &Path) -> Result<(File, PartialFile), DownloadError> {
+    create_partial_file_with(path, || unique_partial(path))
+}
+fn create_partial_file_with(
+    _destination: &Path,
+    mut next_candidate: impl FnMut() -> PathBuf,
+) -> Result<(File, PartialFile), DownloadError> {
+    for _ in 0..128 {
+        let candidate = next_candidate();
+        match OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&candidate)
+        {
+            Ok(file) => return Ok((file, PartialFile(Some(candidate)))),
+            Err(error) if error.kind() == ErrorKind::AlreadyExists => continue,
+            Err(_) => return Err(DownloadError::CacheIo),
+        }
+    }
+    Err(DownloadError::CacheIo)
+}
+fn atomic_replace(source: &Path, destination: &Path) -> Result<(), DownloadError> {
+    #[cfg(windows)]
+    {
+        use std::os::windows::ffi::OsStrExt;
+        use windows_sys::Win32::Storage::FileSystem::{
+            MoveFileExW, MOVEFILE_REPLACE_EXISTING, MOVEFILE_WRITE_THROUGH,
+        };
+        let source: Vec<u16> = source.as_os_str().encode_wide().chain(Some(0)).collect();
+        let destination: Vec<u16> = destination
+            .as_os_str()
+            .encode_wide()
+            .chain(Some(0))
+            .collect();
+        let ok = unsafe {
+            MoveFileExW(
+                source.as_ptr(),
+                destination.as_ptr(),
+                MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH,
+            )
+        };
+        if ok == 0 {
+            return Err(DownloadError::CacheIo);
+        }
+        Ok(())
+    }
+    #[cfg(not(windows))]
+    {
+        fs::rename(source, destination).map_err(|_| DownloadError::CacheIo)
+    }
+}
 struct PartialFile(Option<PathBuf>);
+impl PartialFile {
+    fn path(&self) -> &Path {
+        self.0.as_deref().expect("partial file is armed")
+    }
+    fn disarm(&mut self) {
+        self.0 = None;
+    }
+}
 impl Drop for PartialFile {
     fn drop(&mut self) {
         if let Some(path) = self.0.take() {
             let _ = fs::remove_file(path);
         }
+    }
+}
+
+#[cfg(test)]
+mod partial_file_tests {
+    use super::*;
+    use std::collections::VecDeque;
+
+    #[test]
+    fn create_new_collision_is_retried_without_deleting_unowned_file() {
+        let directory = tempfile::tempdir().unwrap();
+        let destination = directory.path().join("v1.2.3_uno.hex");
+        let collision = directory.path().join("collision.partial");
+        let owned = directory.path().join("owned.partial");
+        fs::write(&collision, b"preexisting").unwrap();
+        let mut candidates = VecDeque::from([collision.clone(), owned.clone()]);
+        let (mut file, guard) =
+            create_partial_file_with(&destination, || candidates.pop_front().unwrap()).unwrap();
+        file.write_all(b"new").unwrap();
+        drop(file);
+        drop(guard);
+        assert_eq!(fs::read(&collision).unwrap(), b"preexisting");
+        assert!(!owned.exists());
     }
 }

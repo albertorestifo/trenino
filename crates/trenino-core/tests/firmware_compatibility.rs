@@ -49,3 +49,47 @@ fn unsupported_or_invalid_versions_fail_closed() {
     assert!(FirmwareVersion::parse("1.2.3+").is_err());
     assert!(FirmwareRequirement::parse(Some("~> v1.2")).is_err());
 }
+
+#[test]
+fn configured_prerelease_matching_follows_elixir_operator_semantics() {
+    let candidate = "1.2.3-rc.1";
+    for requirement in ["== 1.2.3-rc.1", ">= 1.2.3-rc.1", "~> 1.2.3-rc.1", "< 1.2.3"] {
+        assert!(
+            FirmwareRequirement::parse(Some(requirement))
+                .unwrap()
+                .matches(candidate),
+            "{requirement}"
+        );
+    }
+    assert!(!FirmwareRequirement::parse(Some(">= 1.0.0 and < 2.0.0"))
+        .unwrap()
+        .matches(candidate));
+    assert!(
+        FirmwareRequirement::parse(Some(">= 1.0.0 and < 2.0.0 or == 1.2.3-rc.1"))
+            .unwrap()
+            .matches(candidate)
+    );
+}
+
+#[test]
+fn requirement_grammar_accepts_elixir_forms_and_rejects_reinterpretation() {
+    assert!(FirmwareRequirement::parse(Some("1.2.3"))
+        .unwrap()
+        .matches("1.2.3"));
+    assert!(FirmwareRequirement::parse(Some("~> 1.2.3+build.1")).is_ok());
+    assert!(FirmwareRequirement::parse(Some("== 1.2.3+build.1")).is_ok());
+    assert!(FirmwareRequirement::parse(Some("~>1.2.3")).is_ok());
+    assert!(FirmwareRequirement::parse(Some(">=1.2.3")).is_ok());
+    for invalid in ["= 1.2.3", "=1.2.3", ">= 1.2", ">= 1.0.0, < 2.0.0"] {
+        assert!(
+            FirmwareRequirement::parse(Some(invalid)).is_err(),
+            "{invalid}"
+        );
+    }
+}
+
+#[test]
+fn pessimistic_upper_bound_overflow_returns_an_error() {
+    assert!(FirmwareRequirement::parse(Some("~> 18446744073709551615.0")).is_err());
+    assert!(FirmwareRequirement::parse(Some("~> 1.18446744073709551615.0")).is_err());
+}

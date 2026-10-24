@@ -1,4 +1,4 @@
-use reqwest::{Client, Url};
+use reqwest::Url;
 use std::{
     io::{Read, Write},
     net::TcpListener,
@@ -10,9 +10,13 @@ use tempfile::TempDir;
 use trenino_core::firmware::{FirmwareManifest, FirmwareRequirement, Programmer, UploadConfig};
 use trenino_runtime::firmware::{
     CatalogRelease, ConnectedFirmware, FirmwareAsset, FirmwareCatalog, FirmwareDevice,
-    FirmwareDownloader, FirmwareRepository, FirmwareSelection, FirmwareUpdateScheduler,
-    ReleaseInput, RepositoryError, SchedulerConfig, UpdateCheckRecord,
+    FirmwareDownloader, FirmwareHttpClient, FirmwareRepository, FirmwareSelection,
+    FirmwareUpdateScheduler, ReleaseInput, RepositoryError, SchedulerConfig, UpdateCheckRecord,
 };
+
+fn http_client() -> FirmwareHttpClient {
+    FirmwareHttpClient::new(Duration::from_secs(30)).unwrap()
+}
 
 #[derive(Default)]
 struct Repo {
@@ -20,6 +24,7 @@ struct Repo {
     check: Mutex<Option<UpdateCheckRecord>>,
     dismissed: Mutex<Option<String>>,
     fail_check: Mutex<bool>,
+    fail_dismiss: Mutex<bool>,
 }
 impl FirmwareRepository for Repo {
     fn upsert_catalog(
@@ -83,6 +88,9 @@ impl FirmwareRepository for Repo {
         Ok(self.dismissed.lock().unwrap().clone())
     }
     fn set_dismissed_notice(&self, x: Option<&str>) -> Result<(), RepositoryError> {
+        if *self.fail_dismiss.lock().unwrap() {
+            return Err(RepositoryError { code: "injected" });
+        }
         *self.dismissed.lock().unwrap() = x.map(str::to_owned);
         Ok(())
     }
@@ -101,6 +109,62 @@ fn fake_http(responses: Vec<(u16, String)>) -> Url {
         }
     });
     Url::parse(&format!("http://{addr}/")).unwrap()
+}
+fn one_redirect(location: String) -> Url {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let addr = listener.local_addr().unwrap();
+    thread::spawn(move || {
+        let (mut stream, _) = listener.accept().unwrap();
+        let mut request = [0u8; 512];
+        let _ = stream.read(&mut request);
+        write!(stream, "HTTP/1.1 302 Found\r\nLocation: {location}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n").unwrap();
+    });
+    Url::parse(&format!("http://{addr}/redirect")).unwrap()
+}
+fn counted_http(body: &'static str) -> (Url, Arc<std::sync::atomic::AtomicUsize>) {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let addr = listener.local_addr().unwrap();
+    let hits = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let count = hits.clone();
+    thread::spawn(move || {
+        listener.set_nonblocking(true).unwrap();
+        for _ in 0..200 {
+            if let Ok((mut stream, _)) = listener.accept() {
+                count.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                let mut request = [0u8; 512];
+                let _ = stream.read(&mut request);
+                write!(
+                    stream,
+                    "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    body.len()
+                )
+                .unwrap();
+                break;
+            }
+            thread::sleep(Duration::from_millis(1));
+        }
+    });
+    (Url::parse(&format!("http://{addr}/target")).unwrap(), hits)
+}
+fn redirect_loop_http() -> (Url, Arc<std::sync::atomic::AtomicUsize>) {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let addr = listener.local_addr().unwrap();
+    let url = format!("http://{addr}/loop");
+    let redirect_url = url.clone();
+    let hits = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let count = hits.clone();
+    thread::spawn(move || {
+        for _ in 0..10 {
+            let Ok((mut stream, _)) = listener.accept() else {
+                break;
+            };
+            count.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            let mut request = [0u8; 512];
+            let _ = stream.read(&mut request);
+            let _ = write!(stream, "HTTP/1.1 302 Found\r\nLocation: {redirect_url}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
+        }
+    });
+    (Url::parse(&url).unwrap(), hits)
 }
 fn stalled_http() -> Url {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
@@ -164,12 +228,67 @@ fn catalog_http() -> Url {
     base
 }
 
+fn catalog_missing_manifest_http() -> Url {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let addr = listener.local_addr().unwrap();
+    let base = Url::parse(&format!("http://{addr}/")).unwrap();
+    let releases = format!(
+        r#"[{{"tag_name":"v1.0.0","assets":[{{"id":11,"name":"release.json","browser_download_url":"{base}a-manifest"}}]}},{{"tag_name":"v1.2.3","assets":[{{"id":22,"name":"release.json","browser_download_url":"{base}b-manifest"}},{{"id":23,"name":"uno.hex","browser_download_url":"{base}uno"}}]}}]"#
+    );
+    thread::spawn(move || {
+        for _ in 0..3 {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut request = [0u8; 4096];
+            let _ = stream.read(&mut request);
+            let request = String::from_utf8_lossy(&request);
+            let (status, body) = if request.contains("GET /a-manifest ") {
+                (404, "missing".to_owned())
+            } else if request.contains("GET /b-manifest ") {
+                (200, manifest())
+            } else {
+                (200, releases.clone())
+            };
+            let phrase = if status == 200 { "OK" } else { "Not Found" };
+            write!(stream, "HTTP/1.1 {status} {phrase}\r\nContent-Length: {}\r\nConnection: close\r\nContent-Type: application/json\r\n\r\n{body}", body.len()).unwrap();
+        }
+    });
+    base
+}
+
+fn catalog_server_error_http() -> Url {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let addr = listener.local_addr().unwrap();
+    let base = Url::parse(&format!("http://{addr}/")).unwrap();
+    let releases = format!(
+        r#"[{{"tag_name":"v2.0.0","assets":[{{"id":22,"name":"release.json","browser_download_url":"{base}manifest"}}]}}]"#
+    );
+    thread::spawn(move || {
+        for index in 0..2 {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut request = [0u8; 1024];
+            let _ = stream.read(&mut request);
+            let (status, body) = if index == 0 {
+                (200, releases.clone())
+            } else {
+                (500, "server error".to_owned())
+            };
+            write!(
+                stream,
+                "HTTP/1.1 {status} Error\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                body.len()
+            )
+            .unwrap();
+        }
+    });
+    base
+}
+
 #[tokio::test]
 async fn catalog_requires_release_manifest_and_pins_asset_and_upload_configuration() {
     let endpoint = catalog_http();
     let repo = Arc::new(Repo::default());
     let catalog = FirmwareCatalog::new(
-        Client::new(),
+        http_client(),
         repo.clone(),
         FirmwareRequirement::parse(None).unwrap(),
     )
@@ -216,15 +335,52 @@ async fn catalog_requires_release_manifest_and_pins_asset_and_upload_configurati
 }
 
 #[tokio::test]
+async fn a_missing_manifest_skips_only_that_release_and_keeps_valid_releases() {
+    let repo = Arc::new(Repo::default());
+    let catalog = FirmwareCatalog::new(
+        http_client(),
+        repo,
+        FirmwareRequirement::parse(None).unwrap(),
+    )
+    .with_endpoint(catalog_missing_manifest_http());
+    let releases = catalog.refresh().await.unwrap();
+    assert_eq!(releases.len(), 1);
+    assert_eq!(releases[0].version, "1.2.3");
+}
+
+#[tokio::test]
+async fn manifest_server_failure_aborts_refresh_without_fake_success() {
+    let repo = Arc::new(Repo::default());
+    let catalog = FirmwareCatalog::new(
+        http_client(),
+        repo.clone(),
+        FirmwareRequirement::parse(None).unwrap(),
+    )
+    .with_endpoint(catalog_server_error_http());
+    assert!(catalog.refresh().await.is_err());
+    assert!(repo.list_releases().unwrap().is_empty());
+}
+
+#[tokio::test]
 async fn downloader_publishes_only_complete_files_and_reuses_offline_cache() {
     let tmp = TempDir::new().unwrap();
     let endpoint = fake_http(vec![(200, "HEX!".into())]);
     let selection = selection("1.2.3", "uno", endpoint, Some(4));
-    let downloader = FirmwareDownloader::new(Client::new(), tmp.path(), 1024, 2);
-    let path = downloader.download(&selection).await.unwrap();
+    let downloader = FirmwareDownloader::new(http_client(), tmp.path(), 1024, 2);
+    let result = downloader.download(&selection).await.unwrap();
+    assert_eq!(
+        result.provenance,
+        trenino_runtime::firmware::CacheProvenance::Downloaded
+    );
+    let path = result.path;
     assert_eq!(std::fs::read(&path).unwrap(), b"HEX!");
-    let offline = FirmwareDownloader::new(Client::new(), tmp.path(), 1024, 2);
-    assert_eq!(offline.download(&selection).await.unwrap(), path);
+    let offline = FirmwareDownloader::new(http_client(), tmp.path(), 1024, 2);
+    let cached = offline.download(&selection).await.unwrap();
+    assert_eq!(cached.path, path);
+    assert_eq!(
+        cached.provenance,
+        trenino_runtime::firmware::CacheProvenance::ReceiptMatched
+    );
     assert!(std::fs::read_dir(tmp.path()).unwrap().all(|e| !e
         .unwrap()
         .file_name()
@@ -233,11 +389,81 @@ async fn downloader_publishes_only_complete_files_and_reuses_offline_cache() {
 }
 
 #[tokio::test]
+async fn same_cache_path_with_changed_remote_asset_id_does_not_reuse_old_bytes() {
+    let tmp = TempDir::new().unwrap();
+    let first = selection(
+        "1.2.3",
+        "uno",
+        fake_http(vec![(200, "OLD!".into())]),
+        Some(4),
+    );
+    let downloader = FirmwareDownloader::new(http_client(), tmp.path(), 1024, 2);
+    let first_path = downloader.download(&first).await.unwrap().path;
+    let mut replacement = first.clone();
+    replacement.device.asset.as_mut().unwrap().github_asset_id = Some(23);
+    replacement.device.asset.as_mut().unwrap().download_url = fake_http(vec![(200, "NEW!".into())]);
+    let second_path = downloader.download(&replacement).await.unwrap().path;
+    assert_eq!(second_path, first_path);
+    assert_eq!(std::fs::read(second_path).unwrap(), b"NEW!");
+}
+
+#[tokio::test]
+async fn concurrent_different_assets_for_one_final_path_are_serialized_and_each_fetched() {
+    let tmp = TempDir::new().unwrap();
+    let (url_a, hits_a) = counted_http("AAAA");
+    let (url_b, hits_b) = counted_http("BBBB");
+    let mut selection_a = selection("1.2.3", "uno", url_a, Some(4));
+    let mut selection_b = selection("1.2.3", "uno", url_b, Some(4));
+    selection_a.device.asset.as_mut().unwrap().github_asset_id = Some(101);
+    selection_b.device.asset.as_mut().unwrap().github_asset_id = Some(202);
+    let downloader = Arc::new(FirmwareDownloader::new(http_client(), tmp.path(), 1024, 2));
+    let d1 = downloader.clone();
+    let s1 = selection_a;
+    let d2 = downloader.clone();
+    let s2 = selection_b;
+    let (a, b) = tokio::join!(async move { d1.download(&s1).await }, async move {
+        d2.download(&s2).await
+    });
+    assert_eq!(
+        a.unwrap().provenance,
+        trenino_runtime::firmware::CacheProvenance::Downloaded
+    );
+    assert_eq!(
+        b.unwrap().provenance,
+        trenino_runtime::firmware::CacheProvenance::Downloaded
+    );
+    assert_eq!(hits_a.load(std::sync::atomic::Ordering::SeqCst), 1);
+    assert_eq!(hits_b.load(std::sync::atomic::Ordering::SeqCst), 1);
+}
+
+#[tokio::test]
+async fn a_valid_unambiguous_legacy_cache_path_is_reused_offline() {
+    let tmp = TempDir::new().unwrap();
+    let selected = selection("1.2.3", "uno", fake_http(vec![]), Some(4));
+    let legacy_path = tmp.path().join("v1.2.3_uno.hex");
+    std::fs::write(&legacy_path, b"OLD!").unwrap();
+    let unrelated_path = tmp.path().join("keep-me.txt");
+    std::fs::write(&unrelated_path, b"unrelated").unwrap();
+    let downloader = FirmwareDownloader::new(http_client(), tmp.path(), 1024, 1)
+        .with_legacy_cache_policy(
+            trenino_runtime::firmware::LegacyCachePolicy::AllowUnverifiedMatchingPath,
+        );
+    let cached = downloader.download(&selected).await.unwrap();
+    assert_eq!(cached.path, legacy_path);
+    assert_eq!(
+        cached.provenance,
+        trenino_runtime::firmware::CacheProvenance::LegacyUnverified
+    );
+    assert_eq!(std::fs::read(&cached.path).unwrap(), b"OLD!");
+    assert_eq!(std::fs::read(unrelated_path).unwrap(), b"unrelated");
+}
+
+#[tokio::test]
 async fn downloader_rejects_truncated_assets_and_cleans_partial_files() {
     let tmp = TempDir::new().unwrap();
     let endpoint = fake_http(vec![(200, "HEX".into())]);
     let selection = selection("1.2.3", "uno", endpoint, Some(4));
-    let downloader = FirmwareDownloader::new(Client::new(), tmp.path(), 1024, 1);
+    let downloader = FirmwareDownloader::new(http_client(), tmp.path(), 1024, 1);
     assert!(downloader.download(&selection).await.is_err());
     assert_eq!(
         std::fs::read_dir(tmp.path())
@@ -248,11 +474,22 @@ async fn downloader_rejects_truncated_assets_and_cleans_partial_files() {
 }
 
 #[tokio::test]
+async fn downloader_rejects_empty_assets_with_known_or_unknown_size() {
+    for size in [Some(0), None] {
+        let tmp = TempDir::new().unwrap();
+        let selected = selection("1.2.3", "uno", fake_http(vec![(200, String::new())]), size);
+        let downloader = FirmwareDownloader::new(http_client(), tmp.path(), 1024, 1);
+        assert!(downloader.download(&selected).await.is_err());
+        assert_eq!(std::fs::read_dir(tmp.path()).unwrap().count(), 0);
+    }
+}
+
+#[tokio::test]
 async fn concurrent_downloads_of_the_same_asset_share_one_complete_cache_file() {
     let tmp = TempDir::new().unwrap();
     let endpoint = fake_http(vec![(200, "HEX!".into())]);
     let selection = selection("1.2.3", "uno", endpoint, Some(4));
-    let downloader = Arc::new(FirmwareDownloader::new(Client::new(), tmp.path(), 1024, 2));
+    let downloader = Arc::new(FirmwareDownloader::new(http_client(), tmp.path(), 1024, 2));
     let d1 = downloader.clone();
     let s1 = selection.clone();
     let d2 = downloader.clone();
@@ -260,8 +497,9 @@ async fn concurrent_downloads_of_the_same_asset_share_one_complete_cache_file() 
     let (a, b) = tokio::join!(async move { d1.download(&s1).await }, async move {
         d2.download(&s2).await
     });
-    assert_eq!(a.unwrap(), b.unwrap());
-    assert_eq!(std::fs::read_dir(tmp.path()).unwrap().count(), 1);
+    assert_eq!(a.unwrap().path, b.unwrap().path);
+    // The final firmware and its provenance receipt are published together.
+    assert_eq!(std::fs::read_dir(tmp.path()).unwrap().count(), 2);
 }
 
 #[tokio::test]
@@ -269,7 +507,7 @@ async fn downloader_refuses_non_success_status_without_cache_files() {
     let tmp = TempDir::new().unwrap();
     let endpoint = fake_http(vec![(404, "missing".into())]);
     let selection = selection("1.2.3", "uno", endpoint, Some(4));
-    let downloader = FirmwareDownloader::new(Client::new(), tmp.path(), 1024, 1);
+    let downloader = FirmwareDownloader::new(http_client(), tmp.path(), 1024, 1);
     assert!(matches!(
         downloader.download(&selection).await,
         Err(trenino_runtime::firmware::DownloadError::Status(404))
@@ -286,7 +524,7 @@ async fn downloader_enforces_the_configured_stream_size_bound() {
         fake_http(vec![(200, "FOUR".into())]),
         Some(4),
     );
-    let downloader = FirmwareDownloader::new(Client::new(), tmp.path(), 3, 1);
+    let downloader = FirmwareDownloader::new(http_client(), tmp.path(), 3, 1);
     assert!(matches!(
         downloader.download(&selection).await,
         Err(trenino_runtime::firmware::DownloadError::TooLarge)
@@ -298,7 +536,7 @@ async fn downloader_enforces_the_configured_stream_size_bound() {
 async fn downloader_timeout_leaves_no_partial_cache_file() {
     let tmp = TempDir::new().unwrap();
     let selection = selection("1.2.3", "uno", stalled_http(), Some(4));
-    let downloader = FirmwareDownloader::new(Client::new(), tmp.path(), 1024, 1)
+    let downloader = FirmwareDownloader::new(http_client(), tmp.path(), 1024, 1)
         .with_timeout(Duration::from_millis(10));
     assert!(downloader.download(&selection).await.is_err());
     assert_eq!(std::fs::read_dir(tmp.path()).unwrap().count(), 0);
@@ -308,7 +546,7 @@ async fn downloader_timeout_leaves_no_partial_cache_file() {
 async fn cancelling_a_streaming_download_removes_its_partial_file() {
     let tmp = TempDir::new().unwrap();
     let selection = selection("1.2.3", "uno", held_response_http(), None);
-    let downloader = Arc::new(FirmwareDownloader::new(Client::new(), tmp.path(), 1024, 1));
+    let downloader = Arc::new(FirmwareDownloader::new(http_client(), tmp.path(), 1024, 1));
     let d = downloader.clone();
     let task = tokio::spawn(async move { d.download(&selection).await });
     let mut partial_seen = false;
@@ -343,11 +581,47 @@ async fn downloader_rejects_non_loopback_http_urls() {
         Url::parse("http://example.com/file").unwrap(),
         Some(4),
     );
-    let downloader = FirmwareDownloader::new(Client::new(), tmp.path(), 1024, 1);
+    let downloader = FirmwareDownloader::new(http_client(), tmp.path(), 1024, 1);
     assert!(matches!(
         downloader.download(&selection).await,
         Err(trenino_runtime::firmware::DownloadError::InvalidUrl)
     ));
+}
+
+#[tokio::test]
+async fn firmware_http_boundary_blocks_disallowed_redirect_hops_and_bounds_chains() {
+    let client = FirmwareHttpClient::new(Duration::from_secs(1)).unwrap();
+    let (target, hits) = counted_http("unsafe");
+    let blocked = one_redirect(format!(
+        "http://user:pass@{}/target",
+        target.host_str().unwrap()
+    ));
+    assert!(client.get(&blocked).unwrap().send().await.is_err());
+    tokio::time::sleep(Duration::from_millis(20)).await;
+    assert_eq!(hits.load(std::sync::atomic::Ordering::SeqCst), 0);
+
+    let tmp = TempDir::new().unwrap();
+    let (download_target, download_hits) = counted_http("unsafe");
+    let download_redirect = one_redirect(format!(
+        "http://user:pass@{}/target",
+        download_target.host_str().unwrap()
+    ));
+    let selected = selection("1.2.3", "uno", download_redirect, Some(4));
+    let downloader = FirmwareDownloader::new(client.clone(), tmp.path(), 1024, 1);
+    assert!(downloader.download(&selected).await.is_err());
+    assert_eq!(std::fs::read_dir(tmp.path()).unwrap().count(), 0);
+    tokio::time::sleep(Duration::from_millis(20)).await;
+    assert_eq!(download_hits.load(std::sync::atomic::Ordering::SeqCst), 0);
+
+    let (allowed_target, allowed_hits) = counted_http("ok");
+    let allowed = one_redirect(allowed_target.to_string());
+    let response = client.get(&allowed).unwrap().send().await.unwrap();
+    assert_eq!(response.text().await.unwrap(), "ok");
+    assert_eq!(allowed_hits.load(std::sync::atomic::Ordering::SeqCst), 1);
+
+    let (loop_url, loop_hits) = redirect_loop_http();
+    assert!(client.get(&loop_url).unwrap().send().await.is_err());
+    assert!(loop_hits.load(std::sync::atomic::Ordering::SeqCst) <= 6);
 }
 
 #[test]
@@ -359,7 +633,7 @@ fn cache_path_rejects_untrusted_environment_components() {
         Url::parse("https://example.test/file").unwrap(),
         Some(1),
     );
-    let downloader = FirmwareDownloader::new(Client::new(), tmp.path(), 1024, 1);
+    let downloader = FirmwareDownloader::new(http_client(), tmp.path(), 1024, 1);
     assert!(downloader.cache_path(&selection).is_err());
     assert_eq!(
         FirmwareDownloader::cache_directory(
@@ -389,16 +663,16 @@ fn cache_path_prefers_environment_and_falls_back_to_board_type() {
         Some(4),
     );
     selected.device.asset.as_mut().unwrap().board_type = "legacy_board".into();
-    let downloader = FirmwareDownloader::new(Client::new(), tmp.path(), 1024, 1);
+    let downloader = FirmwareDownloader::new(http_client(), tmp.path(), 1024, 1);
     assert!(downloader
         .cache_path(&selected)
         .unwrap()
-        .ends_with("1.2.3_uno.hex"));
+        .ends_with("v1.2.3_uno.hex"));
     selected.device.asset.as_mut().unwrap().environment = None;
     assert!(downloader
         .cache_path(&selected)
         .unwrap()
-        .ends_with("1.2.3_legacy_board.hex"));
+        .ends_with("v1.2.3_legacy_board.hex"));
     let build_version = selection(
         "1.2.3+build.1",
         "uno",
@@ -441,6 +715,9 @@ fn scheduler_persists_before_publishing_and_respects_rate_limit_and_dismissal() 
     assert!(scheduler.notice(&devices).is_some());
     scheduler.dismiss(&devices).unwrap();
     assert!(scheduler.notice(&devices).is_none());
+    scheduler.dismiss(&devices).unwrap();
+    scheduler.dismiss(&[]).unwrap();
+    assert!(scheduler.notice(&devices).is_none());
     let restored = FirmwareUpdateScheduler::new(repo.clone(), cfg).unwrap();
     assert!(restored.notice(&devices).is_none());
     let new_device = [
@@ -466,6 +743,33 @@ fn scheduler_persists_before_publishing_and_respects_rate_limit_and_dismissal() 
             .unwrap(),
         trenino_runtime::firmware::CheckOutcome::RateLimited
     ));
+}
+
+#[test]
+fn failed_dismissal_persistence_preserves_current_notice() {
+    let repo = Arc::new(Repo::default());
+    let mut scheduler =
+        FirmwareUpdateScheduler::new(repo.clone(), SchedulerConfig::default()).unwrap();
+    scheduler
+        .record_check(
+            UpdateCheckRecord {
+                checked_at_ms: 1,
+                found_updates: true,
+                latest_version: Some("2.0.0".into()),
+                error_message: None,
+            },
+            1,
+        )
+        .unwrap();
+    let devices = [ConnectedFirmware {
+        device_id: trenino_core::EntityId(30),
+        connected: true,
+        version: Some("1.0.0".into()),
+    }];
+    assert!(scheduler.notice(&devices).is_some());
+    *repo.fail_dismiss.lock().unwrap() = true;
+    assert!(scheduler.dismiss(&devices).is_err());
+    assert!(scheduler.notice(&devices).is_some());
 }
 
 #[test]

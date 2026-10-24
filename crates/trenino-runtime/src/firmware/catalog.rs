@@ -1,5 +1,5 @@
-use super::{FirmwareRepository, RepositoryError};
-use reqwest::{Client, Url};
+use super::{http::permitted_url, FirmwareHttpClient, FirmwareRepository, RepositoryError};
+use reqwest::Url;
 use serde::Deserialize;
 use std::sync::Arc;
 use std::time::Duration;
@@ -89,14 +89,18 @@ impl From<RepositoryError> for CatalogError {
 }
 
 pub struct FirmwareCatalog<R: FirmwareRepository> {
-    client: Client,
+    client: FirmwareHttpClient,
     repository: Arc<R>,
     endpoint: Url,
     requirement: FirmwareRequirement,
     timeout: Duration,
 }
 impl<R: FirmwareRepository> FirmwareCatalog<R> {
-    pub fn new(client: Client, repository: Arc<R>, requirement: FirmwareRequirement) -> Self {
+    pub fn new(
+        client: FirmwareHttpClient,
+        repository: Arc<R>,
+        requirement: FirmwareRequirement,
+    ) -> Self {
         Self {
             client,
             repository,
@@ -117,7 +121,8 @@ impl<R: FirmwareRepository> FirmwareCatalog<R> {
     pub async fn refresh(&self) -> Result<Vec<CatalogRelease>, CatalogError> {
         let response = self
             .client
-            .get(self.endpoint.clone())
+            .get(&self.endpoint)
+            .map_err(|_| CatalogError::InvalidAsset)?
             .timeout(self.timeout)
             .header("accept", "application/vnd.github.v3+json")
             .header("user-agent", "trenino/1.0")
@@ -222,7 +227,7 @@ struct GithubAsset {
     size: Option<u64>,
 }
 async fn parse_release(
-    client: &Client,
+    client: &FirmwareHttpClient,
     timeout: Duration,
     release: GithubRelease,
 ) -> Result<ReleaseInput, CatalogError> {
@@ -242,13 +247,17 @@ async fn parse_release(
         return Err(CatalogError::InvalidAsset);
     }
     let manifest_response = client
-        .get(manifest_url)
+        .get(&manifest_url)
+        .map_err(|_| CatalogError::InvalidAsset)?
         .timeout(timeout)
         .send()
         .await
         .map_err(|_| CatalogError::Http)?;
     if !permitted_url(manifest_response.url()) {
         return Err(CatalogError::Http);
+    }
+    if matches!(manifest_response.status().as_u16(), 404 | 410) {
+        return Err(CatalogError::MissingManifest);
     }
     if !manifest_response.status().is_success() {
         return Err(CatalogError::Http);
@@ -321,20 +330,4 @@ async fn read_limited(
         body.extend_from_slice(&chunk);
     }
     Ok(body)
-}
-
-fn permitted_url(url: &Url) -> bool {
-    if !url.username().is_empty() || url.password().is_some() {
-        return false;
-    }
-    if url.scheme() == "https" {
-        return true;
-    }
-    url.scheme() == "http"
-        && url.host_str().is_some_and(|host| {
-            host == "localhost"
-                || host
-                    .parse::<std::net::IpAddr>()
-                    .is_ok_and(|ip| ip.is_loopback())
-        })
 }
