@@ -6,6 +6,8 @@
 
 **Implementation authorization:** User approved branch-based implementation with cheap concurrent coders, Astra track supervisors and independent correctness/adversarial reviews. Use the `vjoy` crate; retain the driver. Fixed device 1 is not a requirement: select a device explicitly, preserve ownership isolation and migrate existing configurations.
 
+**Distribution baseline:** PR 169 (`b32443901c5f63e5c7f6b6cb5224eb4ae1b0b91f`) is merged into this branch. Stable Windows desktop updates use signed Tauri updater artifacts and NSIS metadata, not MSIX; updater and Windows publisher signatures remain separate. Preserve native Help → Check for Updates, the updater overlay/configuration, public-key continuity, release signing checks, `vJoyInstall.dll` packaging, and absolute trusted resource discovery. The legacy application release checker is distribution-aware and must not create a duplicate stable desktop banner; firmware release notifications remain independent. See the platform, UI, and joystick contracts below.
+
 ## Recommendation
 
 Keep Tauri as the desktop host, bundle a static TypeScript frontend, and replace the Phoenix/Elixir backend with in-process Rust services. Keep current screens, styling and workflows; port the HEEx/LiveView implementation rather than trying to run it without Elixir. Use the same domain services from desktop commands and the compatibility HTTP/MCP server.
@@ -61,6 +63,8 @@ The UI uses typed commands for changes, snapshots for recovery and subscriptions
 - Worker restart is bounded and visible. Startup/shutdown and device loss must release keyboard/button states and reset joystick outputs as specified by the joystick plan.
 - Shutdown first stops admission and cancels all producers of effects, then neutralizes/releases outputs while adapters are alive, then closes hardware/network and finally DB. A cancelled producer cannot enqueue a fresh effect after release.
 - Keep existing external MCP/HTTP compatibility. The UI does not require the listener, and an occupied integration port does not prevent app startup.
+- Stable Tauri desktop uses the native signed updater; preserve its user-confirmed download → runtime quiescence acknowledgement → install ordering. Rust shutdown must stop admission, block installation during active firmware flashing, neutralize/release joystick and keyboard outputs, settle workers/serial ownership, and flush/close SQLite before acknowledging. Download or signature failure leaves services running; quiescence failure blocks installation. Firmware notifications stay separate from app updates. Nightly/development and direct/server distributions retain their own policy; do not duplicate the stable desktop app banner.
+- Trust packaged configurator resources only through verified absolute installed paths. `vJoyConfig.exe` must load its packaged `vJoyInstall.dll` without PATH or CWD lookup. Continue explicit selected vJoy IDs 1..16 and ownership checks; upstream packaging does not restore fixed device 1.
 - Keep supported Windows/Linux packages and macOS source-build portability. Do not interpret the Windows-only vJoy feature as authorization to drop Linux.
 
 If subsystem signatures differ, the milestone-zero contract work reconciles them into one concrete API before implementation begins. Signatures in individual documents illustrate ownership and responsibilities; they are not independent competing public APIs.

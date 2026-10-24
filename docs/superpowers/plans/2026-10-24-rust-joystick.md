@@ -6,7 +6,7 @@
 
 **Architecture:** Keep the signed vJoy kernel driver and reuse `tauri/virtual_joystick` as a Rust library. Put pure mapping/types in `crates/trenino-core`, lifecycle services in `crates/trenino-runtime`, and thin UI/entry-point integration in `tauri/src-tauri`. Run the native SDK in a headless mode of the same installed application executable to retain fault isolation without a second build artifact.
 
-**Tech Stack:** User-selected `vjoy` crate, pinned vJoy 2.2.2.0 SDK/runtime, Windows APIs, shared runtime executor and persistence selected by the overall Rust migration. The crate adoption must preserve device-1-only ownership and quiet worker protocol output; upstream 0.7.1 requires a narrowly scoped selected-device/cleanup patch before use.
+**Tech Stack:** User-selected `vjoy` crate, pinned vJoy 2.2.2.0 SDK/runtime, Windows APIs, shared runtime executor and persistence selected by the overall Rust migration. The crate adoption must preserve explicit selected-device IDs 1..16, ownership isolation and quiet worker protocol output; upstream 0.7.1 requires a narrowly scoped selected-device/cleanup patch before use.
 
 **Spec:** `docs/superpowers/specs/2026-08-01-virtual-joystick-design.md`, with this plan's explicit architecture changes and safety corrections, coordinated with `docs/superpowers/plans/2026-10-24-rust-platform.md`. This is a planning deliverable, not authorization to implement or install drivers.
 
@@ -18,6 +18,8 @@
 - No new kernel-driver project, privileged resident service, Xbox emulation, or firmware changes in this workstream.
 - Preserve existing SQLite rows and constraints; do not silently change bindings or adopt another application's device.
 - Never run Elixir and Rust joystick owners simultaneously, including during incremental rollout.
+- Preserve the merged Windows packaging baseline (`b32443901c5f63e5c7f6b6cb5224eb4ae1b0b91f`): resolve installer resources from trusted absolute installed locations and package `vJoyInstall.dll` beside `vJoyConfig.exe`. The configurator loader depends on that DLL even for query-only operations. Do not search PATH/current working directory or weaken existing reparse/trust validation. This packaging contract does not change selected-device or ownership policy.
+- Application updater shutdown is coordinated with this owner: installation requires acknowledged output neutralization/release and worker cleanup; active firmware flash blocks updater installation.
 
 ## Review Focus
 
