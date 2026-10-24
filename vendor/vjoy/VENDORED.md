@@ -14,7 +14,8 @@ The local patch adds a no-acquire constructor and selected-device acquisition,
 status/range/configuration APIs, avoids indexing a sparse one-device collection
 as if it contained devices 1 through N, relinquishes quietly on drop, and
 preserves the HID Slider/Dial report slots. The legacy constructor remains
-available with its original all-free-devices behavior; the Trenino adapter uses
+available and scans all device IDs, but now accepts only the validated Trenino
+descriptor; the Trenino adapter uses
 only the no-acquire constructor and acquires the explicit selected ID.
 
 The native `IsDeviceFfb` API exposes only a boolean result. A false return can
