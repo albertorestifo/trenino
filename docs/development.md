@@ -61,6 +61,11 @@ The desktop app bundles avrdude automatically, so end users don't need to instal
 
 ### Windows Virtual Joystick Development
 
+The Windows build uses `vjoy-sys` to generate bindings and requires the LLVM
+`libclang.dll` development library. Set `LIBCLANG_PATH` to the directory containing
+that DLL before invoking Cargo if bindgen cannot locate it. This is a build-time
+prerequisite; the packaged application does not require LLVM or libclang.
+
 The native feeder is a standalone Rust crate. Build or test it without starting
 Phoenix:
 
