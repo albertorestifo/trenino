@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Status:** Proposed subsystem design for review, not an approved execution blueprint. Planning only; no product code or firmware changes are authorized by this document.
+**Status:** Implementation authorized on `codex/rust-rewrite`. Pure protocol, model and calibration code has passed scoped review; runtime ownership and integration are underway. Existing firmware remains unchanged, and ordinary tests must not access real hardware.
 
 **Goal:** Move serial devices, hardware configuration, input detection/calibration, I2C modules, and firmware management to Rust while retaining existing device firmware, wire protocol, stored configurations, and user workflows.
 

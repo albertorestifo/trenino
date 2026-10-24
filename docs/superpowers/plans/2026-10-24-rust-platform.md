@@ -1,6 +1,6 @@
 # Rust storage, integrations, and desktop platform plan
 
-**Status:** Proposed migration work packages for review, not authorization to implement.
+**Status:** Implementation authorized on `codex/rust-rewrite`. These work packages guide the ongoing rewrite; acceptance requires the stated verification evidence. Existing user databases and installed resources are not development fixtures.
 **Goal:** Replace Elixir/Phoenix infrastructure with Rust services while retaining Tauri and a small TypeScript UI. All application rules stay in Rust.
 **Architecture:** Pure types and rules in `crates/trenino-core`; service ownership, persistence and integrations in `crates/trenino-runtime`; thin desktop adapters in `tauri/src-tauri`. Frontend transport DTOs may be generated from Rust; persistence entities are never exposed directly.
 **Related plans:** [overview](2026-10-24-rust-rewrite.md), hardware, controls, joystick and UI plans in this directory.

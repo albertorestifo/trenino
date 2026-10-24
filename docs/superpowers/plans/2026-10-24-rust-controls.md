@@ -8,11 +8,11 @@
 
 **Tech Stack:** Proposed Tokio, reqwest, serde/serde_json, mlua (subject to compatibility gate), existing enigo, and the shared rusqlite database worker.
 
-**Spec:** User-requested full Rust migration proposal; this is a review draft, not an approved implementation spec. Existing behavior references are `docs/train-configuration.md`, `docs/lever_input_mapping_architecture.md`, `docs/lua-scripting.md`, and the source/tests below. Reconcile interfaces with sibling hardware, desktop, persistence, and vJoy plans before execution.
+**Spec:** User-authorized full Rust migration on `codex/rust-rewrite`. Existing behavior references are `docs/train-configuration.md`, `docs/lever_input_mapping_architecture.md`, `docs/lua-scripting.md`, and the source/tests below. Reconcile interfaces with sibling hardware, desktop, persistence, and vJoy plans as each runtime slice is implemented.
 
 ## Global Constraints
 
-- Planning only in this change. No product code, dependency upgrade, DB mutation, or commit.
+- Implementation and local branch commits are authorized. Tests use disposable databases and fake simulator/hardware adapters; real user data and live effects are outside ordinary development verification.
 - Preserve Tauri, visible train/device setup workflows, saved SQLite identities/relations, existing Lua scripts, and firmware wire protocol.
 - Preserve two-decimal simulator/calibration/notch values per `CLAUDE.md`; define an Elixir-compatible rounding helper using golden cases rather than assuming Rust formatting is equivalent.
 - Preserve database integer IDs, optional values, enum strings, enabled flags, ordered sequence commands, JSON triggers and timestamps; use shared DB transactions and publish reload events only after commit.
