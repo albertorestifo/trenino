@@ -1,0 +1,12 @@
+[package]
+name = "firmware-fix1-harness"
+version = "0.0.0"
+edition = "2021"
+[dependencies]
+trenino-core = { path = "C:/Users/Alberto/.codex/worktrees/rust-rewrite/tsw_io/crates/trenino-core" }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+tokio = { version = "1", features = ["sync", "time", "rt", "macros"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tempfile = "3"
+windows-sys = { version = "=0.61.2", features = ["Win32_Security", "Win32_Storage_FileSystem", "Win32_System_Threading"] }

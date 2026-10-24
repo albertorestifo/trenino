@@ -1,0 +1,15 @@
+# Runtime/UI integration review supervision
+
+Use the Astra supervisor role in C:/Users/Alberto/.codex/worktrees/rust-rewrite/tsw_io on codex/rust-rewrite. Read runtime-ui-integration-brief.md (including appended contracts), runtime-ui-integration-report.md and runtime-ui-integration-review.diff in this directory. Root supplies the commit range. Review fresh full-v2 startup, schema admission, settings/consent/list repositories, AppServices snapshots/revisions/epochs, Tauri commands/events/trial startup, shutdown coordination and the native updater adapter. Full editors and hardware/controller workflows are not claimed.
+
+Perform your own audit, then trigger two independent fresh gpt-6-sol/high children sequentially (fork_turns none): correctness, then adversarial. Do not share your findings or the other review. Four slots include root; wait for a capacity signal if occupied. No production edits, commits, real user databases, hardware, installers or signing actions. Use disposable probes for concrete risks; do not repeat reported broad tests without reason.
+
+Binding contracts:
+- Rust owns application logic; TypeScript handles presentation. Numeric positive-i32 ConfigId is distinct from decimal-string entity IDs and u64 counters.
+- One SQLite worker owns the database. Selecting a legacy path does not migrate it. Trial defaults to app_local_data_dir()/rust-trial/trenino.db, with explicit TRENINO_RUST_TRIAL_DB override. Fresh full schema must reopen; malformed, partial or newer metadata is refused. Nonempty bootstrap rejection preserves data.
+- Settings, public snapshots, errors and logs must not expose keys. Validate simulator URLs and manual-key/discovery precedence against the source contract.
+- Observer ownership is window plus subscription_id. Unsubscribe is idempotent and does not cancel domain operations. Snapshot/event revisions describe committed state under concurrent calls and disposal. UI recovery relies on a fresh request reading authoritative current state, not cached historical snapshots.
+- Preserve the upstream signed Help updater: verified download, acknowledged Rust quiescence, then install. No forced kill or fake acknowledgment; active flashing and cleanup failure block installation. Stop admission/producers before output release; keep adapters alive for release; close ports/network and DB last. The trial may register only implemented services, but must not claim future hardware cleanup was tested.
+- Verify actual Rust-feature static UI/config/capability/IPC wiring. Preserve default legacy behavior and report its missing-backend build limitation. No placeholder binaries or installed-resource changes to make tests pass.
+
+Write runtime-ui-supervisor-report.md with actionable file/line findings, reproductions, priorities, fix requirements and both spec/quality verdicts. Distinguish concrete defects from later rewrite/release gates. Retain independent runtime-ui-correctness-review.md and runtime-ui-adversarial-review.md. Return a short result to root.

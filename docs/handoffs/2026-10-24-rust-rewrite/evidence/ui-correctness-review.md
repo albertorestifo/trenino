@@ -1,0 +1,17 @@
+# Independent UI correctness review
+
+Scope: `1942935` and `f7c1c4c`, limited to `tauri/ui/**` and `crates/trenino-core/src/ui.rs`. Reviewed the UI brief, report, migration plan, generated declarations, shared wire types, current Svelte shell/bridge, and focused tests. This is a contract and static-shell review; the acknowledged Tauri adapters and remaining screens are later integration work.
+
+## Findings
+
+1. **P1 — Structured Rust command errors are discarded.** `C:/Users/Alberto/.codex/worktrees/rust-rewrite/tsw_io/tauri/ui/src/bridge/client.ts:27-33` catches every `invoke` rejection and replaces it with a fabricated `unavailable` failure. `ui_set_consent` (and later commands) can reject with the agreed `UiFailure` for validation, conflict, or internal errors, but the caller receives neither its code, message, field errors, nor retryability. The same loss occurs for subscribe/snapshot errors at lines 59-74. Preserve and validate the structured failure, falling back to `unavailable` only for transport/unknown rejection shapes.
+
+2. **P1 — A request from the previous route can replace the current route's state.** `C:/Users/Alberto/.codex/worktrees/rust-rewrite/tsw_io/tauri/ui/src/app/App.svelte:35-47` starts list/settings loads without a route or request-generation check, and uses one `loadError` for all pages. For example, start a slow configuration request, navigate to Trains, let the train request succeed, then let the configuration request fail: its late error is displayed on Trains and hides the valid train list. A late successful settings request can likewise overwrite newer settings. Guard each completion against the current request/route and keep errors with their owning resource.
+
+3. **P2 — First-run gating proceeds after a settings read failure.** `C:/Users/Alberto/.codex/worktrees/rust-rewrite/tsw_io/tauri/ui/src/app/App.svelte:23-37` redirects only when `getSettings()` succeeds with `unset`; on failure it goes on to load and render the requested page. If the settings command fails transiently while a list command succeeds, an unset user enters the normal shell without a consent decision. Hold the route in an explicit settings-unavailable state until the consent status can be established; allow retry.
+
+4. **P2 — System theme does not follow later OS theme changes.** `C:/Users/Alberto/.codex/worktrees/rust-rewrite/tsw_io/tauri/ui/src/main.ts:5-16` resolves the `system` preference once into an explicit `data-theme` value. There is no `matchMedia(...).change` listener, so a running app remains on the old theme when Windows/Linux/macOS switches appearance. The legacy root layout left `data-theme` unset for system mode, letting media rules update automatically. Either retain that behavior or subscribe to system-theme changes while the saved preference is `system`.
+
+## Confirmed contracts and deferred gates
+
+The Rust serde wrappers and generated TypeScript declarations consistently use a numeric, positive signed-32-bit `ConfigId`, decimal-string `EntityId`, and decimal-string epoch/revision. The stream distinguishes topic revisions, drops duplicate/old changes, and requests resync on gaps or a later epoch. `ui_unsubscribe` is observation cleanup and is separate from operation cancellation. The static UI deliberately marks editors, firmware, joystick, and service-dependent affordances unavailable; no finding is raised for the unregistered Tauri commands, missing publisher, or later full-screen/operation integration.
