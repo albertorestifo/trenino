@@ -66,8 +66,11 @@ where
         timeout,
     } = request;
     let port_name = port_name.as_str();
-    resolver.invalidate_port(port_name, generation);
-    cache.invalidate(port_name, generation);
+    if !resolver.begin_reconfiguration(port_name, generation)
+        || !cache.begin_reconfiguration(port_name, generation)
+    {
+        return Err(ApplyError::StaleGeneration);
+    }
     if port.generation() != generation {
         return Err(ApplyError::StaleGeneration);
     }

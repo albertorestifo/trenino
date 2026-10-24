@@ -17,12 +17,18 @@ struct PortRoutes {
     pins: HashMap<u8, InputIdentity>,
 }
 
+#[derive(Clone, Debug, Default)]
+struct PortRouteState {
+    generation: Option<u64>,
+    revoked: bool,
+    routes: Option<PortRoutes>,
+}
+
 /// The sole authoritative input resolver shared by all hardware consumers.
 /// A complete replacement takes one write lock, so no reader observes a partial map.
 #[derive(Default)]
 pub struct InputResolver {
-    ports: RwLock<HashMap<String, PortRoutes>>,
-    latest_generation: RwLock<HashMap<String, u64>>,
+    ports: RwLock<HashMap<String, PortRouteState>>,
 }
 
 impl InputResolver {
@@ -37,39 +43,51 @@ impl InputResolver {
         I: IntoIterator<Item = (u8, InputIdentity)>,
     {
         let pins = inputs.into_iter().collect();
-        let mut latest = self
-            .latest_generation
-            .write()
-            .expect("input generation registry poisoned");
-        if latest
-            .get(port)
-            .is_some_and(|current| generation < *current)
+        let mut ports = self.ports.write().expect("input resolver poisoned");
+        let state = ports.entry(port.to_owned()).or_default();
+        if state.generation.is_some_and(|current| generation < current)
+            || (state.generation == Some(generation) && state.revoked)
         {
             return false;
         }
-        latest.insert(port.to_owned(), generation);
-        self.ports.write().expect("input resolver poisoned").insert(
-            port.to_owned(),
-            PortRoutes {
+        *state = PortRouteState {
+            generation: Some(generation),
+            revoked: false,
+            routes: Some(PortRoutes {
                 generation,
                 config_id,
                 pins,
-            },
-        );
+            }),
+        };
+        true
+    }
+
+    /// Remove the current mapping while allowing a confirmed reconfiguration of the
+    /// same live connection generation to install a replacement atomically.
+    pub fn begin_reconfiguration(&self, port: &str, generation: u64) -> bool {
+        let mut ports = self.ports.write().expect("input resolver poisoned");
+        let state = ports.entry(port.to_owned()).or_default();
+        if state.generation.is_some_and(|current| generation < current)
+            || (state.generation == Some(generation) && state.revoked)
+        {
+            return false;
+        }
+        state.generation = Some(generation);
+        state.routes = None;
         true
     }
 
     /// Invalidate only the generation that is being reconfigured or disconnected.
     pub fn invalidate_port(&self, port: &str, generation: u64) -> bool {
         let mut ports = self.ports.write().expect("input resolver poisoned");
-        if ports
-            .get(port)
-            .is_some_and(|routes| routes.generation == generation)
-        {
-            ports.remove(port);
-            true
-        } else {
+        let state = ports.entry(port.to_owned()).or_default();
+        if state.generation.is_some_and(|current| generation < current) {
             false
+        } else {
+            state.generation = Some(generation);
+            state.revoked = true;
+            state.routes = None;
+            true
         }
     }
 
@@ -81,7 +99,7 @@ impl InputResolver {
         pin: u8,
     ) -> Option<InputIdentity> {
         let ports = self.ports.read().expect("input resolver poisoned");
-        let routes = ports.get(port)?;
+        let routes = ports.get(port)?.routes.as_ref()?;
         (routes.generation == generation && routes.config_id == config_id)
             .then(|| routes.pins.get(&pin).copied())
             .flatten()
@@ -91,9 +109,7 @@ impl InputResolver {
 /// Current raw input values, kept separate from routed events and preview throttling.
 #[derive(Default)]
 pub struct InputValueCache {
-    ports: RwLock<HashMap<String, CachedPortValues>>,
-    latest_generation: RwLock<HashMap<String, u64>>,
-    invalidated: RwLock<std::collections::HashSet<(String, u64)>>,
+    ports: RwLock<HashMap<String, CachePortState>>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -102,34 +118,31 @@ struct CachedPortValues {
     values: HashMap<u8, i16>,
 }
 
+#[derive(Clone, Debug, Default)]
+struct CachePortState {
+    generation: Option<u64>,
+    revoked: bool,
+    values: Option<CachedPortValues>,
+}
+
 impl InputValueCache {
     pub fn update(&self, port: &str, generation: u64, pin: u8, value: i16) -> bool {
-        let mut latest = self
-            .latest_generation
-            .write()
-            .expect("input cache generation registry poisoned");
-        if latest
-            .get(port)
-            .is_some_and(|current| generation < *current)
-        {
-            return false;
-        }
-        if self
-            .invalidated
-            .read()
-            .expect("input cache invalidation registry poisoned")
-            .contains(&(port.to_owned(), generation))
-        {
-            return false;
-        }
-        latest.insert(port.to_owned(), generation);
         let mut ports = self.ports.write().expect("input value cache poisoned");
-        let entry = ports
-            .entry(port.to_owned())
-            .or_insert_with(|| CachedPortValues {
+        let state = ports.entry(port.to_owned()).or_default();
+        if state.generation.is_some_and(|current| generation < current)
+            || (state.generation == Some(generation) && state.revoked)
+        {
+            return false;
+        }
+        if state.generation != Some(generation) || state.values.is_none() {
+            state.generation = Some(generation);
+            state.revoked = false;
+            state.values = Some(CachedPortValues {
                 generation,
                 values: HashMap::new(),
             });
+        }
+        let entry = state.values.as_mut().expect("cache entry was initialized");
         if entry.generation != generation {
             *entry = CachedPortValues {
                 generation,
@@ -145,66 +158,57 @@ impl InputValueCache {
             .read()
             .expect("input value cache poisoned")
             .get(port)
+            .filter(|state| !state.revoked && state.generation == Some(generation))
+            .and_then(|state| state.values.as_ref())
             .filter(|entry| entry.generation == generation)
             .map(|entry| entry.values.clone())
             .unwrap_or_default()
     }
 
     pub fn invalidate(&self, port: &str, generation: u64) -> bool {
-        let mut latest = self
-            .latest_generation
-            .write()
-            .expect("input cache generation registry poisoned");
-        if latest
-            .get(port)
-            .is_some_and(|current| generation < *current)
+        let mut ports = self.ports.write().expect("input value cache poisoned");
+        let state = ports.entry(port.to_owned()).or_default();
+        if state.generation.is_some_and(|current| generation < current) {
+            return false;
+        }
+        state.generation = Some(generation);
+        state.revoked = true;
+        state.values = None;
+        true
+    }
+
+    /// Prepare the live generation for a new persisted configuration, clearing old
+    /// samples while retaining permission to reactivate after confirmation.
+    pub fn begin_reconfiguration(&self, port: &str, generation: u64) -> bool {
+        let mut ports = self.ports.write().expect("input value cache poisoned");
+        let state = ports.entry(port.to_owned()).or_default();
+        if state.generation.is_some_and(|current| generation < current)
+            || (state.generation == Some(generation) && state.revoked)
         {
             return false;
         }
-        latest.insert(port.to_owned(), generation);
-        self.invalidated
-            .write()
-            .expect("input cache invalidation registry poisoned")
-            .insert((port.to_owned(), generation));
-        let mut ports = self.ports.write().expect("input value cache poisoned");
-        if ports
-            .get(port)
-            .is_some_and(|entry| entry.generation == generation)
-        {
-            ports.remove(port);
-            true
-        } else {
-            true
-        }
+        state.generation = Some(generation);
+        state.values = None;
+        true
     }
 
     /// Explicitly reactivate a generation after successful persisted configuration.
     pub fn activate(&self, port: &str, generation: u64) -> bool {
-        let mut latest = self
-            .latest_generation
-            .write()
-            .expect("input cache generation registry poisoned");
-        if latest
-            .get(port)
-            .is_some_and(|current| generation < *current)
+        let mut ports = self.ports.write().expect("input value cache poisoned");
+        let state = ports.entry(port.to_owned()).or_default();
+        if state.generation.is_some_and(|current| generation < current)
+            || (state.generation == Some(generation) && state.revoked)
         {
             return false;
         }
-        latest.insert(port.to_owned(), generation);
-        self.invalidated
-            .write()
-            .expect("input cache invalidation registry poisoned")
-            .remove(&(port.to_owned(), generation));
-        self.ports
-            .write()
-            .expect("input value cache poisoned")
-            .insert(
-                port.to_owned(),
-                CachedPortValues {
-                    generation,
-                    values: HashMap::new(),
-                },
-            );
+        *state = CachePortState {
+            generation: Some(generation),
+            revoked: false,
+            values: Some(CachedPortValues {
+                generation,
+                values: HashMap::new(),
+            }),
+        };
         true
     }
 }

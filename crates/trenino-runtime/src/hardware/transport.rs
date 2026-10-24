@@ -5,6 +5,10 @@ pub trait SerialIo: Send {
     fn read(&mut self, buffer: &mut [u8]) -> io::Result<usize>;
     fn write_all(&mut self, bytes: &[u8]) -> io::Result<()>;
     fn flush(&mut self) -> io::Result<()>;
+    /// Bound the next blocking read/write. Test ports may keep their injected policy.
+    fn set_timeout(&mut self, _timeout: Duration) -> io::Result<()> {
+        Ok(())
+    }
 }
 
 pub trait SerialTransport: Send + Sync + 'static {
@@ -26,6 +30,11 @@ impl SerialIo for NativePort {
     }
     fn flush(&mut self) -> io::Result<()> {
         self.0.flush()
+    }
+    fn set_timeout(&mut self, timeout: Duration) -> io::Result<()> {
+        self.0
+            .set_timeout(timeout)
+            .map_err(|error| io::Error::other(error.to_string()))
     }
 }
 

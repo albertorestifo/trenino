@@ -1,7 +1,7 @@
 use std::collections::VecDeque;
 use std::io;
 use std::sync::{
-    atomic::{AtomicUsize, Ordering},
+    atomic::{AtomicBool, AtomicUsize, Ordering},
     mpsc, Arc,
 };
 use std::time::Duration;
@@ -19,6 +19,7 @@ use trenino_runtime::hardware::sessions::{
 use trenino_runtime::hardware::transport::SerialIo;
 use trenino_runtime::hardware::transport::SerialTransport;
 use trenino_runtime::hardware::{HardwareRuntime, PortEvent};
+use trenino_runtime::resource::{LeaseKind, ResourceArbiter, ResourceConsumers};
 use trenino_runtime::routing::{InputIdentity, InputResolver, InputValueCache};
 
 #[test]
@@ -54,6 +55,40 @@ fn invalidating_a_port_removes_routing_before_reconfiguration() {
 }
 
 #[test]
+fn disconnect_tombstone_rejects_late_same_generation_route_replacement() {
+    let resolver = InputResolver::default();
+    let config = ConfigId::new(7).unwrap();
+    let input = InputIdentity {
+        device_id: EntityId(10),
+        input_id: EntityId(20),
+    };
+    assert!(resolver.replace_port("COM4", 5, config, [(2, input)]));
+    assert!(resolver.invalidate_port("COM4", 5));
+    assert!(!resolver.replace_port("COM4", 5, config, [(2, input)]));
+    assert_eq!(resolver.resolve("COM4", 5, config, 2), None);
+}
+
+#[test]
+fn newer_connection_generation_can_reactivate_after_disconnect_tombstone() {
+    let resolver = InputResolver::default();
+    let cache = InputValueCache::default();
+    let config = ConfigId::new(7).unwrap();
+    let input = InputIdentity {
+        device_id: EntityId(10),
+        input_id: EntityId(20),
+    };
+    assert!(resolver.replace_port("COM4", 5, config, [(2, input)]));
+    assert!(cache.activate("COM4", 5));
+    assert!(resolver.invalidate_port("COM4", 6));
+    assert!(cache.invalidate("COM4", 6));
+    assert!(!resolver.replace_port("COM4", 6, config, [(2, input)]));
+    assert!(resolver.replace_port("COM4", 7, config, [(2, input)]));
+    assert!(cache.activate("COM4", 7));
+    assert!(cache.update("COM4", 7, 2, 15));
+    assert_eq!(resolver.resolve("COM4", 7, config, 2), Some(input));
+}
+
+#[test]
 fn cache_rejects_stale_generations_and_same_generation_samples_after_disconnect() {
     let cache = InputValueCache::default();
     assert!(cache.update("COM4", 8, 2, 40));
@@ -62,8 +97,9 @@ fn cache_rejects_stale_generations_and_same_generation_samples_after_disconnect(
     assert_eq!(cache.snapshot("COM4", 9).get(&2), Some(&50));
     assert!(cache.invalidate("COM4", 9));
     assert!(!cache.update("COM4", 9, 2, 100));
-    assert!(cache.activate("COM4", 9));
-    assert!(cache.update("COM4", 9, 2, 60));
+    assert!(!cache.activate("COM4", 9));
+    assert!(cache.activate("COM4", 10));
+    assert!(cache.update("COM4", 10, 2, 60));
 }
 
 struct DiscoveryPort {
@@ -142,6 +178,169 @@ fn discovery_retries_a_stale_identity_and_accepts_only_matching_request_id() {
             ..
         }
     ));
+}
+
+#[test]
+fn discovery_returns_coalesced_and_partial_trailing_messages_to_port_owner() {
+    use trenino_runtime::hardware::discovery::discover_owned;
+    struct CoalescedDiscoveryPort {
+        read: Option<Vec<u8>>,
+    }
+    impl SerialIo for CoalescedDiscoveryPort {
+        fn read(&mut self, buffer: &mut [u8]) -> io::Result<usize> {
+            let bytes = self.read.take().ok_or(io::ErrorKind::TimedOut)?;
+            buffer[..bytes.len()].copy_from_slice(&bytes);
+            Ok(bytes.len())
+        }
+        fn write_all(&mut self, bytes: &[u8]) -> io::Result<()> {
+            let request =
+                decode_message(&FrameDecoder::default().push(bytes).remove(0).unwrap()).unwrap();
+            let Message::IdentityRequest { request_id } = request else {
+                panic!("identity request expected")
+            };
+            let frame = |message| FrameDecoder::encode_frame(&encode_message(&message).unwrap());
+            let trailing = frame(Message::InputValue { pin: 8, value: 9 });
+            let partial = frame(Message::InputValue { pin: 9, value: 10 });
+            let mut coalesced = frame(Message::IdentityResponse {
+                request_id,
+                major: 1,
+                minor: 0,
+                patch: 0,
+                config_id: 1,
+            });
+            coalesced.extend(trailing);
+            coalesced.extend(&partial[..partial.len() - 2]);
+            self.read = Some(coalesced);
+            Ok(())
+        }
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
+    let partial = FrameDecoder::encode_frame(
+        &encode_message(&Message::InputValue { pin: 9, value: 10 }).unwrap(),
+    );
+    let mut serial = CoalescedDiscoveryPort { read: None };
+    let mut found = discover_owned(
+        &mut serial,
+        DiscoveryTiming {
+            settle: Duration::ZERO,
+            read_timeout: Duration::from_millis(5),
+            attempts: 1,
+        },
+        Duration::from_millis(100),
+        || false,
+    )
+    .unwrap();
+    assert!(matches!(found.identity, Message::IdentityResponse { .. }));
+    assert_eq!(
+        found.trailing_messages,
+        vec![Message::InputValue { pin: 8, value: 9 }]
+    );
+    assert_eq!(
+        found.decoder.push(&partial[partial.len() - 2..]),
+        vec![Ok(encode_message(&Message::InputValue {
+            pin: 9,
+            value: 10
+        })
+        .unwrap())]
+    );
+}
+
+#[test]
+fn discovery_retains_protocol_diagnostic_and_valid_frame_after_malformed_message() {
+    use trenino_runtime::hardware::discovery::discover_owned;
+    struct OverflowThenInput {
+        response: VecDeque<Vec<u8>>,
+    }
+    impl SerialIo for OverflowThenInput {
+        fn read(&mut self, buffer: &mut [u8]) -> io::Result<usize> {
+            let bytes = self.response.pop_front().ok_or(io::ErrorKind::TimedOut)?;
+            buffer[..bytes.len()].copy_from_slice(&bytes);
+            Ok(bytes.len())
+        }
+        fn write_all(&mut self, bytes: &[u8]) -> io::Result<()> {
+            let request =
+                decode_message(&FrameDecoder::default().push(bytes).remove(0).unwrap()).unwrap();
+            let Message::IdentityRequest { request_id } = request else {
+                unreachable!()
+            };
+            let identity = FrameDecoder::encode_frame(
+                &encode_message(&Message::IdentityResponse {
+                    request_id,
+                    major: 1,
+                    minor: 0,
+                    patch: 0,
+                    config_id: 1,
+                })
+                .unwrap(),
+            );
+            let input = FrameDecoder::encode_frame(
+                &encode_message(&Message::InputValue { pin: 4, value: 12 }).unwrap(),
+            );
+            let mut bytes = identity;
+            bytes.extend(FrameDecoder::encode_frame(&[255]));
+            bytes.extend(input);
+            self.response = bytes.chunks(512).map(<[u8]>::to_vec).collect();
+            Ok(())
+        }
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
+    let mut serial = OverflowThenInput {
+        response: VecDeque::new(),
+    };
+    let result = discover_owned(
+        &mut serial,
+        DiscoveryTiming {
+            settle: Duration::ZERO,
+            read_timeout: Duration::from_millis(5),
+            attempts: 1,
+        },
+        Duration::from_millis(100),
+        || false,
+    )
+    .unwrap();
+    assert_eq!(result.protocol_errors.len(), 1);
+    assert_eq!(
+        result.trailing_messages,
+        vec![Message::InputValue { pin: 4, value: 12 }]
+    );
+}
+
+#[test]
+fn discovery_outer_deadline_bounds_a_port_that_never_stops_sending_noise() {
+    use trenino_runtime::hardware::discovery::{discover_owned, DiscoveryError};
+    struct NoisyPort(usize);
+    impl SerialIo for NoisyPort {
+        fn read(&mut self, buffer: &mut [u8]) -> io::Result<usize> {
+            self.0 += 1;
+            buffer[0] = 0x55;
+            Ok(1)
+        }
+        fn write_all(&mut self, _bytes: &[u8]) -> io::Result<()> {
+            Ok(())
+        }
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
+    let mut serial = NoisyPort(0);
+    let started = std::time::Instant::now();
+    let result = discover_owned(
+        &mut serial,
+        DiscoveryTiming {
+            settle: Duration::ZERO,
+            read_timeout: Duration::from_millis(3),
+            attempts: 5,
+        },
+        Duration::from_millis(15),
+        || false,
+    );
+    assert!(matches!(result, Err(DiscoveryError::DeadlineExceeded)));
+    assert!(started.elapsed() < Duration::from_millis(250));
+    assert!(serial.0 > 0);
 }
 
 struct ConfigPortFake {
@@ -297,6 +496,18 @@ fn calibration_uses_legacy_minimum_counts_and_reports_bounded_sample_overflow() 
     assert_eq!(session.step(), CalibrationStep::Overflowed);
 }
 
+#[test]
+fn draining_calibration_notifications_does_not_unbound_retained_analysis_samples() {
+    let mut session =
+        CalibrationSession::with_capacity(SessionId(3), EntityId(4), "COM1".into(), 3, 2, 1023, 2);
+    session.advance().unwrap();
+    session.observe(3, 2, 1).unwrap();
+    session.take_sample_event().unwrap();
+    session.observe(3, 2, 2).unwrap();
+    session.take_sample_event().unwrap();
+    assert_eq!(session.observe(3, 2, 3), Err(SessionError::Overflow));
+}
+
 struct CalibrationRepoFake(usize);
 impl CalibrationRepository for CalibrationRepoFake {
     fn persist_calibration(
@@ -330,6 +541,45 @@ fn calibration_persists_only_after_legacy_collection_steps_complete() {
         .unwrap()
         .is_some());
     assert_eq!(repository.0, 1);
+    let result = session.terminal_result();
+    session.cancel();
+    assert_eq!(session.step(), CalibrationStep::Complete);
+    assert_eq!(session.terminal_result(), result);
+}
+
+#[test]
+fn calibration_persistence_failure_is_retained_as_terminal_operation_result() {
+    struct FailingCalibrationRepository;
+    impl CalibrationRepository for FailingCalibrationRepository {
+        fn persist_calibration(
+            &mut self,
+            _input_id: EntityId,
+            _calibration: trenino_core::hardware::calibration::Calibration,
+        ) -> Result<(), String> {
+            Err("save failed".into())
+        }
+    }
+    let mut session = CalibrationSession::new(SessionId(4), EntityId(4), "COM1".into(), 3, 2, 1023);
+    session.advance().unwrap();
+    for value in 10..20 {
+        session.observe(3, 2, value).unwrap();
+    }
+    session.advance().unwrap();
+    for value in 0..10 {
+        session.observe(3, 2, value * 10).unwrap();
+    }
+    session.advance().unwrap();
+    for value in 900..910 {
+        session.observe(3, 2, value).unwrap();
+    }
+    assert_eq!(
+        session.advance_and_persist(&mut FailingCalibrationRepository),
+        Err(SessionError::Persist("save failed".into()))
+    );
+    assert_eq!(
+        session.terminal_result(),
+        Some(Err(SessionError::Persist("save failed".into())))
+    );
 }
 
 #[test]
@@ -364,6 +614,62 @@ fn input_detection_uses_baseline_then_legacy_button_and_analog_thresholds() {
 }
 
 #[test]
+fn owned_detection_times_out_autonomously_and_retains_terminal_success() {
+    let sessions = HardwareSessions::default();
+    let detection = sessions
+        .insert_detection(
+            SessionId(77),
+            InputDetectionSession::new(InputKind::Button, Duration::from_millis(30)),
+        )
+        .unwrap();
+    for _ in 0..100 {
+        if detection.lock().unwrap().terminal_outcome().is_some() {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(2));
+    }
+    assert_eq!(
+        detection.lock().unwrap().terminal_outcome(),
+        Some(DetectionOutcome::TimedOut)
+    );
+    assert!(sessions.reap_terminal(SessionId(77)));
+    assert!(sessions.detection(SessionId(77)).is_none());
+
+    let id = InputIdentity {
+        device_id: EntityId(1),
+        input_id: EntityId(2),
+    };
+    let mut success = InputDetectionSession::new(InputKind::Button, Duration::from_secs(1));
+    success.bind_source("COM9", 4);
+    success.observe_generation("COM9", 4, 2, 0, InputKind::Button, Some(id));
+    assert!(matches!(
+        success.observe_generation("COM9", 4, 2, 1, InputKind::Button, Some(id)),
+        DetectionOutcome::Detected { .. }
+    ));
+    success.cancel();
+    assert!(matches!(
+        success.terminal_outcome(),
+        Some(DetectionOutcome::Detected { .. })
+    ));
+    sessions.shutdown();
+}
+
+#[test]
+fn source_loss_terminates_only_matching_detection_generation() {
+    let registry = HardwareSessions::default();
+    let mut session = InputDetectionSession::new(InputKind::Button, Duration::from_secs(1));
+    session.bind_source("COM8", 5);
+    let session = registry.insert_detection(SessionId(78), session).unwrap();
+    registry.source_lost("COM8", 4);
+    assert_eq!(session.lock().unwrap().terminal_outcome(), None);
+    registry.source_lost("COM8", 5);
+    assert_eq!(
+        session.lock().unwrap().terminal_outcome(),
+        Some(DetectionOutcome::SourceLost)
+    );
+}
+
+#[test]
 fn owned_session_survives_dropped_ui_handle_and_shutdown_cancels_pending_work() {
     let sessions = HardwareSessions::default();
     let ui_handle = sessions
@@ -386,6 +692,22 @@ fn owned_session_survives_dropped_ui_handle_and_shutdown_cancels_pending_work() 
 
 struct FakeTransport {
     enumerations: AtomicUsize,
+}
+
+struct NoopResourceConsumers;
+impl ResourceConsumers for NoopResourceConsumers {
+    fn suspend_actuation(&self, _port: &str) -> Result<(), String> {
+        Ok(())
+    }
+    fn cancel_calibration(&self, _port: &str) -> Result<(), String> {
+        Ok(())
+    }
+    fn source_lost(&self, _port: &str, _generation: u64) -> Result<(), String> {
+        Ok(())
+    }
+    fn resume_after_fresh_sample(&self, _port: &str) -> Result<(), String> {
+        Ok(())
+    }
 }
 struct FakeOwnedPort {
     reads: VecDeque<Vec<u8>>,
@@ -452,7 +774,7 @@ fn runtime_is_inert_until_started_then_discovers_owned_port_and_joins_on_shutdow
     assert_eq!(runtime.enumerate_ports().unwrap(), vec!["COM42"]);
     assert_eq!(transport.enumerations.load(Ordering::SeqCst), 1);
     let (events, receive) = mpsc::channel();
-    let handle = runtime.start(move |event| {
+    let mut handle = runtime.start(move |event| {
         let _ = events.send(event);
     });
     handle.scan_now().unwrap();
@@ -468,24 +790,527 @@ fn runtime_is_inert_until_started_then_discovers_owned_port_and_joins_on_shutdow
     };
     assert!(generation > 0);
     handle
-        .send_message("COM42", Message::Heartbeat, Duration::from_millis(100))
+        .send_message(
+            "COM42",
+            generation,
+            Message::Heartbeat,
+            Duration::from_millis(100),
+        )
         .unwrap();
+    let arbiter = ResourceArbiter::new(Arc::new(NoopResourceConsumers));
+    let lease = arbiter
+        .acquire(LeaseKind::Firmware {
+            port: "COM42".into(),
+            generation,
+        })
+        .unwrap();
+    let permit = arbiter.firmware_handoff_permit(lease).unwrap();
+    assert!(handle
+        .begin_handoff("COM42", generation + 1, &permit)
+        .is_err());
+    let operation = handle.begin_handoff("COM42", generation, &permit).unwrap();
     let handoff = handle
-        .handoff_port("COM42", Duration::from_secs(2))
+        .wait_handoff(operation, Duration::from_secs(2))
+        .unwrap()
         .unwrap();
-    assert_eq!(handoff.generation, generation);
+    assert_eq!(handoff.generation(), generation);
     assert!(
         matches!(receive.recv_timeout(Duration::from_secs(2)).unwrap(), PortEvent::Closed { generation: closed, .. } if closed == generation)
     );
-    handle
-        .release_handoff(handoff, Duration::from_secs(2))
-        .unwrap();
+    let release = handle.begin_release_handoff(handoff, &permit).unwrap();
+    loop {
+        if let Some(result) = handle.release_result(release) {
+            result.unwrap();
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(2));
+    }
+    arbiter.release(lease).unwrap();
     let reconnected = receive.recv_timeout(Duration::from_secs(2)).unwrap();
     let next_generation = match reconnected {
         PortEvent::Discovered { generation, .. } => generation,
         other => panic!("unexpected event after handoff: {other:?}"),
     };
     assert!(next_generation > generation);
+    assert!(handle
+        .send_message(
+            "COM42",
+            generation,
+            Message::Heartbeat,
+            Duration::from_millis(100),
+        )
+        .is_err());
     handle.shutdown().unwrap();
     assert!(receive.try_iter().any(|event| matches!(event, PortEvent::Closed { generation: closed, .. } if closed == next_generation)));
+}
+
+#[test]
+fn handoff_reservation_cannot_be_overwritten_and_timed_out_wait_is_recoverable() {
+    let transport = Arc::new(FakeTransport {
+        enumerations: AtomicUsize::new(0),
+    });
+    let runtime = Arc::new(
+        HardwareRuntime::new(
+            transport,
+            DiscoveryTiming {
+                settle: Duration::ZERO,
+                read_timeout: Duration::from_millis(2),
+                attempts: 1,
+            },
+        )
+        .with_policy(
+            Duration::from_secs(60),
+            Duration::from_secs(1),
+            Duration::from_secs(1),
+        ),
+    );
+    let (events, receive) = mpsc::channel();
+    let mut handle = runtime.start(move |event| {
+        let _ = events.send(event);
+    });
+    handle.scan_now().unwrap();
+    let generation = match receive.recv_timeout(Duration::from_secs(1)).unwrap() {
+        PortEvent::Discovered { generation, .. } => generation,
+        other => panic!("unexpected event: {other:?}"),
+    };
+    let arbiter = ResourceArbiter::new(Arc::new(NoopResourceConsumers));
+    let lease = arbiter
+        .acquire(LeaseKind::Firmware {
+            port: "COM42".into(),
+            generation,
+        })
+        .unwrap();
+    let permit = arbiter.firmware_handoff_permit(lease).unwrap();
+    let operation = handle.begin_handoff("COM42", generation, &permit).unwrap();
+    assert!(handle.wait_handoff(operation, Duration::ZERO).is_none());
+    let handoff = handle
+        .wait_handoff(operation, Duration::from_secs(1))
+        .unwrap()
+        .unwrap();
+    let second = handle.begin_handoff("COM42", generation, &permit).unwrap();
+    assert_eq!(
+        handle.wait_handoff(second, Duration::from_secs(1)).unwrap(),
+        Err("port is already reserved".into())
+    );
+    let release = handle.begin_release_handoff(handoff, &permit).unwrap();
+    loop {
+        if let Some(result) = handle.release_result(release) {
+            result.unwrap();
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(2));
+    }
+    arbiter.release(lease).unwrap();
+    handle.shutdown().unwrap();
+}
+
+#[test]
+fn shutdown_waits_for_firmware_reservation_release_and_remains_retryable() {
+    let transport = Arc::new(FakeTransport {
+        enumerations: AtomicUsize::new(0),
+    });
+    let runtime = Arc::new(
+        HardwareRuntime::new(
+            transport,
+            DiscoveryTiming {
+                settle: Duration::ZERO,
+                read_timeout: Duration::from_millis(2),
+                attempts: 1,
+            },
+        )
+        .with_policy(
+            Duration::from_secs(60),
+            Duration::from_secs(1),
+            Duration::from_millis(20),
+        ),
+    );
+    let (events, receive) = mpsc::channel();
+    let mut handle = runtime.start(move |event| {
+        let _ = events.send(event);
+    });
+    handle.scan_now().unwrap();
+    let generation = loop {
+        if let PortEvent::Discovered { generation, .. } =
+            receive.recv_timeout(Duration::from_secs(1)).unwrap()
+        {
+            break generation;
+        }
+    };
+    let arbiter = ResourceArbiter::new(Arc::new(NoopResourceConsumers));
+    let lease = arbiter
+        .acquire(LeaseKind::Firmware {
+            port: "COM42".into(),
+            generation,
+        })
+        .unwrap();
+    let permit = arbiter.firmware_handoff_permit(lease).unwrap();
+    let operation = handle.begin_handoff("COM42", generation, &permit).unwrap();
+    let handoff = handle
+        .wait_handoff(operation, Duration::from_secs(1))
+        .unwrap()
+        .unwrap();
+    assert!(handle.shutdown().is_err());
+    let release = handle.begin_release_handoff(handoff, &permit).unwrap();
+    loop {
+        if let Some(result) = handle.release_result(release) {
+            result.unwrap();
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(2));
+    }
+    arbiter.release(lease).unwrap();
+    handle.shutdown().unwrap();
+}
+
+struct BlockingOwnerTransport {
+    unblock: Arc<AtomicBool>,
+    entered: Arc<AtomicBool>,
+    drops: Arc<AtomicUsize>,
+}
+struct BlockingOwnerPort {
+    reads: VecDeque<Vec<u8>>,
+    unblock: Arc<AtomicBool>,
+    entered: Arc<AtomicBool>,
+    drops: Arc<AtomicUsize>,
+    discovered: bool,
+}
+impl Drop for BlockingOwnerPort {
+    fn drop(&mut self) {
+        self.drops.fetch_add(1, Ordering::SeqCst);
+    }
+}
+impl SerialIo for BlockingOwnerPort {
+    fn read(&mut self, buffer: &mut [u8]) -> io::Result<usize> {
+        if let Some(bytes) = self.reads.pop_front() {
+            buffer[..bytes.len()].copy_from_slice(&bytes);
+            self.discovered = true;
+            return Ok(bytes.len());
+        }
+        if self.discovered {
+            self.entered.store(true, Ordering::SeqCst);
+            while self.unblock.load(Ordering::SeqCst) {
+                std::thread::sleep(Duration::from_millis(1));
+            }
+        }
+        Err(io::ErrorKind::TimedOut.into())
+    }
+    fn write_all(&mut self, bytes: &[u8]) -> io::Result<()> {
+        let payload = FrameDecoder::default().push(bytes).remove(0).unwrap();
+        let Message::IdentityRequest { request_id } = decode_message(&payload).unwrap() else {
+            return Ok(());
+        };
+        let response = encode_message(&Message::IdentityResponse {
+            request_id,
+            major: 1,
+            minor: 0,
+            patch: 0,
+            config_id: 1,
+        })
+        .unwrap();
+        self.reads.push_back(FrameDecoder::encode_frame(&response));
+        Ok(())
+    }
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
+}
+impl SerialTransport for BlockingOwnerTransport {
+    fn enumerate(&self) -> io::Result<Vec<String>> {
+        Ok(vec!["BLOCKED".into()])
+    }
+    fn open(&self, _port: &str, _baud: u32, _timeout: Duration) -> io::Result<Box<dyn SerialIo>> {
+        Ok(Box::new(BlockingOwnerPort {
+            reads: VecDeque::new(),
+            unblock: self.unblock.clone(),
+            entered: self.entered.clone(),
+            drops: self.drops.clone(),
+            discovered: false,
+        }))
+    }
+}
+
+#[test]
+fn shutdown_timeout_retains_worker_and_can_be_retried_after_cleanup() {
+    let transport = Arc::new(BlockingOwnerTransport {
+        unblock: Arc::new(AtomicBool::new(true)),
+        entered: Arc::new(AtomicBool::new(false)),
+        drops: Arc::new(AtomicUsize::new(0)),
+    });
+    let runtime = Arc::new(
+        HardwareRuntime::new(
+            transport.clone(),
+            DiscoveryTiming {
+                settle: Duration::ZERO,
+                read_timeout: Duration::from_millis(2),
+                attempts: 1,
+            },
+        )
+        .with_policy(
+            Duration::from_secs(60),
+            Duration::from_secs(1),
+            Duration::from_millis(20),
+        ),
+    );
+    let (events, receive) = mpsc::channel();
+    let mut handle = runtime.start(move |event| {
+        let _ = events.send(event);
+    });
+    handle.scan_now().unwrap();
+    assert!(matches!(
+        receive.recv_timeout(Duration::from_secs(1)).unwrap(),
+        PortEvent::Discovered { .. }
+    ));
+    for _ in 0..100 {
+        if transport.entered.load(Ordering::SeqCst) {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(1));
+    }
+    assert!(transport.entered.load(Ordering::SeqCst));
+    assert!(handle.shutdown().is_err());
+    assert_eq!(transport.drops.load(Ordering::SeqCst), 0);
+    transport.unblock.store(false, Ordering::SeqCst);
+    handle.shutdown().unwrap();
+    assert_eq!(transport.drops.load(Ordering::SeqCst), 1);
+}
+
+struct RecoveryTransport;
+struct RecoveryPort(VecDeque<Vec<u8>>);
+impl SerialTransport for RecoveryTransport {
+    fn enumerate(&self) -> io::Result<Vec<String>> {
+        Ok(vec!["RECOVER".into()])
+    }
+    fn open(&self, _port: &str, _baud: u32, _timeout: Duration) -> io::Result<Box<dyn SerialIo>> {
+        Ok(Box::new(RecoveryPort(VecDeque::new())))
+    }
+}
+impl SerialIo for RecoveryPort {
+    fn read(&mut self, buffer: &mut [u8]) -> io::Result<usize> {
+        let Some(bytes) = self.0.pop_front() else {
+            return Err(io::ErrorKind::TimedOut.into());
+        };
+        let count = bytes.len().min(buffer.len());
+        buffer[..count].copy_from_slice(&bytes[..count]);
+        if count < bytes.len() {
+            self.0.push_front(bytes[count..].to_vec());
+        }
+        Ok(count)
+    }
+    fn write_all(&mut self, bytes: &[u8]) -> io::Result<()> {
+        let request =
+            decode_message(&FrameDecoder::default().push(bytes).remove(0).unwrap()).unwrap();
+        let Message::IdentityRequest { request_id } = request else {
+            unreachable!()
+        };
+        let mut stream = FrameDecoder::encode_frame(
+            &encode_message(&Message::IdentityResponse {
+                request_id,
+                major: 1,
+                minor: 0,
+                patch: 0,
+                config_id: 1,
+            })
+            .unwrap(),
+        );
+        stream.extend(std::iter::repeat_n(1, 524));
+        stream.push(0);
+        stream.extend(FrameDecoder::encode_frame(
+            &encode_message(&Message::InputValue { pin: 3, value: 77 }).unwrap(),
+        ));
+        self.0.extend(stream.chunks(512).map(<[u8]>::to_vec));
+        Ok(())
+    }
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
+}
+
+#[test]
+fn malformed_overflow_reports_error_and_worker_processes_resynchronized_input() {
+    let runtime = Arc::new(
+        HardwareRuntime::new(
+            Arc::new(RecoveryTransport),
+            DiscoveryTiming {
+                settle: Duration::ZERO,
+                read_timeout: Duration::from_millis(2),
+                attempts: 1,
+            },
+        )
+        .with_policy(
+            Duration::from_secs(60),
+            Duration::from_secs(1),
+            Duration::from_secs(1),
+        ),
+    );
+    let (events, receive) = mpsc::channel();
+    let mut handle = runtime.start(move |event| {
+        let _ = events.send(event);
+    });
+    handle.scan_now().unwrap();
+    let generation = loop {
+        if let PortEvent::Discovered { generation, .. } =
+            receive.recv_timeout(Duration::from_secs(1)).unwrap()
+        {
+            break generation;
+        }
+    };
+    let mut saw_protocol_error = false;
+    let mut saw_input = false;
+    for _ in 0..10 {
+        match receive.recv_timeout(Duration::from_secs(1)).unwrap() {
+            PortEvent::ProtocolError {
+                generation: event_generation,
+                ..
+            } => {
+                assert_eq!(event_generation, generation);
+                saw_protocol_error = true;
+            }
+            PortEvent::Message {
+                generation: event_generation,
+                message: Message::InputValue { pin: 3, value: 77 },
+                ..
+            } => {
+                assert_eq!(event_generation, generation);
+                saw_input = true;
+                break;
+            }
+            _ => {}
+        }
+    }
+    assert!(saw_protocol_error);
+    assert!(saw_input);
+    handle.shutdown().unwrap();
+}
+
+struct BlockingWriteTransport {
+    block: Arc<AtomicBool>,
+    entered: Arc<AtomicBool>,
+}
+struct BlockingWritePort {
+    reads: VecDeque<Vec<u8>>,
+    block: Arc<AtomicBool>,
+    entered: Arc<AtomicBool>,
+}
+impl SerialTransport for BlockingWriteTransport {
+    fn enumerate(&self) -> io::Result<Vec<String>> {
+        Ok(vec!["WRITE-BLOCK".into()])
+    }
+    fn open(&self, _port: &str, _baud: u32, _timeout: Duration) -> io::Result<Box<dyn SerialIo>> {
+        Ok(Box::new(BlockingWritePort {
+            reads: VecDeque::new(),
+            block: self.block.clone(),
+            entered: self.entered.clone(),
+        }))
+    }
+}
+impl SerialIo for BlockingWritePort {
+    fn read(&mut self, buffer: &mut [u8]) -> io::Result<usize> {
+        let Some(bytes) = self.reads.pop_front() else {
+            return Err(io::ErrorKind::TimedOut.into());
+        };
+        buffer[..bytes.len()].copy_from_slice(&bytes);
+        Ok(bytes.len())
+    }
+    fn write_all(&mut self, bytes: &[u8]) -> io::Result<()> {
+        let message =
+            decode_message(&FrameDecoder::default().push(bytes).remove(0).unwrap()).unwrap();
+        if let Message::IdentityRequest { request_id } = message {
+            self.reads.push_back(FrameDecoder::encode_frame(
+                &encode_message(&Message::IdentityResponse {
+                    request_id,
+                    major: 1,
+                    minor: 0,
+                    patch: 0,
+                    config_id: 1,
+                })
+                .unwrap(),
+            ));
+        } else {
+            self.entered.store(true, Ordering::SeqCst);
+            while self.block.load(Ordering::SeqCst) {
+                std::thread::sleep(Duration::from_millis(1));
+            }
+        }
+        Ok(())
+    }
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
+}
+
+#[test]
+fn blocked_write_applies_bounded_command_backpressure() {
+    let transport = Arc::new(BlockingWriteTransport {
+        block: Arc::new(AtomicBool::new(true)),
+        entered: Arc::new(AtomicBool::new(false)),
+    });
+    let runtime = Arc::new(
+        HardwareRuntime::new(
+            transport.clone(),
+            DiscoveryTiming {
+                settle: Duration::ZERO,
+                read_timeout: Duration::from_millis(2),
+                attempts: 1,
+            },
+        )
+        .with_policy(
+            Duration::from_secs(60),
+            Duration::from_secs(1),
+            Duration::from_millis(20),
+        ),
+    );
+    let (events, receive) = mpsc::channel();
+    let handle = runtime.start(move |event| {
+        let _ = events.send(event);
+    });
+    handle.scan_now().unwrap();
+    let generation = loop {
+        if let PortEvent::Discovered { generation, .. } =
+            receive.recv_timeout(Duration::from_secs(1)).unwrap()
+        {
+            break generation;
+        }
+    };
+    let handle = Arc::new(handle);
+    let first_handle = handle.clone();
+    let first = std::thread::spawn(move || {
+        first_handle.send_message(
+            "WRITE-BLOCK",
+            generation,
+            Message::Heartbeat,
+            Duration::from_secs(2),
+        )
+    });
+    for _ in 0..100 {
+        if transport.entered.load(Ordering::SeqCst) {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(1));
+    }
+    assert!(transport.entered.load(Ordering::SeqCst));
+    let mut callers = Vec::new();
+    for _ in 0..80 {
+        let handle = handle.clone();
+        callers.push(std::thread::spawn(move || {
+            handle.send_message(
+                "WRITE-BLOCK",
+                generation,
+                Message::Heartbeat,
+                Duration::from_millis(100),
+            )
+        }));
+    }
+    let outcomes = callers
+        .into_iter()
+        .map(|caller| caller.join().unwrap())
+        .collect::<Vec<_>>();
+    assert!(outcomes.iter().any(|result| result
+        .as_ref()
+        .is_err_and(|error| error == "runtime command queue is full")));
+    transport.block.store(false, Ordering::SeqCst);
+    let _ = first.join().unwrap();
+    let mut handle = Arc::try_unwrap(handle)
+        .ok()
+        .expect("command handle references must be released");
+    handle.shutdown().unwrap();
 }

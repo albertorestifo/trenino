@@ -138,3 +138,33 @@ fn release_stays_suspended_until_consumer_observes_a_fresh_sample() {
     release.join().unwrap().unwrap();
     assert!(!arbiter.is_suspended());
 }
+
+#[test]
+fn shutdown_cancels_active_lease_without_resuming_actuation() {
+    let log = Arc::new(Mutex::new(Vec::new()));
+    let arbiter = ResourceArbiter::new(Arc::new(FakeConsumers(log.clone())));
+    let lease = arbiter
+        .acquire(LeaseKind::Calibration {
+            port: "COM8".into(),
+            generation: 9,
+        })
+        .unwrap();
+    arbiter.shutdown().unwrap();
+    assert_eq!(
+        *log.lock().unwrap(),
+        vec!["suspend", "cancel-calibration", "source-lost"]
+    );
+    assert!(arbiter.is_suspended());
+    assert_eq!(
+        arbiter.acquire(LeaseKind::Firmware {
+            port: "COM8".into(),
+            generation: 9
+        }),
+        Err(trenino_runtime::resource::ResourceError::Busy)
+    );
+    assert_eq!(
+        arbiter.release(lease),
+        Err(trenino_runtime::resource::ResourceError::InvalidLease)
+    );
+    assert!(!log.lock().unwrap().contains(&"resume-fresh"));
+}

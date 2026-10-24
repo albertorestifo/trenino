@@ -1,6 +1,7 @@
 //! Owned detection and calibration state machines. The host keeps them alive
 //! independently of UI request cancellation and feeds authoritative ordered events.
 use std::collections::{HashMap, HashSet};
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -32,7 +33,9 @@ pub enum DetectionOutcome {
 pub struct InputDetectionSession {
     filter: InputKind,
     deadline: Instant,
-    baselines: HashMap<(String, u8), i16>,
+    baselines: HashMap<(String, u64, u8), i16>,
+    source: Option<(String, u64)>,
+    terminal: Option<DetectionOutcome>,
     cancelled: bool,
     source_lost: bool,
 }
@@ -43,15 +46,56 @@ impl InputDetectionSession {
             filter,
             deadline: Instant::now() + timeout,
             baselines: HashMap::new(),
+            source: None,
+            terminal: None,
             cancelled: false,
             source_lost: false,
         }
     }
     pub fn cancel(&mut self) {
         self.cancelled = true;
+        if self.terminal.is_none() {
+            self.terminal = Some(DetectionOutcome::Cancelled);
+        }
     }
     pub fn source_lost(&mut self) {
         self.source_lost = true;
+        self.baselines.clear();
+        if self.terminal.is_none() {
+            self.terminal = Some(DetectionOutcome::SourceLost);
+        }
+    }
+    pub fn bind_source(&mut self, port: impl Into<String>, generation: u64) {
+        self.source = Some((port.into(), generation));
+    }
+    pub fn terminal_outcome(&self) -> Option<DetectionOutcome> {
+        self.terminal
+    }
+    pub fn deadline(&self) -> Instant {
+        self.deadline
+    }
+    pub fn expire_if_due(&mut self, now: Instant) -> Option<DetectionOutcome> {
+        if self.terminal.is_none() && now >= self.deadline {
+            self.terminal = Some(DetectionOutcome::TimedOut);
+        }
+        self.terminal
+    }
+    pub fn source_lost_generation(&mut self, port: &str, generation: u64) {
+        self.baselines
+            .retain(|(baseline_port, baseline_gen, _), _| {
+                baseline_port != port || *baseline_gen != generation
+            });
+        if self
+            .source
+            .as_ref()
+            .is_some_and(|(source_port, source_generation)| {
+                source_port == port && *source_generation == generation
+            })
+            && self.terminal.is_none()
+        {
+            self.source_lost = true;
+            self.terminal = Some(DetectionOutcome::SourceLost);
+        }
     }
     pub fn observe(
         &mut self,
@@ -61,16 +105,36 @@ impl InputDetectionSession {
         kind: InputKind,
         identity: Option<InputIdentity>,
     ) -> DetectionOutcome {
+        self.observe_generation(port, 0, pin, value, kind, identity)
+    }
+    pub fn observe_generation(
+        &mut self,
+        port: &str,
+        generation: u64,
+        pin: u8,
+        value: i16,
+        kind: InputKind,
+        identity: Option<InputIdentity>,
+    ) -> DetectionOutcome {
+        if let Some(terminal) = self.expire_if_due(Instant::now()) {
+            return terminal;
+        }
         if self.cancelled {
             return DetectionOutcome::Cancelled;
         }
         if self.source_lost {
             return DetectionOutcome::SourceLost;
         }
-        if Instant::now() >= self.deadline {
-            return DetectionOutcome::TimedOut;
+        if self
+            .source
+            .as_ref()
+            .is_some_and(|(source_port, source_generation)| {
+                source_port != port || *source_generation != generation
+            })
+        {
+            return DetectionOutcome::Pending;
         }
-        let key = (port.to_owned(), pin);
+        let key = (port.to_owned(), generation, pin);
         let Some(previous) = self.baselines.get(&key).copied() else {
             self.baselines.insert(key, value);
             return DetectionOutcome::Pending;
@@ -82,11 +146,13 @@ impl InputDetectionSession {
         };
         if threshold && (self.filter == InputKind::Any || self.filter == kind) {
             if let Some(identity) = identity {
-                return DetectionOutcome::Detected {
+                let outcome = DetectionOutcome::Detected {
                     identity,
                     pin,
                     value,
                 };
+                self.terminal = Some(outcome);
+                return outcome;
             }
         }
         DetectionOutcome::Pending
@@ -114,6 +180,7 @@ pub enum SessionError {
     Overflow,
     Persist(String),
     DuplicateId,
+    RegistryFull,
 }
 
 pub trait CalibrationRepository {
@@ -136,6 +203,9 @@ pub struct CalibrationSession {
     sweep_samples: Vec<i32>,
     max_samples: Vec<i32>,
     sample_events: EventQueue<(u64, u8, i32)>,
+    sample_limit: usize,
+    retained_samples: usize,
+    terminal_result: Option<Result<Calibration, SessionError>>,
 }
 
 impl CalibrationSession {
@@ -179,16 +249,35 @@ impl CalibrationSession {
             sweep_samples: Vec::new(),
             max_samples: Vec::new(),
             sample_events: EventQueue::new(capacity),
+            sample_limit: capacity.max(1),
+            retained_samples: 0,
+            terminal_result: None,
         }
     }
     pub fn step(&self) -> CalibrationStep {
         self.step
     }
     pub fn cancel(&mut self) {
-        self.step = CalibrationStep::Cancelled;
+        if !matches!(
+            self.step,
+            CalibrationStep::Complete
+                | CalibrationStep::Cancelled
+                | CalibrationStep::Overflowed
+                | CalibrationStep::SourceLost
+        ) {
+            self.step = CalibrationStep::Cancelled;
+        }
     }
     pub fn source_lost(&mut self) {
-        self.step = CalibrationStep::SourceLost;
+        if !matches!(
+            self.step,
+            CalibrationStep::Complete
+                | CalibrationStep::Cancelled
+                | CalibrationStep::Overflowed
+                | CalibrationStep::SourceLost
+        ) {
+            self.step = CalibrationStep::SourceLost;
+        }
     }
     pub fn observe(&mut self, generation: u64, pin: u8, value: i32) -> Result<bool, SessionError> {
         if generation != self.generation || pin != self.pin {
@@ -202,10 +291,17 @@ impl CalibrationSession {
         ) {
             return Ok(false);
         }
-        if self.sample_events.push((generation, pin, value)).is_err() {
+        if self.retained_samples >= self.sample_limit {
             self.step = CalibrationStep::Overflowed;
+            self.terminal_result = Some(Err(SessionError::Overflow));
             return Err(SessionError::Overflow);
         }
+        if self.sample_events.push((generation, pin, value)).is_err() {
+            self.step = CalibrationStep::Overflowed;
+            self.terminal_result = Some(Err(SessionError::Overflow));
+            return Err(SessionError::Overflow);
+        }
+        self.retained_samples += 1;
         match self.step {
             CalibrationStep::CollectingMin => self.min_samples.push(value),
             CalibrationStep::Sweeping => self.sweep_samples.push(value),
@@ -249,6 +345,7 @@ impl CalibrationSession {
                     rollover: analysis.rollover,
                 };
                 self.step = CalibrationStep::Complete;
+                self.terminal_result = Some(Ok(result));
                 return Ok(Some(result));
             }
             _ => return Err(SessionError::InvalidStep),
@@ -262,13 +359,19 @@ impl CalibrationSession {
     ) -> Result<Option<Calibration>, SessionError> {
         let result = self.advance()?;
         if let Some(calibration) = result {
-            repository
-                .persist_calibration(self.input_id, calibration)
-                .map_err(SessionError::Persist)?;
+            if let Err(error) = repository.persist_calibration(self.input_id, calibration) {
+                let error = SessionError::Persist(error);
+                self.terminal_result = Some(Err(error.clone()));
+                return Err(error);
+            }
             Ok(Some(calibration))
         } else {
             Ok(None)
         }
+    }
+
+    pub fn terminal_result(&self) -> Option<Result<Calibration, SessionError>> {
+        self.terminal_result.clone()
     }
 }
 
@@ -282,7 +385,11 @@ fn valid(samples: &[i32]) -> bool {
 pub struct HardwareSessions {
     calibrations: Mutex<HashMap<SessionId, Arc<Mutex<CalibrationSession>>>>,
     detections: Mutex<HashMap<SessionId, Arc<Mutex<InputDetectionSession>>>>,
+    detection_workers: Mutex<HashMap<SessionId, std::thread::JoinHandle<()>>>,
+    session_count: AtomicUsize,
 }
+
+const MAX_OWNED_SESSIONS: usize = 1024;
 
 impl HardwareSessions {
     pub fn insert_calibration(
@@ -296,6 +403,7 @@ impl HardwareSessions {
         if sessions.contains_key(&session.id) {
             return Err(SessionError::DuplicateId);
         }
+        self.reserve_slot()?;
         let session = Arc::new(Mutex::new(session));
         let id = session.lock().expect("calibration session poisoned").id;
         sessions.insert(id, session.clone());
@@ -307,6 +415,18 @@ impl HardwareSessions {
         id: SessionId,
         session: InputDetectionSession,
     ) -> Result<Arc<Mutex<InputDetectionSession>>, SessionError> {
+        self.insert_detection_with_callback(id, session, |_| {})
+    }
+
+    pub fn insert_detection_with_callback<F>(
+        &self,
+        id: SessionId,
+        session: InputDetectionSession,
+        on_terminal: F,
+    ) -> Result<Arc<Mutex<InputDetectionSession>>, SessionError>
+    where
+        F: FnOnce(DetectionOutcome) + Send + 'static,
+    {
         let mut sessions = self
             .detections
             .lock()
@@ -314,8 +434,45 @@ impl HardwareSessions {
         if sessions.contains_key(&id) {
             return Err(SessionError::DuplicateId);
         }
+        self.reserve_slot()?;
         let session = Arc::new(Mutex::new(session));
         sessions.insert(id, session.clone());
+        drop(sessions);
+        let owned_session = session.clone();
+        let mut on_terminal = Some(on_terminal);
+        let worker = match std::thread::Builder::new()
+            .name(format!("input-detection-{}", id.0))
+            .spawn(move || loop {
+                let mut session = owned_session
+                    .lock()
+                    .expect("input detection session poisoned");
+                if let Some(outcome) = session.expire_if_due(Instant::now()) {
+                    drop(session);
+                    on_terminal
+                        .take()
+                        .expect("terminal callback is consumed once")(outcome);
+                    break;
+                }
+                let remaining = session.deadline().saturating_duration_since(Instant::now());
+                drop(session);
+                std::thread::sleep(remaining.min(Duration::from_millis(10)));
+            }) {
+            Ok(worker) => worker,
+            Err(error) => {
+                self.detections
+                    .lock()
+                    .expect("input detection session registry poisoned")
+                    .remove(&id);
+                self.session_count.fetch_sub(1, Ordering::AcqRel);
+                return Err(SessionError::Persist(format!(
+                    "failed to spawn detection owner: {error}"
+                )));
+            }
+        };
+        self.detection_workers
+            .lock()
+            .expect("detection worker registry poisoned")
+            .insert(id, worker);
         Ok(session)
     }
 
@@ -335,6 +492,61 @@ impl HardwareSessions {
             .cloned()
     }
 
+    fn reserve_slot(&self) -> Result<(), SessionError> {
+        self.session_count
+            .fetch_update(Ordering::AcqRel, Ordering::Acquire, |count| {
+                (count < MAX_OWNED_SESSIONS).then_some(count + 1)
+            })
+            .map(|_| ())
+            .map_err(|_| SessionError::RegistryFull)
+    }
+
+    /// Remove a terminal session and join its owned timer task. Nonterminal work is
+    /// retained and cannot be accidentally garbage-collected by a dropped UI handle.
+    pub fn reap_terminal(&self, id: SessionId) -> bool {
+        let detection_terminal = self.detection(id).is_some_and(|session| {
+            session
+                .lock()
+                .expect("input detection session poisoned")
+                .terminal_outcome()
+                .is_some()
+        });
+        if detection_terminal {
+            self.detections
+                .lock()
+                .expect("input detection session registry poisoned")
+                .remove(&id);
+            self.session_count.fetch_sub(1, Ordering::AcqRel);
+            if let Some(worker) = self
+                .detection_workers
+                .lock()
+                .expect("detection worker registry poisoned")
+                .remove(&id)
+            {
+                let _ = worker.join();
+            }
+            return true;
+        }
+        let calibration_terminal = self.calibration(id).is_some_and(|session| {
+            matches!(
+                session.lock().expect("calibration session poisoned").step(),
+                CalibrationStep::Complete
+                    | CalibrationStep::Cancelled
+                    | CalibrationStep::SourceLost
+                    | CalibrationStep::Overflowed
+            )
+        });
+        if calibration_terminal {
+            self.calibrations
+                .lock()
+                .expect("calibration session registry poisoned")
+                .remove(&id);
+            self.session_count.fetch_sub(1, Ordering::AcqRel);
+            return true;
+        }
+        false
+    }
+
     pub fn cancel_calibration(&self, id: SessionId) -> bool {
         if let Some(session) = self.calibration(id) {
             session
@@ -345,6 +557,30 @@ impl HardwareSessions {
         } else {
             false
         }
+    }
+
+    pub fn cancel_calibrations_on(&self, port: &str) -> Vec<SessionId> {
+        let sessions = self
+            .calibrations
+            .lock()
+            .expect("calibration session registry poisoned");
+        let mut cancelled = Vec::new();
+        for (id, session) in sessions.iter() {
+            let mut session = session.lock().expect("calibration session poisoned");
+            if session.port == port
+                && !matches!(
+                    session.step(),
+                    CalibrationStep::Complete
+                        | CalibrationStep::Cancelled
+                        | CalibrationStep::SourceLost
+                        | CalibrationStep::Overflowed
+                )
+            {
+                session.cancel();
+                cancelled.push(*id);
+            }
+        }
+        cancelled
     }
 
     pub fn cancel_detection(&self, id: SessionId) -> bool {
@@ -371,6 +607,61 @@ impl HardwareSessions {
                 session.source_lost();
             }
         }
+        for session in self
+            .detections
+            .lock()
+            .expect("input detection session registry poisoned")
+            .values()
+        {
+            session
+                .lock()
+                .expect("input detection session poisoned")
+                .source_lost_generation(port, generation);
+        }
+    }
+
+    pub fn observe_input(
+        &self,
+        port: &str,
+        generation: u64,
+        pin: u8,
+        value: i16,
+        kind: InputKind,
+        identity: Option<InputIdentity>,
+    ) -> Vec<(SessionId, DetectionOutcome)> {
+        self.detections
+            .lock()
+            .expect("input detection session registry poisoned")
+            .iter()
+            .map(|(id, session)| {
+                let outcome = session
+                    .lock()
+                    .expect("input detection session poisoned")
+                    .observe_generation(port, generation, pin, value, kind, identity);
+                (*id, outcome)
+            })
+            .collect()
+    }
+
+    pub fn observe_calibrations(
+        &self,
+        port: &str,
+        generation: u64,
+        pin: u8,
+        value: i16,
+    ) -> Vec<(SessionId, Result<bool, SessionError>)> {
+        self.calibrations
+            .lock()
+            .expect("calibration session registry poisoned")
+            .iter()
+            .filter_map(|(id, session)| {
+                let mut session = session.lock().expect("calibration session poisoned");
+                if session.port != port || session.generation != generation || session.pin != pin {
+                    return None;
+                }
+                Some((*id, session.observe(generation, pin, i32::from(value))))
+            })
+            .collect()
     }
 
     pub fn shutdown(&self) {
@@ -395,6 +686,15 @@ impl HardwareSessions {
                 .lock()
                 .expect("input detection session poisoned")
                 .cancel();
+        }
+        let workers = std::mem::take(
+            &mut *self
+                .detection_workers
+                .lock()
+                .expect("detection worker registry poisoned"),
+        );
+        for (_, worker) in workers {
+            let _ = worker.join();
         }
     }
 }

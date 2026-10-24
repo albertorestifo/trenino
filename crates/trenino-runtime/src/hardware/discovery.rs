@@ -30,10 +30,18 @@ impl Default for DiscoveryTiming {
 pub enum DiscoveryError {
     Io(io::Error),
     NoValidResponse,
+    DeadlineExceeded,
+}
+
+pub struct DiscoveryResult {
+    pub identity: Message,
+    pub decoder: FrameDecoder,
+    pub trailing_messages: Vec<Message>,
+    pub protocol_errors: Vec<String>,
 }
 
 pub fn discover(io: &mut dyn SerialIo, timing: DiscoveryTiming) -> Result<Message, DiscoveryError> {
-    discover_with_cancel(io, timing, || false)
+    discover_owned(io, timing, Duration::from_secs(10), || false).map(|result| result.identity)
 }
 
 pub fn discover_with_cancel<F>(
@@ -44,31 +52,71 @@ pub fn discover_with_cancel<F>(
 where
     F: Fn() -> bool,
 {
-    let settle_deadline = Instant::now() + timing.settle;
+    discover_owned(io, timing, Duration::from_secs(10), cancelled).map(|result| result.identity)
+}
+
+/// Discover the identity while retaining complete messages and decoder state that
+/// followed it in the same serial read. This is transferred to the persistent owner.
+pub fn discover_owned<F>(
+    io: &mut dyn SerialIo,
+    timing: DiscoveryTiming,
+    outer_timeout: Duration,
+    cancelled: F,
+) -> Result<DiscoveryResult, DiscoveryError>
+where
+    F: Fn() -> bool,
+{
+    let overall_deadline = Instant::now() + outer_timeout;
+    let settle_deadline = (Instant::now() + timing.settle).min(overall_deadline);
     while Instant::now() < settle_deadline {
         if cancelled() {
             return Err(DiscoveryError::NoValidResponse);
         }
+        if Instant::now() >= overall_deadline {
+            return Err(DiscoveryError::DeadlineExceeded);
+        }
         thread::sleep((settle_deadline - Instant::now()).min(Duration::from_millis(10)));
     }
-    // Drain stale bootloader bytes until the port read timeout indicates empty.
+
+    // Drain stale bytes only until the overall discovery deadline, even if a device
+    // continuously sends noise instead of becoming quiet.
     let mut garbage = [0u8; 512];
     loop {
         if cancelled() {
             return Err(DiscoveryError::NoValidResponse);
         }
+        let remaining = overall_deadline.saturating_duration_since(Instant::now());
+        if remaining.is_zero() {
+            return Err(DiscoveryError::DeadlineExceeded);
+        }
+        io.set_timeout(remaining.min(timing.read_timeout))
+            .map_err(DiscoveryError::Io)?;
         match io.read(&mut garbage) {
             Ok(0) => break,
             Ok(_) => continue,
-            Err(error) if error.kind() == io::ErrorKind::TimedOut => break,
+            Err(error)
+                if matches!(
+                    error.kind(),
+                    io::ErrorKind::TimedOut | io::ErrorKind::WouldBlock
+                ) =>
+            {
+                break
+            }
             Err(error) => return Err(DiscoveryError::Io(error)),
         }
     }
+
     let mut decoder = FrameDecoder::default();
     for _ in 0..timing.attempts {
         if cancelled() {
             return Err(DiscoveryError::NoValidResponse);
         }
+        let remaining = overall_deadline.saturating_duration_since(Instant::now());
+        if remaining.is_zero() {
+            return Err(DiscoveryError::DeadlineExceeded);
+        }
+        io.set_timeout(remaining.min(timing.read_timeout))
+            .map_err(DiscoveryError::Io)?;
         let request_id = NEXT_REQUEST_ID.fetch_add(1, Ordering::Relaxed);
         let request = Message::IdentityRequest { request_id };
         io.write_all(&FrameDecoder::encode_frame(
@@ -76,33 +124,79 @@ where
         ))
         .map_err(DiscoveryError::Io)?;
         io.flush().map_err(DiscoveryError::Io)?;
-        let deadline = Instant::now() + timing.read_timeout;
+        let deadline = (Instant::now() + timing.read_timeout).min(overall_deadline);
         while Instant::now() < deadline {
             if cancelled() {
                 return Err(DiscoveryError::NoValidResponse);
             }
+            let remaining = deadline.saturating_duration_since(Instant::now());
+            if remaining.is_zero() {
+                break;
+            }
+            io.set_timeout(remaining).map_err(DiscoveryError::Io)?;
             let mut buffer = [0u8; 512];
             match io.read(&mut buffer) {
                 Ok(0) => continue,
                 Ok(count) => {
-                    for packet in decoder.push(&buffer[..count]).into_iter().flatten() {
-                        if let Ok(Message::IdentityResponse {
-                            request_id: response_id,
-                            ..
-                        }) = decode_message(&packet)
-                        {
-                            if response_id == request_id {
-                                return Ok(
-                                    decode_message(&packet).expect("validated identity packet")
-                                );
+                    let packets = decoder.push(&buffer[..count]);
+                    let mut identity = None;
+                    let mut after_identity = false;
+                    let mut trailing_messages = Vec::new();
+                    let mut protocol_errors = Vec::new();
+                    for packet in packets {
+                        let payload = match packet {
+                            Ok(payload) => payload,
+                            Err(error) => {
+                                if after_identity {
+                                    protocol_errors.push(format!("invalid frame: {error:?}"));
+                                }
+                                continue;
                             }
+                        };
+                        let message = match decode_message(&payload) {
+                            Ok(message) => message,
+                            Err(error) => {
+                                if after_identity {
+                                    protocol_errors.push(format!("invalid frame: {error:?}"));
+                                }
+                                continue;
+                            }
+                        };
+                        if !after_identity {
+                            if matches!(message,
+                                Message::IdentityResponse { request_id: response_id, .. }
+                                    if response_id == request_id
+                            ) {
+                                identity = Some(message);
+                                after_identity = true;
+                            }
+                        } else {
+                            trailing_messages.push(message);
                         }
                     }
+                    if let Some(identity) = identity {
+                        return Ok(DiscoveryResult {
+                            identity,
+                            decoder,
+                            trailing_messages,
+                            protocol_errors,
+                        });
+                    }
                 }
-                Err(error) if error.kind() == io::ErrorKind::TimedOut => break,
+                Err(error)
+                    if matches!(
+                        error.kind(),
+                        io::ErrorKind::TimedOut | io::ErrorKind::WouldBlock
+                    ) =>
+                {
+                    break
+                }
                 Err(error) => return Err(DiscoveryError::Io(error)),
             }
         }
+    }
+    if Instant::now() >= overall_deadline {
+        return Err(DiscoveryError::DeadlineExceeded);
     }
     Err(DiscoveryError::NoValidResponse)
 }
