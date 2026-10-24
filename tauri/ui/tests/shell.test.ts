@@ -14,6 +14,13 @@ function fakeBridge(consent: 'unset' | 'disabled' = 'disabled'): UiBridge {
   };
 }
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((yes, no) => { resolve = yes; reject = no; });
+  return { promise, resolve, reject };
+}
+
 describe('shell', () => {
   it('renders the Rust-backed configuration empty state from the injected test bridge', async () => {
     location.hash = '#/';
@@ -42,4 +49,85 @@ describe('shell', () => {
     expect(await screen.findByText('Settings are shown read-only in this migration slice.')).toBeInTheDocument();
     expect(await screen.findByText('http://localhost:31270')).toBeInTheDocument();
   });
+
+  it('keeps normal routes behind a delayed or failed consent bootstrap', async () => {
+    const api = fakeBridge();
+    const settingsRequest = deferred<Awaited<ReturnType<UiBridge['getSettings']>>>();
+    api.getSettings = vi.fn().mockReturnValueOnce(settingsRequest.promise).mockResolvedValue({ ok: true, value: { epoch: '1', topic: 'settings', revision: '2', value: { error_reporting: 'disabled', simulator: { url: 'http://localhost:31270', api_key_configured: false } } } });
+    location.hash = '#/';
+    render(App, { props: { bridge: api } });
+    expect(screen.getByText('Checking consent preference')).toBeInTheDocument();
+    expect(screen.queryByText('No Configurations')).not.toBeInTheDocument();
+    settingsRequest.resolve({ ok: false, error: { code: 'unavailable', message: 'Consent status could not be loaded.', field_errors: {}, retryable: true } });
+    expect(await screen.findByRole('alert')).toHaveTextContent('Consent status could not be loaded.');
+    expect(screen.getByRole('link', { name: 'Open consent choices' })).toHaveAttribute('href', '#/consent');
+    expect(screen.queryByText('No Configurations')).not.toBeInTheDocument();
+    await fireEvent.click(screen.getByRole('button', { name: 'Retry consent check' }));
+    expect(await screen.findByText('No Configurations')).toBeInTheDocument();
+  });
+
+  it('does not let an old list failure replace the current train screen', async () => {
+    const api = fakeBridge();
+    const slowConfigurations = deferred<Awaited<ReturnType<UiBridge['getConfigurations']>>>();
+    api.getConfigurations = vi.fn(() => slowConfigurations.promise);
+    location.hash = '#/';
+    render(App, { props: { bridge: api } });
+    await waitFor(() => expect(api.getConfigurations).toHaveBeenCalledTimes(1));
+    location.hash = '#/trains';
+    expect(await screen.findByText('No Train Configurations')).toBeInTheDocument();
+    slowConfigurations.resolve({ ok: false, error: { code: 'unavailable', message: 'Old configuration request failed.', field_errors: {}, retryable: true } });
+    await flushPromises();
+    expect(screen.getByText('No Train Configurations')).toBeInTheDocument();
+    expect(screen.queryByText('Old configuration request failed.')).not.toBeInTheDocument();
+  });
+
+  it('keeps a revisited route from being overwritten by its older request', async () => {
+    const api = fakeBridge();
+    const oldRequest = deferred<Awaited<ReturnType<UiBridge['getConfigurations']>>>();
+    const freshValue = { epoch: '1', topic: 'hardware' as const, revision: '2', value: [{ config_id: 4, name: 'Fresh panel', description: null, input_count: 3, active: false }] };
+    api.getConfigurations = vi.fn().mockReturnValueOnce(oldRequest.promise).mockResolvedValueOnce({ ok: true, value: freshValue });
+    location.hash = '#/';
+    render(App, { props: { bridge: api } });
+    await waitFor(() => expect(api.getConfigurations).toHaveBeenCalledTimes(1));
+    location.hash = '#/trains';
+    expect(await screen.findByText('No Train Configurations')).toBeInTheDocument();
+    location.hash = '#/';
+    expect(await screen.findByText('Fresh panel')).toBeInTheDocument();
+    oldRequest.resolve({ ok: false, error: { code: 'unavailable', message: 'Old visit failed.', field_errors: {}, retryable: true } });
+    await flushPromises();
+    expect(screen.getByText('Fresh panel')).toBeInTheDocument();
+    expect(screen.queryByText('Old visit failed.')).not.toBeInTheDocument();
+  });
+
+  it('ignores pending route completions after the shell unmounts', async () => {
+    const api = fakeBridge();
+    const pending = deferred<Awaited<ReturnType<UiBridge['getConfigurations']>>>();
+    api.getConfigurations = vi.fn(() => pending.promise);
+    location.hash = '#/';
+    const rendered = render(App, { props: { bridge: api } });
+    await waitFor(() => expect(api.getConfigurations).toHaveBeenCalledTimes(1));
+    rendered.unmount();
+    pending.resolve({ ok: true, value: { epoch: '1', topic: 'hardware', revision: '2', value: [] } });
+    await flushPromises();
+    expect(rendered.container).toBeEmptyDOMElement();
+  });
+
+  it('ignores late consent completion after navigation', async () => {
+    const api = fakeBridge();
+    const consentRequest = deferred<Awaited<ReturnType<UiBridge['setConsent']>>>();
+    api.setConsent = vi.fn(() => consentRequest.promise);
+    location.hash = '#/consent';
+    render(App, { props: { bridge: api } });
+    await fireEvent.click(await screen.findByRole('button', { name: 'No thanks' }));
+    location.hash = '#/trains';
+    expect(await screen.findByText('No Train Configurations')).toBeInTheDocument();
+    consentRequest.resolve({ ok: true, value: { epoch: '1', topic: 'settings', revision: '2', value: { error_reporting: 'disabled', simulator: { url: 'http://localhost:31270', api_key_configured: false } } } });
+    await flushPromises();
+    expect(location.hash).toBe('#/trains');
+    expect(screen.getByText('No Train Configurations')).toBeInTheDocument();
+  });
 });
+
+async function flushPromises() {
+  for (let index = 0; index < 12; index += 1) await Promise.resolve();
+}

@@ -1,27 +1,16 @@
 import { mount } from 'svelte';
 import App from './app/App.svelte';
+import { applySavedTheme, applyThemePreference, setThemePreference } from './app/theme';
 import './styles/app.css';
 
-function applyTheme(preference: string) {
-  if (preference === 'light' || preference === 'dark') {
-    document.documentElement.dataset.theme = preference;
-    return;
-  }
-  const systemTheme = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-  document.documentElement.dataset.theme = systemTheme;
-}
-
-applyTheme(localStorage.getItem('phx:theme') || 'system');
+applySavedTheme(localStorage, document.documentElement);
 window.addEventListener('storage', (event) => {
-  if (event.key === 'phx:theme') applyTheme(event.newValue || 'system');
+  if (event.key === 'phx:theme') applyThemePreference(event.newValue, document.documentElement);
 });
 window.addEventListener('phx:set-theme', (event) => {
   const source = event.target;
   if (source instanceof HTMLElement) {
-    const theme = source.dataset.phxTheme || 'system';
-    if (theme === 'system') localStorage.removeItem('phx:theme');
-    else localStorage.setItem('phx:theme', theme);
-    applyTheme(theme);
+    setThemePreference(source.dataset.phxTheme, localStorage, document.documentElement);
   }
 });
 
