@@ -2,22 +2,8 @@ pub mod calibration;
 pub mod ht16k33;
 pub mod protocol;
 
+pub use crate::ConfigId;
 use serde::{Deserialize, Serialize};
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
-pub struct ConfigId(u32);
-impl ConfigId {
-    pub fn new(value: u32) -> Result<Self, &'static str> {
-        if (1..=i32::MAX as u32).contains(&value) {
-            Ok(Self(value))
-        } else {
-            Err("configuration ID must be a positive signed 32-bit value")
-        }
-    }
-    pub fn get(self) -> u32 {
-        self.0
-    }
-}
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub enum Input {
     Analog { pin: u8, sensitivity: u8 },

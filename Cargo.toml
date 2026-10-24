@@ -1,3 +1,4 @@
 [workspace]
 members = ["crates/trenino-core", "crates/trenino-runtime"]
+exclude = ["tauri/src-tauri", "tauri/keystroke", "tauri/virtual_joystick", "vendor/vjoy"]
 resolver = "2"

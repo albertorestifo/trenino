@@ -169,3 +169,18 @@ fn malformed_ecto_schema_is_refused_without_writes() {
         Err(StorageError::UnsupportedSchema { .. })
     ));
 }
+
+#[test]
+fn config_ids_deserialize_only_inside_the_checked_firmware_range() {
+    for invalid in ["0", "2147483648", "-1", "4294967296"] {
+        assert!(
+            serde_json::from_str::<ConfigId>(invalid).is_err(),
+            "accepted {invalid}"
+        );
+    }
+    for valid in [1, i32::MAX as u32] {
+        let id = ConfigId::new(valid).unwrap();
+        let json = serde_json::to_string(&id).unwrap();
+        assert_eq!(serde_json::from_str::<ConfigId>(&json).unwrap(), id);
+    }
+}
