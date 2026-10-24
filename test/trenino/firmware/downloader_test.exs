@@ -585,21 +585,19 @@ defmodule Trenino.Firmware.DownloaderTest do
       end)
 
       {:ok, [release]} = Downloader.check_for_updates()
+      # Database sandboxes do not isolate the filesystem cache shared by async tests.
+      version = "0.0.0-downloader-test-#{System.unique_integer([:positive])}"
+
+      release
+      |> Ecto.Changeset.change(version: version)
+      |> Repo.update!()
+
       {:ok, release} = Firmware.get_release(release.id, preload: [:firmware_files])
 
       uno_file = Enum.find(release.firmware_files, &(&1.environment == "uno"))
 
-      # Clean up any existing test files
-      cache_dir = Application.app_dir(:trenino, "priv/firmware_cache")
-      File.mkdir_p!(cache_dir)
-
-      on_exit(fn ->
-        # Clean up test files
-        cache_dir
-        |> File.ls!()
-        |> Enum.filter(&String.ends_with?(&1, ".hex"))
-        |> Enum.each(&File.rm(Path.join(cache_dir, &1)))
-      end)
+      path = FilePath.firmware_path(%{uno_file | firmware_release: release})
+      on_exit(fn -> File.rm(path) end)
 
       %{release: release, uno_file: uno_file}
     end

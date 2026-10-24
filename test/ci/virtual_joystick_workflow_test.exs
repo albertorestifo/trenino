@@ -57,6 +57,8 @@ defmodule Trenino.CI.VirtualJoystickWorkflowTest do
     assert contents =~ "SignerCertificate.Subject -notmatch 'BRUNNER'"
     assert contents =~ "'vJoyInterface.dll'"
     assert contents =~ "'vJoyConfig.exe'"
+    assert contents =~ "'app/x64/vJoyInstall.dll'"
+    assert contents =~ "'vJoyInstall.dll'"
     assert contents =~ "'vJoy-LICENSE.txt'"
   end
 end

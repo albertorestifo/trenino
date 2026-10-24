@@ -54,6 +54,12 @@ try {
         throw "vJoyConfig.exe was not found in the verified installer."
     }
     Copy-Item -LiteralPath $config -Destination (Join-Path $resources 'vJoyConfig.exe')
+    # vJoyConfig imports this DLL even for read-only status probes.
+    $installLibrary = Join-Path $installerStage 'app/x64/vJoyInstall.dll'
+    if (-not (Test-Path -LiteralPath $installLibrary -PathType Leaf)) {
+        throw 'vJoyInstall.dll was not found in the verified installer.'
+    }
+    Copy-Item -LiteralPath $installLibrary -Destination (Join-Path $resources 'vJoyInstall.dll')
     Remove-Item -LiteralPath $sdk
 
     Write-Host "Staged verified vJoy $version resources in '$resources'."

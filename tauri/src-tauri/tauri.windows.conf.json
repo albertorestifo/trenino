@@ -12,6 +12,7 @@
       "resources/vc_redist.x64.exe",
       "resources/vJoySetup.exe",
       "resources/vJoyConfig.exe",
+      "resources/vJoyInstall.dll",
       "resources/vJoyInterface.dll",
       "resources/vJoy-LICENSE.txt",
       "resources/THIRD_PARTY_NOTICES.md"

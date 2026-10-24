@@ -4,6 +4,21 @@ description: Install and verify the pinned tools required by Burrito
 runs:
   using: composite
   steps:
+    - name: Stage pinned Windows Tailwind binary
+      if: runner.os == 'Windows'
+      shell: pwsh
+      run: |
+        # OTP's httpc downloader rejects GitHub redirect headers above 10 KiB.
+        # Keep this pin in sync with config/config.exs.
+        $version = '4.1.7'
+        $expected = '7bc0f936f6cb1c85e6f64ad78a629d94a1ab02dce7858d4b6777c0a640121968'
+        New-Item -ItemType Directory -Force _build | Out-Null
+        $destination = "_build/tailwind-windows-x64-$version.exe"
+        Invoke-WebRequest -Uri "https://github.com/tailwindlabs/tailwindcss/releases/download/v$version/tailwindcss-windows-x64.exe" -OutFile $destination
+        if ((Get-FileHash -Algorithm SHA256 -LiteralPath $destination).Hash.ToLowerInvariant() -ne $expected) {
+          throw 'Tailwind SHA-256 mismatch'
+        }
+
     - name: Install xz on Windows
       if: runner.os == 'Windows'
       shell: pwsh
