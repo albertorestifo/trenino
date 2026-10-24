@@ -3,7 +3,7 @@
 ## Resume here
 
 **Branch:** `codex/rust-rewrite` in `git@github.com:albertorestifo/trenino.git`.
-**Status:** intentionally paused at the user's request. The rewrite is incomplete. The tip contains interrupted work and currently does **not compile**. Do not merge or release it as a completed rewrite.
+**Status:** continued on 2026-10-24 (macOS continuation session). The interrupted WIP was finished: the workspace compiles and all three open tracks below are closed with regression tests. Full current gates green: `cargo test --workspace`, `cargo clippy --workspace --all-targets -- -D warnings`, `cargo fmt --all --check`, svelte-check (0 errors), 35 frontend tests, frontend production build, and trial desktop test/build with `rust-ui` and `rust-ui desktop-updater` (see commit map continuation). The overall rewrite remains incomplete — see [remaining work](evidence/remaining-work.md); do not merge or release as a completed rewrite.
 
 The user requested this handoff and a push of all work for later continuation. All subagents stopped with a usage-limit error. No agent remains running. Their unfinished source changes were preserved, not discarded or presented as reviewed delivery.
 
@@ -37,71 +37,43 @@ Start with this document, then [remaining work](evidence/remaining-work.md), the
 | `5eb754c` | Firmware fix round 1; scoped re-review requires further fixes. |
 | `72438d5` | Documented accepted bounded desktop checkpoint. |
 | `c94900b` | **WIP:** interrupted hardware runtime fix round 2. No completed verification/re-review. |
-| `48dd6b9` | **WIP:** interrupted hardware repository implementation; causes current compile errors. |
+| `48dd6b9` | **WIP:** interrupted hardware repository implementation; caused the handoff compile errors. |
+| `242e608` | Continuation: compilation restored (storage hardware finished, tuple snapshot contract, `InvalidHardware` variant, getrandom dep) + macOS database-ownership fix (Darwin aliases flock with SQLite fcntl locks; inode-keyed `/var/tmp` sidecar on macOS, inode-flocked DB file kept on Linux, Windows named mutex unchanged). |
+| `c2dabf1` | Matrix pin validation aligned with the Elixir oracle (repeated pin values legal; only positions unique). |
+| `91d518e`, `272432a` | Firmware catalog fix round 2: immutable asset-keyed cache paths, crash-safe publication, exact prerelease/pessimistic oracle semantics (42-case executed Elixir matrix), corrected redirect fixture. Merged. |
+| `e9ca5d0`, `4120266` | Hardware runtime fix round 2: all nine findings closed with red/green regression tests, guarded device deletion fence, atomic fenced configuration confirmation. Merged. |
+| `dcd3a89` | `DatabaseHardwareRepository` storage-backed adapter implementing the hardware runtime repository contracts; strict workspace clippy clean. |
 
 The subsequent handoff commit adds these documents and archived review evidence. Earlier accepted slices are bounded components, not proof of whole-application parity.
 
-## Current verification and immediate blockers
+## Current verification (after continuation)
 
-At handoff, root ran `cargo test --workspace --quiet` on the full current tree. It failed during compilation (exit 1), before tests could run. Reported errors in `crates/trenino-runtime/src/storage/hardware.rs` include:
+All of the following were run on macOS (arm64, Rust 1.91.1, Node 25) at `dcd3a89` and passed:
 
-- Line 202: `#[derive(..., Partial)]` names a nonexistent derive macro.
-- Lines 359, 435, 533: `StorageError::InvalidHardware` is referenced but not defined in `storage/mod.rs`.
-- Line 435: `getrandom::fill` is referenced without a direct dependency.
-- Line 519: a `query_map` temporary outlives its prepared statement (`E0597`).
-- Unused `any::Any` import at line 8.
+- `cargo test --workspace` — all suites green (storage_hardware 6, hardware_runtime 30, hardware_service 15, firmware_catalog 22, app_services 19, foundation 11, plus core/lib suites; 0 failures).
+- `cargo clippy --workspace --all-targets -- -D warnings` — clean. `cargo fmt --all --check` — clean.
+- `npm --prefix tauri/ui run check` — 344 files, 0 errors/warnings. `npm --prefix tauri/ui test` — 35/35. `npm --prefix tauri/ui run build` — ok.
+- `cargo test --manifest-path tauri/src-tauri/Cargo.toml --features rust-ui` and `cargo build` with `--features "rust-ui desktop-updater"` — ok.
 
-These are observed errors, not an exhaustive audit. Tests may expose further issues once compilation is restored. Preserve the WIP and finish it; do not blindly add dependencies or merely silence errors without reviewing the intended contracts. The storage tests and implementation were interrupted mid-edit and have never passed as a delivered slice.
+Historical handoff blockers (compile errors in `storage/hardware.rs`, calibration upsert against a non-unique index, matrix pin-repeat divergence) are all resolved; see commit map. A platform defect found and fixed during continuation: on macOS the unix ownership flock on the database file deadlocked SQLite (Darwin implements flock on the same lock manager as fcntl); Linux behavior is unchanged and Windows was never affected.
 
-`git diff --check` passed before checkpoint commits (only a CRLF normalization notice). This is not a build or test claim.
+Still unperformed gates (unchanged): actual WebView IPC smoke, Linux/Windows clean-machine execution of this continuation, physical hardware/simulator/signed-installer acceptance. Firmware runtime ownership, Lua, HTTP/MCP compatibility and remaining UI flows remain open per the delivery map.
 
-Earlier evidence, **not a claim about the current tip**:
+## Closed by the 2026-10-24 continuation (formerly open tracks)
 
-- At `4ee4052`, root workspace tests passed 152 tests, strict workspace Clippy passed; formatting was normalized in `e9ef8d9`.
-- Accepted AppServices fix round 2: 19 AppServices tests, 11 foundation tests, strict runtime Clippy and scoped formatting passed. Earlier desktop tests/builds passed with `rust-ui` alone and `rust-ui desktop-updater`.
-- Firmware fix round 1: 7 compatibility tests and 21 catalog tests plus focused Clippy/formatting passed. Root subsequently ran the partial-file collision unit test: 1 passed. The supervisor still reproduced cache and compatibility defects.
-- No final whole-workspace Clippy, frontend, desktop build or test run was performed after the interrupted WIP changes.
+### 1. Hardware repositories — CLOSED (`242e608`, `c2dabf1`, `dcd3a89`)
 
-## Open tracks and exact next actions
+`storage/hardware.rs` completed on the existing bounded database worker: typed device/input/output/matrix/I2C/calibration mutations, source-derived validation, transactional matrix replacement with binding cascades, one revision bump per committed mutation, rollback on invalid input, guarded `delete_device_unchecked` (pub(crate), no public bypass). Matrix pin validation matches the Elixir oracle exactly. `DatabaseHardwareRepository` (`src/hardware/repository.rs`) now implements the runtime's `HardwareRepository`/`ConfigurationRepository`/`CalibrationRepository` contracts: identity-resolved lookup, atomic fenced confirmation, calibration persistence, guarded deletion. Suite: `tests/storage_hardware.rs` (6 tests) plus adapter unit tests.
 
-### 1. Hardware repositories — interrupted initial implementation
+### 2. Hardware runtime fix round 2 — CLOSED (`e9ca5d0`, merged `4120266`)
 
-Read [brief](evidence/storage-hardware-brief.md). Source: `crates/trenino-runtime/src/storage/hardware.rs`, `storage/mod.rs`, `tests/storage_hardware.rs`. There is no completed implementation report or supervisor review.
+All nine findings closed with per-finding regression tests (30 hardware_runtime + 15 hardware_service tests). Red/green was demonstrated by fix reversion for R1, R2, R7, R8; R3/R4/R5/R6/R9 tests encode the supervisor's reproduced defects. Additionally implemented: held device-deletion exclusion fence enforced atomically with activation, and post-ACK atomic `confirm_configuration` persistence behind generation fences (never across a serial wait). Scoped Astra-style re-review by a fresh reviewer has **not** been re-run in this continuation; the per-finding test map is in the agent report summarized in the commit.
 
-The writer inventoried device/input/output/matrix/I2C/calibration behavior from the Elixir source and began typed operations on the existing database thread. Complete source-derived validation, transactional matrix replacement/cascades, calibration writes, exact revision increments and rollback tests. Device deletion needs held runtime exclusion across check and commit, not a racy boolean callback. Do not expose a normal mutation API that bypasses the active-device guard.
+### 3. Firmware catalog fix round 2 — CLOSED (`91d518e`, merged `272432a`)
 
-The adapter to `HardwareRepository`/`ConfigurationRepository`/`CalibrationRepository` was deliberately deferred until the hardware runtime contracts settle. No database lock may span serial writes or ACK waits. Coordinate shared `storage/mod.rs` edits; do not create another connection pool. Original writer identity: `/root/storage_hardware_code`.
+All four findings closed: asset-keyed immutable cache destinations (FNV-1a-64 over receipt provenance; receipt equality still gates reuse), crash-safe data+receipt publication at one asset-bound destination, prerelease admission ported exactly from the executed Elixir 1.20 `Requirement.match_op?` (42-case oracle matrix), two-component pessimistic suffix parsing per oracle, and the redirect fixture now contacts the listener's ephemeral port. Suite: 22 firmware_catalog tests + core compatibility tests. Scoped re-review by a fresh reviewer has **not** been re-run in this continuation; the finding → symbol → test map is appended to `evidence/firmware-catalog-report.md`.
 
-### 2. Hardware runtime — interrupted fix round 2
-
-Read [fix round 1 review](evidence/hardware-runtime-fix1-review.md), [implementation report](evidence/hardware-runtime-report.md) and [brief](evidence/hardware-runtime-brief.md). The report describes the completed round-1 delivery; `c94900b` contains later unfinished changes, not a claimed completed round 2.
-
-Round 2 must close nine scoped findings (six P1, three P2):
-
-1. Configuration success must update dispatcher ConfigId/device/pin kinds together with route activation before success publication.
-2. New connection generations must not inherit old revocation tombstones; revoked equal generations remain forbidden.
-3. Shutdown must close all shared admission paths immediately, including sessions, leases and retained handles, even when cleanup times out.
-4. Retain failed neutralization state, suspend reconnect actuation, retry cleanup and refuse false-success shutdown.
-5. Own firmware authorization through queued handoff, port close, reservation lifetime and reservation release; block premature lease release.
-6. Do not hold the repository mutex across ACK waits or block authoritative dispatch on repository lookup; fence asynchronous lookup results and isolate ACK ownership.
-7. Coordinator-level discovery deadline must cover blocked native open/flush while retaining/quarantining unfinished owners.
-8. Terminal calibration overflow/error must complete lease cleanup without a UI listener driving it.
-9. Joined worker panic is distinct from unfinished timeout; retry must not unwrap a consumed join or drop unrelated owners.
-
-Before interruption the writer reported a compile checkpoint, some R1/R2/R4 red/green work, repository lookup moved to owned workers, and narrower post-ACK persistence. These are progress statements, not acceptance. Run all covering tests and inspect every finding against the WIP before resuming Astra scoped review. Original identities: `/root/hardware_runtime_code`, `/root/hardware_runtime_supervisor`.
-
-### 3. Firmware catalog — fix round 1 reviewed, round 2 not started
-
-Read the **appended scoped fix1 section** of [supervisor report](evidence/firmware-catalog-supervisor-report.md), plus [implementation report](evidence/firmware-catalog-report.md). The supervisor wrote its verdict before its usage-limit failure. Seven original findings are addressed; original F1/F3/F4 remain open, with four exact fixes:
-
-1. **P1:** A and B with the same version/environment return the same mutable path; downloading B changes bytes under A's retained result. Return immutable asset-specific content or hold an explicit replacement-preventing lease.
-2. **P1:** Data and receipt are replaced separately. A receipt replacement failure can leave B bytes certified by A's old receipt. Make publication crash/failure-safe and retain valid existing entries. Reproduce with a Windows handle denying receipt replacement.
-3. **P2:** Group-wide prerelease admission is wrong. Elixir rejects `1.2.3-rc.2` for `>= 1.0.0 and < 1.2.3`; current Rust accepts it. Preserve operator/conjunction semantics, including valid explicit prerelease bounds.
-4. **P2:** Two-component pessimistic requirements with suffixes append `.0` in the wrong position: `~> 1.2+build.1` and `~> 1.2-rc.1` must parse and match according to the oracle.
-
-Also correct the rejected-redirect test URL to preserve the listener's ephemeral port; its current non-contact assertion points at the wrong authority. Production redirect policy was accepted. Do not reopen all seven closed findings unnecessarily.
-
-Legacy cache reuse is explicitly opt-in and typed `LegacyUnverified`; receipts prove metadata association, not cryptographic authenticity. Firmware persistence/startup/UI/flashing are still separate gates. Original identities: `/root/firmware_catalog_code`, `/root/firmware_catalog_supervisor`. The next dispatch is **fix round 2**, then scoped Astra review.
+Next open work is tracked in [remaining work](evidence/remaining-work.md): train/script/binding/firmware-record repositories, desired/active routing reconciliation, AppServices registration of the real hardware service + UI flows, controls runtime, simulator calibration, vJoy manager, avrdude flashing, Lua, HTTP/MCP compatibility, packaging cutover, final branch review.
 
 ## Accepted bounded slices
 
