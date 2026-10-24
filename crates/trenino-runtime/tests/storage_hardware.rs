@@ -63,10 +63,13 @@ fn matrix_children_are_ordered_generated_and_replaced_atomically() {
     assert_eq!(matrix.col_pins.iter().map(|p| p.pin).collect::<Vec<_>>(), vec![5, 7, 9]);
     assert_eq!(matrix.buttons.iter().map(|b| b.pin.unwrap()).collect::<Vec<_>>(), vec![128, 129, 130, 131, 132, 133]);
     assert_eq!(matrix.buttons.iter().map(|b| b.name.as_deref().unwrap()).collect::<Vec<_>>(), vec!["R0C0", "R0C1", "R0C2", "R1C0", "R1C1", "R1C2"]);
-    let bad = db.replace_matrix_children(OperationId(22), matrix.id, vec![2, 2], vec![5]).unwrap_err();
-    assert!(matches!(bad, StorageError::Conflict { .. } | StorageError::InvalidHardware { .. }));
-    assert_eq!(db.get_matrix(matrix.id).unwrap().unwrap(), matrix);
+    let bad = db.replace_matrix_children(OperationId(22), matrix.id, vec![128], vec![5]).unwrap_err();
+    assert!(matches!(bad, StorageError::InvalidHardware { .. }));
     assert_eq!(db.hardware_snapshot().unwrap().1.revision, created.receipt.metadata.revision);
+    // Elixir accepts repeated pin values within a kind (only positions are unique).
+    let repeated = db.replace_matrix_children(OperationId(23), matrix.id, vec![2, 2], vec![5]).unwrap();
+    assert_eq!(repeated.record.buttons.iter().map(|b| b.name.as_deref().unwrap()).collect::<Vec<_>>(), vec!["R0C0", "R1C0"]);
+    assert_eq!(db.hardware_snapshot().unwrap().1.revision, created.receipt.metadata.revision + 1);
 }
 
 #[test]
