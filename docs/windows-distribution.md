@@ -50,8 +50,8 @@ as well as bundled backend resources, preserving link/reparse-point checks.
 The installer keeps unowned shared drivers intact and describes version/state
 mismatches without asserting that the installed driver is unsigned.
 
-The reported machine has an older signed vJoy 2.1.9 driver while this app pins
-2.2.2.0. These code fixes do not upgrade or remove that shared system driver.
+The original report involved an older signed vJoy 2.1.9 driver while this app pins
+2.2.2.0. These code fixes alone do not upgrade or remove that shared system driver.
 Driver upgrade/repair needs a separate explicit decision after checking other
 applications that may depend on it.
 
