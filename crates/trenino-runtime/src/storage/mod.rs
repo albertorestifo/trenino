@@ -1,7 +1,9 @@
 //! Dedicated SQLite owner with strict schema admission and owned results.
+mod domain;
 mod hardware;
 mod migration;
 
+pub use domain::*;
 pub use hardware::*;
 pub use migration::{LegacySchema, MigrationReport};
 
