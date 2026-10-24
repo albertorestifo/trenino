@@ -5,7 +5,11 @@ edition = "2021"
 
 [dependencies]
 trenino-core = { path = "../trenino-core" }
-rusqlite = { version = "0.32", features = ["bundled"] }
+rusqlite = { version = "0.32", features = ["bundled", "backup"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+tokio = { version = "1", features = ["sync", "time", "rt", "macros"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
 [dev-dependencies]
 tempfile = "3"
-serde_json = "1"
