@@ -4,4 +4,5 @@ pub use shared::*;
 pub mod calibration;
 pub mod hardware;
 pub mod simulator;
+pub mod ui;
 pub mod train;

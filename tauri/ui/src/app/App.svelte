@@ -1,0 +1,168 @@
+<script lang="ts">
+  import { onMount } from 'svelte';
+  import Navigation from './Navigation.svelte';
+  import EmptyState from '../components/EmptyState.svelte';
+  import Unavailable from '../components/Unavailable.svelte';
+  import { bridge as productionBridge, type Result, type UiBridge } from '../bridge/client';
+  import { parseRoute, routeHref, type Route } from '../bridge/route';
+  import type { ConfigurationSummaryView, SettingsView, TrainSummaryView, UiSnapshot } from '../bridge/generated';
+
+  let { bridge: injectedBridge }: { bridge?: UiBridge } = $props();
+  const api = () => injectedBridge ?? productionBridge;
+
+  let route = $state<Route>(parseRoute(location.hash));
+  let loadError = $state('');
+  let settings = $state<UiSnapshot<SettingsView> | undefined>();
+  let configurations = $state<UiSnapshot<ConfigurationSummaryView[]> | undefined>();
+  let trains = $state<UiSnapshot<TrainSummaryView[]> | undefined>();
+  let consentPending = $state(false);
+
+  async function updateRoute() {
+    route = parseRoute(location.hash);
+    const requestedHash = location.hash;
+    loadError = '';
+    if (route.page !== 'consent') {
+      const bootstrap = await api().getSettings();
+      if (location.hash !== requestedHash) return;
+      if (bootstrap.ok) {
+        settings = bootstrap.value;
+        if (bootstrap.value.value.error_reporting === 'unset') {
+          location.hash = '/consent';
+          return;
+        }
+      }
+    }
+    if (route.page === 'configurations') void load(api().getConfigurations(), (value) => (configurations = value));
+    if (route.page === 'trains') void load(api().getTrains(), (value) => (trains = value));
+    if (route.page === 'settings' || route.page === 'consent') void load(api().getSettings(), (value) => (settings = value));
+  }
+
+  async function load<T>(request: Promise<Result<T>>, accept: (value: T) => void) {
+    const result = await request;
+    if (result.ok) {
+      loadError = '';
+      accept(result.value);
+    } else {
+      loadError = result.error.message;
+    }
+  }
+
+  async function setConsent(value: 'enabled' | 'disabled') {
+    consentPending = true;
+    const result = await api().setConsent(value);
+    consentPending = false;
+    if (result.ok) {
+      settings = result.value;
+      location.hash = '/';
+    } else {
+      loadError = result.error.message;
+    }
+  }
+
+  onMount(() => {
+    window.addEventListener('hashchange', updateRoute);
+    updateRoute();
+    return () => window.removeEventListener('hashchange', updateRoute);
+  });
+
+  function title(page: Route['page']): string {
+    if (page === 'configuration') return 'Configuration';
+    if (page === 'configuration-new') return 'New Configuration';
+    if (page === 'train') return 'Train';
+    if (page === 'train-new') return 'New Train';
+    if (page === 'firmware') return 'Firmware';
+    if (page === 'joystick') return 'Virtual Joystick';
+    return 'Unavailable';
+  }
+
+  function unavailableMessage(current: Route): string {
+    if (current.page === 'configuration-new') return 'Configuration creation is not integrated with the Rust service yet.';
+    if (current.page === 'train-new') return 'Train creation is not integrated with the Rust service yet.';
+    if (current.page === 'configuration' || current.page === 'train') return 'This screen will appear when its Rust service is integrated.';
+    if (current.page === 'firmware') return 'Firmware release and upload services are not integrated in this UI slice.';
+    if (current.page === 'joystick') return 'Joystick service capabilities are not integrated in this UI slice.';
+    return `No screen is registered for ${current.path}.`;
+  }
+</script>
+
+<svelte:head>
+  <title>{route.page === 'settings' ? 'Settings' : route.page === 'consent' ? 'Consent' : route.page === 'trains' ? 'Trains' : 'Configurations'} · Trenino</title>
+</svelte:head>
+
+{#if route.page === 'consent'}
+  <main class="consent-layout">
+    <section class="card w-full max-w-md bg-base-100 shadow-xl" aria-labelledby="consent-title">
+      <div class="card-body items-center text-center">
+        <div class="mb-2 rounded-full bg-primary/10 p-3 text-3xl text-primary" aria-hidden="true">◈</div>
+        <h1 id="consent-title" class="card-title text-lg">Help improve Trenino</h1>
+        <p class="text-sm text-base-content/70">Share anonymous error reports so bugs can be found and fixed faster. No personal data, no usage tracking — only crash reports.</p>
+        {#if loadError}<p role="alert" class="mt-3 text-sm text-error">{loadError}</p>{/if}
+        <div class="mt-4 flex w-full flex-col gap-2">
+          <button class="btn btn-primary w-full" disabled={consentPending} onclick={() => void setConsent('enabled')}>Share error reports</button>
+          <button class="btn btn-ghost w-full" disabled={consentPending} onclick={() => void setConsent('disabled')}>No thanks</button>
+        </div>
+        <a class="mt-3 text-sm text-base-content/60 underline" href="#/settings">Back to Settings</a>
+      </div>
+    </section>
+  </main>
+{:else}
+  <div class="min-h-screen bg-base-200 text-base-content">
+    <Navigation {route} />
+    <main class="flex-1 px-4 py-8 sm:px-8">
+      {#if route.page === 'settings'}
+        <div class="mx-auto max-w-2xl">
+          <header class="mb-10"><h1 class="text-2xl font-semibold">Settings</h1></header>
+          {#if loadError}<div class="alert alert-warning mb-6" role="status"><span>{loadError}</span></div>{/if}
+          <section aria-labelledby="reporting-title">
+            <h2 id="reporting-title" class="mb-5 text-base font-semibold">Error Reporting</h2>
+            <div class="flex items-start justify-between gap-6">
+              <div>
+                <div class="font-medium">Share anonymous error reports</div>
+                <p class="mt-1 text-sm text-base-content/70">Crash reports are sent to help fix bugs. No personal data is included.</p>
+                <a class="mt-3 inline-block text-sm text-base-content/60 underline underline-offset-2" href="#/consent">Review consent details</a>
+              </div>
+              <p class="badge badge-outline shrink-0">{settings?.value.error_reporting ?? 'Unavailable'}</p>
+            </div>
+          </section>
+          <div class="my-10 border-t border-base-300"></div>
+          <section aria-labelledby="simulator-title">
+            <h2 id="simulator-title" class="mb-5 text-base font-semibold">Simulator Connection</h2>
+            {#if settings}
+              <dl class="settings-readout">
+                <div><dt>URL</dt><dd class="font-mono">{settings.value.simulator.url}</dd></div>
+                <div><dt>API key</dt><dd>{settings.value.simulator.api_key_configured ? 'Configured' : 'Not configured'}</dd></div>
+              </dl>
+            {:else}
+              <p class="text-sm text-base-content/70">Settings are unavailable until the Rust service is integrated.</p>
+            {/if}
+            <p class="mt-4 text-xs text-base-content/60">Settings are shown read-only in this migration slice.</p>
+          </section>
+        </div>
+      {:else if route.page === 'configurations'}
+        <div class="mx-auto max-w-2xl">
+          <header class="mb-8 flex items-center justify-between gap-4">
+            <div><h1 class="text-2xl font-semibold">Configurations</h1><p class="mt-1 text-sm text-base-content/70">Manage device configurations</p></div>
+            <a class="btn btn-primary" href="#/configurations/new">＋ New Configuration</a>
+          </header>
+          {#if loadError}<Unavailable message={loadError} />
+          {:else if configurations}
+            {#if configurations.value.length === 0}<EmptyState heading="No Configurations" description="Create a configuration to set up inputs for your TSW devices." />
+            {:else}<div class="space-y-4">{#each configurations.value as config (config.config_id)}<a class:active-card={config.active} class="list-card" href={routeHref(`/configurations/${config.config_id}`)}><div><h2 class="font-medium">{config.name}</h2>{#if config.description}<p class="mt-1 text-sm text-base-content/70">{config.description}</p>{/if}<p class="mt-2 text-xs text-base-content/60"><span class="font-mono">ID: {config.config_id}</span> · {config.input_count} inputs</p></div><span>{config.active ? 'Active' : '›'}</span></a>{/each}</div>{/if}
+          {:else}<Unavailable message="Loading saved configurations…" />{/if}
+        </div>
+      {:else if route.page === 'trains'}
+        <div class="mx-auto max-w-2xl">
+          <header class="mb-8 flex items-center justify-between gap-4"><div><h1 class="text-2xl font-semibold">Trains</h1><p class="mt-1 text-sm text-base-content/70">Manage train configurations</p></div><a class="btn btn-primary" href="#/trains/new">＋ New Train</a></header>
+          {#if loadError}<Unavailable message={loadError} />
+          {:else if trains}
+            {#if trains.value.length === 0}<EmptyState heading="No Train Configurations" description="Create a train configuration to set up controls for your simulator trains." />
+            {:else}<div class="space-y-4">{#each trains.value as train (train.id)}<a class:active-card={train.active} class="list-card" href={routeHref(`/trains/${train.id}`)}><div><h2 class="font-medium">{train.name}</h2>{#if train.description}<p class="mt-1 text-sm text-base-content/70">{train.description}</p>{/if}<p class="mt-2 text-xs text-base-content/60">{train.identifiers.join(', ')} · {train.element_count} elements</p></div><span>{train.active ? 'Active' : '›'}</span></a>{/each}</div>{/if}
+          {:else}<Unavailable message="Loading saved train configurations…" />{/if}
+        </div>
+      {:else}
+        <div class="mx-auto max-w-2xl"><header class="mb-8"><h1 class="text-2xl font-semibold">{title(route.page)}</h1></header><Unavailable message={unavailableMessage(route)} /></div>
+      {/if}
+    </main>
+  </div>
+{/if}
+
