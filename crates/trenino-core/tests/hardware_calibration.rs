@@ -73,3 +73,37 @@ fn invalid_extreme_calibration_data_clamps_safely_and_analyzer_endpoints_match()
     assert_eq!(calculate_max(&[10, 8, 9], analysis), Some(8));
     assert_eq!(calculate_min(&[], analysis), None);
 }
+#[test]
+fn calibration_matches_integer_edges_for_short_sweeps_negative_even_median_and_rollover_thresholds()
+{
+    assert_eq!(analyze_sweep(&[], 100), (false, false));
+    assert_eq!(analyze_sweep(&[42], 100), (false, false));
+    assert_eq!(analyze_sweep(&[0, -1, -3], 100), (true, false)); // median(-1,-2) truncates toward zero
+    assert_eq!(analyze_sweep(&[0, 10, 20, 30, 110], 100), (false, false)); // max delta equals 80% bound
+    assert_eq!(analyze_sweep(&[0, 10, 20, 30, 111], 100), (false, true));
+    assert_eq!(analyze_sweep(&[0, 10, 20, 30, 60], 100), (false, false)); // max equals 3x median
+}
+
+#[test]
+fn rollover_dead_zone_midpoint_boundaries_preserve_truncating_integer_division() {
+    let normal = Calibration {
+        min_value: 900,
+        max_value: 100,
+        max_hardware_value: 1023,
+        inverted: false,
+        rollover: true,
+    };
+    assert_eq!(normalize(499, &normal), 224);
+    assert_eq!(normalize(500, &normal), 0);
+    assert_eq!(normalize(501, &normal), 0);
+    let inverted = Calibration {
+        min_value: 550,
+        max_value: 735,
+        max_hardware_value: 1023,
+        inverted: true,
+        rollover: true,
+    };
+    assert_eq!(normalize(641, &inverted), 0);
+    assert_eq!(normalize(642, &inverted), 839);
+    assert_eq!(normalize(643, &inverted), 839);
+}

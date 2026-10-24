@@ -64,6 +64,9 @@ pub struct Matrix {
 }
 impl Matrix {
     pub fn validate(&self) -> Result<(), String> {
+        if self.row_pins.is_empty() || self.col_pins.is_empty() {
+            return Err("matrix must have at least one row and one column".into());
+        }
         if self.row_pins.iter().chain(&self.col_pins).any(|p| *p > 127) {
             return Err("matrix physical pins must be 0..127".into());
         }
@@ -134,6 +137,61 @@ pub fn build_configuration(
     if c.inputs.is_empty() && c.matrices.is_empty() && c.modules.is_empty() {
         return Err("configuration has no inputs".into());
     }
+
+    let mut input_pins = std::collections::HashSet::new();
+    for input in &c.inputs {
+        let pin = match input {
+            Input::Analog { pin, sensitivity } => {
+                AnalogInput {
+                    pin: *pin,
+                    sensitivity: *sensitivity,
+                }
+                .validate()?;
+                *pin
+            }
+            Input::Button { pin, debounce } => {
+                ButtonInput {
+                    pin: *pin,
+                    debounce: *debounce,
+                }
+                .validate()?;
+                *pin
+            }
+        };
+        if !input_pins.insert(pin) {
+            return Err(format!(
+                "physical input pin {pin} is assigned more than once"
+            ));
+        }
+    }
+
+    let mut module_addresses = std::collections::HashSet::new();
+    for module in &c.modules {
+        module.validate()?;
+        let address = match module {
+            Module::Ht16k33 { address, .. } => *address,
+        };
+        if !module_addresses.insert(address) {
+            return Err(format!("I2C address {address} is assigned more than once"));
+        }
+    }
+
+    let mut virtual_pins = std::collections::HashSet::new();
+    for matrix in &c.matrices {
+        matrix.validate()?;
+        for row in 0..matrix.row_pins.len() {
+            for col in 0..matrix.col_pins.len() {
+                let pin = Matrix::virtual_pin(row, col, matrix.col_pins.len())
+                    .ok_or_else(|| "matrix exceeds virtual pin range".to_string())?;
+                if !virtual_pins.insert(pin) {
+                    return Err(format!(
+                        "generated matrix virtual pin {pin} is assigned more than once"
+                    ));
+                }
+            }
+        }
+    }
+
     let mut out = Vec::new();
     let mut inputs = c.inputs.clone();
     inputs.sort_by_key(|i| match i {

@@ -103,3 +103,79 @@ fn framing_handles_fragmented_and_254_byte_boundary() {
     assert!(d.push(&f[..17]).is_empty());
     assert_eq!(d.push(&f[17..]), vec![Ok(p)]);
 }
+#[test]
+fn configure_builder_has_exact_golden_wire_packets() {
+    use trenino_core::hardware::{
+        build_configuration, AnalogInput, ButtonInput, ConfigId, DeviceConfiguration, Matrix,
+        Module,
+    };
+    let configuration = DeviceConfiguration {
+        inputs: vec![
+            ButtonInput {
+                pin: 2,
+                debounce: 4,
+            }
+            .into(),
+            AnalogInput {
+                pin: 1,
+                sensitivity: 10,
+            }
+            .into(),
+        ],
+        matrices: vec![Matrix {
+            row_pins: vec![3],
+            col_pins: vec![4],
+        }],
+        modules: vec![Module::Ht16k33 {
+            address: 112,
+            brightness: 8,
+            num_digits: 4,
+        }],
+    };
+    let messages = build_configuration(&configuration, ConfigId::new(77).unwrap()).unwrap();
+    let golden = [
+        vec![2, 77, 0, 0, 0, 4, 0, 0, 1, 10],
+        vec![2, 77, 0, 0, 0, 4, 1, 1, 2, 4],
+        vec![2, 77, 0, 0, 0, 4, 2, 2, 1, 1, 3, 4],
+        vec![2, 77, 0, 0, 0, 4, 3, 4, 112, 8, 4],
+    ];
+    assert_eq!(
+        messages
+            .iter()
+            .map(|m| trenino_core::hardware::protocol::encode_message(m).unwrap())
+            .collect::<Vec<_>>(),
+        golden
+    );
+}
+
+#[test]
+fn framing_handles_coalesced_empty_delimiters_and_malformed_recovery() {
+    let first = FrameDecoder::encode_frame(&[1, 2]);
+    let second = FrameDecoder::encode_frame(&[3, 0, 4]);
+    let wire = [vec![0, 0, 0xff, 0xaa, 0xbb, 0, 0], first, vec![0], second].concat();
+    let mut decoder = FrameDecoder::default();
+    let mut outcomes = Vec::new();
+    for chunk in wire.chunks(3) {
+        outcomes.extend(decoder.push(chunk));
+    }
+    assert_eq!(outcomes.len(), 3);
+    assert!(outcomes[0].is_err());
+    assert_eq!(outcomes[1], Ok(vec![1, 2]));
+    assert_eq!(outcomes[2], Ok(vec![3, 0, 4]));
+}
+#[test]
+fn every_two_chunk_split_decodes_the_same_coalesced_stream() {
+    let a = FrameDecoder::encode_frame(&[0x11, 0, 0x22]);
+    let b = FrameDecoder::encode_frame(&[0x33, 0x44]);
+    let joined = [a, b].concat();
+    for split in 0..=joined.len() {
+        let mut decoder = FrameDecoder::default();
+        let mut out = decoder.push(&joined[..split]);
+        out.extend(decoder.push(&joined[split..]));
+        assert_eq!(
+            out,
+            vec![Ok(vec![0x11, 0, 0x22]), Ok(vec![0x33, 0x44])],
+            "split at {split}"
+        );
+    }
+}

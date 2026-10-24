@@ -139,3 +139,106 @@ fn segment_encoding_keeps_digit_order_padding_dot_and_unknown_behavior() {
         vec![0, 0, 0, 0, 0, 0, 0, 0]
     );
 }
+#[test]
+fn builder_rejects_duplicate_physical_pins_i2c_addresses_and_matrix_virtual_ranges() {
+    use trenino_core::hardware::{
+        build_configuration, AnalogInput, ButtonInput, ConfigId, DeviceConfiguration, Matrix,
+        Module,
+    };
+    let id = ConfigId::new(9).unwrap();
+    let base = DeviceConfiguration {
+        inputs: vec![
+            AnalogInput {
+                pin: 1,
+                sensitivity: 1,
+            }
+            .into(),
+            ButtonInput {
+                pin: 1,
+                debounce: 0,
+            }
+            .into(),
+        ],
+        matrices: vec![],
+        modules: vec![],
+    };
+    assert!(build_configuration(&base, id).is_err());
+    let duplicate_modules = DeviceConfiguration {
+        inputs: vec![ButtonInput {
+            pin: 1,
+            debounce: 0,
+        }
+        .into()],
+        matrices: vec![],
+        modules: vec![
+            Module::Ht16k33 {
+                address: 112,
+                brightness: 8,
+                num_digits: 4,
+            },
+            Module::Ht16k33 {
+                address: 112,
+                brightness: 8,
+                num_digits: 8,
+            },
+        ],
+    };
+    assert!(build_configuration(&duplicate_modules, id).is_err());
+    let duplicate_virtual_ranges = DeviceConfiguration {
+        inputs: vec![],
+        matrices: vec![
+            Matrix {
+                row_pins: vec![1],
+                col_pins: vec![2],
+            },
+            Matrix {
+                row_pins: vec![3, 4],
+                col_pins: vec![5],
+            },
+        ],
+        modules: vec![],
+    };
+    assert!(build_configuration(&duplicate_virtual_ranges, id).is_err());
+}
+
+#[test]
+fn matrix_axes_must_be_nonempty() {
+    assert!(Matrix {
+        row_pins: vec![],
+        col_pins: vec![2]
+    }
+    .validate()
+    .is_err());
+    assert!(Matrix {
+        row_pins: vec![1],
+        col_pins: vec![]
+    }
+    .validate()
+    .is_err());
+}
+#[test]
+fn display_alignment_matches_legacy_for_dots_and_combining_graphemes() {
+    use trenino_core::hardware::ht16k33::encode_string;
+    assert_eq!(
+        encode_string("1.2", 4, false, true, true),
+        vec![0, 0, 0, 0, 6, 0, 0, 64]
+    );
+    assert_eq!(
+        encode_string("e\u{301}1", 4, false, true, true),
+        vec![0, 0, 0, 0, 251, 0, 0, 0]
+    );
+}
+#[test]
+fn detection_supports_button_press_and_release_and_type_filtering() {
+    use trenino_core::hardware::{InputDetection, InputKind};
+    let mut button = InputDetection::new(InputKind::Button);
+    assert!(!button.observe(10, 0, InputKind::Button));
+    assert!(button.observe(10, 1, InputKind::Button));
+    let mut release = InputDetection::new(InputKind::Button);
+    assert!(!release.observe(11, 1, InputKind::Button));
+    assert!(release.observe(11, 0, InputKind::Button));
+    let mut analog = InputDetection::new(InputKind::Analog);
+    assert!(!analog.observe(20, 40, InputKind::Button));
+    assert!(!analog.observe(20, 1, InputKind::Analog)); // filtered input type retains the first baseline
+    assert!(analog.observe(20, 91, InputKind::Analog));
+}

@@ -142,12 +142,16 @@ pub fn encode_string(
     has_dot: bool,
     align_right: bool,
 ) -> Vec<u8> {
+    use unicode_segmentation::UnicodeSegmentation;
     let mut chars: Vec<char> = text.chars().collect();
     if align_right {
-        let slots = chars
-            .iter()
-            .filter(|c| **c != '.' || !(seven_segment && has_dot))
-            .count();
+        let graphemes: Vec<&str> = text.graphemes(true).collect();
+        let dots = if has_dot {
+            graphemes.iter().filter(|g| **g == ".").count()
+        } else {
+            0
+        };
+        let slots = graphemes.len().saturating_sub(dots);
         if slots < digits {
             let mut p = vec![' '; digits - slots];
             p.append(&mut chars);
