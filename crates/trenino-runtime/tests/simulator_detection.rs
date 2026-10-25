@@ -631,6 +631,13 @@ async fn control_detection_times_out_after_thirty_seconds() {
     let arbiter = arbiter();
     let mut session = start_detection(&sim, &arbiter, &clock).await;
     baseline_taken(&state).await;
+    yield_until(|| {
+        clock
+            .pending_deadlines()
+            .contains(&(clock.now() + Duration::from_millis(150)))
+            .then_some(())
+    })
+    .await;
 
     // 149ms: no poll yet; +1ms: the first poll runs.
     clock.advance(Duration::from_millis(149));
@@ -641,7 +648,13 @@ async fn control_detection_times_out_after_thirty_seconds() {
         (gets == 2).then_some(gets)
     })
     .await;
-    settle().await;
+    yield_until(|| {
+        clock
+            .pending_deadlines()
+            .contains(&(clock.now() + Duration::from_millis(150)))
+            .then_some(())
+    })
+    .await;
 
     // Remaining polls up to t=29_850.
     for expected in 3..=200_u64 {
@@ -651,7 +664,13 @@ async fn control_detection_times_out_after_thirty_seconds() {
             (gets == expected).then_some(gets)
         })
         .await;
-        settle().await;
+        yield_until(|| {
+            clock
+                .pending_deadlines()
+                .contains(&(clock.now() + Duration::from_millis(150)))
+                .then_some(())
+        })
+        .await;
     }
 
     // t=30_000: the timeout message wins over the poll scheduled for the
@@ -767,7 +786,7 @@ async fn control_detection_releases_its_lease_on_cancel_and_drop() {
 
     // Explicit cancel releases the lease and unsubscribes.
     {
-        let session = start_detection(&sim, &arbiter, &clock).await;
+        let mut session = start_detection(&sim, &arbiter, &clock).await;
         baseline_taken(&state).await;
         session.cancel().await.unwrap();
         assert!(state.lock().unwrap().unsubscribes >= 1);
@@ -1151,7 +1170,11 @@ async fn train_detection_disconnect_without_train_deactivates_immediately() {
 
     // No grace polls follow: polling stays disabled.
     assert_eq!(drivable_gets(&state).await, 0);
+    let (first, second) = tokio::join!(monitor.shutdown(), monitor.shutdown());
+    first.unwrap();
+    second.unwrap();
     monitor.shutdown().await.unwrap();
+    assert!(monitor.sync().await.is_err());
 }
 
 /// Mirrors "enables polling on connect" plus the matching flow of
@@ -1242,9 +1265,14 @@ async fn train_detection_polls_every_five_seconds() {
     );
     let client = Arc::new(SimulatorClient::new(sim.url(), "key").unwrap());
     monitor.connected(client).await.unwrap();
+    // Initial loopback IO must settle without advancing logical time. The
+    // general next_event driver advances 50ms per probe, which made the
+    // following 4900ms advance cross the 5s boundary on a loaded host.
     for _ in 0..2 {
-        let _ = next_event(&clock, Duration::from_millis(50), &mut events).await;
+        let _ = yield_until(|| events.try_recv().ok()).await;
     }
+    let poll_at = clock.now() + train_detection::POLL_INTERVAL;
+    yield_until(|| clock.pending_deadlines().contains(&poll_at).then_some(())).await;
     assert_eq!(drivable_gets(&state).await, 1);
 
     clock.advance(Duration::from_millis(4_900));

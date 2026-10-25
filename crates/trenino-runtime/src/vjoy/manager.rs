@@ -5,18 +5,23 @@
 //! contract; the Elixir configurator/bridge pair collapses into the single
 //! [`VjoyAdapter`] acquire path.
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
 
-use trenino_core::{EntityId, OperationId};
+use trenino_core::hardware::calibration::Calibration;
+use trenino_core::{ConfigId, EntityId, OperationId};
 
 use crate::resource::ResourceArbiter;
+use crate::routing::{InputEvent, InputIdentity};
 use crate::storage::Database;
 
 use super::adapter::{
-    DeviceDescriptor, VjoyAdapter, VjoyDeviceStatus, VjoyError, REQUIRED_DESCRIPTOR,
+    neutral_axis_value, DeviceDescriptor, VjoyAdapter, VjoyDeviceStatus, VjoyError,
+    REQUIRED_DESCRIPTOR,
 };
-use super::store::{MappingDraft, MappingRecord};
+use super::mapper::axis_value;
+use super::store::{MappingDraft, MappingRecord, Target};
 
 /// Lifecycle status. Mirrors the Elixir manager's status atoms; `needs_cleanup`
 /// reports an unrequested-but-present selected device (leftover), and the
@@ -39,6 +44,8 @@ pub enum VjoyStatus {
     NeedsSetup,
     /// Not requested, but a selected device exists unowned (leftover).
     NeedsCleanup,
+    /// A requested and previously active device lost its native report path.
+    Degraded,
     /// Terminal failure; an explicit retry clears quarantine and re-attempts.
     Error,
 }
@@ -64,6 +71,49 @@ struct ManagerInner<A: VjoyAdapter> {
     selection: Vec<u8>,
     /// Mirrors the persisted `enabled` flag; the database remains authoritative.
     requested: bool,
+    closing: bool,
+    mappings: HashMap<EntityId, LiveMapping>,
+    ports: HashMap<String, LivePort>,
+    next_sample_sequence: u64,
+    reported_from: HashMap<EntityId, String>,
+    retry_attempt: usize,
+    retry_deadline: Option<Instant>,
+}
+
+const RETRY_DELAYS_MS: [u64; 5] = [250, 500, 1_000, 2_000, 4_000];
+
+#[derive(Clone)]
+struct LiveMapping {
+    record: MappingRecord,
+    config_id: ConfigId,
+    calibration: Option<Calibration>,
+}
+
+#[derive(Clone)]
+struct LivePort {
+    generation: u64,
+    config_id: ConfigId,
+    revoked: bool,
+    suspended: bool,
+    raw: HashMap<EntityId, RawSample>,
+}
+
+#[derive(Clone, Copy)]
+struct RawSample {
+    value: i16,
+    sequence: u64,
+}
+
+impl LivePort {
+    fn fresh(generation: u64, config_id: ConfigId) -> Self {
+        Self {
+            generation,
+            config_id,
+            revoked: false,
+            suspended: false,
+            raw: HashMap::new(),
+        }
+    }
 }
 
 /// Single owner of the vJoy devices selected in persistent storage. All
@@ -96,13 +146,20 @@ impl<A: VjoyAdapter> VjoyManager<A> {
             acquired: BTreeSet::new(),
             selection: selection.clone(),
             requested: configuration.enabled,
+            closing: false,
+            mappings: load_live_mappings(&db).unwrap_or_default(),
+            ports: HashMap::new(),
+            next_sample_sequence: 0,
+            reported_from: HashMap::new(),
+            retry_attempt: 0,
+            retry_deadline: None,
         };
         if !supported {
             inner.status = VjoyStatus::Unsupported;
         } else if configuration.enabled {
             // Reconciliation failures mirror init: state records the outcome,
             // the persisted requested flag stays as committed.
-            let _ = enable_locked(&db, &arbiter, &mut inner);
+            let _ = enable_locked(&db, &arbiter, &mut inner, false);
         } else {
             reconcile_not_requested(&mut inner);
         }
@@ -110,6 +167,48 @@ impl<A: VjoyAdapter> VjoyManager<A> {
             db,
             arbiter,
             inner: Mutex::new(inner),
+        }
+    }
+
+    /// Fence new actuation/lifecycle admission before output cleanup starts.
+    pub fn stop_admission(&self) {
+        let mut inner = self.inner.lock().expect("vjoy manager poisoned");
+        inner.closing = true;
+        inner.retry_deadline = None;
+    }
+
+    /// Release native ownership without editing the user's enabled flag.
+    /// Failed neutralizations retain their handles for acknowledged retry.
+    pub fn release_runtime(&self) -> Result<(), VjoyError> {
+        let mut inner = self.inner.lock().expect("vjoy manager poisoned");
+        inner.closing = true;
+        inner.retry_deadline = None;
+        let mut failure = None;
+        for device in inner.acquired.clone().into_iter().rev() {
+            match inner.adapter.neutralize_device(device) {
+                Ok(()) => {
+                    inner.adapter.release_device(device);
+                    inner.acquired.remove(&device);
+                }
+                Err(error) => {
+                    failure = failure.or(Some(error));
+                }
+            }
+        }
+        if let Err(error) = inner.adapter.settle_configurator() {
+            failure = failure.or(Some(error));
+        }
+        inner.reported_from.clear();
+        if let Some(error) = failure {
+            inner.status = VjoyStatus::Error;
+            inner.reason = Some(error.clone());
+            Err(error)
+        } else {
+            if inner.status != VjoyStatus::Unsupported {
+                inner.status = VjoyStatus::Off;
+            }
+            inner.reason = None;
+            Ok(())
         }
     }
 
@@ -151,6 +250,9 @@ impl<A: VjoyAdapter> VjoyManager<A> {
         devices: &[u8],
     ) -> Result<Vec<u8>, VjoyError> {
         let mut inner = self.inner.lock().expect("vjoy manager poisoned");
+        if inner.closing {
+            return Err(VjoyError::InvalidState("runtime shutting down"));
+        }
         if inner.status == VjoyStatus::Active {
             return Err(VjoyError::InvalidState(
                 "selection cannot change while active",
@@ -171,10 +273,19 @@ impl<A: VjoyAdapter> VjoyManager<A> {
     /// left a device quarantined (use [`Self::retry`]).
     pub fn enable(&self) -> Result<(), VjoyError> {
         let mut inner = self.inner.lock().expect("vjoy manager poisoned");
+        if inner.closing {
+            return Err(VjoyError::InvalidState("runtime shutting down"));
+        }
         if inner.status == VjoyStatus::Active {
             return Ok(());
         }
-        enable_locked(&self.db, &self.arbiter, &mut inner)
+        inner.selection = self.db.vjoy_selected_devices()?;
+        enable_locked(&self.db, &self.arbiter, &mut inner, true)?;
+        if let Err(error) = publish_current_state(&mut inner) {
+            runtime_loss(&mut inner, error.clone());
+            return Err(error);
+        }
+        Ok(())
     }
 
     /// Neutralize and release every acquired device (reverse order), then
@@ -182,8 +293,13 @@ impl<A: VjoyAdapter> VjoyManager<A> {
     /// when already off; clears quarantine like the Elixir `cancel_retry`.
     pub fn disable(&self) -> Result<(), VjoyError> {
         let mut inner = self.inner.lock().expect("vjoy manager poisoned");
+        if inner.closing {
+            return Err(VjoyError::InvalidState("runtime shutting down"));
+        }
         if inner.status == VjoyStatus::Off {
             inner.quarantined.clear();
+            inner.retry_deadline = None;
+            inner.retry_attempt = 0;
             return Ok(());
         }
         if !inner.adapter.supported() {
@@ -199,12 +315,37 @@ impl<A: VjoyAdapter> VjoyManager<A> {
         // the Elixir `stop_bridge_safely` ignores reset failures the same way.
         let released = release_all(&mut inner);
         inner.quarantined.clear();
+        inner.ports.clear();
+        inner.reported_from.clear();
+        inner.retry_deadline = None;
+        inner.retry_attempt = 0;
+        // A native installation created by Trenino belongs to this selection
+        // only. Never remove a foreign or busy device, or another selected ID.
+        let cleanup = if released.is_ok() {
+            cleanup_selected(&mut inner)
+        } else {
+            Ok(())
+        };
+        if let Err(error) = cleanup {
+            inner.status = VjoyStatus::Error;
+            inner.reason = Some(error.clone());
+            return Err(error);
+        }
         match self.db.vjoy_confirm_enabled(OperationId(0), false) {
             Ok(_) => {
                 inner.requested = false;
-                inner.status = VjoyStatus::Off;
-                inner.reason = None;
-                Ok(())
+                match released {
+                    Ok(()) => {
+                        inner.status = VjoyStatus::Off;
+                        inner.reason = None;
+                        Ok(())
+                    }
+                    Err(error) => {
+                        inner.status = VjoyStatus::Error;
+                        inner.reason = Some(error.clone());
+                        Err(error)
+                    }
+                }
             }
             Err(error) => {
                 inner.status = VjoyStatus::Error;
@@ -220,19 +361,314 @@ impl<A: VjoyAdapter> VjoyManager<A> {
     /// `needs_setup` and restarts the bridge from `degraded`/`error`).
     pub fn retry(&self) -> Result<(), VjoyError> {
         let mut inner = self.inner.lock().expect("vjoy manager poisoned");
-        if !matches!(inner.status, VjoyStatus::NeedsSetup | VjoyStatus::Error) {
+        if inner.closing {
+            return Err(VjoyError::InvalidState("runtime shutting down"));
+        }
+        if !matches!(
+            inner.status,
+            VjoyStatus::NeedsSetup | VjoyStatus::Error | VjoyStatus::Degraded
+        ) {
             return Err(VjoyError::InvalidState(
                 "retry requires needs_setup or error",
             ));
         }
         inner.quarantined.clear();
         inner.reason = None;
-        enable_locked(&self.db, &self.arbiter, &mut inner)
+        inner.retry_deadline = None;
+        inner.retry_attempt = 0;
+        inner.selection = self.db.vjoy_selected_devices()?;
+        enable_locked(&self.db, &self.arbiter, &mut inner, true)?;
+        if let Err(error) = publish_current_state(&mut inner) {
+            runtime_loss(&mut inner, error.clone());
+            return Err(error);
+        }
+        Ok(())
+    }
+
+    /// Recheck a failed installation without implicitly changing persisted
+    /// requested state. For requested devices, a healthy installation can
+    /// reacquire; unrequested devices remain unowned.
+    pub fn repair(&self) -> Result<(), VjoyError> {
+        let mut inner = self.inner.lock().expect("vjoy manager poisoned");
+        if inner.closing {
+            return Err(VjoyError::InvalidState("runtime shutting down"));
+        }
+        if inner.status != VjoyStatus::Error {
+            return Err(VjoyError::InvalidState("repair requires error"));
+        }
+        inner.quarantined.clear();
+        inner.retry_deadline = None;
+        inner.retry_attempt = 0;
+        if inner.requested {
+            enable_locked(&self.db, &self.arbiter, &mut inner, true)?;
+            if let Err(error) = publish_current_state(&mut inner) {
+                runtime_loss(&mut inner, error.clone());
+                return Err(error);
+            }
+        } else {
+            reconcile_not_requested(&mut inner);
+        }
+        Ok(())
+    }
+
+    /// Remove only selected, Trenino-owned leftovers after a prior shutdown.
+    /// A foreign or busy selected device is never passed to the configurator.
+    pub fn remove_leftover(&self) -> Result<(), VjoyError> {
+        let mut inner = self.inner.lock().expect("vjoy manager poisoned");
+        if inner.closing {
+            return Err(VjoyError::InvalidState("runtime shutting down"));
+        }
+        if inner.status != VjoyStatus::NeedsCleanup || inner.requested {
+            return Err(VjoyError::InvalidState(
+                "remove_leftover requires needs_cleanup",
+            ));
+        }
+        inner.status = VjoyStatus::Disabling;
+        if let Err(error) = cleanup_selected(&mut inner) {
+            inner.status = VjoyStatus::Error;
+            inner.reason = Some(error.clone());
+            return Err(error);
+        }
+        reconcile_not_requested(&mut inner);
+        Ok(())
     }
 
     /// Current mappings (the Elixir `reload_mappings` read path).
     pub fn mappings(&self) -> Result<Vec<MappingRecord>, VjoyError> {
         Ok(self.db.vjoy_list_mappings()?)
+    }
+
+    /// When an external runtime pump should next call `poll_recovery_at`.
+    pub fn next_retry_deadline(&self) -> Option<Instant> {
+        self.inner
+            .lock()
+            .expect("vjoy manager poisoned")
+            .retry_deadline
+    }
+
+    /// The Elixir bounded backoff step currently scheduled, if any.
+    pub fn next_retry_delay(&self) -> Option<Duration> {
+        let inner = self.inner.lock().expect("vjoy manager poisoned");
+        inner
+            .retry_deadline
+            .map(|_| Duration::from_millis(RETRY_DELAYS_MS[inner.retry_attempt]))
+    }
+
+    /// Run one due recovery attempt. The caller supplies time for deterministic
+    /// tests and must schedule calls at `next_retry_deadline` in production.
+    pub fn poll_recovery_at(&self, now: Instant) -> Result<bool, VjoyError> {
+        let mut inner = self.inner.lock().expect("vjoy manager poisoned");
+        if inner.closing {
+            return Err(VjoyError::InvalidState("runtime shutting down"));
+        }
+        let Some(deadline) = inner.retry_deadline else {
+            return Ok(false);
+        };
+        if now < deadline {
+            return Ok(false);
+        }
+        inner.retry_deadline = None;
+        inner.retry_attempt += 1;
+        inner.quarantined.clear();
+        let result = enable_locked(&self.db, &self.arbiter, &mut inner, false)
+            .and_then(|()| publish_current_state(&mut inner));
+        match result {
+            Ok(()) => {
+                inner.retry_attempt = 0;
+                inner.reason = None;
+                Ok(true)
+            }
+            Err(error) => {
+                let _ = release_all(&mut inner);
+                inner.reason = Some(error.clone());
+                schedule_retry(&mut inner, now);
+                Err(error)
+            }
+        }
+    }
+
+    /// Accept a hardware-service resolved, generation-fenced input sample.
+    /// The input identity and persisted configuration are checked again here
+    /// so a stale or mismatched caller cannot drive an unrelated target.
+    pub fn input_value(
+        &self,
+        port: &str,
+        identity: InputIdentity,
+        event: InputEvent,
+    ) -> Result<(), VjoyError> {
+        let mut inner = self.inner.lock().expect("vjoy manager poisoned");
+        if inner.closing {
+            return Ok(());
+        }
+        let mapping = inner.mappings.get(&identity.input_id).cloned();
+        if mapping.as_ref().is_some_and(|mapping| {
+            mapping.record.input_device != Some(identity.device_id)
+                || mapping.config_id != event.config_id
+                || mapping.record.input_pin != Some(i32::from(event.pin))
+        }) {
+            return Ok(());
+        }
+        let leased = self.arbiter.is_suspended();
+        if !upsert_port(
+            &mut inner,
+            port,
+            event.port_generation,
+            event.config_id,
+            !leased,
+        )? {
+            return Ok(());
+        }
+        inner.next_sample_sequence = inner.next_sample_sequence.saturating_add(1);
+        let sequence = inner.next_sample_sequence;
+        let state = inner.ports.get_mut(port).expect("port was accepted above");
+        state.raw.insert(
+            identity.input_id,
+            RawSample {
+                value: event.value,
+                sequence,
+            },
+        );
+        if !leased {
+            state.suspended = false;
+        }
+        if inner.status == VjoyStatus::Active && !leased {
+            if let Some(mapping) = mapping {
+                if !inner.acquired.contains(&mapping.record.device_index) {
+                    return Ok(());
+                }
+                if let Err(error) = send_mapping(&mut inner.adapter, &mapping, event.value) {
+                    runtime_loss(&mut inner, error.clone());
+                    return Err(error);
+                }
+                inner
+                    .reported_from
+                    .insert(identity.input_id, port.to_owned());
+            }
+        }
+        Ok(())
+    }
+
+    /// Seed current samples on a connected generation, including while off.
+    /// A subsequent activation publishes these samples; unseeded mappings on
+    /// the port receive safe reports.
+    pub fn seed_port(
+        &self,
+        port: &str,
+        generation: u64,
+        config_id: ConfigId,
+        samples: &[(InputIdentity, u8, i16)],
+    ) -> Result<(), VjoyError> {
+        self.observe_port(port, generation, config_id)?;
+        for (identity, pin, value) in samples {
+            self.input_value(
+                port,
+                *identity,
+                InputEvent {
+                    port_generation: generation,
+                    config_id,
+                    pin: *pin,
+                    value: *value,
+                },
+            )?;
+        }
+        Ok(())
+    }
+
+    pub fn observe_port(
+        &self,
+        port: &str,
+        generation: u64,
+        config_id: ConfigId,
+    ) -> Result<(), VjoyError> {
+        let mut inner = self.inner.lock().expect("vjoy manager poisoned");
+        upsert_port(
+            &mut inner,
+            port,
+            generation,
+            config_id,
+            !self.arbiter.is_suspended(),
+        )?;
+        Ok(())
+    }
+
+    /// Revoke only the current port generation and neutralize its mapped
+    /// targets. Reports from other ports remain untouched.
+    pub fn source_lost(&self, port: &str, generation: u64) -> Result<(), VjoyError> {
+        let mut inner = self.inner.lock().expect("vjoy manager poisoned");
+        let Some(state) = inner.ports.get_mut(port) else {
+            return Ok(());
+        };
+        if state.generation != generation || state.revoked {
+            return Ok(());
+        }
+        state.revoked = true;
+        let config_id = state.config_id;
+        state.raw.clear();
+        neutralize_port_outputs(&mut inner, port, config_id, !self.arbiter.is_suspended())
+    }
+
+    /// Neutralize mapped targets for a temporarily suspended port without
+    /// revoking its generation; a fresh sample may resume that generation.
+    pub fn suspend_port(&self, port: &str) -> Result<(), VjoyError> {
+        let mut inner = self.inner.lock().expect("vjoy manager poisoned");
+        let Some(config_id) = inner.ports.get_mut(port).filter(|p| !p.revoked).map(|p| {
+            p.suspended = true;
+            p.config_id
+        }) else {
+            return Ok(());
+        };
+        neutralize_port_outputs(&mut inner, port, config_id, !self.arbiter.is_suspended())
+    }
+
+    /// Refresh the one authoritative mapping snapshot after DB mutation or
+    /// hardware reconfiguration. Active targets are republished immediately.
+    pub fn reload_mappings(&self) -> Result<(), VjoyError> {
+        let mappings = load_live_mappings(&self.db)?;
+        let mut inner = self.inner.lock().expect("vjoy manager poisoned");
+        if inner.closing {
+            return Err(VjoyError::InvalidState("runtime shutting down"));
+        }
+        let removed: Vec<LiveMapping> = inner
+            .mappings
+            .values()
+            .filter(|old| {
+                !mappings.values().any(|new| {
+                    new.record.device_index == old.record.device_index
+                        && new.record.target == old.record.target
+                })
+            })
+            .cloned()
+            .collect();
+        // The database commit is authoritative even if a native safe report
+        // fails. Recovery must never replay a deleted route.
+        inner.mappings = mappings;
+        let retained_ids: BTreeSet<EntityId> = inner.mappings.keys().copied().collect();
+        inner
+            .reported_from
+            .retain(|id, _| retained_ids.contains(id));
+        if inner.status == VjoyStatus::Active {
+            for mapping in removed {
+                if inner.acquired.contains(&mapping.record.device_index) {
+                    if let Err(error) = send_safe_mapping(&mut inner.adapter, &mapping) {
+                        runtime_loss(&mut inner, error.clone());
+                        return Err(error);
+                    }
+                }
+            }
+        }
+        if self.arbiter.is_suspended() {
+            for port in inner.ports.values_mut() {
+                port.suspended = true;
+            }
+            return Ok(());
+        }
+        if inner.status == VjoyStatus::Active {
+            if let Err(error) = publish_current_state(&mut inner) {
+                runtime_loss(&mut inner, error.clone());
+                return Err(error);
+            }
+        }
+        Ok(())
     }
 
     /// Reapply the neutral report to every acquired device. Hook for the
@@ -242,9 +678,10 @@ impl<A: VjoyAdapter> VjoyManager<A> {
     pub fn neutralize_outputs(&self) -> Result<(), VjoyError> {
         let mut inner = self.inner.lock().expect("vjoy manager poisoned");
         if inner.status != VjoyStatus::Active {
-            return Err(VjoyError::InvalidState(
-                "outputs are only driven while active",
-            ));
+            return Ok(());
+        }
+        for port in inner.ports.values_mut() {
+            port.suspended = true;
         }
         let devices: Vec<u8> = inner.acquired.iter().copied().collect();
         let mut failure = None;
@@ -265,10 +702,232 @@ impl<A: VjoyAdapter> VjoyManager<A> {
         draft: MappingDraft,
         replace: bool,
     ) -> Result<MappingRecord, VjoyError> {
-        Ok(self
+        if self.inner.lock().expect("vjoy manager poisoned").closing {
+            return Err(VjoyError::InvalidState("runtime shutting down"));
+        }
+        let record = self
             .db
             .vjoy_put_mapping(operation_id, input_id, draft, replace)?
-            .record)
+            .record;
+        self.reload_mappings()?;
+        Ok(record)
+    }
+}
+
+fn upsert_port<A: VjoyAdapter>(
+    inner: &mut ManagerInner<A>,
+    port: &str,
+    generation: u64,
+    config_id: ConfigId,
+    allow_live: bool,
+) -> Result<bool, VjoyError> {
+    match inner.ports.get(port) {
+        Some(state)
+            if generation < state.generation
+                || (generation == state.generation && state.revoked) =>
+        {
+            return Ok(false)
+        }
+        Some(state) if generation > state.generation || config_id != state.config_id => {
+            let old_config = state.config_id;
+            inner
+                .ports
+                .insert(port.to_owned(), LivePort::fresh(generation, config_id));
+            neutralize_port_outputs(inner, port, old_config, allow_live)?;
+        }
+        None => {
+            inner
+                .ports
+                .insert(port.to_owned(), LivePort::fresh(generation, config_id));
+        }
+        _ => {}
+    }
+    Ok(true)
+}
+
+fn neutralize_port_outputs<A: VjoyAdapter>(
+    inner: &mut ManagerInner<A>,
+    port: &str,
+    config_id: ConfigId,
+    allow_live: bool,
+) -> Result<(), VjoyError> {
+    if inner.status != VjoyStatus::Active {
+        return Ok(());
+    }
+    let mappings: Vec<LiveMapping> = inner
+        .mappings
+        .values()
+        .filter(|m| m.config_id == config_id && inner.acquired.contains(&m.record.device_index))
+        .cloned()
+        .collect();
+    for mapping in mappings {
+        let id = mapping.record.input_id;
+        if inner
+            .reported_from
+            .get(&id)
+            .is_some_and(|supplier| supplier != port)
+        {
+            continue;
+        }
+        let survivor = if allow_live {
+            latest_sample(inner, &mapping, Some(port))
+        } else {
+            None
+        };
+        let result = match &survivor {
+            Some((_, raw)) => send_mapping(&mut inner.adapter, &mapping, *raw),
+            None => send_safe_mapping(&mut inner.adapter, &mapping),
+        };
+        if let Err(error) = result {
+            runtime_loss(inner, error.clone());
+            return Err(error);
+        }
+        match survivor {
+            Some((supplier, _)) => {
+                inner.reported_from.insert(id, supplier);
+            }
+            None => {
+                inner.reported_from.remove(&id);
+            }
+        }
+    }
+    Ok(())
+}
+
+fn load_live_mappings(db: &Database) -> Result<HashMap<EntityId, LiveMapping>, VjoyError> {
+    let mut result = HashMap::new();
+    for record in db.vjoy_list_mappings()? {
+        let Some(input) = db.get_input(record.input_id)? else {
+            continue;
+        };
+        let Some(device_id) = input.device_id else {
+            continue;
+        };
+        let Some(device) = db.get_device(device_id)? else {
+            continue;
+        };
+        let Some(config_id) = device.config_id else {
+            continue;
+        };
+        let calibration = input.calibration.and_then(|row| {
+            let c = row.value;
+            Some(Calibration {
+                min_value: c.min_value?,
+                max_value: c.max_value?,
+                max_hardware_value: c.max_hardware_value?,
+                inverted: c.is_inverted,
+                rollover: c.has_rollover,
+            })
+        });
+        result.insert(
+            record.input_id,
+            LiveMapping {
+                record,
+                config_id,
+                calibration,
+            },
+        );
+    }
+    Ok(result)
+}
+
+fn send_mapping<A: VjoyAdapter>(
+    adapter: &mut A,
+    mapping: &LiveMapping,
+    raw: i16,
+) -> Result<(), VjoyError> {
+    let device = mapping.record.device_index;
+    match mapping.record.target {
+        Target::Axis(axis) => {
+            let range = adapter.axis_range(device, axis)?;
+            if let Ok(value) = axis_value(
+                i32::from(raw),
+                mapping.calibration.as_ref(),
+                mapping.record.inverted,
+                range,
+            ) {
+                adapter.set_axis(device, axis, value)?;
+            }
+        }
+        Target::Button(button) => adapter.set_button(device, button, raw != 0)?,
+    }
+    Ok(())
+}
+
+fn send_safe_mapping<A: VjoyAdapter>(
+    adapter: &mut A,
+    mapping: &LiveMapping,
+) -> Result<(), VjoyError> {
+    let device = mapping.record.device_index;
+    match mapping.record.target {
+        Target::Axis(axis) => {
+            let (min, max) = adapter.axis_range(device, axis)?;
+            adapter.set_axis(device, axis, neutral_axis_value(min, max))
+        }
+        Target::Button(button) => adapter.set_button(device, button, false),
+    }
+}
+
+fn publish_current_state<A: VjoyAdapter>(inner: &mut ManagerInner<A>) -> Result<(), VjoyError> {
+    let mappings: Vec<LiveMapping> = inner.mappings.values().cloned().collect();
+    for mapping in mappings {
+        if !inner.acquired.contains(&mapping.record.device_index) {
+            continue;
+        }
+        let source = latest_sample(inner, &mapping, None);
+        match source {
+            Some((port, raw)) => {
+                send_mapping(&mut inner.adapter, &mapping, raw)?;
+                inner.reported_from.insert(mapping.record.input_id, port);
+            }
+            None => {
+                send_safe_mapping(&mut inner.adapter, &mapping)?;
+                inner.reported_from.remove(&mapping.record.input_id);
+            }
+        }
+    }
+    Ok(())
+}
+
+fn latest_sample<A: VjoyAdapter>(
+    inner: &ManagerInner<A>,
+    mapping: &LiveMapping,
+    excluding: Option<&str>,
+) -> Option<(String, i16)> {
+    inner
+        .ports
+        .iter()
+        .filter(|(port, state)| {
+            excluding != Some(port.as_str())
+                && !state.revoked
+                && !state.suspended
+                && state.config_id == mapping.config_id
+        })
+        .filter_map(|(port, state)| {
+            state
+                .raw
+                .get(&mapping.record.input_id)
+                .map(|sample| (port.clone(), *sample))
+        })
+        .max_by_key(|(_, sample)| sample.sequence)
+        .map(|(port, sample)| (port, sample.value))
+}
+
+fn runtime_loss<A: VjoyAdapter>(inner: &mut ManagerInner<A>, error: VjoyError) {
+    let _ = release_all(inner);
+    inner.reason = Some(error);
+    inner.retry_attempt = 0;
+    schedule_retry(inner, Instant::now());
+}
+
+fn schedule_retry<A: VjoyAdapter>(inner: &mut ManagerInner<A>, now: Instant) {
+    if inner.requested && inner.retry_attempt < RETRY_DELAYS_MS.len() {
+        inner.status = VjoyStatus::Degraded;
+        inner.retry_deadline =
+            Some(now + Duration::from_millis(RETRY_DELAYS_MS[inner.retry_attempt]));
+    } else {
+        inner.status = VjoyStatus::Error;
+        inner.retry_deadline = None;
     }
 }
 
@@ -302,8 +961,41 @@ fn reconcile_not_requested<A: VjoyAdapter>(inner: &mut ManagerInner<A>) {
                 inner.reason = Some(VjoyError::DeviceBusy(device));
                 return;
             }
-            Ok(VjoyDeviceStatus::Free) => leftover = true,
-            Ok(VjoyDeviceStatus::Missing) | Ok(VjoyDeviceStatus::Unknown) => {}
+            Ok(VjoyDeviceStatus::Free) => match inner.adapter.ownership_marker(device) {
+                Ok(true) => leftover = true,
+                Ok(false) => match inner.adapter.creation_confirmed_marker(device) {
+                    Ok(true) => leftover = true,
+                    Ok(false) => {}
+                    Err(error) => {
+                        inner.status = VjoyStatus::Error;
+                        inner.reason = Some(error);
+                        return;
+                    }
+                },
+                Err(error) => {
+                    inner.status = VjoyStatus::Error;
+                    inner.reason = Some(error);
+                    return;
+                }
+            },
+            Ok(VjoyDeviceStatus::Missing) => match inner.adapter.ownership_marker(device) {
+                Ok(true) => leftover = true,
+                Ok(false) => match inner.adapter.creation_confirmed_marker(device) {
+                    Ok(true) => leftover = true,
+                    Ok(false) => {}
+                    Err(error) => {
+                        inner.status = VjoyStatus::Error;
+                        inner.reason = Some(error);
+                        return;
+                    }
+                },
+                Err(error) => {
+                    inner.status = VjoyStatus::Error;
+                    inner.reason = Some(error);
+                    return;
+                }
+            },
+            Ok(VjoyDeviceStatus::Unknown) => {}
             Err(error) => {
                 inner.status = VjoyStatus::Error;
                 inner.reason = Some(error);
@@ -328,6 +1020,7 @@ fn enable_locked<A: VjoyAdapter>(
     db: &Database,
     arbiter: &ResourceArbiter,
     inner: &mut ManagerInner<A>,
+    allow_setup: bool,
 ) -> Result<(), VjoyError> {
     if !inner.adapter.supported() {
         return Err(VjoyError::Unsupported);
@@ -353,7 +1046,7 @@ fn enable_locked<A: VjoyAdapter>(
     inner.status = VjoyStatus::Enabling;
     inner.reason = None;
 
-    if let Err(error) = acquire_selection(inner) {
+    if let Err(error) = acquire_selection(inner, allow_setup) {
         // Rollback already happened inside acquire_selection; classify status.
         inner.status = match &error {
             VjoyError::DeviceMissing(_) => VjoyStatus::NeedsSetup,
@@ -363,7 +1056,12 @@ fn enable_locked<A: VjoyAdapter>(
         return Err(error);
     }
 
-    match db.vjoy_confirm_enabled(OperationId(0), true) {
+    let persisted = if inner.requested {
+        Ok(())
+    } else {
+        db.vjoy_confirm_enabled(OperationId(0), true).map(|_| ())
+    };
+    match persisted {
         Ok(_) => {
             inner.requested = true;
             inner.status = VjoyStatus::Active;
@@ -383,20 +1081,57 @@ fn enable_locked<A: VjoyAdapter>(
 /// Acquire each selected device in ascending order. On failure, roll back every
 /// acquisition so far (neutralize, then release, reverse order). Only acquire
 /// failures quarantine their device.
-fn acquire_selection<A: VjoyAdapter>(inner: &mut ManagerInner<A>) -> Result<(), VjoyError> {
+fn acquire_selection<A: VjoyAdapter>(
+    inner: &mut ManagerInner<A>,
+    allow_setup: bool,
+) -> Result<(), VjoyError> {
     for device in inner.selection.clone() {
         match inner.adapter.device_status(device) {
             // Owned is either ours (acquire below is idempotent) or foreign
             // (acquire fails); Free proceeds; anything else refuses so an
             // unowned device is never acquired blindly.
-            Ok(VjoyDeviceStatus::Owned) | Ok(VjoyDeviceStatus::Free) => {}
+            Ok(VjoyDeviceStatus::Owned) | Ok(VjoyDeviceStatus::Free) => {
+                if inner.adapter.can_configure()
+                    && !match inner.adapter.ownership_marker(device) {
+                        Ok(marked) => marked,
+                        Err(error) => return Err(rollback_with_error(inner, error)),
+                    }
+                {
+                    let confirmed = match inner.adapter.creation_confirmed_marker(device) {
+                        Ok(confirmed) => confirmed,
+                        Err(error) => return Err(rollback_with_error(inner, error)),
+                    };
+                    if confirmed && allow_setup {
+                        if let Err(error) = inner.adapter.configure_create(device) {
+                            let _ = release_all(inner);
+                            return Err(error);
+                        }
+                    } else {
+                        let _ = release_all(inner);
+                        return Err(VjoyError::Configurator(
+                            super::configurator::ConfiguratorError::ForeignDevice,
+                        ));
+                    }
+                }
+            }
             Ok(VjoyDeviceStatus::Busy) => {
                 let _ = release_all(inner);
                 return Err(VjoyError::DeviceBusy(device));
             }
             Ok(VjoyDeviceStatus::Missing) => {
-                let _ = release_all(inner);
-                return Err(VjoyError::DeviceMissing(device));
+                if !allow_setup || !inner.adapter.can_configure() {
+                    let _ = release_all(inner);
+                    return Err(VjoyError::DeviceMissing(device));
+                }
+                if let Err(error) = inner.adapter.configure_create(device) {
+                    let _ = release_all(inner);
+                    return Err(error);
+                }
+                let observed = inner.adapter.device_status(device);
+                if !matches!(observed, Ok(VjoyDeviceStatus::Free)) {
+                    let _ = release_all(inner);
+                    return Err(observed.err().unwrap_or(VjoyError::DeviceMissing(device)));
+                }
             }
             Ok(VjoyDeviceStatus::Unknown) => {
                 let _ = release_all(inner);
@@ -430,6 +1165,47 @@ fn acquire_selection<A: VjoyAdapter>(inner: &mut ManagerInner<A>) -> Result<(), 
             let _ = release_all(inner);
             return Err(error);
         }
+    }
+    Ok(())
+}
+
+fn cleanup_selected<A: VjoyAdapter>(inner: &mut ManagerInner<A>) -> Result<(), VjoyError> {
+    if !inner.adapter.can_configure() {
+        return Ok(());
+    }
+    let mut owned = Vec::new();
+    let mut recover = Vec::new();
+    for device in inner.selection.clone() {
+        let marked = inner.adapter.ownership_marker(device)?;
+        let confirmed = inner.adapter.creation_confirmed_marker(device)?;
+        match inner.adapter.device_status(device)? {
+            VjoyDeviceStatus::Free => {
+                if marked {
+                    owned.push(device);
+                } else if confirmed {
+                    recover.push(device);
+                    owned.push(device);
+                } else {
+                    return Err(VjoyError::Configurator(
+                        super::configurator::ConfiguratorError::ForeignDevice,
+                    ));
+                }
+            }
+            VjoyDeviceStatus::Missing => {
+                if marked || confirmed {
+                    owned.push(device);
+                }
+            }
+            VjoyDeviceStatus::Busy | VjoyDeviceStatus::Owned | VjoyDeviceStatus::Unknown => {
+                return Err(VjoyError::DeviceBusy(device));
+            }
+        }
+    }
+    for device in recover {
+        inner.adapter.configure_create(device)?;
+    }
+    for device in owned {
+        inner.adapter.configure_delete(device)?;
     }
     Ok(())
 }
@@ -474,4 +1250,8 @@ fn release_all<A: VjoyAdapter>(inner: &mut ManagerInner<A>) -> Result<(), VjoyEr
         inner.acquired.remove(&device);
     }
     failure.map_or(Ok(()), Err)
+}
+
+fn rollback_with_error<A: VjoyAdapter>(inner: &mut ManagerInner<A>, error: VjoyError) -> VjoyError {
+    release_all(inner).err().unwrap_or(error)
 }

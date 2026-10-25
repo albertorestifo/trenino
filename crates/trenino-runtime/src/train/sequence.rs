@@ -14,6 +14,7 @@
 
 use std::sync::Arc;
 use std::time::Duration;
+use std::{future::Future, pin::Pin};
 
 use tokio::sync::{mpsc, watch};
 use tokio::task::JoinHandle;
@@ -36,7 +37,20 @@ pub enum SequenceSendOutcome {
 
 /// Seam over `SimulatorConnection.get_status/0` + `SimulatorClient.set/3`.
 pub trait SequenceSimulator: Send + Sync + 'static {
-    fn set(&self, endpoint: &str, value: f64) -> SequenceSendOutcome;
+    /// Existing synchronous test and simple adapter surface.
+    fn set(&self, _endpoint: &str, _value: f64) -> SequenceSendOutcome {
+        SequenceSendOutcome::Disconnected
+    }
+
+    /// Live HTTP implementations override this to await the request. The
+    /// default retains the synchronous seam for existing callers and fakes.
+    fn set_async<'a>(
+        &'a self,
+        endpoint: &'a str,
+        value: f64,
+    ) -> Pin<Box<dyn Future<Output = SequenceSendOutcome> + Send + 'a>> {
+        Box::pin(async move { self.set(endpoint, value) })
+    }
 }
 
 /// Messages a finished run reports to its owner. `Complete` mirrors
@@ -57,6 +71,7 @@ pub struct SequenceExecutor {
 
 /// One live execution. `abort()` is `Process.exit(task, :kill)`; dropping the
 /// handle does not stop the run, just like the unmonitored pid in state.
+#[derive(Debug)]
 pub struct SequenceRun {
     pub run: u64,
     pub element_id: i64,
@@ -128,7 +143,16 @@ async fn execute(
         if owner.has_changed().is_err() {
             return;
         }
-        let _outcome = simulator.set(&command.endpoint, command.value);
+        let send = simulator.set_async(&command.endpoint, command.value);
+        tokio::pin!(send);
+        loop {
+            tokio::select! {
+                _outcome = &mut send => break,
+                changed = owner.changed() => {
+                    if changed.is_err() { return; }
+                }
+            }
+        }
 
         if command.delay_ms > 0 {
             let delay = clock.sleep(Duration::from_millis(command.delay_ms));

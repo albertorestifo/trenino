@@ -7,11 +7,12 @@
 //! (exact 1.0, contained 0.85/0.75, word-match blend, Jaro fallback, > 0.3 gate).
 
 use crate::simulator::client::{SimulatorClient, SimulatorError};
+use serde::Serialize;
 use serde_json::Value;
 
 pub const ROOT_PATH: &str = "CurrentDrivableActor";
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct LeverControl {
     pub name: String,
     pub min_endpoint: String,
@@ -88,22 +89,58 @@ pub async fn detect_levers(client: &SimulatorClient) -> Result<Vec<LeverControl>
         let Ok(response) = client.list(Some(&path)).await else {
             continue;
         };
-        let endpoints = binary_nodes(&response);
+        let endpoints = endpoint_names(&response);
         if endpoints
             .iter()
             .any(|endpoint| endpoint.contains("Function.GetNotchCount"))
         {
-            levers.push(LeverControl {
-                name: name.clone(),
-                min_endpoint: format!("{path}.Function.GetMinimumInputValue"),
-                max_endpoint: format!("{path}.Function.GetMaximumInputValue"),
-                value_endpoint: format!("{path}.InputValue"),
-                notch_count_endpoint: format!("{path}.Function.GetNotchCount"),
-                notch_index_endpoint: format!("{path}.Function.GetCurrentNotchIndex"),
-            });
+            levers.push(lever_control(&path));
         }
     }
     Ok(levers)
+}
+
+/// Resolve one selected control using the same notch-count classification as
+/// `detect_levers`, without listing every control again.
+pub async fn resolve_lever_endpoints(
+    client: &SimulatorClient,
+    control_path: &str,
+) -> Result<Option<LeverControl>, ExploreError> {
+    let response = client.list(Some(control_path)).await?;
+    Ok(endpoint_names(&response)
+        .iter()
+        .any(|name| name.contains("Function.GetNotchCount"))
+        .then(|| lever_control(control_path)))
+}
+
+fn lever_control(path: &str) -> LeverControl {
+    LeverControl {
+        name: path.rsplit('/').next().unwrap_or(path).to_owned(),
+        min_endpoint: format!("{path}.Function.GetMinimumInputValue"),
+        max_endpoint: format!("{path}.Function.GetMaximumInputValue"),
+        value_endpoint: format!("{path}.InputValue"),
+        notch_count_endpoint: format!("{path}.Function.GetNotchCount"),
+        notch_index_endpoint: format!("{path}.Function.GetCurrentNotchIndex"),
+    }
+}
+
+fn endpoint_names(response: &Value) -> Vec<String> {
+    ["Endpoints", "Nodes"]
+        .iter()
+        .flat_map(|key| {
+            response
+                .get(*key)
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+                .filter_map(|entry| {
+                    entry
+                        .as_str()
+                        .or_else(|| entry.get("Name").and_then(Value::as_str))
+                        .map(str::to_owned)
+                })
+        })
+        .collect()
 }
 
 /// Detects button controls by checking each control's endpoints for
@@ -116,7 +153,7 @@ pub async fn detect_buttons(client: &SimulatorClient) -> Result<Vec<ButtonContro
         let Ok(response) = client.list(Some(&path)).await else {
             continue;
         };
-        let endpoints = binary_nodes(&response);
+        let endpoints = endpoint_names(&response);
         if endpoints
             .iter()
             .any(|endpoint| endpoint.contains("Property.bDefaultToPressed"))

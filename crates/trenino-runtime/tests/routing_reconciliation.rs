@@ -777,3 +777,31 @@ fn activation_context_shares_the_single_resolver_and_arbiter() {
         Some(Arc::as_ptr(&h.arbiter) as usize)
     );
 }
+
+#[test]
+fn scoped_tsw_deactivation_preserves_vjoy_plan_and_driver() {
+    let h = harness();
+    h.service
+        .activate_train_revision(desired(1, vec![tsw_plan("a"), vjoy_plan(1)]))
+        .unwrap();
+    h.service.reconcile().unwrap();
+    h.service
+        .deactivate_destination(DestinationId::Tsw, Revision(2))
+        .unwrap();
+    let snapshot = h.service.snapshot();
+    assert_eq!(snapshot.desired_revision, Some(Revision(2)));
+    assert!(snapshot
+        .destinations
+        .iter()
+        .all(|destination| destination.destination != DestinationId::Tsw));
+    assert_eq!(
+        destination_status(&snapshot, &DestinationId::VJoy),
+        DestinationStatus::Active
+    );
+    assert_eq!(h.tsw.calls().last(), Some(&DestCall::Release));
+    assert_eq!(
+        h.vjoy.calls(),
+        vec![DestCall::Activate(Revision(1), vjoy_plan(1))]
+    );
+    assert_eq!(h.vjoy.driving(), Some(vjoy_plan(1)));
+}

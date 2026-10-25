@@ -316,6 +316,108 @@ impl RoutingService {
         self.activate_train_revision(DesiredRouting::deactivated(revision))
     }
 
+    /// Remove one destination from desired routing and release only that
+    /// destination. This is used when the train controller stops while the
+    /// shared vJoy destination remains owned by another service.
+    pub fn deactivate_destination(
+        &self,
+        destination: DestinationId,
+        revision: Revision,
+    ) -> Result<(), RoutingError> {
+        let (generation, driver) = {
+            let mut state = self.state.lock().expect(LOCK);
+            if state.shut_down {
+                return Err(RoutingError::Shutdown);
+            }
+            if state.reconciling {
+                return Err(RoutingError::ReconcileInProgress);
+            }
+            if let Some(current) = state.desired.as_ref().map(|desired| desired.revision) {
+                if revision <= current {
+                    return Err(RoutingError::StaleRevision {
+                        current,
+                        attempted: revision,
+                    });
+                }
+            }
+            let engaged =
+                state.active.contains_key(&destination) || state.dirty.contains(&destination);
+            let driver = if engaged {
+                Some(
+                    self.drivers
+                        .lock()
+                        .expect(LOCK)
+                        .get(&destination)
+                        .cloned()
+                        .ok_or_else(|| RoutingError::DestinationUnavailable {
+                            destination: destination.clone(),
+                        })?,
+                )
+            } else {
+                None
+            };
+            state.reconciling = true;
+            state.generation = state.generation.wrapping_add(1);
+            let desired = state
+                .desired
+                .get_or_insert_with(|| DesiredRouting::deactivated(revision));
+            desired.revision = revision;
+            desired.plans.retain(|plan| plan.destination != destination);
+            if desired.plans.is_empty() {
+                desired.train_id = None;
+            }
+            (state.generation, driver)
+        };
+
+        let release = driver.map_or(Ok(()), |driver| driver.release());
+        let mut state = self.state.lock().expect(LOCK);
+        if state.generation != generation {
+            if release.is_ok() {
+                state.dirty.insert(destination);
+            }
+            return self.finish_superseded(state);
+        }
+        match release {
+            Ok(()) => {
+                state.active.remove(&destination);
+                state.dirty.remove(&destination);
+                state
+                    .degraded
+                    .retain(|reason| reason.destination() != Some(&destination));
+                let carried: Vec<_> = state
+                    .desired
+                    .as_ref()
+                    .into_iter()
+                    .flat_map(|desired| desired.plans.iter())
+                    .map(|plan| (plan.destination.clone(), plan.clone()))
+                    .collect();
+                for (id, plan) in carried {
+                    if !state.dirty.contains(&id) {
+                        if let Some(active) = state.active.get_mut(&id) {
+                            if active.plan == plan {
+                                active.revision = revision;
+                            }
+                        }
+                    }
+                }
+                self.finish_with(state, Ok(()))
+            }
+            Err(error) => {
+                state
+                    .degraded
+                    .retain(|reason| reason.destination() != Some(&destination));
+                state.degraded.push(DegradedReason::ReleaseFailed {
+                    destination: destination.clone(),
+                    error: error.clone(),
+                });
+                self.finish_with(
+                    state,
+                    Err(RoutingError::ReleaseFailed { destination, error }),
+                )
+            }
+        }
+    }
+
     /// Drive active routing toward the committed desired revision.
     ///
     /// Releases every destination whose engaged routes differ from the desired

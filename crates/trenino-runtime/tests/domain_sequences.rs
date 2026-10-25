@@ -6,7 +6,9 @@
 use rusqlite::Connection;
 use tempfile::tempdir;
 use trenino_core::{EntityId, OperationId};
-use trenino_runtime::storage::sequences::{SequenceCommandDraft, SequenceDraft, SequencePatch};
+use trenino_runtime::storage::sequences::{
+    total_duration, SequenceCommandDraft, SequenceDraft, SequencePatch,
+};
 use trenino_runtime::storage::{Database, MutationOutcome, StorageError};
 
 fn database() -> (tempfile::TempDir, Database, std::path::PathBuf) {
@@ -281,7 +283,10 @@ fn set_sequence_commands_rounds_values() {
         .set_sequence_commands(
             OperationId(2),
             sequence.id,
-            vec![command("Test.InputValue", 0.123456, 0), command("Test.Other", 0.015, 0)],
+            vec![
+                command("Test.InputValue", 0.123456, 0),
+                command("Test.Other", 0.015, 0),
+            ],
         )
         .unwrap()
         .record;
@@ -496,4 +501,40 @@ fn delete_sequence_command_removes_only_that_command() {
         db.delete_sequence_command(OperationId(4), commands[0].id),
         Err(StorageError::NotFound)
     ));
+}
+
+// Ports Sequence.total_duration/1 (sequence.ex:60-65): the sum of all command
+// delays in ms, execution time excluded (no Elixir oracle test exists).
+#[test]
+fn sequence_total_duration_sums_command_delays() {
+    let (_dir, db, path) = database();
+    let train = seed_train(&path, "Class 66");
+    let sequence = db
+        .create_sequence(
+            OperationId(1),
+            train,
+            SequenceDraft {
+                name: "Door Open".into(),
+            },
+        )
+        .unwrap()
+        .record;
+    // No commands yet: 0.
+    assert_eq!(db.sequence_total_duration(sequence.id).unwrap(), 0);
+
+    db.set_sequence_commands(
+        OperationId(2),
+        sequence.id,
+        vec![
+            command("Throttle.InputValue", 0.5, 250),
+            command("Horn.Tap", 1.0, 750),
+            command("Doors.Open", 0.0, 0),
+        ],
+    )
+    .unwrap();
+    assert_eq!(db.sequence_total_duration(sequence.id).unwrap(), 1000);
+
+    let commands = db.sequence_commands(sequence.id).unwrap();
+    assert_eq!(total_duration(&commands), 1000);
+    assert_eq!(total_duration(&[]), 0);
 }

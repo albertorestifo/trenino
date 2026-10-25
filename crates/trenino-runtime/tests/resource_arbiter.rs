@@ -188,3 +188,56 @@ fn firmware_handoff_pin_prevents_lease_release_until_reservation_cleanup() {
     drop(pin);
     arbiter.release(lease).unwrap();
 }
+
+#[test]
+fn failed_resume_can_retry_only_the_retained_owner_without_reopening_admission() {
+    struct Consumers(std::sync::atomic::AtomicBool);
+    impl ResourceConsumers for Consumers {
+        fn suspend_actuation(&self, _: &str) -> Result<(), String> {
+            Ok(())
+        }
+        fn cancel_calibration(&self, _: &str) -> Result<(), String> {
+            Ok(())
+        }
+        fn source_lost(&self, _: &str, _: u64) -> Result<(), String> {
+            Ok(())
+        }
+        fn resume_after_fresh_sample(&self, _: &str) -> Result<(), String> {
+            if self.0.load(std::sync::atomic::Ordering::SeqCst) {
+                Err("retry fresh sample".into())
+            } else {
+                Ok(())
+            }
+        }
+    }
+    let consumers = Arc::new(Consumers(std::sync::atomic::AtomicBool::new(false)));
+    let arbiter = ResourceArbiter::new(consumers.clone());
+    let previous = arbiter
+        .acquire(LeaseKind::Calibration {
+            port: "A".into(),
+            generation: 1,
+        })
+        .unwrap();
+    arbiter.release(previous).unwrap();
+    let current = arbiter
+        .acquire(LeaseKind::Firmware {
+            port: "B".into(),
+            generation: 2,
+        })
+        .unwrap();
+    consumers.0.store(true, std::sync::atomic::Ordering::SeqCst);
+    assert!(arbiter.release(current).is_err());
+    assert!(arbiter
+        .acquire(LeaseKind::Calibration {
+            port: "C".into(),
+            generation: 3
+        })
+        .is_err());
+    assert!(arbiter.release(previous).is_err());
+    assert!(arbiter.release(current).is_err());
+    consumers
+        .0
+        .store(false, std::sync::atomic::Ordering::SeqCst);
+    arbiter.release(current).unwrap();
+    assert!(!arbiter.is_suspended());
+}

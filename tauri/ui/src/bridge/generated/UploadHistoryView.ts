@@ -5,13 +5,13 @@ export type UploadHistoryView = {
   upload_id: string;
   port: string;
   board_type: string;
-  firmware_file_id: string;
+  firmware_file_id: string | null;
   /**
    * "running", "success", "failed" or "cancelled".
    */
   status: string;
   error_message: string | null;
-  duration_ms: number;
+  duration_ms: number | null;
   started_at: string | null;
   completed_at: string | null;
 };

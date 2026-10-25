@@ -43,6 +43,23 @@ impl ConfigId {
     pub fn get(self) -> u32 {
         self.0
     }
+
+    /// Parses a string into a configuration ID, porting
+    /// `ConfigId.parse/1` (config_id.ex:80-88): the whole string must be an
+    /// integer in the positive i32 range; anything else is `Err`.
+    pub fn parse(input: &str) -> Result<Self, &'static str> {
+        let trimmed_of_sign = input.strip_prefix('+').unwrap_or(input);
+        let digits = trimmed_of_sign.strip_prefix('-').unwrap_or(trimmed_of_sign);
+        if digits.is_empty() || !digits.bytes().all(|b| b.is_ascii_digit()) {
+            return Err("invalid");
+        }
+        let value: i64 = input.parse().map_err(|_| "invalid")?;
+        if (1..=i32::MAX as i64).contains(&value) {
+            Ok(Self(value as u32))
+        } else {
+            Err("invalid")
+        }
+    }
 }
 
 impl<'de> Deserialize<'de> for ConfigId {

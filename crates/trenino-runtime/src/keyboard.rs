@@ -138,7 +138,7 @@ fn named_key(name: &str) -> Option<Key> {
 
 use std::collections::HashMap;
 use std::path::PathBuf;
-use std::process::Command;
+mod process;
 
 use trenino_core::EntityId;
 
@@ -278,26 +278,24 @@ impl ProcessKeystrokeAdapter {
         Ok(Self { executable })
     }
 
-    fn execute(&self, action: &str, combo: &str) -> Result<(), KeystrokeError> {
-        let output = Command::new(&self.executable)
-            .arg(action)
-            .arg(combo)
-            .output()
-            .map_err(|e| KeystrokeError::Spawn(e.to_string()))?;
-        if output.status.success() {
-            return Ok(());
-        }
-        let mut text = String::from_utf8_lossy(&output.stdout).into_owned();
-        if !output.stderr.is_empty() {
-            if !text.is_empty() {
-                text.push('\n');
+    /// Build the adapter by resolving the keystroke sidecar through the
+    /// 3-tier probe ported from `Trenino.Keyboard.executable_path/0`
+    /// (keyboard.ex:86-100): configured absolute path → app-resource dir →
+    /// dev-only repo-relative candidates. See [`crate::executable`].
+    pub fn discover(probe: &crate::executable::ExecutableProbe) -> Result<Self, KeystrokeError> {
+        let executable = probe.resolve().map_err(|e| match e {
+            crate::executable::ExecutableError::Untrusted(path) => {
+                KeystrokeError::UntrustedPath(path)
             }
-            text.push_str(&String::from_utf8_lossy(&output.stderr));
-        }
-        Err(KeystrokeError::CommandFailed {
-            exit_code: output.status.code(),
-            output: text,
-        })
+            crate::executable::ExecutableError::NotFound => {
+                KeystrokeError::Spawn("keystroke executable not found".into())
+            }
+        })?;
+        Self::new(executable)
+    }
+
+    fn execute(&self, action: &str, combo: &str) -> Result<(), KeystrokeError> {
+        process::execute(&self.executable, action, combo)
     }
 }
 
@@ -338,9 +336,9 @@ struct HoldId {
 ///   main key, release order main key → modifiers reversed, as the sidecar);
 /// * the same holder pressing the same binding again is a no-op (no duplicate
 ///   down, so a repeat can never double-press);
-/// * release always wins over repeats: bookkeeping is dropped even when the
-///   adapter reports failure (one retry, then reported), so a later press by
-///   the same holder starts from a clean slate instead of leaking;
+/// * release failures are retried once and reported; ownership is retained
+///   until a later cleanup acknowledges key-up, so shutdown cannot silently
+///   forget a physically held key;
 /// * when an owner (id + generation) disappears mid-hold, every key it held
 ///   is released (stuck-key cleanup);
 /// * [`KeyboardOwnership::shutdown`] force-releases all held keys.
@@ -400,8 +398,7 @@ impl<A: KeystrokeAdapter> KeyboardOwnership<A> {
     /// Release the binding held by `owner`. The main key is released first,
     /// then modifiers in reverse press order; a key reaches the adapter only
     /// when its last holder releases. A failed release is retried once and
-    /// reported; the bookkeeping is removed regardless so the key can be
-    /// re-pressed cleanly later.
+    /// reported; failed releases retain ownership so cleanup can retry them.
     pub fn release(&mut self, owner: HoldOwner, binding: EntityId) -> Vec<KeystrokeError> {
         let hold = HoldId { owner, binding };
         let Some((_, keys)) = self.holds.remove(&hold) else {
@@ -429,7 +426,7 @@ impl<A: KeystrokeAdapter> KeyboardOwnership<A> {
     }
 
     /// Force-release every held key (shutdown path). Every key is attempted
-    /// even if earlier ones fail; afterwards no holds remain.
+    /// even if earlier ones fail; only acknowledged releases clear ownership.
     pub fn shutdown(&mut self) -> Vec<KeystrokeError> {
         let keys: Vec<Key> = self
             .held
@@ -441,10 +438,14 @@ impl<A: KeystrokeAdapter> KeyboardOwnership<A> {
         for key in keys {
             if let Err(error) = self.release_with_retry(key) {
                 errors.push(error);
+            } else {
+                self.held.remove(&key);
             }
         }
-        self.held.clear();
-        self.holds.clear();
+        self.holds.retain(|_, (_, keys)| {
+            keys.retain(|key| self.held.contains_key(key));
+            !keys.is_empty()
+        });
         errors
     }
 
@@ -462,21 +463,25 @@ impl<A: KeystrokeAdapter> KeyboardOwnership<A> {
     /// call only when the last holder of a key goes away.
     fn drop_keys(&mut self, keys: Vec<Key>, hold: HoldId) -> Vec<KeystrokeError> {
         let mut errors = Vec::new();
+        let mut pending = Vec::new();
         for key in keys.iter().rev() {
-            let last = {
-                let holders = self
-                    .held
-                    .get_mut(key)
-                    .expect("held key missing from refcounts");
-                holders.retain(|h| *h != hold);
-                holders.is_empty()
-            };
+            let last = self.held.get(key).is_some_and(|holders| {
+                !holders.is_empty() && holders.iter().all(|current| *current == hold)
+            });
             if last {
                 if let Err(error) = self.release_with_retry(*key) {
                     errors.push(error);
+                    pending.push(*key);
+                    continue;
                 }
                 self.held.remove(key);
+            } else if let Some(holders) = self.held.get_mut(key) {
+                holders.retain(|h| *h != hold);
             }
+        }
+        if !pending.is_empty() {
+            pending.reverse();
+            self.holds.insert(hold, (hold.binding, pending));
         }
         errors
     }

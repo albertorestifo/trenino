@@ -189,3 +189,31 @@ fn config_ids_deserialize_only_inside_the_checked_firmware_range() {
         assert_eq!(serde_json::from_str::<ConfigId>(&json).unwrap(), id);
     }
 }
+
+#[test]
+fn acknowledged_database_close_releases_ownership_even_while_service_clones_survive() {
+    let dir = tempdir().unwrap();
+    let path = dir.path().join("retained-clones.db");
+    let db = Database::open_full(&path).unwrap();
+    db.allocate_epoch().unwrap();
+    let retained = db.clone();
+    db.set_user_setting("simulator_url", "http://localhost:31270")
+        .unwrap();
+    assert!(matches!(
+        Database::open_full(&path),
+        Err(StorageError::AlreadyRunning)
+    ));
+    db.close_worker(std::time::Duration::from_secs(2)).unwrap();
+    retained
+        .close_worker(std::time::Duration::from_secs(2))
+        .unwrap();
+    assert!(matches!(
+        retained.get("simulator_url"),
+        Err(StorageError::WorkerStopped)
+    ));
+    let reopened = Database::open_full(&path).unwrap();
+    assert_eq!(
+        reopened.get("simulator_url").unwrap().as_deref(),
+        Some("http://localhost:31270")
+    );
+}

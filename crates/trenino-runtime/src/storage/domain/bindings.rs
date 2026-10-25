@@ -47,6 +47,7 @@ use super::domain_tx;
 use rusqlite::{params, OptionalExtension, Transaction};
 use std::sync::mpsc;
 use trenino_core::{EntityId, OperationId};
+use unicode_segmentation::UnicodeSegmentation;
 
 /// Revision topic shared by every binding mutation in this module.
 const TOPIC: &str = "bindings";
@@ -386,25 +387,7 @@ impl Database {
     ) -> DbResult<Mutation<LeverBindingRecord>> {
         self.bindings_call("bind_lever_input", move |c| {
             domain_tx(c, TOPIC, operation_id, move |tx| {
-                let existing = lever_binding_row(tx, lever_config_id)?;
-                let enabled = existing.as_ref().is_none_or(|row| row.enabled);
-                apply_destination_exclusivity(tx, input_id, enabled, opts.replace)?;
-                let now = timestamp();
-                match existing {
-                    Some(row) => {
-                        tx.execute(
-                            "UPDATE lever_input_bindings SET input_id=?1,enabled=?2,updated_at=?3 WHERE id=?4",
-                            params![input_id.0, row.enabled as i64, now, row.id.0],
-                        )?;
-                    }
-                    None => {
-                        tx.execute(
-                            "INSERT INTO lever_input_bindings(lever_config_id,input_id,enabled,inserted_at,updated_at) VALUES(?1,?2,1,?3,?3)",
-                            params![lever_config_id.0, input_id.0, now],
-                        )?;
-                    }
-                }
-                lever_binding_row(tx, lever_config_id)?.ok_or(StorageError::NotFound)
+                bind_lever_input_tx(tx, lever_config_id, input_id, opts)
             })
         })
     }
@@ -1205,15 +1188,30 @@ fn validate_output_binding(record: &OutputBindingRecord) -> DbResult<()> {
     if record.endpoint.trim().is_empty() {
         return Err(invalid("endpoint can't be blank"));
     }
-    if !matches!(
-        record.operator,
-        OutputBindingOperator::EqTrue | OutputBindingOperator::EqFalse
-    ) && record.value_a.is_none()
+    validate_output_condition(record.operator, record.value_a, record.value_b).map_err(invalid)
+}
+
+/// Shared numeric-condition check for committed bindings and read-only UI
+/// previews. This is the same required-field rule as the Ecto changeset.
+pub fn validate_output_condition(
+    operator: OutputBindingOperator,
+    value_a: Option<f64>,
+    value_b: Option<f64>,
+) -> Result<(), &'static str> {
+    if value_a.is_some_and(|value| !value.is_finite())
+        || value_b.is_some_and(|value| !value.is_finite())
     {
-        return Err(invalid("value_a can't be blank"));
+        return Err("value must be a finite number");
     }
-    if record.operator == OutputBindingOperator::Between && record.value_b.is_none() {
-        return Err(invalid("value_b can't be blank"));
+    if !matches!(
+        operator,
+        OutputBindingOperator::EqTrue | OutputBindingOperator::EqFalse
+    ) && value_a.is_none()
+    {
+        return Err("value_a can't be blank");
+    }
+    if operator == OutputBindingOperator::Between && value_b.is_none() {
+        return Err("value_b can't be blank");
     }
     Ok(())
 }
@@ -1326,14 +1324,17 @@ fn validate_display_binding(record: &DisplayBindingRecord) -> DbResult<()> {
     if record.format_string.trim().is_empty() {
         return Err(invalid("format_string can't be blank"));
     }
+    // Ecto validate_length counts graphemes (String.length/1), like
+    // core/train/display.rs — a combining-mark name of two codepoints is a
+    // single character.
     if record
         .name
         .as_ref()
-        .is_some_and(|n| n.chars().count() > 100)
+        .is_some_and(|n| n.graphemes(true).count() > 100)
     {
         return Err(invalid("name should be at most 100 characters"));
     }
-    if record.format_string.chars().count() > 200 {
+    if record.format_string.graphemes(true).count() > 200 {
         return Err(invalid("format_string should be at most 200 characters"));
     }
     if let Err(message) = validate_display_format(&record.format_string) {
@@ -1510,4 +1511,31 @@ fn timestamp() -> String {
         (rem % 3_600) / 60,
         rem % 60
     )
+}
+
+pub(super) fn bind_lever_input_tx(
+    tx: &Transaction<'_>,
+    lever_config_id: EntityId,
+    input_id: EntityId,
+    opts: BindOptions,
+) -> DbResult<LeverBindingRecord> {
+    let existing = lever_binding_row(tx, lever_config_id)?;
+    let enabled = existing.as_ref().is_none_or(|row| row.enabled);
+    apply_destination_exclusivity(tx, input_id, enabled, opts.replace)?;
+    let now = timestamp();
+    match existing {
+        Some(row) => {
+            tx.execute(
+                "UPDATE lever_input_bindings SET input_id=?1,enabled=?2,updated_at=?3 WHERE id=?4",
+                params![input_id.0, row.enabled as i64, now, row.id.0],
+            )?;
+        }
+        None => {
+            tx.execute(
+                            "INSERT INTO lever_input_bindings(lever_config_id,input_id,enabled,inserted_at,updated_at) VALUES(?1,?2,1,?3,?3)",
+                            params![lever_config_id.0, input_id.0, now],
+                        )?;
+        }
+    }
+    lever_binding_row(tx, lever_config_id)?.ok_or(StorageError::NotFound)
 }

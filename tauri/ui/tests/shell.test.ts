@@ -10,9 +10,13 @@ function fakeBridge(consent: 'unset' | 'disabled' = 'disabled'): UiBridge {
     getConfigurations: vi.fn(async () => ({ ok: true as const, value: { epoch: '1', topic: 'hardware' as const, revision: '1', value: [] } })),
     getTrains: vi.fn(async () => ({ ok: true as const, value: { epoch: '1', topic: 'trains' as const, revision: '1', value: [] } })),
     setConsent: vi.fn(async () => ({ ok: false as const, error: unavailable })),
-    onHardwareInput: vi.fn(async () => () => {}),
+    serialPorts: vi.fn(async () => ({ ok: true as const, value: [] })),
+    getSimulatorStatus: vi.fn(async () => ({ ok: true as const, value: { status: 'disconnected', last_error: null, active_train_id: null, detected_identifier: null } })),
+    retrySimulator: vi.fn(async () => ({ ok: true as const, value: true })),
+    firmwareUpdateStatus: vi.fn(async () => ({ ok: true as const, value: { checking: false, checked_at_ms: null, found_updates: false, latest_version: null, error_message: null, notice: null } })),
+    onHardwareInput: vi.fn(() => () => {}),
     subscribe: vi.fn(async () => () => {}),
-  };
+  } as unknown as UiBridge;
 }
 
 function deferred<T>() {
@@ -28,6 +32,32 @@ describe('shell', () => {
     render(App, { props: { bridge: fakeBridge() } });
     expect(await screen.findByText('No Configurations')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /New Configuration/ })).toHaveAttribute('href', '#/configurations/new');
+  });
+
+  it('marks the active train from live simulator status rather than stored summary flags', async () => {
+    const api = fakeBridge();
+    let statusReadFails = false;
+    api.getTrains = vi.fn(async () => ({ ok: true as const, value: { epoch: '1', topic: 'trains' as const, revision: '1', value: [
+      { id: '10', name: 'First train', description: null, identifiers: ['FIRST'], element_count: 0, active: true },
+      { id: '20', name: 'Second train', description: null, identifiers: ['SECOND'], element_count: 0, active: false },
+    ] } }));
+    api.getSimulatorStatus = vi.fn(async () => statusReadFails
+      ? { ok: false as const, error: { code: 'unavailable' as const, message: 'Simulator status temporarily unavailable.', field_errors: {}, retryable: true } }
+      : { ok: true as const, value: { status: 'connected', last_error: null, active_train_id: '20', detected_identifier: 'UNKNOWN/Vehicle' } });
+    location.hash = '#/trains';
+    render(App, { props: { bridge: api } });
+    const first = await screen.findByRole('link', { name: /First train/ });
+    const second = await screen.findByRole('link', { name: /Second train/ });
+    await waitFor(() => expect(second).toHaveClass('active-card'));
+    expect(first).not.toHaveClass('active-card');
+    expect(second).toHaveTextContent('Active');
+    expect(first).not.toHaveTextContent('Active');
+    expect(screen.getByText('UNKNOWN/Vehicle')).toBeInTheDocument();
+    statusReadFails = true;
+    window.dispatchEvent(new Event('hashchange'));
+    expect(await screen.findByText('Simulator status temporarily unavailable.')).toBeInTheDocument();
+    expect(second).toHaveClass('active-card');
+    expect(screen.getByText('UNKNOWN/Vehicle')).toBeInTheDocument();
   });
 
   it('keeps unavailable consent changes visible as service errors', async () => {
@@ -50,6 +80,23 @@ describe('shell', () => {
     expect(await screen.findByLabelText('URL')).toHaveValue('http://localhost:31270');
     expect(screen.getByRole('button', { name: 'Save and test connection' })).toBeInTheDocument();
     expect(screen.getByTestId('error-reporting-toggle')).toBeInTheDocument();
+  });
+
+  it('shows the API key as configured immediately after the Rust save acknowledgement', async () => {
+    const api = fakeBridge();
+    api.setApiKey = vi.fn(async () => ({ ok: true as const, value: { epoch: '1', topic: 'settings' as const, revision: '2', value: {
+      error_reporting: 'disabled' as const, simulator: { url: 'http://localhost:31270', api_key_configured: true },
+    } } }));
+    api.setSimulatorUrl = vi.fn(async () => ({ ok: true as const, value: { epoch: '1', topic: 'settings' as const, revision: '3', value: {
+      error_reporting: 'disabled' as const, simulator: { url: 'http://localhost:31270', api_key_configured: true },
+    } } }));
+    api.testSimulator = vi.fn(async () => ({ ok: true as const, value: true }));
+    location.hash = '#/settings';
+    render(App, { props: { bridge: api } });
+    await fireEvent.input(await screen.findByLabelText('API Key'), { target: { value: 'temporary-secret' } });
+    await fireEvent.click(screen.getByRole('button', { name: 'Save and test connection' }));
+    expect(await screen.findByText('A key is saved. Enter a new key below to replace it.')).toBeInTheDocument();
+    expect(screen.getByLabelText('API Key')).toHaveValue('');
   });
 
   it('renders the configuration editor for #/configurations/:config_id', async () => {

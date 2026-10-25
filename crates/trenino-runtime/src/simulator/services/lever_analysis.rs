@@ -10,8 +10,10 @@
 
 use crate::resource::{LeaseKind, ResourceArbiter, ResourceError};
 use crate::simulator::client::{SimulatorClient, SimulatorError};
+use serde::Serialize;
 use std::sync::Arc;
 use std::time::Duration;
+use tokio::sync::mpsc;
 use trenino_core::calibration::analysis::{analyze_samples, AnalysisError, AnalysisResult, Sample};
 use trenino_core::rounding::round_elixir;
 
@@ -26,6 +28,13 @@ pub const PUSH_ATTEMPTS: usize = 5;
 pub const PUSH_DELAY: Duration = Duration::from_millis(30);
 pub const MIN_SAMPLES: usize = 10;
 pub const QUICK_CHECK_DELAY: Duration = Duration::from_millis(100);
+
+#[derive(Clone, Debug, PartialEq, Serialize)]
+pub struct AnalysisProgress {
+    pub sampled: usize,
+    pub total: usize,
+    pub current_value: f64,
+}
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct AnalysisOptions {
@@ -85,7 +94,7 @@ pub fn start_lever_analysis(
                 Err(failure) => Some(AnalysisEvent::Failed(failure)),
             }
         },
-        || async {},
+        || async { Ok(()) },
     )
 }
 
@@ -97,7 +106,17 @@ pub async fn analyze(
     control_path: &str,
     options: &AnalysisOptions,
 ) -> Result<AnalysisResult, AnalysisFailure> {
-    let samples = sweep_lever(client, clock, control_path, options).await?;
+    analyze_with_progress(client, clock, control_path, options, None).await
+}
+
+pub async fn analyze_with_progress(
+    client: &SimulatorClient,
+    clock: &Arc<dyn Clock>,
+    control_path: &str,
+    options: &AnalysisOptions,
+    progress: Option<&mpsc::Sender<AnalysisProgress>>,
+) -> Result<AnalysisResult, AnalysisFailure> {
+    let samples = sweep_lever(client, clock, control_path, options, progress).await?;
     let result = analyze_samples(&samples).map_err(AnalysisFailure::InvalidSamples)?;
     if let Some(restore_position) = options.restore_position {
         let _ = client
@@ -115,6 +134,7 @@ async fn sweep_lever(
     clock: &Arc<dyn Clock>,
     control_path: &str,
     options: &AnalysisOptions,
+    progress: Option<&mpsc::Sender<AnalysisProgress>>,
 ) -> Result<Vec<Sample>, AnalysisFailure> {
     let (min_input, max_input) = read_input_range(client, control_path).await;
     let input_values = generate_sweep_values(min_input, max_input, options.sweep_step);
@@ -132,7 +152,8 @@ async fn sweep_lever(
     .await;
 
     let mut samples = Vec::new();
-    for set_input in input_values {
+    let total = input_values.len();
+    for (index, set_input) in input_values.into_iter().enumerate() {
         let Ok(_) = client.set(&value_endpoint, &json_number(set_input)).await else {
             // Failed positions are skipped, matching Enum.reduce_while's continue.
             continue;
@@ -153,6 +174,13 @@ async fn sweep_lever(
         .await;
         if let Ok(sample) = sample {
             samples.push(sample);
+        }
+        if let Some(progress) = progress {
+            let _ = progress.try_send(AnalysisProgress {
+                sampled: index + 1,
+                total,
+                current_value: set_input,
+            });
         }
     }
     if samples.len() < MIN_SAMPLES {

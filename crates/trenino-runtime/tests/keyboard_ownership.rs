@@ -273,7 +273,7 @@ fn release_failure_retried_once_and_reported() {
     assert_eq!(calls(&fake), vec![("up".into(), "W".into())]);
     assert_eq!(kb.holders_of(Key::Unicode('w')), 0);
 
-    // Both attempts failing: reported once, bookkeeping still cleared.
+    // Both attempts failing: reported once, ownership retained for retry.
     fake.fail_once(
         "up",
         "W",
@@ -301,8 +301,9 @@ fn release_failure_retried_once_and_reported() {
             output: "boom2".into(),
         }
     );
+    assert!(kb.is_held(owner(1, 0), binding(10)));
+    assert!(kb.release(owner(1, 0), binding(10)).is_empty());
     assert!(!kb.is_held(owner(1, 0), binding(10)));
-    // And the key can be pressed again afterwards.
     assert!(kb.press(owner(1, 0), binding(10), "W").is_empty());
 }
 
@@ -515,4 +516,154 @@ fn process_adapter_works_behind_ownership_layer() {
             .map(String::from)
             .collect::<Vec<_>>()
     );
+}
+
+#[test]
+fn failed_shutdown_preserves_keys_until_later_release_acknowledges() {
+    let fake = FakeAdapter::new();
+    let mut keyboard = KeyboardOwnership::new(&fake);
+    keyboard.press(owner(7, 1), binding(12), "CTRL+W");
+    for _ in 0..2 {
+        fake.fail_once("up", "W", KeystrokeError::Spawn("temporary failure".into()));
+    }
+    assert_eq!(keyboard.shutdown().len(), 1);
+    assert_eq!(keyboard.holders_of(Key::Unicode('w')), 1);
+    assert!(keyboard.is_held(owner(7, 1), binding(12)));
+    fake.clear();
+    assert!(keyboard.shutdown().is_empty());
+    assert_eq!(calls(&fake), vec![("up".into(), "W".into())]);
+    assert!(!keyboard.is_held(owner(7, 1), binding(12)));
+}
+
+#[test]
+fn native_action_deadline_kills_hung_child_and_retains_uncertain_key_for_cleanup() {
+    use std::{
+        os::unix::fs::PermissionsExt,
+        time::{Duration, Instant},
+    };
+    let dir = TempDir::new().unwrap();
+    let executable = dir.path().join("hang");
+    fs::write(
+        &executable,
+        format!(
+            "#!/bin/sh\necho $$ > '{}'\nif [ \"$1\" = down ]; then sleep 5; fi\n",
+            dir.path().join("pid").display()
+        ),
+    )
+    .unwrap();
+    fs::set_permissions(&executable, fs::Permissions::from_mode(0o755)).unwrap();
+    let mut keyboard = KeyboardOwnership::new(ProcessKeystrokeAdapter::new(executable).unwrap());
+    let start = Instant::now();
+    let errors = keyboard.press(owner(1, 1), binding(1), "W");
+    assert!(
+        !errors.is_empty(),
+        "hung native action must fail at its deadline"
+    );
+    assert!(start.elapsed() < Duration::from_secs(3));
+    let pid = fs::read_to_string(dir.path().join("pid"))
+        .unwrap()
+        .trim()
+        .parse::<i32>()
+        .unwrap();
+    assert_eq!(
+        unsafe { libc::kill(pid, 0) },
+        -1,
+        "hung child must have exited"
+    );
+    assert_eq!(
+        unsafe { libc::waitpid(pid, std::ptr::null_mut(), libc::WNOHANG) },
+        -1,
+        "child must already be reaped"
+    );
+    assert!(keyboard.is_held(owner(1, 1), binding(1)));
+    assert!(keyboard.shutdown().is_empty());
+    assert!(!keyboard.is_held(owner(1, 1), binding(1)));
+}
+#[test]
+fn descendant_holding_stdout_does_not_delay_native_action_acknowledgement() {
+    use std::{
+        os::unix::fs::PermissionsExt,
+        time::{Duration, Instant},
+    };
+    let dir = TempDir::new().unwrap();
+    let executable = dir.path().join("descendant");
+    fs::write(
+        &executable,
+        "#!/bin/sh\nsleep 5 &\necho completed\nexit 0\n",
+    )
+    .unwrap();
+    fs::set_permissions(&executable, fs::Permissions::from_mode(0o755)).unwrap();
+    let adapter = ProcessKeystrokeAdapter::new(executable).unwrap();
+    let start = Instant::now();
+    adapter.key_tap("W").unwrap();
+    assert!(start.elapsed() < Duration::from_secs(3));
+}
+
+#[test]
+fn native_failure_output_capture_is_bounded() {
+    use std::os::unix::fs::PermissionsExt;
+    let dir = TempDir::new().unwrap();
+    let executable = dir.path().join("verbose");
+    fs::write(&executable, "#!/bin/sh\nhead -c 131072 /dev/zero\nexit 3\n").unwrap();
+    fs::set_permissions(&executable, fs::Permissions::from_mode(0o755)).unwrap();
+    let error = ProcessKeystrokeAdapter::new(executable)
+        .unwrap()
+        .key_tap("W")
+        .unwrap_err();
+    let KeystrokeError::CommandFailed { exit_code, output } = error else {
+        panic!("unexpected error {error:?}")
+    };
+    assert_eq!(exit_code, Some(3));
+    assert_eq!(output.len(), 64 * 1024);
+}
+
+#[test]
+fn composition_keyboard_shutdown_waits_for_bounded_inflight_native_action_then_releases() {
+    use std::{
+        os::unix::fs::PermissionsExt,
+        sync::Arc,
+        time::{Duration, Instant},
+    };
+    use trenino_runtime::{
+        composition::keyboard::NativeKeyboard,
+        executable::ExecutableProbe,
+        train::button_controller::{ButtonKeystrokes, KeystrokeOwner},
+    };
+    let dir = TempDir::new().unwrap();
+    let executable = dir.path().join("hang");
+    let log = dir.path().join("actions");
+    fs::write(
+        &executable,
+        format!(
+            "#!/bin/sh\necho \"$1\" >> '{}'\nif [ \"$1\" = down ]; then sleep 5; fi\n",
+            log.display()
+        ),
+    )
+    .unwrap();
+    fs::set_permissions(&executable, fs::Permissions::from_mode(0o755)).unwrap();
+    let mut probe = ExecutableProbe::keystroke();
+    probe.configured = Some(executable);
+    let keyboard = Arc::new(NativeKeyboard::new(&probe));
+    let held = keyboard.clone();
+    let press = std::thread::spawn(move || {
+        held.press(
+            KeystrokeOwner {
+                owner: EntityId(1),
+                generation: 1,
+            },
+            EntityId(1),
+            "W",
+        )
+    });
+    let deadline = Instant::now() + Duration::from_secs(3);
+    while !log.exists() {
+        assert!(Instant::now() < deadline);
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    let start = Instant::now();
+    keyboard.shutdown().unwrap();
+    assert!(start.elapsed() < Duration::from_secs(3));
+    assert!(press.join().unwrap().is_err());
+    assert_eq!(fs::read_to_string(log).unwrap(), "down\nup\n");
+    keyboard.shutdown().unwrap();
 }

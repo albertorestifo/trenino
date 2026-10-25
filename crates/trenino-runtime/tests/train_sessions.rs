@@ -28,7 +28,7 @@ use trenino_runtime::routing::{InputIdentity, InputResolver};
 use trenino_runtime::simulator::client::SimulatorClient;
 use trenino_runtime::simulator::services::clock::FakeClock;
 use trenino_runtime::storage::bindings::{ButtonHardwareType, ButtonMode};
-use trenino_runtime::train::button_controller::ButtonSample;
+use trenino_runtime::train::button_controller::{ButtonSample, QueueError};
 use trenino_runtime::train::detection::{
     ButtonBindingInfo, LeverBindingInfo, SequenceCommand, TrainConfigSnapshot,
 };
@@ -840,6 +840,16 @@ async fn shutdown_releases_held_state_and_stops_writers() {
     gate.await_entered().await;
 
     harness.service.shutdown().await.unwrap();
+    let train = harness.service.snapshot();
+    assert_eq!(train.active_train_id, None);
+    assert_eq!(train.detected_identifier, None);
+    let routing = harness.routing.snapshot();
+    assert_eq!(routing.train_id, None);
+    assert!(routing
+        .destinations
+        .iter()
+        .all(|destination| destination.destination
+            != trenino_runtime::routing::reconcile::DestinationId::Tsw));
     gate.fail();
     settle().await;
     let calls = harness.keystrokes.calls();
@@ -849,6 +859,112 @@ async fn shutdown_releases_held_state_and_stops_writers() {
     );
     let state_calls = sim.set_values();
     assert_eq!(state_calls.len(), 1, "the aborted write never completed");
+}
+
+#[tokio::test]
+async fn failed_key_release_keeps_tsw_route_and_snapshot_until_retry() {
+    let sim = ScriptedSim::spawn();
+    sim.state.lock().unwrap().object_class = Some("RVM_PBO_Class142_DMSL_C".to_owned());
+    let mut harness = harness(sim.clone());
+    let mut snap = snapshot(7);
+    snap.button_bindings.push(ButtonBindingInfo {
+        binding_id: EntityId(200),
+        element_id: EntityId(5),
+        input_id: EntityId(43),
+        input_device: Some(EntityId(9)),
+        endpoint: None,
+        on_value: 1.0,
+        off_value: 0.0,
+        mode: ButtonMode::Keystroke,
+        hardware_type: ButtonHardwareType::Momentary,
+        repeat_interval_ms: 0,
+        keystroke: Some("W".into()),
+        on_sequence: None,
+        off_sequence: None,
+    });
+    harness
+        .config
+        .commit(profile(7, "Class 142", &["RVM_PBO_Class142"]), Some(snap));
+    connect(&harness);
+    harness
+        .service
+        .simulator_connected(client(&sim))
+        .await
+        .unwrap();
+    expect_event(
+        &mut harness,
+        &TrainEvent::TrainDetected {
+            identifier: "RVM_PBO_Class142_DMSL".to_owned(),
+            train_id: Some(EntityId(7)),
+        },
+    )
+    .await;
+    expect_event(&mut harness, &TrainEvent::TrainChanged(Some(EntityId(7)))).await;
+    yield_until(|| {
+        harness
+            .service
+            .snapshot()
+            .active_revision
+            .is_some()
+            .then_some(())
+    })
+    .await;
+    button_input(&harness, 1);
+    yield_until(|| {
+        harness
+            .keystrokes
+            .calls()
+            .iter()
+            .any(|call| call.action == "press")
+            .then_some(())
+    })
+    .await;
+
+    harness.keystrokes.fail_next("release", "key adapter busy");
+    assert!(harness.service.shutdown().await.is_err());
+    assert!(harness
+        .routing
+        .snapshot()
+        .degraded
+        .iter()
+        .any(|reason| matches!(
+            reason,
+            trenino_runtime::routing::reconcile::DegradedReason::ReleaseFailed {
+                destination: trenino_runtime::routing::reconcile::DestinationId::Tsw,
+                error,
+            } if error == "key adapter busy"
+        )));
+    assert_eq!(
+        harness.service.snapshot().active_train_id,
+        Some(EntityId(7))
+    );
+    assert!(harness
+        .routing
+        .snapshot()
+        .destinations
+        .iter()
+        .any(|destination| destination.destination
+            == trenino_runtime::routing::reconcile::DestinationId::Tsw));
+    assert_eq!(
+        harness.service.buttons().try_input(ButtonSample {
+            port: "COM1".into(),
+            port_generation: 1,
+            config_id: ConfigId::new(11).unwrap(),
+            pin: 5,
+            value: 0,
+        }),
+        Err(QueueError::Closed)
+    );
+
+    harness.service.shutdown().await.unwrap();
+    assert_eq!(harness.service.snapshot().active_train_id, None);
+    assert!(harness
+        .routing
+        .snapshot()
+        .destinations
+        .iter()
+        .all(|destination| destination.destination
+            != trenino_runtime::routing::reconcile::DestinationId::Tsw));
 }
 
 /// Mirrors "matches detected identifier to stored train configuration"
@@ -1005,5 +1121,118 @@ async fn reactivation_after_deactivation_commits_fresh_revision() {
     lever_input(&harness, 900);
     yield_until(|| (!sim.set_values().is_empty()).then_some(())).await;
     assert_eq!(sim.set_values()[0], (THROTTLE.to_owned(), 0.9));
+    harness.service.shutdown().await.unwrap();
+}
+
+#[tokio::test]
+async fn shutdown_is_shared_by_clones_and_rejects_new_admission() {
+    let harness = harness(ScriptedSim::spawn());
+    let first = harness.service.clone();
+    let second = harness.service.clone();
+    let (one, two) = tokio::join!(first.shutdown(), second.shutdown());
+    one.unwrap();
+    two.unwrap();
+    harness.service.shutdown().await.unwrap();
+    assert!(harness.service.sync().await.is_err());
+    assert!(harness.service.lever().state().await.is_err());
+    assert!(harness.service.buttons().state().await.is_err());
+}
+
+#[tokio::test]
+async fn shutdown_cancels_a_detection_pump_blocked_on_full_event_stream() {
+    let sim = ScriptedSim::spawn();
+    sim.state.lock().unwrap().object_class = Some("RVM_PBO_Class142_DMSL_C".to_owned());
+    let harness = harness(sim.clone());
+    harness.config.commit(
+        profile(7, "Class 142", &["RVM_PBO_Class142"]),
+        Some(snapshot(7)),
+    );
+    connect(&harness);
+    harness
+        .service
+        .simulator_connected(client(&sim))
+        .await
+        .unwrap();
+    // Every sync publishes a TrainDetected event. Leave the UI receiver
+    // unread so the pump eventually blocks on its bounded send.
+    for _ in 0..270 {
+        harness.service.sync().await.unwrap();
+    }
+    yield_until(|| (harness.events.len() == 256).then_some(())).await;
+    // More detection work queues behind the blocked publication.
+    harness.service.sync().await.unwrap();
+    tokio::time::timeout(Duration::from_secs(2), harness.service.shutdown())
+        .await
+        .expect("shutdown waited for the event receiver")
+        .unwrap();
+}
+
+#[tokio::test]
+async fn stalled_button_write_times_out_shutdown_then_retry_joins_worker() {
+    let sim = ScriptedSim::spawn();
+    sim.state.lock().unwrap().object_class = Some("RVM_PBO_Class142_DMSL_C".to_owned());
+    let mut harness = harness(sim.clone());
+    let mut snap = snapshot(7);
+    snap.button_bindings.push(ButtonBindingInfo {
+        binding_id: EntityId(200),
+        element_id: EntityId(5),
+        input_id: EntityId(43),
+        input_device: Some(EntityId(9)),
+        endpoint: Some(HORN.to_owned()),
+        on_value: 1.0,
+        off_value: 0.0,
+        mode: ButtonMode::Simple,
+        hardware_type: ButtonHardwareType::Momentary,
+        repeat_interval_ms: 0,
+        keystroke: None,
+        on_sequence: None,
+        off_sequence: None,
+    });
+    harness
+        .config
+        .commit(profile(7, "Class 142", &["RVM_PBO_Class142"]), Some(snap));
+    connect(&harness);
+    harness
+        .service
+        .simulator_connected(client(&sim))
+        .await
+        .unwrap();
+    expect_event(
+        &mut harness,
+        &TrainEvent::TrainDetected {
+            identifier: "RVM_PBO_Class142_DMSL".to_owned(),
+            train_id: Some(EntityId(7)),
+        },
+    )
+    .await;
+    expect_event(&mut harness, &TrainEvent::TrainChanged(Some(EntityId(7)))).await;
+    yield_until(|| {
+        harness
+            .service
+            .snapshot()
+            .active_revision
+            .is_some()
+            .then_some(())
+    })
+    .await;
+
+    let gate = sim.gate(HORN);
+    button_input(&harness, 1);
+    gate.await_entered().await;
+    assert_eq!(harness.service.shutdown().await, Err(QueueError::Timeout));
+    assert!(harness.service.sync().await.is_err());
+    assert!(harness
+        .service
+        .buttons()
+        .try_input(ButtonSample {
+            port: "COM1".into(),
+            port_generation: 1,
+            config_id: ConfigId::new(11).unwrap(),
+            pin: 5,
+            value: 0,
+        })
+        .is_err());
+    gate.release();
+    harness.service.shutdown().await.unwrap();
     harness.service.shutdown().await.unwrap();
 }

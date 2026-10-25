@@ -40,6 +40,24 @@ echo "Building for platform: $PLATFORM"
 
 cd "$PROJECT_DIR"
 
+# Windows inputs are downloaded and verified below. Other targets require a
+# standalone compatible native tool staged explicitly before any build work.
+if [ "${TRENINO_BUILD_RUST:-0}" = "1" ] && [ "$PLATFORM" != "x86_64-pc-windows-msvc" ]; then
+    for REQUIRED_INPUT in "$BINARIES_DIR/avrdude-$PLATFORM" "$BINARIES_DIR/avrdude.conf"; do
+        if [ ! -f "$REQUIRED_INPUT" ]; then
+            echo "Error: Rust bundle prerequisite missing: $REQUIRED_INPUT" >&2
+            echo "Stage a standalone avrdude for $PLATFORM and its compatible avrdude.conf in $BINARIES_DIR before running this wrapper. Non-Windows downloads are not automated." >&2
+            exit 1
+        fi
+    done
+fi
+
+mkdir -p "$BINARIES_DIR"
+if [ "${TRENINO_BUILD_RUST:-0}" = "1" ]; then
+    echo "==> Building Rust desktop frontend..."
+    npm --prefix "$PROJECT_DIR/tauri/ui" ci
+    npm --prefix "$PROJECT_DIR/tauri/ui" run build
+else
 # Step 1: Build Phoenix assets
 echo "==> Building Phoenix assets..."
 MIX_ENV=prod mix assets.deploy
@@ -74,6 +92,8 @@ else
     exit 1
 fi
 
+fi
+
 # Step 4: Stage the pinned avrdude sidecar required by the Windows Tauri config.
 if [ "$PLATFORM" = "x86_64-pc-windows-msvc" ]; then
     echo "==> Staging verified avrdude $AVRDUDE_VERSION sidecar..."
@@ -91,6 +111,7 @@ else
 fi
 echo "Copied keystroke to: $BINARIES_DIR/keystroke-$PLATFORM"
 
+if [ "${TRENINO_BUILD_RUST:-0}" != "1" ]; then
 # Step 6: Build the persistent virtual joystick sidecar on every platform.
 # Non-Windows builds contain the sidecar's explicit unsupported-platform stub.
 echo "==> Building virtual joystick sidecar..."
@@ -102,6 +123,8 @@ else
     cp "target/release/virtual_joystick" "$BINARIES_DIR/virtual_joystick-$PLATFORM"
 fi
 echo "Copied virtual joystick to: $BINARIES_DIR/virtual_joystick-$PLATFORM"
+
+fi
 
 # Step 7: Stage the pinned vJoy runtime for Windows. The release installer,
 # SDK and license are independently checksum verified before extraction.
@@ -148,7 +171,15 @@ fi
 # Step 8: Build Tauri application
 echo "==> Building Tauri application..."
 cd "$TAURI_DIR"
-cargo tauri build
+if [ "${TRENINO_BUILD_RUST:-0}" = "1" ]; then
+    RUST_BUNDLE_CONFIG="tauri.rust.conf.json"
+    if [ "$PLATFORM" = "x86_64-pc-windows-msvc" ]; then
+        RUST_BUNDLE_CONFIG="tauri.rust.windows.conf.json"
+    fi
+    TRENINO_RUST_BUNDLE=1 cargo tauri build --features "rust-ui desktop-updater" --config "$RUST_BUNDLE_CONFIG"
+else
+    cargo tauri build
+fi
 
 echo "==> Build complete!"
 echo "Output: $TAURI_DIR/target/release/bundle/"

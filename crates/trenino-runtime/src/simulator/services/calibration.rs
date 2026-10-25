@@ -71,7 +71,7 @@ pub enum CalibrationStep {
     Error,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize)]
 pub struct CalibrationProgress {
     pub lever_config_id: i64,
     pub step: CalibrationStep,
@@ -80,7 +80,7 @@ pub struct CalibrationProgress {
     pub notch_count: usize,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize)]
 pub struct CompletedCalibration {
     pub lever_config_id: i64,
     pub notches: Vec<NotchDraft>,
@@ -165,7 +165,7 @@ pub fn start_lever_calibration(
         arbiter,
         lease,
         |progress| async move { calibrate(&client, &clock, &endpoints, &store, &progress).await },
-        || async {},
+        || async { Ok(()) },
     )
 }
 
@@ -176,7 +176,21 @@ async fn calibrate(
     store: &Arc<dyn CalibrationStore>,
     progress: &mpsc::Sender<CalibrationEvent>,
 ) -> Option<CalibrationEvent> {
-    match run_calibration(client, clock, endpoints, store, progress).await {
+    match run_calibration(client, clock, endpoints, Some(store), progress).await {
+        Ok(Some(event)) | Err(event) => Some(event),
+        Ok(None) => None,
+    }
+}
+
+/// Run the automatic simulator sweep as a draft. The caller owns the final
+/// atomic save; this path never calls a persistence port.
+pub async fn calibrate_draft(
+    client: &Arc<SimulatorClient>,
+    clock: &Arc<dyn Clock>,
+    endpoints: &LeverEndpointSet,
+    progress: &mpsc::Sender<CalibrationEvent>,
+) -> Option<CalibrationEvent> {
+    match run_calibration(client, clock, endpoints, None, progress).await {
         Ok(Some(event)) | Err(event) => Some(event),
         Ok(None) => None,
     }
@@ -190,7 +204,7 @@ async fn run_calibration(
     client: &Arc<SimulatorClient>,
     clock: &Arc<dyn Clock>,
     endpoints: &LeverEndpointSet,
-    store: &Arc<dyn CalibrationStore>,
+    store: Option<&Arc<dyn CalibrationStore>>,
     progress: &mpsc::Sender<CalibrationEvent>,
 ) -> CalibrationResult {
     // initialize_calibration/1
@@ -287,11 +301,13 @@ async fn run_calibration(
 async fn finish_calibration(
     lever_config_id: i64,
     notches: &[NotchDraft],
-    store: &Arc<dyn CalibrationStore>,
+    store: Option<&Arc<dyn CalibrationStore>>,
 ) -> CalibrationResult {
-    let result = store
-        .save_lever_calibration(lever_config_id, notches)
-        .map_err(CalibrationFailure::Store);
+    let result = store.map_or(Ok(()), |store| {
+        store
+            .save_lever_calibration(lever_config_id, notches)
+            .map_err(CalibrationFailure::Store)
+    });
     Ok(Some(CalibrationEvent::Result(match result {
         Ok(()) => Ok(CompletedCalibration {
             lever_config_id,
@@ -851,7 +867,7 @@ fn update_mapping_sample(state: &mut MappingState, calibrated: i64) {
 /// Inverted when the notch at the lowest hardware position has a higher sim
 /// input center than the notch at the highest hardware position
 /// (mirrors `NotchMappingSession.detect_inversion/3`).
-fn detect_inversion(notches: &[NotchDefinition], captured: &[Option<SampleRange>]) -> bool {
+pub fn detect_inversion(notches: &[NotchDefinition], captured: &[Option<SampleRange>]) -> bool {
     let valid: Vec<(&NotchDefinition, &SampleRange)> = notches
         .iter()
         .zip(captured)
@@ -884,7 +900,7 @@ fn detect_inversion(notches: &[NotchDefinition], captured: &[Option<SampleRange>
 
 /// Calibrated positions normalized to 0.0-1.0 (four decimals), swapped when
 /// inverted, mirroring `NotchMappingSession.calibrated_to_normalized/4`.
-fn calibrated_to_normalized(
+pub fn calibrated_to_normalized(
     min_calibrated: i64,
     max_calibrated: i64,
     total_travel: i64,

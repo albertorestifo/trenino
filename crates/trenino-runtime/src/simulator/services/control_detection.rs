@@ -12,6 +12,7 @@
 
 use crate::resource::{LeaseKind, ResourceArbiter, ResourceError};
 use crate::simulator::client::{SimulatorClient, SimulatorError};
+use serde::Serialize;
 use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -19,14 +20,14 @@ use std::time::Duration;
 
 use super::clock::Clock;
 use super::explorer::ROOT_PATH;
-use super::session::{spawn_leased_session, SessionHandle};
+use super::session::{spawn_leased_session, SessionClosed, SessionHandle};
 
 pub const POLL_INTERVAL: Duration = Duration::from_millis(150);
 pub const DETECTION_THRESHOLD: f64 = 0.01;
 pub const TIMEOUT: Duration = Duration::from_secs(30);
 pub const SUBSCRIPTION_ID: i64 = 99;
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, Serialize)]
 pub struct DetectedChange {
     pub endpoint: String,
     pub control_name: String,
@@ -78,7 +79,11 @@ pub fn start_control_detection(
             // terminate/2 always unsubscribes the shared subscription id.
             let client = cleanup_client.clone();
             async move {
-                let _ = client.unsubscribe(SUBSCRIPTION_ID).await;
+                client
+                    .unsubscribe(SUBSCRIPTION_ID)
+                    .await
+                    .map(|_| ())
+                    .map_err(|e| SessionClosed::CleanupFailed(e.to_string()))
             }
         },
     )
@@ -94,7 +99,7 @@ async fn run_detection(
     }
 }
 
-async fn detect(
+pub async fn detect(
     client: Arc<SimulatorClient>,
     clock: Arc<dyn Clock>,
 ) -> Result<DetectionOutcome, DetectionFailure> {

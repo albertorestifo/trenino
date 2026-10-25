@@ -43,6 +43,38 @@ const THROTTLE: &str = "CurrentDrivableActor/Throttle(Lever).InputValue";
 const HORN: &str = "CurrentDrivableActor/Horn.InputValue";
 const HORN_INTERACTING: &str = "CurrentDrivableActor/Horn.Interacting";
 
+#[tokio::test]
+async fn controller_shutdown_joins_once_across_concurrent_clones() {
+    let clock = Arc::new(FakeClock::new());
+    let lever = LeverController::start(clock.clone(), resolver("COM1", 2, 42));
+    let first_lever = lever.clone();
+    let second_lever = lever.clone();
+    let (first, second) = tokio::join!(first_lever.shutdown(), second_lever.shutdown());
+    first.unwrap();
+    second.unwrap();
+    lever.shutdown().await.unwrap();
+    assert_eq!(
+        lever.try_input(sample("COM1", 2, 500)),
+        Err(QueueError::Closed)
+    );
+
+    let (buttons, _broadcast) = ButtonController::start(
+        clock,
+        resolver("COM1", 5, 43),
+        Arc::new(FakeKeystrokes::default()),
+    );
+    let first_buttons = buttons.clone();
+    let second_buttons = buttons.clone();
+    let (first, second) = tokio::join!(first_buttons.shutdown(), second_buttons.shutdown());
+    first.unwrap();
+    second.unwrap();
+    buttons.shutdown().await.unwrap();
+    assert_eq!(
+        buttons.try_input(button_sample("COM1", 5, 1)),
+        Err(ButtonQueueError::Closed)
+    );
+}
+
 fn client(sim: &ScriptedSim) -> Arc<SimulatorClient> {
     Arc::new(SimulatorClient::new(&sim.url(), "test-key").unwrap())
 }
@@ -846,8 +878,19 @@ async fn sequence_mode_executes_ordered_commands_with_delays() {
             .filter(|_| sim.set_paths().len() == 2)
     })
     .await;
-    let state = harness.buttons.state().await.unwrap();
-    assert_eq!(state.active_buttons, 0);
+    // The second HTTP request is recorded before its response and the
+    // sequence-complete message returns to the controller. Wait for that
+    // completion instead of racing it with a state request.
+    tokio::time::timeout(Duration::from_secs(2), async {
+        loop {
+            if harness.buttons.state().await.unwrap().active_buttons == 0 {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(1)).await;
+        }
+    })
+    .await
+    .expect("sequence completion was not observed");
     harness.buttons.shutdown().await.unwrap();
 }
 
@@ -1233,6 +1276,157 @@ async fn train_switch_cancels_running_sequence() {
     harness.buttons.shutdown().await.unwrap();
 }
 
+#[tokio::test]
+async fn suspending_one_button_port_releases_only_its_held_key_and_acknowledges() {
+    let sim = ScriptedSim::spawn();
+    let resolver = resolver("COM1", 5, 42);
+    resolver.replace_port(
+        "COM2",
+        1,
+        ConfigId::new(11).unwrap(),
+        [(
+            5,
+            InputIdentity {
+                device_id: EntityId(10),
+                input_id: EntityId(43),
+            },
+        )],
+    );
+    let keys = Arc::new(FakeKeystrokes::default());
+    let (buttons, _events) =
+        ButtonController::start(Arc::new(FakeClock::new()), resolver, keys.clone());
+    let mut a = simple_binding(42, 5);
+    a.mode = ButtonMode::Keystroke;
+    a.keystroke = Some("A".into());
+    let mut b = simple_binding(43, 6);
+    b.binding_id = EntityId(101);
+    b.mode = ButtonMode::Keystroke;
+    b.keystroke = Some("B".into());
+    buttons
+        .activate(1, EntityId(7), &button_snapshot(vec![a, b]))
+        .unwrap();
+    buttons.simulator_connected(client(&sim)).unwrap();
+    buttons.input(button_sample("COM1", 5, 1)).await.unwrap();
+    buttons.input(button_sample("COM2", 5, 1)).await.unwrap();
+    yield_until(|| {
+        (keys.calls().iter().filter(|c| c.action == "press").count() == 2).then_some(())
+    })
+    .await;
+    let suspended = buttons.clone();
+    tokio::task::spawn_blocking(move || suspended.suspend_port("COM1"))
+        .await
+        .unwrap()
+        .unwrap();
+    let calls = keys.calls();
+    assert!(calls
+        .iter()
+        .any(|c| c.action == "release" && c.binding == Some(EntityId(100))));
+    assert!(!calls
+        .iter()
+        .any(|c| c.action == "release" && c.binding == Some(EntityId(101))));
+    buttons.input(button_sample("COM1", 5, 1)).await.unwrap();
+    buttons.input(button_sample("COM2", 5, 0)).await.unwrap();
+    yield_until(|| {
+        (keys
+            .calls()
+            .iter()
+            .any(|c| c.action == "release" && c.binding == Some(EntityId(101))))
+        .then_some(())
+    })
+    .await;
+    assert_eq!(
+        keys.calls()
+            .iter()
+            .filter(|c| c.action == "press" && c.binding == Some(EntityId(100)))
+            .count(),
+        1
+    );
+    let resumed = buttons.clone();
+    tokio::task::spawn_blocking(move || resumed.resume_port("COM1"))
+        .await
+        .unwrap()
+        .unwrap();
+    buttons.input(button_sample("COM1", 5, 1)).await.unwrap();
+    settle().await;
+    assert_eq!(
+        keys.calls()
+            .iter()
+            .filter(|c| c.action == "press" && c.binding == Some(EntityId(100)))
+            .count(),
+        1,
+        "the level observed during suspension is a baseline, not a replayed press"
+    );
+    buttons.input(button_sample("COM1", 5, 0)).await.unwrap();
+    buttons.input(button_sample("COM1", 5, 1)).await.unwrap();
+    yield_until(|| {
+        (keys
+            .calls()
+            .iter()
+            .filter(|c| c.action == "press" && c.binding == Some(EntityId(100)))
+            .count()
+            == 2)
+            .then_some(())
+    })
+    .await;
+    buttons.shutdown().await.unwrap();
+}
+
+#[tokio::test]
+async fn suspending_one_lever_port_purges_its_inflight_write_but_keeps_other_port_active() {
+    let sim = ScriptedSim::spawn();
+    let resolver = resolver("COM1", 2, 42);
+    resolver.replace_port(
+        "COM2",
+        1,
+        ConfigId::new(11).unwrap(),
+        [(
+            2,
+            InputIdentity {
+                device_id: EntityId(10),
+                input_id: EntityId(43),
+            },
+        )],
+    );
+    let mut snapshot = lever_snapshot(42);
+    let mut second = snapshot.lever_bindings[0].clone();
+    second.input_id = EntityId(43);
+    second.lever_config_id = EntityId(51);
+    second.value_endpoint = "Other/Throttle.InputValue".into();
+    snapshot.lever_bindings.push(second);
+    let lever = LeverController::start(Arc::new(FakeClock::new()), resolver);
+    lever.activate(1, &snapshot).unwrap();
+    lever.simulator_connected(client(&sim)).unwrap();
+    let gate = sim.gate(THROTTLE);
+    lever.input(sample("COM1", 2, 500)).await.unwrap();
+    gate.await_entered().await;
+    let suspended = lever.clone();
+    tokio::task::spawn_blocking(move || suspended.suspend_port("COM1"))
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(lever.state().await.unwrap().pending, 0);
+    lever.input(sample("COM1", 2, 600)).await.unwrap();
+    lever.input(sample("COM2", 2, 700)).await.unwrap();
+    yield_until(|| {
+        sim.set_paths()
+            .iter()
+            .any(|p| p == "Other/Throttle.InputValue")
+            .then_some(())
+    })
+    .await;
+    assert_eq!(sim.set_paths().iter().filter(|p| *p == THROTTLE).count(), 1);
+    gate.release();
+    let resumed = lever.clone();
+    tokio::task::spawn_blocking(move || resumed.resume_port("COM1"))
+        .await
+        .unwrap()
+        .unwrap();
+    lever.input(sample("COM1", 2, 800)).await.unwrap();
+    yield_until(|| (sim.set_paths().iter().filter(|p| *p == THROTTLE).count() == 2).then_some(()))
+        .await;
+    lever.shutdown().await.unwrap();
+}
+
 /// Controls-plan regression: overload release. With the worker stalled inside
 /// a momentary press HTTP call and the edge queue saturated, the release
 /// takes the priority path, delivers value=0 before Interacting=0 and no
@@ -1385,4 +1579,446 @@ fn fake_config_source_bumps_revisions() {
         None,
     );
     assert_eq!(config.revision(), 1);
+}
+
+#[tokio::test]
+async fn clearing_stored_release_sequence_prevents_its_execution_after_reload() {
+    use trenino_runtime::app::{AppServices, CreateInputParams};
+    use trenino_runtime::storage::{
+        bindings::{ButtonBindingDraft, ButtonBindingPatch},
+        sequences::SequenceCommandDraft,
+    };
+    use trenino_runtime::train::detection::{DbTrainConfigSource, TrainConfigSource};
+    let directory = tempfile::tempdir().unwrap();
+    let app = AppServices::open_full(directory.path().join("release-patch.db"), None).unwrap();
+    let device = app.create_configuration("Panel", None).unwrap().value[0].device_id;
+    let input = app
+        .create_input(CreateInputParams {
+            device_id: device,
+            pin: 5,
+            kind: "button".into(),
+            sensitivity: None,
+            debounce: Some(20),
+            name: None,
+            matrix_id: None,
+        })
+        .unwrap()
+        .value
+        .inputs[0]
+        .id;
+    let train = app
+        .create_train_entry("Train", None, vec!["unit".into()])
+        .unwrap()
+        .value
+        .id;
+    let element = app
+        .create_element(train, "button", "Latch")
+        .unwrap()
+        .value
+        .elements[0]
+        .id;
+    let on = app
+        .create_sequence_entry(train, "On")
+        .unwrap()
+        .value
+        .sequences[0]
+        .id;
+    let off = app
+        .create_sequence_entry(train, "Off")
+        .unwrap()
+        .value
+        .sequences
+        .iter()
+        .find(|s| s.name == "Off")
+        .unwrap()
+        .id;
+    for (id, path) in [(on, "Open.InputValue"), (off, "Close.InputValue")] {
+        app.set_sequence_commands_entry(
+            id,
+            vec![SequenceCommandDraft {
+                endpoint: path.into(),
+                value: 1.,
+                delay_ms: 0,
+            }],
+        )
+        .unwrap();
+    }
+    app.put_button_binding(
+        element,
+        input,
+        ButtonBindingDraft {
+            mode: Some(ButtonMode::Sequence),
+            hardware_type: Some(ButtonHardwareType::Latching),
+            on_sequence_id: Some(on),
+            off_sequence_id: Some(off),
+            ..Default::default()
+        },
+        false,
+    )
+    .unwrap();
+    let source = DbTrainConfigSource::new((*app.database()).clone());
+    let sim = ScriptedSim::spawn();
+    let clock = FakeClock::new();
+    let mapping = Arc::new(InputResolver::default());
+    mapping.replace_port(
+        "COM1",
+        1,
+        ConfigId::new(11).unwrap(),
+        [(
+            5,
+            InputIdentity {
+                device_id: device,
+                input_id: input,
+            },
+        )],
+    );
+    let (buttons, mut changes) = ButtonController::start(
+        Arc::new(clock.clone()),
+        mapping,
+        Arc::new(FakeKeystrokes::default()),
+    );
+    buttons
+        .activate(1, train, &source.snapshot(train).unwrap())
+        .unwrap();
+    buttons.simulator_connected(client(&sim)).unwrap();
+    buttons.input(button_sample("COM1", 5, 1)).await.unwrap();
+    next_broadcast(&mut changes).await;
+    patch_count(&sim, 1).await;
+    buttons.input(button_sample("COM1", 5, 0)).await.unwrap();
+    next_broadcast(&mut changes).await;
+    patch_count(&sim, 2).await;
+    assert_eq!(sim.set_paths(), ["Open.InputValue", "Close.InputValue"]);
+    app.put_button_binding_patch(
+        element,
+        input,
+        ButtonBindingPatch {
+            off_sequence_id: Some(None),
+            ..Default::default()
+        },
+        false,
+    )
+    .unwrap();
+    buttons
+        .activate(2, train, &source.snapshot(train).unwrap())
+        .unwrap();
+    buttons.input(button_sample("COM1", 5, 1)).await.unwrap();
+    next_broadcast(&mut changes).await;
+    patch_count(&sim, 3).await;
+    buttons.input(button_sample("COM1", 5, 0)).await.unwrap();
+    next_broadcast(&mut changes).await;
+    expect_no_patch(&sim, 3, &clock).await;
+    assert_eq!(
+        sim.set_paths(),
+        ["Open.InputValue", "Close.InputValue", "Open.InputValue"]
+    );
+    buttons.shutdown().await.unwrap();
+}
+
+#[tokio::test]
+async fn retained_lease_caches_samples_after_partial_resume_without_blocking_other_ports() {
+    use std::{
+        collections::HashSet,
+        sync::{
+            atomic::{AtomicBool, Ordering},
+            Mutex,
+        },
+    };
+    use trenino_runtime::{
+        composition::input::{dispatch_control_input, port_is_fenced},
+        resource::{LeaseKind, ResourceArbiter, ResourceConsumers},
+        routing::InputEvent,
+    };
+    struct Consumers {
+        lever: LeverController,
+        buttons: ButtonController,
+        fence: Arc<Mutex<HashSet<String>>>,
+        fail_resume: AtomicBool,
+    }
+    impl ResourceConsumers for Consumers {
+        fn suspend_actuation(&self, port: &str) -> Result<(), String> {
+            self.fence.lock().unwrap().insert(port.into());
+            self.lever.suspend_port(port)?;
+            self.buttons.suspend_port(port)
+        }
+        fn cancel_calibration(&self, _: &str) -> Result<(), String> {
+            Ok(())
+        }
+        fn source_lost(&self, port: &str, _: u64) -> Result<(), String> {
+            self.suspend_actuation(port)
+        }
+        fn resume_after_fresh_sample(&self, port: &str) -> Result<(), String> {
+            self.lever.resume_port(port)?;
+            self.buttons.resume_port(port)?;
+            if self.fail_resume.load(Ordering::SeqCst) {
+                return Err("final hardware resume failed".into());
+            }
+            self.fence.lock().unwrap().remove(port);
+            Ok(())
+        }
+    }
+    let sim = ScriptedSim::spawn();
+    let resolver = Arc::new(InputResolver::default());
+    for (port, offset) in [("COM1", 0), ("COM2", 10)] {
+        resolver.replace_port(
+            port,
+            1,
+            ConfigId::new(11).unwrap(),
+            [
+                (
+                    2,
+                    InputIdentity {
+                        device_id: EntityId(9 + offset),
+                        input_id: EntityId(42 + offset),
+                    },
+                ),
+                (
+                    5,
+                    InputIdentity {
+                        device_id: EntityId(9 + offset),
+                        input_id: EntityId(43 + offset),
+                    },
+                ),
+            ],
+        );
+    }
+    let clock = Arc::new(FakeClock::new());
+    let keys = Arc::new(FakeKeystrokes::default());
+    let lever = LeverController::start(clock.clone(), resolver.clone());
+    let (buttons, _events) = ButtonController::start(clock.clone(), resolver, keys.clone());
+    let mut levers = lever_snapshot(42);
+    let mut other = levers.lever_bindings[0].clone();
+    other.input_id = EntityId(52);
+    other.lever_config_id = EntityId(51);
+    other.value_endpoint = "Other.InputValue".into();
+    levers.lever_bindings.push(other);
+    let mut first = simple_binding(43, 5);
+    first.mode = ButtonMode::Keystroke;
+    first.keystroke = Some("A".into());
+    let mut second = simple_binding(53, 6);
+    second.binding_id = EntityId(101);
+    second.mode = ButtonMode::Keystroke;
+    second.keystroke = Some("B".into());
+    lever.activate(1, &levers).unwrap();
+    buttons
+        .activate(1, EntityId(7), &button_snapshot(vec![first, second]))
+        .unwrap();
+    lever.simulator_connected(client(&sim)).unwrap();
+    buttons.simulator_connected(client(&sim)).unwrap();
+    let consumers = Arc::new(Consumers {
+        lever: lever.clone(),
+        buttons: buttons.clone(),
+        fence: Arc::new(Mutex::new(HashSet::new())),
+        fail_resume: AtomicBool::new(true),
+    });
+    let arbiter = Arc::new(ResourceArbiter::new(consumers.clone()));
+    let acquire = arbiter.clone();
+    let token = tokio::task::spawn_blocking(move || {
+        acquire.acquire(LeaseKind::Calibration {
+            port: "COM1".into(),
+            generation: 1,
+        })
+    })
+    .await
+    .unwrap()
+    .unwrap();
+    let release = arbiter.clone();
+    assert!(tokio::task::spawn_blocking(move || release.release(token))
+        .await
+        .unwrap()
+        .is_err());
+    assert!(arbiter.port_is_leased("COM1"));
+    consumers.fence.lock().unwrap().remove("COM1");
+    assert!(
+        port_is_fenced("COM1", &consumers.fence, Some(&arbiter)).unwrap(),
+        "the retained lease independently fences already resumed workers"
+    );
+    assert!(
+        !port_is_fenced("COM2", &consumers.fence, Some(&arbiter)).unwrap(),
+        "global arbiter suspension must not fence the unrelated port"
+    );
+    consumers.fence.lock().unwrap().insert("COM1".into());
+    let dispatch = |port: &str, pin: u8, value: i16| {
+        let fenced = port_is_fenced(port, &consumers.fence, Some(&arbiter)).unwrap();
+        dispatch_control_input(
+            &lever,
+            &buttons,
+            port,
+            InputEvent {
+                config_id: ConfigId::new(11).unwrap(),
+                pin,
+                value,
+                port_generation: 1,
+            },
+            fenced,
+        )
+        .unwrap();
+    };
+    dispatch("COM1", 2, 400);
+    dispatch("COM1", 5, 0);
+    dispatch("COM1", 2, 600);
+    dispatch("COM1", 5, 1);
+    dispatch("COM2", 2, 700);
+    dispatch("COM2", 5, 1);
+    yield_until(|| {
+        (sim.set_paths().iter().any(|p| p == "Other.InputValue")
+            && keys
+                .calls()
+                .iter()
+                .any(|k| k.action == "press" && k.binding == Some(EntityId(101))))
+        .then_some(())
+    })
+    .await;
+    settle().await;
+    assert!(!sim.set_paths().iter().any(|p| p == THROTTLE));
+    assert!(!keys
+        .calls()
+        .iter()
+        .any(|k| k.action == "press" && k.binding == Some(EntityId(100))));
+    clock.advance(Duration::from_secs(10));
+    settle().await;
+    assert!(!sim.set_paths().iter().any(|p| p == THROTTLE));
+    consumers.fail_resume.store(false, Ordering::SeqCst);
+    let release = arbiter.clone();
+    tokio::task::spawn_blocking(move || release.release(token))
+        .await
+        .unwrap()
+        .unwrap();
+    // Cached levels are baselines, not deferred actions replayed after resume.
+    dispatch("COM1", 2, 600);
+    dispatch("COM1", 5, 1);
+    settle().await;
+    assert!(!sim.set_paths().iter().any(|p| p == THROTTLE));
+    assert!(!keys
+        .calls()
+        .iter()
+        .any(|k| k.action == "press" && k.binding == Some(EntityId(100))));
+    dispatch("COM1", 2, 800);
+    dispatch("COM1", 5, 0);
+    dispatch("COM1", 5, 1);
+    yield_until(|| {
+        (sim.set_paths().iter().any(|p| p == THROTTLE)
+            && keys
+                .calls()
+                .iter()
+                .any(|k| k.action == "press" && k.binding == Some(EntityId(100))))
+        .then_some(())
+    })
+    .await;
+    lever.shutdown().await.unwrap();
+    buttons.shutdown().await.unwrap();
+}
+
+#[tokio::test]
+async fn cache_only_input_cleans_port_work_even_when_initial_suspension_never_reached_buttons() {
+    use std::{collections::HashSet, sync::Mutex};
+    use trenino_runtime::{
+        composition::input::{dispatch_control_input, port_is_fenced},
+        resource::{LeaseKind, ResourceArbiter, ResourceConsumers},
+        routing::InputEvent,
+    };
+    struct FailedSuspend;
+    impl ResourceConsumers for FailedSuspend {
+        fn suspend_actuation(&self, _: &str) -> Result<(), String> {
+            Err("earlier consumer failed before button suspend".into())
+        }
+        fn cancel_calibration(&self, _: &str) -> Result<(), String> {
+            Ok(())
+        }
+        fn source_lost(&self, _: &str, _: u64) -> Result<(), String> {
+            Ok(())
+        }
+        fn resume_after_fresh_sample(&self, _: &str) -> Result<(), String> {
+            Ok(())
+        }
+    }
+    let resolver = Arc::new(InputResolver::default());
+    resolver.replace_port(
+        "COM1",
+        1,
+        ConfigId::new(11).unwrap(),
+        [
+            (
+                2,
+                InputIdentity {
+                    device_id: EntityId(9),
+                    input_id: EntityId(42),
+                },
+            ),
+            (
+                5,
+                InputIdentity {
+                    device_id: EntityId(9),
+                    input_id: EntityId(43),
+                },
+            ),
+        ],
+    );
+    let keys = Arc::new(FakeKeystrokes::default());
+    let clock = Arc::new(FakeClock::new());
+    let lever = LeverController::start(clock.clone(), resolver.clone());
+    let (buttons, _events) = ButtonController::start(clock, resolver, keys.clone());
+    let mut binding = simple_binding(43, 5);
+    binding.mode = ButtonMode::Keystroke;
+    binding.keystroke = Some("A".into());
+    buttons
+        .activate(1, EntityId(7), &button_snapshot(vec![binding]))
+        .unwrap();
+    buttons.input(button_sample("COM1", 5, 1)).await.unwrap();
+    yield_until(|| {
+        keys.calls()
+            .iter()
+            .any(|c| c.action == "press")
+            .then_some(())
+    })
+    .await;
+    let arbiter = ResourceArbiter::new(Arc::new(FailedSuspend));
+    assert!(arbiter
+        .acquire(LeaseKind::Calibration {
+            port: "COM1".into(),
+            generation: 1
+        })
+        .is_err());
+    let cache_only = port_is_fenced("COM1", &Mutex::new(HashSet::new()), Some(&arbiter)).unwrap();
+    assert!(cache_only);
+    // A lever pin has no button binding, but still establishes the entire port's cache-only state.
+    dispatch_control_input(
+        &lever,
+        &buttons,
+        "COM1",
+        InputEvent {
+            config_id: ConfigId::new(11).unwrap(),
+            pin: 2,
+            value: 500,
+            port_generation: 1,
+        },
+        cache_only,
+    )
+    .unwrap();
+    yield_until(|| {
+        keys.calls()
+            .iter()
+            .any(|c| c.action == "release" && c.binding == Some(EntityId(100)))
+            .then_some(())
+    })
+    .await;
+    dispatch_control_input(
+        &lever,
+        &buttons,
+        "COM1",
+        InputEvent {
+            config_id: ConfigId::new(11).unwrap(),
+            pin: 5,
+            value: 1,
+            port_generation: 1,
+        },
+        cache_only,
+    )
+    .unwrap();
+    settle().await;
+    assert_eq!(
+        keys.calls().iter().filter(|c| c.action == "press").count(),
+        1
+    );
+    lever.shutdown().await.unwrap();
+    buttons.shutdown().await.unwrap();
 }

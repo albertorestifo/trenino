@@ -1,3 +1,5 @@
+> Historical checkpoint: superseded by the [2026-10-25 completion report](../../2026-10-25-rust-parity/README.md). The open-work statements below describe the earlier checkpoint.
+
 # Parity audit — Elixir oracle (`lib/trenino/**`) → Rust rewrite (`crates/**`, `tauri/src-tauri`)
 
 Date: 2026-10-25 · Branch: `codex/rust-rewrite` · Scope: READ-ONLY audit, no code changed.

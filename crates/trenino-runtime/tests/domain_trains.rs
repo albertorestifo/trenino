@@ -1330,3 +1330,101 @@ fn every_mutation_bumps_the_trains_topic_once() {
         .is_err());
     assert_eq!(db.trains_snapshot().unwrap().1.revision, 4);
 }
+
+// Mirrors train_test.exs "list_button_elements/1" describe (3 tests):
+// only button elements, ordered by name, empty when none exist.
+fn button_element(db: &Database, op: u128, train_id: EntityId, name: &str) -> ElementRecord {
+    db.create_train_element(
+        OperationId(op),
+        train_id,
+        ElementDraft {
+            kind: ElementKind::Button,
+            name: name.into(),
+        },
+    )
+    .unwrap()
+    .record
+}
+
+#[test]
+fn list_button_elements_returns_only_button_elements() {
+    // Oracle: train_test.exs "returns only button elements".
+    let (_dir, db) = database();
+    let train = train(&db, "Class 66", "BR_Class_66");
+    lever_element(&db, train.id, "Throttle");
+    button_element(&db, 3, train.id, "Horn");
+    button_element(&db, 4, train.id, "Bell");
+
+    let elements = db.list_button_elements(train.id).unwrap();
+    assert_eq!(elements.len(), 2);
+    assert!(elements.iter().all(|e| e.kind == ElementKind::Button));
+}
+
+#[test]
+fn list_button_elements_returns_elements_ordered_by_name() {
+    // Oracle: train_test.exs "returns elements ordered by name".
+    let (_dir, db) = database();
+    let train = train(&db, "Class 66", "BR_Class_66");
+    button_element(&db, 2, train.id, "Horn");
+    button_element(&db, 3, train.id, "Bell");
+    button_element(&db, 4, train.id, "Wiper");
+
+    let names = db
+        .list_button_elements(train.id)
+        .unwrap()
+        .into_iter()
+        .map(|e| e.name)
+        .collect::<Vec<_>>();
+    assert_eq!(names, ["Bell", "Horn", "Wiper"]);
+}
+
+#[test]
+fn list_button_elements_returns_empty_list_when_no_buttons() {
+    // Oracle: train_test.exs "returns empty list when no button elements exist".
+    let (_dir, db) = database();
+    let train = train(&db, "Class 66", "BR_Class_66");
+    lever_element(&db, train.id, "Throttle");
+    assert!(db.list_button_elements(train.id).unwrap().is_empty());
+}
+
+// Ecto validate_required treats whitespace-only names as missing (verified
+// against the live oracle: Train/Element changesets with name " " are invalid
+// with "can't be blank") — parity audit P2-20.
+#[test]
+fn train_and_element_names_must_not_be_whitespace_only() {
+    let (_dir, db) = database();
+    assert!(matches!(
+        db.create_train(
+            OperationId(1),
+            TrainDraft {
+                name: "   ".into(),
+                description: None,
+                identifiers: vec!["BR_Class_66".into()],
+            },
+        ),
+        Err(StorageError::Constraint { .. })
+    ));
+    let train = train(&db, "Class 66", "BR_Class_66");
+    assert!(matches!(
+        db.update_train(
+            OperationId(2),
+            train.id,
+            TrainPatch {
+                name: Some(" ".into()),
+                ..TrainPatch::default()
+            },
+        ),
+        Err(StorageError::Constraint { .. })
+    ));
+    assert!(matches!(
+        db.create_train_element(
+            OperationId(3),
+            train.id,
+            ElementDraft {
+                kind: ElementKind::Button,
+                name: "\t".into(),
+            },
+        ),
+        Err(StorageError::Constraint { .. })
+    ));
+}

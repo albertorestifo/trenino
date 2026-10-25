@@ -69,6 +69,19 @@ pub struct ScriptPatch {
 }
 
 impl Database {
+    /// Original UTC timestamps for external JSON API compatibility.
+    pub fn script_timestamps(&self, id: EntityId) -> DbResult<Option<(String, String)>> {
+        self.domain_call("script_timestamps", move |c| {
+            c.query_row(
+                "SELECT inserted_at,updated_at FROM scripts WHERE id=?1",
+                [id.0],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .optional()
+            .map_err(StorageError::from)
+        })
+    }
+
     pub fn get_script(&self, id: EntityId) -> DbResult<Option<ScriptRecord>> {
         self.domain_call("get_script", move |c| get_script(c, id))
     }
@@ -128,14 +141,11 @@ fn validate_name(name: &str) -> DbResult<()> {
     Ok(())
 }
 
-fn validate_triggers(triggers: &[String]) -> DbResult<()> {
-    for trigger in triggers {
-        if trigger.trim().is_empty() {
-            return Err(invalid(
-                "triggers must be a list of endpoint path strings".into(),
-            ));
-        }
-    }
+fn validate_triggers(_triggers: &[String]) -> DbResult<()> {
+    // `Script.changeset/2` only requires every trigger to be a binary
+    // (script.ex:62-77) — empty or blank strings are accepted, and the Rust
+    // type system already guarantees the string part. Kept as a hook so the
+    // Ecto validation point stays explicit.
     Ok(())
 }
 

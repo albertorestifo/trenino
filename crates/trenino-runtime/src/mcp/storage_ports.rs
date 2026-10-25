@@ -1280,6 +1280,7 @@ fn manager_status_view(status: crate::vjoy::manager::VjoyStatus) -> VjoyStatus {
         crate::vjoy::manager::VjoyStatus::Disabling => VjoyStatus::Disabling,
         crate::vjoy::manager::VjoyStatus::NeedsSetup => VjoyStatus::NeedsSetup,
         crate::vjoy::manager::VjoyStatus::NeedsCleanup => VjoyStatus::NeedsCleanup,
+        crate::vjoy::manager::VjoyStatus::Degraded => VjoyStatus::Degraded,
         crate::vjoy::manager::VjoyStatus::Error => VjoyStatus::Error,
     }
 }
@@ -1308,6 +1309,12 @@ fn vjoy_error_reason(error: crate::vjoy::VjoyError) -> VjoyReason {
             "neutralize_failed".to_string(),
             format!("{device}: {detail}"),
         ),
+        E::ReportFailed(device, detail) => {
+            VjoyReason::CodeWithDetails("report_failed".to_string(), format!("{device}: {detail}"))
+        }
+        E::Configurator(error) => {
+            VjoyReason::CodeWithDetails("configurator".to_string(), error.to_string())
+        }
         E::InvalidState(detail) => {
             VjoyReason::CodeWithDetails("invalid_state".to_string(), detail.to_string())
         }

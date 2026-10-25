@@ -2,6 +2,7 @@
 //! explicitly begins periodic discovery and owns all port workers until shutdown.
 pub mod configuration;
 pub mod discovery;
+pub mod plan;
 pub mod repository;
 pub mod service;
 pub mod sessions;
@@ -53,6 +54,80 @@ pub enum PortEvent {
         port: String,
         generation: u64,
     },
+}
+
+/// Human-readable port failure strings, porting
+/// `DeviceConnection.format_error_reason/1`
+/// (lib/trenino/serial/connection/device_connection.ex:124-145). Symbolic
+/// reason tokens map to the oracle's exact strings; unknown tokens fall back
+/// to the oracle's atom rendering (underscores to spaces, capitalized).
+pub fn format_error_reason(reason: &str) -> String {
+    match reason {
+        "eacces" => "Permission denied".into(),
+        "enoent" => "Port not found".into(),
+        "ebusy" => "Port is busy (in use by another program)".into(),
+        "eagain" => "Resource temporarily unavailable".into(),
+        "eio" => "I/O error".into(),
+        "einval" => "Invalid port configuration".into(),
+        "enxio" => "Device not configured".into(),
+        "eperm" => "Operation not permitted".into(),
+        "no_valid_response" => "No Trenino firmware detected".into(),
+        "timeout" => "Connection timed out".into(),
+        "port_timed_out" => "Device not responding".into(),
+        other if other.chars().any(char::is_whitespace) => other.to_string(),
+        other => {
+            let joined = other.replace('_', " ");
+            match joined.chars().next() {
+                Some(first) => {
+                    let upper: String = first.to_uppercase().collect();
+                    format!("{upper}{}", &joined[first.len_utf8()..])
+                }
+                None => joined,
+            }
+        }
+    }
+}
+
+/// Maps an OS port-open error to the oracle's human-readable string via its
+/// errno name (`:enoent`, `:ebusy`, ...), falling back to the io error's own
+/// display text for anything unmapped.
+pub fn format_io_error_reason(error: &io::Error) -> String {
+    // Unix errno numbers are not Windows error codes; handle Darwin's
+    // EAGAIN through ErrorKind rather than assuming Linux's value 11.
+    #[cfg(unix)]
+    {
+        let token = match error.raw_os_error() {
+            Some(13) => Some("eacces"),
+            Some(2) => Some("enoent"),
+            Some(16) => Some("ebusy"),
+            Some(5) => Some("eio"),
+            Some(22) => Some("einval"),
+            Some(6) => Some("enxio"),
+            Some(1) => Some("eperm"),
+            _ => None,
+        };
+        if let Some(token) = token {
+            return format_error_reason(token);
+        }
+    }
+    match error.kind() {
+        io::ErrorKind::PermissionDenied => format_error_reason("eacces"),
+        io::ErrorKind::NotFound => format_error_reason("enoent"),
+        io::ErrorKind::WouldBlock => format_error_reason("eagain"),
+        io::ErrorKind::InvalidInput => format_error_reason("einval"),
+        _ => error.to_string(),
+    }
+}
+
+/// Discovery failures map to the oracle's reason atoms (`:no_valid_response`,
+/// `:timeout`) or the errno mapping for I/O errors, then through
+/// [`format_error_reason`] for the human-readable string.
+fn discovery_failure_reason(error: &discovery::DiscoveryError) -> String {
+    match error {
+        discovery::DiscoveryError::Io(io) => format_io_error_reason(io),
+        discovery::DiscoveryError::NoValidResponse => format_error_reason("no_valid_response"),
+        discovery::DiscoveryError::DeadlineExceeded => format_error_reason("timeout"),
+    }
 }
 
 enum PortCommand {
@@ -113,7 +188,7 @@ impl OwnedPortTask {
                             sink(PortEvent::Failed {
                                 port: thread_port,
                                 generation,
-                                reason: error.to_string(),
+                                reason: format_io_error_reason(&error),
                             });
                             return;
                         }
@@ -131,7 +206,7 @@ impl OwnedPortTask {
                             sink(PortEvent::Failed {
                                 port: thread_port,
                                 generation,
-                                reason: format!("{error:?}"),
+                                reason: discovery_failure_reason(&error),
                             });
                         }
                         return;
@@ -357,6 +432,7 @@ impl Drop for CancelWrite {
 
 enum RuntimeCommand {
     Scan,
+    DisconnectPort(String, u64, mpsc::Sender<Result<(), String>>),
     Shutdown,
     SendMessage(
         String,
@@ -411,6 +487,7 @@ impl HandoffOperationId {
 
 pub struct DiscoveryHandle {
     commands: mpsc::SyncSender<RuntimeCommand>,
+    active_generations: Arc<Mutex<HashMap<String, u64>>>,
     join: Option<std::thread::JoinHandle<()>>,
     shutdown_started: bool,
     shutdown_deadline: Duration,
@@ -422,6 +499,27 @@ pub struct DiscoveryHandle {
 }
 
 impl DiscoveryHandle {
+    pub fn port_generations(&self) -> HashMap<String, u64> {
+        self.active_generations
+            .lock()
+            .expect("generation registry poisoned")
+            .clone()
+    }
+
+    pub fn disconnect_port(&self, port: &str, generation: u64) -> Result<(), String> {
+        let (reply, receive) = mpsc::channel();
+        self.commands
+            .try_send(RuntimeCommand::DisconnectPort(
+                port.into(),
+                generation,
+                reply,
+            ))
+            .map_err(|_| "hardware command queue unavailable".to_string())?;
+        receive
+            .recv_timeout(self.shutdown_deadline + Duration::from_secs(1))
+            .map_err(|_| "disconnect cleanup is still pending".to_string())?
+    }
+
     pub fn scan_now(&self) -> Result<(), String> {
         self.commands
             .try_send(RuntimeCommand::Scan)
@@ -686,6 +784,8 @@ impl<T: SerialTransport> HardwareRuntime<T> {
         let worker_release_results = release_results.clone();
         let shutdown_failures = Arc::new(Mutex::new(Vec::new()));
         let worker_shutdown_failures = shutdown_failures.clone();
+        let active_generations = Arc::new(Mutex::new(HashMap::<String, u64>::new()));
+        let worker_generations = active_generations.clone();
         let join = std::thread::Builder::new()
             .name("hardware-discovery".into())
             .spawn(move || {
@@ -693,7 +793,7 @@ impl<T: SerialTransport> HardwareRuntime<T> {
                 let mut ports: HashMap<String, OwnedPortTask> = HashMap::new();
                 let mut retry_after: HashMap<String, Instant> = HashMap::new();
                 let mut reserved_ports: HashMap<String, (PortHandoff, FirmwareHandoffPin)> = HashMap::new();
-                let active_generations = Arc::new(Mutex::new(HashMap::<String, u64>::new()));
+                let active_generations = worker_generations;
                 let mut next_scan = Instant::now() + Duration::from_secs(1);
                 let mut shutting_down = false;
                 loop {
@@ -708,10 +808,36 @@ impl<T: SerialTransport> HardwareRuntime<T> {
                             },
                         )
                     };
+                    let mut manual_scan = false;
                     match command_rx.recv_timeout(wait) {
                         Ok(RuntimeCommand::Shutdown)
                         | Err(mpsc::RecvTimeoutError::Disconnected) => shutting_down = true,
-                        Ok(RuntimeCommand::Scan) => next_scan = Instant::now(),
+                        // Manual scan bypasses the failure backoff
+                        // (connection.ex:261-267 `clear_failed_ports`): the
+                        // timer is accelerated and every pending retry-after
+                        // entry is dropped so failed ports are retried now.
+                        Ok(RuntimeCommand::Scan) => {
+                            next_scan = Instant::now();
+                            manual_scan = true;
+                            retry_after.clear();
+                        }
+                        Ok(RuntimeCommand::DisconnectPort(port,generation,reply)) => {
+                            let result = if reserved_ports.contains_key(&port) {
+                                Err("port is reserved for firmware".to_string())
+                            } else if let Some(owner)=ports.get_mut(&port) {
+                                if owner.generation()!=generation { Err("stale port generation".to_string()) }
+                                else {
+                                    active_generations.lock().expect("generation registry poisoned").remove(&port);
+                                    owner.close(self.cleanup_deadline).map_err(|e|e.to_string())
+                                }
+                            } else { Err("port is not connected".into()) };
+                            if result.is_ok() {
+                                ports.remove(&port);
+                                retry_after.insert(port.clone(),Instant::now()+self.failure_retry);
+                                runtime_sink(PortEvent::Closed{port,generation});
+                            }
+                            let _=reply.send(result);
+                        }
                         Ok(RuntimeCommand::SendMessage(
                             port,
                             expected_generation,
@@ -776,8 +902,16 @@ impl<T: SerialTransport> HardwareRuntime<T> {
                                         }
                                     }
                                 }
+                            } else if expected_generation == 0 && self.enumerate_ports().is_ok_and(|available| available.contains(&port)) {
+                                // A board without firmware cannot answer identity discovery.
+                                // Zero denotes an explicitly selected available port with no
+                                // current scanner owner. A newly opened owner would instead
+                                // take the generation-mismatch branch above.
+                                let handoff = PortHandoff::new(port.clone(),0);
+                                reserved_ports.insert(port.clone(),(handoff.clone(),pin));
+                                Ok(handoff)
                             } else {
-                                Err("port is not connected".to_string())
+                                Err("port is not connected or available".to_string())
                             };
                             worker_handoff_results
                                 .lock()
@@ -900,6 +1034,10 @@ impl<T: SerialTransport> HardwareRuntime<T> {
                             next_scan = Instant::now() + self.failure_retry;
                         }
                     }
+                    // Cleanup above can reinsert the failed owner's backoff
+                    // after the Scan command was accepted. Bypass that new
+                    // entry too, after joining the old owner and before open.
+                    if manual_scan { retry_after.clear(); }
                     let available = match self.enumerate_ports() {
                         Ok(available) => available
                             .into_iter()
@@ -964,6 +1102,12 @@ impl<T: SerialTransport> HardwareRuntime<T> {
                                 .remove(&port);
                         }
                     }
+                    // A bootloader can appear under a different port name.
+                    // While firmware owns any reservation, retain existing
+                    // unrelated connections but admit no new serial owners;
+                    // the uploader alone probes the replacement port. Once
+                    // the handoff is acknowledged released, scanning resumes.
+                    if !reserved_ports.is_empty() { continue; }
                     for port in available {
                         if reserved_ports.contains_key(&port)
                             || ports.contains_key(&port)
@@ -1010,6 +1154,7 @@ impl<T: SerialTransport> HardwareRuntime<T> {
             .expect("failed to spawn hardware discovery worker");
         DiscoveryHandle {
             commands,
+            active_generations,
             join: Some(join),
             shutdown_started: false,
             shutdown_deadline,

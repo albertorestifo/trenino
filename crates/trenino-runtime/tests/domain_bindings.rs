@@ -1960,3 +1960,56 @@ fn binding_mutations_share_one_topic_revision() {
     let unbound = db.unbind_lever_input(OperationId(op), config).unwrap();
     assert_eq!(unbound.receipt.metadata.revision, 5);
 }
+
+// Ecto validate_length(:name, max: 100) counts graphemes (String.length/1),
+// like core/train/display.rs — a combining-mark name of two codepoints per
+// character must fit 100 (parity audit P2-25).
+#[test]
+fn display_binding_name_length_counts_graphemes() {
+    let (_dir, db, fx) = database();
+    let mut op = 987_000u128;
+    let device = new_device(&db, &mut op);
+    let module = new_i2c_module(&db, &mut op, device, 0x70);
+    let train = fx.train("Class 66");
+    let combining: String = "e\u{301}".repeat(100); // 200 codepoints, 100 graphemes
+    let created = db
+        .create_display_binding(
+            OperationId(op),
+            train,
+            DisplayBindingDraft {
+                i2c_module_id: module,
+                name: Some(combining),
+                endpoint: "CurrentDrivableActor/Speed".into(),
+                format_string: None,
+                enabled: None,
+            },
+        )
+        .unwrap();
+    assert_eq!(
+        created
+            .record
+            .name
+            .as_deref()
+            .map(|name| name.chars().count()),
+        Some(200)
+    );
+
+    let too_long: String = "e\u{301}".repeat(100) + "x"; // 101 graphemes
+    let error = db
+        .create_display_binding(
+            OperationId(op + 1),
+            train,
+            DisplayBindingDraft {
+                i2c_module_id: module,
+                name: Some(too_long),
+                endpoint: "CurrentDrivableActor/Speed".into(),
+                format_string: None,
+                enabled: None,
+            },
+        )
+        .unwrap_err();
+    assert_eq!(
+        constraint_detail(error),
+        "name should be at most 100 characters"
+    );
+}

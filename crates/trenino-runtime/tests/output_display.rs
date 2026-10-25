@@ -571,6 +571,45 @@ fn sequence_harness() -> (Arc<RecordingSequenceSimulator>, FakeClock, SequenceEx
     (simulator, clock, executor)
 }
 
+struct PendingSequenceSimulator {
+    entered: AtomicBool,
+}
+impl SequenceSimulator for PendingSequenceSimulator {
+    fn set_async<'a>(
+        &'a self,
+        _endpoint: &'a str,
+        _value: f64,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = SequenceSendOutcome> + Send + 'a>> {
+        self.entered.store(true, Ordering::SeqCst);
+        Box::pin(std::future::pending())
+    }
+}
+
+#[tokio::test]
+async fn owner_death_interrupts_an_in_flight_sequence_write() {
+    let simulator = Arc::new(PendingSequenceSimulator {
+        entered: AtomicBool::new(false),
+    });
+    let executor = SequenceExecutor::new(simulator.clone(), Arc::new(FakeClock::new()));
+    let (owner, observed) = watch::channel(());
+    let (events, mut received) = mpsc::unbounded_channel();
+    let run = executor.start(
+        7,
+        vec![SequenceCommand {
+            endpoint: "Brake".into(),
+            value: 1.0,
+            delay_ms: 0,
+            position: 0,
+        }],
+        observed,
+        events,
+    );
+    yield_until(|| simulator.entered.load(Ordering::SeqCst).then_some(())).await;
+    drop(owner);
+    yield_until(|| run.is_finished().then_some(())).await;
+    assert!(received.try_recv().is_err());
+}
+
 #[tokio::test]
 async fn sequence_sends_commands_in_position_order_and_reports_completion() {
     let (simulator, clock, executor) = sequence_harness();

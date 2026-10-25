@@ -15,12 +15,14 @@
 //! command queue (256 samples, latest-value semantics) plus a priority control
 //! queue so activation/release/cancel never wait behind input load.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::mpsc as std_mpsc;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use serde_json::Value;
-use tokio::sync::{mpsc, oneshot};
+use tokio::sync::{mpsc, oneshot, Mutex};
 use trenino_core::hardware::calibration::{normalize, total_travel, Calibration};
 use trenino_core::rounding::round_elixir;
 use trenino_core::train::lever::{map_input, LeverConfig};
@@ -43,10 +45,13 @@ pub const RETRY_DELAYS: [Duration; 3] = [
 const COMMAND_CAPACITY: usize = 256;
 /// Completion queue for in-flight writes (one per lever, bounded).
 const WRITE_CAPACITY: usize = 64;
+const PORT_ACK_TIMEOUT: Duration = Duration::from_secs(1);
+const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(1);
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum QueueError {
     Overflow,
     Closed,
+    Timeout,
 }
 
 /// Controller-visible state for diagnostics and bounded-state assertions.
@@ -87,6 +92,7 @@ struct PendingWrite {
 struct InFlight {
     seq: u64,
     abort: tokio::task::AbortHandle,
+    watcher_abort: tokio::task::AbortHandle,
 }
 
 #[derive(Default)]
@@ -102,10 +108,20 @@ enum Control {
         bindings: HashMap<EntityId, BindingRuntime>,
     },
     Release,
+    ReleaseAcknowledged(std_mpsc::SyncSender<Result<(), String>>),
     SimulatorConnected(Arc<SimulatorClient>),
     SimulatorDisconnected,
+    SuspendPort {
+        port: String,
+        lost_generation: Option<u64>,
+        reply: std_mpsc::SyncSender<Result<(), String>>,
+    },
+    ResumePort {
+        port: String,
+        reply: std_mpsc::SyncSender<Result<(), String>>,
+    },
     State(oneshot::Sender<LeverStateSnapshot>),
-    Shutdown(oneshot::Sender<()>),
+    Shutdown,
 }
 
 #[derive(Debug)]
@@ -121,8 +137,20 @@ struct WriteDone {
 /// the last clone stops the worker.
 #[derive(Clone)]
 pub struct LeverController {
-    commands: mpsc::Sender<LeverSample>,
+    commands: mpsc::Sender<IncomingSample>,
     control: mpsc::UnboundedSender<Control>,
+    lifecycle: Arc<ControllerLifecycle>,
+}
+
+struct IncomingSample {
+    sample: LeverSample,
+    observe_only: bool,
+}
+
+struct ControllerLifecycle {
+    closing: AtomicBool,
+    shutdown_sent: AtomicBool,
+    worker: Mutex<Option<tokio::task::JoinHandle<()>>>,
 }
 
 impl LeverController {
@@ -130,10 +158,31 @@ impl LeverController {
         let (commands, command_rx) = mpsc::channel(COMMAND_CAPACITY);
         let (control, control_rx) = mpsc::unbounded_channel();
         let (writes, writes_rx) = mpsc::channel(WRITE_CAPACITY);
-        tokio::spawn(run(
+        let worker = tokio::spawn(run(
             clock, resolver, command_rx, control_rx, writes_rx, writes,
         ));
-        Self { commands, control }
+        let lifecycle = Arc::new(ControllerLifecycle {
+            closing: AtomicBool::new(false),
+            shutdown_sent: AtomicBool::new(false),
+            worker: Mutex::new(Some(worker)),
+        });
+        Self {
+            commands,
+            control,
+            lifecycle,
+        }
+    }
+
+    fn ensure_open(&self) -> Result<(), QueueError> {
+        if self.lifecycle.closing.load(Ordering::Acquire) {
+            Err(QueueError::Closed)
+        } else {
+            Ok(())
+        }
+    }
+
+    pub(crate) fn begin_shutdown(&self) {
+        self.lifecycle.closing.store(true, Ordering::Release);
     }
 
     /// Load bindings for a new activation. Cancels every in-flight writer and
@@ -144,6 +193,7 @@ impl LeverController {
         generation: u64,
         snapshot: &TrainConfigSnapshot,
     ) -> Result<(), QueueError> {
+        self.ensure_open()?;
         let mut bindings = HashMap::new();
         for binding in &snapshot.lever_bindings {
             bindings.insert(
@@ -169,27 +219,90 @@ impl LeverController {
 
     /// Stop driving any lever (train deactivated or switched).
     pub fn release(&self) -> Result<(), QueueError> {
+        self.ensure_open()?;
         self.control
             .send(Control::Release)
             .map_err(|_| QueueError::Closed)
     }
 
+    /// Bounded synchronous release barrier used by the routing destination.
+    /// It remains available after admission closes so shutdown can release
+    /// the route before joining the worker. Call from a non-Tokio thread.
+    pub(crate) fn release_acknowledged(&self) -> Result<(), String> {
+        let (reply, done) = std_mpsc::sync_channel(1);
+        self.control
+            .send(Control::ReleaseAcknowledged(reply))
+            .map_err(|_| "lever worker closed".to_string())?;
+        done.recv_timeout(PORT_ACK_TIMEOUT)
+            .map_err(|_| "lever release acknowledgement timed out".to_string())?
+    }
+
     pub fn simulator_connected(&self, client: Arc<SimulatorClient>) -> Result<(), QueueError> {
+        self.ensure_open()?;
         self.control
             .send(Control::SimulatorConnected(client))
             .map_err(|_| QueueError::Closed)
     }
 
     pub fn simulator_disconnected(&self) -> Result<(), QueueError> {
+        self.ensure_open()?;
         self.control
             .send(Control::SimulatorDisconnected)
             .map_err(|_| QueueError::Closed)
     }
 
+    /// A synchronous, acknowledged port fence for hardware lease transfer.
+    /// Call only from outside the controller's Tokio worker thread.
+    pub fn suspend_port(&self, port: &str) -> Result<(), String> {
+        self.port_command(port, None, false)
+    }
+
+    /// Fence a lost source generation; a later generation is left untouched.
+    pub fn source_lost(&self, port: &str, generation: u64) -> Result<(), String> {
+        self.port_command(port, Some(generation), false)
+    }
+
+    /// Release the fence after the hardware owner has verified a fresh sample.
+    pub fn resume_port(&self, port: &str) -> Result<(), String> {
+        self.port_command(port, None, true)
+    }
+
+    fn port_command(
+        &self,
+        port: &str,
+        generation: Option<u64>,
+        resume: bool,
+    ) -> Result<(), String> {
+        self.ensure_open()
+            .map_err(|_| "lever worker closing".to_string())?;
+        let (reply, done) = std_mpsc::sync_channel(1);
+        let command = if resume {
+            Control::ResumePort {
+                port: port.into(),
+                reply,
+            }
+        } else {
+            Control::SuspendPort {
+                port: port.into(),
+                lost_generation: generation,
+                reply,
+            }
+        };
+        self.control
+            .send(command)
+            .map_err(|_| "lever worker closed".to_string())?;
+        done.recv_timeout(PORT_ACK_TIMEOUT)
+            .map_err(|_| "lever port acknowledgement timed out".to_string())?
+    }
+
     /// Queue an input sample, waiting while the bounded queue is full.
     pub async fn input(&self, sample: LeverSample) -> Result<(), QueueError> {
+        self.ensure_open()?;
         self.commands
-            .send(sample)
+            .send(IncomingSample {
+                sample,
+                observe_only: false,
+            })
             .await
             .map_err(|_| QueueError::Closed)
     }
@@ -197,13 +310,30 @@ impl LeverController {
     /// Non-blocking ingress: reports [`QueueError::Overflow`] instead of
     /// silently dropping the sample.
     pub fn try_input(&self, sample: LeverSample) -> Result<(), QueueError> {
-        self.commands.try_send(sample).map_err(|error| match error {
-            mpsc::error::TrySendError::Full(_) => QueueError::Overflow,
-            mpsc::error::TrySendError::Closed(_) => QueueError::Closed,
-        })
+        self.ensure_open()?;
+        self.try_sample(sample, false)
+    }
+
+    /// Cache a leased/suspended sample as a baseline, never as deferred actuation.
+    pub fn try_observe(&self, sample: LeverSample) -> Result<(), QueueError> {
+        self.try_sample(sample, true)
+    }
+
+    fn try_sample(&self, sample: LeverSample, observe_only: bool) -> Result<(), QueueError> {
+        self.ensure_open()?;
+        self.commands
+            .try_send(IncomingSample {
+                sample,
+                observe_only,
+            })
+            .map_err(|error| match error {
+                mpsc::error::TrySendError::Full(_) => QueueError::Overflow,
+                mpsc::error::TrySendError::Closed(_) => QueueError::Closed,
+            })
     }
 
     pub async fn state(&self) -> Result<LeverStateSnapshot, QueueError> {
+        self.ensure_open()?;
         let (reply, reply_rx) = oneshot::channel();
         self.control
             .send(Control::State(reply))
@@ -211,12 +341,23 @@ impl LeverController {
         reply_rx.await.map_err(|_| QueueError::Closed)
     }
 
-    pub async fn shutdown(self) -> Result<(), QueueError> {
-        let (reply, reply_rx) = oneshot::channel();
-        self.control
-            .send(Control::Shutdown(reply))
+    pub async fn shutdown(&self) -> Result<(), QueueError> {
+        self.begin_shutdown();
+        let mut slot = self.lifecycle.worker.lock().await;
+        let Some(worker) = slot.as_mut() else {
+            return Ok(());
+        };
+        if !self.lifecycle.shutdown_sent.swap(true, Ordering::AcqRel) {
+            self.control
+                .send(Control::Shutdown)
+                .map_err(|_| QueueError::Closed)?;
+        }
+        tokio::time::timeout(SHUTDOWN_TIMEOUT, worker)
+            .await
+            .map_err(|_| QueueError::Timeout)?
             .map_err(|_| QueueError::Closed)?;
-        reply_rx.await.map_err(|_| QueueError::Closed)
+        *slot = None;
+        Ok(())
     }
 }
 
@@ -229,6 +370,11 @@ struct WorkerState {
     client: Option<Arc<SimulatorClient>>,
     write_seq: u64,
     retry_token: u64,
+    lever_ports: HashMap<EntityId, String>,
+    port_generations: HashMap<String, u64>,
+    suspended_ports: HashSet<String>,
+    observed_inputs: HashMap<EntityId, (String, u64, i16)>,
+    retired_tasks: Vec<tokio::task::AbortHandle>,
 }
 
 impl WorkerState {
@@ -245,8 +391,12 @@ impl WorkerState {
         for pending in self.pending.values_mut() {
             if let Some(inflight) = pending.inflight.take() {
                 inflight.abort.abort();
+                inflight.watcher_abort.abort();
+                self.retired_tasks.push(inflight.abort);
+                self.retired_tasks.push(inflight.watcher_abort);
             }
         }
+        self.retired_tasks.retain(|task| !task.is_finished());
         self.pending.clear();
         self.retries.clear();
     }
@@ -280,7 +430,7 @@ impl WorkerState {
             // release the lever: the Elixir `:DOWN` handler folds it into
             // `finish_write(:error)`.
             let watcher_tx = writes.clone();
-            tokio::spawn(async move {
+            let watcher = tokio::spawn(async move {
                 if writer.await.is_err() {
                     let _ = watcher_tx
                         .send(WriteDone {
@@ -293,7 +443,11 @@ impl WorkerState {
                         .await;
                 }
             });
-            InFlight { seq, abort }
+            InFlight {
+                seq,
+                abort,
+                watcher_abort: watcher.abort_handle(),
+            }
         });
         self.pending.insert(
             id,
@@ -377,7 +531,7 @@ async fn send_value(
 async fn run(
     clock: Arc<dyn Clock>,
     resolver: Arc<InputResolver>,
-    mut commands: mpsc::Receiver<LeverSample>,
+    mut commands: mpsc::Receiver<IncomingSample>,
     mut control: mpsc::UnboundedReceiver<Control>,
     mut writes: mpsc::Receiver<WriteDone>,
     writes_tx: mpsc::Sender<WriteDone>,
@@ -391,6 +545,11 @@ async fn run(
         client: None,
         write_seq: 0,
         retry_token: 0,
+        lever_ports: HashMap::new(),
+        port_generations: HashMap::new(),
+        suspended_ports: HashSet::new(),
+        observed_inputs: HashMap::new(),
+        retired_tasks: Vec::new(),
     };
 
     loop {
@@ -409,12 +568,29 @@ async fn run(
                         state.cancel_pending();
                         state.generation = generation;
                         state.bindings = bindings;
+                        state.lever_ports.clear();
+                        state.observed_inputs.clear();
                         state.active = true;
                     }
                     Control::Release => {
                         state.cancel_pending();
                         state.bindings.clear();
+                        state.lever_ports.clear();
+                        state.observed_inputs.clear();
                         state.active = false;
+                    }
+                    Control::ReleaseAcknowledged(reply) => {
+                        state.cancel_pending();
+                        state.bindings.clear();
+                        state.lever_ports.clear();
+                        state.observed_inputs.clear();
+                        state.active = false;
+                        let settled = tokio::time::timeout(Duration::from_millis(500), async {
+                            while state.retired_tasks.iter().any(|task| !task.is_finished()) {
+                                tokio::time::sleep(Duration::from_millis(1)).await;
+                            }
+                        }).await.is_ok();
+                        let _ = reply.send(if settled { Ok(()) } else { Err("lever writer cancellation timed out".into()) });
                     }
                     Control::SimulatorConnected(client) => {
                         state.client = Some(client);
@@ -437,6 +613,17 @@ async fn run(
                             retry.armed = None;
                         }
                     }
+                    Control::SuspendPort { port, lost_generation, reply } => {
+                        let newer = lost_generation.is_some_and(|generation|
+                            state.port_generations.get(&port).is_some_and(|current| *current > generation));
+                        if newer { let _ = reply.send(Ok(())); continue; }
+                        state.suspended_ports.insert(port.clone());
+                        let _ = reply.send(neutralize_port(&mut state, &port).await);
+                    }
+                    Control::ResumePort { port, reply } => {
+                        state.suspended_ports.remove(&port);
+                        let _ = reply.send(Ok(()));
+                    }
                     Control::State(reply) => {
                         let snapshot = LeverStateSnapshot {
                             active: state.active,
@@ -447,16 +634,18 @@ async fn run(
                         };
                         let _ = reply.send(snapshot);
                     }
-                    Control::Shutdown(reply) => {
+                    Control::Shutdown => {
                         state.cancel_pending();
-                        let _ = reply.send(());
+                        while state.retired_tasks.iter().any(|task| !task.is_finished()) {
+                            tokio::time::sleep(Duration::from_millis(1)).await;
+                        }
                         break;
                     }
                 }
             }
             command = commands.recv() => {
                 let Some(sample) = command else { break };
-                apply_input(&mut state, &resolver, sample, &writes_tx, &clock);
+                apply_input(&mut state, &resolver, sample, &writes_tx, &clock).await;
             }
             done = writes.recv() => {
                 let Some(done) = done else { continue };
@@ -474,13 +663,53 @@ async fn run(
     }
 }
 
-fn apply_input(
+async fn neutralize_port(state: &mut WorkerState, port: &str) -> Result<(), String> {
+    let ids: Vec<_> = state
+        .lever_ports
+        .iter()
+        .filter(|(_, source)| source.as_str() == port)
+        .map(|(id, _)| *id)
+        .collect();
+    let mut aborted = Vec::new();
+    for id in ids {
+        state.lever_ports.remove(&id);
+        state.retries.remove(&id);
+        if let Some(pending) = state.pending.remove(&id) {
+            if let Some(inflight) = pending.inflight {
+                inflight.abort.abort();
+                inflight.watcher_abort.abort();
+                aborted.push(inflight.abort);
+                aborted.push(inflight.watcher_abort);
+            }
+        }
+    }
+    let settled = tokio::time::timeout(Duration::from_millis(500), async {
+        while aborted.iter().any(|task| !task.is_finished()) {
+            tokio::time::sleep(Duration::from_millis(1)).await;
+        }
+    })
+    .await
+    .is_ok();
+    // Keep a timed-out cancellation visible to later
+    // shutdown; never acknowledge a stopped worker while
+    // one of its children can still run.
+    state.retired_tasks.retain(|task| !task.is_finished());
+    state.retired_tasks.extend(aborted);
+    if settled {
+        Ok(())
+    } else {
+        Err("lever writer cancellation timed out".into())
+    }
+}
+
+async fn apply_input(
     state: &mut WorkerState,
     resolver: &Arc<InputResolver>,
-    sample: LeverSample,
+    incoming: IncomingSample,
     writes: &mpsc::Sender<WriteDone>,
     clock: &Arc<dyn Clock>,
 ) {
+    let sample = incoming.sample;
     // `resolve_simulator_value/4` with no active train: skip.
     if !state.active {
         return;
@@ -493,9 +722,40 @@ fn apply_input(
     ) else {
         return;
     };
+    if incoming.observe_only || state.suspended_ports.contains(&sample.port) {
+        state
+            .port_generations
+            .insert(sample.port.clone(), sample.port_generation);
+        if state.bindings.contains_key(&identity.input_id) {
+            state.observed_inputs.insert(
+                identity.input_id,
+                (sample.port.clone(), sample.port_generation, sample.value),
+            );
+        }
+        if let Err(error) = neutralize_port(state, &sample.port).await {
+            eprintln!("lever cached-source cleanup failed: {error}");
+        }
+        return;
+    }
+    if state
+        .observed_inputs
+        .get(&identity.input_id)
+        .is_some_and(|(port, generation, value)| {
+            port == &sample.port && *generation == sample.port_generation && *value == sample.value
+        })
+    {
+        return;
+    }
+    state.observed_inputs.remove(&identity.input_id);
     let Some(binding) = state.bindings.get(&identity.input_id) else {
         return;
     };
+    state
+        .port_generations
+        .insert(sample.port.clone(), sample.port_generation);
+    state
+        .lever_ports
+        .insert(binding.lever_config_id, sample.port.clone());
     // normalize_value/2 (lever_controller.ex:432-445).
     let Some(calibration) = binding.calibration else {
         // {:error, :no_calibration} → :skip

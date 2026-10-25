@@ -19,6 +19,27 @@ use trenino_runtime::{app::AppServices, settings::resolve_api_key_file};
 #[cfg(feature = "desktop-updater")]
 use crate::updater;
 
+#[path = "runtime_firmware.rs"]
+mod runtime_firmware;
+#[path = "runtime_hardware.rs"]
+mod runtime_hardware;
+#[path = "runtime_mapping.rs"]
+mod runtime_mapping;
+#[path = "runtime_preview.rs"]
+mod runtime_preview;
+#[path = "runtime_sessions.rs"]
+mod runtime_sessions;
+#[path = "runtime_simulator.rs"]
+mod runtime_simulator;
+#[path = "runtime_upload.rs"]
+mod runtime_upload;
+
+use trenino_runtime::composition::hardware::LiveHardwareEffects;
+
+#[path = "wire_patch.rs"]
+mod wire_patch;
+use wire_patch::NullableArg;
+
 type ObserverMap = HashMap<String, Topic>;
 
 pub(crate) struct RustAppState {
@@ -30,8 +51,10 @@ pub(crate) struct RustAppState {
     stopping: AtomicBool,
     startup_failure_pending: AtomicBool,
     hardware: Mutex<Option<Arc<HardwareRuntime>>>,
+    controls: Mutex<Option<Arc<trenino_runtime::composition::ControlRuntime>>>,
     vjoy: Mutex<Option<Arc<VjoyRuntime>>>,
     upload: Mutex<Option<Arc<trenino_runtime::firmware::UploadManager>>>,
+    firmware: Mutex<Option<Arc<trenino_runtime::firmware::owner::FirmwareUpdateOwner>>>,
     /// Installed by the wave integrator via `install_mcp_server`.
     #[allow(dead_code)]
     mcp: Mutex<Option<Arc<trenino_runtime::mcp::server::McpServer>>>,
@@ -48,8 +71,10 @@ impl RustAppState {
             stopping: AtomicBool::new(false),
             startup_failure_pending: AtomicBool::new(false),
             hardware: Mutex::new(None),
+            controls: Mutex::new(None),
             vjoy: Mutex::new(None),
             upload: Mutex::new(None),
+            firmware: Mutex::new(None),
             mcp: Mutex::new(None),
         }
     }
@@ -140,7 +165,6 @@ impl RustAppState {
             .unwrap_or_default()
     }
 
-
     /// Registers the MCP HTTP server as a shutdown participant and stores the
     /// handle for status queries. The wave integrator constructs the server
     /// with the storage-backed ports:
@@ -191,9 +215,7 @@ impl RustAppState {
             .ok_or_else(|| UiFailure::from(unavailable("The vJoy manager is not running.")))
     }
 
-    fn upload_manager(
-        &self,
-    ) -> Result<Arc<trenino_runtime::firmware::UploadManager>, UiFailure> {
+    fn upload_manager(&self) -> Result<Arc<trenino_runtime::firmware::UploadManager>, UiFailure> {
         self.upload
             .lock()
             .map_err(|_| UiFailure::from(AppError::internal("upload manager unavailable")))?
@@ -209,43 +231,55 @@ impl RustAppState {
     /// constructed and started here from the storage-backed ports
     /// (`mcp::storage_ports::StoragePorts`) and installed via
     /// `install_mcp_server`.
-    fn wire_runtime_services(
-        &self,
-        app: &AppHandle,
-        services: &AppServices,
-    ) -> Result<(), String> {
+    fn wire_runtime_services(&self, app: &AppHandle, services: &AppServices) -> Result<(), String> {
         let database = services.database();
 
         let (consumers, _events) = AppHardwareConsumers::new(app.clone());
-        let repository =
-            trenino_runtime::hardware::repository::DatabaseHardwareRepository::new(
-                database.clone(),
-            );
-        let service = Arc::new(
-            trenino_runtime::hardware::service::HardwareService::new(
-                Arc::new(
-                    trenino_runtime::hardware::transport::NativeSerialTransport,
-                ),
-                trenino_runtime::hardware::discovery::DiscoveryTiming::default(),
-                repository,
-                Arc::new(consumers),
-            ),
+        let consumers = Arc::new(consumers);
+        let repository = trenino_runtime::hardware::repository::DatabaseHardwareRepository::new(
+            database.clone(),
         );
+        let service = Arc::new(trenino_runtime::hardware::service::HardwareService::new(
+            Arc::new(trenino_runtime::hardware::transport::NativeSerialTransport),
+            trenino_runtime::hardware::discovery::DiscoveryTiming::default(),
+            repository,
+            consumers.clone(),
+        ));
         let handle = service
             .start()
             .map_err(|error| wired_failure(&error.to_string()))?;
         let arbiter = handle.resource_arbiter();
+        *consumers
+            .arbiter
+            .lock()
+            .map_err(|_| "arbiter unavailable")? = Some(Arc::downgrade(&arbiter));
+        let resolver = handle.resolver();
+        let effects = Arc::new(LiveHardwareEffects::new(
+            Arc::new(handle.command_port()),
+            database.clone(),
+            consumers.suspended.clone(),
+        ));
+        *consumers
+            .effects
+            .lock()
+            .map_err(|_| "effects unavailable")? = Some(effects.clone());
         let hardware = Arc::new(HardwareRuntime {
             handle: Mutex::new(Some(handle)),
+            effects: effects.clone(),
         });
         self.shutdown.register(hardware.clone())?;
         *self
             .hardware
             .lock()
-            .map_err(|_| "hardware registry unavailable")? = Some(hardware);
+            .map_err(|_| "hardware registry unavailable")? = Some(hardware.clone());
 
         #[cfg(windows)]
-        let adapter = trenino_runtime::vjoy::windows::WindowsVjoyAdapter::new();
+        let adapter = trenino_runtime::vjoy::windows::WindowsVjoyAdapter::with_resource_dir(
+            app.path()
+                .resource_dir()
+                .map_err(|e| e.to_string())?
+                .join("resources"),
+        );
         #[cfg(not(windows))]
         let adapter = UnsupportedVjoyAdapter;
         let manager = Arc::new(trenino_runtime::vjoy::VjoyManager::new(
@@ -253,8 +287,46 @@ impl RustAppState {
             arbiter.clone(),
             adapter,
         ));
-        let vjoy = Arc::new(VjoyRuntime { manager: manager.clone() });
+        let vjoy = Arc::new(VjoyRuntime::start(
+            manager.clone(),
+            hardware.clone(),
+            database.clone(),
+        ));
         self.shutdown.register(vjoy.clone())?;
+        *self.vjoy.lock().map_err(|_| "vjoy registry unavailable")? = Some(vjoy);
+        let mut settings = trenino_runtime::settings::Settings::new((*database).clone());
+        if let Some(path) = simulator_key_file(app) {
+            settings = settings.with_api_key_file(path);
+        }
+        let probe = installed_keystroke_probe(
+            std::env::current_exe()
+                .ok()
+                .and_then(|path| path.parent().map(std::path::Path::to_path_buf)),
+        );
+        let controls = Arc::new(trenino_runtime::composition::ControlRuntime::start(
+            database.clone(),
+            Arc::new(settings),
+            resolver,
+            arbiter.clone(),
+            effects,
+            Arc::new(trenino_runtime::composition::keyboard::NativeKeyboard::new(
+                &probe,
+            )),
+        )?);
+        self.shutdown.register(controls.clone())?;
+        *consumers
+            .controls
+            .lock()
+            .map_err(|_| "consumer controls unavailable")? = Some(Arc::downgrade(&controls));
+        *consumers
+            .vjoy
+            .lock()
+            .map_err(|_| "consumer vjoy unavailable")? = Some(Arc::downgrade(&manager));
+        *self
+            .controls
+            .lock()
+            .map_err(|_| "controls registry unavailable")? = Some(controls.clone());
+
         // MCP HTTP server: storage-backed tool ports plus the live vJoy
         // manager. Port choice (least-surprising default): the Elixir stack
         // served MCP from the Phoenix app, whose `PORT` env default is 4000,
@@ -263,11 +335,23 @@ impl RustAppState {
         // an error and app startup continues.
         let mcp_ports = trenino_runtime::mcp::storage_ports::StoragePorts::new(database.clone())
             .with_vjoy_runtime(manager.clone())
+            .with_simulator(controls.simulator.clone())
+            .with_detection(Arc::new(LiveDetection {
+                hardware: Arc::downgrade(&hardware),
+                db: database.clone(),
+                app: app.clone(),
+            }))
             .into_ports();
-        let mcp_server = Arc::new(trenino_runtime::mcp::server::McpServer::new(
-            Arc::new(mcp_ports),
-            None,
-        ));
+        let mcp_ports = Arc::new(mcp_ports);
+        let exit_app = app.clone();
+        let compatibility =
+            trenino_runtime::http_api::CompatibilityApi::new(database.clone(), mcp_ports.clone())
+                .with_shutdown(Arc::new(move || exit_app.exit(0)));
+        let mcp_server = Arc::new(
+            trenino_runtime::mcp::server::McpServer::new(mcp_ports, None)
+                .with_server_version(env!("CARGO_PKG_VERSION"))
+                .with_compatibility_api(compatibility),
+        );
         let mcp_port: u16 = std::env::var("TRENINO_MCP_PORT")
             .ok()
             .and_then(|value| value.parse().ok())
@@ -275,17 +359,21 @@ impl RustAppState {
         let _ = mcp_server.start(([127, 0, 0, 1], mcp_port).into());
         self.install_mcp_server(mcp_server)?;
 
-        let upload = Arc::new(trenino_runtime::firmware::UploadManager::new(
-            arbiter,
-            Arc::new(trenino_runtime::hardware::transport::NativeSerialTransport),
-            avrdude_tooling(app),
-            trenino_runtime::firmware::UploadTimings::default(),
-            Arc::new(DbUploadHistory { db: (*database).clone() }),
-            trenino_runtime::firmware::UploadHooks {
-                on_event: None,
-                reconnect: None,
-            },
-        ));
+        let upload = Arc::new(
+            trenino_runtime::firmware::UploadManager::new_with_serial_ownership(
+                arbiter,
+                Arc::new(trenino_runtime::hardware::transport::NativeSerialTransport),
+                avrdude_tooling(app),
+                trenino_runtime::firmware::UploadTimings::default(),
+                Arc::new(DbUploadHistory {
+                    db: (*database).clone(),
+                }),
+                runtime_upload::upload_hooks(app.clone(), Arc::downgrade(&hardware)),
+                Arc::new(runtime_upload::RuntimeUploadOwnership::new(Arc::downgrade(
+                    &hardware,
+                ))),
+            ),
+        );
         self.shutdown.register(Arc::new(UploadParticipant {
             manager: upload.clone(),
         }))?;
@@ -293,6 +381,52 @@ impl RustAppState {
             .upload
             .lock()
             .map_err(|_| "upload registry unavailable")? = Some(upload);
+        let repository = Arc::new(DbFirmwareRepository {
+            db: (*database).clone(),
+        });
+        let catalog = trenino_runtime::firmware::FirmwareCatalog::new(
+            trenino_runtime::firmware::FirmwareHttpClient::new(Duration::from_secs(30))
+                .map_err(|e| format!("{e:?}"))?,
+            repository.clone(),
+            trenino_core::firmware::FirmwareRequirement::parse(None)
+                .map_err(|e| format!("{e:?}"))?,
+        );
+        let epoch_ms = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_err(|e| e.to_string())?
+            .as_millis() as u64;
+        let weak_services = Arc::downgrade(&self.services().map_err(|e| e.message)?);
+        let firmware_app = app.clone();
+        let firmware = Arc::new(
+            trenino_runtime::firmware::owner::FirmwareUpdateOwner::start_with_observer(
+                repository,
+                Arc::new(catalog),
+                Arc::new(trenino_runtime::simulator::services::clock::SystemClock),
+                epoch_ms,
+                Default::default(),
+                Arc::new(move || {
+                    if let Some(services) = weak_services.upgrade() {
+                        match services.get_firmware_snapshot() {
+                            Ok(snapshot) => {
+                                publish_change(&firmware_app, Topic::Firmware, &snapshot)
+                            }
+                            Err(error) => {
+                                eprintln!("firmware snapshot publication failed: {error:?}")
+                            }
+                        }
+                    }
+                }),
+            )?,
+        );
+        self.shutdown
+            .register(Arc::new(runtime_firmware::FirmwareParticipant(
+                firmware.clone(),
+            )))?;
+        *self
+            .firmware
+            .lock()
+            .map_err(|_| "firmware registry unavailable")? = Some(firmware);
+
         Ok(())
     }
 
@@ -341,15 +475,16 @@ impl RustAppState {
                 std::thread::sleep(Duration::from_millis(10));
             }
             services.quiesce();
+            services.database().close_worker(Duration::from_secs(15))?;
             let owned = slot.take();
             drop(slot);
             drop(owned);
             drop(services);
             Ok(())
         });
-        if result.is_err() {
-            self.stopping.store(false, Ordering::Release);
-        }
+        // A failed phase may already have stopped a subset of producers.
+        // Keep admission fenced; another native exit/shutdown attempt can
+        // retry cleanup using the retained service handles.
         result
     }
 }
@@ -563,7 +698,11 @@ fn ui_unsubscribe(
     state.unregister(window.label(), topic, &subscription_id)
 }
 
-fn publish_change<T: Serialize>(app: &AppHandle, topic: Topic, snapshot: &UiSnapshot<T>) {
+fn publish_change<R: tauri::Runtime, T: Serialize>(
+    app: &AppHandle<R>,
+    topic: Topic,
+    snapshot: &UiSnapshot<T>,
+) {
     let change = UiChange {
         epoch: snapshot.epoch,
         topic,
@@ -641,6 +780,7 @@ pub(crate) fn run() {
             ui_update_notch,
             ui_delete_notch,
             ui_save_notches,
+            runtime_mapping::ui_commit_lever_mapping,
             ui_auto_distribute_notches,
             ui_validate_notches,
             ui_create_sequence,
@@ -654,6 +794,35 @@ pub(crate) fn run() {
             ui_update_script,
             ui_delete_script,
             ui_reload_scripts,
+            runtime_preview::ui_calibration_ceiling,
+            runtime_preview::ui_preview_input,
+            runtime_preview::ui_preview_notch_mapping,
+            runtime_preview::ui_preview_display,
+            runtime_preview::ui_preview_output_condition,
+            runtime_simulator::ui_list_simulator_endpoints,
+            runtime_simulator::ui_get_simulator_value,
+            runtime_sessions::ui_start_control_detection,
+            runtime_sessions::ui_control_detection_status,
+            runtime_sessions::ui_cancel_control_detection,
+            runtime_sessions::ui_start_lever_analysis,
+            runtime_sessions::ui_lever_analysis_status,
+            runtime_sessions::ui_cancel_lever_analysis,
+            runtime_sessions::ui_start_lever_calibration,
+            runtime_sessions::ui_lever_calibration_status,
+            runtime_sessions::ui_cancel_lever_calibration,
+            runtime_sessions::ui_resolve_lever_endpoints,
+            runtime_hardware::ui_serial_ports,
+            runtime_hardware::ui_scan_devices,
+            runtime_hardware::ui_disconnect_device,
+            runtime_hardware::ui_set_physical_output,
+            runtime_hardware::ui_test_display,
+            runtime_hardware::ui_begin_apply_configuration,
+            runtime_hardware::ui_configuration_status,
+            ui_get_connected_devices,
+            ui_get_simulator_status,
+            ui_retry_simulator,
+            ui_run_script,
+            ui_get_script_log,
             ui_bind_lever,
             ui_unbind_lever,
             ui_set_lever_binding_enabled,
@@ -672,6 +841,8 @@ pub(crate) fn run() {
             ui_put_vjoy_mapping,
             ui_delete_vjoy_mapping,
             ui_check_firmware_updates,
+            runtime_firmware::ui_firmware_update_status,
+            runtime_firmware::ui_dismiss_firmware_update,
             ui_download_firmware,
             ui_start_firmware_upload,
             ui_cancel_firmware_upload,
@@ -774,6 +945,7 @@ type HardwareHandle = trenino_runtime::hardware::service::HardwareServiceHandle<
 /// (matrix test wizard, calibration wizards, wave-3 controllers).
 #[derive(Clone, Debug, serde::Serialize)]
 pub(crate) struct HardwareInputEventView {
+    pub port: String,
     pub device_id: String,
     pub input_id: String,
     pub pin: u8,
@@ -788,29 +960,144 @@ pub(crate) struct HardwareInputEventView {
 pub(crate) struct AppHardwareConsumers {
     app: AppHandle,
     events: tokio::sync::broadcast::Sender<HardwareInputEventView>,
+    suspended: Arc<Mutex<std::collections::HashSet<String>>>,
+    effects: Mutex<Option<Arc<LiveHardwareEffects>>>,
+    arbiter: Mutex<Option<std::sync::Weak<trenino_runtime::resource::ResourceArbiter>>>,
+    controls: Mutex<Option<std::sync::Weak<trenino_runtime::composition::ControlRuntime>>>,
+    vjoy: Mutex<Option<std::sync::Weak<trenino_runtime::vjoy::VjoyManager<PlatformVjoyAdapter>>>>,
 }
 
 impl AppHardwareConsumers {
     fn new(app: AppHandle) -> (Self, tokio::sync::broadcast::Sender<HardwareInputEventView>) {
         let (events, _) = tokio::sync::broadcast::channel(256);
-        (Self { app, events: events.clone() }, events)
+        (
+            Self {
+                app,
+                events: events.clone(),
+                suspended: Arc::new(Mutex::new(std::collections::HashSet::new())),
+                effects: Mutex::new(None),
+                arbiter: Mutex::new(None),
+                controls: Mutex::new(None),
+                vjoy: Mutex::new(None),
+            },
+            events,
+        )
     }
 }
 
 impl trenino_runtime::resource::ResourceConsumers for AppHardwareConsumers {
-    fn suspend_actuation(&self, _port: &str) -> Result<(), String> {
-        // Wave-3 controllers own actuation; nothing is active yet.
+    fn suspend_actuation(&self, port: &str) -> Result<(), String> {
+        if let Some(effects) = self
+            .effects
+            .lock()
+            .map_err(|_| "effects poisoned")?
+            .as_ref()
+        {
+            effects.suspend(port)?;
+        }
+        if let Some(controls) = self
+            .controls
+            .lock()
+            .map_err(|_| "controls poisoned")?
+            .as_ref()
+            .and_then(std::sync::Weak::upgrade)
+            .filter(|c| c.is_running())
+        {
+            controls.train.lever().suspend_port(port)?;
+            controls.train.buttons().suspend_port(port)?;
+        }
+        if let Some(vjoy) = self
+            .vjoy
+            .lock()
+            .map_err(|_| "vjoy poisoned")?
+            .as_ref()
+            .and_then(std::sync::Weak::upgrade)
+        {
+            vjoy.suspend_port(port).map_err(|e| e.to_string())?;
+        }
         Ok(())
     }
     fn cancel_calibration(&self, _port: &str) -> Result<(), String> {
         Ok(())
     }
-    fn source_lost(&self, _port: &str, _generation: u64) -> Result<(), String> {
+    fn source_lost(&self, port: &str, generation: u64) -> Result<(), String> {
+        if let Some(effects) = self
+            .effects
+            .lock()
+            .map_err(|_| "effects poisoned")?
+            .as_ref()
+        {
+            let current = effects
+                .command
+                .connected_ports()
+                .into_iter()
+                .find(|p| p.port == port);
+            if current.as_ref().is_some_and(|p| p.generation > generation) {
+                return Ok(());
+            }
+            // Firmware handoff and failed-lease shutdown still have a live serial
+            // generation: retry all outstanding LOW/blank reports before ACK.
+            if current.as_ref().is_some_and(|p| p.generation == generation) {
+                effects.suspend(port)?;
+            }
+        }
+        self.suspended
+            .lock()
+            .map_err(|_| "output admission poisoned")?
+            .insert(port.to_owned());
+        if let Some(controls) = self
+            .controls
+            .lock()
+            .map_err(|_| "controls poisoned")?
+            .as_ref()
+            .and_then(std::sync::Weak::upgrade)
+            .filter(|c| c.is_running())
+        {
+            controls.train.lever().source_lost(port, generation)?;
+            controls.train.buttons().source_lost(port, generation)?;
+        }
+        if let Some(vjoy) = self
+            .vjoy
+            .lock()
+            .map_err(|_| "vjoy poisoned")?
+            .as_ref()
+            .and_then(std::sync::Weak::upgrade)
+        {
+            vjoy.source_lost(port, generation)
+                .map_err(|e| e.to_string())?;
+        }
         Ok(())
     }
-    fn resume_after_fresh_sample(&self, _port: &str) -> Result<(), String> {
-        Ok(())
+    fn resume_after_fresh_sample(&self, port: &str) -> Result<(), String> {
+        resume_suspended_port(&self.suspended, port, || {
+            if let Some(controls) = self
+                .controls
+                .lock()
+                .map_err(|_| "controls poisoned")?
+                .as_ref()
+                .and_then(std::sync::Weak::upgrade)
+                .filter(|c| c.is_running())
+            {
+                controls.train.lever().resume_port(port)?;
+                controls.train.buttons().resume_port(port)?;
+                controls.hardware_resumed()?;
+            }
+            Ok(())
+        })
     }
+}
+
+fn resume_suspended_port(
+    suspended: &Mutex<std::collections::HashSet<String>>,
+    port: &str,
+    resume: impl FnOnce() -> Result<(), String>,
+) -> Result<(), String> {
+    resume()?;
+    suspended
+        .lock()
+        .map_err(|_| "output admission poisoned")?
+        .remove(port);
+    Ok(())
 }
 
 impl trenino_runtime::hardware::service::HardwareConsumers for AppHardwareConsumers {
@@ -819,7 +1106,75 @@ impl trenino_runtime::hardware::service::HardwareConsumers for AppHardwareConsum
         identity: trenino_runtime::routing::InputIdentity,
         event: trenino_runtime::routing::InputEvent,
     ) -> Result<(), String> {
+        self.dispatch_port_input("", identity, event)
+    }
+    fn dispatch_port_input(
+        &self,
+        port: &str,
+        identity: trenino_runtime::routing::InputIdentity,
+        event: trenino_runtime::routing::InputEvent,
+    ) -> Result<(), String> {
+        if self
+            .app
+            .try_state::<RustAppState>()
+            .is_some_and(|s| s.stopping.load(Ordering::Acquire))
+        {
+            return Ok(());
+        }
+        let suspended = self
+            .suspended
+            .lock()
+            .map_err(|_| "output admission poisoned")?
+            .contains(port);
+        let arbiter = self
+            .arbiter
+            .lock()
+            .map_err(|_| "arbiter poisoned")?
+            .as_ref()
+            .and_then(std::sync::Weak::upgrade);
+        let lease_active = arbiter
+            .as_ref()
+            .is_some_and(|a| a.port_is_leased(port) || a.port_neutralization_failed(port));
+        // A failed aggregate resume must still let the sample reach the cache.
+        let resume_error = if suspended && !lease_active {
+            trenino_runtime::resource::ResourceConsumers::resume_after_fresh_sample(self, port)
+                .err()
+        } else {
+            None
+        };
+        let cache_only = trenino_runtime::composition::input::port_is_fenced(
+            port,
+            &self.suspended,
+            arbiter.as_deref(),
+        )?;
+        if let Some(controls) = self
+            .controls
+            .lock()
+            .map_err(|_| "controls poisoned")?
+            .as_ref()
+            .and_then(std::sync::Weak::upgrade)
+            .filter(|c| c.is_running())
+        {
+            trenino_runtime::composition::input::dispatch_control_input(
+                controls.train.lever(),
+                controls.train.buttons(),
+                port,
+                event,
+                cache_only,
+            )?;
+        }
+        if let Some(vjoy) = self
+            .vjoy
+            .lock()
+            .map_err(|_| "vjoy poisoned")?
+            .as_ref()
+            .and_then(std::sync::Weak::upgrade)
+        {
+            vjoy.input_value(port, identity, event)
+                .map_err(|e| e.to_string())?;
+        }
         let view = HardwareInputEventView {
+            port: port.to_owned(),
             device_id: identity.device_id.0.to_string(),
             input_id: identity.input_id.0.to_string(),
             pin: event.pin,
@@ -837,12 +1192,18 @@ impl trenino_runtime::hardware::service::HardwareConsumers for AppHardwareConsum
                 }
             }
         }
-        Ok(())
+        resume_error.map_or(Ok(()), Err)
     }
     fn protocol_error(&self, port: &str, generation: u64, reason: &str) {
         eprintln!("hardware protocol error on {port} (generation {generation}): {reason}");
     }
-    fn configuration_applied(&self, _port: &str, _generation: u64, _config_id: trenino_core::ConfigId) {}
+    fn configuration_applied(
+        &self,
+        _port: &str,
+        _generation: u64,
+        _config_id: trenino_core::ConfigId,
+    ) {
+    }
     fn detection_outcome(
         &self,
         _id: trenino_core::SessionId,
@@ -858,9 +1219,10 @@ impl trenino_runtime::hardware::service::HardwareConsumers for AppHardwareConsum
 }
 
 /// Owns the running hardware service handle so commands can borrow it and the
-/// shutdown participant can take and stop it exactly once.
-pub(crate) struct HardwareRuntime {
-    handle: Mutex<Option<HardwareHandle>>,
+/// shutdown participant retains it until stop is acknowledged.
+pub(crate) struct HardwareRuntime<H = HardwareHandle> {
+    handle: Mutex<Option<H>>,
+    effects: Arc<LiveHardwareEffects>,
 }
 
 impl HardwareRuntime {
@@ -879,25 +1241,44 @@ impl HardwareRuntime {
     }
 }
 
-impl ShutdownParticipant for HardwareRuntime {
+trait HardwareShutdown: Send {
+    fn close_admission(&self);
+    fn cancel_sessions(&self);
+    fn close(&mut self) -> Result<(), String>;
+}
+impl HardwareShutdown for HardwareHandle {
+    fn close_admission(&self) {
+        self.sessions().close_admission();
+    }
+    fn cancel_sessions(&self) {
+        self.sessions().shutdown();
+    }
+    fn close(&mut self) -> Result<(), String> {
+        self.shutdown().map_err(|error| error.to_string())
+    }
+}
+impl<H: HardwareShutdown> ShutdownParticipant for HardwareRuntime<H> {
     fn stop_admission(&self) -> Result<(), String> {
+        self.effects.stop_admission();
         if let Some(handle) = self.handle.lock().expect("hardware runtime").as_ref() {
-            handle.sessions().close_admission();
+            handle.close_admission();
         }
         Ok(())
     }
     fn cancel_and_join_producers(&self) -> Result<(), String> {
         if let Some(handle) = self.handle.lock().expect("hardware runtime").as_ref() {
-            handle.sessions().shutdown();
+            handle.cancel_sessions();
         }
         Ok(())
     }
     fn neutralize_and_release_outputs(&self) -> Result<(), String> {
-        Ok(())
+        self.effects.neutralize_all(Duration::from_secs(5))
     }
     fn close_ports_and_network(&self) -> Result<(), String> {
-        if let Some(mut handle) = self.handle.lock().expect("hardware runtime").take() {
-            handle.shutdown().map_err(|error| error.to_string())?;
+        let mut slot = self.handle.lock().expect("hardware runtime");
+        if let Some(handle) = slot.as_mut() {
+            handle.close()?;
+            slot.take();
         }
         Ok(())
     }
@@ -944,20 +1325,97 @@ type PlatformVjoyAdapter = UnsupportedVjoyAdapter;
 
 pub(crate) struct VjoyRuntime {
     manager: Arc<trenino_runtime::vjoy::VjoyManager<PlatformVjoyAdapter>>,
+    stop: std::sync::mpsc::Sender<()>,
+    host: Mutex<Option<std::thread::JoinHandle<()>>>,
+}
+impl VjoyRuntime {
+    fn start(
+        manager: Arc<trenino_runtime::vjoy::VjoyManager<PlatformVjoyAdapter>>,
+        hardware: Arc<HardwareRuntime>,
+        db: Arc<trenino_runtime::storage::Database>,
+    ) -> Self {
+        let (stop, stopped) = std::sync::mpsc::channel();
+        let live = manager.clone();
+        let host = std::thread::spawn(move || {
+            let mut revision = (
+                db.revision("vjoy").unwrap_or(0),
+                db.revision("bindings").unwrap_or(0),
+                db.revision("hardware").unwrap_or(0),
+            );
+            let mut ports = std::collections::HashSet::new();
+            loop {
+                let _ = hardware.with_handle(|h| {
+                    for p in h.connected_ports() {
+                        if let Some(config) = p.config_id {
+                            if ports.insert((p.port.clone(), p.generation, config.get())) {
+                                let samples = h
+                                    .input_cache()
+                                    .snapshot(&p.port, p.generation)
+                                    .into_iter()
+                                    .filter_map(|(pin, value)| {
+                                        h.resolver()
+                                            .resolve(&p.port, p.generation, config, pin)
+                                            .map(|identity| (identity, pin, value))
+                                    })
+                                    .collect::<Vec<_>>();
+                                if let Err(e) =
+                                    live.seed_port(&p.port, p.generation, config, &samples)
+                                {
+                                    eprintln!("vjoy port: {e}");
+                                }
+                            }
+                        }
+                    }
+                    Ok(())
+                });
+                let next = (
+                    db.revision("vjoy").unwrap_or(0),
+                    db.revision("bindings").unwrap_or(0),
+                    db.revision("hardware").unwrap_or(0),
+                );
+                if next != revision {
+                    if let Err(e) = live.reload_mappings() {
+                        eprintln!("vjoy reload: {e}");
+                    }
+                    revision = next;
+                }
+                if let Err(e) = live.poll_recovery_at(Instant::now()) {
+                    eprintln!("vjoy recovery: {e}");
+                }
+                if stopped.recv_timeout(Duration::from_millis(100))
+                    != Err(std::sync::mpsc::RecvTimeoutError::Timeout)
+                {
+                    break;
+                }
+            }
+        });
+        Self {
+            manager,
+            stop,
+            host: Mutex::new(Some(host)),
+        }
+    }
 }
 
 impl ShutdownParticipant for VjoyRuntime {
     fn stop_admission(&self) -> Result<(), String> {
+        self.manager.stop_admission();
         Ok(())
     }
     fn cancel_and_join_producers(&self) -> Result<(), String> {
+        let _ = self.stop.send(());
+        if let Some(host) = self.host.lock().map_err(|_| "vjoy host poisoned")?.take() {
+            host.join().map_err(|_| "vjoy host panicked")?;
+        }
         Ok(())
     }
     fn neutralize_and_release_outputs(&self) -> Result<(), String> {
-        self.manager.neutralize_outputs().map_err(|error| error.to_string())
+        self.manager
+            .release_runtime()
+            .map_err(|error| error.to_string())
     }
     fn close_ports_and_network(&self) -> Result<(), String> {
-        self.manager.disable().map_err(|error| error.to_string())
+        Ok(()) // release_runtime acknowledged ownership release in the prior phase.
     }
 }
 
@@ -1063,7 +1521,8 @@ pub(crate) struct McpParticipant {
 
 impl ShutdownParticipant for McpParticipant {
     fn stop_admission(&self) -> Result<(), String> {
-        Ok(())
+        self.server.stop_admission()?;
+        self.server.stop()
     }
     fn cancel_and_join_producers(&self) -> Result<(), String> {
         Ok(())
@@ -1087,9 +1546,12 @@ impl ShutdownParticipant for UploadParticipant {
     }
     fn cancel_and_join_producers(&self) -> Result<(), String> {
         if let Some(current) = self.manager.current_upload() {
-            let _ = self.manager.cancel_upload(&current.upload_id);
+            match self.manager.cancel_upload(&current.upload_id) {
+                Ok(()) | Err(trenino_runtime::firmware::UploadCancelError::NotFound) => {}
+                Err(e) => return Err(format!("upload cancellation: {e:?}")),
+            }
         }
-        Ok(())
+        self.manager.retry_cleanup()
     }
     fn neutralize_and_release_outputs(&self) -> Result<(), String> {
         Ok(())
@@ -1127,9 +1589,24 @@ fn validation_failure(field: &str, message: &str) -> UiFailure {
 }
 
 fn vjoy_failure(error: trenino_runtime::vjoy::VjoyError) -> UiFailure {
-    use trenino_runtime::vjoy::VjoyError;
+    use trenino_runtime::vjoy::{configurator::ConfiguratorError, VjoyError};
     let (code, retryable) = match &error {
         VjoyError::ArbiterBusy | VjoyError::DeviceBusy(_) => ("conflict", true),
+        VjoyError::Configurator(error) => match error {
+            ConfiguratorError::UacCancelled => ("cancelled", true),
+            ConfiguratorError::Timeout => ("unavailable", true),
+            ConfiguratorError::Busy | ConfiguratorError::ForeignDevice => ("conflict", true),
+            ConfiguratorError::InvalidDevice => ("validation", false),
+            ConfiguratorError::UntrustedResource | ConfiguratorError::Unsupported => {
+                ("unavailable", false)
+            }
+            ConfiguratorError::CleanupIncomplete
+            | ConfiguratorError::DriverMissing
+            | ConfiguratorError::Incompatible
+            | ConfiguratorError::ProcessExit(_)
+            | ConfiguratorError::MarkerWriteFailed
+            | ConfiguratorError::Native(_) => ("unavailable", true),
+        },
         VjoyError::Unsupported
         | VjoyError::DriverUnavailable(_)
         | VjoyError::DeviceMissing(_)
@@ -1138,6 +1615,7 @@ fn vjoy_failure(error: trenino_runtime::vjoy::VjoyError) -> UiFailure {
         | VjoyError::NeutralizeFailed(_, _)
         | VjoyError::InvalidState(_)
         | VjoyError::Quarantined(_, _)
+        | VjoyError::ReportFailed(_, _)
         | VjoyError::Storage(_) => ("unavailable", true),
     };
     UiFailure {
@@ -1188,7 +1666,9 @@ struct DbFirmwareRepository {
     db: trenino_runtime::storage::Database,
 }
 
-fn repo_failure(error: trenino_runtime::storage::StorageError) -> trenino_runtime::firmware::RepositoryError {
+fn repo_failure(
+    error: trenino_runtime::storage::StorageError,
+) -> trenino_runtime::firmware::RepositoryError {
     let _ = error;
     trenino_runtime::firmware::RepositoryError { code: "storage" }
 }
@@ -1218,11 +1698,7 @@ fn row_to_release(
                 .find(|file| {
                     file.environment.as_deref() == Some(device.environment.as_str())
                         && device.firmware_file
-                            == file
-                                .download_url
-                                .rsplit('/')
-                                .next()
-                                .unwrap_or_default()
+                            == file.download_url.rsplit('/').next().unwrap_or_default()
                 })
                 .map(|file| FirmwareAsset {
                     id: file.id,
@@ -1260,7 +1736,10 @@ impl trenino_runtime::firmware::FirmwareRepository for DbFirmwareRepository {
     fn upsert_catalog(
         &self,
         releases: &[trenino_runtime::firmware::ReleaseInput],
-    ) -> Result<Vec<trenino_runtime::firmware::CatalogRelease>, trenino_runtime::firmware::RepositoryError> {
+    ) -> Result<
+        Vec<trenino_runtime::firmware::CatalogRelease>,
+        trenino_runtime::firmware::RepositoryError,
+    > {
         use trenino_runtime::storage::firmware_records::{FirmwareFileDraft, FirmwareReleaseDraft};
         let entries = releases
             .iter()
@@ -1295,7 +1774,12 @@ impl trenino_runtime::firmware::FirmwareRepository for DbFirmwareRepository {
             .map_err(repo_failure)?;
         self.list_releases()
     }
-    fn list_releases(&self) -> Result<Vec<trenino_runtime::firmware::CatalogRelease>, trenino_runtime::firmware::RepositoryError> {
+    fn list_releases(
+        &self,
+    ) -> Result<
+        Vec<trenino_runtime::firmware::CatalogRelease>,
+        trenino_runtime::firmware::RepositoryError,
+    > {
         let mut releases = Vec::new();
         for record in self.db.list_firmware_releases().map_err(repo_failure)? {
             let files = self
@@ -1306,7 +1790,13 @@ impl trenino_runtime::firmware::FirmwareRepository for DbFirmwareRepository {
         }
         Ok(releases)
     }
-    fn get_release(&self, release_id: trenino_core::EntityId) -> Result<Option<trenino_runtime::firmware::CatalogRelease>, trenino_runtime::firmware::RepositoryError> {
+    fn get_release(
+        &self,
+        release_id: trenino_core::EntityId,
+    ) -> Result<
+        Option<trenino_runtime::firmware::CatalogRelease>,
+        trenino_runtime::firmware::RepositoryError,
+    > {
         let Some(record) = self
             .db
             .get_firmware_release(release_id)
@@ -1320,7 +1810,10 @@ impl trenino_runtime::firmware::FirmwareRepository for DbFirmwareRepository {
             .map_err(repo_failure)?;
         row_to_release(&record, &files).map(Some)
     }
-    fn record_check(&self, record: &trenino_runtime::firmware::UpdateCheckRecord) -> Result<(), trenino_runtime::firmware::RepositoryError> {
+    fn record_check(
+        &self,
+        record: &trenino_runtime::firmware::UpdateCheckRecord,
+    ) -> Result<(), trenino_runtime::firmware::RepositoryError> {
         let checked_at = format_checked_at((record.checked_at_ms / 1000) as i64);
         self.db
             .record_update_check(
@@ -1335,26 +1828,46 @@ impl trenino_runtime::firmware::FirmwareRepository for DbFirmwareRepository {
             .map(|_| ())
             .map_err(repo_failure)
     }
-    fn latest_check(&self) -> Result<Option<trenino_runtime::firmware::UpdateCheckRecord>, trenino_runtime::firmware::RepositoryError> {
-        Ok(self
-            .db
+    fn latest_check(
+        &self,
+    ) -> Result<
+        Option<trenino_runtime::firmware::UpdateCheckRecord>,
+        trenino_runtime::firmware::RepositoryError,
+    > {
+        self.db
             .latest_update_check()
             .map_err(repo_failure)?
-            .map(|row| trenino_runtime::firmware::UpdateCheckRecord {
-                checked_at_ms: 0,
-                found_updates: row.found_updates,
-                latest_version: row.latest_version,
-                error_message: row.error_message,
-            }))
+            .map(|row| {
+                Ok(trenino_runtime::firmware::UpdateCheckRecord {
+                    checked_at_ms: runtime_firmware::checked_at_ms(&row.checked_at).ok_or(
+                        trenino_runtime::firmware::RepositoryError {
+                            code: "invalid_check_timestamp",
+                        },
+                    )?,
+                    found_updates: row.found_updates,
+                    latest_version: row.latest_version,
+                    error_message: row.error_message,
+                })
+            })
+            .transpose()
     }
-    fn dismissed_notice(&self) -> Result<Option<String>, trenino_runtime::firmware::RepositoryError> {
-        Ok(self.db.get("firmware_dismissed_notice").map_err(repo_failure)?)
+
+    fn dismissed_notice(
+        &self,
+    ) -> Result<Option<String>, trenino_runtime::firmware::RepositoryError> {
+        self.db
+            .get("firmware_dismissed_notice")
+            .map_err(repo_failure)
     }
-    fn set_dismissed_notice(&self, version: Option<&str>) -> Result<(), trenino_runtime::firmware::RepositoryError> {
+    fn set_dismissed_notice(
+        &self,
+        version: Option<&str>,
+    ) -> Result<(), trenino_runtime::firmware::RepositoryError> {
         match version {
-            Some(version) => self
-                .db
-                .set_with_revision("firmware_dismissed_notice", version, "firmware"),
+            Some(version) => {
+                self.db
+                    .set_with_revision("firmware_dismissed_notice", version, "firmware")
+            }
             None => self
                 .db
                 .set_with_revision("firmware_dismissed_notice", "", "firmware"),
@@ -1367,8 +1880,9 @@ impl trenino_runtime::firmware::FirmwareRepository for DbFirmwareRepository {
 fn firmware_catalog(
     db: &trenino_runtime::storage::Database,
 ) -> Result<trenino_runtime::firmware::FirmwareCatalog<DbFirmwareRepository>, UiFailure> {
-    let client = trenino_runtime::firmware::FirmwareHttpClient::new(std::time::Duration::from_secs(30))
-        .map_err(|_| UiFailure::from(AppError::internal("firmware HTTP client unavailable")))?;
+    let client =
+        trenino_runtime::firmware::FirmwareHttpClient::new(std::time::Duration::from_secs(30))
+            .map_err(|_| UiFailure::from(AppError::internal("firmware HTTP client unavailable")))?;
     let requirement = trenino_core::firmware::FirmwareRequirement::parse(None)
         .map_err(|_| UiFailure::from(AppError::internal("firmware requirement invalid")))?;
     Ok(trenino_runtime::firmware::FirmwareCatalog::new(
@@ -1379,24 +1893,45 @@ fn firmware_catalog(
 }
 
 fn avrdude_tooling(app: &AppHandle) -> trenino_runtime::firmware::UploadTooling {
-    use trenino_runtime::firmware::UploadTooling;
-    if let Some(path) = std::env::var_os("TRENINO_AVRDUDE_PATH").map(std::path::PathBuf::from) {
-        if path.is_file() {
-            return UploadTooling { avrdude_path: path, avrdude_conf: None };
-        }
-    }
-    if let Ok(resources) = app.path().resource_dir() {
-        let bundled = resources.join("avrdude");
-        if bundled.is_file() {
-            return UploadTooling { avrdude_path: bundled, avrdude_conf: None };
-        }
-    }
-    // Fall back to PATH resolution; the upload manager validates existence
-    // when an upload starts and surfaces a user-facing failure.
-    UploadTooling {
-        avrdude_path: std::path::PathBuf::from("avrdude"),
+    avrdude_tooling_at(
+        std::env::var_os("TRENINO_AVRDUDE_PATH").map(PathBuf::from),
+        std::env::current_exe()
+            .ok()
+            .and_then(|path| path.parent().map(std::path::Path::to_path_buf)),
+        app.path().resource_dir().ok(),
+    )
+}
+
+fn avrdude_tooling_at(
+    configured: Option<PathBuf>,
+    executable_dir: Option<PathBuf>,
+    resource_dir: Option<PathBuf>,
+) -> trenino_runtime::firmware::UploadTooling {
+    use trenino_runtime::{executable::ExecutableProbe, firmware::UploadTooling};
+    let mut probe = ExecutableProbe::avrdude();
+    probe.configured = configured.clone();
+    probe.app_resource_dir = executable_dir.clone();
+    // Missing tools do not prevent editing offline. Preserve a rejected
+    // configured path (never silently choose another binary); otherwise use
+    // the absolute installed location so upload admission reports it missing.
+    let fallback = configured.unwrap_or_else(|| {
+        executable_dir.unwrap_or_default().join(if cfg!(windows) {
+            "avrdude.exe"
+        } else {
+            "avrdude"
+        })
+    });
+    let mut tooling = UploadTooling::discover_avrdude(&probe).unwrap_or(UploadTooling {
+        avrdude_path: fallback,
         avrdude_conf: None,
+    });
+    if let Some(resources) = resource_dir {
+        let configuration = resources.join("binaries").join("avrdude.conf");
+        if configuration.is_file() {
+            tooling.avrdude_conf = Some(configuration);
+        }
     }
+    tooling
 }
 
 /// Second-precision UTC timestamp (`YYYY-MM-DDTHH:MM:SSZ`), the wire format
@@ -1411,7 +1946,8 @@ fn format_checked_at(seconds: i64) -> String {
     let z = days + 719_468;
     let era = z.div_euclid(146_097);
     let day_of_era = z.rem_euclid(146_097);
-    let year_of_era = (day_of_era - day_of_era / 1_460 + day_of_era / 36_524 - day_of_era / 146_096) / 365;
+    let year_of_era =
+        (day_of_era - day_of_era / 1_460 + day_of_era / 36_524 - day_of_era / 146_096) / 365;
     let mut year = year_of_era + era * 400;
     let day_of_year = day_of_era - (365 * year_of_era + year_of_era / 4 - year_of_era / 100);
     let mp = (5 * day_of_year + 2) / 153;
@@ -1450,11 +1986,18 @@ struct SequenceCommandInput {
     delay_ms: i64,
 }
 
-fn notch_draft(input: NotchInput) -> Result<trenino_runtime::storage::trains::NotchDraft, UiFailure> {
+fn notch_draft(
+    input: NotchInput,
+) -> Result<trenino_runtime::storage::trains::NotchDraft, UiFailure> {
     let kind = match input.kind.as_str() {
         "gate" => trenino_runtime::storage::trains::NotchKind::Gate,
         "linear" => trenino_runtime::storage::trains::NotchKind::Linear,
-        _ => return Err(validation_failure("kind", "Notch kind must be \"gate\" or \"linear\".")),
+        _ => {
+            return Err(validation_failure(
+                "kind",
+                "Notch kind must be \"gate\" or \"linear\".",
+            ))
+        }
     };
     Ok(trenino_runtime::storage::trains::NotchDraft {
         index: input.index,
@@ -1470,7 +2013,9 @@ fn notch_draft(input: NotchInput) -> Result<trenino_runtime::storage::trains::No
     })
 }
 
-fn command_draft(input: SequenceCommandInput) -> trenino_runtime::storage::sequences::SequenceCommandDraft {
+fn command_draft(
+    input: SequenceCommandInput,
+) -> trenino_runtime::storage::sequences::SequenceCommandDraft {
     trenino_runtime::storage::sequences::SequenceCommandDraft {
         endpoint: input.endpoint,
         value: input.value,
@@ -1478,7 +2023,9 @@ fn command_draft(input: SequenceCommandInput) -> trenino_runtime::storage::seque
     }
 }
 
-fn command_input(inputs: Vec<SequenceCommandInput>) -> Vec<trenino_runtime::storage::sequences::SequenceCommandDraft> {
+fn command_input(
+    inputs: Vec<SequenceCommandInput>,
+) -> Vec<trenino_runtime::storage::sequences::SequenceCommandDraft> {
     inputs.into_iter().map(command_draft).collect()
 }
 
@@ -1496,18 +2043,41 @@ macro_rules! command {
     };
 }
 
+struct MutationPublication<T> {
+    result: T,
+    canonical: Option<UiSnapshot<serde_json::Value>>,
+}
+
+fn mutation_publication<T>(
+    services: Arc<AppServices>,
+    topic: Topic,
+    mutate: impl FnOnce(Arc<AppServices>) -> Result<T, AppError>,
+) -> Result<MutationPublication<T>, AppError> {
+    let result = mutate(services.clone())?;
+    // Command responses can be detail views. Subscription payloads always
+    // match ui_get_snapshot for the topic, independent of the command DTO.
+    // A refresh failure after the commit must not turn its ACK into rollback.
+    let canonical = services
+        .snapshot_json(topic)
+        .ok()
+        .and_then(|value| serde_json::from_value(value).ok());
+    Ok(MutationPublication { result, canonical })
+}
+
 macro_rules! publishing_command {
     ($name:ident($app:ident, $state:ident $(, $arg:ident: $ty:ty)*) -> $ret:ty, $topic:expr, $body:expr) => {
+        // Flat arguments preserve the existing frontend IPC contract.
+        #[allow(clippy::too_many_arguments)]
         #[tauri::command(rename_all = "snake_case")]
-        async fn $name($app: AppHandle, $state: State<'_, RustAppState>, $($arg: $ty,)*) -> Result<$ret, UiFailure> {
+        async fn $name<R: tauri::Runtime>($app: AppHandle<R>, $state: State<'_, RustAppState>, $($arg: $ty,)*) -> Result<$ret, UiFailure> {
             let _publication = $state.publication.lock().await;
             let services = $state.services()?;
-            let snapshot = tauri::async_runtime::spawn_blocking(move || ($body)(services, $($arg,)*))
+            let outcome = tauri::async_runtime::spawn_blocking(move || mutation_publication(services, $topic, |services| ($body)(services, $($arg,)*)))
                 .await
                 .map_err(|_| UiFailure::from(AppError::internal("command task failed")))?
                 .map_err(UiFailure::from)?;
-            publish_change(&$app, $topic, &snapshot);
-            Ok(snapshot)
+            if let Some(snapshot) = outcome.canonical { publish_change(&$app, $topic, &snapshot); }
+            Ok(outcome.result)
         }
     };
 }
@@ -1564,8 +2134,14 @@ async fn ui_test_simulator(state: State<'_, RustAppState>) -> Result<bool, UiFai
     .await
     .map_err(|_| UiFailure::from(AppError::internal("settings task failed")))?
     .map_err(UiFailure::from)?;
-    let client = trenino_runtime::simulator::client::SimulatorClient::new(&url, &key.unwrap_or_default())
-        .map_err(|_| UiFailure::from(validation_failure_error("simulator_url", "Enter a valid HTTP or HTTPS URL.")))?;
+    let client =
+        trenino_runtime::simulator::client::SimulatorClient::new(&url, &key.unwrap_or_default())
+            .map_err(|_| {
+                UiFailure::from(validation_failure_error(
+                    "simulator_url",
+                    "Enter a valid HTTP or HTTPS URL.",
+                ))
+            })?;
     Ok(client.info().await.is_ok())
 }
 
@@ -1580,136 +2156,150 @@ fn validation_failure_error(field: &str, message: &str) -> AppError {
 
 // ---- Hardware configuration CRUD -------------------------------------------
 
-publishing_command!(ui_create_configuration(app, state, name: String, description: Option<String>) -> UiSnapshot<Vec<trenino_core::ui::ConfigurationSummaryView>>, Topic::Hardware,
-    |services: Arc<AppServices>, name: String, description: Option<String>| services.create_configuration(&name, description));
+publishing_command!(ui_create_configuration(app, state, name: String, description: Option<String>) -> UiSnapshot<trenino_core::ui::DeviceDetailView>, Topic::Hardware,
+    |services: Arc<AppServices>, name: String, description: Option<String>| services.create_configuration_detail(&name, description));
 
-publishing_command!(ui_update_configuration(app, state, id: String, name: Option<String>, description: Option<Option<String>>) -> UiSnapshot<Vec<trenino_core::ui::ConfigurationSummaryView>>, Topic::Hardware,
-    |services: Arc<AppServices>, id: String, name: Option<String>, description: Option<Option<String>>| {
-        let id = parse_entity_id("id", &id).map_err(to_app_failure)?;
-        services.update_configuration(id, name, description)
-    });
+publishing_command!(ui_update_configuration(app, state, id: String, name: Option<String>, description: NullableArg<String>) -> UiSnapshot<Vec<trenino_core::ui::ConfigurationSummaryView>>, Topic::Hardware,
+|services: Arc<AppServices>, id: String, name: Option<String>, description: NullableArg<String>| {
+    let description = description.0;
+    let id = parse_entity_id("id", &id).map_err(to_app_failure)?;
+    services.update_configuration(id, name, description)
+});
 
 publishing_command!(ui_delete_configuration(app, state, id: String) -> UiSnapshot<Vec<trenino_core::ui::ConfigurationSummaryView>>, Topic::Hardware,
-    |services: Arc<AppServices>, id: String| {
-        let id = parse_entity_id("id", &id).map_err(to_app_failure)?;
-        services.delete_configuration(id)
-    });
+|services: Arc<AppServices>, id: String| {
+    let id = parse_entity_id("id", &id).map_err(to_app_failure)?;
+    services.delete_configuration(id)
+});
 
 command!(ui_get_hardware_detail(state, id: String) -> UiSnapshot<trenino_core::ui::DeviceDetailView> =
-    |services: Arc<AppServices>, id: String| {
-        let id = parse_entity_id("id", &id).map_err(to_app_failure)?;
-        services.get_hardware_detail(id)
-    });
+|services: Arc<AppServices>, id: String| {
+    let id = parse_entity_id("id", &id).map_err(to_app_failure)?;
+    services.get_hardware_detail(id)
+});
 
 command!(ui_get_hardware_detail_by_config(state, config_id: String) -> UiSnapshot<trenino_core::ui::DeviceDetailView> =
-    |services: Arc<AppServices>, config_id: String| {
-        let raw: u32 = config_id.trim().parse().map_err(|_| validation_failure_error("config_id", "Configuration ID must be a number."))?;
-        let config_id = trenino_core::ConfigId::new(raw).map_err(|e| validation_failure_error("config_id", e))?;
-        services.get_hardware_detail_by_config(config_id)
-    });
+|services: Arc<AppServices>, config_id: String| {
+    let raw: u32 = config_id.trim().parse().map_err(|_| validation_failure_error("config_id", "Configuration ID must be a number."))?;
+    let config_id = trenino_core::ConfigId::new(raw).map_err(|e| validation_failure_error("config_id", e))?;
+    services.get_hardware_detail_by_config(config_id)
+});
 
 publishing_command!(ui_create_input(app, state, device_id: String, pin: i32, kind: String, sensitivity: Option<i32>, debounce: Option<i32>, name: Option<String>, matrix_id: Option<String>) -> UiSnapshot<trenino_core::ui::DeviceDetailView>, Topic::Hardware,
-    |services: Arc<AppServices>, device_id: String, pin: i32, kind: String, sensitivity: Option<i32>, debounce: Option<i32>, name: Option<String>, matrix_id: Option<String>| {
-        let device_id = parse_entity_id("device_id", &device_id).map_err(to_app_failure)?;
-        let matrix_id = matrix_id
-            .map(|value| parse_entity_id("matrix_id", &value))
-            .transpose()
-            .map_err(to_app_failure)?;
-        services.create_input(trenino_runtime::app::CreateInputParams {
-            device_id,
-            pin,
-            kind,
-            sensitivity,
-            debounce,
-            name,
-            matrix_id,
-        })
-    });
+|services: Arc<AppServices>, device_id: String, pin: i32, kind: String, sensitivity: Option<i32>, debounce: Option<i32>, name: Option<String>, matrix_id: Option<String>| {
+    let device_id = parse_entity_id("device_id", &device_id).map_err(to_app_failure)?;
+    let matrix_id = matrix_id
+        .map(|value| parse_entity_id("matrix_id", &value))
+        .transpose()
+        .map_err(to_app_failure)?;
+    services.create_input(trenino_runtime::app::CreateInputParams {
+        device_id,
+        pin,
+        kind,
+        sensitivity,
+        debounce,
+        name,
+        matrix_id,
+    })
+});
 
 publishing_command!(ui_update_input(app, state, id: String, pin: i32, kind: String, sensitivity: Option<i32>, debounce: Option<i32>, name: Option<String>) -> UiSnapshot<trenino_core::ui::DeviceDetailView>, Topic::Hardware,
-    |services: Arc<AppServices>, id: String, pin: i32, kind: String, sensitivity: Option<i32>, debounce: Option<i32>, name: Option<String>| {
-        let id = parse_entity_id("id", &id).map_err(to_app_failure)?;
-        services.update_input(id, pin, &kind, sensitivity, debounce, name)
-    });
+|services: Arc<AppServices>, id: String, pin: i32, kind: String, sensitivity: Option<i32>, debounce: Option<i32>, name: Option<String>| {
+    let id = parse_entity_id("id", &id).map_err(to_app_failure)?;
+    services.update_input(id, pin, &kind, sensitivity, debounce, name)
+});
 
 publishing_command!(ui_delete_input(app, state, id: String) -> UiSnapshot<trenino_core::ui::DeviceDetailView>, Topic::Hardware,
-    |services: Arc<AppServices>, id: String| {
-        services.delete_input(parse_entity_id("id", &id).map_err(to_app_failure)?)
-    });
+|services: Arc<AppServices>, id: String| {
+    services.delete_input(parse_entity_id("id", &id).map_err(to_app_failure)?)
+});
 
 publishing_command!(ui_create_output(app, state, device_id: String, pin: i32, name: Option<String>) -> UiSnapshot<trenino_core::ui::DeviceDetailView>, Topic::Hardware,
-    |services: Arc<AppServices>, device_id: String, pin: i32, name: Option<String>| {
-        let device_id = parse_entity_id("device_id", &device_id).map_err(to_app_failure)?;
-        services.create_output(device_id, pin, name)
-    });
+|services: Arc<AppServices>, device_id: String, pin: i32, name: Option<String>| {
+    let device_id = parse_entity_id("device_id", &device_id).map_err(to_app_failure)?;
+    services.create_output(device_id, pin, name)
+});
 
 publishing_command!(ui_update_output(app, state, id: String, pin: i32, name: Option<String>) -> UiSnapshot<trenino_core::ui::DeviceDetailView>, Topic::Hardware,
-    |services: Arc<AppServices>, id: String, pin: i32, name: Option<String>| {
-        let id = parse_entity_id("id", &id).map_err(to_app_failure)?;
-        services.update_output(id, pin, name)
-    });
+|services: Arc<AppServices>, id: String, pin: i32, name: Option<String>| {
+    let id = parse_entity_id("id", &id).map_err(to_app_failure)?;
+    services.update_output(id, pin, name)
+});
 
 publishing_command!(ui_delete_output(app, state, id: String) -> UiSnapshot<trenino_core::ui::DeviceDetailView>, Topic::Hardware,
-    |services: Arc<AppServices>, id: String| {
-        services.delete_output(parse_entity_id("id", &id).map_err(to_app_failure)?)
-    });
+|services: Arc<AppServices>, id: String| {
+    services.delete_output(parse_entity_id("id", &id).map_err(to_app_failure)?)
+});
 
 publishing_command!(ui_create_matrix(app, state, device_id: String, name: String, row_pins: Vec<i32>, col_pins: Vec<i32>) -> UiSnapshot<trenino_core::ui::DeviceDetailView>, Topic::Hardware,
-    |services: Arc<AppServices>, device_id: String, name: String, row_pins: Vec<i32>, col_pins: Vec<i32>| {
-        let device_id = parse_entity_id("device_id", &device_id).map_err(to_app_failure)?;
-        services.create_matrix(device_id, &name, row_pins, col_pins)
-    });
+|services: Arc<AppServices>, device_id: String, name: String, row_pins: Vec<i32>, col_pins: Vec<i32>| {
+    let device_id = parse_entity_id("device_id", &device_id).map_err(to_app_failure)?;
+    services.create_matrix(device_id, &name, row_pins, col_pins)
+});
 
 publishing_command!(ui_update_matrix(app, state, id: String, row_pins: Vec<i32>, col_pins: Vec<i32>) -> UiSnapshot<trenino_core::ui::DeviceDetailView>, Topic::Hardware,
-    |services: Arc<AppServices>, id: String, row_pins: Vec<i32>, col_pins: Vec<i32>| {
-        services.update_matrix(parse_entity_id("id", &id).map_err(to_app_failure)?, row_pins, col_pins)
-    });
+|services: Arc<AppServices>, id: String, row_pins: Vec<i32>, col_pins: Vec<i32>| {
+    services.update_matrix(parse_entity_id("id", &id).map_err(to_app_failure)?, row_pins, col_pins)
+});
 
 publishing_command!(ui_delete_matrix(app, state, id: String) -> UiSnapshot<trenino_core::ui::DeviceDetailView>, Topic::Hardware,
-    |services: Arc<AppServices>, id: String| {
-        services.delete_matrix(parse_entity_id("id", &id).map_err(to_app_failure)?)
-    });
+|services: Arc<AppServices>, id: String| {
+    services.delete_matrix(parse_entity_id("id", &id).map_err(to_app_failure)?)
+});
 
-publishing_command!(ui_create_i2c_module(app, state, device_id: String, name: Option<String>, module_chip: String, i2c_address: i32) -> UiSnapshot<trenino_core::ui::DeviceDetailView>, Topic::Hardware,
-    |services: Arc<AppServices>, device_id: String, name: Option<String>, module_chip: String, i2c_address: i32| {
-        let device_id = parse_entity_id("device_id", &device_id).map_err(to_app_failure)?;
-        let params = if module_chip.trim().eq_ignore_ascii_case("ht16k33") {
-            Some(trenino_runtime::storage::Ht16k33Params {
-                brightness: 8,
-                num_digits: 4,
-                display_type: trenino_runtime::storage::DisplayType::SevenSegment,
-                has_dot: false,
-                align_right: false,
-                min_value: None,
-            })
-        } else {
-            None
-        };
-        services.create_i2c_module(device_id, name, &module_chip, i2c_address, params)
-    });
+fn i2c_params(
+    params: Option<trenino_core::ui::Ht16k33ParamsView>,
+    create: bool,
+) -> Result<Option<trenino_runtime::storage::Ht16k33Params>, UiFailure> {
+    use trenino_runtime::storage::{DisplayType, Ht16k33Params};
+    let Some(params) = params else {
+        return Ok(create.then_some(Ht16k33Params {
+            brightness: 8,
+            num_digits: 4,
+            display_type: DisplayType::FourteenSegment,
+            has_dot: false,
+            align_right: true,
+            min_value: Some(0.0),
+        }));
+    };
+    let display_type = match params.display_type.as_str() {
+        "seven_segment" => DisplayType::SevenSegment,
+        "fourteen_segment" => DisplayType::FourteenSegment,
+        _ => {
+            return Err(validation_failure(
+                "params.display_type",
+                "Select seven_segment or fourteen_segment.",
+            ))
+        }
+    };
+    Ok(Some(Ht16k33Params {
+        brightness: params.brightness,
+        num_digits: params.num_digits,
+        display_type,
+        has_dot: params.has_dot,
+        align_right: params.align_right,
+        min_value: params.min_value,
+    }))
+}
 
-publishing_command!(ui_update_i2c_module(app, state, id: String, name: Option<String>, module_chip: String, i2c_address: i32) -> UiSnapshot<trenino_core::ui::DeviceDetailView>, Topic::Hardware,
-    |services: Arc<AppServices>, id: String, name: Option<String>, module_chip: String, i2c_address: i32| {
-        let id = parse_entity_id("id", &id).map_err(to_app_failure)?;
-        let params = if module_chip.trim().eq_ignore_ascii_case("ht16k33") {
-            Some(trenino_runtime::storage::Ht16k33Params {
-                brightness: 8,
-                num_digits: 4,
-                display_type: trenino_runtime::storage::DisplayType::SevenSegment,
-                has_dot: false,
-                align_right: false,
-                min_value: None,
-            })
-        } else {
-            None
-        };
-        services.update_i2c_module(id, name, &module_chip, i2c_address, params)
-    });
+publishing_command!(ui_create_i2c_module(app, state, device_id: String, name: Option<String>, module_chip: String, i2c_address: i32, params: Option<trenino_core::ui::Ht16k33ParamsView>) -> UiSnapshot<trenino_core::ui::DeviceDetailView>, Topic::Hardware,
+|services: Arc<AppServices>, device_id: String, name: Option<String>, module_chip: String, i2c_address: i32, params: Option<trenino_core::ui::Ht16k33ParamsView>| {
+    let device_id = parse_entity_id("device_id", &device_id).map_err(to_app_failure)?;
+    let params = i2c_params(params, true).map_err(to_app_failure)?;
+    services.create_i2c_module(device_id, name, &module_chip, i2c_address, params)
+});
+
+publishing_command!(ui_update_i2c_module(app, state, id: String, name: Option<String>, module_chip: String, i2c_address: i32, params: Option<trenino_core::ui::Ht16k33ParamsView>) -> UiSnapshot<trenino_core::ui::DeviceDetailView>, Topic::Hardware,
+|services: Arc<AppServices>, id: String, name: Option<String>, module_chip: String, i2c_address: i32, params: Option<trenino_core::ui::Ht16k33ParamsView>| {
+    let id = parse_entity_id("id", &id).map_err(to_app_failure)?;
+    let params = i2c_params(params, false).map_err(to_app_failure)?;
+    services.update_i2c_module(id, name, &module_chip, i2c_address, params)
+});
 
 publishing_command!(ui_delete_i2c_module(app, state, id: String) -> UiSnapshot<trenino_core::ui::DeviceDetailView>, Topic::Hardware,
-    |services: Arc<AppServices>, id: String| {
-        services.delete_i2c_module(parse_entity_id("id", &id).map_err(to_app_failure)?)
-    });
+|services: Arc<AppServices>, id: String| {
+    services.delete_i2c_module(parse_entity_id("id", &id).map_err(to_app_failure)?)
+});
 
 // ---- Calibration sessions ----------------------------------------------------
 
@@ -1723,6 +2313,12 @@ async fn ui_start_calibration(
     max_hardware_value: i32,
 ) -> Result<String, UiFailure> {
     let input_id = parse_entity_id("input_id", &input_id)?;
+    let _requested_ceiling = max_hardware_value;
+    let max_hardware_value =
+        trenino_runtime::preview::calibration_ceiling(&state.services()?.database(), input_id)
+            .map_err(|e| {
+                UiFailure::from(unavailable(&format!("Calibration unavailable: {e:?}")))
+            })?;
     let runtime = state.hardware_runtime()?;
     tauri::async_runtime::spawn_blocking(move || {
         runtime.with_handle(|handle| {
@@ -1741,7 +2337,12 @@ async fn ui_start_calibration(
             );
             handle
                 .start_calibration(session)
-                .map(|started| started.lock().map(|session| session.id.0.to_string()).unwrap_or_default())
+                .map(|started| {
+                    started
+                        .lock()
+                        .map(|session| session.id.0.to_string())
+                        .unwrap_or_default()
+                })
                 .map_err(|error| UiFailure {
                     code: "conflict".into(),
                     message: format!("Calibration could not start: {error:?}"),
@@ -1804,12 +2405,14 @@ async fn ui_cancel_calibration(
     let runtime = state.hardware_runtime()?;
     tauri::async_runtime::spawn_blocking(move || {
         runtime.with_handle(|handle| {
-            handle.cancel_calibration(session_id).map_err(|error| UiFailure {
-                code: "conflict".into(),
-                message: format!("Calibration could not be cancelled: {error:?}"),
-                field_errors: Default::default(),
-                retryable: true,
-            })
+            handle
+                .cancel_calibration(session_id)
+                .map_err(|error| UiFailure {
+                    code: "conflict".into(),
+                    message: format!("Calibration could not be cancelled: {error:?}"),
+                    field_errors: Default::default(),
+                    retryable: true,
+                })
         })
     })
     .await
@@ -1819,150 +2422,202 @@ async fn ui_cancel_calibration(
 // ---- Trains ------------------------------------------------------------------
 
 command!(ui_get_train_detail(state, id: String) -> UiSnapshot<trenino_core::ui::TrainDetailView> =
-    |services: Arc<AppServices>, id: String| {
-        services.get_train_detail(parse_entity_id("id", &id).map_err(to_app_failure)?)
-    });
+|services: Arc<AppServices>, id: String| {
+    services.get_train_detail(parse_entity_id("id", &id).map_err(to_app_failure)?)
+});
 
 publishing_command!(ui_create_train(app, state, name: String, description: Option<String>, identifiers: Vec<String>) -> UiSnapshot<trenino_core::ui::TrainDetailView>, Topic::Trains,
     |services: Arc<AppServices>, name: String, description: Option<String>, identifiers: Vec<String>|
     services.create_train_entry(&name, description, identifiers));
 
-publishing_command!(ui_update_train(app, state, id: String, name: Option<String>, description: Option<Option<String>>, identifiers: Option<Vec<String>>) -> UiSnapshot<trenino_core::ui::TrainDetailView>, Topic::Trains,
-    |services: Arc<AppServices>, id: String, name: Option<String>, description: Option<Option<String>>, identifiers: Option<Vec<String>>| {
-        let id = parse_entity_id("id", &id).map_err(to_app_failure)?;
-        services.update_train_entry(id, name, description, identifiers)
-    });
+publishing_command!(ui_update_train(app, state, id: String, name: Option<String>, description: NullableArg<String>, identifiers: Option<Vec<String>>) -> UiSnapshot<trenino_core::ui::TrainDetailView>, Topic::Trains,
+|services: Arc<AppServices>, id: String, name: Option<String>, description: NullableArg<String>, identifiers: Option<Vec<String>>| {
+    let description = description.0;
+    let id = parse_entity_id("id", &id).map_err(to_app_failure)?;
+    services.update_train_entry(id, name, description, identifiers)
+});
 
-publishing_command!(ui_delete_train(app, state, id: String) -> UiSnapshot<Vec<trenino_core::ui::TrainSummaryView>>, Topic::Trains,
-    |services: Arc<AppServices>, id: String| {
-        services.delete_train_entry(parse_entity_id("id", &id).map_err(to_app_failure)?)
-    });
+fn validate_train_deletion(
+    id: trenino_core::EntityId,
+    active: Option<trenino_core::EntityId>,
+) -> Result<(), AppError> {
+    if active == Some(id) {
+        return Err(AppError {
+            code: trenino_core::ErrorCode::Conflict,
+            message: "The active train cannot be deleted. Switch trains first.".into(),
+            field_errors: Default::default(),
+            retryable: true,
+        });
+    }
+    Ok(())
+}
+#[tauri::command(rename_all = "snake_case")]
+async fn ui_delete_train<R: tauri::Runtime>(
+    app: AppHandle<R>,
+    state: State<'_, RustAppState>,
+    id: String,
+) -> Result<UiSnapshot<Vec<trenino_core::ui::TrainSummaryView>>, UiFailure> {
+    let id = parse_entity_id("id", &id)?;
+    let _publication = state.publication.lock().await;
+    let services = state.services()?;
+    let runtime = state.controls.lock()
+        .map_err(|_| UiFailure::from(unavailable("Active train status is unavailable.")))?
+        .as_ref().filter(|runtime|runtime.is_running()).cloned()
+        .ok_or_else(||UiFailure::from(unavailable("Active train status is unavailable. Try again when the control runtime is running.")))?;
+    let outcome = tauri::async_runtime::spawn_blocking(move || {
+        mutation_publication(services, Topic::Trains, |services| {
+            if !runtime.is_running() {
+                return Err(unavailable("The control runtime is shutting down."));
+            }
+            // Read accepted runtime state immediately before mutation; client-side
+            // selection/status is never trusted for this guard.
+            validate_train_deletion(id, runtime.train.snapshot().active_train_id)?;
+            services.delete_train_entry(id)
+        })
+    })
+    .await
+    .map_err(|_| UiFailure::from(AppError::internal("Delete train task failed.")))?
+    .map_err(UiFailure::from)?;
+    if let Some(snapshot) = outcome.canonical {
+        publish_change(&app, Topic::Trains, &snapshot);
+    }
+    Ok(outcome.result)
+}
 
 publishing_command!(ui_create_element(app, state, train_id: String, kind: String, name: String) -> UiSnapshot<trenino_core::ui::TrainDetailView>, Topic::Trains,
-    |services: Arc<AppServices>, train_id: String, kind: String, name: String| {
-        let train_id = parse_entity_id("train_id", &train_id).map_err(to_app_failure)?;
-        services.create_element(train_id, &kind, &name)
-    });
+|services: Arc<AppServices>, train_id: String, kind: String, name: String| {
+    let train_id = parse_entity_id("train_id", &train_id).map_err(to_app_failure)?;
+    services.create_element(train_id, &kind, &name)
+});
 
 publishing_command!(ui_delete_element(app, state, id: String) -> UiSnapshot<trenino_core::ui::TrainDetailView>, Topic::Trains,
-    |services: Arc<AppServices>, id: String| {
-        services.delete_element(parse_entity_id("id", &id).map_err(to_app_failure)?)
-    });
+|services: Arc<AppServices>, id: String| {
+    services.delete_element(parse_entity_id("id", &id).map_err(to_app_failure)?)
+});
 
 publishing_command!(ui_create_lever(app, state, element_id: String, min_endpoint: String, max_endpoint: String, value_endpoint: String, notch_count_endpoint: Option<String>, notch_index_endpoint: Option<String>, lever_type: Option<String>, inverted: bool) -> UiSnapshot<trenino_core::ui::TrainDetailView>, Topic::Trains,
-    |services: Arc<AppServices>, element_id: String, min_endpoint: String, max_endpoint: String, value_endpoint: String, notch_count_endpoint: Option<String>, notch_index_endpoint: Option<String>, lever_type: Option<String>, inverted: bool| {
-        let element_id = parse_entity_id("element_id", &element_id).map_err(to_app_failure)?;
-        services.create_lever(trenino_runtime::app::CreateLeverParams {
-            element_id,
-            min_endpoint,
-            max_endpoint,
-            value_endpoint,
-            notch_count_endpoint,
-            notch_index_endpoint,
-            lever_type,
-            inverted,
-        })
-    });
+|services: Arc<AppServices>, element_id: String, min_endpoint: String, max_endpoint: String, value_endpoint: String, notch_count_endpoint: Option<String>, notch_index_endpoint: Option<String>, lever_type: Option<String>, inverted: bool| {
+    let element_id = parse_entity_id("element_id", &element_id).map_err(to_app_failure)?;
+    services.create_lever(trenino_runtime::app::CreateLeverParams {
+        element_id,
+        min_endpoint,
+        max_endpoint,
+        value_endpoint,
+        notch_count_endpoint,
+        notch_index_endpoint,
+        lever_type,
+        inverted,
+    })
+});
 
-publishing_command!(ui_update_lever(app, state, id: String, min_endpoint: Option<String>, max_endpoint: Option<String>, value_endpoint: Option<String>, notch_count_endpoint: Option<Option<String>>, notch_index_endpoint: Option<Option<String>>, lever_type: Option<Option<String>>, inverted: Option<bool>) -> UiSnapshot<trenino_core::ui::TrainDetailView>, Topic::Trains,
-    |services: Arc<AppServices>, id: String, min_endpoint: Option<String>, max_endpoint: Option<String>, value_endpoint: Option<String>, notch_count_endpoint: Option<Option<String>>, notch_index_endpoint: Option<Option<String>>, lever_type: Option<Option<String>>, inverted: Option<bool>| {
-        let id = parse_entity_id("id", &id).map_err(to_app_failure)?;
-        services.update_lever(trenino_runtime::app::UpdateLeverParams {
-            lever_config_id: id,
-            min_endpoint,
-            max_endpoint,
-            value_endpoint,
-            notch_count_endpoint,
-            notch_index_endpoint,
-            lever_type,
-            inverted,
-        })
-    });
+publishing_command!(ui_update_lever(app, state, id: String, min_endpoint: Option<String>, max_endpoint: Option<String>, value_endpoint: Option<String>, notch_count_endpoint: NullableArg<String>, notch_index_endpoint: NullableArg<String>, lever_type: NullableArg<String>, inverted: Option<bool>) -> UiSnapshot<trenino_core::ui::TrainDetailView>, Topic::Trains,
+|services: Arc<AppServices>, id: String, min_endpoint: Option<String>, max_endpoint: Option<String>, value_endpoint: Option<String>, notch_count_endpoint: NullableArg<String>, notch_index_endpoint: NullableArg<String>, lever_type: NullableArg<String>, inverted: Option<bool>| {
+    let notch_count_endpoint = notch_count_endpoint.0;
+    let notch_index_endpoint = notch_index_endpoint.0;
+    let lever_type = lever_type.0;
+    let id = parse_entity_id("id", &id).map_err(to_app_failure)?;
+    services.update_lever(trenino_runtime::app::UpdateLeverParams {
+        lever_config_id: id,
+        min_endpoint,
+        max_endpoint,
+        value_endpoint,
+        notch_count_endpoint,
+        notch_index_endpoint,
+        lever_type,
+        inverted,
+    })
+});
 
 publishing_command!(ui_create_notch(app, state, lever_config_id: String, notch: NotchInput) -> UiSnapshot<trenino_core::ui::TrainDetailView>, Topic::Trains,
-    |services: Arc<AppServices>, lever_config_id: String, notch: NotchInput| {
-        let lever_config_id = parse_entity_id("lever_config_id", &lever_config_id).map_err(to_app_failure)?;
-        services.create_notch_entry(lever_config_id, notch_draft(notch).map_err(to_app_failure)?)
-    });
+|services: Arc<AppServices>, lever_config_id: String, notch: NotchInput| {
+    let lever_config_id = parse_entity_id("lever_config_id", &lever_config_id).map_err(to_app_failure)?;
+    services.create_notch_entry(lever_config_id, notch_draft(notch).map_err(to_app_failure)?)
+});
 
-publishing_command!(ui_update_notch(app, state, id: String, index: Option<i64>, kind: Option<String>, value: Option<Option<f64>>, min_value: Option<Option<f64>>, max_value: Option<Option<f64>>, input_min: Option<Option<f64>>, input_max: Option<Option<f64>>, sim_input_min: Option<Option<f64>>, sim_input_max: Option<Option<f64>>) -> UiSnapshot<trenino_core::ui::TrainDetailView>, Topic::Trains,
-    |services: Arc<AppServices>, id: String, index: Option<i64>, kind: Option<String>, value: Option<Option<f64>>, min_value: Option<Option<f64>>, max_value: Option<Option<f64>>, input_min: Option<Option<f64>>, input_max: Option<Option<f64>>, sim_input_min: Option<Option<f64>>, sim_input_max: Option<Option<f64>>| {
-        let id = parse_entity_id("id", &id).map_err(to_app_failure)?;
-        let kind = match kind.as_deref() {
-            Some("gate") => Some(trenino_runtime::storage::trains::NotchKind::Gate),
-            Some("linear") => Some(trenino_runtime::storage::trains::NotchKind::Linear),
-            Some(_) => return Err(to_app_failure(validation_failure("kind", "Notch kind must be \"gate\" or \"linear\"."))),
-            None => None,
-        };
-        services.update_notch_entry(id, trenino_runtime::storage::trains::NotchPatch {
-            index, kind, value, min_value, max_value, input_min, input_max, sim_input_min, sim_input_max,
-        })
-    });
+publishing_command!(ui_update_notch(app, state, id: String, index: Option<i64>, kind: Option<String>, value: NullableArg<f64>, min_value: NullableArg<f64>, max_value: NullableArg<f64>, input_min: NullableArg<f64>, input_max: NullableArg<f64>, sim_input_min: NullableArg<f64>, sim_input_max: NullableArg<f64>) -> UiSnapshot<trenino_core::ui::TrainDetailView>, Topic::Trains,
+|services: Arc<AppServices>, id: String, index: Option<i64>, kind: Option<String>, value: NullableArg<f64>, min_value: NullableArg<f64>, max_value: NullableArg<f64>, input_min: NullableArg<f64>, input_max: NullableArg<f64>, sim_input_min: NullableArg<f64>, sim_input_max: NullableArg<f64>| {
+    let value = value.0;
+    let min_value = min_value.0;
+    let max_value = max_value.0;
+    let input_min = input_min.0;
+    let input_max = input_max.0;
+    let sim_input_min = sim_input_min.0;
+    let sim_input_max = sim_input_max.0;
+    let id = parse_entity_id("id", &id).map_err(to_app_failure)?;
+    let kind = match kind.as_deref() {
+        Some("gate") => Some(trenino_runtime::storage::trains::NotchKind::Gate),
+        Some("linear") => Some(trenino_runtime::storage::trains::NotchKind::Linear),
+        Some(_) => return Err(to_app_failure(validation_failure("kind", "Notch kind must be \"gate\" or \"linear\"."))),
+        None => None,
+    };
+    services.update_notch_entry(id, trenino_runtime::storage::trains::NotchPatch {
+        index, kind, value, min_value, max_value, input_min, input_max, sim_input_min, sim_input_max,
+    })
+});
 
 publishing_command!(ui_delete_notch(app, state, id: String) -> UiSnapshot<trenino_core::ui::TrainDetailView>, Topic::Trains,
-    |services: Arc<AppServices>, id: String| {
-        services.delete_notch_entry(parse_entity_id("id", &id).map_err(to_app_failure)?)
-    });
+|services: Arc<AppServices>, id: String| {
+    services.delete_notch_entry(parse_entity_id("id", &id).map_err(to_app_failure)?)
+});
 
 publishing_command!(ui_save_notches(app, state, lever_config_id: String, notches: Vec<NotchInput>) -> UiSnapshot<trenino_core::ui::TrainDetailView>, Topic::Trains,
-    |services: Arc<AppServices>, lever_config_id: String, notches: Vec<NotchInput>| {
-        let lever_config_id = parse_entity_id("lever_config_id", &lever_config_id).map_err(to_app_failure)?;
-        let notches = notches
-            .into_iter()
-            .map(notch_draft)
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(to_app_failure)?;
-        services.save_notches(lever_config_id, notches)
-    });
+|services: Arc<AppServices>, lever_config_id: String, notches: Vec<NotchInput>| {
+    let lever_config_id = parse_entity_id("lever_config_id", &lever_config_id).map_err(to_app_failure)?;
+    let notches = notches
+        .into_iter()
+        .map(notch_draft)
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(to_app_failure)?;
+    services.save_notches(lever_config_id, notches)
+});
 
 publishing_command!(ui_auto_distribute_notches(app, state, lever_config_id: String) -> UiSnapshot<trenino_core::ui::TrainDetailView>, Topic::Trains,
-    |services: Arc<AppServices>, lever_config_id: String| {
-        services.auto_distribute_notches(parse_entity_id("lever_config_id", &lever_config_id).map_err(to_app_failure)?)
-    });
+|services: Arc<AppServices>, lever_config_id: String| {
+    services.auto_distribute_notches(parse_entity_id("lever_config_id", &lever_config_id).map_err(to_app_failure)?)
+});
 
 command!(ui_validate_notches(state, lever_config_id: String) -> UiSnapshot<trenino_core::ui::NotchRangesValidationView> =
-    |services: Arc<AppServices>, lever_config_id: String| {
-        services.validate_notch_ranges(parse_entity_id("lever_config_id", &lever_config_id).map_err(to_app_failure)?)
-    });
+|services: Arc<AppServices>, lever_config_id: String| {
+    services.validate_notch_ranges(parse_entity_id("lever_config_id", &lever_config_id).map_err(to_app_failure)?)
+});
 
 // ---- Sequences ----------------------------------------------------------------
 
 publishing_command!(ui_create_sequence(app, state, train_id: String, name: String) -> UiSnapshot<trenino_core::ui::TrainDetailView>, Topic::Trains,
-    |services: Arc<AppServices>, train_id: String, name: String| {
-        services.create_sequence_entry(parse_entity_id("train_id", &train_id).map_err(to_app_failure)?, &name)
-    });
+|services: Arc<AppServices>, train_id: String, name: String| {
+    services.create_sequence_entry(parse_entity_id("train_id", &train_id).map_err(to_app_failure)?, &name)
+});
 
 publishing_command!(ui_update_sequence(app, state, id: String, name: Option<String>) -> UiSnapshot<trenino_core::ui::TrainDetailView>, Topic::Trains,
-    |services: Arc<AppServices>, id: String, name: Option<String>| {
-        services.update_sequence_entry(parse_entity_id("id", &id).map_err(to_app_failure)?, name)
-    });
+|services: Arc<AppServices>, id: String, name: Option<String>| {
+    services.update_sequence_entry(parse_entity_id("id", &id).map_err(to_app_failure)?, name)
+});
 
 publishing_command!(ui_delete_sequence(app, state, id: String) -> UiSnapshot<trenino_core::ui::TrainDetailView>, Topic::Trains,
-    |services: Arc<AppServices>, id: String| {
-        services.delete_sequence_entry(parse_entity_id("id", &id).map_err(to_app_failure)?)
-    });
+|services: Arc<AppServices>, id: String| {
+    services.delete_sequence_entry(parse_entity_id("id", &id).map_err(to_app_failure)?)
+});
 
 publishing_command!(ui_set_sequence_commands(app, state, sequence_id: String, commands: Vec<SequenceCommandInput>) -> UiSnapshot<trenino_core::ui::TrainDetailView>, Topic::Trains,
-    |services: Arc<AppServices>, sequence_id: String, commands: Vec<SequenceCommandInput>| {
-        let sequence_id = parse_entity_id("sequence_id", &sequence_id).map_err(to_app_failure)?;
-        services.set_sequence_commands_entry(sequence_id, command_input(commands))
-    });
+|services: Arc<AppServices>, sequence_id: String, commands: Vec<SequenceCommandInput>| {
+    let sequence_id = parse_entity_id("sequence_id", &sequence_id).map_err(to_app_failure)?;
+    services.set_sequence_commands_entry(sequence_id, command_input(commands))
+});
 
 publishing_command!(ui_add_sequence_command(app, state, sequence_id: String, command: SequenceCommandInput) -> UiSnapshot<trenino_core::ui::TrainDetailView>, Topic::Trains,
-    |services: Arc<AppServices>, sequence_id: String, command: SequenceCommandInput| {
-        let sequence_id = parse_entity_id("sequence_id", &sequence_id).map_err(to_app_failure)?;
-        services.add_sequence_command_entry(sequence_id, command_draft(command))
-    });
+|services: Arc<AppServices>, sequence_id: String, command: SequenceCommandInput| {
+    let sequence_id = parse_entity_id("sequence_id", &sequence_id).map_err(to_app_failure)?;
+    services.add_sequence_command_entry(sequence_id, command_draft(command))
+});
 
 publishing_command!(ui_delete_sequence_command(app, state, command_id: String) -> UiSnapshot<trenino_core::ui::TrainDetailView>, Topic::Trains,
-    |services: Arc<AppServices>, command_id: String| {
-        services.delete_sequence_command_entry(parse_entity_id("command_id", &command_id).map_err(to_app_failure)?)
-    });
+|services: Arc<AppServices>, command_id: String| {
+    services.delete_sequence_command_entry(parse_entity_id("command_id", &command_id).map_err(to_app_failure)?)
+});
 
-/// Runs the stored commands against the connected simulator in order
-/// (`sequence_manager_component.test_sequence`): each write targets
-/// `SimulatorClient.set`, skipping silently when the simulator is unreachable,
-/// and sleeps `delay_ms` between commands.
+/// Runs a stored sequence through the accepted connection's owned session host.
+/// Completion is acknowledged only after every command succeeds; replacement,
+/// cancellation and shutdown stop the owned run before later commands execute.
 #[tauri::command(rename_all = "snake_case")]
 async fn ui_test_sequence(
     state: State<'_, RustAppState>,
@@ -1970,80 +2625,96 @@ async fn ui_test_sequence(
 ) -> Result<bool, UiFailure> {
     let sequence_id = parse_entity_id("sequence_id", &sequence_id)?;
     let services = state.services()?;
-    let (commands, url, key) = tauri::async_runtime::spawn_blocking(move || {
-        let commands = services.database_op(|db| {
-            let mut found = None;
-            for train in db.list_trains().map_err(|_| AppError::internal("train list failed"))? {
-                for sequence in db.list_sequences(train.id).map_err(|_| AppError::internal("sequence list failed"))? {
-                    if sequence.id == sequence_id {
-                        found = Some(
-                            db.sequence_commands(sequence.id)
-                                .map_err(|_| AppError::internal("sequence commands failed"))?,
-                        );
-                    }
-                }
+    let sessions = state
+        .controls
+        .lock()
+        .map_err(|_| UiFailure::from(unavailable("The control runtime is unavailable.")))?
+        .as_ref()
+        .filter(|runtime| runtime.is_running())
+        .map(|runtime| runtime.sessions.clone())
+        .ok_or_else(|| UiFailure::from(unavailable("The control runtime is not running.")))?;
+    let commands = tauri::async_runtime::spawn_blocking(move || {
+        services.database_op(|db| {
+            if db
+                .get_sequence(sequence_id)
+                .map_err(|_| AppError::internal("sequence read failed"))?
+                .is_none()
+            {
+                return Err(AppError {
+                    code: trenino_core::ErrorCode::NotFound,
+                    message: "The requested sequence was not found.".into(),
+                    field_errors: Default::default(),
+                    retryable: false,
+                });
             }
-            found.ok_or_else(|| AppError {
-                code: trenino_core::ErrorCode::NotFound,
-                message: "The requested sequence was not found.".into(),
-                field_errors: Default::default(),
-                retryable: false,
-            })
-        })?;
-        let url = services
-            .database_op(|db| {
-                db.get("simulator_url").map_err(|_| AppError::internal("settings read failed"))
-            })?
-            .unwrap_or_else(|| "http://localhost:31270".into());
-        let key = services.simulator_api_key()?;
-        Ok::<_, AppError>((commands, url, key))
+            db.sequence_commands(sequence_id)
+                .map_err(|_| AppError::internal("sequence commands failed"))?
+                .into_iter()
+                .map(|command| {
+                    Ok(trenino_core::train::buttons::SequenceCommand {
+                        endpoint: command.endpoint,
+                        value: command.value,
+                        position: command
+                            .position
+                            .try_into()
+                            .map_err(|_| AppError::internal("invalid sequence position"))?,
+                        delay_ms: command
+                            .delay_ms
+                            .try_into()
+                            .map_err(|_| AppError::internal("invalid sequence delay"))?,
+                    })
+                })
+                .collect::<Result<Vec<_>, AppError>>()
+        })
     })
     .await
     .map_err(|_| UiFailure::from(AppError::internal("sequence task failed")))?
     .map_err(UiFailure::from)?;
-    if commands.is_empty() {
-        return Err(UiFailure {
-            code: "validation".into(),
-            message: "The sequence has no commands to test.".into(),
-            field_errors: Default::default(),
-            retryable: false,
-        });
-    }
-    let client = match trenino_runtime::simulator::client::SimulatorClient::new(
-        &url,
-        &key.unwrap_or_default(),
-    ) {
-        Ok(client) => client,
-        Err(_) => return Ok(false),
+    sessions
+        .run_manual_sequence(commands)
+        .await
+        .map_err(sequence_session_failure)
+}
+fn sequence_session_failure(
+    error: trenino_runtime::composition::sessions::SessionError,
+) -> UiFailure {
+    use trenino_runtime::composition::sessions::SessionError;
+    let (code, retryable) = match &error {
+        SessionError::InvalidInput(_) => ("validation", false),
+        SessionError::Busy => ("conflict", true),
+        SessionError::NotFound => ("not_found", false),
+        SessionError::Cancelled => ("cancelled", true),
+        SessionError::Deadline => ("unavailable", true),
+        SessionError::Offline
+        | SessionError::Closed
+        | SessionError::CleanupFailed(_)
+        | SessionError::Simulator(_) => ("unavailable", true),
     };
-    for command in commands {
-        let _ = client
-            .set(&command.endpoint, &serde_json::json!(command.value))
-            .await;
-        if command.delay_ms > 0 {
-            tokio::time::sleep(std::time::Duration::from_millis(command.delay_ms.max(0) as u64)).await;
-        }
+    UiFailure {
+        code: code.into(),
+        message: error.to_string(),
+        field_errors: Default::default(),
+        retryable,
     }
-    Ok(true)
 }
 
 // ---- Scripts ------------------------------------------------------------------
 
 publishing_command!(ui_create_script(app, state, train_id: String, name: String, code: String, triggers: Vec<String>) -> UiSnapshot<trenino_core::ui::ScriptsView>, Topic::Scripts,
-    |services: Arc<AppServices>, train_id: String, name: String, code: String, triggers: Vec<String>| {
-        services.create_script_entry(parse_entity_id("train_id", &train_id).map_err(to_app_failure)?, &name, &code, triggers)
-    });
+|services: Arc<AppServices>, train_id: String, name: String, code: String, triggers: Vec<String>| {
+    services.create_script_entry(parse_entity_id("train_id", &train_id).map_err(to_app_failure)?, &name, &code, triggers)
+});
 
 publishing_command!(ui_update_script(app, state, id: String, name: Option<String>, code: Option<String>, triggers: Option<Vec<String>>, enabled: Option<bool>) -> UiSnapshot<trenino_core::ui::ScriptsView>, Topic::Scripts,
-    |services: Arc<AppServices>, id: String, name: Option<String>, code: Option<String>, triggers: Option<Vec<String>>, enabled: Option<bool>| {
-        let id = parse_entity_id("id", &id).map_err(to_app_failure)?;
-        services.update_script_entry(id, trenino_runtime::storage::scripts::ScriptPatch { name, code, triggers, enabled })
-    });
+|services: Arc<AppServices>, id: String, name: Option<String>, code: Option<String>, triggers: Option<Vec<String>>, enabled: Option<bool>| {
+    let id = parse_entity_id("id", &id).map_err(to_app_failure)?;
+    services.update_script_entry(id, trenino_runtime::storage::scripts::ScriptPatch { name, code, triggers, enabled })
+});
 
 publishing_command!(ui_delete_script(app, state, id: String) -> UiSnapshot<trenino_core::ui::ScriptsView>, Topic::Scripts,
-    |services: Arc<AppServices>, id: String| {
-        services.delete_script_entry(parse_entity_id("id", &id).map_err(to_app_failure)?)
-    });
+|services: Arc<AppServices>, id: String| {
+    services.delete_script_entry(parse_entity_id("id", &id).map_err(to_app_failure)?)
+});
 
 publishing_command!(ui_reload_scripts(app, state) -> UiSnapshot<trenino_core::ui::ScriptsView>, Topic::Scripts,
     |services: Arc<AppServices>| services.reload_scripts());
@@ -2051,45 +2722,57 @@ publishing_command!(ui_reload_scripts(app, state) -> UiSnapshot<trenino_core::ui
 // ---- Bindings ----------------------------------------------------------------
 
 publishing_command!(ui_bind_lever(app, state, lever_config_id: String, input_id: String, replace: bool) -> UiSnapshot<trenino_core::ui::BindingsView>, Topic::Bindings,
-    |services: Arc<AppServices>, lever_config_id: String, input_id: String, replace: bool| {
-        services.bind_lever(
-            parse_entity_id("lever_config_id", &lever_config_id).map_err(to_app_failure)?,
-            parse_entity_id("input_id", &input_id).map_err(to_app_failure)?,
-            replace,
-        )
-    });
+|services: Arc<AppServices>, lever_config_id: String, input_id: String, replace: bool| {
+    services.bind_lever(
+        parse_entity_id("lever_config_id", &lever_config_id).map_err(to_app_failure)?,
+        parse_entity_id("input_id", &input_id).map_err(to_app_failure)?,
+        replace,
+    )
+});
 
 publishing_command!(ui_unbind_lever(app, state, lever_config_id: String) -> UiSnapshot<trenino_core::ui::BindingsView>, Topic::Bindings,
-    |services: Arc<AppServices>, lever_config_id: String| {
-        services.unbind_lever(parse_entity_id("lever_config_id", &lever_config_id).map_err(to_app_failure)?)
-    });
+|services: Arc<AppServices>, lever_config_id: String| {
+    services.unbind_lever(parse_entity_id("lever_config_id", &lever_config_id).map_err(to_app_failure)?)
+});
 
 publishing_command!(ui_set_lever_binding_enabled(app, state, lever_config_id: String, enabled: bool) -> UiSnapshot<trenino_core::ui::BindingsView>, Topic::Bindings,
-    |services: Arc<AppServices>, lever_config_id: String, enabled: bool| {
-        services.set_lever_binding_enabled_entry(parse_entity_id("lever_config_id", &lever_config_id).map_err(to_app_failure)?, enabled)
-    });
+|services: Arc<AppServices>, lever_config_id: String, enabled: bool| {
+    services.set_lever_binding_enabled_entry(parse_entity_id("lever_config_id", &lever_config_id).map_err(to_app_failure)?, enabled)
+});
 
-fn parse_button_mode(value: &str) -> Result<trenino_runtime::storage::bindings::ButtonMode, UiFailure> {
+fn parse_button_mode(
+    value: &str,
+) -> Result<trenino_runtime::storage::bindings::ButtonMode, UiFailure> {
     use trenino_runtime::storage::bindings::ButtonMode;
     match value {
         "simple" => Ok(ButtonMode::Simple),
         "momentary" => Ok(ButtonMode::Momentary),
         "sequence" => Ok(ButtonMode::Sequence),
         "keystroke" => Ok(ButtonMode::Keystroke),
-        _ => Err(validation_failure("mode", "Button mode must be simple, momentary, sequence or keystroke.")),
+        _ => Err(validation_failure(
+            "mode",
+            "Button mode must be simple, momentary, sequence or keystroke.",
+        )),
     }
 }
 
-fn parse_hardware_type(value: &str) -> Result<trenino_runtime::storage::bindings::ButtonHardwareType, UiFailure> {
+fn parse_hardware_type(
+    value: &str,
+) -> Result<trenino_runtime::storage::bindings::ButtonHardwareType, UiFailure> {
     use trenino_runtime::storage::bindings::ButtonHardwareType;
     match value {
         "momentary" => Ok(ButtonHardwareType::Momentary),
         "latching" => Ok(ButtonHardwareType::Latching),
-        _ => Err(validation_failure("hardware_type", "Hardware type must be momentary or latching.")),
+        _ => Err(validation_failure(
+            "hardware_type",
+            "Hardware type must be momentary or latching.",
+        )),
     }
 }
 
-fn parse_binding_operator(value: &str) -> Result<trenino_runtime::storage::bindings::OutputBindingOperator, UiFailure> {
+fn parse_binding_operator(
+    value: &str,
+) -> Result<trenino_runtime::storage::bindings::OutputBindingOperator, UiFailure> {
     use trenino_runtime::storage::bindings::OutputBindingOperator;
     match value {
         "gt" => Ok(OutputBindingOperator::Gt),
@@ -2099,7 +2782,10 @@ fn parse_binding_operator(value: &str) -> Result<trenino_runtime::storage::bindi
         "between" => Ok(OutputBindingOperator::Between),
         "eq_true" => Ok(OutputBindingOperator::EqTrue),
         "eq_false" => Ok(OutputBindingOperator::EqFalse),
-        _ => Err(validation_failure("operator", "Enter a supported comparison operator.")),
+        _ => Err(validation_failure(
+            "operator",
+            "Enter a supported comparison operator.",
+        )),
     }
 }
 
@@ -2112,84 +2798,102 @@ fn to_app_failure(failure: UiFailure) -> AppError {
         "unavailable" => trenino_core::ErrorCode::Unavailable,
         _ => trenino_core::ErrorCode::Internal,
     };
-    AppError { code, message: failure.message, field_errors: failure.field_errors, retryable: failure.retryable }
+    AppError {
+        code,
+        message: failure.message,
+        field_errors: failure.field_errors,
+        retryable: failure.retryable,
+    }
 }
 
-publishing_command!(ui_put_button_binding(app, state, element_id: String, input_id: String, endpoint: Option<String>, on_value: Option<f64>, off_value: Option<f64>, enabled: Option<bool>, mode: Option<String>, hardware_type: Option<String>, repeat_interval_ms: Option<i64>, keystroke: Option<String>, on_sequence_id: Option<String>, off_sequence_id: Option<String>, replace: bool) -> UiSnapshot<trenino_core::ui::BindingsView>, Topic::Bindings,
-    |services: Arc<AppServices>, element_id: String, input_id: String, endpoint: Option<String>, on_value: Option<f64>, off_value: Option<f64>, enabled: Option<bool>, mode: Option<String>, hardware_type: Option<String>, repeat_interval_ms: Option<i64>, keystroke: Option<String>, on_sequence_id: Option<String>, off_sequence_id: Option<String>, replace: bool| {
-        let element_id = parse_entity_id("element_id", &element_id).map_err(to_app_failure)?;
-        let input_id = parse_entity_id("input_id", &input_id).map_err(to_app_failure)?;
-        let mode = mode.map(|value| parse_button_mode(&value)).transpose().map_err(to_app_failure)?;
-        let hardware_type = hardware_type.map(|value| parse_hardware_type(&value)).transpose().map_err(to_app_failure)?;
-        let on_sequence_id = on_sequence_id.map(|value| parse_entity_id("on_sequence_id", &value)).transpose().map_err(to_app_failure)?;
-        let off_sequence_id = off_sequence_id.map(|value| parse_entity_id("off_sequence_id", &value)).transpose().map_err(to_app_failure)?;
-        services.put_button_binding(element_id, input_id, trenino_runtime::storage::bindings::ButtonBindingDraft {
-            endpoint, on_value, off_value, enabled, mode, hardware_type, repeat_interval_ms, keystroke, on_sequence_id, off_sequence_id,
-        }, replace)
-    });
+publishing_command!(ui_put_button_binding(app, state, element_id: String, input_id: String, endpoint: NullableArg<String>, on_value: Option<f64>, off_value: Option<f64>, enabled: Option<bool>, mode: Option<String>, hardware_type: Option<String>, repeat_interval_ms: Option<i64>, keystroke: NullableArg<String>, on_sequence_id: NullableArg<String>, off_sequence_id: NullableArg<String>, replace: bool) -> UiSnapshot<trenino_core::ui::BindingsView>, Topic::Bindings,
+|services: Arc<AppServices>, element_id: String, input_id: String, endpoint: NullableArg<String>, on_value: Option<f64>, off_value: Option<f64>, enabled: Option<bool>, mode: Option<String>, hardware_type: Option<String>, repeat_interval_ms: Option<i64>, keystroke: NullableArg<String>, on_sequence_id: NullableArg<String>, off_sequence_id: NullableArg<String>, replace: bool| {
+    let endpoint = endpoint.0;
+    let keystroke = keystroke.0;
+    let on_sequence_id = on_sequence_id.0;
+    let off_sequence_id = off_sequence_id.0;
+    let element_id = parse_entity_id("element_id", &element_id).map_err(to_app_failure)?;
+    let input_id = parse_entity_id("input_id", &input_id).map_err(to_app_failure)?;
+    let mode = mode.map(|value| parse_button_mode(&value)).transpose().map_err(to_app_failure)?;
+    let hardware_type = hardware_type.map(|value| parse_hardware_type(&value)).transpose().map_err(to_app_failure)?;
+    let on_sequence_id = on_sequence_id.map(|value| value.map(|value| parse_entity_id("on_sequence_id", &value)).transpose()).transpose().map_err(to_app_failure)?;
+    let off_sequence_id = off_sequence_id.map(|value| value.map(|value| parse_entity_id("off_sequence_id", &value)).transpose()).transpose().map_err(to_app_failure)?;
+    services.put_button_binding_patch(element_id, input_id, trenino_runtime::storage::bindings::ButtonBindingPatch {
+        input_id: Some(input_id),
+        endpoint, on_value, off_value, enabled, mode, hardware_type, repeat_interval_ms, keystroke, on_sequence_id, off_sequence_id,
+    }, replace)
+});
 
 publishing_command!(ui_delete_button_binding(app, state, element_id: String) -> UiSnapshot<trenino_core::ui::BindingsView>, Topic::Bindings,
-    |services: Arc<AppServices>, element_id: String| {
-        services.delete_button_binding_entry(parse_entity_id("element_id", &element_id).map_err(to_app_failure)?)
-    });
+|services: Arc<AppServices>, element_id: String| {
+    services.delete_button_binding_entry(parse_entity_id("element_id", &element_id).map_err(to_app_failure)?)
+});
 
-fn parse_output_type(value: &str) -> Result<trenino_runtime::storage::bindings::OutputType, UiFailure> {
+fn parse_output_type(
+    value: &str,
+) -> Result<trenino_runtime::storage::bindings::OutputType, UiFailure> {
     use trenino_runtime::storage::bindings::OutputType;
     match value {
         "led" => Ok(OutputType::Led),
-        other => Err(validation_failure("output_type", "Output type must be a supported output kind.")).and_then(|_: OutputType| unreachable!("{other}")),
+        _ => Err(validation_failure(
+            "output_type",
+            "Output type must be a supported output kind.",
+        )),
     }
 }
 
 publishing_command!(ui_create_output_binding(app, state, train_id: String, name: String, output_type: String, output_id: String, endpoint: String, operator: String, value_a: Option<f64>, value_b: Option<f64>, enabled: Option<bool>) -> UiSnapshot<trenino_core::ui::BindingsView>, Topic::Bindings,
-    |services: Arc<AppServices>, train_id: String, name: String, output_type: String, output_id: String, endpoint: String, operator: String, value_a: Option<f64>, value_b: Option<f64>, enabled: Option<bool>| {
-        let train_id = parse_entity_id("train_id", &train_id).map_err(to_app_failure)?;
-        let output_id = parse_entity_id("output_id", &output_id).map_err(to_app_failure)?;
-        let output_type = parse_output_type(&output_type).map_err(to_app_failure)?;
-        let operator = parse_binding_operator(&operator).map_err(to_app_failure)?;
-        services.create_output_binding_entry(train_id, trenino_runtime::storage::bindings::OutputBindingDraft {
-            name, output_type: Some(output_type), output_id, endpoint, operator, value_a, value_b, enabled,
-        })
-    });
+|services: Arc<AppServices>, train_id: String, name: String, output_type: String, output_id: String, endpoint: String, operator: String, value_a: Option<f64>, value_b: Option<f64>, enabled: Option<bool>| {
+    let train_id = parse_entity_id("train_id", &train_id).map_err(to_app_failure)?;
+    let output_id = parse_entity_id("output_id", &output_id).map_err(to_app_failure)?;
+    let output_type = parse_output_type(&output_type).map_err(to_app_failure)?;
+    let operator = parse_binding_operator(&operator).map_err(to_app_failure)?;
+    services.create_output_binding_entry(train_id, trenino_runtime::storage::bindings::OutputBindingDraft {
+        name, output_type: Some(output_type), output_id, endpoint, operator, value_a, value_b, enabled,
+    })
+});
 
-publishing_command!(ui_update_output_binding(app, state, id: String, name: Option<String>, output_type: Option<String>, output_id: Option<String>, endpoint: Option<String>, operator: Option<String>, value_a: Option<Option<f64>>, value_b: Option<Option<f64>>, enabled: Option<bool>) -> UiSnapshot<trenino_core::ui::BindingsView>, Topic::Bindings,
-    |services: Arc<AppServices>, id: String, name: Option<String>, output_type: Option<String>, output_id: Option<String>, endpoint: Option<String>, operator: Option<String>, value_a: Option<Option<f64>>, value_b: Option<Option<f64>>, enabled: Option<bool>| {
-        let id = parse_entity_id("id", &id).map_err(to_app_failure)?;
-        let output_type = output_type.map(|value| parse_output_type(&value)).transpose().map_err(to_app_failure)?;
-        let operator = operator.map(|value| parse_binding_operator(&value)).transpose().map_err(to_app_failure)?;
-        let output_id = output_id.map(|value| parse_entity_id("output_id", &value)).transpose().map_err(to_app_failure)?;
-        services.update_output_binding_entry(id, trenino_runtime::storage::bindings::OutputBindingPatch {
-            name, output_type, output_id, endpoint, operator, value_a, value_b, enabled,
-        })
-    });
+publishing_command!(ui_update_output_binding(app, state, id: String, name: Option<String>, output_type: Option<String>, output_id: Option<String>, endpoint: Option<String>, operator: Option<String>, value_a: NullableArg<f64>, value_b: NullableArg<f64>, enabled: Option<bool>) -> UiSnapshot<trenino_core::ui::BindingsView>, Topic::Bindings,
+|services: Arc<AppServices>, id: String, name: Option<String>, output_type: Option<String>, output_id: Option<String>, endpoint: Option<String>, operator: Option<String>, value_a: NullableArg<f64>, value_b: NullableArg<f64>, enabled: Option<bool>| {
+    let value_a = value_a.0;
+    let value_b = value_b.0;
+    let id = parse_entity_id("id", &id).map_err(to_app_failure)?;
+    let output_type = output_type.map(|value| parse_output_type(&value)).transpose().map_err(to_app_failure)?;
+    let operator = operator.map(|value| parse_binding_operator(&value)).transpose().map_err(to_app_failure)?;
+    let output_id = output_id.map(|value| parse_entity_id("output_id", &value)).transpose().map_err(to_app_failure)?;
+    services.update_output_binding_entry(id, trenino_runtime::storage::bindings::OutputBindingPatch {
+        name, output_type, output_id, endpoint, operator, value_a, value_b, enabled,
+    })
+});
 
 publishing_command!(ui_delete_output_binding(app, state, id: String) -> UiSnapshot<trenino_core::ui::BindingsView>, Topic::Bindings,
-    |services: Arc<AppServices>, id: String| {
-        services.delete_output_binding_entry(parse_entity_id("id", &id).map_err(to_app_failure)?)
-    });
+|services: Arc<AppServices>, id: String| {
+    services.delete_output_binding_entry(parse_entity_id("id", &id).map_err(to_app_failure)?)
+});
 
 publishing_command!(ui_create_display_binding(app, state, train_id: String, i2c_module_id: String, name: Option<String>, endpoint: String, format_string: Option<String>, enabled: Option<bool>) -> UiSnapshot<trenino_core::ui::BindingsView>, Topic::Bindings,
-    |services: Arc<AppServices>, train_id: String, i2c_module_id: String, name: Option<String>, endpoint: String, format_string: Option<String>, enabled: Option<bool>| {
-        let train_id = parse_entity_id("train_id", &train_id).map_err(to_app_failure)?;
-        let i2c_module_id = parse_entity_id("i2c_module_id", &i2c_module_id).map_err(to_app_failure)?;
-        services.create_display_binding_entry(train_id, trenino_runtime::storage::bindings::DisplayBindingDraft {
-            i2c_module_id, name, endpoint, format_string, enabled,
-        })
-    });
+|services: Arc<AppServices>, train_id: String, i2c_module_id: String, name: Option<String>, endpoint: String, format_string: Option<String>, enabled: Option<bool>| {
+    let train_id = parse_entity_id("train_id", &train_id).map_err(to_app_failure)?;
+    let i2c_module_id = parse_entity_id("i2c_module_id", &i2c_module_id).map_err(to_app_failure)?;
+    services.create_display_binding_entry(train_id, trenino_runtime::storage::bindings::DisplayBindingDraft {
+        i2c_module_id, name, endpoint, format_string, enabled,
+    })
+});
 
-publishing_command!(ui_update_display_binding(app, state, id: String, i2c_module_id: Option<String>, name: Option<Option<String>>, endpoint: Option<String>, format_string: Option<String>, enabled: Option<bool>) -> UiSnapshot<trenino_core::ui::BindingsView>, Topic::Bindings,
-    |services: Arc<AppServices>, id: String, i2c_module_id: Option<String>, name: Option<Option<String>>, endpoint: Option<String>, format_string: Option<String>, enabled: Option<bool>| {
-        let id = parse_entity_id("id", &id).map_err(to_app_failure)?;
-        let i2c_module_id = i2c_module_id.map(|value| parse_entity_id("i2c_module_id", &value)).transpose().map_err(to_app_failure)?;
-        services.update_display_binding_entry(id, trenino_runtime::storage::bindings::DisplayBindingPatch {
-            i2c_module_id, name, endpoint, format_string, enabled,
-        })
-    });
+publishing_command!(ui_update_display_binding(app, state, id: String, i2c_module_id: Option<String>, name: NullableArg<String>, endpoint: Option<String>, format_string: Option<String>, enabled: Option<bool>) -> UiSnapshot<trenino_core::ui::BindingsView>, Topic::Bindings,
+|services: Arc<AppServices>, id: String, i2c_module_id: Option<String>, name: NullableArg<String>, endpoint: Option<String>, format_string: Option<String>, enabled: Option<bool>| {
+    let name = name.0;
+    let id = parse_entity_id("id", &id).map_err(to_app_failure)?;
+    let i2c_module_id = i2c_module_id.map(|value| parse_entity_id("i2c_module_id", &value)).transpose().map_err(to_app_failure)?;
+    services.update_display_binding_entry(id, trenino_runtime::storage::bindings::DisplayBindingPatch {
+        i2c_module_id, name, endpoint, format_string, enabled,
+    })
+});
 
 publishing_command!(ui_delete_display_binding(app, state, id: String) -> UiSnapshot<trenino_core::ui::BindingsView>, Topic::Bindings,
-    |services: Arc<AppServices>, id: String| {
-        services.delete_display_binding_entry(parse_entity_id("id", &id).map_err(to_app_failure)?)
-    });
+|services: Arc<AppServices>, id: String| {
+    services.delete_display_binding_entry(parse_entity_id("id", &id).map_err(to_app_failure)?)
+});
 
 // ---- Virtual joystick ----------------------------------------------------------
 
@@ -2204,10 +2908,11 @@ async fn ui_vjoy_enable(
     let _publication = state.publication.lock().await;
     state.vjoy_manager()?.enable().map_err(vjoy_failure)?;
     let services = state.services()?;
-    let snapshot = tauri::async_runtime::spawn_blocking(move || services.confirm_vjoy_enabled(true))
-        .await
-        .map_err(|_| UiFailure::from(AppError::internal("vjoy task failed")))?
-        .map_err(UiFailure::from)?;
+    let snapshot =
+        tauri::async_runtime::spawn_blocking(move || services.confirm_vjoy_enabled(true))
+            .await
+            .map_err(|_| UiFailure::from(AppError::internal("vjoy task failed")))?
+            .map_err(UiFailure::from)?;
     publish_change(&app, Topic::Vjoy, &snapshot);
     Ok(snapshot)
 }
@@ -2220,10 +2925,11 @@ async fn ui_vjoy_disable(
     let _publication = state.publication.lock().await;
     state.vjoy_manager()?.disable().map_err(vjoy_failure)?;
     let services = state.services()?;
-    let snapshot = tauri::async_runtime::spawn_blocking(move || services.confirm_vjoy_enabled(false))
-        .await
-        .map_err(|_| UiFailure::from(AppError::internal("vjoy task failed")))?
-        .map_err(UiFailure::from)?;
+    let snapshot =
+        tauri::async_runtime::spawn_blocking(move || services.confirm_vjoy_enabled(false))
+            .await
+            .map_err(|_| UiFailure::from(AppError::internal("vjoy task failed")))?
+            .map_err(UiFailure::from)?;
     publish_change(&app, Topic::Vjoy, &snapshot);
     Ok(snapshot)
 }
@@ -2232,18 +2938,21 @@ publishing_command!(ui_set_vjoy_selection(app, state, devices: Vec<u8>) -> UiSna
     |services: Arc<AppServices>, devices: Vec<u8>| services.set_vjoy_selection(devices));
 
 publishing_command!(ui_put_vjoy_mapping(app, state, input_id: String, device_index: u8, target: String, inverted: bool, replace: bool) -> UiSnapshot<trenino_core::ui::VjoyView>, Topic::Vjoy,
-    |services: Arc<AppServices>, input_id: String, device_index: u8, target: String, inverted: bool, replace: bool| {
-        let input_id = parse_entity_id("input_id", &input_id).map_err(to_app_failure)?;
-        let target = parse_vjoy_target(&target).map_err(to_app_failure)?;
-        services.put_vjoy_mapping_entry(input_id, trenino_runtime::vjoy::store::MappingDraft { device_index, target, inverted }, replace)
-    });
+|services: Arc<AppServices>, input_id: String, device_index: u8, target: String, inverted: bool, replace: bool| {
+    let input_id = parse_entity_id("input_id", &input_id).map_err(to_app_failure)?;
+    let target = parse_vjoy_target(&target).map_err(to_app_failure)?;
+    services.put_vjoy_mapping_entry(input_id, trenino_runtime::vjoy::store::MappingDraft { device_index, target, inverted }, replace)
+});
 
 fn parse_vjoy_target(value: &str) -> Result<trenino_runtime::vjoy::store::Target, UiFailure> {
     use trenino_runtime::vjoy::store::{Target, VjoyAxis};
     if let Some(axis) = value.strip_prefix("axis/") {
-        return VjoyAxis::parse(axis)
-            .map(Target::Axis)
-            .ok_or_else(|| validation_failure("target", "Axis must be one of x, y, z, rx, ry, rz, slider_1, slider_2."));
+        return VjoyAxis::parse(axis).map(Target::Axis).ok_or_else(|| {
+            validation_failure(
+                "target",
+                "Axis must be one of x, y, z, rx, ry, rz, slider_1, slider_2.",
+            )
+        });
     }
     if let Some(button) = value.strip_prefix("button/") {
         let button = button
@@ -2254,54 +2963,39 @@ fn parse_vjoy_target(value: &str) -> Result<trenino_runtime::vjoy::store::Target
             .ok_or_else(|| validation_failure("target", "Button index is out of range."))?;
         return Ok(Target::Button(button));
     }
-    Err(validation_failure("target", "Target must be axis/<name> or button/<index>."))
+    Err(validation_failure(
+        "target",
+        "Target must be axis/<name> or button/<index>.",
+    ))
 }
 
 publishing_command!(ui_delete_vjoy_mapping(app, state, id: String) -> UiSnapshot<trenino_core::ui::VjoyView>, Topic::Vjoy,
-    |services: Arc<AppServices>, id: String| {
-        services.delete_vjoy_mapping_entry(parse_entity_id("id", &id).map_err(to_app_failure)?)
-    });
+|services: Arc<AppServices>, id: String| {
+    services.delete_vjoy_mapping_entry(parse_entity_id("id", &id).map_err(to_app_failure)?)
+});
 
 // ---- Firmware ------------------------------------------------------------------
 
 /// Checks the firmware catalog upstream and refreshes the persisted catalog
 /// (`Firmware.Live mount` / `UpdateChecker`), then records the check.
 #[tauri::command(rename_all = "snake_case")]
-async fn ui_check_firmware_updates(
-    app: AppHandle,
+async fn ui_check_firmware_updates<R: tauri::Runtime>(
+    app: AppHandle<R>,
     state: State<'_, RustAppState>,
 ) -> Result<UiSnapshot<trenino_core::ui::FirmwareView>, UiFailure> {
+    runtime_firmware::owner(&state)?
+        .check()
+        .await
+        .map_err(runtime_firmware::failure)?;
     let _publication = state.publication.lock().await;
-    let db = state.services()?.database();
-    let catalog = firmware_catalog(&db)?;
-    catalog.refresh().await.map_err(catalog_failure)?;
-    let found_updates = catalog
-        .latest_compatible()
-        .map_err(catalog_failure)?
-        .map(|release| release.version);
-    let checked_at_ms = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|duration| duration.as_millis() as u64)
-        .unwrap_or(0);
     let services = state.services()?;
-    let snapshot = tauri::async_runtime::spawn_blocking(move || {
-        services.record_firmware_update_check(
-            trenino_runtime::storage::firmware_records::UpdateCheckDraft {
-                checked_at: format_checked_at((checked_at_ms / 1000) as i64),
-                found_updates: found_updates.is_some(),
-                latest_version: found_updates,
-                error_message: None,
-            },
-        )
-    })
-    .await
-    .map_err(|_| UiFailure::from(AppError::internal("firmware task failed")))?
-    .map_err(UiFailure::from)?;
+    let snapshot = tauri::async_runtime::spawn_blocking(move || services.get_firmware_snapshot())
+        .await
+        .map_err(|_| UiFailure::from(AppError::internal("firmware task failed")))?
+        .map_err(UiFailure::from)?;
     publish_change(&app, Topic::Firmware, &snapshot);
     Ok(snapshot)
 }
-
-
 
 /// Downloads the firmware asset for one release/environment into the local
 /// cache (`Firmware.Downloader.download`).
@@ -2316,16 +3010,14 @@ async fn ui_download_firmware(
     let release_id = parse_entity_id("release_id", &release_id)?;
     let db = state.services()?.database();
     let catalog = firmware_catalog(&db)?;
-    let selection = catalog.select(release_id, &environment).map_err(catalog_failure)?;
-    let app_dir = app
-        .path()
-        .app_local_data_dir()
-        .map_err(|_| UiFailure::from(unavailable("The firmware cache directory is unavailable.")))?;
-    let cache_dir = trenino_runtime::firmware::FirmwareDownloader::cache_directory(
-        true,
-        &app_dir,
-        &app_dir,
-    );
+    let selection = catalog
+        .select(release_id, &environment)
+        .map_err(catalog_failure)?;
+    let app_dir = app.path().app_local_data_dir().map_err(|_| {
+        UiFailure::from(unavailable("The firmware cache directory is unavailable."))
+    })?;
+    let cache_dir =
+        trenino_runtime::firmware::FirmwareDownloader::cache_directory(true, &app_dir, &app_dir);
     let downloader = trenino_runtime::firmware::FirmwareDownloader::new(
         trenino_runtime::firmware::FirmwareHttpClient::new(std::time::Duration::from_secs(120))
             .map_err(|_| UiFailure::from(AppError::internal("firmware HTTP client unavailable")))?,
@@ -2371,10 +3063,9 @@ async fn ui_start_firmware_upload(
     let selection = catalog
         .select(file.release_id, &environment)
         .map_err(catalog_failure)?;
-    let app_dir = app
-        .path()
-        .app_local_data_dir()
-        .map_err(|_| UiFailure::from(unavailable("The firmware cache directory is unavailable.")))?;
+    let app_dir = app.path().app_local_data_dir().map_err(|_| {
+        UiFailure::from(unavailable("The firmware cache directory is unavailable."))
+    })?;
     let downloader = trenino_runtime::firmware::FirmwareDownloader::new(
         trenino_runtime::firmware::FirmwareHttpClient::new(std::time::Duration::from_secs(30))
             .map_err(|_| UiFailure::from(AppError::internal("firmware HTTP client unavailable")))?,
@@ -2382,7 +3073,9 @@ async fn ui_start_firmware_upload(
         4 * 1024 * 1024,
         2,
     );
-    let hex_path = downloader.cache_path(&selection).map_err(download_failure)?;
+    let hex_path = downloader
+        .cache_path(&selection)
+        .map_err(download_failure)?;
     let manager = state.upload_manager()?;
     let upload_id = manager
         .start_upload(trenino_runtime::firmware::UploadRequest {
@@ -2406,11 +3099,10 @@ async fn ui_cancel_firmware_upload(
     tauri::async_runtime::spawn_blocking(move || manager.cancel_upload(&upload_id).map(|_| true))
         .await
         .map_err(|_| UiFailure::from(AppError::internal("firmware task failed")))?
-        .map_err(|_| UiFailure {
-            code: "not_found".into(),
-            message: "No upload with that identifier is running.".into(),
-            field_errors: Default::default(),
-            retryable: false,
+        .map_err(|error| match error {
+            trenino_runtime::firmware::UploadCancelError::NotFound => UiFailure {code:"not_found".into(),message:"No upload with that identifier is running.".into(),field_errors:Default::default(),retryable:false},
+            trenino_runtime::firmware::UploadCancelError::Timeout => UiFailure::from(unavailable("Upload cancellation is still waiting for the serial owner. Retry cancellation.")),
+            trenino_runtime::firmware::UploadCancelError::CleanupIncomplete => UiFailure::from(unavailable("Upload stopped, but serial ownership cleanup is incomplete. Retry cleanup before using the device.")),
         })
 }
 
@@ -2548,10 +3240,149 @@ mod tests {
         assert_eq!(trains["topic"], "trains");
         assert!(trains["value"].as_array().unwrap().is_empty());
 
-        let unavailable = services.snapshot_json(Topic::Firmware).unwrap_err();
-        let failure = UiFailure::from(unavailable);
-        assert_eq!(failure.code, "unavailable");
-        assert!(failure.field_errors.is_empty());
+        let firmware = services.snapshot_json(Topic::Firmware).unwrap();
+        assert_eq!(firmware["topic"], "firmware");
+        assert!(firmware["value"]["releases"].as_array().unwrap().is_empty());
+        assert!(firmware["value"]["upload_history"]
+            .as_array()
+            .unwrap()
+            .is_empty());
+    }
+
+    struct ShutdownSerial {
+        events: Arc<Mutex<Vec<String>>>,
+        fail: AtomicBool,
+    }
+    impl trenino_runtime::composition::hardware::EffectTransport for ShutdownSerial {
+        fn connected_ports(&self) -> Vec<trenino_runtime::hardware::service::ConnectedPort> {
+            vec![trenino_runtime::hardware::service::ConnectedPort {
+                port: "panel".into(),
+                firmware_version: None,
+                generation: 1,
+                config_id: None,
+                device_id: None,
+            }]
+        }
+        fn send_message(
+            &self,
+            _: &str,
+            _: u64,
+            message: trenino_core::hardware::protocol::Message,
+            _: Duration,
+        ) -> Result<(), String> {
+            self.events.lock().unwrap().push(format!("{message:?}"));
+            if self.fail.swap(false, Ordering::SeqCst) {
+                Err("uncertain serial acknowledgement".into())
+            } else {
+                Ok(())
+            }
+        }
+    }
+    struct ShutdownHandle {
+        events: Arc<Mutex<Vec<String>>>,
+        remaining_failures: usize,
+    }
+    impl HardwareShutdown for ShutdownHandle {
+        fn close_admission(&self) {}
+        fn cancel_sessions(&self) {}
+        fn close(&mut self) -> Result<(), String> {
+            self.events.lock().unwrap().push("close".into());
+            if self.remaining_failures > 0 {
+                self.remaining_failures -= 1;
+                Err("close not yet acknowledged".into())
+            } else {
+                Ok(())
+            }
+        }
+    }
+    fn shutdown_hardware_fixture(
+        fail_close: bool,
+    ) -> (
+        tempfile::TempDir,
+        Arc<HardwareRuntime<ShutdownHandle>>,
+        Arc<ShutdownSerial>,
+    ) {
+        let directory = tempfile::tempdir().unwrap();
+        let database = Arc::new(
+            trenino_runtime::storage::Database::open_full(directory.path().join("hardware.db"))
+                .unwrap(),
+        );
+        let events = Arc::new(Mutex::new(Vec::new()));
+        let serial = Arc::new(ShutdownSerial {
+            events: events.clone(),
+            fail: AtomicBool::new(false),
+        });
+        let effects = Arc::new(LiveHardwareEffects::new(
+            serial.clone(),
+            database,
+            Arc::new(Mutex::new(Default::default())),
+        ));
+        let runtime = Arc::new(HardwareRuntime {
+            handle: Mutex::new(Some(ShutdownHandle {
+                events,
+                remaining_failures: if fail_close { 2 } else { 0 },
+            })),
+            effects,
+        });
+        (directory, runtime, serial)
+    }
+    #[test]
+    fn hardware_shutdown_drains_manual_high_and_display_before_close_and_retries_failure() {
+        use trenino_runtime::train::output_controller::{HardwareDispatch, OutputLevel};
+        let (_directory, hardware, serial) = shutdown_hardware_fixture(false);
+        hardware
+            .effects
+            .set_output("panel", 4, OutputLevel::High)
+            .unwrap();
+        hardware
+            .effects
+            .write_segments("panel", 0x70, vec![7; 8])
+            .unwrap();
+        serial.fail.store(true, Ordering::SeqCst);
+        let shutdown = ShutdownCoordinator::default();
+        shutdown.register(hardware.clone()).unwrap();
+        assert!(shutdown.shutdown(|| Ok(())).is_err());
+        assert!(!serial
+            .events
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|event| event == "close"));
+        assert!(hardware.handle.lock().unwrap().is_some());
+        shutdown.shutdown(|| Ok(())).unwrap();
+        let events = serial.events.lock().unwrap();
+        assert_eq!(
+            events
+                .iter()
+                .filter(|e| *e == "SetOutput { pin: 4, high: false }")
+                .count(),
+            2
+        );
+        assert!(events
+            .iter()
+            .any(|e| e == "WriteSegments { address: 112, data: [0, 0, 0, 0, 0, 0, 0, 0] }"));
+        assert_eq!(events.last().unwrap(), "close");
+        assert!(hardware.handle.lock().unwrap().is_none());
+    }
+    #[test]
+    fn hardware_failed_close_retains_original_handle_for_retry() {
+        let (_directory, hardware, serial) = shutdown_hardware_fixture(true);
+        assert!(hardware.close_ports_and_network().is_err());
+        assert!(
+            hardware.handle.lock().unwrap().is_some(),
+            "failed handle must remain owned"
+        );
+        assert!(hardware.close_ports_and_network().is_err());
+        assert!(
+            hardware.handle.lock().unwrap().is_some(),
+            "second failed close must remain owned"
+        );
+        hardware.close_ports_and_network().unwrap();
+        assert!(hardware.handle.lock().unwrap().is_none());
+        assert_eq!(
+            *serial.events.lock().unwrap(),
+            vec!["close", "close", "close"]
+        );
     }
 
     struct FlakyShutdownParticipant(AtomicBool);
@@ -2589,9 +3420,420 @@ mod tests {
             .unwrap();
 
         assert!(state.shutdown().is_err());
-        assert!(state.services().unwrap().get_settings().is_ok());
+        assert!(
+            state.services().is_err(),
+            "shutdown keeps public admission fenced"
+        );
+        assert!(state
+            .services
+            .lock()
+            .unwrap()
+            .as_ref()
+            .unwrap()
+            .get_settings()
+            .is_ok());
         state.shutdown().unwrap();
         assert!(state.services().is_err());
         AppServices::open_full(&path, None).unwrap();
+    }
+}
+
+#[tauri::command]
+async fn ui_run_script(state: State<'_, RustAppState>, id: String) -> Result<bool, UiFailure> {
+    state.services()?;
+    let id = id
+        .parse::<i64>()
+        .map_err(|_| UiFailure::from(unavailable("Invalid script ID.")))?;
+    let runtime = state
+        .controls
+        .lock()
+        .map_err(|_| UiFailure::from(unavailable("Controls unavailable.")))?
+        .clone()
+        .ok_or_else(|| UiFailure::from(unavailable("Script runner is not running.")))?;
+    runtime
+        .scripts
+        .run_script(id)
+        .await
+        .map_err(|e| UiFailure::from(unavailable(&format!("Script execution unavailable: {e:?}"))))
+}
+#[tauri::command]
+async fn ui_get_script_log(
+    state: State<'_, RustAppState>,
+    id: String,
+) -> Result<Vec<String>, UiFailure> {
+    state.services()?;
+    let id = id
+        .parse::<i64>()
+        .map_err(|_| UiFailure::from(unavailable("Invalid script ID.")))?;
+    let runtime = state
+        .controls
+        .lock()
+        .map_err(|_| UiFailure::from(unavailable("Controls unavailable.")))?
+        .clone()
+        .ok_or_else(|| UiFailure::from(unavailable("Script runner is not running.")))?;
+    runtime
+        .scripts
+        .get_script_log(id)
+        .await
+        .ok_or_else(|| UiFailure::from(unavailable("The script is not active.")))
+}
+
+struct LiveDetection {
+    hardware: std::sync::Weak<HardwareRuntime>,
+    db: Arc<trenino_runtime::storage::Database>,
+    app: AppHandle,
+}
+impl trenino_runtime::mcp::ports::DetectionPort for LiveDetection {
+    fn detect_input(
+        &self,
+        request: &trenino_runtime::mcp::ports::DetectionRequest,
+    ) -> trenino_runtime::mcp::ports::DetectionOutcome {
+        use trenino_runtime::{
+            hardware::sessions::{
+                DetectionOutcome as HardwareOutcome, InputDetectionSession, InputKind,
+            },
+            mcp::ports::{DetectedInput, DetectionKind, DetectionOutcome, InputType},
+        };
+        let Some(hardware) = self.hardware.upgrade() else {
+            return DetectionOutcome::Timeout;
+        };
+        let timeout = Duration::from_millis(request.timeout_ms.clamp(1, 120_000) as u64);
+        let id = trenino_core::SessionId(history_operation_id().0);
+        let filter = match request.kind {
+            DetectionKind::Button => InputKind::Button,
+            DetectionKind::Analog => InputKind::Analog,
+            DetectionKind::Any => InputKind::Any,
+        };
+        let session = hardware.with_handle(|h| {
+            h.start_detection(id, InputDetectionSession::new(filter, timeout))
+                .map_err(|e| UiFailure::from(unavailable(&format!("{e:?}"))))
+        });
+        let Ok(session) = session else {
+            return DetectionOutcome::Timeout;
+        };
+        let _ = self.app.emit(
+            "ui://hardware/detection",
+            serde_json::json!({"session_id":id.0.to_string(),"prompt":request.prompt}),
+        );
+        let result = loop {
+            if let Some(outcome) = session
+                .lock()
+                .expect("detection session")
+                .expire_if_due(Instant::now())
+            {
+                break outcome;
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        };
+        let _ = hardware.with_handle(|h| Ok(h.sessions().cancel_detection(id)));
+        let _ = self.app.emit(
+            "ui://hardware/detection",
+            serde_json::json!({"session_id":id.0.to_string(),"prompt":null}),
+        );
+        if let HardwareOutcome::Detected {
+            identity,
+            pin,
+            value,
+        } = result
+        {
+            if let (Ok(Some(input)), Ok(Some(device))) = (
+                self.db.get_input(identity.input_id),
+                self.db.get_device(identity.device_id),
+            ) {
+                return DetectionOutcome::Detected(DetectedInput {
+                    input_id: identity.input_id.0,
+                    pin: pin as i64,
+                    input_type: if input.kind == Some(trenino_runtime::storage::InputKind::Button) {
+                        InputType::Button
+                    } else {
+                        InputType::Analog
+                    },
+                    name: input.name.unwrap_or_default(),
+                    device_id: identity.device_id.0,
+                    device_name: device.name.unwrap_or_default(),
+                    value: value as i64,
+                });
+            }
+        }
+        DetectionOutcome::Timeout
+    }
+}
+
+#[derive(Clone, Serialize)]
+struct ConnectedDeviceView {
+    port: String,
+    generation: u64,
+    config_id: Option<u32>,
+    device_id: Option<String>,
+    status: &'static str,
+}
+#[tauri::command]
+async fn ui_get_connected_devices(
+    state: State<'_, RustAppState>,
+) -> Result<Vec<ConnectedDeviceView>, UiFailure> {
+    state.services()?;
+    state.hardware_runtime()?.with_handle(|h| {
+        Ok(h.connected_ports()
+            .into_iter()
+            .map(|p| ConnectedDeviceView {
+                port: p.port,
+                generation: p.generation,
+                config_id: p.config_id.map(|v| v.get()),
+                device_id: p.device_id.map(|v| v.0.to_string()),
+                status: "connected",
+            })
+            .collect())
+    })
+}
+#[derive(Serialize)]
+struct SimulatorRuntimeView {
+    status: String,
+    last_error: Option<String>,
+    active_train_id: Option<String>,
+    detected_identifier: Option<String>,
+}
+#[tauri::command]
+async fn ui_get_simulator_status(
+    state: State<'_, RustAppState>,
+) -> Result<SimulatorRuntimeView, UiFailure> {
+    state.services()?;
+    let runtime = state
+        .controls
+        .lock()
+        .map_err(|_| UiFailure::from(unavailable("Controls unavailable.")))?
+        .clone()
+        .ok_or_else(|| UiFailure::from(unavailable("Simulator runtime is unavailable.")))?;
+    let status = runtime.simulator.status.borrow().clone();
+    let train = runtime.train.snapshot();
+    Ok(SimulatorRuntimeView {
+        status: match status.status {
+            trenino_runtime::simulator::connection::SimulatorStatus::NeedsConfig => {
+                "needs_config".into()
+            }
+            other => format!("{other:?}").to_lowercase(),
+        },
+        last_error: status.last_error.map(|e| format!("{e:?}")),
+        active_train_id: train.active_train_id.map(|v| v.0.to_string()),
+        detected_identifier: train.detected_identifier,
+    })
+}
+#[tauri::command]
+async fn ui_retry_simulator(state: State<'_, RustAppState>) -> Result<bool, UiFailure> {
+    state.services()?;
+    let runtime = state
+        .controls
+        .lock()
+        .map_err(|_| UiFailure::from(unavailable("Controls unavailable.")))?
+        .clone()
+        .ok_or_else(|| UiFailure::from(unavailable("Simulator runtime is unavailable.")))?;
+    runtime
+        .connection
+        .retry_connection()
+        .await
+        .map_err(|e| UiFailure::from(unavailable(&format!("Connection retry failed: {e:?}"))))?;
+    Ok(true)
+}
+
+#[cfg(test)]
+mod packaged_tooling_tests {
+    use super::*;
+    #[test]
+    fn installed_upload_tooling_uses_sidecar_directory_and_bundled_configuration() {
+        let directory = tempfile::tempdir().unwrap();
+        let executable = directory.path().join("MacOS");
+        let resources = directory.path().join("Resources");
+        std::fs::create_dir_all(&executable).unwrap();
+        std::fs::create_dir_all(resources.join("binaries")).unwrap();
+        let binary = executable.join(if cfg!(windows) {
+            "avrdude.exe"
+        } else {
+            "avrdude"
+        });
+        std::fs::write(&binary, "fixture").unwrap();
+        let configuration = resources.join("binaries/avrdude.conf");
+        std::fs::write(&configuration, "fixture").unwrap();
+        let resolved = avrdude_tooling_at(None, Some(executable.clone()), Some(resources.clone()));
+        assert_eq!(resolved.avrdude_path, binary);
+        assert_eq!(resolved.avrdude_conf, Some(configuration));
+        let rejected = avrdude_tooling_at(
+            Some(PathBuf::from("relative-tool")),
+            Some(executable),
+            Some(resources),
+        );
+        assert_eq!(rejected.avrdude_path, PathBuf::from("relative-tool"));
+    }
+}
+
+fn installed_keystroke_probe(
+    executable_directory: Option<PathBuf>,
+) -> trenino_runtime::executable::ExecutableProbe {
+    let mut probe = trenino_runtime::executable::ExecutableProbe::keystroke();
+    probe.app_resource_dir = executable_directory;
+    probe
+}
+
+#[cfg(test)]
+mod packaged_keyboard_tests {
+    use super::*;
+    #[test]
+    fn installed_keyboard_uses_the_executable_sibling_instead_of_resource_storage() {
+        let directory = tempfile::tempdir().unwrap();
+        let executable = directory.path().join("MacOS");
+        let resources = directory.path().join("Resources");
+        std::fs::create_dir_all(&executable).unwrap();
+        std::fs::create_dir_all(&resources).unwrap();
+        let binary = executable.join(if cfg!(windows) {
+            "keystroke.exe"
+        } else {
+            "keystroke"
+        });
+        std::fs::write(&binary, "fixture").unwrap();
+        let probe = installed_keystroke_probe(Some(executable));
+        assert_eq!(probe.resolve().unwrap(), binary);
+        assert!(!resources.join("keystroke").exists());
+    }
+}
+
+#[cfg(test)]
+mod mutation_wire_tests {
+    use super::*;
+    #[test]
+    fn configuration_create_returns_detail_but_publishes_the_canonical_list() {
+        let directory = tempfile::tempdir().unwrap();
+        let services =
+            Arc::new(AppServices::open_full(directory.path().join("wire.sqlite"), None).unwrap());
+        let created = mutation_publication(services.clone(), Topic::Hardware, |services| {
+            services.create_configuration_detail("Wire panel", None)
+        })
+        .unwrap();
+        assert_eq!(created.result.value.name.as_deref(), Some("Wire panel"));
+        assert!(created
+            .result
+            .value
+            .config_id
+            .is_some_and(|id| id.get() > 0));
+        let canonical = created.canonical.unwrap();
+        let list: Vec<trenino_core::ui::ConfigurationSummaryView> =
+            serde_json::from_value(canonical.value).unwrap();
+        assert_eq!(list.len(), 1);
+        assert_eq!(list[0].device_id, created.result.value.id);
+        let input = mutation_publication(services, Topic::Hardware, |services| {
+            services.create_input(trenino_runtime::app::CreateInputParams {
+                device_id: created.result.value.id,
+                pin: 2,
+                kind: "button".into(),
+                sensitivity: None,
+                debounce: Some(5),
+                name: None,
+                matrix_id: None,
+            })
+        })
+        .unwrap();
+        assert_eq!(input.result.value.inputs.len(), 1);
+        assert!(
+            input.canonical.unwrap().value.is_array(),
+            "child commands must not publish detail objects to list subscribers"
+        );
+    }
+}
+
+#[cfg(test)]
+mod preview_invoke_tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn actual_tauri_dispatch_accepts_the_frontends_snake_case_preview_payloads() {
+        let directory = tempfile::tempdir().unwrap();
+        let state = RustAppState::empty();
+        state
+            .install(
+                AppServices::open_full(directory.path().join("preview-invoke.sqlite"), None)
+                    .unwrap(),
+            )
+            .unwrap();
+        let app = tauri::test::mock_builder()
+            .manage(state)
+            .invoke_handler(tauri::generate_handler![
+                runtime_preview::ui_calibration_ceiling,
+                runtime_preview::ui_preview_input,
+                runtime_preview::ui_preview_notch_mapping,
+                runtime_preview::ui_preview_display,
+                runtime_preview::ui_preview_output_condition,
+            ])
+            .build(tauri::test::mock_context(tauri::test::noop_assets()))
+            .unwrap();
+        let webview = tauri::WebviewWindowBuilder::new(&app, "main", Default::default())
+            .build()
+            .unwrap();
+        let invoke = |cmd: &str, body: serde_json::Value| {
+            tauri::test::get_ipc_response(
+                &webview,
+                tauri::webview::InvokeRequest {
+                    cmd: cmd.into(),
+                    callback: tauri::ipc::CallbackFn(0),
+                    error: tauri::ipc::CallbackFn(1),
+                    url: if cfg!(windows) {
+                        "http://tauri.localhost"
+                    } else {
+                        "tauri://localhost"
+                    }
+                    .parse()
+                    .unwrap(),
+                    body: tauri::ipc::InvokeBody::Json(body),
+                    headers: Default::default(),
+                    invoke_key: tauri::test::INVOKE_KEY.into(),
+                },
+            )
+            .map(|body| body.deserialize::<serde_json::Value>().unwrap())
+        };
+        for (command, body) in [
+            ("ui_calibration_ceiling", json!({"input_id":"1"})),
+            ("ui_preview_input", json!({"input_id":"1","raw":42})),
+            (
+                "ui_preview_notch_mapping",
+                json!({"input_id":"1","notches":[{"sim_input_min":null,"sim_input_max":null}],"captured":[],"auto_distribute":true}),
+            ),
+            (
+                "ui_preview_display",
+                json!({"module_id":"1","format_string":"{value}","sample_value":3.0}),
+            ),
+        ] {
+            let error = invoke(command, body).unwrap_err();
+            assert_eq!(
+                error["code"], "not_found",
+                "{command} must deserialize its arguments before domain lookup: {error}"
+            );
+        }
+        let condition = invoke(
+            "ui_preview_output_condition",
+            json!({"operator":"gt","value_a":2.0,"value_b":null}),
+        )
+        .unwrap();
+        assert_eq!(
+            condition["valid"], true,
+            "the optional snake_case threshold must reach Rust validation"
+        );
+    }
+}
+
+#[cfg(test)]
+mod resume_fence_tests {
+    use super::*;
+    #[test]
+    fn output_admission_stays_fenced_until_all_consumers_acknowledge_resume() {
+        let suspended = Mutex::new(std::collections::HashSet::from(["PORT".to_owned()]));
+        assert!(resume_suspended_port(&suspended, "PORT", || {
+            assert!(suspended.lock().unwrap().contains("PORT"));
+            Err("fresh sample is unavailable".into())
+        })
+        .is_err());
+        assert!(suspended.lock().unwrap().contains("PORT"));
+        resume_suspended_port(&suspended, "PORT", || {
+            assert!(suspended.lock().unwrap().contains("PORT"));
+            Ok(())
+        })
+        .unwrap();
+        assert!(!suspended.lock().unwrap().contains("PORT"));
     }
 }

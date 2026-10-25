@@ -17,9 +17,9 @@ describe('calibration wizard', () => {
         .mockResolvedValueOnce({ ok: true as const, value: null })
         .mockResolvedValueOnce({ ok: true as const, value: finished }),
     });
-    render(CalibrationWizard, { props: { input: analogInput, port: '/dev/ttyUSB0', api: bridge, close: vi.fn() } });
+    render(CalibrationWizard, { props: { input: analogInput, port: '/dev/ttyUSB0', generation: 7, api: bridge, close: vi.fn() } });
     expect(await screen.findByText('Set minimum')).toBeInTheDocument();
-    expect(bridge.startCalibration).toHaveBeenCalledWith({ port: '/dev/ttyUSB0', generation: 0, pin: 3, input_id: '11', max_hardware_value: 1023 });
+    expect(bridge.startCalibration).toHaveBeenCalledWith({ port: '/dev/ttyUSB0', generation: 7, pin: 3, input_id: '11', max_hardware_value: 1023 });
 
     await fireEvent.click(screen.getByRole('button', { name: 'Start' }));
     expect(await screen.findByText('Sweep range')).toBeInTheDocument();
@@ -36,17 +36,33 @@ describe('calibration wizard', () => {
   it('shows the loading state until the session id arrives', async () => {
     const start = Promise.withResolvers<{ ok: true; value: string }>();
     const bridge = detailBridge({ startCalibration: vi.fn(() => start.promise) });
-    render(CalibrationWizard, { props: { input: analogInput, port: '/dev/ttyUSB0', api: bridge, close: vi.fn() } });
+    render(CalibrationWizard, { props: { input: analogInput, port: '/dev/ttyUSB0', generation: 7, api: bridge, close: vi.fn() } });
     expect(screen.getByText('Starting calibration session…')).toBeInTheDocument();
     start.resolve({ ok: true, value: '77' });
     expect(await screen.findByText('Set minimum')).toBeInTheDocument();
+  });
+
+  it('uses the Rust ceiling returned for the selected input', async () => {
+    const bridge = detailBridge({ calibrationCeiling: vi.fn(async () => ({ ok: true as const, value: 4095 })) });
+    render(CalibrationWizard, { props: { input: analogInput, port: '/dev/ttyUSB0', generation: 7, api: bridge, close: vi.fn() } });
+    await waitFor(() => expect(bridge.startCalibration).toHaveBeenCalledWith(expect.objectContaining({ max_hardware_value: 4095 })));
+  });
+
+  it('cancels a session that starts after the wizard is removed', async () => {
+    const start = Promise.withResolvers<{ ok: true; value: string }>();
+    const bridge = detailBridge({ startCalibration: vi.fn(() => start.promise) });
+    const view = render(CalibrationWizard, { props: { input: analogInput, port: '/dev/ttyUSB0', generation: 7, api: bridge, close: vi.fn() } });
+    await waitFor(() => expect(bridge.startCalibration).toHaveBeenCalled());
+    view.unmount();
+    start.resolve({ ok: true, value: 'late-session' });
+    await waitFor(() => expect(bridge.cancelCalibration).toHaveBeenCalledWith('late-session'));
   });
 
   it('surfaces a failed start as a UiFailure message', async () => {
     const bridge = detailBridge({
       startCalibration: vi.fn(async () => ({ ok: false as const, error: { code: 'conflict' as const, message: 'Calibration could not start: port closed.', field_errors: {}, retryable: true } })),
     });
-    render(CalibrationWizard, { props: { input: analogInput, port: '/dev/ttyUSB0', api: bridge, close: vi.fn() } });
+    render(CalibrationWizard, { props: { input: analogInput, port: '/dev/ttyUSB0', generation: 7, api: bridge, close: vi.fn() } });
     expect(await screen.findByText('Calibration could not start: port closed.')).toBeInTheDocument();
   });
 
@@ -54,7 +70,7 @@ describe('calibration wizard', () => {
     const bridge = detailBridge({
       advanceCalibration: vi.fn(async () => ({ ok: false as const, error: { code: 'unavailable' as const, message: 'Calibration could not advance: insufficient samples.', field_errors: {}, retryable: true } })),
     });
-    render(CalibrationWizard, { props: { input: analogInput, port: '/dev/ttyUSB0', api: bridge, close: vi.fn() } });
+    render(CalibrationWizard, { props: { input: analogInput, port: '/dev/ttyUSB0', generation: 7, api: bridge, close: vi.fn() } });
     await fireEvent.click(await screen.findByRole('button', { name: 'Start' }));
     expect(await screen.findByText('Calibration could not advance: insufficient samples.')).toBeInTheDocument();
     expect(screen.getByText('Set minimum')).toBeInTheDocument();
@@ -63,10 +79,42 @@ describe('calibration wizard', () => {
   it('cancels the session and closes', async () => {
     const close = vi.fn();
     const bridge = detailBridge();
-    render(CalibrationWizard, { props: { input: analogInput, port: '/dev/ttyUSB0', api: bridge, close } });
+    render(CalibrationWizard, { props: { input: analogInput, port: '/dev/ttyUSB0', generation: 7, api: bridge, close } });
     await fireEvent.click(await screen.findByRole('button', { name: 'Cancel' }));
     await waitFor(() => expect(bridge.cancelCalibration).toHaveBeenCalledWith('5001'));
     expect(close).toHaveBeenCalled();
+  });
+
+  it('retains the session and modal when cancellation fails, then retries the same session', async () => {
+    const close = vi.fn();
+    const cancelCalibration = vi.fn()
+      .mockResolvedValueOnce({ ok: false as const, error: { code: 'conflict' as const, message: 'Hardware cleanup is still pending.', field_errors: {}, retryable: true } })
+      .mockResolvedValueOnce({ ok: true as const, value: false });
+    const bridge = detailBridge({ cancelCalibration });
+    render(CalibrationWizard, { props: { input: analogInput, port: '/dev/ttyUSB0', generation: 7, api: bridge, close } });
+    await fireEvent.click(await screen.findByRole('button', { name: 'Cancel' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Hardware cleanup is still pending.');
+    expect(close).not.toHaveBeenCalled();
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    await fireEvent.click(screen.getByRole('button', { name: 'Retry cancel' }));
+    await waitFor(() => expect(close).toHaveBeenCalledOnce());
+    expect(cancelCalibration).toHaveBeenNthCalledWith(1, '5001');
+    expect(cancelCalibration).toHaveBeenNthCalledWith(2, '5001');
+  });
+
+  it('ignores duplicate close actions while cleanup ACK is pending', async () => {
+    const pending = Promise.withResolvers<{ ok: true; value: boolean }>();
+    const close = vi.fn();
+    const cancelCalibration = vi.fn(() => pending.promise);
+    const bridge = detailBridge({ cancelCalibration });
+    render(CalibrationWizard, { props: { input: analogInput, port: '/dev/ttyUSB0', generation: 7, api: bridge, close } });
+    await fireEvent.click(await screen.findByRole('button', { name: 'Cancel' }));
+    await fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+    await fireEvent.click(screen.getByRole('dialog').firstElementChild!);
+    expect(cancelCalibration).toHaveBeenCalledTimes(1);
+    expect(close).not.toHaveBeenCalled();
+    pending.resolve({ ok: true, value: true });
+    await waitFor(() => expect(close).toHaveBeenCalledOnce());
   });
 });
 

@@ -3,11 +3,9 @@
 //!
 //! ## Contract (for the Windows build)
 //!
-//! - The interface DLL loads only from a trusted absolute installed path —
-//!   [`DEFAULT_DLL_PATH`] mirrors the merged Windows packaging baseline
-//!   (`vJoyInterface.dll` beside the installed vJoy driver). No PATH or
-//!   current-working-directory fallback ever runs: the vendored crate's loader
-//!   receives one explicit path and fails closed when it is absent.
+//! - The interface DLL loads only from a trusted absolute installed resource
+//!   directory anchored at the desktop executable. No PATH or current-working-
+//!   directory fallback runs: the vendored loader receives one checked path.
 //! - Construction uses `from_dll_location_without_acquiring`; the vendored
 //!   all-device constructors are never called. Devices are acquired one at a
 //!   time through [`VjoyAdapter::acquire_device`] for explicit selected IDs
@@ -16,8 +14,8 @@
 //!   validates the descriptor (eight required axes, no extra axes, exactly 32
 //!   buttons, zero POV, no force feedback), acquires, re-validates, and on a
 //!   descriptor change neutralizes from the last verified ranges and releases.
-//! - `neutralize_device` centers every axis at the widened midpoint of its
-//!   driver-reported range (`min + (max - min) / 2` — the same convention as
+//! - `neutralize_device` centers every axis at the Elixir-rounded midpoint of its
+//!   driver-reported range (`round((min + max) / 2)` — the same convention as
 //!   [`crate::vjoy::neutral_axis_value`]), releases every button and submits
 //!   the report before returning. The vendored `Device::reset_all` is not
 //!   used: it zeroes axis values instead of centering them.
@@ -27,36 +25,91 @@
 use crate::vjoy::adapter::{
     neutral_axis_value, DeviceDescriptor, VjoyAdapter, VjoyDeviceStatus, VjoyError,
 };
+use crate::vjoy::configurator::{trusted_resource, Configurator, ResourcePaths};
+use crate::vjoy::store::VjoyAxis;
+use std::path::PathBuf;
 
 use vjoy::{ButtonState, Device, Error as VendoredError, VJoy, VJoyDeviceStatus as VendoredStatus};
 
-/// Trusted absolute location of the installed vJoy interface DLL (the same
-/// baseline the Windows installer stages and verifies). Adapters never resolve
-/// the DLL through PATH or the current working directory.
-pub const DEFAULT_DLL_PATH: &str = "C:/Program Files/vJoy/x64/vJoyInterface.dll";
+pub use super::windows_configurator::status_worker_entry;
 
 /// Windows adapter. `sdk` holds the loaded interface; it is created lazily by
 /// [`VjoyAdapter::driver_available`] so merely constructing the manager never
 /// touches native code.
 pub struct WindowsVjoyAdapter {
-    dll_path: String,
-    sdk: Option<VJoy>,
+    pub(super) dll_path: String,
+    pub(super) paths: Option<ResourcePaths>,
+    pub(super) sdk: Option<VJoy>,
+    pub(super) started: std::time::Instant,
+    pub(super) pending_elevated: Vec<super::windows_configurator::NativeChild>,
+    pub(super) pending_status: Vec<std::process::Child>,
 }
 
 impl WindowsVjoyAdapter {
     pub fn new() -> Self {
+        let resources = std::env::current_exe()
+            .ok()
+            .and_then(|exe| exe.parent().map(|dir| dir.join("resources")))
+            .unwrap_or_default();
+        Self::with_resource_dir(resources)
+    }
+
+    /// Installed Tauri resource directory, independently anchored at the
+    /// running executable's directory. The caller supplies the resource path;
+    /// validation rejects any path outside that installation root.
+    pub fn with_resource_dir(resources: PathBuf) -> Self {
+        let anchor = std::env::current_exe()
+            .ok()
+            .and_then(|exe| exe.parent().map(PathBuf::from))
+            .unwrap_or_default();
+        let dll_path = resources
+            .join("vJoyInterface.dll")
+            .to_string_lossy()
+            .into_owned();
         Self {
-            dll_path: DEFAULT_DLL_PATH.to_owned(),
+            dll_path,
+            paths: Some(ResourcePaths { anchor, resources }),
             sdk: None,
+            started: std::time::Instant::now(),
+            pending_elevated: Vec::new(),
+            pending_status: Vec::new(),
         }
     }
 
-    /// Build with an explicit trusted absolute DLL path (used by packaging
-    /// tests and the installed-app compositor).
-    pub fn with_dll_path(path: impl Into<String>) -> Self {
-        Self {
-            dll_path: path.into(),
-            sdk: None,
+    pub(super) fn raw_driver_available(&mut self) -> Result<(), VjoyError> {
+        let paths = self.paths.as_ref().ok_or(VjoyError::Unsupported)?;
+        if paths.resources != paths.anchor.join("resources") {
+            return Err(VjoyError::Configurator(
+                crate::vjoy::configurator::ConfiguratorError::UntrustedResource,
+            ));
+        }
+        let trusted =
+            trusted_resource(self, paths, "vJoyInterface.dll").map_err(VjoyError::Configurator)?;
+        self.dll_path = trusted.to_string_lossy().into_owned();
+        if self.sdk.is_none() {
+            self.sdk =
+                Some(VJoy::from_dll_location_without_acquiring(&self.dll_path).map_err(map_error)?);
+        }
+        if self.sdk.as_ref().expect("sdk loaded above").is_enabled() {
+            Ok(())
+        } else {
+            Err(VjoyError::DriverUnavailable(
+                "vJoy driver reports itself disabled".into(),
+            ))
+        }
+    }
+
+    pub(super) fn raw_device_status(&mut self, device: u8) -> Result<VjoyDeviceStatus, VjoyError> {
+        let sdk = self.sdk.as_mut().ok_or_else(|| {
+            VjoyError::DriverUnavailable("vJoy interface has not been loaded".into())
+        })?;
+        match sdk.device_status(device_id(device)) {
+            Ok(VendoredStatus::Owned) => Ok(VjoyDeviceStatus::Owned),
+            Ok(VendoredStatus::Free) => Ok(VjoyDeviceStatus::Free),
+            Ok(VendoredStatus::Busy) => Ok(VjoyDeviceStatus::Busy),
+            Ok(VendoredStatus::Missing) => Ok(VjoyDeviceStatus::Missing),
+            Ok(VendoredStatus::Unknown) => Ok(VjoyDeviceStatus::Unknown),
+            Err(error) => Err(map_error(error)),
         }
     }
 }
@@ -69,6 +122,19 @@ impl Default for WindowsVjoyAdapter {
 
 fn device_id(device: u8) -> u32 {
     u32::from(device)
+}
+
+fn axis_id(axis: VjoyAxis) -> u32 {
+    match axis {
+        VjoyAxis::X => 1,
+        VjoyAxis::Y => 2,
+        VjoyAxis::Z => 3,
+        VjoyAxis::Rx => 4,
+        VjoyAxis::Ry => 5,
+        VjoyAxis::Rz => 6,
+        VjoyAxis::Slider1 => 7,
+        VjoyAxis::Slider2 => 8,
+    }
 }
 
 fn map_error(error: VendoredError) -> VjoyError {
@@ -95,34 +161,17 @@ impl VjoyAdapter for WindowsVjoyAdapter {
     }
 
     fn driver_available(&mut self) -> Result<(), VjoyError> {
-        if self.sdk.is_none() {
-            let sdk =
-                VJoy::from_dll_location_without_acquiring(&self.dll_path).map_err(map_error)?;
-            self.sdk = Some(sdk);
-        }
-        match self.sdk.as_ref().expect("sdk loaded above").is_enabled() {
-            true => Ok(()),
-            false => Err(VjoyError::DriverUnavailable(
-                "vJoy driver reports itself disabled".into(),
-            )),
-        }
+        super::windows_configurator::probe_driver(self)
     }
 
     fn device_status(&mut self, device: u8) -> Result<VjoyDeviceStatus, VjoyError> {
-        let sdk = self.sdk.as_mut().ok_or_else(|| {
-            VjoyError::DriverUnavailable("vJoy interface has not been loaded".into())
-        })?;
-        match sdk.device_status(device_id(device)) {
-            Ok(VendoredStatus::Owned) => Ok(VjoyDeviceStatus::Owned),
-            Ok(VendoredStatus::Free) => Ok(VjoyDeviceStatus::Free),
-            Ok(VendoredStatus::Busy) => Ok(VjoyDeviceStatus::Busy),
-            Ok(VendoredStatus::Missing) => Ok(VjoyDeviceStatus::Missing),
-            Ok(VendoredStatus::Unknown) => Ok(VjoyDeviceStatus::Unknown),
-            Err(error) => Err(map_error(error)),
-        }
+        super::windows_configurator::probe_device(self, device)
     }
 
     fn descriptor(&mut self, device: u8) -> Result<DeviceDescriptor, VjoyError> {
+        if self.sdk.is_none() {
+            self.raw_driver_available()?;
+        }
         let sdk = self.sdk.as_ref().ok_or_else(|| {
             VjoyError::DriverUnavailable("vJoy interface has not been loaded".into())
         })?;
@@ -168,11 +217,92 @@ impl VjoyAdapter for WindowsVjoyAdapter {
             .map_err(|error| VjoyError::NeutralizeFailed(device, map_error(error).to_string()))
     }
 
+    fn axis_range(&mut self, device: u8, axis: VjoyAxis) -> Result<(i32, i32), VjoyError> {
+        let sdk = self.sdk.as_ref().ok_or_else(|| {
+            VjoyError::DriverUnavailable("vJoy interface has not been loaded".into())
+        })?;
+        sdk.axis_range(device_id(device), axis_id(axis))
+            .map_err(map_error)
+    }
+
+    fn set_axis(&mut self, device: u8, axis: VjoyAxis, value: i32) -> Result<(), VjoyError> {
+        let sdk = self.sdk.as_mut().ok_or_else(|| {
+            VjoyError::DriverUnavailable("vJoy interface has not been loaded".into())
+        })?;
+        let mut state = sdk
+            .get_device_state(device_id(device))
+            .map_err(|e| VjoyError::ReportFailed(device, e.to_string()))?;
+        state
+            .set_axis(axis_id(axis), value)
+            .map_err(|e| VjoyError::ReportFailed(device, e.to_string()))?;
+        sdk.update_device_state(&state)
+            .map_err(|e| VjoyError::ReportFailed(device, e.to_string()))
+    }
+
+    fn set_button(&mut self, device: u8, button: u8, pressed: bool) -> Result<(), VjoyError> {
+        let sdk = self.sdk.as_mut().ok_or_else(|| {
+            VjoyError::DriverUnavailable("vJoy interface has not been loaded".into())
+        })?;
+        let mut state = sdk
+            .get_device_state(device_id(device))
+            .map_err(|e| VjoyError::ReportFailed(device, e.to_string()))?;
+        state
+            .set_button(
+                button,
+                if pressed {
+                    ButtonState::Pressed
+                } else {
+                    ButtonState::Released
+                },
+            )
+            .map_err(|e| VjoyError::ReportFailed(device, e.to_string()))?;
+        sdk.update_device_state(&state)
+            .map_err(|e| VjoyError::ReportFailed(device, e.to_string()))
+    }
+
     fn release_device(&mut self, device: u8) {
         if let Some(sdk) = self.sdk.as_mut() {
             // Quiet relinquish: the vendored patch suppresses upstream's
             // stdout cleanup noise; the SDK cannot report failure.
             sdk.relinquish_device(device_id(device));
         }
+    }
+
+    fn can_configure(&self) -> bool {
+        self.paths.is_some()
+    }
+
+    fn ownership_marker(&mut self, device: u8) -> Result<bool, VjoyError> {
+        <Self as crate::vjoy::configurator::ConfiguratorBackend>::owned(self, device)
+            .map_err(VjoyError::Configurator)
+    }
+
+    fn creation_pending_marker(&mut self, device: u8) -> Result<bool, VjoyError> {
+        <Self as crate::vjoy::configurator::ConfiguratorBackend>::pending(self, device)
+            .map_err(VjoyError::Configurator)
+    }
+
+    fn creation_confirmed_marker(&mut self, device: u8) -> Result<bool, VjoyError> {
+        <Self as crate::vjoy::configurator::ConfiguratorBackend>::confirmed(self, device)
+            .map_err(VjoyError::Configurator)
+    }
+
+    fn configure_create(&mut self, device: u8) -> Result<(), VjoyError> {
+        let paths = self.paths.clone().ok_or(VjoyError::Unsupported)?;
+        Configurator::new(paths)
+            .create(self, device)
+            .map_err(VjoyError::Configurator)
+    }
+
+    fn configure_delete(&mut self, device: u8) -> Result<(), VjoyError> {
+        let paths = self.paths.clone().ok_or(VjoyError::Unsupported)?;
+        Configurator::new(paths)
+            .delete(self, device)
+            .map_err(VjoyError::Configurator)
+    }
+
+    fn settle_configurator(&mut self) -> Result<(), VjoyError> {
+        <Self as crate::vjoy::configurator::ConfiguratorBackend>::reconcile_processes(self)
+            .map_err(VjoyError::Configurator)
     }
 }

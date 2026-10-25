@@ -26,7 +26,9 @@
 //!   [`TrainEvent`] receiver for `train:detection`-equivalent events plus
 //!   `button_state_changed` broadcasts.
 
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use trenino_core::{EntityId, Revision};
 
@@ -37,7 +39,7 @@ use crate::routing::reconcile::{
 use crate::routing::{InputIdentity, InputResolver};
 use crate::simulator::client::SimulatorClient;
 use crate::simulator::services::clock::Clock;
-use crate::simulator::services::train_detection::TrainDetectionEvent;
+use crate::simulator::services::train_detection::{MonitorError, TrainDetectionEvent};
 use crate::storage::bindings::ButtonMode;
 
 use super::button_controller::{ButtonController, ButtonKeystrokes, ButtonStateChange, QueueError};
@@ -147,10 +149,11 @@ impl TswDestination {
     /// (manual sync after CRUD, train switch) fail with "no pending
     /// activation snapshot". Deactivation disarms pending explicitly through
     /// `set_pending(None)` instead.
-    fn release_controllers(&self) {
-        let _ = self.lever.release();
-        let _ = self.buttons.release();
+    fn release_controllers(&self) -> Result<(), String> {
+        self.lever.release_acknowledged()?;
+        self.buttons.release_acknowledged()?;
         *self.applied.lock().expect("tsw destination poisoned") = 0;
+        Ok(())
     }
 
     fn activate_controllers(&self) -> Result<(), String> {
@@ -173,8 +176,7 @@ impl TswDestination {
 
 impl RoutingDestination for TswDestination {
     fn release(&self) -> Result<(), String> {
-        self.release_controllers();
-        Ok(())
+        self.release_controllers()
     }
 
     fn activate(
@@ -195,7 +197,24 @@ pub struct TrainServiceHandle {
     lever: LeverController,
     buttons: ButtonController,
     routing: Arc<RoutingService>,
+    destination: Arc<TswDestination>,
     state: Arc<Mutex<ServiceState>>,
+    lifecycle: Arc<ServiceLifecycle>,
+}
+
+const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(1);
+
+struct ServiceLifecycle {
+    stopping: AtomicBool,
+    shutdown: tokio::sync::Mutex<ServiceShutdownState>,
+}
+
+struct ServiceShutdownState {
+    detection_pump: Option<tokio::task::JoinHandle<()>>,
+    button_forwarding: Option<tokio::task::JoinHandle<()>>,
+    routing_release: Option<tokio::task::JoinHandle<Result<(), RoutingError>>>,
+    routing_released: bool,
+    finished: bool,
 }
 
 /// Shared detection commands (the monitor handle is behind an `Arc` so callers
@@ -236,24 +255,24 @@ impl TrainServiceHandle {
             ambiguous: Vec::new(),
             connection_lost: false,
         }));
-        tokio::spawn(pump(
+        let detection_pump = tokio::spawn(pump(
             source,
             routing.clone(),
-            destination,
+            destination.clone(),
             state.clone(),
             events.clone(),
             detection_events,
         ));
         // Merge the button broadcasts into the event stream (PubSub drop).
-        {
+        let button_forwarding = {
             let events = events.clone();
             tokio::spawn(async move {
                 let mut button_broadcast = button_broadcast;
                 while let Some(change) = button_broadcast.recv().await {
                     let _ = events.try_send(TrainEvent::ButtonStateChanged(change));
                 }
-            });
-        }
+            })
+        };
 
         (
             Self {
@@ -263,7 +282,18 @@ impl TrainServiceHandle {
                 lever,
                 buttons,
                 routing,
+                destination,
                 state,
+                lifecycle: Arc::new(ServiceLifecycle {
+                    stopping: AtomicBool::new(false),
+                    shutdown: tokio::sync::Mutex::new(ServiceShutdownState {
+                        detection_pump: Some(detection_pump),
+                        button_forwarding: Some(button_forwarding),
+                        routing_release: None,
+                        routing_released: false,
+                        finished: false,
+                    }),
+                }),
             },
             events_rx,
         )
@@ -277,12 +307,21 @@ impl TrainServiceHandle {
         &self.buttons
     }
 
+    fn ensure_open(&self) -> Result<(), QueueError> {
+        if self.lifecycle.stopping.load(Ordering::Acquire) {
+            Err(QueueError::Closed)
+        } else {
+            Ok(())
+        }
+    }
+
     /// Forward a simulator connection: the detection monitor (grace handling)
     /// and both controllers see it.
     pub async fn simulator_connected(
         &self,
         client: Arc<SimulatorClient>,
     ) -> Result<(), QueueError> {
+        self.ensure_open()?;
         self.state
             .lock()
             .expect("train service poisoned")
@@ -308,6 +347,7 @@ impl TrainServiceHandle {
     }
 
     pub async fn simulator_disconnected(&self) -> Result<(), QueueError> {
+        self.ensure_open()?;
         self.state
             .lock()
             .expect("train service poisoned")
@@ -334,6 +374,7 @@ impl TrainServiceHandle {
     /// Manual sync after CRUD: forces full re-detection (cleared identifier)
     /// and reloads the committed configuration when it changed.
     pub async fn sync(&self) -> Result<(), QueueError> {
+        self.ensure_open()?;
         // Clone before awaiting (clippy::await_holding_lock).
         let detection = self
             .detection
@@ -363,24 +404,154 @@ impl TrainServiceHandle {
     /// Shutdown order (plan §Shutdown): stop detection admission, release the
     /// controllers (held keystrokes and in-flight writers die while the
     /// adapters are alive), then shut the workers down.
-    pub async fn shutdown(self) -> Result<(), QueueError> {
+    pub async fn shutdown(&self) -> Result<(), QueueError> {
+        self.lifecycle.stopping.store(true, Ordering::Release);
+        self.lever.begin_shutdown();
+        self.buttons.begin_shutdown();
+        // The mutex serializes shutdown across clones and preserves every
+        // unfinished join handle if a bounded attempt times out.
+        let mut progress = self.lifecycle.shutdown.lock().await;
+        if progress.finished {
+            return Ok(());
+        }
+        if let Some(task) = progress.detection_pump.as_ref() {
+            task.abort();
+        }
+        if let Some(task) = progress.button_forwarding.as_ref() {
+            task.abort();
+        }
         let detection = self
             .detection
             .monitor
             .lock()
             .expect("detection poisoned")
-            .take();
-        if let Some(detection) = detection {
-            detection.shutdown().await.map_err(|_| QueueError::Closed)?;
+            .clone();
+        let stop_detection = async {
+            if let Some(detection) = detection {
+                detection.shutdown().await.map_err(|error| match error {
+                    MonitorError::Timeout => QueueError::Timeout,
+                    MonitorError::Closed => QueueError::Closed,
+                })
+            } else {
+                Ok(())
+            }
+        };
+        // Stop the producers before committing a no-TSW routing revision.
+        // Controller admission is already closed, but their release command
+        // remains available until the routing release barrier acknowledges.
+        let ServiceShutdownState {
+            detection_pump,
+            button_forwarding,
+            ..
+        } = &mut *progress;
+        let (pump, forwarding, detection) = tokio::join!(
+            join_cancelled(detection_pump),
+            join_cancelled(button_forwarding),
+            stop_detection,
+        );
+        let mut first_error = None;
+        for result in [pump, forwarding, detection] {
+            if let Err(error) = result {
+                first_error.get_or_insert(error);
+            }
         }
-        self.lever.release().map_err(|_| QueueError::Closed)?;
-        self.buttons.release()?;
-        self.lever
-            .shutdown()
-            .await
-            .map_err(|_| QueueError::Closed)?;
-        self.buttons.shutdown().await
+        if let Some(error) = first_error {
+            return Err(error);
+        }
+
+        release_tsw_route(&mut progress, &self.routing, &self.destination, &self.state).await?;
+        // The destination release callback has acknowledged cancellation of
+        // writers/sequences and keys. Now join the controller workers.
+        let (lever, buttons) = tokio::join!(self.lever.shutdown(), self.buttons.shutdown());
+        if let Err(error) = lever.map_err(|error| match error {
+            super::lever_controller::QueueError::Timeout => QueueError::Timeout,
+            _ => QueueError::Closed,
+        }) {
+            first_error.get_or_insert(error);
+        }
+        if let Err(error) = buttons {
+            first_error.get_or_insert(error);
+        }
+        if let Some(error) = first_error {
+            return Err(error);
+        }
+        let mut state = self.state.lock().expect("train service poisoned");
+        state.generation += 1;
+        state.active_train_id = None;
+        state.detected_identifier = None;
+        state.ambiguous.clear();
+        state.last_revision = self.routing.desired_revision();
+        progress.finished = true;
+        Ok(())
     }
+}
+
+async fn release_tsw_route(
+    progress: &mut ServiceShutdownState,
+    routing: &Arc<RoutingService>,
+    destination: &Arc<TswDestination>,
+    service_state: &Arc<Mutex<ServiceState>>,
+) -> Result<(), QueueError> {
+    if progress.routing_released {
+        return Ok(());
+    }
+    if progress.routing_release.is_none() {
+        destination.set_pending(None);
+        let last_service_revision = service_state
+            .lock()
+            .expect("train service poisoned")
+            .last_revision
+            .map_or(0, |revision| revision.0);
+        let revision = Revision(
+            routing
+                .desired_revision()
+                .map_or(0, |revision| revision.0)
+                .max(last_service_revision)
+                + 1,
+        );
+        let routing = routing.clone();
+        progress.routing_release = Some(tokio::task::spawn_blocking(move || {
+            routing.deactivate_destination(DestinationId::Tsw, revision)
+        }));
+    }
+    let handle = progress
+        .routing_release
+        .as_mut()
+        .expect("route task inserted");
+    let result = tokio::time::timeout(SHUTDOWN_TIMEOUT, handle)
+        .await
+        .map_err(|_| QueueError::Timeout)?
+        .map_err(|_| QueueError::Closed)?;
+    progress.routing_release = None;
+    match result {
+        Ok(()) => {
+            progress.routing_released = true;
+            Ok(())
+        }
+        Err(RoutingError::ReleaseFailed { error, .. }) if error.contains("timed out") => {
+            // A previous attempt may finish just after its caller timed out.
+            // This attempt still reports timeout; the next retries the
+            // retained routing intent and physical release.
+            Err(QueueError::Timeout)
+        }
+        Err(_) => Err(QueueError::Closed),
+    }
+}
+
+async fn join_cancelled(task: &mut Option<tokio::task::JoinHandle<()>>) -> Result<(), QueueError> {
+    let Some(handle) = task.as_mut() else {
+        return Ok(());
+    };
+    let joined = tokio::time::timeout(SHUTDOWN_TIMEOUT, handle)
+        .await
+        .map_err(|_| QueueError::Timeout)?;
+    if let Err(error) = joined {
+        if !error.is_cancelled() {
+            return Err(QueueError::Closed);
+        }
+    }
+    *task = None;
+    Ok(())
 }
 
 /// Detection pump: forwards the monitor's detection events and drives the
@@ -602,7 +773,7 @@ async fn commit_and_reconcile(
     let desired = DesiredRouting::new(revision, Some(train_id), vec![plan]);
     match routing.activate_train_revision(desired) {
         Ok(()) => {
-            match routing.reconcile() {
+            match reconcile_routing(routing).await {
                 Ok(()) => {
                     // The release barrier passed. If reconciliation carried
                     // TSW (identical routes), apply the controller activation
@@ -679,7 +850,7 @@ async fn deactivate(
     destination.set_pending(None);
     match routing.deactivate_train(revision) {
         Ok(()) => {
-            if let Err(error) = routing.reconcile() {
+            if let Err(error) = reconcile_routing(routing).await {
                 if !matches!(error, RoutingError::StaleRevision { .. }) {
                     if let Some(reason) = routing.degraded_reasons().first() {
                         let _ = events
@@ -692,4 +863,14 @@ async fn deactivate(
         Err(RoutingError::StaleRevision { .. }) => {}
         Err(_) => {}
     }
+}
+
+/// Routing destination callbacks include synchronous worker acknowledgements.
+/// Run them off the Tokio worker so a current-thread runtime can keep driving
+/// the controller tasks while the callback waits.
+async fn reconcile_routing(routing: &Arc<RoutingService>) -> Result<(), RoutingError> {
+    let routing = routing.clone();
+    tokio::task::spawn_blocking(move || routing.reconcile())
+        .await
+        .map_err(|error| RoutingError::InvalidDesired(format!("routing task failed: {error}")))?
 }

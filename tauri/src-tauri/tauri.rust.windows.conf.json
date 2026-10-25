@@ -1,0 +1,22 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "build": {
+    "frontendDist": "../ui/dist"
+  },
+  "bundle": {
+    "externalBin": [
+      "binaries/avrdude",
+      "binaries/keystroke"
+    ],
+    "resources": [
+      "binaries/avrdude.conf",
+      "resources/vc_redist.x64.exe",
+      "resources/vJoySetup.exe",
+      "resources/vJoyConfig.exe",
+      "resources/vJoyInstall.dll",
+      "resources/vJoyInterface.dll",
+      "resources/vJoy-LICENSE.txt",
+      "resources/THIRD_PARTY_NOTICES.md"
+    ]
+  }
+}

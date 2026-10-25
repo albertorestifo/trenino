@@ -5,6 +5,8 @@ export type Route =
   | { page: 'trains'; path: '/trains'; query: URLSearchParams }
   | { page: 'train'; path: string; trainId: string; query: URLSearchParams }
   | { page: 'train-new'; path: '/trains/new'; query: URLSearchParams }
+  | { page: 'script'; path: string; trainId: string; scriptId: string }
+  | { page: 'script-new'; path: string; trainId: string }
   | { page: 'settings'; path: '/settings' }
   | { page: 'consent'; path: '/consent' }
   | { page: 'firmware' | 'joystick'; path: string }
@@ -25,6 +27,11 @@ export function parseRoute(hash: string): Route {
   if (path === '/consent') return { page: 'consent', path };
   if (path === '/firmware') return { page: 'firmware', path };
   if (path === '/virtual-joystick') return { page: 'joystick', path };
+
+  const scriptNewMatch = path.match(/^\/trains\/(\d+)\/scripts\/new$/);
+  if (scriptNewMatch) return { page: 'script-new', path, trainId: scriptNewMatch[1] };
+  const scriptMatch = path.match(/^\/trains\/(\d+)\/scripts\/(\d+)$/);
+  if (scriptMatch) return { page: 'script', path, trainId: scriptMatch[1], scriptId: scriptMatch[2] };
 
   const configMatch = path.match(/^\/configurations\/([^/]+)$/);
   if (configMatch && configMatch[1] !== 'new' && /^\d+$/.test(configMatch[1])) {

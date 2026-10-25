@@ -773,7 +773,8 @@ fn create_train(
     draft: TrainDraft,
 ) -> DbResult<Mutation<TrainRecord>> {
     let identifiers = normalize_identifiers(draft.identifiers);
-    if draft.name.is_empty() {
+    // Ecto validate_required treats whitespace-only binaries as missing.
+    if draft.name.trim().is_empty() {
         return Err(invalid("name can't be blank"));
     }
     domain_tx(c, "trains", op, move |tx| {
@@ -803,7 +804,8 @@ fn update_train(
     domain_tx(c, "trains", op, move |tx| {
         let current = get_train_row(tx, id)?.ok_or(StorageError::NotFound)?;
         let name = patch.name.unwrap_or(current.name);
-        if name.is_empty() {
+        // Ecto validate_required treats whitespace-only binaries as missing.
+        if name.trim().is_empty() {
             return Err(invalid("name can't be blank"));
         }
         let description = patch.description.unwrap_or(current.description);
@@ -854,6 +856,16 @@ fn list_elements(c: &Connection, train: EntityId) -> DbResult<Vec<ElementRecord>
     elements_for_train(c, train)
 }
 
+/// Elixir `list_button_elements/1` (train.ex:1028-1034): only `:button`
+/// elements, ordered by name. (The Ecto `preload(button_binding: …)` has no
+/// storage counterpart here; bindings live on the bindings topic.)
+fn list_button_elements(c: &Connection, train: EntityId) -> DbResult<Vec<ElementRecord>> {
+    Ok(elements_for_train(c, train)?
+        .into_iter()
+        .filter(|element| element.kind == ElementKind::Button)
+        .collect())
+}
+
 fn get_element(c: &Connection, id: EntityId) -> DbResult<Option<ElementRecord>> {
     get_element_row(c, id)
 }
@@ -864,7 +876,8 @@ fn create_element(
     train: EntityId,
     draft: ElementDraft,
 ) -> DbResult<Mutation<ElementRecord>> {
-    if draft.name.is_empty() {
+    // Ecto validate_required treats whitespace-only binaries as missing.
+    if draft.name.trim().is_empty() {
         return Err(invalid("name can't be blank"));
     }
     domain_tx(c, "trains", op, move |tx| {
@@ -913,21 +926,7 @@ fn create_lever_config(
         draft.notch_index_endpoint.as_deref(),
     )?;
     domain_tx(c, "trains", op, move |tx| {
-        if get_element_row(tx, element)?.is_none() {
-            return Err(StorageError::ForeignKey {
-                detail: "element does not exist".into(),
-            });
-        }
-        // LeverConfig's unique_constraint(:element_id)
-        if get_lever_config_for_element(tx, element)?.is_some() {
-            return Err(taken("element_id has already been taken"));
-        }
-        let now = timestamp();
-        tx.execute(
-            "INSERT INTO train_lever_configs(element_id,min_endpoint,max_endpoint,value_endpoint,notch_count_endpoint,notch_index_endpoint,lever_type,inverted,inserted_at,updated_at) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?9)",
-            params![element.0, draft.min_endpoint, draft.max_endpoint, draft.value_endpoint, draft.notch_count_endpoint, draft.notch_index_endpoint, draft.lever_type.map(LeverType::as_db), draft.inverted as i64, now],
-        )?;
-        get_lever_config_by_id(tx, EntityId(tx.last_insert_rowid()))?.ok_or(StorageError::NotFound)
+        create_lever_config_tx(tx, element, draft)
     })
 }
 
@@ -1319,21 +1318,20 @@ fn auto_distribute_input_ranges(
 /// Ports `validate_notch_ranges/1` (read-only): checks the notch input ranges
 /// cover 0.0-1.0 with no gaps larger than the 0.001 epsilon.
 fn validate_notch_ranges(c: &Connection, config: EntityId) -> DbResult<Option<RangesValidation>> {
-    let Some(record) = get_lever_config_by_id(c, config)? else {
-        return Ok(None);
-    };
-    let mut notches = record.notches;
-    notches.sort_by_key(|notch| notch.index);
-    let mut ranges: Vec<(f64, f64)> = notches
+    Ok(get_lever_config_by_id(c, config)?.map(|record| validate_lever_notch_ranges(&record)))
+}
+
+pub fn validate_lever_notch_ranges(record: &LeverConfigRecord) -> RangesValidation {
+    let mut ranges: Vec<(f64, f64)> = record
+        .notches
         .iter()
-        .filter(|notch| notch.input_min.is_some() && notch.input_max.is_some())
-        .map(|notch| (notch.input_min.unwrap(), notch.input_max.unwrap()))
+        .filter_map(|notch| Some((notch.input_min?, notch.input_max?)))
         .collect();
-    ranges.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
-    Ok(Some(match find_gaps(&ranges, 0.0, 1.0) {
+    ranges.sort_by(|a, b| a.0.total_cmp(&b.0));
+    match find_gaps(&ranges, 0.0, 1.0) {
         gaps if gaps.is_empty() => RangesValidation::Valid,
         gaps => RangesValidation::Gaps(gaps),
-    }))
+    }
 }
 
 /// Ports `find_gaps/3` including the 0.001 epsilon.
@@ -1426,6 +1424,14 @@ impl Database {
 
     pub fn list_train_elements(&self, train_id: EntityId) -> DbResult<Vec<ElementRecord>> {
         self.trains_call("list_train_elements", move |c| list_elements(c, train_id))
+    }
+
+    /// Lists a train's `:button` elements ordered by name — Elixir
+    /// `list_button_elements/1` (train.ex:1028-1034).
+    pub fn list_button_elements(&self, train_id: EntityId) -> DbResult<Vec<ElementRecord>> {
+        self.trains_call("list_button_elements", move |c| {
+            list_button_elements(c, train_id)
+        })
     }
 
     pub fn get_train_element(&self, id: EntityId) -> DbResult<Option<ElementRecord>> {
@@ -1601,6 +1607,104 @@ impl Database {
     ) -> DbResult<Option<RangesValidation>> {
         self.trains_call("validate_notch_ranges", move |c| {
             validate_notch_ranges(c, lever_config_id)
+        })
+    }
+}
+
+fn create_lever_config_tx(
+    tx: &rusqlite::Transaction<'_>,
+    element: EntityId,
+    draft: LeverConfigDraft,
+) -> DbResult<LeverConfigRecord> {
+    if get_element_row(tx, element)?.is_none() {
+        return Err(StorageError::ForeignKey {
+            detail: "element does not exist".into(),
+        });
+    }
+    // LeverConfig's unique_constraint(:element_id)
+    if get_lever_config_for_element(tx, element)?.is_some() {
+        return Err(taken("element_id has already been taken"));
+    }
+    let now = timestamp();
+    tx.execute(
+            "INSERT INTO train_lever_configs(element_id,min_endpoint,max_endpoint,value_endpoint,notch_count_endpoint,notch_index_endpoint,lever_type,inverted,inserted_at,updated_at) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?9)",
+            params![element.0, draft.min_endpoint, draft.max_endpoint, draft.value_endpoint, draft.notch_count_endpoint, draft.notch_index_endpoint, draft.lever_type.map(LeverType::as_db), draft.inverted as i64, now],
+        )?;
+    get_lever_config_by_id(tx, EntityId(tx.last_insert_rowid()))?.ok_or(StorageError::NotFound)
+}
+
+/// One explicit wizard save; every binding, endpoint and notch write shares
+/// a transaction and uses the calibration committed at that transaction.
+#[derive(Clone, Debug)]
+pub struct LeverMappingDraft {
+    pub element_id: EntityId,
+    pub lever_config_id: Option<EntityId>,
+    pub input_id: EntityId,
+    pub replace_binding: bool,
+    pub endpoints: LeverConfigDraft,
+    pub notches: Vec<NotchDraft>,
+    pub captured_ranges: Vec<crate::preview::CapturedRange>,
+    pub auto_distribute: bool,
+    pub calibration_completed: bool,
+}
+
+impl Database {
+    pub fn commit_lever_mapping(
+        &self,
+        operation_id: trenino_core::OperationId,
+        draft: LeverMappingDraft,
+    ) -> DbResult<Mutation<LeverConfigRecord>> {
+        self.trains_call("commit_lever_mapping", move |c| {
+            domain_tx(c, "trains", operation_id, move |tx| {
+                let element = get_element_row(tx, draft.element_id)?.ok_or(StorageError::NotFound)?;
+                if element.kind != ElementKind::Lever {
+                    return Err(invalid("element must be a lever"));
+                }
+                let current = get_lever_config_for_element(tx, draft.element_id)?;
+                if current.as_ref().map(|row| row.id) != draft.lever_config_id {
+                    return Err(taken("lever configuration changed; reload before saving"));
+                }
+                let input = super::super::hardware::get_input(tx, draft.input_id)?.ok_or(StorageError::NotFound)?;
+                if input.kind != Some(super::super::InputKind::Analog) {
+                    return Err(invalid("select a calibrated analog input"));
+                }
+                let definitions: Vec<_> = draft.notches.iter().map(|notch| crate::preview::NotchSimulatorRange {
+                    sim_input_min: notch.sim_input_min,
+                    sim_input_max: notch.sim_input_max,
+                }).collect();
+                let mapped = crate::preview::preview_notch_mapping_for_input(
+                    &input, &definitions, &draft.captured_ranges, draft.auto_distribute,
+                ).map_err(|error| invalid(format!("invalid notch mapping: {error:?}")))?;
+                let mut endpoints = draft.endpoints;
+                endpoints.lever_type = endpoints.lever_type.or_else(|| current.as_ref().and_then(|row| row.lever_type));
+                endpoints.inverted = if draft.auto_distribute {
+                    current.as_ref().is_some_and(|row| row.inverted)
+                } else { mapped.inverted };
+                validate_lever_config_fields(&endpoints.min_endpoint, &endpoints.max_endpoint, &endpoints.value_endpoint,
+                    endpoints.notch_count_endpoint.as_deref(), endpoints.notch_index_endpoint.as_deref())?;
+                let config = if let Some(current) = current {
+                    tx.execute(
+                        "UPDATE train_lever_configs SET min_endpoint=?1,max_endpoint=?2,value_endpoint=?3,notch_count_endpoint=?4,notch_index_endpoint=?5,lever_type=?6,inverted=?7,updated_at=?8 WHERE id=?9",
+                        params![endpoints.min_endpoint,endpoints.max_endpoint,endpoints.value_endpoint,endpoints.notch_count_endpoint,endpoints.notch_index_endpoint,endpoints.lever_type.map(LeverType::as_db),endpoints.inverted as i64,timestamp(),current.id.0],
+                    )?;
+                    current.id
+                } else {
+                    create_lever_config_tx(tx, draft.element_id, endpoints)?.id
+                };
+                super::bindings::bind_lever_input_tx(tx, config, draft.input_id,
+                    super::bindings::BindOptions { replace: draft.replace_binding })?;
+                let notches: Vec<_> = draft.notches.into_iter().zip(mapped.ranges).map(|(mut notch, range)| {
+                    notch.input_min = Some(range.min);
+                    notch.input_max = Some(range.max);
+                    notch
+                }).collect();
+                replace_notches_tx(tx, config, &notches)?;
+                if draft.calibration_completed {
+                    tx.execute("UPDATE train_lever_configs SET calibrated_at=?1,updated_at=?1 WHERE id=?2", params![timestamp(),config.0])?;
+                }
+                super::advance_topic(tx, "bindings")?;
+                get_lever_config_by_id(tx, config)?.ok_or(StorageError::NotFound)
+            })
         })
     }
 }

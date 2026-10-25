@@ -53,3 +53,79 @@ mod tests {
         );
     }
 }
+
+/// Rust distribution retains native helpers/resources while omitting the BEAM
+/// backend and the legacy vJoy sidecar (the Rust host uses the vendored SDK).
+pub fn rust_bundle_overlay(
+    incoming: Option<&str>,
+    windows: bool,
+) -> Result<String, serde_json::Error> {
+    let mut config: Value = serde_json::from_str(&trial_overlay(incoming)?)?;
+    let bundle = config["bundle"].as_object_mut().expect("bundle object");
+    bundle.insert(
+        "externalBin".into(),
+        json!(["binaries/avrdude", "binaries/keystroke"]),
+    );
+    let resources = if windows {
+        json!([
+            "binaries/avrdude.conf",
+            "resources/vc_redist.x64.exe",
+            "resources/vJoySetup.exe",
+            "resources/vJoyConfig.exe",
+            "resources/vJoyInstall.dll",
+            "resources/vJoyInterface.dll",
+            "resources/vJoy-LICENSE.txt",
+            "resources/THIRD_PARTY_NOTICES.md"
+        ])
+    } else {
+        json!(["binaries/avrdude.conf"])
+    };
+    bundle.insert("resources".into(), resources);
+    serde_json::to_string(&config)
+}
+
+#[cfg(test)]
+mod rust_bundle_tests {
+    use super::*;
+    #[test]
+    fn cli_distribution_overlays_match_the_rust_build_configuration() {
+        for (windows, raw) in [
+            (false, include_str!("tauri.rust.conf.json")),
+            (true, include_str!("tauri.rust.windows.conf.json")),
+        ] {
+            let cli: Value = serde_json::from_str(raw).unwrap();
+            let build: Value =
+                serde_json::from_str(&rust_bundle_overlay(None, windows).unwrap()).unwrap();
+            assert_eq!(cli["bundle"], build["bundle"]);
+            assert_eq!(cli["build"], build["build"]);
+        }
+    }
+    #[test]
+    fn rust_distribution_keeps_required_helpers_and_trusted_windows_resource_layout() {
+        let config: Value = serde_json::from_str(&rust_bundle_overlay(Some(r#"{"plugins":{"updater":{"pubkey":"preserved"}},"bundle":{"targets":["nsis"]}}"#), true).unwrap()).unwrap();
+        assert_eq!(
+            config["bundle"]["externalBin"],
+            json!(["binaries/avrdude", "binaries/keystroke"])
+        );
+        for file in [
+            "resources/vJoyConfig.exe",
+            "resources/vJoyInstall.dll",
+            "resources/vJoyInterface.dll",
+            "resources/vJoy-LICENSE.txt",
+            "binaries/avrdude.conf",
+        ] {
+            assert!(config["bundle"]["resources"]
+                .as_array()
+                .unwrap()
+                .contains(&json!(file)));
+        }
+        assert_eq!(config["plugins"]["updater"]["pubkey"], "preserved");
+        assert_eq!(config["bundle"]["targets"], json!(["nsis"]));
+        let portable: Value =
+            serde_json::from_str(&rust_bundle_overlay(None, false).unwrap()).unwrap();
+        assert_eq!(
+            portable["bundle"]["resources"],
+            json!(["binaries/avrdude.conf"])
+        );
+    }
+}

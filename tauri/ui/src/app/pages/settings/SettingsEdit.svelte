@@ -16,6 +16,8 @@
 
   let url = $state('');
   let apiKey = $state('');
+  let keySavedLocally = $state(false);
+  const keyConfigured = $derived(settings?.simulator.api_key_configured === true || keySavedLocally);
   let urlError = $state('');
   let saving = $state(false);
   let connectionResult = $state('');
@@ -49,11 +51,18 @@
     const trimmedKey = apiKey.trim();
     if (trimmedKey !== '') {
       const keyResult = await bridge.setApiKey?.(trimmedKey);
-      if (keyResult && !keyResult.ok) {
+      if (!keyResult) {
+        saving = false;
+        connectionResult = 'API key saving is not available in this build.';
+        return;
+      }
+      if (!keyResult.ok) {
         saving = false;
         connectionResult = keyResult.error.message;
         return;
       }
+      keySavedLocally = keyResult.value.value.simulator.api_key_configured;
+      apiKey = '';
     }
     const urlResult = await bridge.setSimulatorUrl?.(url.trim());
     if (!urlResult) {
@@ -133,7 +142,7 @@
 
     <div class="mb-6">
       <label class="label pb-1.5" for="simulator_api_key"><span class="label-text">API Key</span></label>
-      {#if settings?.simulator.api_key_configured}
+      {#if keyConfigured}
         <div class="mb-3 flex items-center gap-2 rounded border border-base-300 bg-base-200 px-3 py-2 text-sm">
           <span aria-hidden="true">✓</span>
           <span class="text-base-content/70">A key is saved. Enter a new key below to replace it.</span>

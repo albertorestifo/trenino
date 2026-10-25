@@ -533,6 +533,13 @@ impl AppServices {
         lever_config_id: EntityId,
     ) -> Result<UiSnapshot<NotchRangesValidationView>, AppError> {
         let _guard = self.begin_operation()?;
+        self.validate_notch_ranges_unguarded(lever_config_id)
+    }
+
+    fn validate_notch_ranges_unguarded(
+        &self,
+        lever_config_id: EntityId,
+    ) -> Result<UiSnapshot<NotchRangesValidationView>, AppError> {
         let validation = self
             .db
             .validate_notch_ranges(lever_config_id)
@@ -804,6 +811,29 @@ impl AppServices {
         self.configurations_snapshot_unguarded()
     }
 
+    /// The create screen needs the created device identity, while the
+    /// hardware topic continues to publish the canonical configuration list.
+    pub fn create_configuration_detail(
+        &self,
+        name: &str,
+        description: Option<String>,
+    ) -> Result<UiSnapshot<DeviceDetailView>, AppError> {
+        validate_name(name, "name")?;
+        let _guard = self.begin_operation()?;
+        let created = self
+            .db
+            .create_device(
+                self.next_operation(),
+                DeviceDraft {
+                    name: name.trim().to_owned(),
+                    description,
+                    config_id: None,
+                },
+            )
+            .map_err(to_app_error)?;
+        self.hardware_detail_unguarded(created.record.id)
+    }
+
     pub fn update_configuration(
         &self,
         device_id: EntityId,
@@ -1064,14 +1094,8 @@ impl AppServices {
     ) -> Result<UiSnapshot<DeviceDetailView>, AppError> {
         validate_name(module_chip, "module_chip")?;
         let _guard = self.begin_operation()?;
-        let (snapshot, _) = self.db.hardware_snapshot().map_err(to_app_error)?;
-        let device_id = snapshot
-            .i2c_modules
-            .iter()
-            .find(|module| module.id == module_id)
-            .ok_or_else(not_found("i2c_module"))?
-            .device_id;
-        self.db
+        let updated = self
+            .db
             .update_i2c_module(
                 self.next_operation(),
                 module_id,
@@ -1083,7 +1107,7 @@ impl AppServices {
                 },
             )
             .map_err(to_app_error)?;
-        self.hardware_detail_unguarded(device_id)
+        self.hardware_detail_unguarded(updated.record.device_id)
     }
 
     pub fn delete_i2c_module(
@@ -1500,30 +1524,49 @@ impl AppServices {
         draft: ButtonBindingDraft,
         replace: bool,
     ) -> Result<UiSnapshot<BindingsView>, AppError> {
-        let draft = round_button_draft(draft);
+        self.put_button_binding_patch(
+            element_id,
+            input_id,
+            ButtonBindingPatch {
+                input_id: Some(input_id),
+                endpoint: draft.endpoint.map(Some),
+                on_value: draft.on_value,
+                off_value: draft.off_value,
+                enabled: draft.enabled,
+                mode: draft.mode,
+                hardware_type: draft.hardware_type,
+                repeat_interval_ms: draft.repeat_interval_ms,
+                keystroke: draft.keystroke.map(Some),
+                on_sequence_id: draft.on_sequence_id.map(Some),
+                off_sequence_id: draft.off_sequence_id.map(Some),
+            },
+            replace,
+        )
+    }
+
+    /// Presence-aware desktop update: omitted fields stay unchanged and
+    /// explicit nullable clears survive through the transaction boundary.
+    pub fn put_button_binding_patch(
+        &self,
+        element_id: EntityId,
+        input_id: EntityId,
+        mut patch: ButtonBindingPatch,
+        replace: bool,
+    ) -> Result<UiSnapshot<BindingsView>, AppError> {
+        patch.input_id = Some(input_id);
+        patch.on_value = patch.on_value.map(round2);
+        patch.off_value = patch.off_value.map(round2);
         let _guard = self.begin_operation()?;
         let existing = self
             .db
             .get_button_binding(element_id)
             .map_err(to_app_error)?;
-        if existing.is_some() {
+        if let Some(existing) = existing {
             self.db
                 .update_button_binding_with(
                     self.next_operation(),
-                    existing.expect("checked").id,
-                    ButtonBindingPatch {
-                        input_id: Some(input_id),
-                        endpoint: draft.endpoint.map(Some),
-                        on_value: draft.on_value,
-                        off_value: draft.off_value,
-                        enabled: draft.enabled,
-                        mode: draft.mode,
-                        hardware_type: draft.hardware_type,
-                        repeat_interval_ms: draft.repeat_interval_ms,
-                        keystroke: draft.keystroke.map(Some),
-                        on_sequence_id: draft.on_sequence_id.map(Some),
-                        off_sequence_id: draft.off_sequence_id.map(Some),
-                    },
+                    existing.id,
+                    patch,
                     BindOptions { replace },
                 )
                 .map_err(to_app_error)?;
@@ -1533,7 +1576,18 @@ impl AppServices {
                     self.next_operation(),
                     element_id,
                     input_id,
-                    draft,
+                    ButtonBindingDraft {
+                        endpoint: patch.endpoint.flatten(),
+                        on_value: patch.on_value,
+                        off_value: patch.off_value,
+                        enabled: patch.enabled,
+                        mode: patch.mode,
+                        hardware_type: patch.hardware_type,
+                        repeat_interval_ms: patch.repeat_interval_ms,
+                        keystroke: patch.keystroke.flatten(),
+                        on_sequence_id: patch.on_sequence_id.flatten(),
+                        off_sequence_id: patch.off_sequence_id.flatten(),
+                    },
                     BindOptions { replace },
                 )
                 .map_err(to_app_error)?;
@@ -2181,14 +2235,6 @@ fn round_notch_patch(patch: NotchPatch) -> NotchPatch {
     }
 }
 
-fn round_button_draft(draft: ButtonBindingDraft) -> ButtonBindingDraft {
-    ButtonBindingDraft {
-        on_value: draft.on_value.map(round2),
-        off_value: draft.off_value.map(round2),
-        ..draft
-    }
-}
-
 fn round_output_draft(draft: OutputBindingDraft) -> OutputBindingDraft {
     OutputBindingDraft {
         value_a: round_opt2(draft.value_a),
@@ -2292,5 +2338,330 @@ fn constraint_error(field: &str, detail: &str) -> AppError {
         message: "Check the highlighted field.".into(),
         field_errors: BTreeMap::from([(field.into(), detail.into())]),
         retryable: false,
+    }
+}
+
+/// A successful commit stays acknowledged even if a later refresh fails.
+/// Missing snapshots explicitly request a refresh; validation is derived
+/// directly from the committed row and cannot fail after the write.
+pub struct LeverMappingSave {
+    pub lever_config_id: EntityId,
+    pub inverted: bool,
+    pub train_detail: Option<UiSnapshot<TrainDetailView>>,
+    pub validation: UiSnapshot<NotchRangesValidationView>,
+    pub bindings: Option<UiSnapshot<BindingsView>>,
+    pub trains: Option<UiSnapshot<Vec<TrainSummaryView>>>,
+}
+
+impl AppServices {
+    pub fn commit_lever_mapping(
+        &self,
+        draft: crate::storage::trains::LeverMappingDraft,
+    ) -> Result<LeverMappingSave, AppError> {
+        self.commit_lever_mapping_inner(draft, || {})
+    }
+
+    fn commit_lever_mapping_inner(
+        &self,
+        draft: crate::storage::trains::LeverMappingDraft,
+        after_commit: impl FnOnce(),
+    ) -> Result<LeverMappingSave, AppError> {
+        let _guard = self.begin_operation()?;
+        let train_id = self.train_of_element(draft.element_id)?;
+        let saved = self
+            .db
+            .commit_lever_mapping(self.next_operation(), draft)
+            .map_err(to_app_error)?;
+        let value = match crate::storage::trains::validate_lever_notch_ranges(&saved.record) {
+            RangesValidation::Valid => NotchRangesValidationView {
+                valid: true,
+                gaps: vec![],
+            },
+            RangesValidation::Gaps(gaps) => NotchRangesValidationView {
+                valid: false,
+                gaps: gaps
+                    .into_iter()
+                    .map(|(from, to)| NotchRangeGapView { from, to })
+                    .collect(),
+            },
+        };
+        after_commit();
+        Ok(LeverMappingSave {
+            lever_config_id: saved.record.id,
+            inverted: saved.record.inverted,
+            train_detail: self.train_detail_unguarded(train_id).ok(),
+            validation: UiSnapshot {
+                epoch: Epoch(saved.receipt.metadata.epoch),
+                topic: Topic::Trains,
+                revision: Revision(saved.receipt.metadata.revision),
+                value,
+            },
+            bindings: self.bindings_snapshot_unguarded().ok(),
+            trains: self.trains_snapshot_unguarded().ok(),
+        })
+    }
+}
+
+#[cfg(test)]
+mod mapping_ack_tests {
+    use super::*;
+    use crate::{
+        preview::CapturedRange,
+        storage::{
+            trains::{LeverMappingDraft, NotchKind},
+            CalibrationRecord, DeviceDraft, InputDraft, InputKind,
+        },
+    };
+
+    #[test]
+    fn mapping_commit_is_acknowledged_when_postcommit_refresh_loses_database() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("mapping-ack.sqlite");
+        let services = AppServices::open_full(&path, None).unwrap();
+        let database = services.database();
+        let device = database
+            .create_device(
+                OperationId(1),
+                DeviceDraft {
+                    name: "Panel".into(),
+                    description: None,
+                    config_id: None,
+                },
+            )
+            .unwrap()
+            .record;
+        let input = database
+            .create_input(
+                OperationId(2),
+                device.id,
+                InputDraft {
+                    pin: 1,
+                    kind: InputKind::Analog,
+                    sensitivity: Some(5),
+                    debounce: None,
+                    name: None,
+                    matrix_id: None,
+                },
+            )
+            .unwrap()
+            .record;
+        database
+            .save_calibration(
+                OperationId(3),
+                input.id,
+                CalibrationRecord {
+                    max_hardware_value: Some(1023),
+                    min_value: Some(0),
+                    max_value: Some(1000),
+                    has_rollover: false,
+                    is_inverted: false,
+                },
+            )
+            .unwrap();
+        let train = database
+            .create_train(
+                OperationId(4),
+                TrainDraft {
+                    name: "Train".into(),
+                    description: None,
+                    identifiers: vec!["Train".into()],
+                },
+            )
+            .unwrap()
+            .record;
+        let element = database
+            .create_train_element(
+                OperationId(5),
+                train.id,
+                ElementDraft {
+                    kind: ElementKind::Lever,
+                    name: "Throttle".into(),
+                },
+            )
+            .unwrap()
+            .record;
+        let draft = LeverMappingDraft {
+            element_id: element.id,
+            lever_config_id: None,
+            input_id: input.id,
+            replace_binding: false,
+            endpoints: LeverConfigDraft {
+                min_endpoint: "Throttle.Min".into(),
+                max_endpoint: "Throttle.Max".into(),
+                value_endpoint: "Throttle.Value".into(),
+                notch_count_endpoint: None,
+                notch_index_endpoint: None,
+                lever_type: None,
+                inverted: false,
+            },
+            notches: vec![NotchDraft {
+                index: 0,
+                kind: NotchKind::Linear,
+                value: None,
+                min_value: Some(0.0),
+                max_value: Some(1.0),
+                input_min: None,
+                input_max: None,
+                sim_input_min: Some(0.0),
+                sim_input_max: Some(1.0),
+                description: None,
+            }],
+            captured_ranges: vec![CapturedRange {
+                min: 0,
+                max: 1000,
+                sample_count: 10,
+            }],
+            auto_distribute: false,
+            calibration_completed: true,
+        };
+        let ack = services
+            .commit_lever_mapping_inner(draft, || {
+                database
+                    .close_worker(std::time::Duration::from_secs(1))
+                    .unwrap()
+            })
+            .unwrap();
+        assert!(ack.train_detail.is_none());
+        assert!(ack.bindings.is_none());
+        assert!(ack.validation.value.valid);
+        let persisted = rusqlite::Connection::open(&path).unwrap();
+        let completed: bool = persisted
+            .query_row(
+                "SELECT calibrated_at IS NOT NULL FROM train_lever_configs WHERE id=?1",
+                [ack.lever_config_id.0],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert!(
+            completed,
+            "a refresh failure must not masquerade as a failed save"
+        );
+    }
+}
+
+#[cfg(test)]
+mod i2c_concurrency_tests {
+    use super::*;
+    use crate::storage::{DeviceDraft, DisplayType};
+    use std::{sync::mpsc, thread, time::Duration};
+
+    #[test]
+    fn omitted_i2c_params_preserve_concurrent_committed_replacement() {
+        let directory = tempfile::tempdir().unwrap();
+        let services =
+            Arc::new(AppServices::open_full(directory.path().join("i2c.sqlite"), None).unwrap());
+        let database = services.database();
+        let device = database
+            .create_device(
+                OperationId(100),
+                DeviceDraft {
+                    name: "Panel".into(),
+                    description: None,
+                    config_id: None,
+                },
+            )
+            .unwrap()
+            .record;
+        let original = Ht16k33Params {
+            brightness: 8,
+            num_digits: 8,
+            display_type: DisplayType::FourteenSegment,
+            has_dot: false,
+            align_right: true,
+            min_value: Some(0.0),
+        };
+        let module = database
+            .create_i2c_module(
+                OperationId(101),
+                device.id,
+                I2cModuleDraft {
+                    name: Some("Original".into()),
+                    module_chip: "ht16k33".into(),
+                    i2c_address: 0x70,
+                    params: Some(original),
+                },
+            )
+            .unwrap()
+            .record;
+        let (paused_tx, paused_rx) = mpsc::channel();
+        let (resume_tx, resume_rx) = mpsc::channel();
+        let resume_rx = Mutex::new(resume_rx);
+        database.before_hardware_dispatch(Arc::new(move |operation| {
+            if operation == "update_i2c_module"
+                && thread::current().name() == Some("metadata-editor")
+            {
+                paused_tx.send(()).unwrap();
+                resume_rx
+                    .lock()
+                    .unwrap()
+                    .recv_timeout(Duration::from_secs(5))
+                    .unwrap();
+            }
+        }));
+        let metadata_services = services.clone();
+        let metadata = thread::Builder::new()
+            .name("metadata-editor".into())
+            .spawn(move || {
+                metadata_services.update_i2c_module(
+                    module.id,
+                    Some("Renamed".into()),
+                    "ht16k33",
+                    0x71,
+                    None,
+                )
+            })
+            .unwrap();
+        paused_rx.recv_timeout(Duration::from_secs(5)).unwrap();
+        // A shared-worker writer (as used by MCP), not a second SQLite connection.
+        // In the old code the paused AppServices call already captured stale params.
+        let replacement = Ht16k33Params {
+            brightness: 3,
+            num_digits: 4,
+            display_type: DisplayType::SevenSegment,
+            has_dot: true,
+            align_right: false,
+            min_value: None,
+        };
+        let writer = database.as_ref().clone();
+        let replaced = writer
+            .update_i2c_module(
+                OperationId(102),
+                module.id,
+                I2cModuleDraft {
+                    name: Some("Parameter editor".into()),
+                    module_chip: "ht16k33".into(),
+                    i2c_address: 0x70,
+                    params: Some(replacement.clone()),
+                },
+            )
+            .unwrap();
+        assert_eq!(replaced.record.params, Some(replacement.clone()));
+        resume_tx.send(()).unwrap();
+        metadata.join().unwrap().unwrap();
+        let stored = database
+            .i2c_modules_for_device(device.id)
+            .unwrap()
+            .remove(0);
+        assert_eq!(stored.name.as_deref(), Some("Renamed"));
+        assert_eq!(stored.i2c_address, 0x71);
+        assert_eq!(stored.params, Some(replacement.clone()));
+        let mut invalid = replacement;
+        invalid.brightness = 16;
+        assert!(writer
+            .update_i2c_module(
+                OperationId(103),
+                module.id,
+                I2cModuleDraft {
+                    name: Some("Must not commit".into()),
+                    module_chip: "ht16k33".into(),
+                    i2c_address: 0x72,
+                    params: Some(invalid),
+                }
+            )
+            .is_err());
+        assert_eq!(
+            database.i2c_modules_for_device(device.id).unwrap(),
+            vec![stored]
+        );
     }
 }

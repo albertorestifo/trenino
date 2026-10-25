@@ -650,11 +650,10 @@ fn mapping_cascades_when_input_deleted() {
     assert_eq!(remaining[0].input_id, button);
 }
 
-/// The neutral center uses the widened midpoint (plan correction over the
-/// legacy rounded midpoint: 16383, not 16384).
+/// The neutral center follows the legacy Elixir rounded midpoint.
 #[test]
-fn neutral_axis_value_is_the_widened_midpoint() {
-    assert_eq!(neutral_axis_value(0, 32767), 16383);
+fn neutral_axis_value_matches_elixir_midpoint() {
+    assert_eq!(neutral_axis_value(0, 32767), 16384);
     assert_eq!(neutral_axis_value(-32768, 32767), -1);
     assert_eq!(neutral_axis_value(i32::MIN, i32::MAX), -1);
     assert_eq!(neutral_axis_value(5, 5), 5);
@@ -687,6 +686,7 @@ fn startup_reconciliation_not_requested() {
 
     let missing = fake();
     missing.lock().unwrap().set_device(1, missing_device());
+    missing.lock().unwrap().set_owned(1, false);
     let off_manager = manager(&db, &arbiter, missing);
     assert_eq!(off_manager.status(), VjoyStatus::Off);
 
@@ -751,14 +751,14 @@ fn enable_acquires_only_selected_devices_and_persists_after_success() {
             AdapterEvent::Acquire(2),
             AdapterEvent::Neutralize {
                 device: 2,
-                center: 16383,
+                center: 16384,
             },
             AdapterEvent::Status(5),
             AdapterEvent::Descriptor(5),
             AdapterEvent::Acquire(5),
             AdapterEvent::Neutralize {
                 device: 5,
-                center: 16383,
+                center: 16384,
             },
         ]
     );
@@ -862,7 +862,7 @@ fn incompatible_descriptor_refused_before_acquisition() {
 }
 
 /// Acceptance: neutralize on release. Disable neutralizes every acquired
-/// device (widened midpoint) before releasing it and persists `enabled=false`
+/// device (Elixir-rounded midpoint) before releasing it and persists `enabled=false`
 /// only after the releases (mirrors "disable resets and shuts down before
 /// deletion and persists only on confirmed removal").
 #[test]
@@ -883,7 +883,7 @@ fn disable_neutralizes_before_release_and_persists_off() {
         vec![
             AdapterEvent::Neutralize {
                 device: 1,
-                center: 16383,
+                center: 16384,
             },
             AdapterEvent::Release(1),
         ]
@@ -970,12 +970,12 @@ fn drop_neutralizes_and_releases_owned_devices() {
         vec![
             AdapterEvent::Neutralize {
                 device: 2,
-                center: 16383,
+                center: 16384,
             },
             AdapterEvent::Release(2),
             AdapterEvent::Neutralize {
                 device: 1,
-                center: 16383,
+                center: 16384,
             },
             AdapterEvent::Release(1),
         ]
@@ -1059,4 +1059,215 @@ fn selection_changes_refused_while_active() {
     );
     manager.enable().unwrap();
     assert_eq!(acquired(&fake), vec![4]);
+}
+
+#[test]
+fn foreign_free_selected_device_is_not_claimed_as_leftover() {
+    let (_dir, db) = database();
+    let fake = fake();
+    fake.lock().unwrap().set_owned(1, false);
+    let manager = manager(&db, &arbiter(), fake.clone());
+    assert_eq!(manager.status(), VjoyStatus::Off);
+    assert!(matches!(
+        manager.remove_leftover(),
+        Err(VjoyError::InvalidState(_))
+    ));
+    assert_eq!(count(&fake, &AdapterEvent::ConfigureDelete(1)), 0);
+}
+
+#[test]
+fn compatible_foreign_selection_cannot_be_enabled_or_adopted_on_retry() {
+    let (_dir, db) = database();
+    let fake = fake();
+    fake.lock().unwrap().set_configurator_enabled(true);
+    fake.lock().unwrap().set_owned(1, false);
+    let manager = manager(&db, &arbiter(), fake.clone());
+    assert!(matches!(manager.enable(), Err(VjoyError::Configurator(_))));
+    assert!(acquired(&fake).is_empty());
+    assert!(!db.vjoy_configuration().unwrap().enabled);
+    assert!(matches!(manager.retry(), Err(VjoyError::Configurator(_))));
+    assert_eq!(count(&fake, &AdapterEvent::ConfigureCreate(1)), 0);
+}
+
+#[test]
+fn pending_creation_marker_recovers_without_elevating_again() {
+    let (_dir, db) = database();
+    let fake = fake();
+    fake.lock().unwrap().set_configurator_enabled(true);
+    fake.lock().unwrap().set_owned(1, false);
+    fake.lock().unwrap().set_confirmed(1, true);
+    let manager = manager(&db, &arbiter(), fake.clone());
+    assert_eq!(manager.status(), VjoyStatus::NeedsCleanup);
+    manager.enable().unwrap();
+    assert!(fake.lock().unwrap().owned(1));
+    assert_eq!(count(&fake, &AdapterEvent::ConfigureCreate(1)), 1);
+    assert!(db.vjoy_configuration().unwrap().enabled);
+}
+
+#[test]
+fn stale_intent_for_compatible_device_is_foreign_at_manager_entry() {
+    let (_dir, db) = database();
+    let fake = fake();
+    fake.lock().unwrap().set_configurator_enabled(true);
+    fake.lock().unwrap().set_owned(1, false);
+    fake.lock().unwrap().set_pending(1, true);
+    let manager = manager(&db, &arbiter(), fake.clone());
+    assert!(matches!(manager.enable(), Err(VjoyError::Configurator(_))));
+    assert_eq!(count(&fake, &AdapterEvent::ConfigureCreate(1)), 0);
+    assert_eq!(count(&fake, &AdapterEvent::ConfigureDelete(1)), 0);
+    assert!(!db.vjoy_configuration().unwrap().enabled);
+}
+
+#[test]
+fn second_selected_marker_read_failure_rolls_back_first_acquisition() {
+    let (_dir, db) = database();
+    let fake = fake();
+    fake.lock().unwrap().set_configurator_enabled(true);
+    fake.lock().unwrap().set_device(7, FakeDevice::default());
+    let manager = manager(&db, &arbiter(), fake.clone());
+    manager.set_selection(OperationId(901), &[1, 7]).unwrap();
+    fake.lock().unwrap().set_marker_read_error(Some(7));
+    clear_events(&fake);
+    assert!(matches!(manager.enable(), Err(VjoyError::Configurator(_))));
+    assert!(acquired(&fake).is_empty());
+    let log = events(&fake);
+    assert!(log.contains(&AdapterEvent::Neutralize {
+        device: 1,
+        center: 16384
+    }));
+    assert!(log.contains(&AdapterEvent::Release(1)));
+    assert!(!db.vjoy_configuration().unwrap().enabled);
+}
+
+#[test]
+fn disabling_acquired_device_with_lost_marker_releases_and_reports_conflict() {
+    let (_dir, db) = database();
+    let fake = fake();
+    fake.lock().unwrap().set_configurator_enabled(true);
+    let manager = manager(&db, &arbiter(), fake.clone());
+    manager.enable().unwrap();
+    fake.lock().unwrap().set_owned(1, false);
+    clear_events(&fake);
+    assert!(matches!(manager.disable(), Err(VjoyError::Configurator(_))));
+    assert!(acquired(&fake).is_empty());
+    assert_eq!(count(&fake, &AdapterEvent::ConfigureDelete(1)), 0);
+    assert!(db.vjoy_configuration().unwrap().enabled);
+}
+
+#[test]
+fn missing_selected_device_is_configured_before_acquisition_and_only_selected_id_is_touched() {
+    let (_dir, db) = database();
+    let fake = fake();
+    fake.lock().unwrap().set_configurator_enabled(true);
+    fake.lock().unwrap().set_device(7, missing_device());
+    let manager = manager(&db, &arbiter(), fake.clone());
+    manager.set_selection(OperationId(900), &[7]).unwrap();
+    clear_events(&fake);
+    manager.enable().unwrap();
+    let events = events(&fake);
+    assert!(events.contains(&AdapterEvent::ConfigureCreate(7)));
+    assert!(events.contains(&AdapterEvent::Acquire(7)));
+    assert_eq!(count(&fake, &AdapterEvent::ConfigureCreate(1)), 0);
+    assert_eq!(acquired(&fake), vec![7]);
+    assert!(fake.lock().unwrap().owned(7));
+}
+
+#[test]
+fn cleanup_deletes_only_owned_selected_leftovers() {
+    let (_dir, db) = database();
+    db.vjoy_set_selected_devices(OperationId(901), &[2, 3])
+        .unwrap();
+    let fake = fake();
+    fake.lock().unwrap().set_configurator_enabled(true);
+    fake.lock().unwrap().set_owned(3, false);
+    let manager = manager(&db, &arbiter(), fake.clone());
+    assert_eq!(manager.status(), VjoyStatus::NeedsCleanup);
+    clear_events(&fake);
+    assert!(matches!(
+        manager.remove_leftover(),
+        Err(VjoyError::Configurator(_))
+    ));
+    assert_eq!(count(&fake, &AdapterEvent::ConfigureDelete(2)), 0);
+    assert_eq!(count(&fake, &AdapterEvent::ConfigureDelete(3)), 0);
+    assert_eq!(manager.status(), VjoyStatus::Error);
+}
+
+#[test]
+fn selected_owned_device_is_removed_on_disable_after_release() {
+    let (_dir, db) = database();
+    db.vjoy_set_selected_devices(OperationId(902), &[4])
+        .unwrap();
+    let fake = fake();
+    fake.lock().unwrap().set_configurator_enabled(true);
+    let manager = manager(&db, &arbiter(), fake.clone());
+    manager.enable().unwrap();
+    clear_events(&fake);
+    manager.disable().unwrap();
+    let calls = events(&fake);
+    let release = calls
+        .iter()
+        .position(|event| *event == AdapterEvent::Release(4))
+        .unwrap();
+    let delete = calls
+        .iter()
+        .position(|event| *event == AdapterEvent::ConfigureDelete(4))
+        .unwrap();
+    assert!(release < delete);
+    assert!(!fake.lock().unwrap().owned(4));
+    assert!(!db.vjoy_configuration().unwrap().enabled);
+    assert_eq!(count(&fake, &AdapterEvent::ConfigureDelete(1)), 0);
+}
+
+#[test]
+fn startup_stale_owned_marker_is_cleanup_and_cleared_without_elevation() {
+    let (_dir, db) = database();
+    let fake = fake();
+    fake.lock().unwrap().set_configurator_enabled(true);
+    fake.lock().unwrap().set_device(1, missing_device());
+    let manager = manager(&db, &arbiter(), fake.clone());
+    assert_eq!(manager.status(), VjoyStatus::NeedsCleanup);
+    manager.remove_leftover().unwrap();
+    assert!(!fake.lock().unwrap().owned(1));
+    assert_eq!(manager.status(), VjoyStatus::Off);
+    assert!(!db.vjoy_configuration().unwrap().enabled);
+}
+
+#[test]
+fn runtime_shutdown_releases_selected_handles_without_changing_requested_preference() {
+    let (_dir, db) = database();
+    let arbiter = arbiter();
+    let fake = fake();
+    db.vjoy_set_selected_devices(OperationId(999), &[3])
+        .unwrap();
+    fake.lock().unwrap().set_device(3, FakeDevice::default());
+    let manager = manager(&db, &arbiter, fake.clone());
+    manager.enable().unwrap();
+    manager.stop_admission();
+    manager.release_runtime().unwrap();
+    manager.release_runtime().unwrap();
+    assert!(db.vjoy_configuration().unwrap().enabled);
+    assert!(acquired(&fake).is_empty());
+    assert_eq!(count(&fake, &AdapterEvent::Release(3)), 1);
+    assert_eq!(count(&fake, &AdapterEvent::Release(1)), 0);
+    assert!(
+        manager.enable().is_err(),
+        "closing runtime cannot admit reacquisition"
+    );
+}
+#[test]
+fn runtime_shutdown_retains_failed_neutralization_for_acknowledged_retry() {
+    let (_dir, db) = database();
+    let arbiter = arbiter();
+    let fake = fake();
+    let manager = manager(&db, &arbiter, fake.clone());
+    manager.enable().unwrap();
+    fake.lock()
+        .unwrap()
+        .set_neutralize_error(1, Some("temporary failure"));
+    assert!(manager.release_runtime().is_err());
+    assert_eq!(acquired(&fake), vec![1]);
+    fake.lock().unwrap().set_neutralize_error(1, None);
+    manager.release_runtime().unwrap();
+    assert!(acquired(&fake).is_empty());
+    assert!(db.vjoy_configuration().unwrap().enabled);
 }

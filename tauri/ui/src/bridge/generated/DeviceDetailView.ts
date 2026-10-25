@@ -12,7 +12,7 @@ export type DeviceDetailView = {
   id: string;
   name: string | null;
   description: string | null;
-  config_id: number;
+  config_id: number | null;
   inputs: Array<InputView>;
   outputs: Array<OutputView>;
   matrices: Array<MatrixView>;

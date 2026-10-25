@@ -6,6 +6,6 @@ export type FirmwareFileView = {
   board_type: string;
   environment: string | null;
   download_url: string;
-  file_size: number;
+  file_size: number | null;
   checksum_sha256: string | null;
 };

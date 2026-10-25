@@ -104,19 +104,25 @@ impl DisplayController {
         clock: Arc<dyn Clock>,
     ) -> Self {
         let (sender, receiver) = mpsc::channel(COMMAND_QUEUE);
-        let worker = tokio::spawn(run(
-            receiver,
-            source,
-            connection,
-            sink,
-            clock,
-            State {
-                active_train: None,
-                bindings: BTreeMap::new(),
-                subscriptions: BTreeMap::new(),
-                poll_deadline: None,
-            },
-        ));
+        let worker = tokio::task::spawn_blocking(move || {
+            let host = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .expect("controller runtime");
+            host.block_on(run(
+                receiver,
+                source,
+                connection,
+                sink,
+                clock,
+                State {
+                    active_train: None,
+                    bindings: BTreeMap::new(),
+                    subscriptions: BTreeMap::new(),
+                    poll_deadline: None,
+                },
+            ));
+        });
         Self {
             sender,
             worker: Arc::new(Mutex::new(Some(worker))),
@@ -144,6 +150,11 @@ impl DisplayController {
             .await;
     }
 
+    pub fn invalidate_hardware(&self) -> Result<(), String> {
+        self.sender
+            .try_send(DisplayControllerCommand::DevicesUpdated)
+            .map_err(|e| e.to_string())
+    }
     pub async fn devices_updated(&self) {
         let _ = self
             .sender

@@ -69,6 +69,10 @@ fn jsonrpc_error(id: Value, code: i64, message: String) -> Value {
 
 /// `Trenino.MCP.Server.handle_message/1`.
 pub fn handle_message(message: &Value, ports: &Ports) -> MessageOutcome {
+    handle_message_with_version(message, ports, SERVER_VERSION)
+}
+
+fn handle_message_with_version(message: &Value, ports: &Ports, version: &str) -> MessageOutcome {
     let invalid =
         || MessageOutcome::Error(jsonrpc_error(Value::Null, -32600, "Invalid request".into()));
     let Some(fields) = message.as_object() else {
@@ -93,7 +97,7 @@ pub fn handle_message(message: &Value, ports: &Ports) -> MessageOutcome {
             json!({
                 "protocolVersion": PROTOCOL_VERSION,
                 "capabilities": {"tools": {}},
-                "serverInfo": {"name": SERVER_NAME, "version": SERVER_VERSION}
+                "serverInfo": {"name": SERVER_NAME, "version": version}
             }),
         )),
         "notifications/initialized" => MessageOutcome::Reply(jsonrpc_response(id, Value::Null)),
@@ -216,6 +220,8 @@ impl SessionRegistry {
 
 #[derive(Clone)]
 struct HttpState {
+    server_version: Arc<str>,
+    jobs: Arc<crate::mcp::jobs::JobDrain>,
     ports: Arc<Ports>,
     auth: Option<Arc<dyn ApiKeySource>>,
     sessions: Arc<SessionRegistry>,
@@ -320,8 +326,16 @@ async fn messages_endpoint(
         return error_response(StatusCode::NOT_FOUND, "Session not found");
     };
 
+    let Some(job) = state.jobs.admit() else {
+        return error_response(StatusCode::SERVICE_UNAVAILABLE, "Shutting down");
+    };
     let ports = state.ports.clone();
-    let outcome = match tokio::task::spawn_blocking(move || handle_message(&message, &ports)).await
+    let version = state.server_version.clone();
+    let outcome = match tokio::task::spawn_blocking(move || {
+        let _job = job;
+        handle_message_with_version(&message, &ports, &version)
+    })
+    .await
     {
         Ok(outcome) => outcome,
         Err(join_error) => MessageOutcome::Error(jsonrpc_error(
@@ -421,6 +435,10 @@ struct RunningServer {
 /// The MCP HTTP server. Owns a dedicated worker thread and runtime so
 /// lifecycle control stays synchronous for the shutdown coordinator.
 pub struct McpServer {
+    server_version: Arc<str>,
+    quiescing: AtomicBool,
+    jobs: Arc<crate::mcp::jobs::JobDrain>,
+    compatibility: Option<crate::http_api::CompatibilityApi>,
     ports: Arc<Ports>,
     auth: Option<Arc<dyn ApiKeySource>>,
     sessions: Arc<SessionRegistry>,
@@ -432,6 +450,10 @@ pub struct McpServer {
 impl McpServer {
     pub fn new(ports: Arc<Ports>, auth: Option<Arc<dyn ApiKeySource>>) -> Self {
         Self {
+            server_version: Arc::from(SERVER_VERSION),
+            compatibility: None,
+            quiescing: AtomicBool::new(false),
+            jobs: Arc::default(),
             ports,
             auth,
             sessions: Arc::new(SessionRegistry::new()),
@@ -439,6 +461,17 @@ impl McpServer {
             running: Mutex::new(None),
             status: Mutex::new(McpServerStatus::Stopped),
         }
+    }
+
+    /// Advertise the containing desktop application version in protocol metadata.
+    pub fn with_server_version(mut self, version: impl Into<Arc<str>>) -> Self {
+        self.server_version = version.into();
+        self
+    }
+
+    pub fn with_compatibility_api(mut self, api: crate::http_api::CompatibilityApi) -> Self {
+        self.compatibility = Some(api);
+        self
     }
 
     /// Bind and start serving. A bind failure (including a busy port) returns
@@ -451,6 +484,11 @@ impl McpServer {
             .map_err(|_| McpStartError::WorkerStart("server state is unavailable".into()))?;
         if running.is_some() {
             return Err(McpStartError::AlreadyRunning);
+        }
+        if self.quiescing.load(Ordering::Acquire) {
+            return Err(McpStartError::WorkerStart(
+                "external request admission is closed for shutdown".into(),
+            ));
         }
 
         let listener = match bind_listener(address) {
@@ -475,7 +513,12 @@ impl McpServer {
         };
 
         let _ = listener.set_nonblocking(true);
+        self.jobs.reopen().map_err(McpStartError::WorkerStart)?;
+        self.admit.store(true, Ordering::Release);
+        self.sessions.clear();
         let state = HttpState {
+            server_version: self.server_version.clone(),
+            jobs: self.jobs.clone(),
             ports: self.ports.clone(),
             auth: self.auth.clone(),
             sessions: self.sessions.clone(),
@@ -485,6 +528,10 @@ impl McpServer {
             .route("/mcp/sse", get(sse_endpoint))
             .route("/mcp/messages", post(messages_endpoint))
             .with_state(state);
+        let app = match &self.compatibility {
+            Some(api) => app.merge(api.router(self.admit.clone(), self.jobs.clone())),
+            None => app,
+        };
         let (shutdown, shutdown_rx) = tokio::sync::oneshot::channel::<()>();
         let thread = std::thread::Builder::new()
             .name("mcp-server".into())
@@ -492,8 +539,6 @@ impl McpServer {
             .map_err(|error| McpStartError::WorkerStart(error.to_string()))?;
 
         *running = Some(RunningServer { shutdown, thread });
-        self.admit.store(true, Ordering::Release);
-        self.sessions.clear();
         let status = McpServerStatus::Running { address: bound };
         self.store_status(status.clone());
         Ok(status)
@@ -507,20 +552,20 @@ impl McpServer {
     }
 
     pub fn stop(&self) -> Result<(), String> {
-        let running = self
+        // Keep ownership in `running` until all admitted blocking jobs have
+        // finished. Tokio cannot cancel spawn_blocking work on runtime drop.
+        let mut running = self
             .running
             .lock()
-            .map_err(|_| "server state is unavailable".to_string())?
-            .take();
-        let Some(server) = running else {
+            .map_err(|_| "server state is unavailable".to_string())?;
+        self.admit.store(false, Ordering::Release);
+        self.jobs.close();
+        self.sessions.clear();
+        self.jobs.drain(SHUTDOWN_GRACE)?;
+        let Some(server) = running.take() else {
             self.store_status(McpServerStatus::Stopped);
-            self.sessions.clear();
             return Ok(());
         };
-        self.admit.store(false, Ordering::Release);
-        // Dropping senders ends every SSE stream; the worker cancels the
-        // listener and any blocking tool calls within the grace window.
-        self.sessions.clear();
         let _ = server.shutdown.send(());
         server
             .thread
@@ -559,12 +604,19 @@ fn serve(listener: StdTcpListener, app: Router, shutdown_rx: tokio::sync::onesho
 
 impl ShutdownParticipant for McpServer {
     fn stop_admission(&self) -> Result<(), String> {
+        // Serialize the permanent lifecycle fence with bind/retry/reopen.
+        let _running = self
+            .running
+            .lock()
+            .map_err(|_| "server state is unavailable")?;
+        self.quiescing.store(true, Ordering::Release);
         self.admit.store(false, Ordering::Release);
+        self.jobs.close();
         Ok(())
     }
 
     fn cancel_and_join_producers(&self) -> Result<(), String> {
-        Ok(())
+        self.jobs.drain(SHUTDOWN_GRACE)
     }
 
     fn neutralize_and_release_outputs(&self) -> Result<(), String> {

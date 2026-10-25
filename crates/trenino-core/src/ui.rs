@@ -149,7 +149,7 @@ pub struct DeviceDetailView {
     pub id: crate::EntityId,
     pub name: Option<String>,
     pub description: Option<String>,
-    #[ts(type = "number")]
+    #[ts(type = "number | null")]
     pub config_id: Option<ConfigId>,
     pub inputs: Vec<InputView>,
     pub outputs: Vec<OutputView>,
@@ -266,9 +266,9 @@ pub struct ButtonBindingView {
     #[ts(type = "number")]
     pub repeat_interval_ms: i64,
     pub keystroke: Option<String>,
-    #[ts(type = "string")]
+    #[ts(type = "string | null")]
     pub on_sequence_id: Option<crate::EntityId>,
-    #[ts(type = "string")]
+    #[ts(type = "string | null")]
     pub off_sequence_id: Option<crate::EntityId>,
 }
 
@@ -303,7 +303,7 @@ pub struct DisplayBindingView {
     pub endpoint: String,
     pub format_string: String,
     pub enabled: bool,
-    #[ts(type = "string")]
+    #[ts(type = "string | null")]
     pub script_id: Option<crate::EntityId>,
 }
 
@@ -342,7 +342,7 @@ pub struct FirmwareFileView {
     pub board_type: String,
     pub environment: Option<String>,
     pub download_url: String,
-    #[ts(type = "number")]
+    #[ts(type = "number | null")]
     pub file_size: Option<i64>,
     pub checksum_sha256: Option<String>,
 }
@@ -376,12 +376,12 @@ pub struct UploadHistoryView {
     pub upload_id: String,
     pub port: String,
     pub board_type: String,
-    #[ts(type = "string")]
+    #[ts(type = "string | null")]
     pub firmware_file_id: Option<crate::EntityId>,
     /// "running", "success", "failed" or "cancelled".
     pub status: String,
     pub error_message: Option<String>,
-    #[ts(type = "number")]
+    #[ts(type = "number | null")]
     pub duration_ms: Option<i64>,
     pub started_at: Option<String>,
     pub completed_at: Option<String>,
@@ -408,7 +408,7 @@ pub struct VjoyMappingView {
     /// "analog" or "button".
     pub input_kind: String,
     pub input_pin: Option<i32>,
-    #[ts(type = "string")]
+    #[ts(type = "string | null")]
     pub input_device: Option<crate::EntityId>,
     pub input_name: Option<String>,
 }

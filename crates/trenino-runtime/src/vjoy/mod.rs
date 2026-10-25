@@ -14,11 +14,15 @@
 //! ordering follow `Trenino.VirtualJoystick` and `Mapping`.
 
 pub mod adapter;
+pub mod configurator;
 pub mod manager;
+pub mod mapper;
 pub mod store;
 
 #[cfg(windows)]
 pub mod windows;
+#[cfg(windows)]
+mod windows_configurator;
 
 pub use adapter::{
     neutral_axis_value, AdapterEvent, DeviceDescriptor, FakeDevice, FakeVjoyAdapter, VjoyAdapter,

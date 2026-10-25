@@ -100,6 +100,7 @@ pub enum OutputControllerCommand {
     TrainChanged(Option<TrainProfile>),
     /// `:reload_bindings`.
     ReloadBindings,
+    DevicesUpdated,
     Shutdown(oneshot::Sender<()>),
 }
 
@@ -131,19 +132,25 @@ impl OutputController {
         clock: Arc<dyn Clock>,
     ) -> Self {
         let (sender, receiver) = mpsc::channel(COMMAND_QUEUE);
-        let worker = tokio::spawn(run(
-            receiver,
-            source,
-            connection,
-            sink,
-            clock,
-            State {
-                active_train: None,
-                bindings: BTreeMap::new(),
-                subscriptions: BTreeMap::new(),
-                poll_deadline: None,
-            },
-        ));
+        let worker = tokio::task::spawn_blocking(move || {
+            let host = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .expect("controller runtime");
+            host.block_on(run(
+                receiver,
+                source,
+                connection,
+                sink,
+                clock,
+                State {
+                    active_train: None,
+                    bindings: BTreeMap::new(),
+                    subscriptions: BTreeMap::new(),
+                    poll_deadline: None,
+                },
+            ));
+        });
         Self {
             sender,
             worker: Arc::new(Mutex::new(Some(worker))),
@@ -162,6 +169,12 @@ impl OutputController {
             .sender
             .send(OutputControllerCommand::ReloadBindings)
             .await;
+    }
+
+    pub fn devices_updated(&self) -> Result<(), String> {
+        self.sender
+            .try_send(OutputControllerCommand::DevicesUpdated)
+            .map_err(|e| e.to_string())
     }
 
     /// Cleanup (outputs LOW, subscriptions released) then stop the task.
@@ -230,6 +243,11 @@ async fn run(
                     load_bindings_for_train(&mut state, &*source, &*connection, &*clock, train);
                 }
             },
+            OutputControllerCommand::DevicesUpdated => {
+                for info in state.bindings.values_mut() {
+                    info.current_state = false;
+                }
+            }
             OutputControllerCommand::Shutdown(reply) => {
                 cleanup(&mut state, &*connection, &*sink);
                 let _ = reply.send(());
@@ -317,7 +335,7 @@ fn cleanup(
         }
     }
     for info in state.bindings.values() {
-        set_output_state(sink, &info.binding, false);
+        let _ = set_output_state(sink, &info.binding, false);
     }
 }
 
@@ -325,14 +343,20 @@ fn cleanup(
 /// message. A missing port (device not connected) skips the write silently;
 /// the Elixir controller ignores the send result, so the tracked state moves
 /// even when the write fails.
-fn set_output_state(sink: &dyn HardwareDispatch, binding: &OutputBindingConfig, level: bool) {
+fn set_output_state(
+    sink: &dyn HardwareDispatch,
+    binding: &OutputBindingConfig,
+    level: bool,
+) -> Result<(), String> {
     if let Some(port) = sink.resolve_port(binding.device_config_id) {
         let level = if level {
             OutputLevel::High
         } else {
             OutputLevel::Low
         };
-        let _ = sink.set_output(&port, binding.pin, level);
+        sink.set_output(&port, binding.pin, level)
+    } else {
+        Err("device disconnected".into())
     }
 }
 
@@ -381,8 +405,9 @@ fn update_bindings_with_value(
             value_b: info.binding.value_b,
         };
         let new_state = evaluate_output(&predicate, value);
-        if new_state != info.current_state {
-            set_output_state(sink, &info.binding, new_state);
+        if new_state != info.current_state
+            && set_output_state(sink, &info.binding, new_state).is_ok()
+        {
             let info = state.bindings.get_mut(id).expect("checked above");
             info.current_state = new_state;
         }

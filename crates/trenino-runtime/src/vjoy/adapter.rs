@@ -7,6 +7,8 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
+use super::configurator::ConfiguratorError;
+use super::store::VjoyAxis;
 use crate::storage::StorageError;
 
 /// Device enumeration state as reported by the vJoy interface. Mirrors the
@@ -63,6 +65,9 @@ pub enum VjoyError {
     AcquireFailed(u8, String),
     /// Applying the neutral report to an acquired device failed.
     NeutralizeFailed(u8, String),
+    /// A report could not be delivered to an acquired device.
+    ReportFailed(u8, String),
+    Configurator(ConfiguratorError),
     /// The command is invalid for the current status.
     InvalidState(&'static str),
     /// A previous failed acquire quarantined a selected device.
@@ -108,6 +113,10 @@ impl std::fmt::Display for VjoyError {
             Self::NeutralizeFailed(device, detail) => {
                 write!(f, "vJoy device {device} could not be neutralized: {detail}")
             }
+            Self::ReportFailed(device, detail) => {
+                write!(f, "vJoy device {device} report failed: {detail}")
+            }
+            Self::Configurator(error) => write!(f, "vJoy configurator failed: {error}"),
             Self::InvalidState(detail) => write!(f, "invalid state for command: {detail}"),
             Self::Quarantined(device, detail) => {
                 write!(f, "vJoy device {device} is quarantined: {detail}")
@@ -122,12 +131,15 @@ impl std::fmt::Display for VjoyError {
 
 impl std::error::Error for VjoyError {}
 
-/// Overflow-safe neutral axis position: `min + (max - min) / 2` computed in
-/// widened arithmetic. `[0, 32767]` centers at `16383`. This deliberately
-/// replaces the legacy `round((min + max) / 2)` midpoint (which produced
-/// `16384`) so the manager and both adapters agree on one convention.
+/// Overflow-safe Elixir `round((min + max) / 2)` midpoint. Ties round away
+/// from zero, so `[0, 32767]` centers at `16384`.
 pub fn neutral_axis_value(min: i32, max: i32) -> i32 {
-    (i64::from(min) + (i64::from(max) - i64::from(min)) / 2) as i32
+    let sum = i64::from(min) + i64::from(max);
+    (if sum >= 0 {
+        (sum + 1) / 2
+    } else {
+        (sum - 1) / 2
+    }) as i32
 }
 
 /// The one acquisition path for native vJoy access. Implementations must
@@ -163,6 +175,43 @@ pub trait VjoyAdapter: Send + 'static {
     /// released, then submitted to the driver.
     fn neutralize_device(&mut self, device: u8) -> Result<(), VjoyError>;
 
+    fn can_configure(&self) -> bool {
+        false
+    }
+    fn ownership_marker(&mut self, _device: u8) -> Result<bool, VjoyError> {
+        Ok(false)
+    }
+    fn creation_pending_marker(&mut self, _device: u8) -> Result<bool, VjoyError> {
+        Ok(false)
+    }
+    fn creation_confirmed_marker(&mut self, _device: u8) -> Result<bool, VjoyError> {
+        Ok(false)
+    }
+    fn configure_create(&mut self, device: u8) -> Result<(), VjoyError> {
+        Err(VjoyError::DeviceMissing(device))
+    }
+    fn configure_delete(&mut self, _device: u8) -> Result<(), VjoyError> {
+        Err(VjoyError::Unsupported)
+    }
+    /// Acknowledge that no privileged helper/status worker remains live.
+    fn settle_configurator(&mut self) -> Result<(), VjoyError> {
+        Ok(())
+    }
+
+    /// Native range for one mapped axis. Default keeps existing adapters
+    /// source-compatible while refusing unsupported live reporting.
+    fn axis_range(&mut self, _device: u8, _axis: VjoyAxis) -> Result<(i32, i32), VjoyError> {
+        Err(VjoyError::Unsupported)
+    }
+
+    fn set_axis(&mut self, _device: u8, _axis: VjoyAxis, _value: i32) -> Result<(), VjoyError> {
+        Err(VjoyError::Unsupported)
+    }
+
+    fn set_button(&mut self, _device: u8, _button: u8, _pressed: bool) -> Result<(), VjoyError> {
+        Err(VjoyError::Unsupported)
+    }
+
     /// Release an acquired device. The vJoy SDK's relinquish export is void, so
     /// release cannot report failure; callers must neutralize first.
     fn release_device(&mut self, device: u8);
@@ -182,7 +231,19 @@ pub enum AdapterEvent {
         device: u8,
         center: i32,
     },
+    Axis {
+        device: u8,
+        axis: VjoyAxis,
+        value: i32,
+    },
+    Button {
+        device: u8,
+        button: u8,
+        pressed: bool,
+    },
     Release(u8),
+    ConfigureCreate(u8),
+    ConfigureDelete(u8),
 }
 
 /// Scripted per-device state for [`FakeVjoyAdapter`].
@@ -219,6 +280,13 @@ pub struct FakeVjoyAdapter {
     devices: BTreeMap<u8, FakeDevice>,
     events: Vec<AdapterEvent>,
     acquired: BTreeSet<u8>,
+    report_errors: BTreeMap<u8, String>,
+    neutralize_errors: BTreeMap<u8, String>,
+    owned: BTreeSet<u8>,
+    pending: BTreeSet<u8>,
+    confirmed: BTreeSet<u8>,
+    marker_read_error: Option<u8>,
+    configurator_enabled: bool,
 }
 
 impl FakeVjoyAdapter {
@@ -232,6 +300,13 @@ impl FakeVjoyAdapter {
             devices: (1..=16).map(|id| (id, FakeDevice::default())).collect(),
             events: Vec::new(),
             acquired: BTreeSet::new(),
+            report_errors: BTreeMap::new(),
+            neutralize_errors: BTreeMap::new(),
+            owned: (1..=16).collect(),
+            pending: BTreeSet::new(),
+            confirmed: BTreeSet::new(),
+            marker_read_error: None,
+            configurator_enabled: false,
         }
     }
 
@@ -247,6 +322,62 @@ impl FakeVjoyAdapter {
     pub fn set_device(&mut self, device: u8, state: FakeDevice) {
         assert!((1..=16).contains(&device), "fake device id must be 1..=16");
         self.devices.insert(device, state);
+    }
+
+    pub fn set_report_error(&mut self, device: u8, detail: Option<&str>) {
+        match detail {
+            Some(detail) => {
+                self.report_errors.insert(device, detail.to_owned());
+            }
+            None => {
+                self.report_errors.remove(&device);
+            }
+        }
+    }
+
+    pub fn set_neutralize_error(&mut self, device: u8, detail: Option<&str>) {
+        match detail {
+            Some(detail) => {
+                self.neutralize_errors.insert(device, detail.to_owned());
+            }
+            None => {
+                self.neutralize_errors.remove(&device);
+            }
+        }
+    }
+
+    pub fn set_owned(&mut self, device: u8, owned: bool) {
+        if owned {
+            self.owned.insert(device);
+        } else {
+            self.owned.remove(&device);
+        }
+    }
+
+    pub fn owned(&self, device: u8) -> bool {
+        self.owned.contains(&device)
+    }
+
+    pub fn set_pending(&mut self, device: u8, pending: bool) {
+        if pending {
+            self.pending.insert(device);
+        } else {
+            self.pending.remove(&device);
+        }
+    }
+    pub fn set_confirmed(&mut self, device: u8, confirmed: bool) {
+        if confirmed {
+            self.confirmed.insert(device);
+        } else {
+            self.confirmed.remove(&device);
+        }
+    }
+    pub fn set_marker_read_error(&mut self, device: Option<u8>) {
+        self.marker_read_error = device;
+    }
+
+    pub fn set_configurator_enabled(&mut self, enabled: bool) {
+        self.configurator_enabled = enabled;
     }
 
     /// Recorded adapter calls, in order.
@@ -266,6 +397,77 @@ impl FakeVjoyAdapter {
 }
 
 impl VjoyAdapter for FakeVjoyAdapter {
+    fn can_configure(&self) -> bool {
+        self.configurator_enabled
+    }
+    fn ownership_marker(&mut self, device: u8) -> Result<bool, VjoyError> {
+        if self.marker_read_error == Some(device) {
+            return Err(VjoyError::Configurator(
+                ConfiguratorError::MarkerWriteFailed,
+            ));
+        }
+        Ok(self.owned(device))
+    }
+    fn creation_pending_marker(&mut self, device: u8) -> Result<bool, VjoyError> {
+        Ok(self.pending.contains(&device))
+    }
+    fn creation_confirmed_marker(&mut self, device: u8) -> Result<bool, VjoyError> {
+        Ok(self.confirmed.contains(&device))
+    }
+    fn configure_create(&mut self, device: u8) -> Result<(), VjoyError> {
+        if !self.configurator_enabled {
+            return Err(VjoyError::DeviceMissing(device));
+        }
+        let state = self
+            .devices
+            .get_mut(&device)
+            .ok_or(VjoyError::DeviceMissing(device))?;
+        if state.status == VjoyDeviceStatus::Free && self.confirmed.contains(&device) {
+            self.events.push(AdapterEvent::ConfigureCreate(device));
+            self.owned.insert(device);
+            self.pending.remove(&device);
+            self.confirmed.remove(&device);
+            return Ok(());
+        }
+        if state.status != VjoyDeviceStatus::Missing {
+            return Err(VjoyError::InvalidState("device already present"));
+        }
+        self.events.push(AdapterEvent::ConfigureCreate(device));
+        state.status = VjoyDeviceStatus::Free;
+        self.owned.insert(device);
+        self.pending.remove(&device);
+        self.confirmed.remove(&device);
+        Ok(())
+    }
+    fn configure_delete(&mut self, device: u8) -> Result<(), VjoyError> {
+        if !self.configurator_enabled {
+            return Err(VjoyError::Unsupported);
+        }
+        let missing_with_intent = self.pending.contains(&device)
+            && self
+                .devices
+                .get(&device)
+                .is_some_and(|d| d.status == VjoyDeviceStatus::Missing);
+        if !self.owned(device) && !missing_with_intent {
+            return Err(VjoyError::Configurator(ConfiguratorError::ForeignDevice));
+        }
+        if self.acquired.contains(&device) {
+            return Err(VjoyError::DeviceBusy(device));
+        }
+        let state = self
+            .devices
+            .get_mut(&device)
+            .ok_or(VjoyError::DeviceMissing(device))?;
+        if state.status == VjoyDeviceStatus::Busy {
+            return Err(VjoyError::DeviceBusy(device));
+        }
+        self.events.push(AdapterEvent::ConfigureDelete(device));
+        state.status = VjoyDeviceStatus::Missing;
+        self.owned.remove(&device);
+        self.pending.remove(&device);
+        self.confirmed.remove(&device);
+        Ok(())
+    }
     fn supported(&self) -> bool {
         self.supported
     }
@@ -329,6 +531,9 @@ impl VjoyAdapter for FakeVjoyAdapter {
         let center = neutral_axis_value(min, max);
         self.events
             .push(AdapterEvent::Neutralize { device, center });
+        if let Some(detail) = self.neutralize_errors.get(&device) {
+            return Err(VjoyError::NeutralizeFailed(device, detail.clone()));
+        }
         if self.acquired.contains(&device) {
             Ok(())
         } else {
@@ -337,6 +542,49 @@ impl VjoyAdapter for FakeVjoyAdapter {
                 "device is not acquired".into(),
             ))
         }
+    }
+
+    fn axis_range(&mut self, device: u8, _axis: VjoyAxis) -> Result<(i32, i32), VjoyError> {
+        self.devices
+            .get(&device)
+            .map(|state| state.axis_range)
+            .ok_or(VjoyError::DeviceMissing(device))
+    }
+
+    fn set_axis(&mut self, device: u8, axis: VjoyAxis, value: i32) -> Result<(), VjoyError> {
+        if !self.acquired.contains(&device) {
+            return Err(VjoyError::ReportFailed(
+                device,
+                "device is not acquired".into(),
+            ));
+        }
+        if let Some(detail) = self.report_errors.get(&device) {
+            return Err(VjoyError::ReportFailed(device, detail.clone()));
+        }
+        self.events.push(AdapterEvent::Axis {
+            device,
+            axis,
+            value,
+        });
+        Ok(())
+    }
+
+    fn set_button(&mut self, device: u8, button: u8, pressed: bool) -> Result<(), VjoyError> {
+        if !self.acquired.contains(&device) {
+            return Err(VjoyError::ReportFailed(
+                device,
+                "device is not acquired".into(),
+            ));
+        }
+        if let Some(detail) = self.report_errors.get(&device) {
+            return Err(VjoyError::ReportFailed(device, detail.clone()));
+        }
+        self.events.push(AdapterEvent::Button {
+            device,
+            button,
+            pressed,
+        });
+        Ok(())
     }
 
     fn release_device(&mut self, device: u8) {
@@ -348,6 +596,36 @@ impl VjoyAdapter for FakeVjoyAdapter {
 /// Shared-handle delegation so tests (and only tests) can keep observing the
 /// event log while the manager owns the adapter.
 impl VjoyAdapter for std::sync::Arc<std::sync::Mutex<FakeVjoyAdapter>> {
+    fn can_configure(&self) -> bool {
+        self.lock()
+            .expect("fake vjoy adapter poisoned")
+            .can_configure()
+    }
+    fn ownership_marker(&mut self, device: u8) -> Result<bool, VjoyError> {
+        self.lock()
+            .expect("fake vjoy adapter poisoned")
+            .ownership_marker(device)
+    }
+    fn creation_pending_marker(&mut self, device: u8) -> Result<bool, VjoyError> {
+        self.lock()
+            .expect("fake vjoy adapter poisoned")
+            .creation_pending_marker(device)
+    }
+    fn creation_confirmed_marker(&mut self, device: u8) -> Result<bool, VjoyError> {
+        self.lock()
+            .expect("fake vjoy adapter poisoned")
+            .creation_confirmed_marker(device)
+    }
+    fn configure_create(&mut self, device: u8) -> Result<(), VjoyError> {
+        self.lock()
+            .expect("fake vjoy adapter poisoned")
+            .configure_create(device)
+    }
+    fn configure_delete(&mut self, device: u8) -> Result<(), VjoyError> {
+        self.lock()
+            .expect("fake vjoy adapter poisoned")
+            .configure_delete(device)
+    }
     fn supported(&self) -> bool {
         self.lock().expect("fake vjoy adapter poisoned").supported
     }
@@ -382,6 +660,24 @@ impl VjoyAdapter for std::sync::Arc<std::sync::Mutex<FakeVjoyAdapter>> {
             .neutralize_device(device)
     }
 
+    fn axis_range(&mut self, device: u8, axis: VjoyAxis) -> Result<(i32, i32), VjoyError> {
+        self.lock()
+            .expect("fake vjoy adapter poisoned")
+            .axis_range(device, axis)
+    }
+
+    fn set_axis(&mut self, device: u8, axis: VjoyAxis, value: i32) -> Result<(), VjoyError> {
+        self.lock()
+            .expect("fake vjoy adapter poisoned")
+            .set_axis(device, axis, value)
+    }
+
+    fn set_button(&mut self, device: u8, button: u8, pressed: bool) -> Result<(), VjoyError> {
+        self.lock()
+            .expect("fake vjoy adapter poisoned")
+            .set_button(device, button, pressed)
+    }
+
     fn release_device(&mut self, device: u8) {
         self.lock()
             .expect("fake vjoy adapter poisoned")
@@ -394,8 +690,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn neutral_axis_value_uses_widened_midpoint() {
-        assert_eq!(neutral_axis_value(0, 32767), 16383);
+    fn neutral_axis_value_uses_elixir_midpoint() {
+        assert_eq!(neutral_axis_value(0, 32767), 16384);
         assert_eq!(neutral_axis_value(-32768, 32767), -1);
         assert_eq!(neutral_axis_value(i32::MIN, i32::MAX), -1);
         assert_eq!(neutral_axis_value(5, 5), 5);

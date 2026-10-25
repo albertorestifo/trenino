@@ -1,15 +1,18 @@
 <script lang="ts">
+  import { onDestroy } from 'svelte';
   import type { Result, UiBridge } from '../bridge/client';
   import type { CalibrationView, InputView, UiFailure } from '../bridge/generated';
 
   let {
     input,
     port,
+    generation,
     api,
     close,
   }: {
     input: InputView;
     port: string;
+    generation: number;
     api: UiBridge;
     close: () => void;
   } = $props();
@@ -31,6 +34,13 @@
   let error = $state('');
   let advancing = $state(false);
   let cancelling = $state(false);
+  let cancelFailed = $state(false);
+  let abandoned = false;
+
+  onDestroy(() => {
+    abandoned = true;
+    if (sessionId && !result && !cancelling) void api.cancelCalibration(sessionId);
+  });
 
   function failure(value: UiFailure | undefined, fallback: string) {
     failed = true;
@@ -38,16 +48,27 @@
   }
 
   $effect(() => {
-    const request = api.startCalibration?.({ port, generation: 0, pin: input.pin ?? 0, input_id: input.id, max_hardware_value: 1023 });
-    if (!request) {
-      failure(undefined, 'Calibration is not available in this build.');
-      starting = false;
-      return;
-    }
-    void request.then((outcome: Result<string>) => {
+    void (async () => {
+      const ceiling = await api.calibrationCeiling(input.id);
+      if (abandoned) return;
+      if (!ceiling.ok) {
+        failure(ceiling.error, 'Calibration hardware range is unavailable.');
+        starting = false;
+        return;
+      }
+      const outcome: Result<string> = await api.startCalibration({ port, generation, pin: input.pin ?? 0, input_id: input.id, max_hardware_value: ceiling.value });
+      if (abandoned) {
+        if (outcome.ok) void api.cancelCalibration(outcome.value);
+        return;
+      }
       starting = false;
       if (outcome.ok) sessionId = outcome.value;
       else failure(outcome.error, 'Calibration could not start.');
+    })().catch(() => {
+      if (!abandoned) {
+        starting = false;
+        failure(undefined, 'Calibration could not start.');
+      }
     });
   });
 
@@ -74,11 +95,29 @@
   }
 
   async function cancel() {
-    if (sessionId && !cancelling) {
-      cancelling = true;
-      await api.cancelCalibration?.(sessionId);
+    if (cancelling) return;
+    if (!sessionId) { close(); return; }
+    cancelling = true;
+    cancelFailed = false;
+    error = '';
+    try {
+      const outcome = await api.cancelCalibration(sessionId);
+      if (abandoned) return;
+      if (!outcome.ok) {
+        error = outcome.error.message;
+        cancelFailed = true;
+        return;
+      }
+      sessionId = null;
+      close();
+    } catch {
+      if (!abandoned) {
+        error = 'Calibration could not be cancelled. Try again.';
+        cancelFailed = true;
+      }
+    } finally {
+      if (!abandoned) cancelling = false;
     }
-    close();
   }
 </script>
 
@@ -90,7 +129,7 @@
         <h2 id="calibration-title" class="text-xl font-semibold">Calibrate Input</h2>
         <p class="text-sm text-base-content/70">Pin {input.pin ?? '—'}{input.name ? ` · ${input.name}` : ''}</p>
       </div>
-      <button type="button" class="btn btn-ghost btn-sm btn-circle" aria-label="Close" onclick={cancel}>✕</button>
+      <button type="button" class="btn btn-ghost btn-sm btn-circle" aria-label="Close" disabled={cancelling} onclick={cancel}>✕</button>
     </div>
 
     {#if starting}
@@ -139,8 +178,8 @@
         </div>
         {#if error}<p role="alert" class="text-sm text-error">{error}</p>{/if}
         <div class="flex justify-between gap-4 border-t border-base-300 pt-4">
-          <button type="button" class="btn btn-ghost" onclick={cancel}>Cancel</button>
-          <button type="button" class="btn btn-primary" disabled={advancing} onclick={() => void advance()}>
+          <button type="button" class="btn btn-ghost" disabled={cancelling} onclick={cancel}>{cancelling ? 'Cancelling…' : cancelFailed ? 'Retry cancel' : 'Cancel'}</button>
+          <button type="button" class="btn btn-primary" disabled={advancing || cancelling} onclick={() => void advance()}>
             {advancing ? 'Working…' : ADVANCE_LABELS[step]}
           </button>
         </div>

@@ -88,6 +88,18 @@ pub trait HardwareConsumers: ResourceConsumers {
     /// Synchronously accepts one authoritative input edge/sample. Returning an error
     /// fails closed for this port generation; consumers must not silently discard it.
     fn dispatch_input(&self, identity: InputIdentity, event: InputEvent) -> Result<(), String>;
+    /// Port-aware authoritative dispatch. Existing consumers may implement
+    /// `dispatch_input`; application composition needs the source port for
+    /// generation fences and per-port output cleanup.
+    fn dispatch_port_input(
+        &self,
+        _port: &str,
+        identity: InputIdentity,
+        event: InputEvent,
+    ) -> Result<(), String> {
+        self.dispatch_input(identity, event)
+    }
+
     fn protocol_error(&self, port: &str, generation: u64, reason: &str);
     fn configuration_applied(&self, port: &str, generation: u64, config_id: ConfigId);
     fn detection_outcome(&self, id: SessionId, outcome: DetectionOutcome);
@@ -101,6 +113,9 @@ impl ConfigurationOperationId {
     pub fn get(self) -> u64 {
         self.0
     }
+    pub fn from_wire(value: u64) -> Option<Self> {
+        (value != 0).then_some(Self(value))
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -108,6 +123,7 @@ struct CurrentPort {
     generation: u64,
     config_id: Option<ConfigId>,
     device_id: Option<EntityId>,
+    firmware_version: Option<String>,
     kinds: HashMap<u8, InputKind>,
     lookup_pending: bool,
     pending_inputs: VecDeque<(u8, i16)>,
@@ -221,6 +237,53 @@ struct CoordinatedConsumers<C: HardwareConsumers> {
     arbiter: Mutex<std::sync::Weak<ResourceArbiter>>,
 }
 
+impl<C: HardwareConsumers> CoordinatedConsumers<C> {
+    fn release_calibration_lease(
+        &self,
+        port: &str,
+        expected: (SessionId, LeaseToken),
+    ) -> Result<bool, ResourceError> {
+        if self
+            .calibration_lease
+            .lock()
+            .expect("calibration lease registry poisoned")
+            .get(port)
+            .copied()
+            != Some(expected)
+        {
+            return Ok(false);
+        }
+        let arbiter = self
+            .arbiter
+            .lock()
+            .expect("arbiter weak ref poisoned")
+            .upgrade()
+            .ok_or(ResourceError::Busy)?;
+        arbiter.release(expected.1)?;
+        let mut leases = self
+            .calibration_lease
+            .lock()
+            .expect("calibration lease registry poisoned");
+        if leases.get(port).copied() == Some(expected) {
+            leases.remove(port);
+        }
+        Ok(true)
+    }
+
+    fn release_calibration_session(&self, id: SessionId) -> Result<bool, ResourceError> {
+        let entry = self
+            .calibration_lease
+            .lock()
+            .expect("calibration lease registry poisoned")
+            .iter()
+            .find_map(|(port, entry)| (entry.0 == id).then(|| (port.clone(), *entry)));
+        match entry {
+            Some((port, entry)) => self.release_calibration_lease(&port, entry),
+            None => Ok(false),
+        }
+    }
+}
+
 impl<C: HardwareConsumers> ResourceConsumers for CoordinatedConsumers<C> {
     fn suspend_actuation(&self, port: &str) -> Result<(), String> {
         self.inner.suspend_actuation(port)
@@ -228,22 +291,15 @@ impl<C: HardwareConsumers> ResourceConsumers for CoordinatedConsumers<C> {
 
     fn cancel_calibration(&self, port: &str) -> Result<(), String> {
         self.sessions.cancel_calibrations_on(port);
-        if let Some((_, token)) = self
+        let entry = self
             .calibration_lease
             .lock()
             .expect("calibration lease registry poisoned")
-            .remove(port)
-        {
-            if let Some(arbiter) = self
-                .arbiter
-                .lock()
-                .expect("arbiter weak ref poisoned")
-                .upgrade()
-            {
-                arbiter
-                    .release(token)
-                    .map_err(|error| format!("cancelled calibration did not release: {error:?}"))?;
-            }
+            .get(port)
+            .copied();
+        if let Some(entry) = entry {
+            self.release_calibration_lease(port, entry)
+                .map_err(|error| format!("cancelled calibration did not release: {error:?}"))?;
         }
         self.inner.cancel_calibration(port)
     }
@@ -463,10 +519,74 @@ where
             operation_results: Arc::new(Mutex::new(HashMap::new())),
             next_operation: AtomicU64::new(0),
             stopping: Arc::new(AtomicBool::new(false)),
-            admission: Mutex::new(false),
+            admission: Arc::new(Mutex::new(false)),
             lookup_workers,
         })
     }
+}
+
+/// Snapshot of an observed live serial generation. This is runtime state,
+/// never inferred from a profile's persisted configuration ID.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ConnectedPort {
+    pub port: String,
+    pub generation: u64,
+    pub config_id: Option<ConfigId>,
+    pub device_id: Option<EntityId>,
+    pub firmware_version: Option<String>,
+}
+
+/// Cloneable command capability; does not own shutdown. Effect adapters can
+/// send outside the desktop handle mutex, including during arbiter callbacks.
+#[derive(Clone)]
+pub struct HardwareCommandPort {
+    scanner: Arc<Mutex<DiscoveryHandle>>,
+    state: Arc<Mutex<DispatcherState>>,
+    stopping: Arc<AtomicBool>,
+}
+impl HardwareCommandPort {
+    pub fn connected_ports(&self) -> Vec<ConnectedPort> {
+        connected_ports(&self.state)
+    }
+    pub fn send_message(
+        &self,
+        port: &str,
+        generation: u64,
+        message: Message,
+        timeout: Duration,
+    ) -> Result<(), String> {
+        // Lease acquisition holds the public admission mutex while its
+        // consumer callbacks neutralize outputs. Do not reenter that mutex
+        // from a callback; the shared atomic + scanner lock form the close
+        // fence, and shutdown waits for any admitted send before serial close.
+        if self.stopping.load(Ordering::Acquire) {
+            return Err("hardware service is shutting down".into());
+        }
+        let scanner = self
+            .scanner
+            .lock()
+            .map_err(|_| "hardware scanner unavailable")?;
+        if self.stopping.load(Ordering::Acquire) {
+            return Err("hardware service is shutting down".into());
+        }
+        scanner.send_message(port, generation, message, timeout)
+    }
+}
+fn connected_ports(state: &Mutex<DispatcherState>) -> Vec<ConnectedPort> {
+    let state = state.lock().expect("hardware dispatcher state poisoned");
+    let mut ports: Vec<_> = state
+        .ports
+        .iter()
+        .map(|(port, current)| ConnectedPort {
+            port: port.clone(),
+            generation: current.generation,
+            config_id: current.config_id,
+            device_id: current.device_id,
+            firmware_version: current.firmware_version.clone(),
+        })
+        .collect();
+    ports.sort_by(|a, b| a.port.cmp(&b.port));
+    ports
 }
 
 pub struct HardwareServiceHandle<T, R, C>
@@ -485,7 +605,7 @@ where
     operation_results: ConfigurationResults,
     next_operation: AtomicU64,
     stopping: Arc<AtomicBool>,
-    admission: Mutex<bool>,
+    admission: Arc<Mutex<bool>>,
     lookup_workers: Arc<Mutex<Vec<JoinHandle<()>>>>,
 }
 
@@ -495,6 +615,18 @@ where
     R: HardwareRepository,
     C: HardwareConsumers,
 {
+    pub fn command_port(&self) -> HardwareCommandPort {
+        HardwareCommandPort {
+            scanner: self.scanner.clone(),
+            state: self.state.clone(),
+            stopping: self.stopping.clone(),
+        }
+    }
+
+    pub fn connected_ports(&self) -> Vec<ConnectedPort> {
+        connected_ports(&self.state)
+    }
+
     pub fn resolver(&self) -> Arc<InputResolver> {
         self.service.resolver.clone()
     }
@@ -531,6 +663,74 @@ where
         self.service.arbiter.clone()
     }
 
+    /// Filtered OS port inventory plus scanner generation, including boards
+    /// that have never answered a Trenino identity request. Generation zero
+    /// means no serial worker currently owns that available port.
+    pub fn available_port_generations(&self) -> Result<Vec<(String, u64)>, String> {
+        let available = super::transport::eligible_ports(
+            self.service
+                .transport
+                .enumerate()
+                .map_err(|e| e.to_string())?,
+        );
+        let generations = self
+            .scanner
+            .lock()
+            .map_err(|_| "hardware scanner unavailable")?
+            .port_generations();
+        Ok(available
+            .into_iter()
+            .map(|port| {
+                let generation = generations.get(&port).copied().unwrap_or(0);
+                (port, generation)
+            })
+            .collect())
+    }
+
+    pub fn disconnect_port(&self, port: &str, generation: u64) -> Result<(), String> {
+        let admission = self
+            .admission
+            .lock()
+            .map_err(|_| "hardware admission unavailable")?;
+        if *admission {
+            return Err("hardware service is shutting down".into());
+        }
+        if !self
+            .connected_ports()
+            .iter()
+            .any(|p| p.port == port && p.generation == generation)
+        {
+            return Err("stale port generation".into());
+        }
+        if self.service.arbiter.port_is_leased(port) {
+            return Err(
+                "Cancel the active calibration or upload before disconnecting this device.".into(),
+            );
+        }
+        self.service
+            .arbiter
+            .neutralize_source(port, generation)
+            .map_err(|e| format!("source cleanup failed: {e:?}"))?;
+        self.service.resolver.invalidate_port(port, generation);
+        self.service.cache.invalidate(port, generation);
+        self.scanner
+            .lock()
+            .map_err(|_| "hardware scanner unavailable")?
+            .disconnect_port(port, generation)?;
+        let mut state = self
+            .state
+            .lock()
+            .map_err(|_| "hardware state unavailable")?;
+        if state
+            .ports
+            .get(port)
+            .is_some_and(|p| p.generation == generation)
+        {
+            state.ports.remove(port);
+        }
+        Ok(())
+    }
+
     pub fn scan_now(&self) -> Result<(), String> {
         let admission = self.admission.lock().expect("hardware admission poisoned");
         if *admission {
@@ -559,6 +759,35 @@ where
             .send_message(port, generation, message, timeout)
     }
 
+    fn retry_terminal_calibration_cleanup(&self) -> Result<(), ResourceError> {
+        let entries: Vec<_> = self
+            .service
+            .coordinated_consumers
+            .calibration_lease
+            .lock()
+            .expect("calibration lease registry poisoned")
+            .iter()
+            .map(|(port, entry)| (port.clone(), *entry))
+            .collect();
+        for (port, (id, token)) in entries {
+            let terminal = self.service.sessions.calibration(id).is_none_or(|session| {
+                matches!(
+                    session.lock().expect("calibration session poisoned").step(),
+                    super::sessions::CalibrationStep::Complete
+                        | super::sessions::CalibrationStep::Cancelled
+                        | super::sessions::CalibrationStep::Overflowed
+                        | super::sessions::CalibrationStep::SourceLost
+                )
+            });
+            if terminal {
+                self.service
+                    .coordinated_consumers
+                    .release_calibration_lease(&port, (id, token))?;
+            }
+        }
+        Ok(())
+    }
+
     pub fn acquire_firmware_lease(
         &self,
         port: impl Into<String>,
@@ -568,6 +797,7 @@ where
         if *admission {
             return Err(ResourceError::Busy);
         }
+        self.retry_terminal_calibration_cleanup()?;
         self.service.arbiter.acquire(LeaseKind::Firmware {
             port: port.into(),
             generation,
@@ -716,6 +946,11 @@ where
         let port = session.port.clone();
         let generation = session.generation;
         let id = session.id;
+        // Cleanup remains owned after a caller disappears. A later resource
+        // admission retries terminal cleanup before acquiring a new capability.
+        self.retry_terminal_calibration_cleanup().map_err(|error| {
+            SessionError::Persist(format!("previous calibration cleanup failed: {error:?}"))
+        })?;
         let lease = self
             .service
             .arbiter
@@ -726,45 +961,36 @@ where
             .map_err(|error| {
                 SessionError::Persist(format!("calibration lease unavailable: {error:?}"))
             })?;
-        let session = match self.service.sessions.insert_calibration(session) {
-            Ok(session) => session,
-            Err(error) => {
-                let _ = self.service.arbiter.release(lease);
-                return Err(error);
-            }
-        };
         self.service
             .coordinated_consumers
             .calibration_lease
             .lock()
             .expect("calibration lease registry poisoned")
-            .insert(port, (id, lease));
+            .insert(port.clone(), (id, lease));
+        let session = match self.service.sessions.insert_calibration(session) {
+            Ok(session) => session,
+            Err(error) => {
+                self.service.coordinated_consumers.release_calibration_lease(&port,(id,lease)).map_err(|cleanup|SessionError::Persist(format!("calibration registration failed ({error:?}); cleanup remains pending: {cleanup:?}")))?;
+                return Err(error);
+            }
+        };
         Ok(session)
     }
 
     pub fn cancel_calibration(&self, id: SessionId) -> Result<bool, ResourceError> {
         let Some(session) = self.service.sessions.calibration(id) else {
-            return Ok(false);
+            return self
+                .service
+                .coordinated_consumers
+                .release_calibration_session(id);
         };
         session
             .lock()
             .expect("calibration session poisoned")
             .cancel();
-        let lease = {
-            let mut leases = self
-                .service
-                .coordinated_consumers
-                .calibration_lease
-                .lock()
-                .expect("calibration lease registry poisoned");
-            let port = leases
-                .iter()
-                .find_map(|(port, (session_id, _))| (*session_id == id).then(|| port.clone()));
-            port.and_then(|port| leases.remove(&port).map(|(_, lease)| lease))
-        };
-        if let Some(lease) = lease {
-            self.service.arbiter.release(lease)?;
-        }
+        self.service
+            .coordinated_consumers
+            .release_calibration_session(id)?;
         Ok(true)
     }
 
@@ -777,7 +1003,13 @@ where
             .sessions
             .calibration(id)
             .ok_or(SessionError::InvalidStep)?;
-        let result = {
+        let terminal = session
+            .lock()
+            .expect("calibration session poisoned")
+            .terminal_result();
+        let result = if let Some(terminal) = terminal {
+            terminal.map(Some)
+        } else {
             let mut repository = self
                 .service
                 .repository
@@ -794,23 +1026,12 @@ where
             .terminal_result()
             .is_some()
         {
-            let lease = {
-                let mut leases = self
-                    .service
-                    .coordinated_consumers
-                    .calibration_lease
-                    .lock()
-                    .expect("calibration lease registry poisoned");
-                let port = leases
-                    .iter()
-                    .find_map(|(port, (session_id, _))| (*session_id == id).then(|| port.clone()));
-                port.and_then(|port| leases.remove(&port).map(|(_, lease)| lease))
-            };
-            if let Some(lease) = lease {
-                self.service.arbiter.release(lease).map_err(|error| {
+            self.service
+                .coordinated_consumers
+                .release_calibration_session(id)
+                .map_err(|error| {
                     SessionError::Persist(format!("calibration release failed: {error:?}"))
                 })?;
-            }
         }
         result
     }
@@ -839,16 +1060,35 @@ where
             .configuration_operations
             .lock()
             .expect("configuration operation registry poisoned");
-        if operations.len() >= MAX_OPERATIONS
-            || self
-                .operation_results
-                .lock()
-                .expect("configuration result registry poisoned")
-                .len()
-                >= MAX_OPERATIONS
-        {
+        // Reap finished owners even when a UI never polls their result. Keep a
+        // bounded recent terminal history, without turning that history into a
+        // permanent admission limit for the lifetime of the application.
+        let finished: Vec<_> = operations
+            .iter()
+            .filter_map(|(id, (_, worker))| worker.is_finished().then_some(*id))
+            .collect();
+        for id in finished {
+            if let Some((_, worker)) = operations.remove(&id) {
+                let _ = worker.join();
+            }
+        }
+        let mut results = self
+            .operation_results
+            .lock()
+            .expect("configuration result registry poisoned");
+        while results.len() >= MAX_OPERATIONS {
+            let oldest = results
+                .iter()
+                .filter(|(id, result)| result.is_some() && !operations.contains_key(id))
+                .map(|(id, _)| *id)
+                .min_by_key(|id| id.0);
+            let Some(oldest) = oldest else { break };
+            results.remove(&oldest);
+        }
+        if operations.len() >= MAX_OPERATIONS || results.len() >= MAX_OPERATIONS {
             return Err("configuration operation capacity reached".into());
         }
+        drop(results);
         let active_ports = self.active_configuration_ports.clone();
         {
             let mut active_ports_guard = active_ports
@@ -992,6 +1232,13 @@ where
             })?;
         operations.insert(id, (cancelled, worker));
         Ok(id)
+    }
+
+    pub fn knows_configuration_operation(&self, id: ConfigurationOperationId) -> bool {
+        self.operation_results
+            .lock()
+            .expect("configuration result registry poisoned")
+            .contains_key(&id)
     }
 
     pub fn configuration_result(
@@ -1143,6 +1390,7 @@ fn dispatch_event<T, R, C>(
                         generation,
                         config_id: None,
                         device_id: None,
+                        firmware_version: identity_version(&identity),
                         kinds: HashMap::new(),
                         lookup_pending: true,
                         pending_inputs: VecDeque::new(),
@@ -1245,7 +1493,7 @@ fn dispatch_event<T, R, C>(
                     pin,
                     value,
                 };
-                if let Err(error) = service.consumer.dispatch_input(identity, event) {
+                if let Err(error) = service.consumer.dispatch_port_input(&port, identity, event) {
                     mark_source_lost(service, state, ack_inboxes, &port, generation);
                     service.consumer.protocol_error(
                         &port,
@@ -1337,6 +1585,7 @@ fn finish_discovery<T, R, C>(
         generation,
         config_id: None,
         device_id: None,
+        firmware_version: identity_version(&identity),
         kinds: HashMap::new(),
         lookup_pending: false,
         pending_inputs: VecDeque::new(),
@@ -1568,5 +1817,17 @@ fn mark_source_lost<T, R, C>(
                 &format!("source neutralization failed; resource remains suspended: {error:?}"),
             );
         }
+    }
+}
+
+fn identity_version(identity: &Message) -> Option<String> {
+    match identity {
+        Message::IdentityResponse {
+            major,
+            minor,
+            patch,
+            ..
+        } => Some(format!("{major}.{minor}.{patch}")),
+        _ => None,
     }
 }

@@ -18,6 +18,6 @@ export type ButtonBindingView = {
   hardware_type: string;
   repeat_interval_ms: number;
   keystroke: string | null;
-  on_sequence_id: string;
-  off_sequence_id: string;
+  on_sequence_id: string | null;
+  off_sequence_id: string | null;
 };

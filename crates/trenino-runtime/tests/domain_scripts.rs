@@ -277,3 +277,34 @@ fn script_defaults_and_train_cascade() {
     assert!(db.get_script(script.id).unwrap().is_none());
     assert!(db.list_scripts(train).unwrap().is_empty());
 }
+
+// Mirrors script_test.exs "valid changeset with empty triggers" (l.31-41) and
+// Script.changeset/2's validate_triggers (script.ex:62-77): triggers only need
+// to be strings — empty or blank entries are accepted exactly like the Ecto
+// changeset (parity audit P2-21; the Rust type system guarantees the string
+// part, so nothing is rejected here).
+#[test]
+fn script_triggers_accept_empty_and_blank_strings() {
+    let (_dir, db, path) = database();
+    let train = seed_train(&path, "Test Train");
+    let mut blank = draft("Blank Triggers");
+    blank.triggers = vec!["".into(), "   ".into()];
+    let created = db.create_script(OperationId(1), train, blank).unwrap();
+    assert_eq!(created.record.triggers, ["", "   "]);
+
+    let mutation = db
+        .update_script(
+            OperationId(2),
+            created.record.id,
+            ScriptPatch {
+                triggers: Some(vec!["".into()]),
+                ..ScriptPatch::default()
+            },
+        )
+        .unwrap();
+    assert_eq!(mutation.record.triggers, [""]);
+
+    let empty = draft("Empty Triggers");
+    let created_empty = db.create_script(OperationId(3), train, empty).unwrap();
+    assert_eq!(created_empty.record.triggers, Vec::<String>::new());
+}

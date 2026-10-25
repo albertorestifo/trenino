@@ -137,6 +137,7 @@ struct State {
     next_id: u64,
     active: Option<(LeaseToken, LeaseKind)>,
     fail_closed: bool,
+    failed_resume: Option<LeaseToken>,
     transitioning: bool,
     release_in_progress: bool,
     shutting_down: bool,
@@ -330,14 +331,19 @@ impl ResourceArbiter {
         // resuming actuation; the firmware handoff continues under the same suspension.
         if state.transitioning && !state.release_in_progress {
             state.active = None;
+            state.failed_resume = None;
             self.released.notify_all();
             return Ok(());
         }
-        if state.transitioning || state.fail_closed || !state.neutralization_failures.is_empty() {
+        if state.transitioning
+            || (state.fail_closed && state.failed_resume != Some(token))
+            || !state.neutralization_failures.is_empty()
+        {
             return Err(ResourceError::Busy);
         }
         if state.shutting_down {
             state.active = None;
+            state.failed_resume = None;
             state.fail_closed = true;
             self.released.notify_all();
             return Ok(());
@@ -353,16 +359,27 @@ impl ResourceArbiter {
         match resumed {
             Ok(()) => {
                 state.active = None;
+                state.failed_resume = None;
                 state.fail_closed = false;
                 self.released.notify_all();
                 Ok(())
             }
             Err(error) => {
                 state.fail_closed = true;
+                state.failed_resume = Some(token);
                 self.released.notify_all();
                 Err(ResourceError::ConsumerFailed(error))
             }
         }
+    }
+
+    pub fn port_is_leased(&self, port: &str) -> bool {
+        self.state
+            .lock()
+            .expect("resource arbiter poisoned")
+            .active
+            .as_ref()
+            .is_some_and(|(_, kind)| kind.port() == port)
     }
 
     pub fn is_suspended(&self) -> bool {

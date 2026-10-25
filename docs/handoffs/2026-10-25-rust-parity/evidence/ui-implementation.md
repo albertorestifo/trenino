@@ -1,0 +1,26 @@
+# Recovered Rust UI implementation (2026-10-25)
+
+## Changes in `tauri/ui/**`
+
+- Recovered unfinished train editor, sequence manager, script editor, firmware page, vJoy page, hardware catalog helper, and lever/button/output/display wizards from `../trenino-f2-ui-b`. Merged the sibling command bridge and script routes into the current checkout while retaining the already working settings editor, hardware configuration editor, and their shell behavior. `App.svelte` keys train/script pages by path so a changed train or script ID remounts the correct draft.
+- Repaired sibling compile defects (malformed button markup, duplicate train handler, missing output/display labels and display binding type, nullable vJoy mapping narrowing) and corrected `updateTrain` IPC to send the `id` argument.
+- Added `ui_run_script(id)` and `ui_get_script_log(id)` bridge calls with the agreed Rust shapes (`bool`, `string[]`). The script editor runs the saved ID without saving the current draft, provides manual log refresh, and bounds rendered log to 200 lines and 500 characters per line. It rejects a missing/wrong-parent script and retains editor text after a failed save.
+- Hardware input events now require the real `port` plus `port_generation`. The shell passes those to calibration, removes the old literal `live`/generation 0, and disposes the input listener. Calibration cancels a session that starts after its dialog unmounts. Firmware uses the detected port/generation and checks that they remain the same across download; an upload request cannot start from an invented port. It can attach to a running history row on reopen and waits for terminal history after cancellation is requested.
+- Added behavioral tests for train creation from identifier deep link, saved-script execution despite unsaved draft, firmware generation selection, bridge event filtering/unsubscription and `updateTrain` payload, output/display save failure retaining fields, and late calibration cancellation.
+
+## Verification
+
+- `npm --prefix tauri/ui run check`: 0 errors, 72 warnings. The inherited Svelte warnings are mostly initial-value captures in keyed pages/wizards; several unassociated form labels also remain in recovered wizards.
+- `npm --prefix tauri/ui test`: 9 files, 99 tests passed.
+- `npm --prefix tauri/ui run build`: production Vite bundle built successfully (140 modules transformed).
+- No real serial device, simulator, vJoy driver, packaged desktop, or Rust IPC integration test was run in this UI-only task.
+
+## Exact backend interfaces and integration still needed
+
+1. `HardwareInputEventView` must include `port: String` on `ui://hardware/input` in addition to existing `port_generation`; the bridge intentionally rejects an event without `port`. A connected-device inventory snapshot should supply `{device_id, config_id, port, generation, status}` without waiting for an input sample. The current shell retains only the last sampled device, so multi-device selection and disconnect revocation still need this authoritative snapshot. Hardware scan/apply/disconnect, physical output toggle, and display test IPC are not yet exposed by desktop Rust.
+2. The agreed `ui_run_script(id: String) -> Result<bool, UiFailure>` and `ui_get_script_log(id: String) -> Result<Vec<String>, UiFailure>` must be registered by desktop Rust. The log should come from the saved script's running engine and be bounded at source. UI tests use a fake bridge until those commands exist.
+3. Firmware needs a port inventory with current generation, active-upload snapshot/operation progress, event hook, bootloader port transition/reconnect, and terminal cancellation acknowledgement. This UI currently infers one eligible port from the last hardware sample; if no sample arrives, Start Upload remains disabled. The upload manager currently has `on_event: None`/`reconnect: None` (`tauri/src-tauri/src/rust_ui.rs:278-287`). History-based polling restores an operation only when a running row and its release file are present.
+4. The recovered sibling still computes domain results in TypeScript: `components/wizards/calibration.ts` has `usableCalibration`, `totalTravel`, `normalize`, `distanceFromMin`, `detectInversion`, `calibratedToNormalized`, `round4`; `components/wizards/format.ts` has display format validation/rendering; `ConfigurationEdit.svelte:374` calculates calibrated values; `VirtualJoystick.svelte:135-136` normalizes preview; `OutputBindingWizard.svelte:57-88` validates/renders condition previews. These should be replaced with Rust-backed `preview_input_calibration(input_id, raw)`, `preview_notch_mapping(lever_config_id, input_id, sampled_ranges, notch_drafts)`, `preview_display_binding(module_id, format_string, sample_value)`, and `validate_output_condition(operator, value_a, value_b)` equivalents. The current UI previews are **not** claimed as Rust parity.
+5. Shared simulator endpoint browsing/search/value capture and authoritative hardware/simulator detection commands are needed to replace manual endpoint text in the recovered wizards. Desktop still needs the persistent simulator/TrainService/controller wiring identified in `tmp/surface-recon.md`; saved bindings do not by themselves activate controls.
+
+No changes were made outside `tauri/ui/**` and this report; no commit was created.

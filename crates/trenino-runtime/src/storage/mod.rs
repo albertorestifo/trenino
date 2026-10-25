@@ -182,7 +182,12 @@ enum Request {
 
 type HardwareJob = Box<dyn FnOnce(&mut Connection, SchemaMode) + Send>;
 
+#[cfg(test)]
+type HardwareDispatchHook = Arc<dyn Fn(&str) + Send + Sync>;
+
 struct Worker {
+    #[cfg(test)]
+    before_hardware_dispatch: Mutex<Option<HardwareDispatchHook>>,
     tx: Mutex<Option<mpsc::SyncSender<Request>>>,
     join: Mutex<Option<thread::JoinHandle<()>>>,
 }
@@ -219,6 +224,62 @@ pub struct Database {
 }
 
 impl Database {
+    /// Close the single owner even when stopped services retain Database
+    /// clones. Admission closes first; queued work drains before the joined
+    /// worker drops SQLite and the process/path ownership lock. A timeout
+    /// retains the join handle so coordinated shutdown can retry.
+    pub fn close_worker(&self, budget: std::time::Duration) -> Result<(), String> {
+        use std::{sync::TryLockError, time::Instant};
+        let deadline = Instant::now() + budget;
+        loop {
+            match self.worker.tx.try_lock() {
+                Ok(mut sender) => {
+                    sender.take();
+                    break;
+                }
+                Err(TryLockError::Poisoned(_)) => {
+                    return Err("database admission state is unavailable".into())
+                }
+                Err(TryLockError::WouldBlock) => {}
+            }
+            if Instant::now() >= deadline {
+                return Err(
+                    "database admission is still draining; closure was not acknowledged".into(),
+                );
+            }
+            thread::sleep(std::time::Duration::from_millis(1));
+        }
+        let mut slot = loop {
+            match self.worker.join.try_lock() {
+                Ok(slot) => break slot,
+                Err(TryLockError::Poisoned(_)) => {
+                    return Err("database shutdown state is unavailable".into())
+                }
+                Err(TryLockError::WouldBlock) => {}
+            }
+            if Instant::now() >= deadline {
+                return Err("database shutdown is still pending".into());
+            }
+            thread::sleep(std::time::Duration::from_millis(1));
+        };
+        if let Some(worker) = slot.as_ref() {
+            while !worker.is_finished() {
+                if Instant::now() >= deadline {
+                    return Err(
+                        "database worker is still running; closure was not acknowledged".into(),
+                    );
+                }
+                thread::sleep(std::time::Duration::from_millis(1));
+            }
+        }
+        if let Some(worker) = slot.take() {
+            worker
+                .join()
+                .map_err(|_| "database worker failed during shutdown".to_string())?;
+        }
+        Ok(())
+    }
+
     /// Open the isolated Rust schema or recognize the exact latest Ecto schema as read-only.
     pub fn open(path: impl AsRef<Path>) -> Result<Self, StorageError> {
         Self::open_with_schema(path.as_ref(), false)
@@ -272,6 +333,8 @@ impl Database {
         let mode = ready_rx.recv().map_err(|_| StorageError::WorkerStopped)??;
         Ok(Self {
             worker: Arc::new(Worker {
+                #[cfg(test)]
+                before_hardware_dispatch: Mutex::new(None),
                 tx: Mutex::new(Some(request_tx)),
                 join: Mutex::new(Some(join)),
             }),
@@ -1179,4 +1242,55 @@ fn set_profile_value(
     )?;
     transaction.commit()?;
     Ok(())
+}
+
+#[cfg(test)]
+mod shutdown_tests {
+    use super::*;
+    use std::time::Duration;
+
+    #[test]
+    fn close_timeout_retains_owner_and_retry_drains_admitted_work() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("shutdown.sqlite");
+        let database = Database::open(&path).unwrap();
+        let retained = database.clone();
+        let (entered, observed) = mpsc::channel();
+        let (release, wait) = mpsc::channel();
+        let (committed, result) = mpsc::channel();
+        {
+            let slot = database.worker.tx.lock().unwrap();
+            let sender = slot.as_ref().unwrap();
+            sender
+                .send(Request::Hardware(Box::new(move |_, _| {
+                    entered.send(()).unwrap();
+                    wait.recv().unwrap();
+                })))
+                .unwrap();
+            sender
+                .send(Request::Set("queued".into(), "committed".into(), committed))
+                .unwrap();
+        }
+        observed.recv_timeout(Duration::from_secs(1)).unwrap();
+        assert!(database.close_worker(Duration::from_millis(20)).is_err());
+        assert!(matches!(
+            retained.revision("settings"),
+            Err(StorageError::WorkerStopped)
+        ));
+        assert!(
+            Database::open(&path).is_err(),
+            "timeout must retain SQLite ownership"
+        );
+        release.send(()).unwrap();
+        database.close_worker(Duration::from_secs(1)).unwrap();
+        result
+            .recv_timeout(Duration::from_secs(1))
+            .unwrap()
+            .unwrap();
+        let reopened = Database::open(&path).unwrap();
+        assert_eq!(
+            reopened.get("queued").unwrap().as_deref(),
+            Some("committed")
+        );
+    }
 }

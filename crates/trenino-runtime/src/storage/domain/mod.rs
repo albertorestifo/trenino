@@ -33,25 +33,14 @@ pub(crate) fn domain_tx<T>(
         });
     }
     let record = f(&tx)?;
-    let key = metadata_key(topic)?;
-    let current = read_u64(&tx, &key, 0)?;
-    let revision = current
-        .checked_add(1)
-        .ok_or_else(|| StorageError::InvalidLegacyData {
-            detail: format!("{topic} topic revision counter is exhausted"),
-        })?;
-    tx.execute(
-        "INSERT INTO app_settings(key,value) VALUES(?1,?2) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
-        (&key, revision.to_string()),
-    )?;
-    let epoch = read_u64(&tx, "__runtime.epoch", 0)?;
+    let metadata = advance_topic(&tx, topic)?;
     tx.commit()?;
     Ok(Mutation {
         record,
         receipt: MutationReceipt {
             operation_id,
             outcome: MutationOutcome::Committed,
-            metadata: RuntimeMetadata { epoch, revision },
+            metadata,
         },
     })
 }
@@ -96,4 +85,23 @@ impl Database {
             .map_err(|_| StorageError::WorkerStopped)?;
         reply_rx.recv().map_err(|_| StorageError::WorkerStopped)?
     }
+}
+
+pub(super) fn advance_topic(
+    tx: &Transaction<'_>,
+    topic: &'static str,
+) -> DbResult<RuntimeMetadata> {
+    let key = metadata_key(topic)?;
+    let current = read_u64(tx, &key, 0)?;
+    let revision = current
+        .checked_add(1)
+        .ok_or_else(|| StorageError::InvalidLegacyData {
+            detail: format!("{topic} topic revision counter is exhausted"),
+        })?;
+    tx.execute(
+        "INSERT INTO app_settings(key,value) VALUES(?1,?2) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+        (&key, revision.to_string()),
+    )?;
+    let epoch = read_u64(tx, "__runtime.epoch", 0)?;
+    Ok(RuntimeMetadata { epoch, revision })
 }

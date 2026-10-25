@@ -1,7 +1,7 @@
 <script lang="ts">
   import { untrack } from 'svelte';
   import type { UiBridge } from '../../../bridge/client';
-  import type { DeviceDetailView, InputView, MatrixView, UiFailure } from '../../../bridge/generated';
+  import type { DeviceDetailView, Ht16k33ParamsView, InputView, MatrixView, UiFailure } from '../../../bridge/generated';
   import { formatI2cAddress } from '../../../components/i2c-address';
   import CalibrationWizard from '../../../components/calibration-wizard.svelte';
   import I2cModuleForm from '../../../components/i2c-module-form.svelte';
@@ -12,6 +12,7 @@
     mode,
     routeId = null,
     activePort = null,
+    activeGeneration = null,
     inputValues = {},
     created,
     deleted,
@@ -20,6 +21,7 @@
     mode: 'new' | 'existing';
     routeId?: string | null;
     activePort?: string | null;
+    activeGeneration?: number | null;
     inputValues?: Record<number, number>;
     created?: (summaryRouteId: string) => void;
     deleted?: () => void;
@@ -29,10 +31,10 @@
 
   let detail = $state<DeviceDetailView | null>(null);
   let loadError = $state('');
-  let loading = $state(mode === 'existing');
+  let loading = $state(false);
 
   // Device header form (autosave on change, like the LiveView's phx-change).
-  let draftName = $state(mode === 'new' ? 'New Configuration' : '');
+  let draftName = $state('New Configuration');
   let draftDescription = $state('');
   let deviceErrors = $state<FieldErrors>({});
   let deviceFlash = $state('');
@@ -67,6 +69,10 @@
   let testingMatrix = $state<MatrixView | null>(null);
   let testedButtons = $state<number[]>([]);
   let notice = $state('');
+  let calibratedValues = $state<Record<string, number>>({});
+  let calibrationPreviewError = $state('');
+  let hardwareTestPending = $state<string | null>(null);
+  let displayTestText = $state<Record<string, string>>({});
 
 
   $effect(() => {
@@ -84,6 +90,22 @@
     const current = untrack(() => testedButtons);
     const next = [...new Set([...current, ...pressed])];
     if (next.length !== current.length) testedButtons = next;
+  });
+
+  $effect(() => {
+    const inputs = detail?.inputs ?? [];
+    const readings = inputValues;
+    let stale = false;
+    const requests = inputs.filter((input) => input.kind === 'analog' && input.calibration && input.pin !== null && input.pin in readings);
+    if (requests.length === 0) { calibratedValues = {}; calibrationPreviewError = ''; return; }
+    void Promise.all(requests.map(async (input) => ({ input, result: await bridge.previewInput(input.id, readings[input.pin!]!) })))
+      .then((results) => {
+        if (stale) return;
+        calibratedValues = Object.fromEntries(results.filter((entry) => entry.result.ok).map((entry) => [entry.input.id, entry.result.ok ? entry.result.value.calibrated : 0]));
+        calibrationPreviewError = results.find((entry) => !entry.result.ok)?.result.ok === false
+          ? 'Calibrated readings are temporarily unavailable.' : '';
+      }).catch(() => { if (!stale) calibrationPreviewError = 'Calibrated readings are temporarily unavailable.'; });
+    return () => { stale = true; };
   });
 
   async function load(id: string) {
@@ -307,9 +329,31 @@
     else notice = 'Failed to update output name';
   }
 
+  async function setOutput(output: DeviceDetailView['outputs'][number], high: boolean) {
+    const targetPort = activePort;
+    const targetGeneration = activeGeneration;
+    if (targetPort === null || targetGeneration === null) { notice = 'Device connection changed. Reconnect before testing.'; return; }
+    hardwareTestPending = output.id;
+    notice = '';
+    const result = await bridge.setPhysicalOutput(output.id, high, targetPort, targetGeneration);
+    hardwareTestPending = null;
+    notice = result.ok && result.value ? `Sent ${high ? 'HIGH' : 'LOW'} to output ${output.pin}.` : result.ok ? 'The output command was not accepted.' : result.error.message;
+  }
+
+  async function testDisplay(module: DeviceDetailView['i2c_modules'][number]) {
+    const targetPort = activePort;
+    const targetGeneration = activeGeneration;
+    if (targetPort === null || targetGeneration === null) { notice = 'Device connection changed. Reconnect before testing.'; return; }
+    hardwareTestPending = module.id;
+    notice = '';
+    const result = await bridge.testDisplay(module.id, displayTestText[module.id] ?? '', targetPort, targetGeneration);
+    hardwareTestPending = null;
+    notice = result.ok && result.value ? 'Display test sent.' : result.ok ? 'The display command was not accepted.' : result.error.message;
+  }
+
   // ---- I2C modules --------------------------------------------------------
 
-  async function saveI2cModule(fields: { name: string | null; module_chip: string; i2c_address: number }): Promise<UiFailure | null> {
+  async function saveI2cModule(fields: { name: string | null; module_chip: string; i2c_address: number; params: Ht16k33ParamsView }): Promise<UiFailure | null> {
     if (!detail) return { code: 'unavailable', message: 'The configuration is not loaded yet.', field_errors: {}, retryable: true };
     const result = i2cEditing
       ? await bridge.updateI2cModule?.({ id: i2cEditing.id, ...fields })
@@ -367,15 +411,6 @@
     notice = '';
     testingMatrix = matrix;
     testedButtons = [];
-  }
-
-  function calibratedValue(input: InputView, raw: number): number | null {
-    const calibration = input.calibration;
-    if (!calibration || calibration.min_value === null || calibration.max_value === null) return null;
-    const travel = calibration.max_value - calibration.min_value;
-    if (travel <= 0) return null;
-    const distance = calibration.is_inverted ? calibration.max_value - raw : raw - calibration.min_value;
-    return Math.round((Math.min(Math.max(distance, 0), travel) / travel) * 1023);
   }
 
   const parsedRowPins = $derived(parsePins(rowPinsInput));
@@ -470,7 +505,7 @@
                         {:else}
                           <span class="font-mono tabular-nums">
                             <span class="text-xs text-base-content/40">{raw}</span>
-                            {#if input.calibration}<span class="text-xs text-base-content/40">/</span><span>{calibratedValue(input, raw) ?? '—'}</span>{:else}<span class="ml-1 text-xs italic text-base-content/50">(uncalibrated)</span>{/if}
+                            {#if input.calibration}<span class="text-xs text-base-content/40">/</span><span>{calibratedValues[input.id] ?? '—'}</span>{:else}<span class="ml-1 text-xs italic text-base-content/50">(uncalibrated)</span>{/if}
                           </span>
                         {/if}
                       {:else}<span class="text-base-content/50">—</span>{/if}
@@ -486,6 +521,7 @@
               </tbody>
             </table>
           </div>
+          {#if calibrationPreviewError}<p role="alert" class="mt-2 text-sm text-error">{calibrationPreviewError}</p>{/if}
         {/if}
       </div>
 
@@ -539,7 +575,7 @@
         {:else}
           <div class="overflow-x-auto">
             <table class="table table-sm bg-base-100 rounded-lg">
-              <thead><tr class="bg-base-200"><th class="text-center">Pin</th><th>Name</th><th class="w-16"></th></tr></thead>
+              <thead><tr class="bg-base-200"><th class="text-center">Pin</th><th>Name</th><th>Test</th><th class="w-16"></th></tr></thead>
               <tbody>
                 {#each detail.outputs as output (output.id)}
                   <tr class="hover:bg-base-200/50">
@@ -554,6 +590,7 @@
                         class="input input-ghost input-xs w-full max-w-40 placeholder:italic placeholder:text-base-content/50"
                       />
                     </td>
+                    <td><div class="flex gap-1"><button type="button" class="btn btn-outline btn-xs" disabled={!activePort || activeGeneration === null || hardwareTestPending === output.id} onclick={() => void setOutput(output, true)} aria-label="Turn output {output.pin} on">On</button><button type="button" class="btn btn-outline btn-xs" disabled={!activePort || activeGeneration === null || hardwareTestPending === output.id} onclick={() => void setOutput(output, false)} aria-label="Turn output {output.pin} off">Off</button></div></td>
                     <td>
                       <button type="button" class="btn btn-ghost btn-xs text-error hover:bg-error/10" aria-label="Delete output {output.pin}" onclick={() => void deleteOutput(output.id)}>🗑</button>
                     </td>
@@ -575,7 +612,7 @@
         {:else}
           <div class="overflow-x-auto">
             <table class="table table-sm bg-base-100 rounded-lg">
-              <thead><tr class="bg-base-200"><th>Name</th><th>Chip</th><th>Address</th><th>Digits</th><th>Brightness</th><th class="w-20"></th></tr></thead>
+              <thead><tr class="bg-base-200"><th>Name</th><th>Chip</th><th>Address</th><th>Digits</th><th>Brightness</th><th>Test</th><th class="w-20"></th></tr></thead>
               <tbody>
                 {#each detail.i2c_modules as mod (mod.id)}
                   <tr class="hover:bg-base-200/50">
@@ -584,6 +621,7 @@
                     <td class="font-mono">{formatI2cAddress(mod.i2c_address)}</td>
                     <td>{mod.params?.num_digits ?? '—'}</td>
                     <td>{mod.params ? `${Math.round((mod.params.brightness * 100) / 15)}%` : '—'}</td>
+                    <td><div class="flex gap-1"><input type="text" class="input input-bordered input-xs w-20 font-mono" value={displayTestText[mod.id] ?? ''} oninput={(event) => (displayTestText = { ...displayTestText, [mod.id]: event.currentTarget.value })} aria-label="Test text for display {mod.name ?? formatI2cAddress(mod.i2c_address)}" /><button type="button" class="btn btn-outline btn-xs" disabled={!activePort || activeGeneration === null || hardwareTestPending === mod.id || !(displayTestText[mod.id] ?? '').trim()} onclick={() => void testDisplay(mod)} aria-label="Test display {mod.name ?? formatI2cAddress(mod.i2c_address)}">Test</button></div></td>
                     <td>
                       <div class="flex gap-1">
                         <button type="button" class="btn btn-ghost btn-xs" aria-label="Edit display {mod.name ?? formatI2cAddress(mod.i2c_address)}" onclick={() => { i2cEditing = mod; i2cModalOpen = true; }}>✎</button>
@@ -769,8 +807,8 @@
   </div>
 {/if}
 
-{#if calibratingInput && activePort}
-  <CalibrationWizard input={calibratingInput} port={activePort} api={bridge} close={() => { calibratingInput = null; if (routeId) void load(routeId); }} />
+{#if calibratingInput && activePort && activeGeneration !== null}
+  <CalibrationWizard input={calibratingInput} port={activePort} generation={activeGeneration} api={bridge} close={() => { calibratingInput = null; if (routeId) void load(routeId); }} />
 {/if}
 
 {#if testingMatrix}

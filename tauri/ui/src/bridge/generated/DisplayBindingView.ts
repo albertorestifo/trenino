@@ -8,5 +8,5 @@ export type DisplayBindingView = {
   endpoint: string;
   format_string: string;
   enabled: boolean;
-  script_id: string;
+  script_id: string | null;
 };

@@ -204,6 +204,7 @@ impl HardwareRepository for ScriptedRepository {
 
 #[derive(Default)]
 struct FakeConsumers {
+    command_port: Mutex<Option<trenino_runtime::hardware::service::HardwareCommandPort>>,
     fail_loss: AtomicBool,
     inputs: Mutex<Vec<InputEvent>>,
     protocol_errors: Mutex<Vec<(String, u64, String)>>,
@@ -215,6 +216,7 @@ struct FakeConsumers {
     >,
     config_applied: Mutex<Vec<(String, u64, ConfigId)>>,
     source_lost: Mutex<Vec<(String, u64)>>,
+    fail_resume: AtomicBool,
     detections: Mutex<
         Vec<(
             trenino_core::SessionId,
@@ -226,8 +228,25 @@ struct FakeConsumers {
     changed: std::sync::Condvar,
 }
 impl ResourceConsumers for FakeConsumers {
-    fn suspend_actuation(&self, _port: &str) -> Result<(), String> {
+    fn suspend_actuation(&self, port: &str) -> Result<(), String> {
         self.operations.lock().unwrap().push("suspend");
+        if let Some(commands) = self.command_port.lock().unwrap().clone() {
+            let generation = commands
+                .connected_ports()
+                .iter()
+                .find(|p| p.port == port)
+                .ok_or("missing port")?
+                .generation;
+            commands.send_message(
+                port,
+                generation,
+                Message::SetOutput {
+                    pin: 4,
+                    high: false,
+                },
+                Duration::from_millis(300),
+            )?;
+        }
         Ok(())
     }
     fn cancel_calibration(&self, _port: &str) -> Result<(), String> {
@@ -248,6 +267,9 @@ impl ResourceConsumers for FakeConsumers {
     }
     fn resume_after_fresh_sample(&self, _port: &str) -> Result<(), String> {
         self.operations.lock().unwrap().push("wait-fresh");
+        if self.fail_resume.load(Ordering::SeqCst) {
+            return Err("injected resume failure".into());
+        }
         let deadline = std::time::Instant::now() + Duration::from_secs(3);
         while !*self.fresh.lock().unwrap() {
             assert!(
@@ -336,6 +358,21 @@ fn service_owns_discovery_routing_configuration_ack_and_disconnect_revocation() 
             std::thread::sleep(Duration::from_millis(2));
         }
     };
+    let commands = handle.command_port();
+    let live = commands.connected_ports();
+    assert_eq!(live.len(), 1);
+    assert_eq!(live[0].port, "SERVICE-PORT");
+    assert_eq!(live[0].generation, generation);
+    assert_eq!(live[0].device_id, Some(EntityId(4)));
+    commands
+        .send_message(
+            "SERVICE-PORT",
+            generation,
+            Message::Heartbeat,
+            Duration::from_secs(1),
+        )
+        .unwrap();
+
     let config_id = ConfigId::new(1).unwrap();
     assert_eq!(
         handle
@@ -1455,6 +1492,15 @@ fn neutralization_failure_suspends_reconnect_dispatch_until_recovered() {
         assert!(std::time::Instant::now() < deadline);
         std::thread::sleep(Duration::from_millis(2));
     }
+    // Resolver invalidation precedes the consumer's cleanup acknowledgement.
+    // Wait for that actual barrier rather than racing the next dispatcher line.
+    while !handle
+        .resource_arbiter()
+        .port_neutralization_failed("SERVICE-PORT")
+    {
+        assert!(std::time::Instant::now() < deadline);
+        std::thread::sleep(Duration::from_millis(2));
+    }
     assert!(handle.resource_arbiter().is_suspended());
     let dispatched_before_failure = consumers.inputs.lock().unwrap().len();
     // A reconnect must stay suspended: inputs reach the cache but are never
@@ -1515,6 +1561,13 @@ fn neutralization_failure_suspends_reconnect_dispatch_until_recovered() {
         .resolver()
         .resolve("SERVICE-PORT", replacement, config_one, 2)
         .is_some()
+    {
+        assert!(std::time::Instant::now() < deadline);
+        std::thread::sleep(Duration::from_millis(2));
+    }
+    while handle
+        .resource_arbiter()
+        .port_neutralization_failed("SERVICE-PORT")
     {
         assert!(std::time::Instant::now() < deadline);
         std::thread::sleep(Duration::from_millis(2));
@@ -2158,5 +2211,286 @@ fn device_deletion_fence_blocks_configuration_commit_for_deleted_device() {
     let mut handle = Arc::try_unwrap(handle)
         .ok()
         .expect("handle references must be released");
+    handle.shutdown().unwrap();
+}
+
+#[test]
+fn lease_neutralization_can_send_commands_without_reentering_admission_mutex() {
+    let connected = Arc::new(AtomicBool::new(true));
+    let consumers = Arc::new(FakeConsumers::default());
+    let service = Arc::new(HardwareService::new(
+        Arc::new(FakeTransport::new(connected)),
+        DiscoveryTiming {
+            settle: Duration::ZERO,
+            read_timeout: Duration::from_millis(2),
+            attempts: 1,
+        },
+        ScriptedRepository::default(),
+        consumers.clone(),
+    ));
+    let handle = Arc::new(service.start().unwrap());
+    handle.scan_now().unwrap();
+    let deadline = std::time::Instant::now() + Duration::from_secs(2);
+    let generation = loop {
+        if let Some(p) = handle.connected_ports().first() {
+            break p.generation;
+        }
+        assert!(std::time::Instant::now() < deadline);
+        std::thread::sleep(Duration::from_millis(2));
+    };
+    assert_eq!(
+        handle.connected_ports()[0].firmware_version.as_deref(),
+        Some("1.0.0")
+    );
+    *consumers.command_port.lock().unwrap() = Some(handle.command_port());
+    let (done, receive) = mpsc::channel();
+    let acquiring = handle.clone();
+    let worker = std::thread::spawn(move || {
+        let _ = done.send(acquiring.acquire_firmware_lease("SERVICE-PORT", generation));
+    });
+    let lease = receive
+        .recv_timeout(Duration::from_millis(800))
+        .expect("neutralization reentered the handle admission mutex")
+        .unwrap();
+    worker.join().unwrap();
+    *consumers.fresh.lock().unwrap() = true;
+    handle.release_firmware_lease(lease).unwrap();
+    consumers.command_port.lock().unwrap().take();
+    let mut handle = Arc::try_unwrap(handle).ok().unwrap();
+    handle.shutdown().unwrap();
+}
+
+#[test]
+fn completed_configuration_history_does_not_exhaust_future_operation_admission() {
+    let consumers = Arc::new(FakeConsumers::default());
+    let service = Arc::new(HardwareService::new(
+        Arc::new(FakeTransport::new(Arc::new(AtomicBool::new(true)))),
+        DiscoveryTiming {
+            settle: Duration::ZERO,
+            read_timeout: Duration::from_millis(2),
+            attempts: 1,
+        },
+        ScriptedRepository::default(),
+        consumers,
+    ));
+    let mut handle = service.start().unwrap();
+    handle.scan_now().unwrap();
+    let deadline = std::time::Instant::now() + Duration::from_secs(2);
+    let generation = loop {
+        if let Some(p) = handle.connected_ports().first() {
+            break p.generation;
+        }
+        assert!(std::time::Instant::now() < deadline);
+        std::thread::sleep(Duration::from_millis(1));
+    };
+    let mut failure = None;
+    for number in 0..1026 {
+        let operation = match handle.begin_configuration(ConfigurationApply {
+            port_name: "SERVICE-PORT".into(),
+            generation,
+            device_id: EntityId(4),
+            config_id: ConfigId::new(1).unwrap(),
+            messages: vec![Message::ConfigureButton {
+                config_id: 1,
+                total_parts: 1,
+                part_number: 0,
+                pin: 2,
+                debounce: 5,
+            }],
+            mappings: vec![(
+                2,
+                InputIdentity {
+                    device_id: EntityId(4),
+                    input_id: EntityId(8),
+                },
+            )],
+            timeout: Duration::from_secs(1),
+        }) {
+            Ok(operation) => operation,
+            Err(error) => {
+                failure = Some((number, error));
+                break;
+            }
+        };
+        let deadline = std::time::Instant::now() + Duration::from_secs(2);
+        loop {
+            if let Some(result) = handle.configuration_result(operation) {
+                result.unwrap();
+                break;
+            }
+            assert!(std::time::Instant::now() < deadline);
+            std::thread::sleep(Duration::from_millis(1));
+        }
+    }
+    handle.shutdown().unwrap();
+    assert!(
+        failure.is_none(),
+        "terminal history blocked future work: {failure:?}"
+    );
+}
+
+#[test]
+fn cancelled_calibration_retains_lease_until_resume_retry_is_acknowledged() {
+    let consumers = Arc::new(FakeConsumers::default());
+    *consumers.fresh.lock().unwrap() = true;
+    let service = Arc::new(HardwareService::new(
+        Arc::new(FakeTransport::new(Arc::new(AtomicBool::new(false)))),
+        DiscoveryTiming {
+            settle: Duration::ZERO,
+            read_timeout: Duration::from_millis(2),
+            attempts: 1,
+        },
+        ScriptedRepository::default(),
+        consumers.clone(),
+    ));
+    let mut handle = service.start().unwrap();
+    let id = trenino_core::SessionId(999);
+    handle
+        .start_calibration(CalibrationSession::new(
+            id,
+            EntityId(8),
+            "SERVICE-PORT".into(),
+            1,
+            2,
+            1023,
+        ))
+        .unwrap();
+    consumers.fail_resume.store(true, Ordering::SeqCst);
+    assert!(handle.cancel_calibration(id).is_err());
+    assert!(
+        handle.cancel_calibration(id).is_err(),
+        "an unresolved retry must not falsely ACK cleanup"
+    );
+    assert!(handle.resource_arbiter().is_suspended());
+    consumers.fail_resume.store(false, Ordering::SeqCst);
+    assert_eq!(handle.cancel_calibration(id), Ok(true));
+    assert!(
+        !handle.resource_arbiter().is_suspended(),
+        "successful retry must actually release original token"
+    );
+    handle.shutdown().unwrap();
+}
+
+#[test]
+fn completed_calibration_retries_cleanup_and_returns_the_persisted_result() {
+    let consumers = Arc::new(FakeConsumers::default());
+    *consumers.fresh.lock().unwrap() = true;
+    let service = Arc::new(HardwareService::new(
+        Arc::new(FakeTransport::new(Arc::new(AtomicBool::new(false)))),
+        DiscoveryTiming {
+            settle: Duration::ZERO,
+            read_timeout: Duration::from_millis(2),
+            attempts: 1,
+        },
+        ScriptedRepository::default(),
+        consumers.clone(),
+    ));
+    let mut handle = service.start().unwrap();
+    let id = trenino_core::SessionId(1000);
+    let session = handle
+        .start_calibration(CalibrationSession::new(
+            id,
+            EntityId(8),
+            "SERVICE-PORT".into(),
+            1,
+            2,
+            1023,
+        ))
+        .unwrap();
+    handle.advance_calibration(id).unwrap();
+    for value in (0..12).map(|n| 1 + n % 3) {
+        session.lock().unwrap().observe(1, 2, value).unwrap();
+    }
+    handle.advance_calibration(id).unwrap();
+    for value in (0..12).map(|n| n * 80) {
+        session.lock().unwrap().observe(1, 2, value).unwrap();
+    }
+    handle.advance_calibration(id).unwrap();
+    for value in (0..12).map(|n| 900 + n % 3) {
+        session.lock().unwrap().observe(1, 2, value).unwrap();
+    }
+    consumers.fail_resume.store(true, Ordering::SeqCst);
+    assert!(handle.advance_calibration(id).is_err());
+    let expected = session.lock().unwrap().terminal_result().unwrap().unwrap();
+    consumers.fail_resume.store(false, Ordering::SeqCst);
+    assert_eq!(handle.advance_calibration(id).unwrap(), Some(expected));
+    assert!(!handle.resource_arbiter().is_suspended());
+    handle.shutdown().unwrap();
+}
+
+#[test]
+fn failed_calibration_registration_retains_cleanup_ownership() {
+    let consumers = Arc::new(FakeConsumers::default());
+    *consumers.fresh.lock().unwrap() = true;
+    let service = Arc::new(HardwareService::new(
+        Arc::new(FakeTransport::new(Arc::new(AtomicBool::new(false)))),
+        DiscoveryTiming {
+            settle: Duration::ZERO,
+            read_timeout: Duration::from_millis(2),
+            attempts: 1,
+        },
+        ScriptedRepository::default(),
+        consumers.clone(),
+    ));
+    let mut handle = service.start().unwrap();
+    handle.sessions().close_admission();
+    let id = trenino_core::SessionId(1001);
+    consumers.fail_resume.store(true, Ordering::SeqCst);
+    assert!(handle
+        .start_calibration(CalibrationSession::new(
+            id,
+            EntityId(8),
+            "SERVICE-PORT".into(),
+            1,
+            2,
+            1023
+        ))
+        .is_err());
+    assert!(
+        handle.cancel_calibration(id).is_err(),
+        "registration failure must not discard an unacknowledged lease"
+    );
+    consumers.fail_resume.store(false, Ordering::SeqCst);
+    assert_eq!(handle.cancel_calibration(id), Ok(true));
+    assert!(!handle.resource_arbiter().is_suspended());
+    handle.shutdown().unwrap();
+}
+
+#[test]
+fn later_resource_admission_recovers_a_terminal_calibration_after_listener_disappears() {
+    let consumers = Arc::new(FakeConsumers::default());
+    *consumers.fresh.lock().unwrap() = true;
+    let service = Arc::new(HardwareService::new(
+        Arc::new(FakeTransport::new(Arc::new(AtomicBool::new(false)))),
+        DiscoveryTiming {
+            settle: Duration::ZERO,
+            read_timeout: Duration::from_millis(2),
+            attempts: 1,
+        },
+        ScriptedRepository::default(),
+        consumers.clone(),
+    ));
+    let mut handle = service.start().unwrap();
+    let id = trenino_core::SessionId(1002);
+    handle
+        .start_calibration(CalibrationSession::new(
+            id,
+            EntityId(8),
+            "SERVICE-PORT".into(),
+            1,
+            2,
+            1023,
+        ))
+        .unwrap();
+    consumers.fail_resume.store(true, Ordering::SeqCst);
+    assert!(handle.cancel_calibration(id).is_err());
+    // No UI listener remains to retry the old session ID.
+    consumers.fail_resume.store(false, Ordering::SeqCst);
+    let lease = handle
+        .acquire_firmware_lease("OTHER-PORT", 2)
+        .expect("new resource admission must retry retained terminal cleanup first");
+    *consumers.fresh.lock().unwrap() = true;
+    handle.release_firmware_lease(lease).unwrap();
+    assert!(!handle.resource_arbiter().is_suspended());
     handle.shutdown().unwrap();
 }

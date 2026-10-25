@@ -24,13 +24,15 @@
 //! executor task immediately (Elixir kills the spawned process) and stale
 //! completions are fenced by activation generation.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::mpsc as std_mpsc;
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
 
 use serde_json::Value;
-use tokio::sync::{mpsc, oneshot};
-use tokio::task::JoinHandle;
+use tokio::sync::{mpsc, oneshot, watch, Mutex};
+use trenino_core::train::buttons::SequenceCommand as CoreSequenceCommand;
 use trenino_core::{ConfigId, EntityId};
 
 use crate::routing::InputResolver;
@@ -39,16 +41,22 @@ use crate::simulator::services::clock::Clock;
 use crate::storage::bindings::{ButtonHardwareType, ButtonMode};
 
 use super::detection::{SequenceCommand, TrainConfigSnapshot};
+use super::sequence::{
+    SequenceEvent, SequenceExecutor, SequenceRun, SequenceSendOutcome, SequenceSimulator,
+};
 
 /// Bounded command queue for button edges (plan default: 256).
 const COMMAND_CAPACITY: usize = 256;
 /// `button_state_changed` broadcast fan-out (PubSub-style drop when full).
 const BROADCAST_CAPACITY: usize = 64;
+const PORT_ACK_TIMEOUT: Duration = Duration::from_secs(1);
+const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(1);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum QueueError {
     Overflow,
     Closed,
+    Timeout,
 }
 
 /// `{:button_state_changed, element_id, %{value, pressed}}` on the
@@ -125,7 +133,8 @@ struct ActiveButton {
     endpoint: Option<String>,
     #[allow(dead_code)]
     on_value: f64,
-    sequence: Option<JoinHandle<()>>,
+    /// Live executor run, if the mode started one (the Elixir tracked pid).
+    sequence: Option<SequenceRun>,
 }
 
 enum Control {
@@ -135,18 +144,25 @@ enum Control {
         bindings: HashMap<EntityId, BindingRuntime>,
     },
     Release,
+    ReleaseAcknowledged(std_mpsc::SyncSender<Result<(), String>>),
     SimulatorConnected(Arc<SimulatorClient>),
     SimulatorDisconnected,
-    SequenceDone {
-        generation: u64,
-        element_id: EntityId,
+    SuspendPort {
+        port: String,
+        lost_generation: Option<u64>,
+        reply: std_mpsc::SyncSender<Result<(), String>>,
+    },
+    ResumePort {
+        port: String,
+        reply: std_mpsc::SyncSender<Result<(), String>>,
     },
     State(oneshot::Sender<ButtonStateSnapshot>),
-    Shutdown(oneshot::Sender<()>),
+    Shutdown,
 }
 
 enum Command {
     Input(ButtonSample),
+    Observe(ButtonSample),
     /// Self-addressed repeat tick; a missing entry means the button was
     /// released (button_controller.ex:210-225).
     MomentaryRepeat(EntityId),
@@ -161,6 +177,13 @@ type ClientSlot = Arc<RwLock<Option<Arc<SimulatorClient>>>>;
 pub struct ButtonController {
     commands: mpsc::Sender<Command>,
     control: mpsc::UnboundedSender<Control>,
+    lifecycle: Arc<ControllerLifecycle>,
+}
+
+struct ControllerLifecycle {
+    closing: AtomicBool,
+    shutdown_sent: AtomicBool,
+    worker: Mutex<Option<tokio::task::JoinHandle<()>>>,
 }
 
 impl ButtonController {
@@ -172,19 +195,42 @@ impl ButtonController {
         let (commands, command_rx) = mpsc::channel(COMMAND_CAPACITY);
         let (control, control_rx) = mpsc::unbounded_channel();
         let (broadcast, broadcast_rx) = mpsc::channel(BROADCAST_CAPACITY);
-        tokio::spawn(run(
+        let worker = tokio::spawn(run(
             RunContext {
                 clock,
                 resolver,
                 keystrokes,
                 broadcast,
                 self_tx: commands.clone(),
-                control_tx: control.clone(),
             },
             command_rx,
             control_rx,
         ));
-        (Self { commands, control }, broadcast_rx)
+        let lifecycle = Arc::new(ControllerLifecycle {
+            closing: AtomicBool::new(false),
+            shutdown_sent: AtomicBool::new(false),
+            worker: Mutex::new(Some(worker)),
+        });
+        (
+            Self {
+                commands,
+                control,
+                lifecycle,
+            },
+            broadcast_rx,
+        )
+    }
+
+    fn ensure_open(&self) -> Result<(), QueueError> {
+        if self.lifecycle.closing.load(Ordering::Acquire) {
+            Err(QueueError::Closed)
+        } else {
+            Ok(())
+        }
+    }
+
+    pub(crate) fn begin_shutdown(&self) {
+        self.lifecycle.closing.store(true, Ordering::Release);
     }
 
     /// Load bindings for a new activation, cancelling every active button,
@@ -196,6 +242,7 @@ impl ButtonController {
         train_id: EntityId,
         snapshot: &TrainConfigSnapshot,
     ) -> Result<(), QueueError> {
+        self.ensure_open()?;
         let bindings = snapshot
             .button_bindings
             .iter()
@@ -227,25 +274,83 @@ impl ButtonController {
     }
 
     pub fn release(&self) -> Result<(), QueueError> {
+        self.ensure_open()?;
         self.control
             .send(Control::Release)
             .map_err(|_| QueueError::Closed)
     }
 
+    /// Bounded synchronous routing release barrier. It is callable after
+    /// admission closes and must run on an OS thread outside the worker.
+    pub(crate) fn release_acknowledged(&self) -> Result<(), String> {
+        let (reply, done) = std_mpsc::sync_channel(1);
+        self.control
+            .send(Control::ReleaseAcknowledged(reply))
+            .map_err(|_| "button worker closed".to_string())?;
+        done.recv_timeout(PORT_ACK_TIMEOUT)
+            .map_err(|_| "button release acknowledgement timed out".to_string())?
+    }
+
     pub fn simulator_connected(&self, client: Arc<SimulatorClient>) -> Result<(), QueueError> {
+        self.ensure_open()?;
         self.control
             .send(Control::SimulatorConnected(client))
             .map_err(|_| QueueError::Closed)
     }
 
     pub fn simulator_disconnected(&self) -> Result<(), QueueError> {
+        self.ensure_open()?;
         self.control
             .send(Control::SimulatorDisconnected)
             .map_err(|_| QueueError::Closed)
     }
 
+    /// Synchronous acknowledged fence for hardware lease transfer. Call
+    /// from an OS thread outside the controller's Tokio worker.
+    pub fn suspend_port(&self, port: &str) -> Result<(), String> {
+        self.port_command(port, None, false)
+    }
+
+    pub fn source_lost(&self, port: &str, generation: u64) -> Result<(), String> {
+        self.port_command(port, Some(generation), false)
+    }
+
+    /// Clear a port fence after the hardware owner verifies a fresh sample.
+    pub fn resume_port(&self, port: &str) -> Result<(), String> {
+        self.port_command(port, None, true)
+    }
+
+    fn port_command(
+        &self,
+        port: &str,
+        generation: Option<u64>,
+        resume: bool,
+    ) -> Result<(), String> {
+        self.ensure_open()
+            .map_err(|_| "button worker closing".to_string())?;
+        let (reply, done) = std_mpsc::sync_channel(1);
+        let command = if resume {
+            Control::ResumePort {
+                port: port.into(),
+                reply,
+            }
+        } else {
+            Control::SuspendPort {
+                port: port.into(),
+                lost_generation: generation,
+                reply,
+            }
+        };
+        self.control
+            .send(command)
+            .map_err(|_| "button worker closed".to_string())?;
+        done.recv_timeout(PORT_ACK_TIMEOUT)
+            .map_err(|_| "button port acknowledgement timed out".to_string())?
+    }
+
     /// Queue a button edge, waiting while the bounded queue is full.
     pub async fn input(&self, sample: ButtonSample) -> Result<(), QueueError> {
+        self.ensure_open()?;
         self.commands
             .send(Command::Input(sample))
             .await
@@ -255,6 +360,7 @@ impl ButtonController {
     /// Non-blocking ingress: an edge is never silently dropped — the caller
     /// observes [`QueueError::Overflow`] and must shed or reset the source.
     pub fn try_input(&self, sample: ButtonSample) -> Result<(), QueueError> {
+        self.ensure_open()?;
         self.commands
             .try_send(Command::Input(sample))
             .map_err(|error| match error {
@@ -263,7 +369,19 @@ impl ButtonController {
             })
     }
 
+    /// Preserve a leased/suspended physical level without running its edge later.
+    pub fn try_observe(&self, sample: ButtonSample) -> Result<(), QueueError> {
+        self.ensure_open()?;
+        self.commands
+            .try_send(Command::Observe(sample))
+            .map_err(|error| match error {
+                mpsc::error::TrySendError::Full(_) => QueueError::Overflow,
+                mpsc::error::TrySendError::Closed(_) => QueueError::Closed,
+            })
+    }
+
     pub async fn state(&self) -> Result<ButtonStateSnapshot, QueueError> {
+        self.ensure_open()?;
         let (reply, reply_rx) = oneshot::channel();
         self.control
             .send(Control::State(reply))
@@ -271,12 +389,25 @@ impl ButtonController {
         reply_rx.await.map_err(|_| QueueError::Closed)
     }
 
-    pub async fn shutdown(self) -> Result<(), QueueError> {
-        let (reply, reply_rx) = oneshot::channel();
-        self.control
-            .send(Control::Shutdown(reply))
+    pub async fn shutdown(&self) -> Result<(), QueueError> {
+        self.begin_shutdown();
+        // Holding this gate serializes clone callers. A timeout keeps the
+        // join handle and the already admitted shutdown command for retry.
+        let mut slot = self.lifecycle.worker.lock().await;
+        let Some(worker) = slot.as_mut() else {
+            return Ok(());
+        };
+        if !self.lifecycle.shutdown_sent.swap(true, Ordering::AcqRel) {
+            self.control
+                .send(Control::Shutdown)
+                .map_err(|_| QueueError::Closed)?;
+        }
+        tokio::time::timeout(SHUTDOWN_TIMEOUT, worker)
+            .await
+            .map_err(|_| QueueError::Timeout)?
             .map_err(|_| QueueError::Closed)?;
-        reply_rx.await.map_err(|_| QueueError::Closed)
+        *slot = None;
+        Ok(())
     }
 }
 
@@ -288,10 +419,25 @@ struct WorkerState {
     last_sent: HashMap<EntityId, f64>,
     active_buttons: HashMap<EntityId, ActiveButton>,
     client: Option<Arc<SimulatorClient>>,
-    client_slot: ClientSlot,
     keystrokes: Arc<dyn ButtonKeystrokes>,
-    clock: Arc<dyn Clock>,
-    control_tx: mpsc::UnboundedSender<Control>,
+    /// Sequence runs go through the shared [`SequenceExecutor`] — the single
+    /// tested executor (parity audit P1-12): the former inlined duplicate of
+    /// `execute_sequence_commands/3` was deleted in its favor.
+    executor: SequenceExecutor,
+    /// Owner-liveness half for spawned runs (the executor's `Process.monitor`
+    /// stand-in): dropped with the controller, cancelling every live run.
+    owner: watch::Sender<()>,
+    /// Completion sink of live runs; drained by the select loop.
+    sequence_events: mpsc::UnboundedSender<SequenceEvent>,
+    /// Run id → activation generation, fencing stale completions after a
+    /// re-activation (`handle_info({:sequence_complete, …})` ignores them).
+    sequence_runs: HashMap<u64, u64>,
+    retired_runs: Vec<SequenceRun>,
+    held_keys: HashMap<EntityId, String>,
+    element_ports: HashMap<EntityId, String>,
+    port_generations: HashMap<String, u64>,
+    suspended_ports: HashSet<String>,
+    observed_inputs: HashMap<EntityId, (String, u64, i16)>,
     self_tx: mpsc::Sender<Command>,
     /// Momentary repeat ticks that could not be queued because the bounded
     /// edge queue was full; re-armed as the queue drains so saturation can
@@ -313,16 +459,20 @@ impl WorkerState {
     /// Held keystrokes of the old activation are force-released through
     /// `owner_gone` so a train switch cannot leak a held OS key.
     fn cancel_all(&mut self) {
+        for (_, button) in self.active_buttons.drain() {
+            if let Some(sequence) = button.sequence {
+                sequence.abort();
+                self.retired_runs.push(sequence);
+            }
+        }
         if self.train_id.is_some() {
             self.keystrokes.owner_gone(self.keystroke_owner());
         }
-        for button in self.active_buttons.values() {
-            if let Some(sequence) = button.sequence.as_ref() {
-                sequence.abort();
-            }
-        }
+        self.retired_runs.retain(|run| !run.is_finished());
+        self.sequence_runs.clear();
+        self.held_keys.clear();
+        self.element_ports.clear();
         self.pending_repeats.clear();
-        self.active_buttons.clear();
     }
 
     /// Queue the next repeat tick, remembering the button when the bounded
@@ -355,7 +505,54 @@ impl WorkerState {
     fn clear_routing(&mut self) {
         self.cancel_all();
         self.bindings.clear();
+        self.observed_inputs.clear();
         self.last_sent.clear();
+    }
+
+    async fn release_for_routing(&mut self) -> Result<(), String> {
+        for (_, button) in self.active_buttons.drain() {
+            if let Some(sequence) = button.sequence {
+                sequence.abort();
+                self.retired_runs.push(sequence);
+            }
+        }
+        self.sequence_runs.clear();
+        self.element_ports.clear();
+        self.pending_repeats.clear();
+        self.bindings.clear();
+        self.observed_inputs.clear();
+        self.last_sent.clear();
+        self.active = false;
+
+        let owner = self.keystroke_owner();
+        let mut failure = None;
+        for id in self.held_keys.keys().copied().collect::<Vec<_>>() {
+            match self.keystrokes.release(owner, id) {
+                Ok(()) => {
+                    self.held_keys.remove(&id);
+                }
+                Err(error) => {
+                    failure.get_or_insert(error);
+                }
+            }
+        }
+        if failure.is_none() {
+            if self.train_id.is_some() {
+                self.keystrokes.owner_gone(owner);
+            }
+            self.train_id = None;
+        }
+        let settled = tokio::time::timeout(Duration::from_millis(500), async {
+            while self.retired_runs.iter().any(|run| !run.is_finished()) {
+                tokio::time::sleep(Duration::from_millis(1)).await;
+            }
+        })
+        .await
+        .is_ok();
+        if !settled {
+            failure.get_or_insert("button sequence cancellation timed out".into());
+        }
+        failure.map_or(Ok(()), Err)
     }
 
     fn broadcast(&self, element_id: EntityId, value: f64, pressed: bool) {
@@ -389,39 +586,78 @@ impl WorkerState {
             let _ = client.set(&interacting_endpoint, &Value::from(0.0)).await;
         }
     }
-
-    fn spawn_sequence(
-        &self,
+    /// Start one run through the shared [`SequenceExecutor`] and remember
+    /// its generation for stale-completion fencing. The Elixir controller
+    /// spawns a monitored process per sequence press
+    /// (`spawn_sequence_runner/2`); the executor owns the loop, the delays
+    /// and the `{:sequence_complete, element_id}` report.
+    fn start_sequence(
+        &mut self,
         element_id: EntityId,
         commands: Vec<SequenceCommand>,
-    ) -> JoinHandle<()> {
-        let generation = self.generation;
-        let client_slot = self.client_slot.clone();
-        let clock = self.clock.clone();
-        let control = self.control_tx.clone();
-        tokio::spawn(async move {
-            for command in commands {
-                // Owner-liveness is structural: cancellation aborts this task
-                // (Elixir kills the process); a completion that already left
-                // is fenced by its generation tag.
-                let client = client_slot.read().expect("client slot poisoned").clone();
-                if let Some(client) = client {
-                    // A failed command is logged and the sequence continues
-                    // (execute_sequence_loop/4 ignores the send result).
-                    let _ = client
-                        .set(&command.endpoint, &Value::from(command.value))
-                        .await;
-                }
-                if command.delay_ms > 0 {
-                    clock.sleep(Duration::from_millis(command.delay_ms)).await;
-                }
+    ) -> SequenceRun {
+        let run = self.executor.start(
+            element_id.0,
+            core_sequence_commands(commands),
+            self.owner.subscribe(),
+            self.sequence_events.clone(),
+        );
+        self.sequence_runs.insert(run.run, self.generation);
+        run
+    }
+
+    /// Abort a tracked run and forget its fence entry (re-press, release,
+    /// train switch — every `Process.exit(task, :kill)` site).
+    fn cancel_sequence_run(&mut self, run: SequenceRun) {
+        self.sequence_runs.remove(&run.run);
+        run.abort();
+        self.retired_runs.retain(|retired| !retired.is_finished());
+        self.retired_runs.push(run);
+    }
+}
+
+/// `SequenceSimulator` adapter over the live client slot: each command
+/// reads the CURRENT client (like the Elixir executor calling
+/// `get_simulator_client/0` before each send) and performs the HTTP set; a
+/// missing client is the "Simulator not connected for sequence" skip.
+struct ClientSlotSequence {
+    slot: ClientSlot,
+}
+
+impl SequenceSimulator for ClientSlotSequence {
+    fn set_async<'a>(
+        &'a self,
+        endpoint: &'a str,
+        value: f64,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = SequenceSendOutcome> + Send + 'a>> {
+        let client = self.slot.read().expect("client slot poisoned").clone();
+        let endpoint = endpoint.to_owned();
+        Box::pin(async move {
+            let Some(client) = client else {
+                return SequenceSendOutcome::Disconnected;
+            };
+            match client.set(&endpoint, &Value::from(value)).await {
+                Ok(_) => SequenceSendOutcome::Sent,
+                Err(error) => SequenceSendOutcome::Failed(error.to_string()),
             }
-            let _ = control.send(Control::SequenceDone {
-                generation,
-                element_id,
-            });
         })
     }
+}
+
+/// The controller loads sequences already ordered by position
+/// (`preload_order: [asc: :position]`); index → position keeps that order
+/// for `ordered_sequence`'s stable sort.
+fn core_sequence_commands(commands: Vec<SequenceCommand>) -> Vec<CoreSequenceCommand> {
+    commands
+        .into_iter()
+        .enumerate()
+        .map(|(position, command)| CoreSequenceCommand {
+            endpoint: command.endpoint,
+            value: command.value,
+            delay_ms: command.delay_ms,
+            position: position as u32,
+        })
+        .collect()
 }
 
 /// `derive_interacting_endpoint/1` (button_controller.ex:646-658): replace a
@@ -444,7 +680,6 @@ struct RunContext {
     keystrokes: Arc<dyn ButtonKeystrokes>,
     broadcast: mpsc::Sender<ButtonStateChange>,
     self_tx: mpsc::Sender<Command>,
-    control_tx: mpsc::UnboundedSender<Control>,
 }
 
 async fn run(
@@ -458,9 +693,20 @@ async fn run(
         keystrokes,
         broadcast,
         self_tx,
-        control_tx,
     } = ctx;
     let client_slot: ClientSlot = Arc::new(RwLock::new(None));
+    // The single shared sequence executor (P1-12): every mode goes through
+    // `train::sequence`, the tested port of `execute_sequence_commands/3`.
+    let executor = SequenceExecutor::new(
+        Arc::new(ClientSlotSequence {
+            slot: client_slot.clone(),
+        }),
+        clock,
+    );
+    // Owner-liveness monitor: dropping the sender (controller end) cancels
+    // every live run through the executor's watch arms.
+    let (owner, _) = watch::channel(());
+    let (sequence_events, mut sequence_event_rx) = mpsc::unbounded_channel();
     let mut state = WorkerState {
         generation: 0,
         train_id: None,
@@ -469,10 +715,17 @@ async fn run(
         last_sent: HashMap::new(),
         active_buttons: HashMap::new(),
         client: None,
-        client_slot: client_slot.clone(),
         keystrokes,
-        clock,
-        control_tx,
+        executor,
+        owner,
+        sequence_events,
+        sequence_runs: HashMap::new(),
+        retired_runs: Vec::new(),
+        held_keys: HashMap::new(),
+        element_ports: HashMap::new(),
+        port_generations: HashMap::new(),
+        suspended_ports: HashSet::new(),
+        observed_inputs: HashMap::new(),
         self_tx,
         pending_repeats: std::collections::HashSet::new(),
         broadcast,
@@ -497,6 +750,9 @@ async fn run(
                         state.active = false;
                         state.train_id = None;
                     }
+                    Control::ReleaseAcknowledged(reply) => {
+                        let _ = reply.send(state.release_for_routing().await);
+                    }
                     Control::SimulatorConnected(client) => {
                         state.client = Some(client.clone());
                         *client_slot.write().expect("client slot poisoned") = Some(client);
@@ -505,11 +761,16 @@ async fn run(
                         state.client = None;
                         *client_slot.write().expect("client slot poisoned") = None;
                     }
-                    Control::SequenceDone { generation, element_id } => {
-                        // Stale completions after a re-activation are dropped.
-                        if generation == state.generation {
-                            state.active_buttons.remove(&element_id);
-                        }
+                    Control::SuspendPort { port, lost_generation, reply } => {
+                        let newer = lost_generation.is_some_and(|generation|
+                            state.port_generations.get(&port).is_some_and(|current| *current > generation));
+                        if newer { let _ = reply.send(Ok(())); continue; }
+                        state.suspended_ports.insert(port.clone());
+                        let _ = reply.send(neutralize_port(&mut state, &port).await);
+                    }
+                    Control::ResumePort { port, reply } => {
+                        state.suspended_ports.remove(&port);
+                        let _ = reply.send(Ok(()));
                     }
                     Control::State(reply) => {
                         let snapshot = ButtonStateSnapshot {
@@ -521,18 +782,31 @@ async fn run(
                         };
                         let _ = reply.send(snapshot);
                     }
-                    Control::Shutdown(reply) => {
+                    Control::Shutdown => {
                         state.clear_routing();
-                        let _ = reply.send(());
+                        while state.retired_runs.iter().any(|run| !run.is_finished()) {
+                            tokio::time::sleep(Duration::from_millis(1)).await;
+                        }
                         break;
                     }
+                }
+            }
+            // `{:sequence_complete, element_id}` reports; stale runs after
+            // a re-activation are dropped (run→generation fence).
+            sequence_event = sequence_event_rx.recv() => {
+                let Some(SequenceEvent::Complete { element_id, run }) = sequence_event else { break };
+                if state.sequence_runs.remove(&run) == Some(state.generation) {
+                    state.active_buttons.remove(&EntityId(element_id));
                 }
             }
             command = commands.recv() => {
                 let Some(command) = command else { break };
                 match command {
                     Command::Input(sample) => {
-                        apply_input(&mut state, &resolver, sample).await;
+                        apply_input(&mut state, &resolver, sample, false).await;
+                    }
+                    Command::Observe(sample) => {
+                        apply_input(&mut state, &resolver, sample, true).await;
                     }
                     Command::MomentaryRepeat(element_id) => {
                         // Active entry drives request-paced repeats; a released
@@ -555,7 +829,63 @@ async fn run(
     }
 }
 
-async fn apply_input(state: &mut WorkerState, resolver: &Arc<InputResolver>, sample: ButtonSample) {
+async fn neutralize_port(state: &mut WorkerState, port: &str) -> Result<(), String> {
+    let affected: Vec<_> = state
+        .element_ports
+        .iter()
+        .filter(|(_, source)| source.as_str() == port)
+        .map(|(id, _)| *id)
+        .collect();
+    let mut aborted = Vec::new();
+    for id in affected {
+        state.element_ports.remove(&id);
+        state.last_sent.remove(&id);
+        state.pending_repeats.remove(&id);
+        if let Some(button) = state.active_buttons.remove(&id) {
+            if let Some(run) = button.sequence {
+                state.sequence_runs.remove(&run.run);
+                run.abort();
+                aborted.push(run);
+            }
+        }
+    }
+    let key_ids: Vec<_> = state
+        .held_keys
+        .iter()
+        .filter(|(_, source)| source.as_str() == port)
+        .map(|(id, _)| *id)
+        .collect();
+    let mut error = None;
+    for id in key_ids {
+        match state.keystrokes.release(state.keystroke_owner(), id) {
+            Ok(()) => {
+                state.held_keys.remove(&id);
+            }
+            Err(reason) => {
+                error.get_or_insert(reason);
+            }
+        }
+    }
+    let settled = tokio::time::timeout(Duration::from_millis(500), async {
+        while aborted.iter().any(|run| !run.is_finished()) {
+            tokio::time::sleep(Duration::from_millis(1)).await;
+        }
+    })
+    .await
+    .is_ok();
+    state.retired_runs.extend(aborted);
+    if !settled {
+        error.get_or_insert("button sequence cancellation timed out".into());
+    }
+    error.map_or(Ok(()), Err)
+}
+
+async fn apply_input(
+    state: &mut WorkerState,
+    resolver: &Arc<InputResolver>,
+    sample: ButtonSample,
+    observe_only: bool,
+) {
     if !state.active {
         return;
     }
@@ -567,17 +897,48 @@ async fn apply_input(state: &mut WorkerState, resolver: &Arc<InputResolver>, sam
     ) else {
         return;
     };
+    if observe_only || state.suspended_ports.contains(&sample.port) {
+        state
+            .port_generations
+            .insert(sample.port.clone(), sample.port_generation);
+        if state.bindings.contains_key(&identity.input_id) {
+            state.observed_inputs.insert(
+                identity.input_id,
+                (sample.port.clone(), sample.port_generation, sample.value),
+            );
+        }
+        if let Err(error) = neutralize_port(state, &sample.port).await {
+            eprintln!("button cached-source cleanup failed: {error}");
+        }
+        return;
+    }
+    if state
+        .observed_inputs
+        .get(&identity.input_id)
+        .is_some_and(|(port, generation, value)| {
+            port == &sample.port && *generation == sample.port_generation && *value == sample.value
+        })
+    {
+        return;
+    }
+    state.observed_inputs.remove(&identity.input_id);
     let Some(binding) = state.bindings.get(&identity.input_id).cloned() else {
         return;
     };
+    state
+        .port_generations
+        .insert(sample.port.clone(), sample.port_generation);
+    state
+        .element_ports
+        .insert(binding.element_id, sample.port.clone());
     match sample.value {
-        1 => press(state, &binding).await,
+        1 => press(state, &binding, &sample.port).await,
         0 => release(state, &binding).await,
         _ => {}
     }
 }
 
-async fn press(state: &mut WorkerState, binding: &BindingRuntime) {
+async fn press(state: &mut WorkerState, binding: &BindingRuntime, port: &str) {
     match binding.mode {
         ButtonMode::Simple => {
             // Dedup through last_sent; the broadcast still fires on a
@@ -622,11 +983,11 @@ async fn press(state: &mut WorkerState, binding: &BindingRuntime) {
             state.broadcast(binding.element_id, binding.on_value, true);
             // A re-press replaces any surviving entry (and its task).
             if let Some(previous) = state.active_buttons.remove(&binding.element_id) {
-                if let Some(sequence) = previous.sequence.as_ref() {
-                    sequence.abort();
+                if let Some(sequence) = previous.sequence {
+                    state.cancel_sequence_run(sequence);
                 }
             }
-            let task = state.spawn_sequence(
+            let task = state.start_sequence(
                 binding.element_id,
                 binding.on_sequence.clone().unwrap_or_default(),
             );
@@ -652,6 +1013,7 @@ async fn press(state: &mut WorkerState, binding: &BindingRuntime) {
             {
                 state.broadcast(binding.element_id, 1.0, true);
                 state.last_sent.insert(binding.element_id, 1.0);
+                state.held_keys.insert(binding.binding_id, port.into());
             }
         }
     }
@@ -685,8 +1047,8 @@ async fn release(state: &mut WorkerState, binding: &BindingRuntime) {
         ButtonMode::Sequence => {
             // Momentary hardware: the on-sequence dies on release (579-594).
             if let Some(previous) = state.active_buttons.remove(&binding.element_id) {
-                if let Some(sequence) = previous.sequence.as_ref() {
-                    sequence.abort();
+                if let Some(sequence) = previous.sequence {
+                    state.cancel_sequence_run(sequence);
                 }
             }
             let starts_off_sequence = binding.hardware_type == ButtonHardwareType::Latching
@@ -695,7 +1057,7 @@ async fn release(state: &mut WorkerState, binding: &BindingRuntime) {
                     .as_ref()
                     .is_some_and(|commands| !commands.is_empty());
             if starts_off_sequence {
-                let task = state.spawn_sequence(
+                let task = state.start_sequence(
                     binding.element_id,
                     binding.off_sequence.clone().unwrap_or_default(),
                 );
@@ -727,6 +1089,7 @@ async fn release(state: &mut WorkerState, binding: &BindingRuntime) {
             {
                 state.broadcast(binding.element_id, 0.0, false);
                 state.last_sent.insert(binding.element_id, 0.0);
+                state.held_keys.remove(&binding.binding_id);
             }
         }
     }

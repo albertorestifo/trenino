@@ -305,6 +305,7 @@ dependencies = [
  "percent-encoding",
  "pin-project-lite",
  "serde_core",
+ "serde_json",
  "serde_path_to_error",
  "serde_urlencoded",
  "sync_wrapper",
@@ -5642,6 +5643,7 @@ dependencies = [
  "axum",
  "fs2",
  "getrandom 0.4.3",
+ "libc",
  "mlua",
  "reqwest 0.12.28",
  "rusqlite",
@@ -5652,6 +5654,7 @@ dependencies = [
  "tokio",
  "tokio-stream",
  "trenino-core",
+ "unicode-segmentation",
  "vjoy",
  "windows-sys 0.61.2",
 ]

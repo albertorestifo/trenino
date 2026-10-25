@@ -13,18 +13,23 @@ use std::time::{Duration, Instant};
 use tokio::sync::{mpsc, watch, Mutex};
 
 pub type Cancel = watch::Sender<bool>;
+type SessionWorker = tokio::task::JoinHandle<Result<(), SessionClosed>>;
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum SessionClosed {
     WorkerFailed,
+    Deadline,
+    CleanupFailed(String),
+    LeaseReleaseFailed(ResourceError),
 }
 
 /// Handle to one running session: owns the event stream and the cancellation
 /// signal. Dropping the handle cancels the session and releases its lease.
 pub struct SessionHandle<Event> {
     events: mpsc::Receiver<Event>,
-    worker: Arc<Mutex<Option<tokio::task::JoinHandle<()>>>>,
+    worker: Arc<Mutex<Option<SessionWorker>>>,
     cancel: Arc<Cancel>,
+    completion_error: Option<SessionClosed>,
 }
 
 impl<Event> SessionHandle<Event> {
@@ -34,14 +39,19 @@ impl<Event> SessionHandle<Event> {
 
     /// Cancel the session, wait for its cleanup (including lease release) and
     /// the worker to finish.
-    pub async fn cancel(self) -> Result<(), SessionClosed> {
+    pub async fn cancel(&mut self) -> Result<(), SessionClosed> {
         let _ = self.cancel.send(true);
         let mut slot = self.worker.lock().await;
         if let Some(handle) = slot.as_mut() {
-            handle.await.map_err(|_| SessionClosed::WorkerFailed)?;
+            let result = tokio::time::timeout(Duration::from_secs(3), handle)
+                .await
+                .map_err(|_| SessionClosed::Deadline)?;
             *slot = None;
+            let result = result.map_err(|_| SessionClosed::WorkerFailed)?;
+            self.completion_error = result.clone().err();
+            return result;
         }
-        Ok(())
+        self.completion_error.clone().map_or(Ok(()), Err)
     }
 
     /// The shared cancellation signal, for callers that need to observe it.
@@ -71,7 +81,7 @@ where
     Run: Future<Output = Option<Event>> + Send + 'static,
     Build: FnOnce(mpsc::Sender<Event>) -> Run + 'static,
     Cleanup: FnOnce() -> CleanupFuture + Send + 'static,
-    CleanupFuture: Future<Output = ()> + Send + 'static,
+    CleanupFuture: Future<Output = Result<(), SessionClosed>> + Send + 'static,
 {
     let token = arbiter.acquire(lease)?;
     let (events_tx, events_rx) = mpsc::channel::<Event>(16);
@@ -85,16 +95,23 @@ where
             _ = events_tx.closed() => None,
             outcome = run => outcome,
         };
-        cleanup().await;
-        let _ = release_arbiter.release(token);
-        if let Some(event) = outcome {
-            let _ = events_tx.send(event).await;
+        let cleanup_result = cleanup().await;
+        let release_result = release_arbiter
+            .release(token)
+            .map_err(SessionClosed::LeaseReleaseFailed);
+        let result = cleanup_result.and(release_result);
+        if result.is_ok() {
+            if let Some(event) = outcome {
+                let _ = events_tx.try_send(event);
+            }
         }
+        result
     });
     Ok(SessionHandle {
         events: events_rx,
         worker: Arc::new(Mutex::new(Some(worker))),
         cancel: Arc::new(cancel_tx),
+        completion_error: None,
     })
 }
 
@@ -122,5 +139,73 @@ pub async fn cancelled(signal: &mut watch::Receiver<bool>) {
         if signal.changed().await.is_err() {
             return;
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::resource::ResourceConsumers;
+    struct Noop;
+    impl ResourceConsumers for Noop {
+        fn suspend_actuation(&self, _: &str) -> Result<(), String> {
+            Ok(())
+        }
+        fn cancel_calibration(&self, _: &str) -> Result<(), String> {
+            Ok(())
+        }
+        fn source_lost(&self, _: &str, _: u64) -> Result<(), String> {
+            Ok(())
+        }
+        fn resume_after_fresh_sample(&self, _: &str) -> Result<(), String> {
+            Ok(())
+        }
+    }
+    #[tokio::test]
+    async fn cancellation_reports_cleanup_failure_on_every_retry() {
+        let arbiter = Arc::new(ResourceArbiter::new(Arc::new(Noop)));
+        let mut session = spawn_leased_session::<(), _, _, _, _>(
+            &arbiter,
+            LeaseKind::Calibration {
+                port: "p".into(),
+                generation: 1,
+            },
+            |_| async { std::future::pending().await },
+            || async { Err(SessionClosed::CleanupFailed("unsubscribe failed".into())) },
+        )
+        .unwrap();
+        assert_eq!(
+            session.cancel().await,
+            Err(SessionClosed::CleanupFailed("unsubscribe failed".into()))
+        );
+        assert_eq!(
+            session.cancel().await,
+            Err(SessionClosed::CleanupFailed("unsubscribe failed".into()))
+        );
+    }
+
+    #[tokio::test]
+    async fn stalled_cleanup_times_out_then_can_be_joined() {
+        let arbiter = Arc::new(ResourceArbiter::new(Arc::new(Noop)));
+        let release = Arc::new(tokio::sync::Notify::new());
+        let cleanup = release.clone();
+        let mut session = spawn_leased_session::<(), _, _, _, _>(
+            &arbiter,
+            LeaseKind::Calibration {
+                port: "p".into(),
+                generation: 1,
+            },
+            |_| async { std::future::pending().await },
+            move || async move {
+                cleanup.notified().await;
+                Ok(())
+            },
+        )
+        .unwrap();
+        assert_eq!(session.cancel().await, Err(SessionClosed::Deadline));
+        assert!(arbiter.is_suspended());
+        release.notify_one();
+        assert_eq!(session.cancel().await, Ok(()));
+        assert!(!arbiter.is_suspended());
     }
 }

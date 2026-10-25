@@ -53,6 +53,8 @@ export function detailBridge(overrides: Overrides = {}): UiBridge {
     startCalibration: vi.fn(async () => ({ ok: true as const, value: '5001' })),
     advanceCalibration: vi.fn(async () => ({ ok: true as const, value: null })),
     cancelCalibration: vi.fn(async () => ({ ok: true as const, value: true })),
+    calibrationCeiling: vi.fn(async () => ({ ok: true as const, value: 1023 })),
+    previewInput: vi.fn(async (_id: string, raw: number) => ({ ok: true as const, value: { calibrated: raw - 10, travel: 1000, axis_percent: Math.round((raw - 10) / 10), max_hardware_value: 1023, min_notch_samples: 10 } })),
     getConfigurations: vi.fn(async () => ({ ok: true as const, value: { epoch: '1', topic: 'hardware' as const, revision: '1', value: [] } })),
   };
   return { ...bridge, ...overrides } as unknown as UiBridge;
@@ -70,6 +72,40 @@ describe('ConfigurationEdit page', () => {
     expect(screen.getByText('112 (0x70)')).toBeInTheDocument();
     expect(screen.getByText('53%')).toBeInTheDocument();
     expect(screen.getByText('ID: 4242')).toBeInTheDocument();
+  });
+
+  it('sends manual output levels and display text only for an active device, reporting backend failures', async () => {
+    const setPhysicalOutput = vi.fn(async () => ({ ok: true as const, value: true }));
+    const testDisplay = vi.fn(async () => ({ ok: false as const, error: { code: 'unavailable' as const, message: 'Display disconnected.', field_errors: {}, retryable: true } }));
+    const bridge = detailBridge({ setPhysicalOutput, testDisplay });
+    const view = render(ConfigurationEdit, { props: { bridge, mode: 'existing', routeId: '4242', activePort: null } });
+    await screen.findByDisplayValue('Mega Panel');
+    expect(screen.getByRole('button', { name: 'Turn output 9 on' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Test display Speed' })).toBeDisabled();
+    await view.rerender({ bridge, mode: 'existing', routeId: '4242', activePort: '/dev/ttyUSB0', activeGeneration: 0 });
+    await fireEvent.click(screen.getByRole('button', { name: 'Turn output 9 on' }));
+    await waitFor(() => expect(setPhysicalOutput).toHaveBeenCalledWith('21', true, '/dev/ttyUSB0', 0));
+    expect(await screen.findByText('Sent HIGH to output 9.')).toBeInTheDocument();
+    await fireEvent.click(screen.getByRole('button', { name: 'Turn output 9 off' }));
+    await waitFor(() => expect(setPhysicalOutput).toHaveBeenCalledWith('21', false, '/dev/ttyUSB0', 0));
+    await fireEvent.input(screen.getByRole('textbox', { name: 'Test text for display Speed' }), { target: { value: '1234' } });
+    await fireEvent.click(screen.getByRole('button', { name: 'Test display Speed' }));
+    await waitFor(() => expect(testDisplay).toHaveBeenCalledWith('41', '1234', '/dev/ttyUSB0', 0));
+    expect(await screen.findByText('Display disconnected.')).toBeInTheDocument();
+  });
+
+  it('retains the clicked port generation when its configuration moves before hardware acknowledgement', async () => {
+    const pending = Promise.withResolvers<Awaited<ReturnType<UiBridge['setPhysicalOutput']>>>();
+    const setPhysicalOutput = vi.fn(() => pending.promise);
+    const bridge = detailBridge({ setPhysicalOutput });
+    const view = render(ConfigurationEdit, { props: { bridge, mode: 'existing', routeId: '4242', activePort: '/dev/ttyA', activeGeneration: 7 } });
+    await screen.findByDisplayValue('Mega Panel');
+    await fireEvent.click(screen.getByRole('button', { name: 'Turn output 9 on' }));
+    await view.rerender({ bridge, mode: 'existing', routeId: '4242', activePort: '/dev/ttyB', activeGeneration: 8 });
+    pending.resolve({ ok: false, error: { code: 'conflict', message: 'Original device connection changed.', field_errors: {}, retryable: true } });
+    await waitFor(() => expect(setPhysicalOutput).toHaveBeenCalledWith('21', true, '/dev/ttyA', 7));
+    expect(await screen.findByText('Original device connection changed.')).toBeInTheDocument();
+    expect(screen.queryByText('Sent HIGH to output 9.')).not.toBeInTheDocument();
   });
 
   it('surfaces a failed detail load as an inline error with a way back', async () => {
@@ -199,18 +235,46 @@ describe('ConfigurationEdit page', () => {
     const bridge = detailBridge();
     render(ConfigurationEdit, { props: { bridge, mode: 'existing', routeId: '4242' } });
     await fireEvent.click(await screen.findByRole('button', { name: '＋ Add display' }));
-    await fireEvent.input(screen.getByLabelText('Name'), { target: { value: 'Speed 2' } });
+    await fireEvent.input(screen.getByLabelText('Name (optional)'), { target: { value: 'Speed 2' } });
     await fireEvent.input(screen.getByLabelText('I2C address'), { target: { value: '0x71' } });
     await fireEvent.click(screen.getByRole('button', { name: 'Add display' }));
-    await waitFor(() => expect(bridge.createI2cModule).toHaveBeenCalledWith({ device_id: '7', name: 'Speed 2', module_chip: 'ht16k33', i2c_address: 113 }));
+    await waitFor(() => expect(bridge.createI2cModule).toHaveBeenCalledWith({ device_id: '7', name: 'Speed 2', module_chip: 'ht16k33', i2c_address: 113,
+      params: { brightness: 8, num_digits: 4, display_type: 'fourteen_segment', has_dot: false, align_right: true, min_value: 0 } }));
   });
 
-  it('edits and deletes displays, showing advanced HT16K33 params when present', async () => {
+  it('creates an unnamed display using the retained advanced defaults', async () => {
+    const bridge = detailBridge();
+    render(ConfigurationEdit, { props: { bridge, mode: 'existing', routeId: '4242' } });
+    await fireEvent.click(await screen.findByRole('button', { name: '＋ Add display' }));
+    expect(screen.getByLabelText('Display type')).toHaveValue('fourteen_segment');
+    await fireEvent.click(screen.getByText('Advanced display settings'));
+    expect(screen.getByLabelText('Right-align value')).toBeChecked();
+    expect(screen.getByLabelText('Minimum value')).toHaveValue('0');
+    await fireEvent.input(screen.getByLabelText('I2C address'), { target: { value: '0x72' } });
+    await fireEvent.click(screen.getByRole('button', { name: 'Add display' }));
+    await waitFor(() => expect(bridge.createI2cModule).toHaveBeenCalledWith({ device_id: '7', name: null, module_chip: 'ht16k33', i2c_address: 114,
+      params: { brightness: 8, num_digits: 4, display_type: 'fourteen_segment', has_dot: false, align_right: true, min_value: 0 } }));
+  });
+
+  it('clears an existing display name while preserving its persisted null minimum', async () => {
+    const bridge = detailBridge();
+    render(ConfigurationEdit, { props: { bridge, mode: 'existing', routeId: '4242' } });
+    await fireEvent.click(await screen.findByRole('button', { name: 'Edit display Speed' }));
+    await fireEvent.input(screen.getByLabelText('Name (optional)'), { target: { value: '' } });
+    await fireEvent.click(screen.getByText('Advanced display settings'));
+    expect(screen.getByLabelText('Minimum value')).toHaveValue('');
+    await fireEvent.click(screen.getByRole('button', { name: 'Save display' }));
+    await waitFor(() => expect(bridge.updateI2cModule).toHaveBeenCalledWith({ id: '41', name: null, module_chip: 'ht16k33', i2c_address: 112,
+      params: { brightness: 8, num_digits: 4, display_type: 'seven_segment', has_dot: false, align_right: false, min_value: null } }));
+  });
+
+  it('edits and deletes displays, preserving and changing advanced HT16K33 params', async () => {
     const bridge = detailBridge();
     render(ConfigurationEdit, { props: { bridge, mode: 'existing', routeId: '4242' } });
     await fireEvent.click(await screen.findByRole('button', { name: 'Edit display Speed' }));
     expect(await screen.findByText('Advanced display settings')).toBeInTheDocument();
-    expect(screen.getByText('seven_segment')).toBeInTheDocument();
+    expect(screen.getByLabelText('Display type')).toHaveValue('seven_segment');
+    expect(screen.getByLabelText('Digits')).toHaveValue('4');
     await fireEvent.input(screen.getByLabelText('I2C address'), { target: { value: '300' } });
     await fireEvent.click(screen.getByRole('button', { name: 'Save display' }));
     expect(await screen.findByText('Enter an address between 0 and 255, like 112 or 0x70.')).toBeInTheDocument();
@@ -218,6 +282,45 @@ describe('ConfigurationEdit page', () => {
     await fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
     await fireEvent.click(screen.getByRole('button', { name: 'Delete display Speed' }));
     await waitFor(() => expect(bridge.deleteI2cModule).toHaveBeenCalledWith('41'));
+  });
+
+  it('sends all edited display settings and can explicitly clear the minimum', async () => {
+    const updateI2cModule = vi.fn(async (payload: Parameters<UiBridge['updateI2cModule']>[0]) => ({ ok: true as const, value: {
+      epoch: '1', topic: 'hardware' as const, revision: '14', value: { ...seededDetail, i2c_modules: [{ ...seededDetail.i2c_modules[0], params: payload.params ?? null }] },
+    } }));
+    const bridge = detailBridge({ updateI2cModule });
+    render(ConfigurationEdit, { props: { bridge, mode: 'existing', routeId: '4242' } });
+    await fireEvent.click(await screen.findByRole('button', { name: 'Edit display Speed' }));
+    await fireEvent.change(screen.getByLabelText('Display type'), { target: { value: 'fourteen_segment' } });
+    await fireEvent.change(screen.getByLabelText('Digits'), { target: { value: '8' } });
+    await fireEvent.click(screen.getByText('Advanced display settings'));
+    await fireEvent.input(screen.getByLabelText(/Brightness/), { target: { value: '13' } });
+    await fireEvent.input(screen.getByLabelText('Minimum value'), { target: { value: '12.5' } });
+    await fireEvent.click(screen.getByLabelText('Right-align value'));
+    await fireEvent.click(screen.getByLabelText('Display has a decimal point'));
+    await fireEvent.click(screen.getByRole('button', { name: 'Save display' }));
+    await waitFor(() => expect(updateI2cModule).toHaveBeenCalledWith({ id: '41', name: 'Speed', module_chip: 'ht16k33', i2c_address: 112,
+      params: { brightness: 13, num_digits: 8, display_type: 'fourteen_segment', has_dot: true, align_right: true, min_value: 12.5 } }));
+
+    await fireEvent.click(await screen.findByRole('button', { name: 'Edit display Speed' }));
+    await fireEvent.click(screen.getByText('Advanced display settings'));
+    expect(screen.getByLabelText('Minimum value')).toHaveValue('12.5');
+    await fireEvent.input(screen.getByLabelText('Minimum value'), { target: { value: '' } });
+    await fireEvent.click(screen.getByRole('button', { name: 'Save display' }));
+    await waitFor(() => expect(updateI2cModule).toHaveBeenLastCalledWith(expect.objectContaining({ params: expect.objectContaining({ min_value: null }) })));
+  });
+
+  it('keeps advanced display edits available after Rust rejects their values', async () => {
+    const bridge = detailBridge({ updateI2cModule: vi.fn(async () => ({ ok: false as const, error: {
+      code: 'validation' as const, message: 'Display parameters are invalid.', field_errors: { params: 'Unsupported combination.' }, retryable: false,
+    } })) });
+    render(ConfigurationEdit, { props: { bridge, mode: 'existing', routeId: '4242' } });
+    await fireEvent.click(await screen.findByRole('button', { name: 'Edit display Speed' }));
+    await fireEvent.change(screen.getByLabelText('Display type'), { target: { value: 'fourteen_segment' } });
+    await fireEvent.click(screen.getByRole('button', { name: 'Save display' }));
+    expect(await screen.findByText('Display parameters are invalid.')).toBeInTheDocument();
+    expect(screen.getByLabelText('Display type')).toHaveValue('fourteen_segment');
+    expect(screen.getByRole('button', { name: 'Save display' })).toBeInTheDocument();
   });
 
   it('creates a configuration in new mode and reports the new public config id', async () => {
@@ -247,10 +350,27 @@ describe('ConfigurationEdit page', () => {
     });
     expect(await screen.findByText('Pressed')).toBeInTheDocument();
     expect(screen.getByText('512')).toBeInTheDocument();
-    expect(screen.getByText('514')).toBeInTheDocument(); // calibrated (512-10)/(1010-10)*1023
+    expect(await screen.findByText('502')).toBeInTheDocument(); // calibrated travel units from Rust
 
     rerender({ bridge: detailBridge(), mode: 'existing', routeId: '4242', activePort: null, inputValues: {} });
     expect((await screen.findAllByText('N/A')).length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('ignores a stale calibrated reading after the hardware sample changes', async () => {
+    const slow = Promise.withResolvers<{ ok: true; value: { calibrated: number; travel: number; axis_percent: number; max_hardware_value: number; min_notch_samples: number } }>();
+    const previewInput = vi.fn(async (_id: string, raw: number) => raw === 300 ? slow.promise : {
+      ok: true as const, value: { calibrated: 901, travel: 1000, axis_percent: 90, max_hardware_value: 4095, min_notch_samples: 10 },
+    });
+    const bridge = detailBridge({ previewInput });
+    const view = render(ConfigurationEdit, { props: { bridge, mode: 'existing', routeId: '4242', activePort: 'live', inputValues: {} } });
+    await screen.findByDisplayValue('Mega Panel');
+    await view.rerender({ bridge, mode: 'existing', routeId: '4242', activePort: 'live', inputValues: { 3: 300 } });
+    await waitFor(() => expect(previewInput).toHaveBeenCalledWith('11', 300));
+    await view.rerender({ bridge, mode: 'existing', routeId: '4242', activePort: 'live', inputValues: { 3: 700 } });
+    expect(await screen.findByText('901')).toBeInTheDocument();
+    slow.resolve({ ok: true, value: { calibrated: 301, travel: 1000, axis_percent: 30, max_hardware_value: 4095, min_notch_samples: 10 } });
+    await waitFor(() => expect(screen.getByText('901')).toBeInTheDocument());
+    expect(screen.queryByText('301')).not.toBeInTheDocument();
   });
 
   it('marks matrix buttons as tested from live virtual-pin presses and opens the test wizard', async () => {

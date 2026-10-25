@@ -2,7 +2,7 @@ use std::collections::VecDeque;
 use std::io;
 use std::sync::{
     atomic::{AtomicBool, AtomicUsize, Ordering},
-    mpsc, Arc,
+    mpsc, Arc, Mutex,
 };
 use std::time::Duration;
 use trenino_core::hardware::protocol::{decode_message, encode_message, FrameDecoder, Message};
@@ -1828,4 +1828,329 @@ fn joined_worker_panic_is_reported_without_retry_and_other_owners_survive() {
     assert!(receive
         .try_iter()
         .any(|event| matches!(event, PortEvent::Closed { port, .. } if port == "OKAY")));
+}
+
+// Ports connection.ex handle_cast(:scan) → clear_failed_ports/1
+// (connection.ex:261-267): a manual scan must bypass the failure backoff and
+// retry failed ports immediately instead of waiting failure_retry (30 s).
+struct FailingOpenTransport {
+    opens: std::sync::atomic::AtomicUsize,
+}
+
+impl SerialTransport for FailingOpenTransport {
+    fn enumerate(&self) -> io::Result<Vec<String>> {
+        Ok(vec!["SCANFAIL".into()])
+    }
+    fn open(&self, _port: &str, _baud: u32, _timeout: Duration) -> io::Result<Box<dyn SerialIo>> {
+        self.opens.fetch_add(1, Ordering::SeqCst);
+        Err(io::Error::new(io::ErrorKind::PermissionDenied, "busy"))
+    }
+}
+
+#[test]
+fn manual_scan_clears_failed_port_backoff() {
+    let transport = Arc::new(FailingOpenTransport {
+        opens: std::sync::atomic::AtomicUsize::new(0),
+    });
+    let runtime = Arc::new(
+        HardwareRuntime::new(
+            transport.clone(),
+            DiscoveryTiming {
+                settle: Duration::ZERO,
+                read_timeout: Duration::from_millis(2),
+                attempts: 1,
+            },
+        )
+        // 300 s failure backoff: without the clear, the second open attempt
+        // could never happen inside this test.
+        .with_policy(
+            Duration::from_secs(300),
+            Duration::from_secs(300),
+            Duration::from_secs(1),
+        ),
+    );
+    let (events, receive) = mpsc::channel();
+    let mut handle = runtime.start(move |event| {
+        let _ = events.send(event);
+    });
+
+    let mut failures = 0;
+    let deadline = std::time::Instant::now() + Duration::from_secs(3);
+    while failures < 2 {
+        match receive
+            .recv_timeout(deadline.saturating_duration_since(std::time::Instant::now()))
+            .unwrap()
+        {
+            PortEvent::Failed { port, .. } => {
+                assert_eq!(port, "SCANFAIL");
+                failures += 1;
+                if failures == 1 {
+                    handle.scan_now().unwrap();
+                }
+            }
+            PortEvent::Closed { .. } => {} // joined failed owner, before retry
+            other => panic!("unexpected event: {other:?}"),
+        }
+    }
+    assert_eq!(failures, 2);
+    assert!(
+        transport.opens.load(Ordering::SeqCst) >= 2,
+        "manual scan must re-open the failed port, bypassing the backoff"
+    );
+    handle.shutdown().unwrap();
+}
+
+// Ports DeviceConnection.format_error_reason/1
+// (lib/trenino/serial/connection/device_connection.ex:124-145): human-readable
+// port error strings for the UI, including the generic atom fallback
+// (underscores to spaces, capitalized).
+#[test]
+fn format_error_reason_matches_oracle_strings() {
+    use trenino_runtime::hardware::{format_error_reason, format_io_error_reason};
+    assert_eq!(format_error_reason("eacces"), "Permission denied");
+    assert_eq!(format_error_reason("enoent"), "Port not found");
+    assert_eq!(
+        format_error_reason("ebusy"),
+        "Port is busy (in use by another program)"
+    );
+    assert_eq!(
+        format_error_reason("eagain"),
+        "Resource temporarily unavailable"
+    );
+    assert_eq!(format_error_reason("eio"), "I/O error");
+    assert_eq!(format_error_reason("einval"), "Invalid port configuration");
+    assert_eq!(format_error_reason("enxio"), "Device not configured");
+    assert_eq!(format_error_reason("eperm"), "Operation not permitted");
+    assert_eq!(
+        format_error_reason("no_valid_response"),
+        "No Trenino firmware detected"
+    );
+    assert_eq!(format_error_reason("timeout"), "Connection timed out");
+    assert_eq!(
+        format_error_reason("port_timed_out"),
+        "Device not responding"
+    );
+    // Oracle fallback: `reason |> Atom.to_string() |> replace("_"," ") |> capitalize`.
+    assert_eq!(format_error_reason("device_orphaned"), "Device orphaned");
+    // Binary reasons pass through unchanged.
+    assert_eq!(format_error_reason("custom failure"), "custom failure");
+    // errno mapping for OS open failures.
+    assert_eq!(
+        format_io_error_reason(&io::Error::from_raw_os_error(2)),
+        "Port not found"
+    );
+    assert_eq!(
+        format_io_error_reason(&io::Error::from_raw_os_error(13)),
+        "Permission denied"
+    );
+    assert_eq!(
+        format_io_error_reason(&io::Error::new(io::ErrorKind::TimedOut, "boom")),
+        "boom"
+    );
+}
+
+struct BootloaderTransport {
+    bootloader: AtomicBool,
+    enumerations: AtomicUsize,
+    opened: Mutex<Vec<String>>,
+}
+impl SerialTransport for BootloaderTransport {
+    fn enumerate(&self) -> io::Result<Vec<String>> {
+        self.enumerations.fetch_add(1, Ordering::SeqCst);
+        Ok(vec![if self.bootloader.load(Ordering::SeqCst) {
+            "COM99".into()
+        } else {
+            "COM42".into()
+        }])
+    }
+    fn open(&self, port: &str, _baud: u32, _timeout: Duration) -> io::Result<Box<dyn SerialIo>> {
+        self.opened.lock().unwrap().push(port.into());
+        Ok(Box::new(FakeOwnedPort {
+            reads: VecDeque::new(),
+        }))
+    }
+}
+
+#[test]
+fn firmware_handoff_keeps_scanner_off_a_new_bootloader_port() {
+    let transport = Arc::new(BootloaderTransport {
+        bootloader: AtomicBool::new(false),
+        enumerations: AtomicUsize::new(0),
+        opened: Mutex::new(Vec::new()),
+    });
+    let runtime = Arc::new(
+        HardwareRuntime::new(
+            transport.clone(),
+            DiscoveryTiming {
+                settle: Duration::ZERO,
+                read_timeout: Duration::from_millis(2),
+                attempts: 1,
+            },
+        )
+        .with_policy(
+            Duration::from_secs(60),
+            Duration::from_secs(1),
+            Duration::from_secs(1),
+        ),
+    );
+    let (events, receive) = mpsc::channel();
+    let mut handle = runtime.start(move |event| {
+        let _ = events.send(event);
+    });
+    handle.scan_now().unwrap();
+    let generation = loop {
+        if let PortEvent::Discovered { generation, .. } =
+            receive.recv_timeout(Duration::from_secs(2)).unwrap()
+        {
+            break generation;
+        }
+    };
+    let arbiter = ResourceArbiter::new(Arc::new(NoopResourceConsumers));
+    let lease = arbiter
+        .acquire(LeaseKind::Firmware {
+            port: "COM42".into(),
+            generation,
+        })
+        .unwrap();
+    let permit = arbiter.firmware_handoff_permit(lease).unwrap();
+    let operation = handle.begin_handoff("COM42", generation, &permit).unwrap();
+    let handoff = handle
+        .wait_handoff(operation, Duration::from_secs(2))
+        .unwrap()
+        .unwrap();
+    transport.bootloader.store(true, Ordering::SeqCst);
+    handle.scan_now().unwrap();
+    let deadline = std::time::Instant::now() + Duration::from_secs(1);
+    while transport.enumerations.load(Ordering::SeqCst) < 2 {
+        assert!(std::time::Instant::now() < deadline);
+        std::thread::sleep(Duration::from_millis(2));
+    }
+    std::thread::sleep(Duration::from_millis(40));
+    let premature = transport.opened.lock().unwrap().contains(&"COM99".into());
+    let release = handle.begin_release_handoff(handoff, &permit).unwrap();
+    let deadline = std::time::Instant::now() + Duration::from_secs(1);
+    loop {
+        if let Some(result) = handle.release_result(release) {
+            result.unwrap();
+            break;
+        }
+        assert!(std::time::Instant::now() < deadline);
+        std::thread::sleep(Duration::from_millis(2));
+    }
+    arbiter.release(lease).unwrap();
+    handle.shutdown().unwrap();
+    assert!(
+        !premature,
+        "scanner opened the changed bootloader port while flashing owned serial access"
+    );
+}
+
+#[test]
+fn io_error_formatting_uses_portable_error_kinds() {
+    use trenino_runtime::hardware::format_io_error_reason;
+    assert_eq!(
+        format_io_error_reason(&io::Error::new(io::ErrorKind::WouldBlock, "blocked")),
+        "Resource temporarily unavailable"
+    );
+    assert_eq!(
+        format_io_error_reason(&io::Error::new(io::ErrorKind::PermissionDenied, "denied")),
+        "Permission denied"
+    );
+}
+
+#[test]
+fn firmware_can_reserve_an_available_unrecognized_port_before_discovery() {
+    let transport = Arc::new(BootloaderTransport {
+        bootloader: AtomicBool::new(false),
+        enumerations: AtomicUsize::new(0),
+        opened: Mutex::new(Vec::new()),
+    });
+    let runtime = Arc::new(HardwareRuntime::new(
+        transport.clone(),
+        DiscoveryTiming {
+            settle: Duration::ZERO,
+            read_timeout: Duration::from_millis(2),
+            attempts: 1,
+        },
+    ));
+    let mut handle = runtime.start(|_| {});
+    let arbiter = ResourceArbiter::new(Arc::new(NoopResourceConsumers));
+    let lease = arbiter
+        .acquire(LeaseKind::Firmware {
+            port: "COM42".into(),
+            generation: 0,
+        })
+        .unwrap();
+    let permit = arbiter.firmware_handoff_permit(lease).unwrap();
+    let op = handle.begin_handoff("COM42", 0, &permit).unwrap();
+    let result = handle.wait_handoff(op, Duration::from_secs(2)).unwrap();
+    let success = result.is_ok();
+    if let Ok(handoff) = result {
+        let release = handle.begin_release_handoff(handoff, &permit).unwrap();
+        let deadline = std::time::Instant::now() + Duration::from_secs(2);
+        loop {
+            if let Some(result) = handle.release_result(release) {
+                result.unwrap();
+                break;
+            }
+            assert!(std::time::Instant::now() < deadline);
+            std::thread::sleep(Duration::from_millis(2));
+        }
+    }
+    arbiter.release(lease).unwrap();
+    handle.shutdown().unwrap();
+    assert!(
+        success,
+        "firmware upload must reserve an available board even without a Trenino identity"
+    );
+}
+
+#[test]
+fn manual_disconnect_is_generation_fenced_and_manual_scan_reconnects() {
+    let transport = Arc::new(FakeTransport {
+        enumerations: AtomicUsize::new(0),
+    });
+    let runtime = Arc::new(
+        HardwareRuntime::new(
+            transport,
+            DiscoveryTiming {
+                settle: Duration::ZERO,
+                read_timeout: Duration::from_millis(2),
+                attempts: 1,
+            },
+        )
+        .with_policy(
+            Duration::from_secs(60),
+            Duration::from_secs(30),
+            Duration::from_secs(1),
+        ),
+    );
+    let (events, receive) = mpsc::channel();
+    let mut handle = runtime.start(move |e| {
+        let _ = events.send(e);
+    });
+    handle.scan_now().unwrap();
+    let generation = loop {
+        if let PortEvent::Discovered { generation, .. } =
+            receive.recv_timeout(Duration::from_secs(2)).unwrap()
+        {
+            break generation;
+        }
+    };
+    assert!(handle.disconnect_port("COM42", generation + 1).is_err());
+    assert_eq!(handle.port_generations().get("COM42"), Some(&generation));
+    handle.disconnect_port("COM42", generation).unwrap();
+    assert!(!handle.port_generations().contains_key("COM42"));
+    handle.scan_now().unwrap();
+    let deadline = std::time::Instant::now() + Duration::from_secs(2);
+    let next = loop {
+        if let PortEvent::Discovered { generation, .. } = receive
+            .recv_timeout(deadline.saturating_duration_since(std::time::Instant::now()))
+            .unwrap()
+        {
+            break generation;
+        }
+    };
+    handle.shutdown().unwrap();
+    assert!(next > generation);
 }

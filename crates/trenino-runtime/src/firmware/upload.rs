@@ -248,6 +248,21 @@ pub struct UploadTooling {
     pub avrdude_conf: Option<PathBuf>,
 }
 
+impl UploadTooling {
+    /// Resolve avrdude through the 3-tier probe ported from
+    /// `Trenino.Firmware.Avrdude.executable_path/0` (avrdude.ex:20-34):
+    /// configured absolute path → app-resource dir → bundled dir/PATH.
+    /// Dev-only relative candidates are never probed in release builds.
+    pub fn discover_avrdude(
+        probe: &crate::executable::ExecutableProbe,
+    ) -> Result<Self, crate::executable::ExecutableError> {
+        Ok(Self {
+            avrdude_path: probe.resolve()?,
+            avrdude_conf: None,
+        })
+    }
+}
+
 /// Every wait, poll and bound used by the upload lifecycle, defaulting to the
 /// Elixir oracle's constants. Tests shrink the values to stay fast and
 /// deterministic.
@@ -272,6 +287,11 @@ pub struct UploadTimings {
     /// Bound on captured avrdude output (the oracle captured unbounded
     /// output; bounded capture is a platform requirement here).
     pub max_output_bytes: usize,
+    /// Delay before the post-upload rescan hook fires —
+    /// `connection.ex:249` `Process.send_after(self(), :post_upload_scan, 500)`.
+    pub reconnect_delay: Duration,
+    /// Bound on acknowledged cancellation cleanup, independent of upload duration.
+    pub cleanup_timeout: Duration,
 }
 
 impl Default for UploadTimings {
@@ -286,6 +306,8 @@ impl Default for UploadTimings {
             serial_open_timeout: Duration::from_millis(2_000),
             poll_interval: Duration::from_millis(2),
             max_output_bytes: 1024 * 1024,
+            reconnect_delay: Duration::from_millis(500),
+            cleanup_timeout: Duration::from_secs(15),
         }
     }
 }
@@ -399,6 +421,7 @@ pub struct UploadInfo {
     pub environment: String,
     pub firmware_file_id: EntityId,
     pub lease: LeaseToken,
+    pub generation: u64,
     pub started_at: Instant,
 }
 
@@ -429,6 +452,22 @@ pub enum UploadStartError {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum UploadCancelError {
     NotFound,
+    Timeout,
+    CleanupIncomplete,
+}
+
+/// Coordinates scanner ownership with the firmware worker's existing lease.
+/// A failed/uncertain handoff must remain reserved until `finish` confirms
+/// cleanup. Methods must be bounded and idempotent for retryable shutdown.
+pub trait UploadSerialOwnership: Send + Sync + 'static {
+    fn prepare(
+        &self,
+        lease: LeaseToken,
+        port: &str,
+        generation: u64,
+        cancel: &UploadCancelHandle,
+    ) -> Result<(), String>;
+    fn finish(&self, lease: LeaseToken, port: &str, generation: u64) -> Result<(), String>;
 }
 
 /// PubSub-equivalent upload event sink.
@@ -1062,6 +1101,8 @@ struct ManagerShared {
     history: Arc<dyn UploadHistoryPort>,
     on_event: Option<UploadEventSink>,
     reconnect: Option<ReconnectHook>,
+    serial_ownership: Option<Arc<dyn UploadSerialOwnership>>,
+    pending_cleanup: Mutex<Vec<UploadInfo>>,
 }
 
 impl ManagerShared {
@@ -1142,10 +1183,38 @@ fn finalize_upload(
     cancel: &UploadCancelHandle,
     result: UploadRunResult,
 ) -> UploadOutcome {
-    let _ = shared.arbiter.release(info.lease);
-    if let Some(hook) = &shared.reconnect {
-        hook(&info.port);
-    }
+    let cleanup = shared.serial_ownership.as_ref().map_or(Ok(()), |owner| {
+        owner.finish(info.lease, &info.port, info.generation)
+    });
+    let result = match cleanup {
+        Ok(()) => match shared.arbiter.release(info.lease) {
+            Ok(()) => result,
+            Err(error) => {
+                shared
+                    .pending_cleanup
+                    .lock()
+                    .expect("upload cleanup poisoned")
+                    .push(info.clone());
+                UploadRunResult::Failure {
+                    reason: UploadFailure::Crash,
+                    output: Some(format!("firmware lease cleanup incomplete: {error:?}")),
+                    duration_ms: duration_since(info.started_at),
+                }
+            }
+        },
+        Err(error) => {
+            shared
+                .pending_cleanup
+                .lock()
+                .expect("upload cleanup poisoned")
+                .push(info.clone());
+            UploadRunResult::Failure {
+                reason: UploadFailure::Crash,
+                output: Some(format!("serial handoff cleanup incomplete: {error}")),
+                duration_ms: duration_since(info.started_at),
+            }
+        }
+    };
     let cancelled_event = || UploadEvent::Failed {
         upload_id: info.upload_id.clone(),
         reason: UploadFailure::Cancelled,
@@ -1252,6 +1321,21 @@ fn finalize_upload(
             }
         }
     };
+    // Keep the delayed reconnect on the owned upload worker. Terminal
+    // acknowledgement follows this hook, so cancellation/shutdown cannot
+    // leave a detached timer that scans after serial teardown. History and
+    // completion events above remain visible during the legacy 500ms delay.
+    if shared
+        .pending_cleanup
+        .lock()
+        .expect("upload cleanup poisoned")
+        .is_empty()
+    {
+        if let Some(hook) = &shared.reconnect {
+            thread::sleep(shared.timings.reconnect_delay);
+            hook(&info.port);
+        }
+    }
     let mut state = watcher.state.lock().expect("upload manager state poisoned");
     if upload_active(&state, &info.upload_id) {
         state.current = None;
@@ -1281,6 +1365,17 @@ fn run_worker(
         });
     };
     let run = || {
+        if let Some(owner) = &shared.serial_ownership {
+            if let Err(error) =
+                owner.prepare(info.lease, &info.port, info.generation, &in_flight.cancel)
+            {
+                return UploadRunResult::Failure {
+                    reason: UploadFailure::Crash,
+                    output: Some(format!("serial handoff failed: {error}")),
+                    duration_ms: duration_since(info.started_at),
+                };
+            }
+        }
         run_device_upload(
             &*shared.transport,
             &shared.tooling,
@@ -1422,11 +1517,68 @@ impl UploadManager {
                 history,
                 on_event: hooks.on_event,
                 reconnect: hooks.reconnect,
+                serial_ownership: None,
+                pending_cleanup: Mutex::new(Vec::new()),
             }),
             lifecycle: Arc::new(ManagerLifecycle {
                 watcher: watcher.clone(),
             }),
             watcher,
+        }
+    }
+
+    /// Construct a manager attached to the scanner's exclusive handoff owner.
+    pub fn new_with_serial_ownership(
+        arbiter: Arc<ResourceArbiter>,
+        transport: Arc<dyn SerialTransport>,
+        tooling: UploadTooling,
+        timings: UploadTimings,
+        history: Arc<dyn UploadHistoryPort>,
+        hooks: UploadHooks,
+        ownership: Arc<dyn UploadSerialOwnership>,
+    ) -> Self {
+        let mut manager = Self::new(arbiter, transport, tooling, timings, history, hooks);
+        // Fresh constructor; no handles to shared state have escaped.
+        Arc::get_mut(&mut manager.shared)
+            .expect("fresh upload manager")
+            .serial_ownership = Some(ownership);
+        manager
+    }
+
+    /// Retry uncertain serial cleanup before hardware/network teardown. A
+    /// failure retains the lease and record for the next shutdown attempt.
+    pub fn retry_cleanup(&self) -> Result<(), String> {
+        let mut pending = self
+            .shared
+            .pending_cleanup
+            .lock()
+            .map_err(|_| "upload cleanup poisoned")?;
+        let mut failures = Vec::new();
+        pending.retain(|info| {
+            let result = self
+                .shared
+                .serial_ownership
+                .as_ref()
+                .map_or(Ok(()), |owner| {
+                    owner.finish(info.lease, &info.port, info.generation)
+                })
+                .and_then(|()| {
+                    self.shared
+                        .arbiter
+                        .release(info.lease)
+                        .map_err(|e| format!("{e:?}"))
+                });
+            if let Err(error) = result {
+                failures.push(error);
+                true
+            } else {
+                false
+            }
+        });
+        if failures.is_empty() {
+            Ok(())
+        } else {
+            Err(failures.join("; "))
         }
     }
 
@@ -1470,6 +1622,7 @@ impl UploadManager {
             environment: request.environment.clone(),
             firmware_file_id: request.firmware_file_id,
             lease,
+            generation: request.generation,
             started_at: Instant::now(),
         };
         self.shared.emit(UploadEvent::Started {
@@ -1551,12 +1704,25 @@ impl UploadManager {
                 Some(current) if current.in_flight.info.upload_id == upload_id => {
                     current.in_flight.clone()
                 }
-                _ => return Err(UploadCancelError::NotFound),
+                _ => {
+                    return if self
+                        .shared
+                        .pending_cleanup
+                        .lock()
+                        .expect("upload cleanup poisoned")
+                        .iter()
+                        .any(|info| info.upload_id == upload_id)
+                    {
+                        Err(UploadCancelError::CleanupIncomplete)
+                    } else {
+                        Err(UploadCancelError::NotFound)
+                    };
+                }
             }
         };
         in_flight.cancel.request(CancelKind::User);
         in_flight.child.kill_child();
-        let deadline = Instant::now() + self.shared.timings.upload_timeout + Duration::from_secs(5);
+        let deadline = Instant::now() + self.shared.timings.cleanup_timeout;
         let mut state = self
             .watcher
             .state
@@ -1567,7 +1733,7 @@ impl UploadManager {
             if now >= deadline {
                 // Cancellation was requested and the child is dead; the
                 // worker is still unwinding its terminal cleanup.
-                return Ok(());
+                return Err(UploadCancelError::Timeout);
             }
             let (next, _) = self
                 .watcher
@@ -1576,7 +1742,19 @@ impl UploadManager {
                 .expect("upload manager state poisoned");
             state = next;
         }
-        Ok(())
+        drop(state);
+        if self
+            .shared
+            .pending_cleanup
+            .lock()
+            .expect("upload cleanup poisoned")
+            .iter()
+            .any(|info| info.upload_id == upload_id)
+        {
+            Err(UploadCancelError::CleanupIncomplete)
+        } else {
+            Ok(())
+        }
     }
 
     /// The current in-flight upload, if any.

@@ -181,6 +181,13 @@ pub struct Ht16k33Params {
     pub min_value: Option<f64>,
 }
 
+/// Formats an integer i2c address as `"112 (0x70)"` for display, porting
+/// `I2cModule.format_i2c_address/1` (i2c_module.ex:73-77): uppercase hex,
+/// zero-padded to two digits (oracle `Integer.to_string/2` + `pad_leading`).
+pub fn format_i2c_address(address: i32) -> String {
+    format!("{address} (0x{:02X})", address)
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct I2cModuleRecord {
     pub id: EntityId,
@@ -209,11 +216,23 @@ pub struct HardwareSnapshot {
 }
 
 impl Database {
+    #[cfg(test)]
+    pub(crate) fn before_hardware_dispatch(&self, hook: super::HardwareDispatchHook) {
+        *self.worker.before_hardware_dispatch.lock().unwrap() = Some(hook);
+    }
+
     fn hardware_call<T: Send + 'static>(
         &self,
         operation: &'static str,
         f: impl FnOnce(&mut Connection) -> DbResult<T> + Send + 'static,
     ) -> DbResult<T> {
+        #[cfg(test)]
+        {
+            let hook = self.worker.before_hardware_dispatch.lock().unwrap().clone();
+            if let Some(hook) = hook {
+                hook(operation);
+            }
+        }
         let (reply_tx, reply_rx) = mpsc::channel();
         let job = Box::new(move |connection: &mut Connection, mode: SchemaMode| {
             let result = if mode == SchemaMode::Full {
@@ -680,7 +699,7 @@ fn input_row(c: &Connection, id: EntityId) -> DbResult<Option<InputRecord>> {
     .transpose()
 }
 
-fn get_input(c: &Connection, id: EntityId) -> DbResult<Option<InputRecord>> {
+pub(super) fn get_input(c: &Connection, id: EntityId) -> DbResult<Option<InputRecord>> {
     input_row(c, id)
 }
 
@@ -1164,11 +1183,14 @@ fn update_i2c_module(
     c: &mut Connection,
     op: OperationId,
     id: EntityId,
-    d: I2cModuleDraft,
+    mut d: I2cModuleDraft,
 ) -> DbResult<Mutation<I2cModuleRecord>> {
     hardware_tx(c, op, move |tx| {
-        let device = module_row(tx, id)?.ok_or(StorageError::NotFound)?.device_id;
-        write_module(tx, Some(id), device, d)
+        let current = module_row(tx, id)?.ok_or(StorageError::NotFound)?;
+        // Omitted parameters preserve the row visible to this transaction,
+        // including any replacement committed by another shared-worker caller.
+        d.params = d.params.or(current.params);
+        write_module(tx, Some(id), current.device_id, d)
     })
 }
 fn delete_i2c_module(

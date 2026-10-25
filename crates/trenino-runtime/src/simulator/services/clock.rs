@@ -4,8 +4,13 @@
 //! (train detection 5s poll / 30s grace with 200ms probes) with an injectable
 //! fake so tests advance time without sleeping.
 
+use std::collections::HashMap;
 use std::future::Future;
 use std::pin::Pin;
+use std::sync::{
+    atomic::{AtomicU64, Ordering},
+    Arc, Mutex,
+};
 use std::time::{Duration, Instant};
 use tokio::sync::watch;
 
@@ -36,12 +41,30 @@ impl Clock for SystemClock {
 #[derive(Clone, Debug)]
 pub struct FakeClock {
     time: watch::Sender<Instant>,
+    pending: Arc<Mutex<HashMap<u64, Instant>>>,
+    next_sleep: Arc<AtomicU64>,
 }
 
 impl FakeClock {
     pub fn new() -> Self {
         let (time, _) = watch::channel(Instant::now());
-        Self { time }
+        Self {
+            time,
+            pending: Arc::default(),
+            next_sleep: Arc::default(),
+        }
+    }
+
+    /// Test orchestration barrier: active fake sleeps, including futures
+    /// constructed but not yet polled. Tests can wait for a poll to rearm
+    /// after HTTP completion instead of guessing a wall-clock settle time.
+    pub fn pending_deadlines(&self) -> Vec<Instant> {
+        self.pending
+            .lock()
+            .expect("fake clock pending sleeps poisoned")
+            .values()
+            .copied()
+            .collect()
     }
 
     pub fn advance(&self, duration: Duration) {
@@ -55,6 +78,19 @@ impl Default for FakeClock {
     }
 }
 
+struct PendingSleep {
+    token: u64,
+    registry: Arc<Mutex<HashMap<u64, Instant>>>,
+}
+impl Drop for PendingSleep {
+    fn drop(&mut self) {
+        self.registry
+            .lock()
+            .expect("fake clock pending sleeps poisoned")
+            .remove(&self.token);
+    }
+}
+
 impl Clock for FakeClock {
     fn now(&self) -> Instant {
         *self.time.borrow()
@@ -62,7 +98,17 @@ impl Clock for FakeClock {
     fn sleep(&self, duration: Duration) -> Sleep {
         let deadline = self.now() + duration;
         let mut receiver = self.time.subscribe();
+        let token = self.next_sleep.fetch_add(1, Ordering::Relaxed);
+        self.pending
+            .lock()
+            .expect("fake clock pending sleeps poisoned")
+            .insert(token, deadline);
+        let registration = PendingSleep {
+            token,
+            registry: self.pending.clone(),
+        };
         Box::pin(async move {
+            let _registration = registration;
             loop {
                 if *receiver.borrow_and_update() >= deadline {
                     return;

@@ -1,3 +1,5 @@
+> Historical checkpoint: superseded by the [2026-10-25 completion report](../2026-10-25-rust-parity/README.md). The open-work statements below describe the earlier checkpoint.
+
 # Rust rewrite handoff
 
 ## Resume here

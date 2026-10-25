@@ -14,6 +14,6 @@ export type VjoyMappingView = {
    */
   input_kind: string;
   input_pin: number | null;
-  input_device: string;
+  input_device: string | null;
   input_name: string | null;
 };

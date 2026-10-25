@@ -1664,3 +1664,181 @@ fn manager_records_failure_output_and_duration() {
         }
     );
 }
+
+#[derive(Default)]
+struct SerialOwnershipFake {
+    calls: Mutex<Vec<&'static str>>,
+    fail_cleanup: AtomicBool,
+}
+impl trenino_runtime::firmware::UploadSerialOwnership for SerialOwnershipFake {
+    fn prepare(
+        &self,
+        _lease: trenino_runtime::resource::LeaseToken,
+        _port: &str,
+        _generation: u64,
+        _cancel: &UploadCancelHandle,
+    ) -> Result<(), String> {
+        self.calls.lock().unwrap().push("prepare");
+        Ok(())
+    }
+    fn finish(
+        &self,
+        _lease: trenino_runtime::resource::LeaseToken,
+        _port: &str,
+        _generation: u64,
+    ) -> Result<(), String> {
+        self.calls.lock().unwrap().push("finish");
+        if self.fail_cleanup.load(Ordering::SeqCst) {
+            Err("handoff still owned".into())
+        } else {
+            Ok(())
+        }
+    }
+}
+
+#[test]
+fn manager_handoff_cleanup_failure_retains_lease_until_explicit_retry() {
+    let dir = TempDir::new().unwrap();
+    let avrdude = write_executable(&dir, "avrdude-ok", SUCCESS_BODY);
+    let arbiter = Arc::new(ResourceArbiter::new(Arc::new(ConsumerLog::default())));
+    let ownership = Arc::new(SerialOwnershipFake::default());
+    ownership.fail_cleanup.store(true, Ordering::SeqCst);
+    let manager = UploadManager::new_with_serial_ownership(
+        arbiter.clone(),
+        Arc::new(FakeSerial::default()),
+        UploadTooling {
+            avrdude_path: avrdude,
+            avrdude_conf: None,
+        },
+        fast_timings(),
+        Arc::new(HistoryFake::default()),
+        UploadHooks::default(),
+        ownership.clone(),
+    );
+    let id = manager
+        .start_upload(upload_request("PORT", &hex_file(&dir), &uno_config()))
+        .unwrap();
+    let result = manager
+        .wait_for_completion(&id, Duration::from_secs(5))
+        .unwrap();
+    assert_eq!(result.status, UploadStatus::Failed);
+    assert!(
+        arbiter.is_suspended(),
+        "uncertain handoff must retain exclusive lease"
+    );
+    assert_eq!(*ownership.calls.lock().unwrap(), vec!["prepare", "finish"]);
+    ownership.fail_cleanup.store(false, Ordering::SeqCst);
+    manager.retry_cleanup().unwrap();
+    assert!(!arbiter.is_suspended());
+    manager.retry_cleanup().unwrap();
+    assert_eq!(
+        *ownership.calls.lock().unwrap(),
+        vec!["prepare", "finish", "finish"]
+    );
+}
+
+#[test]
+fn cancellation_reports_uncertain_handoff_cleanup_instead_of_clean_success() {
+    let dir = TempDir::new().unwrap();
+    let pid_file = dir.path().join("pid");
+    let avrdude = blocking_script(&dir, &pid_file);
+    let arbiter = Arc::new(ResourceArbiter::new(Arc::new(ConsumerLog::default())));
+    let ownership = Arc::new(SerialOwnershipFake::default());
+    ownership.fail_cleanup.store(true, Ordering::SeqCst);
+    let manager = UploadManager::new_with_serial_ownership(
+        arbiter.clone(),
+        Arc::new(FakeSerial::default()),
+        UploadTooling {
+            avrdude_path: avrdude,
+            avrdude_conf: None,
+        },
+        fast_timings(),
+        Arc::new(HistoryFake::default()),
+        UploadHooks::default(),
+        ownership.clone(),
+    );
+    let id = manager
+        .start_upload(upload_request("PORT", &hex_file(&dir), &uno_config()))
+        .unwrap();
+    let pid: u32 = wait_for_file(&pid_file, Duration::from_secs(5))
+        .parse()
+        .unwrap();
+    let result = manager.cancel_upload(&id);
+    assert!(
+        !process_alive(pid),
+        "cancel must reap avrdude even when cleanup fails"
+    );
+    assert!(arbiter.is_suspended());
+    ownership.fail_cleanup.store(false, Ordering::SeqCst);
+    manager.retry_cleanup().unwrap();
+    assert!(
+        result.is_err(),
+        "cancel must not acknowledge released serial ownership after failed cleanup"
+    );
+}
+
+struct BlockingCleanupOwnership(Arc<AtomicBool>);
+impl trenino_runtime::firmware::UploadSerialOwnership for BlockingCleanupOwnership {
+    fn prepare(
+        &self,
+        _lease: trenino_runtime::resource::LeaseToken,
+        _port: &str,
+        _generation: u64,
+        _cancel: &UploadCancelHandle,
+    ) -> Result<(), String> {
+        Ok(())
+    }
+    fn finish(
+        &self,
+        _lease: trenino_runtime::resource::LeaseToken,
+        _port: &str,
+        _generation: u64,
+    ) -> Result<(), String> {
+        while !self.0.load(Ordering::SeqCst) {
+            std::thread::sleep(Duration::from_millis(1));
+        }
+        Ok(())
+    }
+}
+#[test]
+fn cancellation_timeout_is_explicit_and_worker_remains_owned_until_cleanup() {
+    let dir = TempDir::new().unwrap();
+    let pid_file = dir.path().join("pid");
+    let avrdude = blocking_script(&dir, &pid_file);
+    let release = Arc::new(AtomicBool::new(false));
+    let arbiter = Arc::new(ResourceArbiter::new(Arc::new(ConsumerLog::default())));
+    let mut timings = fast_timings();
+    timings.cleanup_timeout = Duration::from_millis(25);
+    let manager = UploadManager::new_with_serial_ownership(
+        arbiter.clone(),
+        Arc::new(FakeSerial::default()),
+        UploadTooling {
+            avrdude_path: avrdude,
+            avrdude_conf: None,
+        },
+        timings,
+        Arc::new(HistoryFake::default()),
+        UploadHooks::default(),
+        Arc::new(BlockingCleanupOwnership(release.clone())),
+    );
+    let id = manager
+        .start_upload(upload_request("PORT", &hex_file(&dir), &uno_config()))
+        .unwrap();
+    let pid: u32 = wait_for_file(&pid_file, Duration::from_secs(5))
+        .parse()
+        .unwrap();
+    let result = manager.cancel_upload(&id);
+    let was_active = manager.current_upload().is_some();
+    let was_suspended = arbiter.is_suspended();
+    release.store(true, Ordering::SeqCst);
+    manager
+        .wait_for_completion(&id, Duration::from_secs(5))
+        .unwrap();
+    assert_eq!(
+        result,
+        Err(trenino_runtime::firmware::UploadCancelError::Timeout)
+    );
+    assert!(was_active && was_suspended);
+    assert!(!process_alive(pid));
+    assert!(!arbiter.is_suspended());
+}

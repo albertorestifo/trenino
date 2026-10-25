@@ -1,0 +1,15 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "build": {
+    "frontendDist": "../ui/dist"
+  },
+  "bundle": {
+    "externalBin": [
+      "binaries/avrdude",
+      "binaries/keystroke"
+    ],
+    "resources": [
+      "binaries/avrdude.conf"
+    ]
+  }
+}

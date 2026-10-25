@@ -1,3 +1,5 @@
+> Historical checkpoint: superseded by the [2026-10-25 completion report](../../2026-10-25-rust-parity/README.md). The open-work statements below describe the earlier checkpoint.
+
 # Remaining rewrite delivery map
 
 This is a continuation map, not a completion claim. User authorized a full Rust backend rewrite on codex/rust-rewrite, retaining Tauri and a small TypeScript UI. Cheap Luna/high writers, Astra supervisors and fresh independent Sol/high correctness/adversarial reviews are required. Work only in the attached rust-rewrite worktree. No actual user DB, driver, simulator, firmware flash, installer, signing secret or publication has been exercised.

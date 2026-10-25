@@ -119,13 +119,14 @@ impl<R: FirmwareRepository> FirmwareCatalog<R> {
         self
     }
     pub async fn refresh(&self) -> Result<Vec<CatalogRelease>, CatalogError> {
-        let response = self
+        let request = self
             .client
             .get(&self.endpoint)
             .map_err(|_| CatalogError::InvalidAsset)?
-            .timeout(self.timeout)
-            .header("accept", "application/vnd.github.v3+json")
-            .header("user-agent", "trenino/1.0")
+            .timeout(self.timeout);
+        let response = self
+            .client
+            .github_headers(request)
             .send()
             .await
             .map_err(|_| CatalogError::Http)?;
@@ -208,6 +209,58 @@ impl<R: FirmwareRepository> FirmwareCatalog<R> {
             .filter(|d| d.asset.is_some() && d.manifest.upload_config.protocol.is_supported())
             .collect())
     }
+}
+
+impl<R: FirmwareRepository> FirmwareCatalog<R> {
+    /// Catalog-backed filename detection: every environment known from the
+    /// persisted releases (the startup backfill source — the Elixir registry
+    /// is populated from saved manifests at boot and on download) is offered
+    /// to [`detect_device_from_filename`].
+    pub fn detect_device_from_filename(
+        &self,
+        filename: &str,
+    ) -> Result<Option<String>, CatalogError> {
+        let environments = self
+            .repository
+            .list_releases()?
+            .into_iter()
+            .flat_map(|release| {
+                release
+                    .devices
+                    .into_iter()
+                    .map(|device| device.manifest.environment)
+            })
+            .collect::<Vec<_>>();
+        Ok(detect_device_from_filename(filename, &environments))
+    }
+}
+
+/// Ports `DeviceRegistry.detect_device_from_filename/1`
+/// (device_registry.ex:85-97): matches `trenino-{environment}.firmware.hex`
+/// or `trenino-{environment}.hex` (regex `trenino-([^.]+)(?:\.firmware)?\.hex$`,
+/// searched anywhere in the filename) and returns the environment only when
+/// it is present in the known registry; `None` otherwise (Elixir `:error`).
+pub fn detect_device_from_filename(
+    filename: &str,
+    known_environments: &[String],
+) -> Option<String> {
+    let mut search_from = 0usize;
+    while let Some(offset) = filename[search_from..].find("trenino-") {
+        let candidate = &filename[search_from + offset + "trenino-".len()..];
+        let Some(stem) = candidate.strip_suffix(".hex") else {
+            search_from += offset + "trenino-".len();
+            continue;
+        };
+        let environment = stem.strip_suffix(".firmware").unwrap_or(stem);
+        if !environment.is_empty()
+            && !environment.contains('.')
+            && known_environments.iter().any(|env| env == environment)
+        {
+            return Some(environment.to_string());
+        }
+        search_from += offset + "trenino-".len();
+    }
+    None
 }
 
 #[derive(Deserialize)]

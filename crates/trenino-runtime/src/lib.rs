@@ -1,11 +1,15 @@
 //! Application runtime services. All database access is confined to the storage worker.
 pub mod app;
+pub mod composition;
+pub mod executable;
 pub mod firmware;
 pub mod hardware;
+pub mod http_api;
 pub mod keyboard;
 pub mod lifecycle;
 pub mod mcp;
 pub mod paths;
+pub mod preview;
 pub mod resource;
 pub mod routing;
 pub mod settings;

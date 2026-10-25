@@ -3075,3 +3075,30 @@ fn server_participates_in_ordered_shutdown() {
     ));
     replacement.stop().unwrap();
 }
+
+#[test]
+fn http_initialize_uses_the_desktop_supplied_application_version() {
+    let fixture = fixture();
+    let server = McpServer::new(Arc::new(fixture.ports.clone()), None).with_server_version("9.8.7");
+    let port = match server.start(loopback(0)).unwrap() {
+        McpServerStatus::Running { address } => address.port(),
+        other => panic!("{other:?}"),
+    };
+    let (mut client, _, _) = SseClient::connect(port);
+    let (_, endpoint) = client.next_event();
+    let session = endpoint.split("session_id=").nth(1).unwrap();
+    assert_eq!(
+        post_json(
+            port,
+            &format!("/mcp/messages?session_id={session}"),
+            r#"{"jsonrpc":"2.0","method":"initialize","id":1}"#
+        )
+        .status,
+        202
+    );
+    let (_, data) = client.next_event();
+    let message: Value = serde_json::from_str(&data).unwrap();
+    assert_eq!(message["result"]["serverInfo"]["version"], "9.8.7");
+    drop(client);
+    server.stop().unwrap();
+}

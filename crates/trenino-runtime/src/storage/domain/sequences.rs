@@ -132,6 +132,14 @@ impl Database {
         })
     }
 
+    /// Sum of the sequence's command delays in milliseconds — Elixir
+    /// `Sequence.total_duration/1` (sequence.ex:60-65).
+    pub fn sequence_total_duration(&self, sequence_id: EntityId) -> DbResult<i64> {
+        self.domain_call("sequence_total_duration", move |c| {
+            Ok(total_duration(&sequence_commands(c, sequence_id)?))
+        })
+    }
+
     pub fn delete_sequence_command(
         &self,
         operation_id: OperationId,
@@ -141,6 +149,12 @@ impl Database {
             delete_sequence_command(c, operation_id, command_id)
         })
     }
+}
+
+/// Elixir `Sequence.total_duration/1` (sequence.ex:60-65): the sum of every
+/// command's delay in milliseconds (execution time excluded).
+pub fn total_duration(commands: &[SequenceCommandRecord]) -> i64 {
+    commands.iter().map(|command| command.delay_ms).sum()
 }
 
 fn invalid(detail: String) -> StorageError {

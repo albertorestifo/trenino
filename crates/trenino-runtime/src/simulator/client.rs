@@ -59,6 +59,14 @@ pub struct SimulatorClient {
     http: Client,
     profile: TimeoutProfile,
 }
+// Never expose API keys or credential-bearing URLs in diagnostic snapshots.
+impl fmt::Debug for SimulatorClient {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("SimulatorClient")
+            .field("profile", &self.profile)
+            .finish_non_exhaustive()
+    }
+}
 impl SimulatorClient {
     pub fn new(base_url: &str, api_key: &str) -> Result<Self, SimulatorError> {
         Self::with_profile(base_url, api_key, TimeoutProfile::Normal)

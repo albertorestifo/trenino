@@ -7,24 +7,34 @@ edition = "2021"
 trenino-core = { path = "../trenino-core" }
 rusqlite = { version = "0.32", features = ["bundled", "backup"] }
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
-tokio = { version = "1", features = ["sync", "time", "rt", "macros"] }
+tokio = { version = "1", features = ["sync", "time", "rt", "rt-multi-thread", "macros"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 fs2 = "0.4"
 getrandom = "0.4"
 serialport = { version = "=4.10.1", default-features = false }
-axum = { version = "0.8", default-features = false, features = ["http1", "tokio", "query"] }
+axum = { version = "0.8", default-features = false, features = ["http1", "tokio", "query", "json"] }
 tokio-stream = { version = "0.1", features = ["sync"] }
 socket2 = "0.5"
 mlua = { version = "0.12", features = ["lua53", "vendored"] }
+unicode-segmentation = "1"
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "=0.61.2", features = [
     "Win32_Security",
     "Win32_Storage_FileSystem",
     "Win32_System_Threading",
+    "Win32_System_Diagnostics_ToolHelp",
+    "Win32_System_JobObjects",
+    "Win32_System_Pipes",
+    "Win32_Foundation",
+    "Win32_System_Registry",
+    "Win32_UI_Shell",
 ] }
 vjoy = { path = "../../vendor/vjoy" }
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
 
 [dev-dependencies]
 tempfile = "3"

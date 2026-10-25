@@ -916,3 +916,253 @@ fn selection(version: &str, environment: &str, url: Url, size: Option<u64>) -> F
         device,
     }
 }
+
+// Ports downloader.ex github_headers/0 (downloader.ex:77-88): accept +
+// user-agent always, `authorization: token <t>` only when a token is set
+// (parity audit P1-10).
+fn capturing_catalog_http() -> (Url, Arc<Mutex<Vec<String>>>) {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let addr = listener.local_addr().unwrap();
+    let base = Url::parse(&format!("http://{addr}/")).unwrap();
+    let release_body = github_release(&base);
+    let requests = Arc::new(Mutex::new(Vec::new()));
+    let captured = requests.clone();
+    let manifest_body = manifest();
+    thread::spawn(move || {
+        for _ in 0..2 {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut request = [0u8; 4096];
+            let _ = stream.read(&mut request);
+            let request = String::from_utf8_lossy(&request).to_string();
+            let body = if request.contains("GET /manifest ") {
+                manifest_body.clone()
+            } else {
+                release_body.clone()
+            };
+            captured.lock().unwrap().push(request);
+            write!(stream, "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\nContent-Type: application/json\r\n\r\n{body}", body.len()).unwrap();
+        }
+    });
+    (base, requests)
+}
+
+#[tokio::test]
+async fn catalog_sends_optional_github_token_header() {
+    let (endpoint, requests) = capturing_catalog_http();
+    let repo = Arc::new(Repo::default());
+    let catalog = FirmwareCatalog::new(
+        FirmwareHttpClient::new(Duration::from_secs(30))
+            .unwrap()
+            .with_github_token(Some("secret-token".into())),
+        repo,
+        FirmwareRequirement::parse(None).unwrap(),
+    )
+    .with_endpoint(endpoint);
+    catalog.refresh().await.unwrap();
+    let requests = requests.lock().unwrap().clone();
+    let releases_request = requests
+        .iter()
+        .find(|r| r.contains("GET / "))
+        .expect("releases request");
+    assert!(releases_request.contains("accept: application/vnd.github.v3+json"));
+    assert!(releases_request.contains("user-agent: trenino/1.0"));
+    assert!(releases_request.contains("authorization: token secret-token"));
+}
+
+#[tokio::test]
+async fn catalog_omits_github_token_header_when_unconfigured() {
+    let (endpoint, requests) = capturing_catalog_http();
+    let repo = Arc::new(Repo::default());
+    let catalog = FirmwareCatalog::new(
+        http_client(),
+        repo,
+        FirmwareRequirement::parse(None).unwrap(),
+    )
+    .with_endpoint(endpoint);
+    catalog.refresh().await.unwrap();
+    let requests = requests.lock().unwrap().clone();
+    let releases_request = requests
+        .iter()
+        .find(|r| r.contains("GET / "))
+        .expect("releases request");
+    assert!(!releases_request.to_lowercase().contains("authorization"));
+}
+
+fn stored_release(id: i64, version: &str, published_at: &str) -> CatalogRelease {
+    let mut manifest = serde_json::from_str::<FirmwareManifest>(&manifest()).unwrap();
+    manifest.version = version.to_string();
+    CatalogRelease {
+        id: trenino_core::EntityId(id),
+        version: version.to_string(),
+        tag_name: format!("v{version}"),
+        release_url: None,
+        release_notes: None,
+        published_at: Some(published_at.to_string()),
+        manifest,
+        devices: Vec::new(),
+    }
+}
+
+// Mirrors firmware_test.exs get_latest_compatible_release/1 describe: newest
+// matching release wins, newer-but-incompatible releases are skipped, and no
+// match yields None (parity audit P1-10).
+#[test]
+fn latest_compatible_returns_newest_matching_and_skips_incompatible() {
+    // Oracle: firmware_test.exs "returns the newest-published release
+    // matching the requirement" and "skips a newer-but-incompatible release
+    // in favor of an older compatible one".
+    let repo = Arc::new(Repo::default());
+    let catalog = FirmwareCatalog::new(
+        http_client(),
+        repo.clone(),
+        FirmwareRequirement::parse(Some(">= 1.0.0 and < 2.0.0")).unwrap(),
+    );
+    *repo.releases.lock().unwrap() = vec![
+        stored_release(1, "0.9.0", "2025-01-01T00:00:00Z"),
+        stored_release(2, "1.5.0", "2025-06-01T00:00:00Z"),
+        stored_release(3, "2.0.0", "2025-12-01T00:00:00Z"),
+    ];
+    let latest = catalog.latest_compatible().unwrap().unwrap();
+    assert_eq!(latest.id, trenino_core::EntityId(2));
+
+    // Oracle: firmware_test.exs "returns :not_found when no releases match".
+    let strict = FirmwareCatalog::new(
+        http_client(),
+        repo.clone(),
+        FirmwareRequirement::parse(Some("~> 5.0")).unwrap(),
+    );
+    assert!(strict.latest_compatible().unwrap().is_none());
+
+    // Oracle: firmware_test.exs "with no requirement set, returns the newest
+    // release".
+    let any = FirmwareCatalog::new(
+        http_client(),
+        repo,
+        FirmwareRequirement::parse(None).unwrap(),
+    );
+    assert_eq!(
+        any.latest_compatible().unwrap().unwrap().id,
+        trenino_core::EntityId(3)
+    );
+}
+
+// Mirrors firmware_test.exs get_latest_compatible_release/1 + select's
+// Incompatible branch: selecting a release outside the requirement fails with
+// CatalogError::Incompatible (parity audit P1-10).
+#[test]
+fn select_rejects_incompatible_release_version() {
+    let repo = Arc::new(Repo::default());
+    let catalog = FirmwareCatalog::new(
+        http_client(),
+        repo.clone(),
+        FirmwareRequirement::parse(Some("~> 1.0")).unwrap(),
+    );
+    *repo.releases.lock().unwrap() = vec![stored_release(9, "2.0.0", "2025-06-01T00:00:00Z")];
+    let error = catalog
+        .select(trenino_core::EntityId(9), "uno")
+        .unwrap_err();
+    assert!(matches!(
+        error,
+        trenino_runtime::firmware::CatalogError::Incompatible
+    ));
+    assert_eq!(
+        error.to_string(),
+        "firmware release is incompatible with this application"
+    );
+}
+
+// Ports DeviceRegistry.detect_device_from_filename/1 (device_registry.ex:85-97;
+// oracle device_registry_test.exs "detects device from trenino firmware
+// filename", "detects device from short firmware filename", "returns error
+// for unknown device") — parity audit P2-18.
+#[test]
+fn detect_device_from_filename_matches_registry_environments() {
+    use trenino_runtime::firmware::detect_device_from_filename;
+    let known: Vec<String> = ["leonardo", "uno", "megaatmega2560"]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
+    assert_eq!(
+        detect_device_from_filename("trenino-leonardo.firmware.hex", &known),
+        Some("leonardo".into())
+    );
+    assert_eq!(
+        detect_device_from_filename("trenino-uno.firmware.hex", &known),
+        Some("uno".into())
+    );
+    assert_eq!(
+        detect_device_from_filename("trenino-megaatmega2560.firmware.hex", &known),
+        Some("megaatmega2560".into())
+    );
+    // Short filename form.
+    assert_eq!(
+        detect_device_from_filename("trenino-uno.hex", &known),
+        Some("uno".into())
+    );
+    // Unknown environment (regex matches, registry misses → :error).
+    assert_eq!(
+        detect_device_from_filename("trenino-unknown.hex", &known),
+        None
+    );
+    // Non-matching filenames.
+    assert_eq!(detect_device_from_filename("firmware.hex", &known), None);
+    assert_eq!(detect_device_from_filename("arduino-uno.hex", &known), None);
+    assert_eq!(detect_device_from_filename("leonardo.hex", &known), None);
+
+    // Catalog wiring point: persisted releases backfill the known set.
+    let repo = Arc::new(Repo::default());
+    let catalog = FirmwareCatalog::new(
+        http_client(),
+        repo.clone(),
+        FirmwareRequirement::parse(None).unwrap(),
+    );
+    let mut release = stored_release(1, "1.2.3", "2026-01-01T00:00:00Z");
+    release.devices = serde_json::from_str::<FirmwareManifest>(&manifest())
+        .unwrap()
+        .devices
+        .into_iter()
+        .map(|manifest_device| FirmwareDevice {
+            manifest: manifest_device,
+            asset: None,
+        })
+        .collect();
+    *repo.releases.lock().unwrap() = vec![release];
+    assert_eq!(
+        catalog
+            .detect_device_from_filename("trenino-uno.firmware.hex")
+            .unwrap(),
+        Some("uno".into())
+    );
+    assert_eq!(
+        catalog
+            .detect_device_from_filename("trenino-ghost.hex")
+            .unwrap(),
+        None
+    );
+}
+
+#[tokio::test]
+async fn checker_catalog_port_reports_new_releases_and_compatible_version_from_fake_http() {
+    use trenino_runtime::firmware::owner::FirmwareCheckPort;
+    let repository = Arc::new(Repo::default());
+    for expected_new in [true, false] {
+        let catalog = FirmwareCatalog::new(
+            http_client(),
+            repository.clone(),
+            FirmwareRequirement::parse(None).unwrap(),
+        )
+        .with_endpoint(catalog_http());
+        let result = catalog.check().await.unwrap();
+        assert_eq!(result.latest_version.as_deref(), Some("1.2.3"));
+        assert_eq!(result.found_updates, expected_new);
+    }
+    let empty = FirmwareCatalog::new(
+        http_client(),
+        Arc::new(Repo::default()),
+        FirmwareRequirement::parse(None).unwrap(),
+    )
+    .with_endpoint(fake_http(vec![(200, "[]".into())]));
+    let empty_result = empty.check().await.unwrap();
+    assert_eq!(empty_result.latest_version, None);
+    assert!(!empty_result.found_updates);
+}

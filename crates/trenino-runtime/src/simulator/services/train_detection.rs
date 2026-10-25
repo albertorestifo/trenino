@@ -9,9 +9,10 @@
 //! never change the detected profile; expiry deactivates the train.
 
 use crate::simulator::client::{SimulatorClient, SimulatorError};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use tokio::sync::{mpsc, oneshot, Mutex};
+use tokio::sync::{mpsc, Mutex};
 use trenino_core::train::identifier::{
     match_identifier, normalize_object_class, IdentifierMatch, TrainProfile,
 };
@@ -21,6 +22,7 @@ use super::clock::Clock;
 pub const POLL_INTERVAL: Duration = Duration::from_secs(5);
 pub const GRACE_PERIOD: Duration = Duration::from_secs(30);
 pub const GRACE_POLL_INTERVAL: Duration = Duration::from_millis(200);
+const SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(1);
 
 /// Source of stored train profiles (fake in tests; wave 2 wires the trains
 /// repository). Matching itself uses `trenino_core::train::identifier`.
@@ -46,7 +48,6 @@ pub enum TrainDetectionCommand {
     Connected(Arc<SimulatorClient>),
     Disconnected,
     Sync,
-    Shutdown(oneshot::Sender<()>),
 }
 
 struct DetectionState {
@@ -83,11 +84,13 @@ impl DetectionState {
 #[derive(Debug)]
 pub enum MonitorError {
     Closed,
+    Timeout,
 }
 
 pub struct TrainDetectionMonitor {
     commands: mpsc::Sender<TrainDetectionCommand>,
     worker: Arc<Mutex<Option<tokio::task::JoinHandle<()>>>>,
+    stopping: AtomicBool,
 }
 
 impl TrainDetectionMonitor {
@@ -102,6 +105,7 @@ impl TrainDetectionMonitor {
             Self {
                 commands,
                 worker: Arc::new(Mutex::new(Some(worker))),
+                stopping: AtomicBool::new(false),
             },
             event_receiver,
         )
@@ -120,21 +124,29 @@ impl TrainDetectionMonitor {
     }
 
     pub async fn shutdown(&self) -> Result<(), MonitorError> {
-        let (reply, reply_receiver) = oneshot::channel();
-        self.commands
-            .send(TrainDetectionCommand::Shutdown(reply))
-            .await
-            .map_err(|_| MonitorError::Closed)?;
-        reply_receiver.await.map_err(|_| MonitorError::Closed)?;
+        // The worker may be in a simulator request, so cancel that future
+        // directly. Keep the JoinHandle in the slot on timeout for a retry.
+        self.stopping.store(true, Ordering::Release);
         let mut slot = self.worker.lock().await;
         if let Some(handle) = slot.as_mut() {
-            handle.await.map_err(|_| MonitorError::Closed)?;
+            handle.abort();
+            let joined = tokio::time::timeout(SHUTDOWN_TIMEOUT, handle)
+                .await
+                .map_err(|_| MonitorError::Timeout)?;
+            if let Err(error) = joined {
+                if !error.is_cancelled() {
+                    return Err(MonitorError::Closed);
+                }
+            }
             *slot = None;
         }
         Ok(())
     }
 
     async fn send(&self, command: TrainDetectionCommand) -> Result<(), MonitorError> {
+        if self.stopping.load(Ordering::Acquire) {
+            return Err(MonitorError::Closed);
+        }
         self.commands
             .send(command)
             .await
@@ -206,10 +218,6 @@ async fn run(
                         if let Some(client) = client {
                             detect(&mut state, &client, &profiles, &events, &clock).await;
                         }
-                    }
-                    TrainDetectionCommand::Shutdown(reply) => {
-                        let _ = reply.send(());
-                        break;
                     }
                 }
             }
