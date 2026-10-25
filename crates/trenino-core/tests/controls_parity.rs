@@ -659,3 +659,141 @@ fn analyzer_rejects_non_finite_derived_zone_width() {
         Err(AnalysisError::InvalidDerivedResult)
     );
 }
+
+// ---------------------------------------------------------------------------
+// Train identifier parity (oracle: test/trenino/train/identifier_test.exs
+// `common_prefix/1` suite and the `extract_train_name/1` doctests in
+// lib/trenino/train/identifier.ex).
+// ---------------------------------------------------------------------------
+
+use trenino_core::train::identifier::{common_prefix, extract_train_name, normalize_object_class};
+
+fn owned(items: &[&str]) -> Vec<String> {
+    items.iter().map(|item| (*item).to_owned()).collect()
+}
+
+#[test]
+fn common_prefix_matches_the_elixir_cases() {
+    // empty list
+    assert_eq!(common_prefix(&[]), "");
+    // single string returned as-is
+    assert_eq!(common_prefix(&owned(&["BR_Class_66"])), "BR_Class_66");
+    // identical strings
+    assert_eq!(
+        common_prefix(&owned(&["BR_Class_66", "BR_Class_66"])),
+        "BR_Class_66"
+    );
+    // same beginning
+    assert_eq!(
+        common_prefix(&owned(&["BR_Class_66_DB", "BR_Class_66_Freightliner"])),
+        "BR_Class_66"
+    );
+    // across multiple strings
+    assert_eq!(
+        common_prefix(&owned(&[
+            "BR_Class_66_DB_Cargo",
+            "BR_Class_66_Freightliner",
+            "BR_Class_66_GBRF"
+        ])),
+        "BR_Class_66"
+    );
+    // no common prefix
+    assert_eq!(common_prefix(&owned(&["ABC", "XYZ"])), "");
+    // different lengths
+    assert_eq!(common_prefix(&owned(&["AB", "ABCD", "ABCDEF"])), "AB");
+    // unicode graphemes
+    assert_eq!(
+        common_prefix(&owned(&["Zürich_Train_A", "Zürich_Train_B"])),
+        "Zürich_Train"
+    );
+    // strips multiple trailing non-alphanumeric characters
+    assert_eq!(common_prefix(&owned(&["Train__A", "Train__B"])), "Train");
+    // entirely alphanumeric prefix keeps the digits
+    assert_eq!(common_prefix(&owned(&["ABC123X", "ABC123Y"])), "ABC123");
+}
+
+#[test]
+fn extract_train_name_matches_the_elixir_doctests() {
+    assert_eq!(
+        extract_train_name("RVM_PBO_Class142_DMSL_New_GMPTE_C"),
+        "Class 142"
+    );
+    assert_eq!(extract_train_name("RVM_FSN_DB_BR430_ETW4_C"), "DB BR 430");
+    assert_eq!(extract_train_name("RVM_LIRREX_M9-B_C"), "M9");
+    assert_eq!(extract_train_name("RVM_CJP_BNSF_ES44C4_C"), "BNSF ES44C4");
+    assert_eq!(extract_train_name("unknown_format"), "");
+}
+
+#[test]
+fn extract_train_name_pattern_priority_and_fallback() {
+    // DB+BR beats company+model and single-part patterns.
+    assert_eq!(extract_train_name("RVM_FSN_DB_BR430_ETW4"), "DB BR 430");
+    // Single-part Class pattern preserves the joined number.
+    assert_eq!(extract_train_name("RVM_PBO_Class801_C"), "Class 801");
+    // Model number without hyphen suffix.
+    assert_eq!(extract_train_name("RVM_LIRREX_M9_C"), "M9");
+    // Company + model for a known operator.
+    assert_eq!(extract_train_name("RVM_NJT_AMTK_AcelaA21_C"), "AMTK AcelaA21");
+    // Fallback: first part with letters AND digits, 2-10 chars.
+    assert_eq!(extract_train_name("RVM_XYZ_XYZ1234_C"), "XYZ1234");
+    // No candidate: pure route/part words without digits or patterns.
+    assert_eq!(extract_train_name("RVM_CJP_Passing_C"), "");
+    // RVM alone cannot yield a name.
+    assert_eq!(extract_train_name("RVM"), "");
+    assert_eq!(extract_train_name(""), "");
+}
+
+#[test]
+fn normalize_object_class_strips_suffix_and_trailing_junk() {
+    // derive_from_formation normalization (identifier.ex:41-46): `_C` suffix
+    // plus trailing non-alphanumerics.
+    assert_eq!(normalize_object_class("RVM_SBN_OBB_1116_C"), "RVM_SBN_OBB_1116");
+    assert_eq!(
+        normalize_object_class("RVM_PBO_Class142_DMSL_C"),
+        "RVM_PBO_Class142_DMSL"
+    );
+    assert_eq!(normalize_object_class("RVM_Train_Class"), "RVM_Train_Class");
+    assert_eq!(normalize_object_class("RVM_FSN_DB_BR430__"), "RVM_FSN_DB_BR430");
+}
+
+#[test]
+fn identifier_matching_covers_prefix_ambiguity_and_case() {
+    // Deduplicated per profile: both identifiers of profile 1 match.
+    let profiles = vec![
+        TrainProfile {
+            id: 1,
+            name: "BR 423".into(),
+            identifiers: vec!["RVM_DB_BR423".into(), "RVM_DB_BR423_RED".into()],
+        },
+        TrainProfile {
+            id: 2,
+            name: "BR 423 Red".into(),
+            identifiers: vec!["RVM_DB_BR423_RED".into()],
+        },
+    ];
+    // Cross-profile overlap is ambiguous — never the longest prefix.
+    assert_eq!(
+        match_identifier(&profiles, "RVM_DB_BR423_RED_VARIANT"),
+        IdentifierMatch::Ambiguous(vec![1, 2])
+    );
+    // Unrelated identifiers owned by one profile all match that profile.
+    let single = vec![TrainProfile {
+        id: 7,
+        name: "BR 423".into(),
+        identifiers: vec!["RVM_FSN_DB_BR423".into(), "RVM_OTHER_DB_BR423".into()],
+    }];
+    assert_eq!(
+        match_identifier(&single, "RVM_OTHER_DB_BR423_VARIANT"),
+        IdentifierMatch::Unique(7)
+    );
+    // Case-sensitive prefix matching.
+    assert_eq!(
+        match_identifier(&profiles, "rvm_db_br423_red_variant"),
+        IdentifierMatch::NotFound
+    );
+    // Exact prefix (stored == detected) matches.
+    assert_eq!(
+        match_identifier(&single, "RVM_FSN_DB_BR423"),
+        IdentifierMatch::Unique(7)
+    );
+}

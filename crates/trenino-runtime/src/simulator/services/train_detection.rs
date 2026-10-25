@@ -194,9 +194,11 @@ async fn run(
                         }
                     }
                     TrainDetectionCommand::Sync => {
+                        // Force a full re-detection with database lookup in
+                        // both branches, mirroring detection.ex:137-147
+                        // (`%{state | current_identifier: nil}` unconditionally).
+                        state.current_identifier = None;
                         let client = if let Some(grace_client) = state.grace_client.clone() {
-                            // Force a full re-detection with the grace client.
-                            state.current_identifier = None;
                             Some(grace_client)
                         } else {
                             state.connected_client.clone()
