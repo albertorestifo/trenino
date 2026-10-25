@@ -7,10 +7,10 @@
 //! keys. Every mutation commits exactly one "trains" topic revision.
 use super::domain_tx;
 use rusqlite::{params, Connection as SqliteConnection, OptionalExtension};
-use std::sync::mpsc;
+
 use trenino_core::{EntityId, OperationId};
 
-use crate::storage::{Database, DbResult, Mutation, Request, SchemaMode, StorageError};
+use crate::storage::{Database, DbResult, Mutation, StorageError};
 
 /// A sequence row; commands are loaded separately via
 /// [`Database::sequence_commands`].
@@ -56,34 +56,6 @@ pub struct SequencePatch {
 }
 
 impl Database {
-    /// Shared dispatch for the domain modules: runs a job on the database's
-    /// bounded worker, rejecting anything but the full-v2 schema. Sibling
-    /// domain modules reuse this through `pub(crate)` visibility.
-    pub(crate) fn domain_call<T: Send + 'static>(
-        &self,
-        operation: &'static str,
-        f: impl FnOnce(&mut crate::storage::Connection) -> DbResult<T> + Send + 'static,
-    ) -> DbResult<T> {
-        let (reply_tx, reply_rx) = mpsc::channel();
-        let job = Box::new(move |connection: &mut crate::storage::Connection, mode: SchemaMode| {
-            let result = if mode == SchemaMode::Full {
-                f(connection)
-            } else {
-                Err(StorageError::UnsupportedOperation { operation })
-            };
-            let _ = reply_tx.send(result);
-        });
-        self.worker
-            .tx
-            .lock()
-            .map_err(|_| StorageError::WorkerStopped)?
-            .as_ref()
-            .ok_or(StorageError::WorkerStopped)?
-            .send(Request::Hardware(job))
-            .map_err(|_| StorageError::WorkerStopped)?;
-        reply_rx.recv().map_err(|_| StorageError::WorkerStopped)?
-    }
-
     pub fn get_sequence(&self, id: EntityId) -> DbResult<Option<SequenceRecord>> {
         self.domain_call("get_sequence", move |c| get_sequence(c, id))
     }
