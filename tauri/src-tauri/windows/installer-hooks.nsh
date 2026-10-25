@@ -8,6 +8,10 @@
 !define TRENINO_REGISTRY_KEY "SOFTWARE\Trenino"
 !define VJOY_DEVICE_MARKER "VJoyDevice1CreatedByTrenino"
 
+; NSIS runs as a 32-bit process even for the x64 app. Use native PowerShell so
+; System32 driver paths and signature checks are not redirected to SysWOW64.
+!define TRENINO_POWERSHELL "$WINDIR\Sysnative\WindowsPowerShell\v1.0\powershell.exe"
+
 !macro NSIS_HOOK_POSTINSTALL
   SetRegView 64
   ; Check if VC++ Redistributable is already installed via registry
@@ -29,7 +33,7 @@
   ${If} $0 == "${VJOY_VERSION}"
     ; A matching uninstall string alone can be stale. Require the running kernel
     ; service, its signed pinned-version image, and a successful feeder API probe.
-    nsExec::ExecToStack 'powershell.exe -NoProfile -NonInteractive -Command "$$d=Get-CimInstance Win32_SystemDriver -Filter $\"Name='vjoy'$\" -ErrorAction SilentlyContinue; if (-not $$d -or $$d.State -ne $\"Running$\") { exit 1 }; $$p=$$d.PathName.Trim($\"`\"$\"); if (-not (Test-Path -LiteralPath $$p)) { exit 1 }; $$f=(Get-Item -LiteralPath $$p).VersionInfo.FileVersion; $$s=Get-AuthenticodeSignature -LiteralPath $$p; if ($$f -notlike $\"2.2.2.0*$\" -or $$s.Status -ne $\"Valid$\") { exit 1 }; $$r=& $\"$INSTDIR\resources\vJoyConfig.exe$\" -t -c 2>$$null; $$t=$$r -join $\" $\"; if ($$LASTEXITCODE -ne 0 -or $$t -notmatch $\"Product ID:$\" -or $$t -match $\"not installed|disabled|Failed$\") { exit 1 }; exit 0"'
+    nsExec::ExecToStack '"${TRENINO_POWERSHELL}" -NoProfile -NonInteractive -Command "$$d=Get-CimInstance Win32_SystemDriver -Filter $\"Name='vjoy'$\" -ErrorAction SilentlyContinue; if (-not $$d -or $$d.State -ne $\"Running$\") { exit 1 }; $$p=$$d.PathName.Trim($\"`\"$\"); if (-not (Test-Path -LiteralPath $$p)) { exit 1 }; $$f=(Get-Item -LiteralPath $$p).VersionInfo.FileVersion; $$s=Get-AuthenticodeSignature -LiteralPath $$p; if ($$f -notlike $\"2.2.2.0*$\" -or $$s.Status -ne $\"Valid$\") { exit 1 }; $$r=& $\"$INSTDIR\resources\vJoyConfig.exe$\" -t -c 2>$$null; $$t=$$r -join $\" $\"; if ($$LASTEXITCODE -ne 0 -or $$t -notmatch $\"Product ID:$\" -or $$t -match $\"not installed|disabled|Failed$\") { exit 1 }; exit 0"'
     Pop $5
     Pop $6
     ${If} $5 == 0
@@ -60,7 +64,7 @@
       vjoy_unverified_warning_done:
     ${Else}
       DetailPrint "Installing pinned signed vJoy ${VJOY_VERSION} runtime..."
-      nsExec::ExecToStack 'powershell.exe -NoProfile -NonInteractive -Command "if ((Get-AuthenticodeSignature -LiteralPath $\"$INSTDIR\resources\vJoySetup.exe$\").Status -eq $\"Valid$\") { exit 0 } else { exit 1 }"'
+      nsExec::ExecToStack '"${TRENINO_POWERSHELL}" -NoProfile -NonInteractive -Command "if ((Get-AuthenticodeSignature -LiteralPath $\"$INSTDIR\resources\vJoySetup.exe$\").Status -eq $\"Valid$\") { exit 0 } else { exit 1 }"'
       Pop $5
       Pop $6
       ${If} $5 != 0
@@ -95,7 +99,7 @@
   ; The comparison is normalized by PowerShell before checking the literal line.
   ReadRegDWORD $4 HKCU "${TRENINO_REGISTRY_KEY}" "${VJOY_DEVICE_MARKER}"
   ${If} $4 == 1
-    nsExec::ExecToStack 'powershell.exe -NoProfile -NonInteractive -Command "$$r=& $\"$INSTDIR\resources\vJoyConfig.exe$\" -t 1 -c 2>$$null; $$n=($$r -join $\" $\" -replace $\"\s+$\",$\" $\" ).Trim(); if ($$n -eq $\"vJoyConfig 1 -f -a X Y Z Rx Ry Rz Sl0 Sl1 -b 32$\") { exit 0 } else { exit 1 }"'
+    nsExec::ExecToStack '"${TRENINO_POWERSHELL}" -NoProfile -NonInteractive -Command "$$r=& $\"$INSTDIR\resources\vJoyConfig.exe$\" -t 1 -c 2>$$null; $$n=($$r -join $\" $\" -replace $\"\s+$\",$\" $\" ).Trim(); if ($$n -eq $\"vJoyConfig 1 -f -a X Y Z Rx Ry Rz Sl0 Sl1 -b 32$\") { exit 0 } else { exit 1 }"'
     Pop $0
     Pop $1
     ${If} $0 == 0
@@ -120,7 +124,7 @@
     ${EndIf}
     ; Exit 0 means a healthy API probe and all 16 statuses explicitly MISSING.
     ; Exit 1 means devices exist. Exit 2 means disabled/missing/error: retain.
-    nsExec::ExecToStack 'powershell.exe -NoProfile -NonInteractive -Command "$$r=& $\"$INSTDIR\resources\vJoyConfig.exe$\" -t -c 2>$$null; $$t=$$r -join $\" $\"; if ($$LASTEXITCODE -ne 0 -or $$t -notmatch $\"Product ID:$\" -or $$t -match $\"not installed|disabled|Failed$\") { exit 2 }; $$missing=([regex]::Matches($$t,$\"Status:\s+MISSING$\")).Count; if ($$missing -eq 16) { exit 0 } else { exit 1 }"'
+    nsExec::ExecToStack '"${TRENINO_POWERSHELL}" -NoProfile -NonInteractive -Command "$$r=& $\"$INSTDIR\resources\vJoyConfig.exe$\" -t -c 2>$$null; $$t=$$r -join $\" $\"; if ($$LASTEXITCODE -ne 0 -or $$t -notmatch $\"Product ID:$\" -or $$t -match $\"not installed|disabled|Failed$\") { exit 2 }; $$missing=([regex]::Matches($$t,$\"Status:\s+MISSING$\")).Count; if ($$missing -eq 16) { exit 0 } else { exit 1 }"'
     Pop $1
     Pop $2
     ${If} $1 == 0

@@ -121,6 +121,8 @@ pub fn run() {
                 .unwrap_or_default();
 
             let (mut rx, child) = match sidecar
+                // Burrito invokes Elixir's CLI, which otherwise exits after boot.
+                .args(["--no-halt"])
                 .env("PORT", BACKEND_PORT.to_string())
                 .env("MIX_ENV", "prod")
                 .env("BURRITO", "1")
