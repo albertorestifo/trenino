@@ -9,11 +9,12 @@ pub mod sequences;
 pub mod trains;
 
 use rusqlite::Transaction;
+use std::sync::mpsc;
 use trenino_core::OperationId;
 
 use super::{
-    metadata_key, read_u64, validate_runtime_metadata, Connection, DbResult, Mutation,
-    MutationOutcome, MutationReceipt, RuntimeMetadata, StorageError,
+    metadata_key, read_u64, validate_runtime_metadata, Connection, Database, DbResult, Mutation,
+    MutationOutcome, MutationReceipt, Request, RuntimeMetadata, SchemaMode, StorageError,
 };
 
 /// Runs `f` in one transaction and, only if it succeeds, increments the topic
@@ -62,4 +63,35 @@ pub(crate) fn topic_metadata(
         epoch: read_u64(connection, "__runtime.epoch", 0)?,
         revision: read_u64(connection, &metadata_key(topic)?, 0)?,
     })
+}
+
+impl Database {
+    /// Shared worker-submission primitive for stores declared outside the
+    /// `storage` module tree (e.g. `crate::vjoy::store`). Mirrors
+    /// `hardware_call`: the job runs on the dedicated worker connection and is
+    /// admitted only for full-schema databases.
+    pub(crate) fn domain_call<T: Send + 'static>(
+        &self,
+        operation: &'static str,
+        f: impl FnOnce(&mut Connection) -> DbResult<T> + Send + 'static,
+    ) -> DbResult<T> {
+        let (reply_tx, reply_rx) = mpsc::channel();
+        let job = Box::new(move |connection: &mut Connection, mode: SchemaMode| {
+            let result = if mode == SchemaMode::Full {
+                f(connection)
+            } else {
+                Err(StorageError::UnsupportedOperation { operation })
+            };
+            let _ = reply_tx.send(result);
+        });
+        self.worker
+            .tx
+            .lock()
+            .map_err(|_| StorageError::WorkerStopped)?
+            .as_ref()
+            .ok_or(StorageError::WorkerStopped)?
+            .send(Request::Hardware(job))
+            .map_err(|_| StorageError::WorkerStopped)?;
+        reply_rx.recv().map_err(|_| StorageError::WorkerStopped)?
+    }
 }

@@ -851,7 +851,7 @@ fn handle_request(connection: &mut Connection, mode: SchemaMode, request: Reques
 
 fn metadata_key(topic: &str) -> DbResult<String> {
     match topic {
-        "settings" | "hardware" | "trains" | "bindings" | "scripts" | "firmware" => {
+        "settings" | "hardware" | "trains" | "bindings" | "scripts" | "firmware" | "vjoy" => {
             Ok(format!("__runtime.revision.{topic}"))
         }
         _ => Err(StorageError::UnsupportedOperation {
@@ -899,7 +899,7 @@ fn allocate_epoch(connection: &mut Connection) -> DbResult<u64> {
         [next.to_string()],
     )?;
     for topic in [
-        "settings", "hardware", "trains", "bindings", "scripts", "firmware",
+        "settings", "hardware", "trains", "bindings", "scripts", "firmware", "vjoy",
     ] {
         transaction.execute(
             "INSERT INTO app_settings(key,value) VALUES(?1,'0') ON CONFLICT(key) DO UPDATE SET value='0'",
@@ -937,7 +937,7 @@ fn validate_runtime_metadata(connection: &Connection) -> DbResult<Option<Runtime
     let mut known = BTreeMap::new();
     known.insert("__runtime.epoch".to_owned(), None);
     for topic in [
-        "settings", "hardware", "trains", "bindings", "scripts", "firmware",
+        "settings", "hardware", "trains", "bindings", "scripts", "firmware", "vjoy",
     ] {
         known.insert(format!("__runtime.revision.{topic}"), None);
     }
