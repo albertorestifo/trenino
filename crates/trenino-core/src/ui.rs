@@ -3,7 +3,7 @@
 //! These are contracts only. The Tauri command adapters that will provide them
 //! are implemented alongside their owning services.
 
-use crate::{AppError, ConfigId, Epoch, ErrorCode, Revision, Topic};
+use crate::{AppError, ConfigId, EntityId, Epoch, ErrorCode, Revision, Topic};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::path::Path;
@@ -48,6 +48,9 @@ pub struct ConnectedDeviceView {
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
 pub struct ConfigurationSummaryView {
+    /// Database identity. The shared EntityId wire format is decimal text.
+    #[ts(type = "string")]
+    pub device_id: EntityId,
     /// Public firmware ConfigId; the checked positive i32 range is lossless in JS.
     #[ts(type = "number")]
     pub config_id: ConfigId,
@@ -631,6 +634,7 @@ mod tests {
     #[test]
     fn public_config_id_remains_numeric_and_stays_distinct_from_entity_id() {
         let view = ConfigurationSummaryView {
+            device_id: EntityId(7),
             config_id: ConfigId::new(i32::MAX as u32).unwrap(),
             name: "Main panel".into(),
             input_count: 0,
@@ -640,10 +644,11 @@ mod tests {
 
         let json = serde_json::to_value(&view).unwrap();
         assert_eq!(json["config_id"], i32::MAX);
+        assert_eq!(json["device_id"], "7");
         let decoded: ConfigurationSummaryView = serde_json::from_value(json).unwrap();
         assert_eq!(decoded.config_id, view.config_id);
         assert!(serde_json::from_str::<ConfigurationSummaryView>(
-            r#"{"config_id":2147483648,"name":"x","input_count":0,"description":null,"active":false}"#
+            r#"{"device_id":"7","config_id":2147483648,"name":"x","input_count":0,"description":null,"active":false}"#
         )
         .is_err());
     }

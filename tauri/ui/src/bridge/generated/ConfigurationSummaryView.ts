@@ -2,6 +2,10 @@
 
 export type ConfigurationSummaryView = {
   /**
+   * Database identity. The shared EntityId wire format is decimal text.
+   */
+  device_id: string;
+  /**
    * Public firmware ConfigId; the checked positive i32 range is lossless in JS.
    */
   config_id: number;

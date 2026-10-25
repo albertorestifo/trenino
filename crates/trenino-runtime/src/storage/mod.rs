@@ -129,6 +129,7 @@ pub struct Profile {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ConfigurationRecord {
+    pub id: EntityId,
     pub config_id: u32,
     pub name: String,
     pub description: Option<String>,
@@ -1085,14 +1086,15 @@ fn configurations_snapshot(
     connection: &Connection,
 ) -> DbResult<(Vec<ConfigurationRecord>, RuntimeMetadata)> {
     let mut statement = connection.prepare(
-        "SELECT config_id,COALESCE(name,''),description,(SELECT COUNT(*) FROM device_inputs WHERE device_id=devices.id) FROM devices WHERE config_id IS NOT NULL ORDER BY config_id",
+        "SELECT id,config_id,COALESCE(name,''),description,(SELECT COUNT(*) FROM device_inputs WHERE device_id=devices.id) FROM devices WHERE config_id IS NOT NULL ORDER BY config_id",
     )?;
     let rows = statement.query_map([], |row| {
         Ok(ConfigurationRecord {
-            config_id: row.get(0)?,
-            name: row.get(1)?,
-            description: row.get(2)?,
-            input_count: row.get(3)?,
+            id: EntityId(row.get(0)?),
+            config_id: row.get(1)?,
+            name: row.get(2)?,
+            description: row.get(3)?,
+            input_count: row.get(4)?,
         })
     })?;
     Ok((

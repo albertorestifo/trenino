@@ -613,6 +613,7 @@ pub(crate) fn run() {
             ui_update_configuration,
             ui_delete_configuration,
             ui_get_hardware_detail,
+            ui_get_hardware_detail_by_config,
             ui_create_input,
             ui_update_input,
             ui_delete_input,
@@ -1598,6 +1599,13 @@ command!(ui_get_hardware_detail(state, id: String) -> UiSnapshot<trenino_core::u
     |services: Arc<AppServices>, id: String| {
         let id = parse_entity_id("id", &id).map_err(to_app_failure)?;
         services.get_hardware_detail(id)
+    });
+
+command!(ui_get_hardware_detail_by_config(state, config_id: String) -> UiSnapshot<trenino_core::ui::DeviceDetailView> =
+    |services: Arc<AppServices>, config_id: String| {
+        let raw: u32 = config_id.trim().parse().map_err(|_| validation_failure_error("config_id", "Configuration ID must be a number."))?;
+        let config_id = trenino_core::ConfigId::new(raw).map_err(|e| validation_failure_error("config_id", e))?;
+        services.get_hardware_detail_by_config(config_id)
     });
 
 publishing_command!(ui_create_input(app, state, device_id: String, pin: i32, kind: String, sensitivity: Option<i32>, debounce: Option<i32>, name: Option<String>, matrix_id: Option<String>) -> UiSnapshot<trenino_core::ui::DeviceDetailView>, Topic::Hardware,

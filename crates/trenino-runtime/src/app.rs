@@ -365,6 +365,7 @@ fn configuration_view(record: ConfigurationRecord) -> Result<ConfigurationSummar
     let config_id = ConfigId::new(record.config_id)
         .map_err(|_| AppError::internal("A saved configuration has an invalid identifier."))?;
     Ok(ConfigurationSummaryView {
+        device_id: record.id,
         config_id,
         name: record.name,
         input_count: record.input_count,
@@ -479,6 +480,22 @@ impl AppServices {
     ) -> Result<UiSnapshot<DeviceDetailView>, AppError> {
         let _guard = self.begin_operation()?;
         self.hardware_detail_unguarded(device_id)
+    }
+
+    /// Resolves a device by its public firmware ConfigId (the Elixir route
+    /// parameter) and returns the same detail snapshot as
+    /// [`AppServices::get_hardware_detail`].
+    pub fn get_hardware_detail_by_config(
+        &self,
+        config_id: ConfigId,
+    ) -> Result<UiSnapshot<DeviceDetailView>, AppError> {
+        let _guard = self.begin_operation()?;
+        let device = self
+            .database()
+            .get_device_by_config_id(config_id)
+            .map_err(to_app_error)?
+            .ok_or_else(not_found("config_id"))?;
+        self.hardware_detail_unguarded(device.id)
     }
 
     pub fn get_train_detail(
