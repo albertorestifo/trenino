@@ -47,6 +47,7 @@ defmodule TreninoWeb.SettingsLiveTest do
   end
 
   test "non-Windows key instructions explain copying from the simulator PC", %{conn: conn} do
+    stub(Trenino.Settings.Simulator, :windows?, fn -> false end)
     {:ok, view, _} = live(conn, ~p"/settings")
     assert has_element?(view, "#api-key-help", "On the Windows PC running Train Sim World")
     assert has_element?(view, "#api-key-help", "CommAPIKey.txt")

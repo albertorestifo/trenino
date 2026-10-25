@@ -4,6 +4,7 @@ use tauri_plugin_shell::process::CommandChild;
 use std::sync::Mutex;
 use std::time::Duration;
 use std::sync::atomic::{AtomicBool, Ordering};
+mod backend_cache;
 #[cfg(feature = "desktop-updater")]
 mod updater;
 #[cfg(any(feature = "desktop-updater", test))]
@@ -120,12 +121,18 @@ pub fn run() {
                 .and_then(|p| p.parent().map(|d| d.to_string_lossy().into_owned()))
                 .unwrap_or_default();
 
+            let backend_path = std::path::Path::new(&app_dir)
+                .join(format!("trenino_backend{}", std::env::consts::EXE_SUFFIX));
+            let backend_cache_dir =
+                backend_cache::directory(&backend_path, &handle.path().app_cache_dir()?)?;
+
             let (mut rx, child) = match sidecar
                 // Burrito invokes Elixir's CLI, which otherwise exits after boot.
                 .args(["--no-halt"])
                 .env("PORT", BACKEND_PORT.to_string())
                 .env("MIX_ENV", "prod")
                 .env("BURRITO", "1")
+                .env("TRENINO_DESKTOP_INSTALL_DIR", backend_cache_dir)
                 .env("APP_PATH", app_dir)
                 .env(
                     "TRENINO_DISTRIBUTION",

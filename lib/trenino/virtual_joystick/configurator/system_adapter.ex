@@ -180,6 +180,7 @@ defmodule Trenino.VirtualJoystick.Configurator.SystemAdapter do
     port =
       Port.open({:spawn_executable, path}, [
         :binary,
+        :hide,
         :stream,
         :exit_status,
         :use_stdio,
@@ -216,9 +217,24 @@ defmodule Trenino.VirtualJoystick.Configurator.SystemAdapter do
       end)
   end
 
-  defp command(arguments) do
+  @doc false
+  def powershell_arguments(script, arguments) do
+    literals = Enum.map_join(arguments, " ", &"'#{String.replace(&1, "'", "''")}'")
+    command = "$ProgressPreference = 'SilentlyContinue'; & {\n#{script}\n} #{literals}"
+
+    encoded =
+      command |> :unicode.characters_to_binary(:utf8, {:utf16, :little}) |> Base.encode64()
+
+    ["-NoProfile", "-NonInteractive", "-OutputFormat", "Text", "-EncodedCommand", encoded]
+  end
+
+  defp command(["-NoProfile", "-NonInteractive", "-Command", script | arguments]) do
     if File.regular?(@powershell) do
-      case run_executable(@powershell, arguments, remaining_status_budget()) do
+      case run_executable(
+             @powershell,
+             powershell_arguments(script, arguments),
+             remaining_status_budget()
+           ) do
         {:ok, output, status} -> {output, status}
         {:error, _reason} -> {"", 1}
       end

@@ -6,7 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-Release target: **0.8.0**.
+## [0.8.0] - 2026-10-25
 
 ### Added
 
@@ -34,6 +34,10 @@ Release target: **0.8.0**.
 
 ### Fixed
 
+- Desktop startup keeps the backend running after database migrations finish.
+- Windows installer vJoy checks use native 64-bit PowerShell to avoid false incompatibility warnings.
+- Virtual joystick probes capture PowerShell output and pass paths correctly instead of reporting an installed driver as missing.
+- Updated desktop backends use a fresh extraction cache even when the application version is unchanged.
 - Lever writes recover after failed tasks and pause after connection failures instead of retrying continuously.
 - Display settings retain edits during validation, including unchecked options.
 - Display-only hardware configurations can deploy without dummy inputs.
