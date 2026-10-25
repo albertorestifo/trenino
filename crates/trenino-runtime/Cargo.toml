@@ -16,6 +16,7 @@ serialport = { version = "=4.10.1", default-features = false }
 axum = { version = "0.8", default-features = false, features = ["http1", "tokio", "query"] }
 tokio-stream = { version = "0.1", features = ["sync"] }
 socket2 = "0.5"
+mlua = { version = "0.12", features = ["lua53", "vendored"] }
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "=0.61.2", features = [
