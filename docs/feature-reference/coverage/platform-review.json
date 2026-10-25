@@ -1,0 +1,1885 @@
+[
+  {
+    "path": ".claude/agents/elixir-code-architect.md",
+    "document": "desktop-and-operations.md",
+    "summary": "Project guidance/product/design/history or license reference; not an additional runtime feature.",
+    "review": "reference",
+    "sha256": "494a9308f2e06d6e9d5bf2e6841305443793a6cde16c7c32bc1b9337097f9150"
+  },
+  {
+    "path": ".claude/commands/release.md",
+    "document": "desktop-and-operations.md",
+    "summary": "Project guidance/product/design/history or license reference; not an additional runtime feature.",
+    "review": "reference",
+    "sha256": "f340ce27113b22c167b596e18a0f54c6bbc925ab6909cf6f8d2ef567834db523"
+  },
+  {
+    "path": ".claude/skills/elixir-patterns/SKILL.md",
+    "document": "desktop-and-operations.md",
+    "summary": "Project guidance/product/design/history or license reference; not an additional runtime feature.",
+    "review": "reference",
+    "sha256": "ce41ade614e2c400cda16eebdb1248e4af86cc4a5ead95464383143eaf31b342"
+  },
+  {
+    "path": ".claude/skills/lua-scripting.md",
+    "document": "desktop-and-operations.md",
+    "summary": "Project guidance/product/design/history or license reference; not an additional runtime feature.",
+    "review": "reference",
+    "sha256": "c1dddb20e948c3b3e73e9cccdf62ac019d6d1070b87557c107f57c2624e39287"
+  },
+  {
+    "path": ".claude/skills/mimic-testing/SKILL.md",
+    "document": "desktop-and-operations.md",
+    "summary": "Project guidance/product/design/history or license reference; not an additional runtime feature.",
+    "review": "reference",
+    "sha256": "b49f3eadd7916c95755bb58a72f6369aee9c83c23ccced011b83bea863aee4fa"
+  },
+  {
+    "path": ".claude/skills/phoenix-liveview/SKILL.md",
+    "document": "desktop-and-operations.md",
+    "summary": "Project guidance/product/design/history or license reference; not an additional runtime feature.",
+    "review": "reference",
+    "sha256": "db61ac0bdd22ac67dfadc0a6c44106d0b037722081910d667cf16a47a8c7c242"
+  },
+  {
+    "path": ".claude/skills/train-setup.md",
+    "document": "desktop-and-operations.md",
+    "summary": "Project guidance/product/design/history or license reference; not an additional runtime feature.",
+    "review": "reference",
+    "sha256": "5e61fdf2f372b855cd7d0ef23eaf6f0f3365e0372545c7b08afe56390d06cd4f"
+  },
+  {
+    "path": ".claude/skills/trenino-mcp.md",
+    "document": "desktop-and-operations.md",
+    "summary": "Project guidance/product/design/history or license reference; not an additional runtime feature.",
+    "review": "reference",
+    "sha256": "65eae8dbf34fb0be7c982a55e5ffe0550affde49dab8776d588432a6c575bbee"
+  },
+  {
+    "path": ".formatter.exs",
+    "document": "desktop-and-operations.md",
+    "summary": "Build/runtime configuration or helper: .formatter.exs.",
+    "review": "source",
+    "sha256": "9735c5696a7018d8af0f7f2ca227a0ecafbb27d4094a3f941c9cdc67e08e9ede"
+  },
+  {
+    "path": ".gitattributes",
+    "document": "desktop-and-operations.md",
+    "summary": "Build/runtime configuration or helper: .gitattributes.",
+    "review": "source",
+    "sha256": "ebf0a38942e1bd5581b20f062c9d3f73d17be894d1b77aeeb541897f97d80f6f"
+  },
+  {
+    "path": ".github/CODEOWNERS",
+    "document": "desktop-and-operations.md",
+    "summary": "Repository automation/configuration: CODEOWNERS.",
+    "review": "source",
+    "sha256": "428f491dfd147532264b349556c42e37c91d39ba9bc0574b15842094c48d056e"
+  },
+  {
+    "path": ".github/actions/setup-burrito/action.yml",
+    "document": "desktop-and-operations.md",
+    "summary": "Repository automation/configuration: action.",
+    "review": "source",
+    "sha256": "887f91920e6ba1dfa6f922a20e6a97a2a07675204600845b7a3ae32e8f85380a"
+  },
+  {
+    "path": ".github/dependabot.yml",
+    "document": "desktop-and-operations.md",
+    "summary": "Repository automation/configuration: dependabot.",
+    "review": "source",
+    "sha256": "23ca0ccb0b7c78f4eab4d56532e36b6b50c5eabd16b271a3546083e89a693a06"
+  },
+  {
+    "path": ".github/workflows/ci.yml",
+    "document": "desktop-and-operations.md",
+    "summary": "Repository automation/configuration: ci.",
+    "review": "source",
+    "sha256": "0ace03d1da1de555ba9d95b11eac1308c96f19e4fc6b393ef22d23587d4babba"
+  },
+  {
+    "path": ".github/workflows/claude-code-review.yml",
+    "document": "desktop-and-operations.md",
+    "summary": "Repository automation/configuration: claude-code-review.",
+    "review": "source",
+    "sha256": "8797701ddab071fe7283d51989bdd712168870bd7e85973495b6c2729b6ead8f"
+  },
+  {
+    "path": ".github/workflows/claude-weekly-docs.yml",
+    "document": "desktop-and-operations.md",
+    "summary": "Repository automation/configuration: claude-weekly-docs.",
+    "review": "source",
+    "sha256": "47a4460893513b760e3cdcd0dae061cd4e79d9beadb6d0f04520125ee46e62e6"
+  },
+  {
+    "path": ".github/workflows/claude.yml",
+    "document": "desktop-and-operations.md",
+    "summary": "Repository automation/configuration: claude.",
+    "review": "source",
+    "sha256": "11a566b89cb45cd2a3171a8eadf64508452addfc1420a2ee8461b020bf6c0d8a"
+  },
+  {
+    "path": ".github/workflows/dependabot-analyzer.yml",
+    "document": "desktop-and-operations.md",
+    "summary": "Repository automation/configuration: dependabot-analyzer.",
+    "review": "source",
+    "sha256": "6587f51f99285c5ba51240db6226de59b61edfb3ecdbc65fd476f548dd586d4c"
+  },
+  {
+    "path": ".github/workflows/nightly.yml",
+    "document": "desktop-and-operations.md",
+    "summary": "Repository automation/configuration: nightly.",
+    "review": "source",
+    "sha256": "91219ace16085a5ded6e121b12d0f007978b6e4895b060ab0a9b91336fa6da68"
+  },
+  {
+    "path": ".github/workflows/release.yml",
+    "document": "desktop-and-operations.md",
+    "summary": "Repository automation/configuration: release.",
+    "review": "source",
+    "sha256": "26171851c6d3a9698409a40c9dcaea00b2847240c9580824a43bac6e47f154d9"
+  },
+  {
+    "path": ".gitignore",
+    "document": "desktop-and-operations.md",
+    "summary": "Build/runtime configuration or helper: .gitignore.",
+    "review": "source",
+    "sha256": "a92665c9ac657036b9cecdf77e7637e4c7529d1398191d142a07fec96a5d123d"
+  },
+  {
+    "path": ".impeccable/design.json",
+    "document": "user-interface.md",
+    "summary": "Design-system token/component/narrative metadata; actual UI styling is in assets and components.",
+    "review": "metadata",
+    "sha256": "a1daca29161262eb2fada71ac95f18b9b116f120f876c09c73177afa24f8a20d"
+  },
+  {
+    "path": ".mcp.json",
+    "document": "desktop-and-operations.md",
+    "summary": "Build/runtime configuration or helper: .mcp.json.",
+    "review": "source",
+    "sha256": "5ac0b2b168b0c25195b5bb1eab199169f07a890328548215fd5a7614451557c2"
+  },
+  {
+    "path": ".superpowers/sdd/2026-08-01-virtual-joystick/task-10-report.md",
+    "document": "desktop-and-operations.md",
+    "summary": "Historical/reference document, outline and provenance catalogued; current feature claims verified in executable source instead. Title: Task 10 report: documentation",
+    "review": "reference-outline",
+    "sha256": "5946815a4f57476fa3b2e99d50497f32cc1509b402cf15c6f1b656ce77304ae5"
+  },
+  {
+    "path": ".superpowers/sdd/2026-08-01-virtual-joystick/task-9-report.md",
+    "document": "desktop-and-operations.md",
+    "summary": "Historical/reference document, outline and provenance catalogued; current feature claims verified in executable source instead. Title: Task 9 report: Windows vJoy packaging",
+    "review": "reference-outline",
+    "sha256": "296880ebcaa6c7451809237eeb0081e3bde0671b0b9a6337b4de35d38f2499f5"
+  },
+  {
+    "path": "CHANGELOG.md",
+    "document": "desktop-and-operations.md",
+    "summary": "Project guidance/product/design/history or license reference; not an additional runtime feature.",
+    "review": "reference",
+    "sha256": "5d29772d4f1eb200a45bfbff5c82f7fc95fc24e03d8bbcccc853f68294751f9a"
+  },
+  {
+    "path": "CLAUDE.md",
+    "document": "desktop-and-operations.md",
+    "summary": "Project guidance/product/design/history or license reference; not an additional runtime feature.",
+    "review": "reference",
+    "sha256": "94abe5441974a641dd917ab3f9fcbc20611200d6796cab10b18373ce1e80a6ff"
+  },
+  {
+    "path": "DESIGN.md",
+    "document": "desktop-and-operations.md",
+    "summary": "Project guidance/product/design/history or license reference; not an additional runtime feature.",
+    "review": "reference",
+    "sha256": "497587f7b7d12f790df26c57e6bcd0a428fc536ab20f6b970557a63d0ebdec80"
+  },
+  {
+    "path": "LICENSE",
+    "document": "desktop-and-operations.md",
+    "summary": "Project guidance/product/design/history or license reference; not an additional runtime feature.",
+    "review": "reference",
+    "sha256": "4766c4e7206b775603faa04a086bcdf18b0bd1e2ec4f24333f42a71612e0db87"
+  },
+  {
+    "path": "PRODUCT.md",
+    "document": "desktop-and-operations.md",
+    "summary": "Project guidance/product/design/history or license reference; not an additional runtime feature.",
+    "review": "reference",
+    "sha256": "e83ef7272b4d088b7f96d1bd86a3aefa7c497a0fe13df3446e9ae6bab55a30e2"
+  },
+  {
+    "path": "README.md",
+    "document": "desktop-and-operations.md",
+    "summary": "Project guidance/product/design/history or license reference; not an additional runtime feature.",
+    "review": "reference",
+    "sha256": "66c5fd339cda3d0e5ce2f7f41547eb013f1933835f12c83ae2f1de5ec4e09758"
+  },
+  {
+    "path": "config/config.exs",
+    "document": "desktop-and-operations.md",
+    "summary": "Build/runtime configuration or helper: config.exs.",
+    "review": "source",
+    "sha256": "925efafa791c569d1333e031b737fcc9080989d70e640bea48f69620fe248c76"
+  },
+  {
+    "path": "config/dev.exs",
+    "document": "desktop-and-operations.md",
+    "summary": "Build/runtime configuration or helper: dev.exs.",
+    "review": "source",
+    "sha256": "89572da01dd21d0969c1ba470d5f814bc84d9b1f10ecf48206ba4201b1d1b9fa"
+  },
+  {
+    "path": "config/prod.exs",
+    "document": "desktop-and-operations.md",
+    "summary": "Build/runtime configuration or helper: prod.exs.",
+    "review": "source",
+    "sha256": "d13cd8bbbd8b94233692f31714f95adacbd44a7d798bb698fdef490454425ebf"
+  },
+  {
+    "path": "config/runtime.exs",
+    "document": "desktop-and-operations.md",
+    "summary": "Build/runtime configuration or helper: runtime.exs.",
+    "review": "source",
+    "sha256": "0fc2b0a47ef5fc20b45213debefe141b22c8ff87cb5bb155b143df383bba772a"
+  },
+  {
+    "path": "config/test.exs",
+    "document": "desktop-and-operations.md",
+    "summary": "Build/runtime configuration or helper: test.exs.",
+    "review": "source",
+    "sha256": "ab858e555ab43b0fa01bd0d8a79f77b0acd81bcf54ad2d43a631afc38e6b1eee"
+  },
+  {
+    "path": "docs/architecture.md",
+    "document": "desktop-and-operations.md",
+    "summary": "Historical/reference document, outline and provenance catalogued; current feature claims verified in executable source instead. Title: Architecture Overview",
+    "review": "reference-outline",
+    "sha256": "3f96316467321a3d5d4165bf599eeeb1aa16581e36834b9d135bf953e6ef72f4"
+  },
+  {
+    "path": "docs/development.md",
+    "document": "desktop-and-operations.md",
+    "summary": "Historical/reference document, outline and provenance catalogued; current feature claims verified in executable source instead. Title: Development Guide",
+    "review": "reference-outline",
+    "sha256": "a87edcb0530496eac4be4084e673c502a7f7dc64e2bae2de0e7541de9df8809a"
+  },
+  {
+    "path": "docs/getting-started.md",
+    "document": "desktop-and-operations.md",
+    "summary": "Historical/reference document, outline and provenance catalogued; current feature claims verified in executable source instead. Title: Getting Started",
+    "review": "reference-outline",
+    "sha256": "e8942f4a2c8e34437b144e79b0f7b57a68e1a6e599265e50afeab4afa7a90d6d"
+  },
+  {
+    "path": "docs/plans/2026-02-01-mcp-server-design.md",
+    "document": "desktop-and-operations.md",
+    "summary": "Historical/reference document, outline and provenance catalogued; current feature claims verified in executable source instead. Title: Native MCP Server for Train Configuration",
+    "review": "reference-outline",
+    "sha256": "22a4f116469924ce31628778a3f6937e163f786fa8326be133cba1a37bcec1ae"
+  },
+  {
+    "path": "docs/release-readiness.md",
+    "document": "desktop-and-operations.md",
+    "summary": "Historical/reference document, outline and provenance catalogued; current feature claims verified in executable source instead. Title: 0.8.0 release readiness",
+    "review": "reference-outline",
+    "sha256": "480ea697ff0e86920b542ad369b854e466b24a7ac2aaa16c8a7d9e6f90513fbf"
+  },
+  {
+    "path": "docs/superpowers/plans/2026-05-03-display-ui-improvements.md",
+    "document": "desktop-and-operations.md",
+    "summary": "Historical/reference document, outline and provenance catalogued; current feature claims verified in executable source instead. Title: Display UI Improvements Implementation Plan",
+    "review": "reference-outline",
+    "sha256": "56e5128f2966701a4a6f0f9fafe46a8c3ef2411e99a0d26ece935515199219d7"
+  },
+  {
+    "path": "docs/superpowers/plans/2026-05-03-error-reporting-consent.md",
+    "document": "desktop-and-operations.md",
+    "summary": "Historical/reference document, outline and provenance catalogued; current feature claims verified in executable source instead. Title: Error Reporting Consent & Settings Page Implementation Plan",
+    "review": "reference-outline",
+    "sha256": "166bb7361d36d0135e56fe95c4c61de260c1834734c90b51d1e6a1f2aade25c1"
+  },
+  {
+    "path": "docs/superpowers/plans/2026-05-03-firmware-flashing-robustness.md",
+    "document": "desktop-and-operations.md",
+    "summary": "Historical/reference document, outline and provenance catalogued; current feature claims verified in executable source instead. Title: Firmware Flashing Robustness & Regression Testing \u2014 Implementation Plan",
+    "review": "reference-outline",
+    "sha256": "8ee1e9abe98a21d872452d46ff4c6de6e40c24208a842301a17211495c616244"
+  },
+  {
+    "path": "docs/superpowers/plans/2026-05-03-firmware-version-compatibility.md",
+    "document": "desktop-and-operations.md",
+    "summary": "Historical/reference document, outline and provenance catalogued; current feature claims verified in executable source instead. Title: Firmware Version Compatibility Implementation Plan",
+    "review": "reference-outline",
+    "sha256": "6696b13e77bc5826f3957760489fc004c367cfb56bdd3552d0160c43f8e1bda0"
+  },
+  {
+    "path": "docs/superpowers/plans/2026-05-03-i2c-display-output.md",
+    "document": "desktop-and-operations.md",
+    "summary": "Historical/reference document, outline and provenance catalogued; current feature claims verified in executable source instead. Title: I2C Display Output Implementation Plan",
+    "review": "reference-outline",
+    "sha256": "d242bd4441a98690439c0a318a231d689d36c1b18278d681e1d196fda7a49b57"
+  },
+  {
+    "path": "docs/superpowers/plans/2026-05-03-test-suite-cleanup.md",
+    "document": "desktop-and-operations.md",
+    "summary": "Historical/reference document, outline and provenance catalogued; current feature claims verified in executable source instead. Title: Test Suite Cleanup Implementation Plan",
+    "review": "reference-outline",
+    "sha256": "e453c0bfad89f14b74e76c592472ef21cfa652b5053a8b3da2aee50c4d58c20d"
+  },
+  {
+    "path": "docs/superpowers/plans/2026-08-01-virtual-joystick.md",
+    "document": "desktop-and-operations.md",
+    "summary": "Historical/reference document, outline and provenance catalogued; current feature claims verified in executable source instead. Title: Windows Virtual Joystick Implementation Plan",
+    "review": "reference-outline",
+    "sha256": "8ae955823ca8d50e4738e96bae33118a1b06f49dafa678579fe5bb0a1bb7a057"
+  },
+  {
+    "path": "docs/superpowers/plans/2026-08-09-burrito-runner-prerequisites.md",
+    "document": "desktop-and-operations.md",
+    "summary": "Historical/reference document, outline and provenance catalogued; current feature claims verified in executable source instead. Title: Standardized Burrito Runner Prerequisites Implementation Plan",
+    "review": "reference-outline",
+    "sha256": "941a4061b5d115ceddfcd84aca17ae410de8e7e6e1ae8403973f71c40a372de7"
+  },
+  {
+    "path": "docs/superpowers/plans/2026-08-12-nightly-release-virtual-joystick.md",
+    "document": "desktop-and-operations.md",
+    "summary": "Historical/reference document, outline and provenance catalogued; current feature claims verified in executable source instead. Title: Nightly and Release Virtual Joystick Packaging Implementation Plan",
+    "review": "reference-outline",
+    "sha256": "1f8be8a47726a8e09b1cea4fc2ad4c4a9df3fa0e4a0c129ea4e49a69c8196964"
+  },
+  {
+    "path": "docs/superpowers/plans/2026-09-27-multiple-train-identifiers.md",
+    "document": "desktop-and-operations.md",
+    "summary": "Historical/reference document, outline and provenance catalogued; current feature claims verified in executable source instead. Title: Multiple Train Identifiers Implementation Plan",
+    "review": "reference-outline",
+    "sha256": "68fd41c702c6f751c2c984c633a3ee229ef44651927cfd16f320df0a3737b832"
+  },
+  {
+    "path": "docs/superpowers/plans/2026-10-23-release-readiness.md",
+    "document": "desktop-and-operations.md",
+    "summary": "Historical/reference document, outline and provenance catalogued; current feature claims verified in executable source instead. Title: Release Readiness Implementation Plan",
+    "review": "reference-outline",
+    "sha256": "888c29fcf7cc4796c3f792c716bf87879e8063256b1c9fdad7829f06c2a27894"
+  },
+  {
+    "path": "docs/superpowers/plans/2026-10-24-tauri-distribution.md",
+    "document": "desktop-and-operations.md",
+    "summary": "Historical/reference document, outline and provenance catalogued; current feature claims verified in executable source instead. Title: Standard Tauri distribution implementation plan",
+    "review": "reference-outline",
+    "sha256": "2d6677e82c90febf90fe2375992c605897a1e9895844fa20a5f58d50f269fb4d"
+  },
+  {
+    "path": "docs/superpowers/specs/2026-05-03-display-ui-improvements-design.md",
+    "document": "desktop-and-operations.md",
+    "summary": "Historical/reference document, outline and provenance catalogued; current feature claims verified in executable source instead. Title: Display UI Improvements Design",
+    "review": "reference-outline",
+    "sha256": "2fd5538b9ad16d5b0c73ec2723867f9124ae314cebbeb9e3a9d1fa05ea34d1a1"
+  },
+  {
+    "path": "docs/superpowers/specs/2026-05-03-error-reporting-consent-design.md",
+    "document": "desktop-and-operations.md",
+    "summary": "Historical/reference document, outline and provenance catalogued; current feature claims verified in executable source instead. Title: Error Reporting Consent & Settings Page",
+    "review": "reference-outline",
+    "sha256": "513a81ffa403ec2b5a42b121653baeeee1f73a8ac82e241abb0a31f9c8a7ae9a"
+  },
+  {
+    "path": "docs/superpowers/specs/2026-05-03-firmware-flashing-robustness-design.md",
+    "document": "desktop-and-operations.md",
+    "summary": "Historical/reference document, outline and provenance catalogued; current feature claims verified in executable source instead. Title: Firmware Flashing Robustness & Regression Testing",
+    "review": "reference-outline",
+    "sha256": "320045a962253364226aae01f0425d131d14172927d4c16b3d27949dcfa02e8c"
+  },
+  {
+    "path": "docs/superpowers/specs/2026-05-03-firmware-version-compatibility-design.md",
+    "document": "desktop-and-operations.md",
+    "summary": "Historical/reference document, outline and provenance catalogued; current feature claims verified in executable source instead. Title: Firmware Version Compatibility \u2014 Design",
+    "review": "reference-outline",
+    "sha256": "b693e3c16e832f6210e24ff52a2e8e4eed2b526384928813ae08426178a737d5"
+  },
+  {
+    "path": "docs/superpowers/specs/2026-05-03-i2c-display-output-design.md",
+    "document": "desktop-and-operations.md",
+    "summary": "Historical/reference document, outline and provenance catalogued; current feature claims verified in executable source instead. Title: I2C Display Output Support",
+    "review": "reference-outline",
+    "sha256": "4cbc351444142de98b8eabd637f578e46124cc7dfe2289bd3e5c4693719d7a9b"
+  },
+  {
+    "path": "docs/superpowers/specs/2026-05-03-test-suite-cleanup-design.md",
+    "document": "desktop-and-operations.md",
+    "summary": "Historical/reference document, outline and provenance catalogued; current feature claims verified in executable source instead. Title: Test Suite Cleanup \u2014 Design",
+    "review": "reference-outline",
+    "sha256": "7c9ad6278aeb64cbc31781506bfef5c900a9696ee7bee0bf4f14c4698557b4b6"
+  },
+  {
+    "path": "docs/superpowers/specs/2026-08-01-virtual-joystick-design.md",
+    "document": "desktop-and-operations.md",
+    "summary": "Historical/reference document, outline and provenance catalogued; current feature claims verified in executable source instead. Title: Windows Virtual Joystick Design",
+    "review": "reference-outline",
+    "sha256": "22a5460d67ab1f646d11f032cddc56ed3dbf2ac6cc6e2c23699f3c7f4fe2fcd1"
+  },
+  {
+    "path": "docs/superpowers/specs/2026-08-09-burrito-runner-prerequisites-design.md",
+    "document": "desktop-and-operations.md",
+    "summary": "Historical/reference document, outline and provenance catalogued; current feature claims verified in executable source instead. Title: Standardized Burrito Runner Prerequisites",
+    "review": "reference-outline",
+    "sha256": "e7e7c34a17a867c95d0158160394ed6c135ed09a87acbe7d2a8a0d75c1419967"
+  },
+  {
+    "path": "docs/superpowers/specs/2026-08-12-nightly-release-virtual-joystick-design.md",
+    "document": "desktop-and-operations.md",
+    "summary": "Historical/reference document, outline and provenance catalogued; current feature claims verified in executable source instead. Title: Nightly and Release Virtual Joystick Packaging",
+    "review": "reference-outline",
+    "sha256": "3b88a509f3e31eb090e9e294c04b6b94fab48af25ff36b79526ecb773b2acc14"
+  },
+  {
+    "path": "docs/superpowers/specs/2026-09-27-multiple-train-identifiers-design.md",
+    "document": "desktop-and-operations.md",
+    "summary": "Historical/reference document, outline and provenance catalogued; current feature claims verified in executable source instead. Title: Multiple Train Identifiers Design",
+    "review": "reference-outline",
+    "sha256": "d0e638c7d3dfacc0ca652f1aa0e6cf5000d1f2fd13941e258e76474d514d0d3f"
+  },
+  {
+    "path": "docs/superpowers/specs/2026-10-23-release-readiness-design.md",
+    "document": "desktop-and-operations.md",
+    "summary": "Historical/reference document, outline and provenance catalogued; current feature claims verified in executable source instead. Title: Release readiness improvements",
+    "review": "reference-outline",
+    "sha256": "1da99a420a7055e490d70ab4a3cbb95c49607cbcf88c37818277ec7d63b46030"
+  },
+  {
+    "path": "docs/superpowers/specs/2026-10-24-tauri-distribution-design.md",
+    "document": "desktop-and-operations.md",
+    "summary": "Historical/reference document, outline and provenance catalogued; current feature claims verified in executable source instead. Title: Standard Tauri distribution",
+    "review": "reference-outline",
+    "sha256": "38a096845b39ecc4be7266a66b3586a799573cfe4975730603238e886c16ea16"
+  },
+  {
+    "path": "docs/windows-distribution.md",
+    "document": "desktop-and-operations.md",
+    "summary": "Historical/reference document, outline and provenance catalogued; current feature claims verified in executable source instead. Title: Standard Tauri distribution and updates",
+    "review": "reference-outline",
+    "sha256": "5aab689a9f50ee30f4dc19d2d9fe61bfcf2b905c1a707e1bcc348ad72379dde2"
+  },
+  {
+    "path": "icon.png",
+    "document": "user-interface.md",
+    "summary": "Binary application branding/icon asset; content signature and dimensions inventoried, no runtime business logic. PNG 128x128.",
+    "review": "asset",
+    "sha256": "eabcf5d76e4352a56e016f4b8ad4ffe9c53e1c0007d6050d98b558e44a8855df"
+  },
+  {
+    "path": "lib/mix/tasks/keystroke.ex",
+    "document": "desktop-and-operations.md",
+    "summary": "Implementation of Mix.Tasks.Keystroke.",
+    "review": "source",
+    "sha256": "77914d3b172b1533b1fc3dc22b91b4880d13c78e7802586e49764ac677183e12"
+  },
+  {
+    "path": "lib/mix/tasks/version.ex",
+    "document": "desktop-and-operations.md",
+    "summary": "Implementation of Mix.Tasks.Version.",
+    "review": "source",
+    "sha256": "c19f0c2b0d49b3495576a51785207a1e76f443542851a31af64c3ec7bb97f06d"
+  },
+  {
+    "path": "lib/mix/tasks/virtual_joystick.ex",
+    "document": "desktop-and-operations.md",
+    "summary": "Implementation of Mix.Tasks.VirtualJoystick.",
+    "review": "source",
+    "sha256": "abb8f473f203ff1c7216d0fd714ef5377973eb7e4ec019e4417f2e59cbeb28f1"
+  },
+  {
+    "path": "lib/trenino.ex",
+    "document": "architecture.md",
+    "summary": "Implementation of Trenino.",
+    "review": "source",
+    "sha256": "2870064f2712c4f8b51255eb1bfb3ccfbba7ba739cf3858d60b4df2ec56036cf"
+  },
+  {
+    "path": "lib/trenino/app_version.ex",
+    "document": "desktop-and-operations.md",
+    "summary": "Implementation of Trenino.AppVersion.",
+    "review": "source",
+    "sha256": "a70c2bb1b9f3b490d12fcd46d1811310f50dacd1cda459e2d8ad13ec8603b2df"
+  },
+  {
+    "path": "lib/trenino/app_version/update_checker.ex",
+    "document": "desktop-and-operations.md",
+    "summary": "Implementation of Trenino.AppVersion.UpdateChecker.",
+    "review": "source",
+    "sha256": "a47307a1ca72137ad74fd177155fa54753b3fb9b21a13edb6ee2f84fecff9829"
+  },
+  {
+    "path": "lib/trenino/application.ex",
+    "document": "architecture.md",
+    "summary": "Implementation of Trenino.Application.",
+    "review": "source",
+    "sha256": "b28ba74bd9a3f4cb9ec6026b29bd3dcab203adcb439b7a076043f3f829fe0252"
+  },
+  {
+    "path": "lib/trenino/keyboard.ex",
+    "document": "desktop-and-operations.md",
+    "summary": "Implementation of Trenino.Keyboard.",
+    "review": "source",
+    "sha256": "1023c7e7571a95b76176d93374714f9a6d2cf7d5043e75c0f69fb5167d522f60"
+  },
+  {
+    "path": "lib/trenino/paths.ex",
+    "document": "desktop-and-operations.md",
+    "summary": "Implementation of Trenino.Paths.",
+    "review": "source",
+    "sha256": "4dd86af15be88efb582cdad6473f56f3f4daf63abd51851c4266f94c8930c7a3"
+  },
+  {
+    "path": "lib/trenino/release.ex",
+    "document": "desktop-and-operations.md",
+    "summary": "Implementation of Trenino.Release.",
+    "review": "source",
+    "sha256": "f480134013bf29a0389ef663516455b9e4f2c15fc632ab9068e03150907a593d"
+  },
+  {
+    "path": "lib/trenino/repo.ex",
+    "document": "data-model.md",
+    "summary": "Implementation of Trenino.Repo.",
+    "review": "source",
+    "sha256": "29fbca03db0714eeedab77a7dd28cdbbd221415e50c300cbf149461ba7a5722c"
+  },
+  {
+    "path": "lib/trenino/settings.ex",
+    "document": "desktop-and-operations.md",
+    "summary": "Implementation of Trenino.Settings.",
+    "review": "source",
+    "sha256": "2c50ee96433f1d4f95e8c53c36d36dcfed1897dfe2304ecdb1f2b02bc0b19af4"
+  },
+  {
+    "path": "lib/trenino/settings/setting.ex",
+    "document": "desktop-and-operations.md",
+    "summary": "Implementation of Trenino.Settings.Setting.",
+    "review": "source",
+    "sha256": "56290501111c0a64f0276fdf96318f8fd483779760adaa9e4b569451fcd01fda"
+  },
+  {
+    "path": "lib/trenino/settings/simulator.ex",
+    "document": "desktop-and-operations.md",
+    "summary": "Implementation of Trenino.Settings.Simulator.",
+    "review": "source",
+    "sha256": "0427a04b5dc930fa525719657dcce218b7294a4af8796ffcbf51cd782d6ca849"
+  },
+  {
+    "path": "lib/trenino/virtual_joystick.ex",
+    "document": "virtual-joystick.md",
+    "summary": "Implementation of Trenino.VirtualJoystick.",
+    "review": "source",
+    "sha256": "a2e994f09c8740bd329768fd73c6b34817451ef3e1a68765db4bcdc022bba5a6"
+  },
+  {
+    "path": "lib/trenino/virtual_joystick/bridge.ex",
+    "document": "virtual-joystick.md",
+    "summary": "Implementation of Trenino.VirtualJoystick.Bridge.",
+    "review": "source",
+    "sha256": "162658604528ccf044b1caa1bccef19d09fd933c7ce89c9dbfa3bc46be6b88e6"
+  },
+  {
+    "path": "lib/trenino/virtual_joystick/bridge/port_adapter.ex",
+    "document": "virtual-joystick.md",
+    "summary": "Implementation of Trenino.VirtualJoystick.Bridge.PortAdapter.",
+    "review": "source",
+    "sha256": "ccdc4430bb1e34bc910ae09e8132fbba8b2fb9f98ca4616817cdec426627ce58"
+  },
+  {
+    "path": "lib/trenino/virtual_joystick/configuration.ex",
+    "document": "virtual-joystick.md",
+    "summary": "Implementation of Trenino.VirtualJoystick.Configuration.",
+    "review": "source",
+    "sha256": "6544b982d6c610e26bb224bf96268bee83860e1d9f316582f4d1d38990ad7ec4"
+  },
+  {
+    "path": "lib/trenino/virtual_joystick/configurator.ex",
+    "document": "virtual-joystick.md",
+    "summary": "Implementation of Trenino.VirtualJoystick.Configurator.",
+    "review": "source",
+    "sha256": "40926b0f08e0c564467a72d00c59f340b39c2de9618e6ecafb49c60a25f54cd2"
+  },
+  {
+    "path": "lib/trenino/virtual_joystick/configurator/system_adapter.ex",
+    "document": "virtual-joystick.md",
+    "summary": "Implementation of Trenino.VirtualJoystick.Configurator.SystemAdapter.",
+    "review": "source",
+    "sha256": "bcf86324f5aa93a7a6eee79476f5789a5d54180a6b04c9ef1e11e348b183404a"
+  },
+  {
+    "path": "lib/trenino/virtual_joystick/manager.ex",
+    "document": "virtual-joystick.md",
+    "summary": "Implementation of Trenino.VirtualJoystick.Manager.",
+    "review": "source",
+    "sha256": "a17f7163d9aba9f997cfa7c004c64deadf681e1651c383e325352b577a23fa90"
+  },
+  {
+    "path": "lib/trenino/virtual_joystick/mapper.ex",
+    "document": "virtual-joystick.md",
+    "summary": "Implementation of Trenino.VirtualJoystick.Mapper.",
+    "review": "source",
+    "sha256": "397dda335aee051e98719adb5ae895a6cc282371b67105405f0bc86ab2106e9b"
+  },
+  {
+    "path": "lib/trenino/virtual_joystick/mapping.ex",
+    "document": "virtual-joystick.md",
+    "summary": "Implementation of Trenino.VirtualJoystick.Mapping.",
+    "review": "source",
+    "sha256": "7ef7ed031b2031af029a80a82ddee6677622e3191cf691faca3fd0bbb8dad62a"
+  },
+  {
+    "path": "lib/trenino/virtual_joystick/platform.ex",
+    "document": "virtual-joystick.md",
+    "summary": "Implementation of Trenino.VirtualJoystick.Platform.",
+    "review": "source",
+    "sha256": "6a4fbfe7d2d07a3cd54a5b32de5a916397f5aed8538094428f9b8bde59250b01"
+  },
+  {
+    "path": "mise.toml",
+    "document": "desktop-and-operations.md",
+    "summary": "Build/runtime configuration or helper: mise.toml.",
+    "review": "source",
+    "sha256": "ac03ccbc47e81f9eb708a5946d322499b58497b89a5ffd571cb75c0cfadd472d"
+  },
+  {
+    "path": "mix.exs",
+    "document": "desktop-and-operations.md",
+    "summary": "Implementation of Trenino.MixProject.",
+    "review": "source",
+    "sha256": "24593a9e09ab073e0cf415e84d0b60fb0b23c84af2cd360e7bbd3650eb55f49e"
+  },
+  {
+    "path": "mix.lock",
+    "document": "desktop-and-operations.md",
+    "summary": "Elixir dependency resolution lock; 63 named package entries; exact artifact hashes/versions retained in source.",
+    "review": "dependency",
+    "sha256": "b6c81a67042ba6feadfe2e90078dbfcd9915fddc69144114aeca097e2e4b8f2b"
+  },
+  {
+    "path": "priv/gettext/en/LC_MESSAGES/errors.po",
+    "document": "user-interface.md",
+    "summary": "Static/localization asset: errors.po; no independent hardware/simulator feature.",
+    "review": "asset",
+    "sha256": "7965ec884cd9c0dd4f13b268b485e1e3edc13d8f2574eee6f11b35bf3175d05b"
+  },
+  {
+    "path": "priv/gettext/errors.pot",
+    "document": "user-interface.md",
+    "summary": "Static/localization asset: errors.pot; no independent hardware/simulator feature.",
+    "review": "asset",
+    "sha256": "e2ba1a9a3fd94ac18f7d60d8a03fdfcd0c306aa7b34c5c679f10d356fa42d358"
+  },
+  {
+    "path": "priv/repo/migrations/.formatter.exs",
+    "document": "data-model.md",
+    "summary": "Persistence migration: .formatter.",
+    "review": "metadata",
+    "sha256": "0214526079b381af52379d2b1fff614512fe4f5bb9a04394ef3246e5b1f61c87"
+  },
+  {
+    "path": "priv/repo/migrations/20251124203623_create_devices.exs",
+    "document": "data-model.md",
+    "summary": "Persistence migration: create devices.",
+    "review": "migration",
+    "sha256": "c8d30a17edea50d08191c28421ba4dc92aa57b7133576fee4752378465523a90"
+  },
+  {
+    "path": "priv/repo/migrations/20251124204015_create_device_inputs.exs",
+    "document": "data-model.md",
+    "summary": "Persistence migration: create device inputs.",
+    "review": "migration",
+    "sha256": "4bc53c7f753acd6ddddb5db5b8729e9f6a535a2d2155f9b89f831f3daaa12f5c"
+  },
+  {
+    "path": "priv/repo/migrations/20251124212404_create_device_input_calibrations.exs",
+    "document": "data-model.md",
+    "summary": "Persistence migration: create device input calibrations.",
+    "review": "migration",
+    "sha256": "c8dc6077e5271d4325f28ecff1d43c795ba7056644465d3fc7fa0c2a944d484f"
+  },
+  {
+    "path": "priv/repo/migrations/20251128125215_add_config_id_to_devices.exs",
+    "document": "data-model.md",
+    "summary": "Persistence migration: add config id to devices.",
+    "review": "migration",
+    "sha256": "b19508ddb209b4632dfefb0305970c899d41d8ceb1eb560be1c8d77650cb6f4a"
+  },
+  {
+    "path": "priv/repo/migrations/20251129103558_create_simulator_configs.exs",
+    "document": "data-model.md",
+    "summary": "Persistence migration: create simulator configs.",
+    "review": "migration",
+    "sha256": "2ea3abc2bbbc0684fe2193f5d3f66a1c588a51f4c2d8bff22d0b66550d78ecfb"
+  },
+  {
+    "path": "priv/repo/migrations/20251129111518_make_config_id_required_add_description.exs",
+    "document": "data-model.md",
+    "summary": "Persistence migration: make config id required add description.",
+    "review": "migration",
+    "sha256": "13b5eee451355084b24188eeaeec68286fef2514e0e686bc4592dec67c73f9b9"
+  },
+  {
+    "path": "priv/repo/migrations/20251129112341_populate_missing_config_ids.exs",
+    "document": "data-model.md",
+    "summary": "Persistence migration: populate missing config ids.",
+    "review": "migration",
+    "sha256": "f2f8eb0ae82c75286243837ab6a0482cc6f6256fb880828270e7c0b1fb5e987b"
+  },
+  {
+    "path": "priv/repo/migrations/20251129192949_create_trains.exs",
+    "document": "data-model.md",
+    "summary": "Persistence migration: create trains.",
+    "review": "migration",
+    "sha256": "b5e038143342ef2284c4bfc7cec8ea88532d98daf82f8b758e4d7baeb56e1e48"
+  },
+  {
+    "path": "priv/repo/migrations/20251129193005_create_train_elements.exs",
+    "document": "data-model.md",
+    "summary": "Persistence migration: create train elements.",
+    "review": "migration",
+    "sha256": "043595261e566a3e810d8019d35eb767f902f4279d8c99ae5ebdbc925d9466f8"
+  },
+  {
+    "path": "priv/repo/migrations/20251129193018_create_train_lever_configs.exs",
+    "document": "data-model.md",
+    "summary": "Persistence migration: create train lever configs.",
+    "review": "migration",
+    "sha256": "12d03a1852711be1f8dea582bca7cb5ad2c8bb3a8a0fbe72f447e0947a2f2ab5"
+  },
+  {
+    "path": "priv/repo/migrations/20251129193032_create_train_lever_notches.exs",
+    "document": "data-model.md",
+    "summary": "Persistence migration: create train lever notches.",
+    "review": "migration",
+    "sha256": "24005a4fe11b81576b6750e236b4c429cd821e7ef2a92f42b28eac634386eb6b"
+  },
+  {
+    "path": "priv/repo/migrations/20251207184747_create_lever_input_bindings.exs",
+    "document": "data-model.md",
+    "summary": "Persistence migration: create lever input bindings.",
+    "review": "migration",
+    "sha256": "82fb7e657fe433682f44cbe0d82fd2235bd34829f920e1420d78fa02f1afe359"
+  },
+  {
+    "path": "priv/repo/migrations/20251210154430_create_firmware_tables.exs",
+    "document": "data-model.md",
+    "summary": "Persistence migration: create firmware tables.",
+    "review": "migration",
+    "sha256": "4eec6ffe5ff28c656671fa6de6e9aac78d66477178457c98c68af7779575775b"
+  },
+  {
+    "path": "priv/repo/migrations/20251210165321_create_firmware_update_checks.exs",
+    "document": "data-model.md",
+    "summary": "Persistence migration: create firmware update checks.",
+    "review": "migration",
+    "sha256": "8062e500dc8d34eacf163fb341e86b8727f88465795d9a991615b0162797abdf"
+  },
+  {
+    "path": "priv/repo/migrations/20251210215004_remove_firmware_download_tracking.exs",
+    "document": "data-model.md",
+    "summary": "Persistence migration: remove firmware download tracking.",
+    "review": "migration",
+    "sha256": "e35186ad4f7d1a61d08c3a22e361faf2ca9210afb940a32bc9117502e053d70e"
+  },
+  {
+    "path": "priv/repo/migrations/20251216212504_add_button_matrix_input_types.exs",
+    "document": "data-model.md",
+    "summary": "Persistence migration: add button matrix input types.",
+    "review": "migration",
+    "sha256": "0ac1bc22b792f0f032f5ae3422c8174bf38d3968118d2db65ab0405116c5cb13"
+  },
+  {
+    "path": "priv/repo/migrations/20251216220651_create_button_input_bindings.exs",
+    "document": "data-model.md",
+    "summary": "Persistence migration: create button input bindings.",
+    "review": "migration",
+    "sha256": "778bba670cccf87f75f7c09f3e99a2d6943a2ff52d1f7a12dc4961d01cb0ffda"
+  },
+  {
+    "path": "priv/repo/migrations/20251220183323_create_device_outputs.exs",
+    "document": "data-model.md",
+    "summary": "Persistence migration: create device outputs.",
+    "review": "migration",
+    "sha256": "709aaa05ba8ef4c186a3e78e5098b8d8df7ad7f35011d20d5565ad2f18262c50"
+  },
+  {
+    "path": "priv/repo/migrations/20251221173532_allow_nullable_pin_for_matrix_inputs.exs",
+    "document": "data-model.md",
+    "summary": "Persistence migration: allow nullable pin for matrix inputs.",
+    "review": "migration",
+    "sha256": "05624042f7a9b86ff3d42c2a0ef5a1368fc8c5e1107ef59117eacf3c5846592a"
+  },
+  {
+    "path": "priv/repo/migrations/20251221194910_add_virtual_pin_to_button_bindings.exs",
+    "document": "data-model.md",
+    "summary": "Persistence migration: add virtual pin to button bindings.",
+    "review": "migration",
+    "sha256": "db519587f61afe31679d7e5e9e0fcb2afc1806ffdece08031095f705da2daf7d"
+  },
+  {
+    "path": "priv/repo/migrations/20251223103929_add_mode_to_button_bindings.exs",
+    "document": "data-model.md",
+    "summary": "Persistence migration: add mode to button bindings.",
+    "review": "migration",
+    "sha256": "168cdbb5b468234f40e96c6ebab816cbf3bdbaf66fb62e49d6062fc5c64a519b"
+  },
+  {
+    "path": "priv/repo/migrations/20251223111818_create_sequences.exs",
+    "document": "data-model.md",
+    "summary": "Persistence migration: create sequences.",
+    "review": "migration",
+    "sha256": "ad4cec9d3e101741572f539bf8c67dd18e2e9d28cc297e3ad8401137cf044b4e"
+  },
+  {
+    "path": "priv/repo/migrations/20251223112836_allow_null_endpoint_for_sequences.exs",
+    "document": "data-model.md",
+    "summary": "Persistence migration: allow null endpoint for sequences.",
+    "review": "migration",
+    "sha256": "bcad5cbf5877976fa9a4d558cfaeabe744c1904a7782110018eb14554f144d28"
+  },
+  {
+    "path": "priv/repo/migrations/20251223210242_refactor_matrix_to_separate_entity.exs",
+    "document": "data-model.md",
+    "summary": "Persistence migration: refactor matrix to separate entity.",
+    "review": "migration",
+    "sha256": "7b682117700d79a22bbbe17ceb6a684157d31190366ce133daafda59619b3af5"
+  },
+  {
+    "path": "priv/repo/migrations/20251223214615_add_lever_type_to_lever_configs.exs",
+    "document": "data-model.md",
+    "summary": "Persistence migration: add lever type to lever configs.",
+    "review": "migration",
+    "sha256": "1b3ca558c57ec04196ffa9274dc727df4e09cc75bb2e7e8d5725f1eb6bbb69e7"
+  },
+  {
+    "path": "priv/repo/migrations/20260101201704_add_sim_input_range_to_notches.exs",
+    "document": "data-model.md",
+    "summary": "Persistence migration: add sim input range to notches.",
+    "review": "migration",
+    "sha256": "3a37a04978f9b986d3ed486aee5228c9b3d1bbf9fa6b69d1e0a90685c8b01fdb"
+  },
+  {
+    "path": "priv/repo/migrations/20260103114839_add_inverted_to_lever_configs.exs",
+    "document": "data-model.md",
+    "summary": "Persistence migration: add inverted to lever configs.",
+    "review": "migration",
+    "sha256": "83eba59906b42d8f76e7b6af09f532e4551df15a4cdb488f6095f95e5c71ff96"
+  },
+  {
+    "path": "priv/repo/migrations/20260103194112_add_keystroke_to_button_bindings.exs",
+    "document": "data-model.md",
+    "summary": "Persistence migration: add keystroke to button bindings.",
+    "review": "migration",
+    "sha256": "6cd6f92f7039c30304e05a4dad6aba827ab71615e17692c887ee73d5974e6efb"
+  },
+  {
+    "path": "priv/repo/migrations/20260106154322_remove_nano_old_bootloader_firmware.exs",
+    "document": "data-model.md",
+    "summary": "Persistence migration: remove nano old bootloader firmware.",
+    "review": "migration",
+    "sha256": "c5d2259b03de103ad57ef3b62cc58fae9455090886afae9966322106f2a0c6bb"
+  },
+  {
+    "path": "priv/repo/migrations/20260107181338_create_train_output_bindings.exs",
+    "document": "data-model.md",
+    "summary": "Persistence migration: create train output bindings.",
+    "review": "migration",
+    "sha256": "f60dddd2ab6e6b19b8919fc806018317e7baac369132d999c23c72f39e3d2f6a"
+  },
+  {
+    "path": "priv/repo/migrations/20260107220815_allow_nullable_value_a_for_boolean_operators.exs",
+    "document": "data-model.md",
+    "summary": "Persistence migration: allow nullable value a for boolean operators.",
+    "review": "migration",
+    "sha256": "fa81f264ebecd1281fed291758927453f845f0e1591dfdcef5fc53a5210db390"
+  },
+  {
+    "path": "priv/repo/migrations/20260117101411_add_manifest_support.exs",
+    "document": "data-model.md",
+    "summary": "Persistence migration: add manifest support.",
+    "review": "migration",
+    "sha256": "ea7fc099b4407aa19a6867c2803d6f5415b2b18695664e7687aa14220065581b"
+  },
+  {
+    "path": "priv/repo/migrations/20260201154004_create_scripts.exs",
+    "document": "data-model.md",
+    "summary": "Persistence migration: create scripts.",
+    "review": "migration",
+    "sha256": "70adaf03862c52e73068d9a66622398bf516ca725020e308837516baaaf916d8"
+  },
+  {
+    "path": "priv/repo/migrations/20260503000000_remove_bldc_support.exs",
+    "document": "data-model.md",
+    "summary": "Persistence migration: remove bldc support.",
+    "review": "migration",
+    "sha256": "f81a9de38b429bf7e366bca30bc7a38a35faf8568405a76d522340208793e421"
+  },
+  {
+    "path": "priv/repo/migrations/20260503101628_create_app_settings.exs",
+    "document": "data-model.md",
+    "summary": "Persistence migration: create app settings.",
+    "review": "migration",
+    "sha256": "024a7ee3029dd07d0d2c9171a2ef10e5052de893ea63e997a036955f46d4eda1"
+  },
+  {
+    "path": "priv/repo/migrations/20260503114723_migrate_simulator_configs_to_app_settings.exs",
+    "document": "data-model.md",
+    "summary": "Persistence migration: migrate simulator configs to app settings.",
+    "review": "migration",
+    "sha256": "0f96b5026de36e8c8ab78e0a238894fd711707b3dab30c7a836ca1c6a70fbeed"
+  },
+  {
+    "path": "priv/repo/migrations/20260503200000_create_device_i2c_modules.exs",
+    "document": "data-model.md",
+    "summary": "Persistence migration: create device i2c modules.",
+    "review": "migration",
+    "sha256": "457eadd7ac67b0bb5bc485140d6da1777c6637e9d111c6b93ec86b65b7bba71b"
+  },
+  {
+    "path": "priv/repo/migrations/20260503200001_create_train_display_bindings.exs",
+    "document": "data-model.md",
+    "summary": "Persistence migration: create train display bindings.",
+    "review": "migration",
+    "sha256": "f1eee9df6cf7e7051b4d9034da8cbcdb2136a14a729c7f93c80577748cbae8d2"
+  },
+  {
+    "path": "priv/repo/migrations/20260503220000_i2c_module_params.exs",
+    "document": "data-model.md",
+    "summary": "Persistence migration: i2c module params.",
+    "review": "migration",
+    "sha256": "7bf95bea9321cabac9892e0804eab8ea31593a32cbdd8c896cf70f146daa5c0c"
+  },
+  {
+    "path": "priv/repo/migrations/20260801000000_create_virtual_joystick_tables.exs",
+    "document": "data-model.md",
+    "summary": "Persistence migration: create virtual joystick tables.",
+    "review": "migration",
+    "sha256": "d882bb0f82e770142f82f776080003840e4fc1824df9e9ee6e6f91f62838744b"
+  },
+  {
+    "path": "priv/repo/migrations/20260927000000_create_train_identifiers.exs",
+    "document": "data-model.md",
+    "summary": "Persistence migration: create train identifiers.",
+    "review": "migration",
+    "sha256": "6d29b51fe64e0984c75605d86f47e2078d34662e80559ed019fb89df93b962ea"
+  },
+  {
+    "path": "priv/repo/seeds.exs",
+    "document": "data-model.md",
+    "summary": "Empty seed scaffold; no default application records inserted.",
+    "review": "source",
+    "sha256": "973fc230c6914097c40f3c6367f57e183fa70c5ba1c388a30772b165a58c5625"
+  },
+  {
+    "path": "priv/static/favicon.ico",
+    "document": "user-interface.md",
+    "summary": "Binary application branding/icon asset; content signature and dimensions inventoried, no runtime business logic. PNG 64x64.",
+    "review": "asset",
+    "sha256": "01723aeae3ce3b5195a8f42e3eb6e9018a8c08b7acda4ed382b31341811f0a8a"
+  },
+  {
+    "path": "priv/static/images/logo.svg",
+    "document": "user-interface.md",
+    "summary": "Static/localization asset: logo.svg; no independent hardware/simulator feature.",
+    "review": "asset",
+    "sha256": "a730517dbca12868ac89a0711edfef20cb65e2801d1ac7063338d04a98457f0f"
+  },
+  {
+    "path": "priv/static/robots.txt",
+    "document": "user-interface.md",
+    "summary": "Static/localization asset: robots.txt; no independent hardware/simulator feature.",
+    "review": "asset",
+    "sha256": "f994bfae2c1db1221ac049f1097776b444048e0b0a7705d33ea511b610bed115"
+  },
+  {
+    "path": "scripts/build-desktop.sh",
+    "document": "desktop-and-operations.md",
+    "summary": "Build/runtime configuration or helper: build-desktop.sh.",
+    "review": "source",
+    "sha256": "66d6ad8e67e0be17305a305c6e464007b7f4d74ca727dba35b9fe874b32da2e7"
+  },
+  {
+    "path": "scripts/build-macos.sh",
+    "document": "desktop-and-operations.md",
+    "summary": "Build/runtime configuration or helper: build-macos.sh.",
+    "review": "source",
+    "sha256": "997eb31d4f95ba81172089adcbd83ed62ecf3d4a98c1432e8ed8592640be2d8c"
+  },
+  {
+    "path": "scripts/download-avrdude.ps1",
+    "document": "desktop-and-operations.md",
+    "summary": "Build/runtime configuration or helper: download-avrdude.ps1.",
+    "review": "source",
+    "sha256": "c0c311a56414f7b9d30623a6862f30ae50ec5c08a0bd58ff8b6482ed31863567"
+  },
+  {
+    "path": "scripts/download-vjoy.ps1",
+    "document": "desktop-and-operations.md",
+    "summary": "Build/runtime configuration or helper: download-vjoy.ps1.",
+    "review": "source",
+    "sha256": "a8b1821a07feb669d339ee3dd3c73880bbe61a9d491aa1df1537d696cf6fde4f"
+  },
+  {
+    "path": "scripts/setup-updater-signing.ps1",
+    "document": "desktop-and-operations.md",
+    "summary": "Build/runtime configuration or helper: setup-updater-signing.ps1.",
+    "review": "source",
+    "sha256": "798efa689b94dd751a9ab1bfe8b7409c04c19a8f9e377896aac91ab459554c14"
+  },
+  {
+    "path": "scripts/stage-vjoy-resources.ps1",
+    "document": "desktop-and-operations.md",
+    "summary": "Build/runtime configuration or helper: stage-vjoy-resources.ps1.",
+    "review": "source",
+    "sha256": "f20f20b147450e8c012b3b1fb76bc53c9a61d9ffd16400494bc08965716e9151"
+  },
+  {
+    "path": "scripts/test-updater-signing.ps1",
+    "document": "desktop-and-operations.md",
+    "summary": "Build/runtime configuration or helper: test-updater-signing.ps1.",
+    "review": "source",
+    "sha256": "eabd39e278c2fedc139b0e68ec7ff8392c29de7c0c158076856473c45ed5a5b4"
+  },
+  {
+    "path": "scripts/update-version.sh",
+    "document": "desktop-and-operations.md",
+    "summary": "Build/runtime configuration or helper: update-version.sh.",
+    "review": "source",
+    "sha256": "36136ee8ad2a15fd5673c11e8a451d3da8de203881aff76db385e4a7cd2182e2"
+  },
+  {
+    "path": "scripts/updater-signature-verifier/.gitignore",
+    "document": "desktop-and-operations.md",
+    "summary": "Build/runtime configuration or helper: .gitignore.",
+    "review": "source",
+    "sha256": "306fd52e74fca6746e12acc750f232de15e71da917756a1270d74c91f5eb7368"
+  },
+  {
+    "path": "scripts/updater-signature-verifier/Cargo.lock",
+    "document": "desktop-and-operations.md",
+    "summary": "Cargo resolution lock version 4; 3 package records, pinned versions/checksums.",
+    "review": "dependency",
+    "sha256": "20999f49788cf99ea5cfba1e7ed88d53702fb87ce1e25c38af54b5db128e7c30"
+  },
+  {
+    "path": "scripts/updater-signature-verifier/Cargo.toml",
+    "document": "desktop-and-operations.md",
+    "summary": "Build/runtime configuration or helper: Cargo.toml.",
+    "review": "source",
+    "sha256": "7629348922090c5fc557f828d2e84e896cbadc25d58548002d68bf4cb7bb0a28"
+  },
+  {
+    "path": "scripts/updater-signature-verifier/src/main.rs",
+    "document": "desktop-and-operations.md",
+    "summary": "Native/helper implementation: verify, main.",
+    "review": "source",
+    "sha256": "95677e13da5ebfc511c97296abc5afbf5eec0b86bc8211da60b18c8287a876da"
+  },
+  {
+    "path": "tauri/keystroke/Cargo.lock",
+    "document": "desktop-and-operations.md",
+    "summary": "Cargo resolution lock version 4; 61 package records, pinned versions/checksums.",
+    "review": "dependency",
+    "sha256": "493f777d51c7defedf267cb0e5fbd994516a91cd63d6dd12a220b5a207de586c"
+  },
+  {
+    "path": "tauri/keystroke/Cargo.toml",
+    "document": "desktop-and-operations.md",
+    "summary": "Build/runtime configuration or helper: Cargo.toml.",
+    "review": "source",
+    "sha256": "9c0e6bdaf08fb386d47d2f5f13b42b4b3e62b9cb24a330c02343d9bc801ca9c8"
+  },
+  {
+    "path": "tauri/keystroke/src/main.rs",
+    "document": "desktop-and-operations.md",
+    "summary": "Native/helper implementation: main, parse_key_parts.",
+    "review": "source",
+    "sha256": "c23afc04529e92d5532763461d4de71ba38ed799c4561109455d33191b02ca41"
+  },
+  {
+    "path": "tauri/package-lock.json",
+    "document": "desktop-and-operations.md",
+    "summary": "npm lock version 3; 13 package records, CLI install resolution.",
+    "review": "dependency",
+    "sha256": "a284cb3e165f69b5e280b31d7f6a7142a2d83ddec16075cc453902106c0d8d2f"
+  },
+  {
+    "path": "tauri/package.json",
+    "document": "desktop-and-operations.md",
+    "summary": "Build/runtime configuration or helper: package.json.",
+    "review": "source",
+    "sha256": "f1c44d81cd59c35a4ca30f2873b16c23136d734a769752b62dc68cbfc3a8959d"
+  },
+  {
+    "path": "tauri/src-tauri/Cargo.lock",
+    "document": "desktop-and-operations.md",
+    "summary": "Cargo resolution lock version 4; 530 package records, pinned versions/checksums.",
+    "review": "dependency",
+    "sha256": "9f939ccd854687f9c16198cbcabbdd0ff53129b67701cb076a492080032a81d1"
+  },
+  {
+    "path": "tauri/src-tauri/Cargo.toml",
+    "document": "desktop-and-operations.md",
+    "summary": "Build/runtime configuration or helper: Cargo.toml.",
+    "review": "source",
+    "sha256": "4f38774f8ca6e499a636d10754b07b95a4b43032a77575676dd93182ee57e4c7"
+  },
+  {
+    "path": "tauri/src-tauri/build.rs",
+    "document": "desktop-and-operations.md",
+    "summary": "Native/helper implementation: main.",
+    "review": "source",
+    "sha256": "487059eaf8a947b80f20a9aacac038a5047b2ad69d2401b827376c67d6fe847f"
+  },
+  {
+    "path": "tauri/src-tauri/capabilities/default.json",
+    "document": "desktop-and-operations.md",
+    "summary": "Build/runtime configuration or helper: default.json.",
+    "review": "source",
+    "sha256": "bbd155258ab1737b5ba788cdd4f06d1dc7ef059a6c104d2be24c14233f932f77"
+  },
+  {
+    "path": "tauri/src-tauri/gen/schemas/acl-manifests.json",
+    "document": "desktop-and-operations.md",
+    "summary": "Generated Tauri ACL/capability schema; 12 top-level sections; parsed as metadata, not app-owned executable feature.",
+    "review": "generated",
+    "sha256": "6d5cafaac6426be53c77959433b4840ae51a205840721c6e2187f4781909139c"
+  },
+  {
+    "path": "tauri/src-tauri/gen/schemas/capabilities.json",
+    "document": "desktop-and-operations.md",
+    "summary": "Generated Tauri ACL/capability schema; 1 top-level sections; parsed as metadata, not app-owned executable feature.",
+    "review": "generated",
+    "sha256": "e9534f9c614d6914b7483bb51c1d9e8184c8f8dad40d3b56e28cc1317dd7f530"
+  },
+  {
+    "path": "tauri/src-tauri/gen/schemas/desktop-schema.json",
+    "document": "desktop-and-operations.md",
+    "summary": "Generated Tauri ACL/capability schema; 5 top-level sections; parsed as metadata, not app-owned executable feature.",
+    "review": "generated",
+    "sha256": "e589189f192d87e8796c3c0d9e6c16eb20bda47a5a33cea0de5ffc12b4534090"
+  },
+  {
+    "path": "tauri/src-tauri/gen/schemas/macOS-schema.json",
+    "document": "desktop-and-operations.md",
+    "summary": "Generated Tauri ACL/capability schema; 5 top-level sections; parsed as metadata, not app-owned executable feature.",
+    "review": "generated",
+    "sha256": "e589189f192d87e8796c3c0d9e6c16eb20bda47a5a33cea0de5ffc12b4534090"
+  },
+  {
+    "path": "tauri/src-tauri/icons/128x128.png",
+    "document": "user-interface.md",
+    "summary": "Binary application branding/icon asset; content signature and dimensions inventoried, no runtime business logic. PNG 128x128.",
+    "review": "asset",
+    "sha256": "eabcf5d76e4352a56e016f4b8ad4ffe9c53e1c0007d6050d98b558e44a8855df"
+  },
+  {
+    "path": "tauri/src-tauri/icons/128x128@2x.png",
+    "document": "user-interface.md",
+    "summary": "Binary application branding/icon asset; content signature and dimensions inventoried, no runtime business logic. PNG 256x256.",
+    "review": "asset",
+    "sha256": "86eb4231a1dcfdfb058ed09bf363cc0ab892c7270be00d3e74e936eb00ee1957"
+  },
+  {
+    "path": "tauri/src-tauri/icons/32x32.png",
+    "document": "user-interface.md",
+    "summary": "Binary application branding/icon asset; content signature and dimensions inventoried, no runtime business logic. PNG 32x32.",
+    "review": "asset",
+    "sha256": "73231edd10a58a816464dacd6cab3729636f6e3e208502ecec9d0b01fadbae7f"
+  },
+  {
+    "path": "tauri/src-tauri/icons/64x64.png",
+    "document": "user-interface.md",
+    "summary": "Binary application branding/icon asset; content signature and dimensions inventoried, no runtime business logic. PNG 64x64.",
+    "review": "asset",
+    "sha256": "068257f6ad4bc1405ebb96c601de489aee7f37df7205f3d116296b3572743944"
+  },
+  {
+    "path": "tauri/src-tauri/icons/Square107x107Logo.png",
+    "document": "user-interface.md",
+    "summary": "Binary application branding/icon asset; content signature and dimensions inventoried, no runtime business logic. PNG 107x107.",
+    "review": "asset",
+    "sha256": "d6e96056927fbac86359d20d88ae54a5b6e329f580a6979abc25a4753e78e677"
+  },
+  {
+    "path": "tauri/src-tauri/icons/Square142x142Logo.png",
+    "document": "user-interface.md",
+    "summary": "Binary application branding/icon asset; content signature and dimensions inventoried, no runtime business logic. PNG 142x142.",
+    "review": "asset",
+    "sha256": "ff93f1d5525b6d014c8751b2cf69e8e50939ff04b7544c59231f43e231e0f93c"
+  },
+  {
+    "path": "tauri/src-tauri/icons/Square150x150Logo.png",
+    "document": "user-interface.md",
+    "summary": "Binary application branding/icon asset; content signature and dimensions inventoried, no runtime business logic. PNG 150x150.",
+    "review": "asset",
+    "sha256": "bc7be176bb6c51d0a5a2ec886d967ce94fdae363611bdb3a65264f724f003dcf"
+  },
+  {
+    "path": "tauri/src-tauri/icons/Square284x284Logo.png",
+    "document": "user-interface.md",
+    "summary": "Binary application branding/icon asset; content signature and dimensions inventoried, no runtime business logic. PNG 284x284.",
+    "review": "asset",
+    "sha256": "22a25019951ba28aaeac5156d37f619d495dc21656242e2c3db9a2eac5a9719c"
+  },
+  {
+    "path": "tauri/src-tauri/icons/Square30x30Logo.png",
+    "document": "user-interface.md",
+    "summary": "Binary application branding/icon asset; content signature and dimensions inventoried, no runtime business logic. PNG 30x30.",
+    "review": "asset",
+    "sha256": "6ca81cd7ee00179c9c56c86a59f7caaad8752852c6cfd0967205ef5cef275c77"
+  },
+  {
+    "path": "tauri/src-tauri/icons/Square310x310Logo.png",
+    "document": "user-interface.md",
+    "summary": "Binary application branding/icon asset; content signature and dimensions inventoried, no runtime business logic. PNG 310x310.",
+    "review": "asset",
+    "sha256": "5d4b6065c3a26ba2cfb24a7987f31acf13c04181409d91452c8aa069b34af4d0"
+  },
+  {
+    "path": "tauri/src-tauri/icons/Square44x44Logo.png",
+    "document": "user-interface.md",
+    "summary": "Binary application branding/icon asset; content signature and dimensions inventoried, no runtime business logic. PNG 44x44.",
+    "review": "asset",
+    "sha256": "a1271ba0218253cae44e7bb1124677a529a3ec743d2722c0856406c0ee41c7a1"
+  },
+  {
+    "path": "tauri/src-tauri/icons/Square71x71Logo.png",
+    "document": "user-interface.md",
+    "summary": "Binary application branding/icon asset; content signature and dimensions inventoried, no runtime business logic. PNG 71x71.",
+    "review": "asset",
+    "sha256": "5d56256688ab6326e1609aa1f5766a4ee0ef9bdd1665be6e74f0d278d38880ed"
+  },
+  {
+    "path": "tauri/src-tauri/icons/Square89x89Logo.png",
+    "document": "user-interface.md",
+    "summary": "Binary application branding/icon asset; content signature and dimensions inventoried, no runtime business logic. PNG 89x89.",
+    "review": "asset",
+    "sha256": "babc443e8ebb0b9d16a7ae0bb4049a21a3eddcf4685d07e44270b6048c5fb994"
+  },
+  {
+    "path": "tauri/src-tauri/icons/StoreLogo.png",
+    "document": "user-interface.md",
+    "summary": "Binary application branding/icon asset; content signature and dimensions inventoried, no runtime business logic. PNG 50x50.",
+    "review": "asset",
+    "sha256": "ca0a6258486dd1d9b33e9ff26a58e1ae6152552f8bb63de25dc72f3ed898f6d6"
+  },
+  {
+    "path": "tauri/src-tauri/icons/android/mipmap-anydpi-v26/ic_launcher.xml",
+    "document": "desktop-and-operations.md",
+    "summary": "Build/runtime configuration or helper: ic_launcher.xml.",
+    "review": "source",
+    "sha256": "760d4b8a06bf7163dd010c33ad2cac9e4a75fa0177afaba042f83e311eef0c3e"
+  },
+  {
+    "path": "tauri/src-tauri/icons/android/mipmap-hdpi/ic_launcher.png",
+    "document": "user-interface.md",
+    "summary": "Binary application branding/icon asset; content signature and dimensions inventoried, no runtime business logic. PNG 49x49.",
+    "review": "asset",
+    "sha256": "6aa736b7d6b785f6cabae8c014fea0272747284667c15451fe76b019c8990f58"
+  },
+  {
+    "path": "tauri/src-tauri/icons/android/mipmap-hdpi/ic_launcher_foreground.png",
+    "document": "user-interface.md",
+    "summary": "Binary application branding/icon asset; content signature and dimensions inventoried, no runtime business logic. PNG 162x162.",
+    "review": "asset",
+    "sha256": "a9a669191a6fb6bea9c6df041416265f6153ff9551d92a2fc6c977549566fc6c"
+  },
+  {
+    "path": "tauri/src-tauri/icons/android/mipmap-hdpi/ic_launcher_round.png",
+    "document": "user-interface.md",
+    "summary": "Binary application branding/icon asset; content signature and dimensions inventoried, no runtime business logic. PNG 49x49.",
+    "review": "asset",
+    "sha256": "f565b22b81cb6e7e77af34115a0432e4e11c6b2f83a5d38f69d0045b0ea3c5b0"
+  },
+  {
+    "path": "tauri/src-tauri/icons/android/mipmap-mdpi/ic_launcher.png",
+    "document": "user-interface.md",
+    "summary": "Binary application branding/icon asset; content signature and dimensions inventoried, no runtime business logic. PNG 48x48.",
+    "review": "asset",
+    "sha256": "04200282bcf141493609d9c693ede6b3640c33624c16c6933575fd1c8e3ce85b"
+  },
+  {
+    "path": "tauri/src-tauri/icons/android/mipmap-mdpi/ic_launcher_foreground.png",
+    "document": "user-interface.md",
+    "summary": "Binary application branding/icon asset; content signature and dimensions inventoried, no runtime business logic. PNG 108x108.",
+    "review": "asset",
+    "sha256": "e4728c5b3070865ca2b80de7784e66d6f21a11094d90bd1e84fef40fd6be36c4"
+  },
+  {
+    "path": "tauri/src-tauri/icons/android/mipmap-mdpi/ic_launcher_round.png",
+    "document": "user-interface.md",
+    "summary": "Binary application branding/icon asset; content signature and dimensions inventoried, no runtime business logic. PNG 48x48.",
+    "review": "asset",
+    "sha256": "fc9b4af561dc359a21dd74e0fc6e76cc8e68fc2a699597effb2495c44bc3eb54"
+  },
+  {
+    "path": "tauri/src-tauri/icons/android/mipmap-xhdpi/ic_launcher.png",
+    "document": "user-interface.md",
+    "summary": "Binary application branding/icon asset; content signature and dimensions inventoried, no runtime business logic. PNG 96x96.",
+    "review": "asset",
+    "sha256": "f2eadb364e462978fb72444ce8393b6746c9151a54ecd29c1c5efbaddf4c13cd"
+  },
+  {
+    "path": "tauri/src-tauri/icons/android/mipmap-xhdpi/ic_launcher_foreground.png",
+    "document": "user-interface.md",
+    "summary": "Binary application branding/icon asset; content signature and dimensions inventoried, no runtime business logic. PNG 216x216.",
+    "review": "asset",
+    "sha256": "df9845e57b4b1e9bb43dfef6a44b8eccb5ba822e8050de1788e04a0b738b6ade"
+  },
+  {
+    "path": "tauri/src-tauri/icons/android/mipmap-xhdpi/ic_launcher_round.png",
+    "document": "user-interface.md",
+    "summary": "Binary application branding/icon asset; content signature and dimensions inventoried, no runtime business logic. PNG 96x96.",
+    "review": "asset",
+    "sha256": "1ac44546797edbbd65096141c1777e17bc909f8feccf54c5d2d9ad1d64c9bb03"
+  },
+  {
+    "path": "tauri/src-tauri/icons/android/mipmap-xxhdpi/ic_launcher.png",
+    "document": "user-interface.md",
+    "summary": "Binary application branding/icon asset; content signature and dimensions inventoried, no runtime business logic. PNG 144x144.",
+    "review": "asset",
+    "sha256": "3445045f4a35a9d44ae2d728162e6597e0dc5619aabea976c5b4fb9d1fd25893"
+  },
+  {
+    "path": "tauri/src-tauri/icons/android/mipmap-xxhdpi/ic_launcher_foreground.png",
+    "document": "user-interface.md",
+    "summary": "Binary application branding/icon asset; content signature and dimensions inventoried, no runtime business logic. PNG 324x324.",
+    "review": "asset",
+    "sha256": "bffced24c5a048a14d5fbaeddeb85c74952ed0c66588664eda1dce6b929148eb"
+  },
+  {
+    "path": "tauri/src-tauri/icons/android/mipmap-xxhdpi/ic_launcher_round.png",
+    "document": "user-interface.md",
+    "summary": "Binary application branding/icon asset; content signature and dimensions inventoried, no runtime business logic. PNG 144x144.",
+    "review": "asset",
+    "sha256": "4ada7c33b5080dcfe410aec605e8232bd4b952dc8075e47d5897688769109554"
+  },
+  {
+    "path": "tauri/src-tauri/icons/android/mipmap-xxxhdpi/ic_launcher.png",
+    "document": "user-interface.md",
+    "summary": "Binary application branding/icon asset; content signature and dimensions inventoried, no runtime business logic. PNG 192x192.",
+    "review": "asset",
+    "sha256": "7aaf6c793856370a209f009751cce09773f9dce5f4dd1dc0b7228eac3e83a839"
+  },
+  {
+    "path": "tauri/src-tauri/icons/android/mipmap-xxxhdpi/ic_launcher_foreground.png",
+    "document": "user-interface.md",
+    "summary": "Binary application branding/icon asset; content signature and dimensions inventoried, no runtime business logic. PNG 432x432.",
+    "review": "asset",
+    "sha256": "0d73da960f5dfa3b9525a10e0c326e951b59d9d4050afa10fb3feb89de94ada4"
+  },
+  {
+    "path": "tauri/src-tauri/icons/android/mipmap-xxxhdpi/ic_launcher_round.png",
+    "document": "user-interface.md",
+    "summary": "Binary application branding/icon asset; content signature and dimensions inventoried, no runtime business logic. PNG 192x192.",
+    "review": "asset",
+    "sha256": "c863ddf56e75dcec245f75e0d10fcaa9519686ce2f1eac2b72515e90048e13ee"
+  },
+  {
+    "path": "tauri/src-tauri/icons/android/values/ic_launcher_background.xml",
+    "document": "desktop-and-operations.md",
+    "summary": "Build/runtime configuration or helper: ic_launcher_background.xml.",
+    "review": "source",
+    "sha256": "0687336f0ccc6f7ee09c7c95110667c63b75931238df779a21af401fb864cd34"
+  },
+  {
+    "path": "tauri/src-tauri/icons/icon.icns",
+    "document": "user-interface.md",
+    "summary": "Binary application branding/icon asset; content signature and dimensions inventoried, no runtime business logic.",
+    "review": "asset",
+    "sha256": "32521f138e056a3514ff6adbef918fa45f5e3b9858ed70592e24f1b68fd0acf0"
+  },
+  {
+    "path": "tauri/src-tauri/icons/icon.ico",
+    "document": "user-interface.md",
+    "summary": "Binary application branding/icon asset; content signature and dimensions inventoried, no runtime business logic.",
+    "review": "asset",
+    "sha256": "794759a7203289858504180d81539ce70ba1035592cb1d9dc832cc2c4d00e6da"
+  },
+  {
+    "path": "tauri/src-tauri/icons/icon.png",
+    "document": "user-interface.md",
+    "summary": "Binary application branding/icon asset; content signature and dimensions inventoried, no runtime business logic. PNG 512x512.",
+    "review": "asset",
+    "sha256": "78aa68dc310bea4c2c1aef467677285a25de5fc764fe96cd62cdfcb396cff7cd"
+  },
+  {
+    "path": "tauri/src-tauri/icons/ios/AppIcon-20x20@1x.png",
+    "document": "user-interface.md",
+    "summary": "Binary application branding/icon asset; content signature and dimensions inventoried, no runtime business logic. PNG 20x20.",
+    "review": "asset",
+    "sha256": "0f6ba7aa5dd1373e5f17956a4b7bc7317a3aa1a1e8c15e0d0d54b7f8a389740f"
+  },
+  {
+    "path": "tauri/src-tauri/icons/ios/AppIcon-20x20@2x-1.png",
+    "document": "user-interface.md",
+    "summary": "Binary application branding/icon asset; content signature and dimensions inventoried, no runtime business logic. PNG 40x40.",
+    "review": "asset",
+    "sha256": "d8236fa051777dde783f242567e9dd922f34ba9eb9554b2a8523eadbbfaf725d"
+  },
+  {
+    "path": "tauri/src-tauri/icons/ios/AppIcon-20x20@2x.png",
+    "document": "user-interface.md",
+    "summary": "Binary application branding/icon asset; content signature and dimensions inventoried, no runtime business logic. PNG 40x40.",
+    "review": "asset",
+    "sha256": "d8236fa051777dde783f242567e9dd922f34ba9eb9554b2a8523eadbbfaf725d"
+  },
+  {
+    "path": "tauri/src-tauri/icons/ios/AppIcon-20x20@3x.png",
+    "document": "user-interface.md",
+    "summary": "Binary application branding/icon asset; content signature and dimensions inventoried, no runtime business logic. PNG 60x60.",
+    "review": "asset",
+    "sha256": "3b93262b8afba2a15d50535d43a7b137f02ee6b4134566594cfd0b55db907822"
+  },
+  {
+    "path": "tauri/src-tauri/icons/ios/AppIcon-29x29@1x.png",
+    "document": "user-interface.md",
+    "summary": "Binary application branding/icon asset; content signature and dimensions inventoried, no runtime business logic. PNG 29x29.",
+    "review": "asset",
+    "sha256": "46373cbb8bf1fd798cfd7e45f81678fa74c0e96b268565c97d5a8b1f00d8c87d"
+  },
+  {
+    "path": "tauri/src-tauri/icons/ios/AppIcon-29x29@2x-1.png",
+    "document": "user-interface.md",
+    "summary": "Binary application branding/icon asset; content signature and dimensions inventoried, no runtime business logic. PNG 58x58.",
+    "review": "asset",
+    "sha256": "08872d37c17ff887ca8cc2c2be49d84a18358146d388932ed721486d466942c0"
+  },
+  {
+    "path": "tauri/src-tauri/icons/ios/AppIcon-29x29@2x.png",
+    "document": "user-interface.md",
+    "summary": "Binary application branding/icon asset; content signature and dimensions inventoried, no runtime business logic. PNG 58x58.",
+    "review": "asset",
+    "sha256": "08872d37c17ff887ca8cc2c2be49d84a18358146d388932ed721486d466942c0"
+  },
+  {
+    "path": "tauri/src-tauri/icons/ios/AppIcon-29x29@3x.png",
+    "document": "user-interface.md",
+    "summary": "Binary application branding/icon asset; content signature and dimensions inventoried, no runtime business logic. PNG 87x87.",
+    "review": "asset",
+    "sha256": "2da7a01b256df64be23d3df7007779bed4a514023c70f901cbcca30fb7f15c90"
+  },
+  {
+    "path": "tauri/src-tauri/icons/ios/AppIcon-40x40@1x.png",
+    "document": "user-interface.md",
+    "summary": "Binary application branding/icon asset; content signature and dimensions inventoried, no runtime business logic. PNG 40x40.",
+    "review": "asset",
+    "sha256": "d8236fa051777dde783f242567e9dd922f34ba9eb9554b2a8523eadbbfaf725d"
+  },
+  {
+    "path": "tauri/src-tauri/icons/ios/AppIcon-40x40@2x-1.png",
+    "document": "user-interface.md",
+    "summary": "Binary application branding/icon asset; content signature and dimensions inventoried, no runtime business logic. PNG 80x80.",
+    "review": "asset",
+    "sha256": "76af25cf24c3b80e71d4eaaa371e4528062eaabb9758acf1c6e77a50a4fec51e"
+  },
+  {
+    "path": "tauri/src-tauri/icons/ios/AppIcon-40x40@2x.png",
+    "document": "user-interface.md",
+    "summary": "Binary application branding/icon asset; content signature and dimensions inventoried, no runtime business logic. PNG 80x80.",
+    "review": "asset",
+    "sha256": "76af25cf24c3b80e71d4eaaa371e4528062eaabb9758acf1c6e77a50a4fec51e"
+  },
+  {
+    "path": "tauri/src-tauri/icons/ios/AppIcon-40x40@3x.png",
+    "document": "user-interface.md",
+    "summary": "Binary application branding/icon asset; content signature and dimensions inventoried, no runtime business logic. PNG 120x120.",
+    "review": "asset",
+    "sha256": "12bc4d4563656056c640dd7f754584071afcc42023a8ac359d5f8a87b65730ea"
+  },
+  {
+    "path": "tauri/src-tauri/icons/ios/AppIcon-512@2x.png",
+    "document": "user-interface.md",
+    "summary": "Binary application branding/icon asset; content signature and dimensions inventoried, no runtime business logic. PNG 1024x1024.",
+    "review": "asset",
+    "sha256": "d77a899ff9b0559218cfe9b1f5098f518f4181f1173961e71bb21d0fbcc918f2"
+  },
+  {
+    "path": "tauri/src-tauri/icons/ios/AppIcon-60x60@2x.png",
+    "document": "user-interface.md",
+    "summary": "Binary application branding/icon asset; content signature and dimensions inventoried, no runtime business logic. PNG 120x120.",
+    "review": "asset",
+    "sha256": "12bc4d4563656056c640dd7f754584071afcc42023a8ac359d5f8a87b65730ea"
+  },
+  {
+    "path": "tauri/src-tauri/icons/ios/AppIcon-60x60@3x.png",
+    "document": "user-interface.md",
+    "summary": "Binary application branding/icon asset; content signature and dimensions inventoried, no runtime business logic. PNG 180x180.",
+    "review": "asset",
+    "sha256": "0ed5b32e0deb141d8052972c6a4e2af1faabe2775c830edb0e2368ea755015e8"
+  },
+  {
+    "path": "tauri/src-tauri/icons/ios/AppIcon-76x76@1x.png",
+    "document": "user-interface.md",
+    "summary": "Binary application branding/icon asset; content signature and dimensions inventoried, no runtime business logic. PNG 76x76.",
+    "review": "asset",
+    "sha256": "0f7d97b020a7947d8ecd091826489e188570cb50e9faed493a1561b0c7426c20"
+  },
+  {
+    "path": "tauri/src-tauri/icons/ios/AppIcon-76x76@2x.png",
+    "document": "user-interface.md",
+    "summary": "Binary application branding/icon asset; content signature and dimensions inventoried, no runtime business logic. PNG 152x152.",
+    "review": "asset",
+    "sha256": "be2fd3447a933209b1fef1b2355e1a0e22d144ab443a4338c2fa0e3f3e5b3c8b"
+  },
+  {
+    "path": "tauri/src-tauri/icons/ios/AppIcon-83.5x83.5@2x.png",
+    "document": "user-interface.md",
+    "summary": "Binary application branding/icon asset; content signature and dimensions inventoried, no runtime business logic. PNG 167x167.",
+    "review": "asset",
+    "sha256": "83aecde8d3b09af5d21c8049468bbec5c492f818da70d1de7f79303bf39fe944"
+  },
+  {
+    "path": "tauri/src-tauri/resources/.gitkeep",
+    "document": "desktop-and-operations.md",
+    "summary": "Empty tracked placeholder; creates packaging directory without behavior.",
+    "review": "source",
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  {
+    "path": "tauri/src-tauri/resources/THIRD_PARTY_NOTICES.md",
+    "document": "desktop-and-operations.md",
+    "summary": "Build/runtime configuration or helper: THIRD_PARTY_NOTICES.md.",
+    "review": "source",
+    "sha256": "da80b4bf88037415a0f6064e3d54a36c0180290d16c6bb5e9af32cd2f922f3a3"
+  },
+  {
+    "path": "tauri/src-tauri/resources/vjoy.sha256",
+    "document": "desktop-and-operations.md",
+    "summary": "Build/runtime configuration or helper: vjoy.sha256.",
+    "review": "source",
+    "sha256": "2dcd4b83ffd8b54cddb35cb63c7a556223f625f3c15b39164b41508418952f33"
+  },
+  {
+    "path": "tauri/src-tauri/splash.html",
+    "document": "desktop-and-operations.md",
+    "summary": "Build/runtime configuration or helper: splash.html.",
+    "review": "source",
+    "sha256": "31a7db532a8889d2539231d4d79ba22f393be264bbe4d3a33ff33ac781c081b8"
+  },
+  {
+    "path": "tauri/src-tauri/src/lib.rs",
+    "document": "desktop-and-operations.md",
+    "summary": "Native/helper implementation: check_backend_ready, wait_for_backend, run.",
+    "review": "source",
+    "sha256": "4cbe063ee1171578aee1457d8f6a12f500f32f501ad1d474cf6eefb74ac81a98"
+  },
+  {
+    "path": "tauri/src-tauri/src/main.rs",
+    "document": "desktop-and-operations.md",
+    "summary": "Native/helper implementation: main.",
+    "review": "source",
+    "sha256": "a99034ebaa3927569321f1927d463ee065b85dca714491af8c3c51e952c7eb64"
+  },
+  {
+    "path": "tauri/src-tauri/src/update_flow.rs",
+    "document": "desktop-and-operations.md",
+    "summary": "Native/helper implementation: apply_update, run, wake, cancel_does_not_download_stop_or_install, bad_download_or_signature_preserves_running_backend, shutdown_failure_prevents_install, verified_download_precedes_shutdown_and_install, installation_failure_is_not_success.",
+    "review": "source",
+    "sha256": "0677d2da5c771457704efbe699861d1f9b29dc6456024ecaed5e98ddc0f931e2"
+  },
+  {
+    "path": "tauri/src-tauri/src/updater.rs",
+    "document": "desktop-and-operations.md",
+    "summary": "Native/helper implementation: setup, check, shutdown_backend.",
+    "review": "source",
+    "sha256": "3cefe50f16471fd4d46183e139e7d1fa9b7ca28a4f145bf83e972ca4e86f28d4"
+  },
+  {
+    "path": "tauri/src-tauri/tauri.conf.json",
+    "document": "desktop-and-operations.md",
+    "summary": "Build/runtime configuration or helper: tauri.conf.json.",
+    "review": "source",
+    "sha256": "94b87b25d5de277f4258163645ac15f346b3a6826a45bb5373dbc5f61d54e8e1"
+  },
+  {
+    "path": "tauri/src-tauri/tauri.updater.conf.json",
+    "document": "desktop-and-operations.md",
+    "summary": "Build/runtime configuration or helper: tauri.updater.conf.json.",
+    "review": "source",
+    "sha256": "c1d7d16c801bc2b87747d5b0a71f8fae927122e4897453eea23e51e98b191e33"
+  },
+  {
+    "path": "tauri/src-tauri/tauri.windows.conf.json",
+    "document": "desktop-and-operations.md",
+    "summary": "Build/runtime configuration or helper: tauri.windows.conf.json.",
+    "review": "source",
+    "sha256": "1cd8c492fe5f6612d0fea89b0248adae0b48f270f277fafb98b609db4cdbee37"
+  },
+  {
+    "path": "tauri/src-tauri/windows/installer-hooks.nsh",
+    "document": "desktop-and-operations.md",
+    "summary": "Build/runtime configuration or helper: installer-hooks.nsh.",
+    "review": "source",
+    "sha256": "969fb211ae77f41d20a5613379945799123a4b6c8cf988ed93a442b7b36699dd"
+  },
+  {
+    "path": "tauri/src/index.html",
+    "document": "desktop-and-operations.md",
+    "summary": "Build/runtime configuration or helper: index.html.",
+    "review": "source",
+    "sha256": "183d13732e8d7cc3b5b7e3ab82aa180b8bc5a66792de1f5dc0a9bff22c247d3b"
+  },
+  {
+    "path": "tauri/virtual_joystick/.gitignore",
+    "document": "virtual-joystick.md",
+    "summary": "Build/runtime configuration or helper: .gitignore.",
+    "review": "source",
+    "sha256": "306fd52e74fca6746e12acc750f232de15e71da917756a1270d74c91f5eb7368"
+  },
+  {
+    "path": "tauri/virtual_joystick/Cargo.lock",
+    "document": "desktop-and-operations.md",
+    "summary": "Cargo resolution lock version 4; 15 package records, pinned versions/checksums.",
+    "review": "dependency",
+    "sha256": "1c980a8bdd7ccc7eaa858ecd8e3ad7761a0ca396b7b33b4a5f014b85ad35c3df"
+  },
+  {
+    "path": "tauri/virtual_joystick/Cargo.toml",
+    "document": "virtual-joystick.md",
+    "summary": "Build/runtime configuration or helper: Cargo.toml.",
+    "review": "source",
+    "sha256": "77944712d1e86c682e5413f5c44792bd9c3b8c5d8937bb5c44867eb659f0b118"
+  },
+  {
+    "path": "tauri/virtual_joystick/src/lib.rs",
+    "document": "virtual-joystick.md",
+    "summary": "Native/helper implementation: vjoy_interface_path.",
+    "review": "source",
+    "sha256": "6c047e8056deb34344904e7a34d183d93197d37f2654e9bfc7c25f63d7c10522"
+  },
+  {
+    "path": "tauri/virtual_joystick/src/main.rs",
+    "document": "virtual-joystick.md",
+    "summary": "Native/helper implementation: main.",
+    "review": "source",
+    "sha256": "8b4f486f75d9dd8cf14c1591aa5fc5bcc7aec4cbe9df0c81fce19bbc25709849"
+  },
+  {
+    "path": "tauri/virtual_joystick/src/protocol.rs",
+    "document": "virtual-joystick.md",
+    "summary": "Native/helper implementation: new, handle_line, hello, mutate, not_ready, parse_command, validate_device, request_id, error_response, serve, read_bounded_line.",
+    "review": "source",
+    "sha256": "510d55b3cf958f2e3264b7c08973203ffde029b45b25f4e008a345bf44351f06"
+  },
+  {
+    "path": "tauri/virtual_joystick/src/vjoy.rs",
+    "document": "virtual-joystick.md",
+    "summary": "Native/helper implementation: centered, axis, set_axis, button, set_button, reset, axis_index, enabled, status, acquire, axis_range, update.",
+    "review": "source",
+    "sha256": "e136d2f8017f654ecd23a289a4d05a12298884bbafed8ca29711c86885de0dee"
+  },
+  {
+    "path": "tauri/virtual_joystick/tests/cli_test.rs",
+    "document": "virtual-joystick.md",
+    "summary": "Test/support contract: cli test.",
+    "review": "test",
+    "sha256": "8db4c68d67ce5ab37d47b11447865fa47d9e629d8bcda5391561365dbc071245"
+  },
+  {
+    "path": "tauri/virtual_joystick/tests/protocol_test.rs",
+    "document": "virtual-joystick.md",
+    "summary": "Test/support contract: protocol test.",
+    "review": "test",
+    "sha256": "aa7984fdf5523753a1d7675430abd7c236a077d7ccb7627bdbd5f6a7fcf31321"
+  },
+  {
+    "path": "test/ci/build_desktop_script_test.exs",
+    "document": "desktop-and-operations.md",
+    "summary": "Test/support contract: build desktop script test.",
+    "review": "test",
+    "sha256": "3ca869cf96a059f07046432ffb1913a54ea2a70a301a4620b4a2401c9bd67921"
+  },
+  {
+    "path": "test/ci/burrito_prerequisites_test.exs",
+    "document": "desktop-and-operations.md",
+    "summary": "Test/support contract: burrito prerequisites test.",
+    "review": "test",
+    "sha256": "6fc8a5f745c4563302877fa365c23e9d2fdf87440a6e8bf77b22ccea2e3d0867"
+  },
+  {
+    "path": "test/ci/desktop_distribution_test.exs",
+    "document": "desktop-and-operations.md",
+    "summary": "Test/support contract: desktop distribution test.",
+    "review": "test",
+    "sha256": "f7df62e61b17802f5365858322174b7224ea2cc16932a8f38e2588025f7bcbe0"
+  },
+  {
+    "path": "test/ci/installer_hooks_test.exs",
+    "document": "desktop-and-operations.md",
+    "summary": "Test/support contract: installer hooks test.",
+    "review": "test",
+    "sha256": "b08abf6122c20b9533740976c1ca6702baa4bb21f333c05c7ad33dd10bbb4c65"
+  },
+  {
+    "path": "test/ci/migration_module_isolation_test.exs",
+    "document": "desktop-and-operations.md",
+    "summary": "Test/support contract: migration module isolation test.",
+    "review": "test",
+    "sha256": "08f71054f54dc0075294799198e1b77019b0fd76874e8fedef5ab0580d9b4aa8"
+  },
+  {
+    "path": "test/ci/nightly_artifacts_test.exs",
+    "document": "desktop-and-operations.md",
+    "summary": "Test/support contract: nightly artifacts test.",
+    "review": "test",
+    "sha256": "6e7f71f77882efb085f9ea70452dd7ff29cb304587c7c5cbf7f97ba8f6f9ea91"
+  },
+  {
+    "path": "test/ci/virtual_joystick_workflow_test.exs",
+    "document": "virtual-joystick.md",
+    "summary": "Test/support contract: virtual joystick workflow test.",
+    "review": "test",
+    "sha256": "b26fa9ac7e9cf58799fe63ee254e81f2ca11ffa2ebb780e2cc0238e0dcb9ecce"
+  },
+  {
+    "path": "test/support/avrdude_fixtures.ex",
+    "document": "data-model.md",
+    "summary": "Test/support contract: avrdude fixtures.",
+    "review": "test",
+    "sha256": "f9a5076763b46dd4f20685e809c2c66581ee7d56fd5658208225c41c19f2d755"
+  },
+  {
+    "path": "test/support/conn_case.ex",
+    "document": "data-model.md",
+    "summary": "Test/support contract: conn case.",
+    "review": "test",
+    "sha256": "4c0e493439ea0d824290678839d0fbf6a61f095782c316be731db6c9aae38d91"
+  },
+  {
+    "path": "test/support/data_case.ex",
+    "document": "data-model.md",
+    "summary": "Test/support contract: data case.",
+    "review": "test",
+    "sha256": "4c3c420161d0361af57200d0f3a35ac34915c230f41bac6518781f8ccf18d0b6"
+  },
+  {
+    "path": "test/support/fake_virtual_joystick.exs",
+    "document": "virtual-joystick.md",
+    "summary": "Test/support contract: fake virtual joystick.",
+    "review": "test",
+    "sha256": "fbe6901a80dd74ce9e90dfb3e2adf23bfb600af54fcc4438805edbf1bd00cf98"
+  },
+  {
+    "path": "test/support/forbidden_serial.ex",
+    "document": "data-model.md",
+    "summary": "Test/support contract: forbidden serial.",
+    "review": "test",
+    "sha256": "f4bb97afdae916b7d41f091067650ea4c330d9e7a6b6251183991d122718d601"
+  },
+  {
+    "path": "test/support/migration_module_isolation.ex",
+    "document": "data-model.md",
+    "summary": "Test/support contract: migration module isolation.",
+    "review": "test",
+    "sha256": "4f87ccee516b9f2c6817e6dd9ee6efcc68a456ef8ab05e5bf05f46588a59559f"
+  },
+  {
+    "path": "test/support/pubsub_helpers.ex",
+    "document": "data-model.md",
+    "summary": "Test/support contract: pubsub helpers.",
+    "review": "test",
+    "sha256": "4cf0981dc76241c14c6160b593fef363445815f8a3c9f723fcdf507728ce5a50"
+  },
+  {
+    "path": "test/support/serial_safety_case.ex",
+    "document": "data-model.md",
+    "summary": "Test/support contract: serial safety case.",
+    "review": "test",
+    "sha256": "9281688ac64785540ecfafd35c15950247dad1cde9fa5230bd5434f0f516d883"
+  },
+  {
+    "path": "test/support/serial_test_helpers.ex",
+    "document": "data-model.md",
+    "summary": "Test/support contract: serial test helpers.",
+    "review": "test",
+    "sha256": "ba4f7bc37ed8382c6f2c38b83b99f7ed7191594d96af232271b8a40a1190dc30"
+  },
+  {
+    "path": "test/support/virtual_joystick_fixtures.ex",
+    "document": "virtual-joystick.md",
+    "summary": "Test/support contract: virtual joystick fixtures.",
+    "review": "test",
+    "sha256": "b8a376c31e902138389da1444e05049be380b9926ad3a77207960420c1097e26"
+  },
+  {
+    "path": "test/test_helper.exs",
+    "document": "desktop-and-operations.md",
+    "summary": "Test/support contract: test helper.",
+    "review": "test",
+    "sha256": "89e94bba43d2c9455adaeb57096c419d674300de0af5d2581d86d8bf582bf72d"
+  },
+  {
+    "path": "test/trenino/paths_test.exs",
+    "document": "desktop-and-operations.md",
+    "summary": "Test/support contract: paths test.",
+    "review": "test",
+    "sha256": "a2ebb3513bed4421eaa6abb3551f692ddeb0658df5945d3542a315f3d3393911"
+  },
+  {
+    "path": "test/trenino/repo/migrations/create_train_identifiers_test.exs",
+    "document": "data-model.md",
+    "summary": "Test/support contract: create train identifiers test.",
+    "review": "test",
+    "sha256": "419f0491d51361767ddc71fd043fda0577918c3be4d062f99249432333faafbe"
+  },
+  {
+    "path": "test/trenino/settings/simulator_test.exs",
+    "document": "desktop-and-operations.md",
+    "summary": "Test/support contract: simulator test.",
+    "review": "test",
+    "sha256": "5d784e760bdfcbfaa284cf189d7c2de7dc7238960bfb34a94c9c1f1a3f0e5369"
+  },
+  {
+    "path": "test/trenino/settings_test.exs",
+    "document": "desktop-and-operations.md",
+    "summary": "Test/support contract: settings test.",
+    "review": "test",
+    "sha256": "177ca77f0f8463e5f5c6b89b3f0bbe986daf38f6b08ffca7f9603864259ecdc2"
+  },
+  {
+    "path": "test/trenino/virtual_joystick/bridge_test.exs",
+    "document": "virtual-joystick.md",
+    "summary": "Test/support contract: bridge test.",
+    "review": "test",
+    "sha256": "ac59200e954b46dd726a17e82eb3e05bd79a7d8b509af566fa64004985fe0c79"
+  },
+  {
+    "path": "test/trenino/virtual_joystick/configurator_test.exs",
+    "document": "virtual-joystick.md",
+    "summary": "Test/support contract: configurator test.",
+    "review": "test",
+    "sha256": "7812976a0af5f9f56c34a6021551199ad3c9c4b571b6ff9b7bec04281eda07c6"
+  },
+  {
+    "path": "test/trenino/virtual_joystick/installed_helpers_test.exs",
+    "document": "virtual-joystick.md",
+    "summary": "Test/support contract: installed helpers test.",
+    "review": "test",
+    "sha256": "098a778ba0dc50c362282a1be4aa8257cea5f8b57c462b41c7593555e25f636c"
+  },
+  {
+    "path": "test/trenino/virtual_joystick/manager_test.exs",
+    "document": "virtual-joystick.md",
+    "summary": "Test/support contract: manager test.",
+    "review": "test",
+    "sha256": "0ebcd9500875e682aa82575b10a9a5b2be18f66ae4173bd8ec5c4a1fa189ef59"
+  },
+  {
+    "path": "test/trenino/virtual_joystick/mapper_test.exs",
+    "document": "virtual-joystick.md",
+    "summary": "Test/support contract: mapper test.",
+    "review": "test",
+    "sha256": "a7751bf3ed69a84d0f63fb779d37ae5ddfabff8018b19a78cd38f5c8614a58f8"
+  },
+  {
+    "path": "test/trenino/virtual_joystick_test.exs",
+    "document": "virtual-joystick.md",
+    "summary": "Test/support contract: virtual joystick test.",
+    "review": "test",
+    "sha256": "5ff4ca348827a8e6ba86bfe921d9e9504c54802754755c102a17be34e24339c5"
+  }
+]

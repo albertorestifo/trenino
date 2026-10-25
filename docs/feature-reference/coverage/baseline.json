@@ -1,0 +1,2660 @@
+{
+  "commit": "188f35e4108733358730e92ebd98f1912af5173a",
+  "files": [
+    ".claude/agents/elixir-code-architect.md",
+    ".claude/commands/release.md",
+    ".claude/skills/elixir-patterns/SKILL.md",
+    ".claude/skills/lua-scripting.md",
+    ".claude/skills/mimic-testing/SKILL.md",
+    ".claude/skills/phoenix-liveview/SKILL.md",
+    ".claude/skills/train-setup.md",
+    ".claude/skills/trenino-mcp.md",
+    ".formatter.exs",
+    ".gitattributes",
+    ".github/CODEOWNERS",
+    ".github/actions/setup-burrito/action.yml",
+    ".github/dependabot.yml",
+    ".github/workflows/ci.yml",
+    ".github/workflows/claude-code-review.yml",
+    ".github/workflows/claude-weekly-docs.yml",
+    ".github/workflows/claude.yml",
+    ".github/workflows/dependabot-analyzer.yml",
+    ".github/workflows/nightly.yml",
+    ".github/workflows/release.yml",
+    ".gitignore",
+    ".impeccable/design.json",
+    ".mcp.json",
+    ".superpowers/sdd/2026-08-01-virtual-joystick/task-10-report.md",
+    ".superpowers/sdd/2026-08-01-virtual-joystick/task-9-report.md",
+    "CHANGELOG.md",
+    "CLAUDE.md",
+    "DESIGN.md",
+    "LICENSE",
+    "PRODUCT.md",
+    "README.md",
+    "assets/css/app.css",
+    "assets/js/app.js",
+    "assets/tsconfig.json",
+    "assets/vendor/daisyui-theme.js",
+    "assets/vendor/daisyui.js",
+    "assets/vendor/heroicons.js",
+    "assets/vendor/topbar.js",
+    "config/config.exs",
+    "config/dev.exs",
+    "config/prod.exs",
+    "config/runtime.exs",
+    "config/test.exs",
+    "docs/TSW_API_GUIDE.md",
+    "docs/architecture.md",
+    "docs/control_auto_suggestion.md",
+    "docs/development.md",
+    "docs/getting-started.md",
+    "docs/hardware-setup.md",
+    "docs/lever_input_mapping_architecture.md",
+    "docs/lua-scripting.md",
+    "docs/mcp-setup.md",
+    "docs/plans/2026-02-01-mcp-server-design.md",
+    "docs/release-readiness.md",
+    "docs/superpowers/plans/2026-05-03-display-ui-improvements.md",
+    "docs/superpowers/plans/2026-05-03-error-reporting-consent.md",
+    "docs/superpowers/plans/2026-05-03-firmware-flashing-robustness.md",
+    "docs/superpowers/plans/2026-05-03-firmware-version-compatibility.md",
+    "docs/superpowers/plans/2026-05-03-i2c-display-output.md",
+    "docs/superpowers/plans/2026-05-03-test-suite-cleanup.md",
+    "docs/superpowers/plans/2026-08-01-virtual-joystick.md",
+    "docs/superpowers/plans/2026-08-09-burrito-runner-prerequisites.md",
+    "docs/superpowers/plans/2026-08-12-nightly-release-virtual-joystick.md",
+    "docs/superpowers/plans/2026-09-27-multiple-train-identifiers.md",
+    "docs/superpowers/plans/2026-10-23-release-readiness.md",
+    "docs/superpowers/plans/2026-10-24-tauri-distribution.md",
+    "docs/superpowers/specs/2026-05-03-display-ui-improvements-design.md",
+    "docs/superpowers/specs/2026-05-03-error-reporting-consent-design.md",
+    "docs/superpowers/specs/2026-05-03-firmware-flashing-robustness-design.md",
+    "docs/superpowers/specs/2026-05-03-firmware-version-compatibility-design.md",
+    "docs/superpowers/specs/2026-05-03-i2c-display-output-design.md",
+    "docs/superpowers/specs/2026-05-03-test-suite-cleanup-design.md",
+    "docs/superpowers/specs/2026-08-01-virtual-joystick-design.md",
+    "docs/superpowers/specs/2026-08-09-burrito-runner-prerequisites-design.md",
+    "docs/superpowers/specs/2026-08-12-nightly-release-virtual-joystick-design.md",
+    "docs/superpowers/specs/2026-09-27-multiple-train-identifiers-design.md",
+    "docs/superpowers/specs/2026-10-23-release-readiness-design.md",
+    "docs/superpowers/specs/2026-10-24-tauri-distribution-design.md",
+    "docs/train-configuration.md",
+    "docs/windows-distribution.md",
+    "icon.png",
+    "lib/mix/tasks/keystroke.ex",
+    "lib/mix/tasks/version.ex",
+    "lib/mix/tasks/virtual_joystick.ex",
+    "lib/trenino.ex",
+    "lib/trenino/app_version.ex",
+    "lib/trenino/app_version/update_checker.ex",
+    "lib/trenino/application.ex",
+    "lib/trenino/firmware.ex",
+    "lib/trenino/firmware/avrdude.ex",
+    "lib/trenino/firmware/avrdude_runner.ex",
+    "lib/trenino/firmware/board_config.ex",
+    "lib/trenino/firmware/compatibility.ex",
+    "lib/trenino/firmware/device_registry.ex",
+    "lib/trenino/firmware/downloader.ex",
+    "lib/trenino/firmware/file_path.ex",
+    "lib/trenino/firmware/firmware_file.ex",
+    "lib/trenino/firmware/firmware_release.ex",
+    "lib/trenino/firmware/update_check.ex",
+    "lib/trenino/firmware/update_checker.ex",
+    "lib/trenino/firmware/upload_history.ex",
+    "lib/trenino/firmware/upload_manager.ex",
+    "lib/trenino/firmware/uploader.ex",
+    "lib/trenino/hardware.ex",
+    "lib/trenino/hardware/calibration/analyzer.ex",
+    "lib/trenino/hardware/calibration/analyzer/analysis.ex",
+    "lib/trenino/hardware/calibration/calculator.ex",
+    "lib/trenino/hardware/calibration/session.ex",
+    "lib/trenino/hardware/calibration/session_supervisor.ex",
+    "lib/trenino/hardware/config_id.ex",
+    "lib/trenino/hardware/configuration_manager.ex",
+    "lib/trenino/hardware/device.ex",
+    "lib/trenino/hardware/ht16k33.ex",
+    "lib/trenino/hardware/ht16k33/params.ex",
+    "lib/trenino/hardware/i2c_module.ex",
+    "lib/trenino/hardware/input.ex",
+    "lib/trenino/hardware/input/calibration.ex",
+    "lib/trenino/hardware/input/matrix_pin.ex",
+    "lib/trenino/hardware/input_detection_session.ex",
+    "lib/trenino/hardware/matrix.ex",
+    "lib/trenino/hardware/output.ex",
+    "lib/trenino/keyboard.ex",
+    "lib/trenino/mcp/server.ex",
+    "lib/trenino/mcp/tool_registry.ex",
+    "lib/trenino/mcp/tools/button_binding_tools.ex",
+    "lib/trenino/mcp/tools/detection_tools.ex",
+    "lib/trenino/mcp/tools/device_tools.ex",
+    "lib/trenino/mcp/tools/display_binding_tools.ex",
+    "lib/trenino/mcp/tools/element_tools.ex",
+    "lib/trenino/mcp/tools/output_binding_tools.ex",
+    "lib/trenino/mcp/tools/script_tools.ex",
+    "lib/trenino/mcp/tools/sequence_tools.ex",
+    "lib/trenino/mcp/tools/simulator_tools.ex",
+    "lib/trenino/mcp/tools/train_tools.ex",
+    "lib/trenino/mcp/tools/virtual_joystick_tools.ex",
+    "lib/trenino/paths.ex",
+    "lib/trenino/release.ex",
+    "lib/trenino/repo.ex",
+    "lib/trenino/serial/connection.ex",
+    "lib/trenino/serial/connection/device_connection.ex",
+    "lib/trenino/serial/connection/state.ex",
+    "lib/trenino/serial/discovery.ex",
+    "lib/trenino/serial/framing.ex",
+    "lib/trenino/serial/protocol/configuration_error.ex",
+    "lib/trenino/serial/protocol/configuration_stored.ex",
+    "lib/trenino/serial/protocol/configure.ex",
+    "lib/trenino/serial/protocol/heartbeat.ex",
+    "lib/trenino/serial/protocol/identity_request.ex",
+    "lib/trenino/serial/protocol/identity_response.ex",
+    "lib/trenino/serial/protocol/input_value.ex",
+    "lib/trenino/serial/protocol/message.ex",
+    "lib/trenino/serial/protocol/module_error.ex",
+    "lib/trenino/serial/protocol/retry_calibration.ex",
+    "lib/trenino/serial/protocol/set_module_brightness.ex",
+    "lib/trenino/serial/protocol/set_output.ex",
+    "lib/trenino/serial/protocol/write_segments.ex",
+    "lib/trenino/settings.ex",
+    "lib/trenino/settings/setting.ex",
+    "lib/trenino/settings/simulator.ex",
+    "lib/trenino/simulator.ex",
+    "lib/trenino/simulator/client.ex",
+    "lib/trenino/simulator/connection.ex",
+    "lib/trenino/simulator/connection_state.ex",
+    "lib/trenino/simulator/control_detection_session.ex",
+    "lib/trenino/simulator/control_detector.ex",
+    "lib/trenino/simulator/lever_analyzer.ex",
+    "lib/trenino/train.ex",
+    "lib/trenino/train/button_controller.ex",
+    "lib/trenino/train/button_input_binding.ex",
+    "lib/trenino/train/calibration/lever_session.ex",
+    "lib/trenino/train/calibration/notch_mapping_session.ex",
+    "lib/trenino/train/calibration/session_supervisor.ex",
+    "lib/trenino/train/detection.ex",
+    "lib/trenino/train/display_binding.ex",
+    "lib/trenino/train/display_controller.ex",
+    "lib/trenino/train/display_formatter.ex",
+    "lib/trenino/train/element.ex",
+    "lib/trenino/train/identifier.ex",
+    "lib/trenino/train/lever_config.ex",
+    "lib/trenino/train/lever_controller.ex",
+    "lib/trenino/train/lever_input_binding.ex",
+    "lib/trenino/train/lever_mapper.ex",
+    "lib/trenino/train/notch.ex",
+    "lib/trenino/train/output_binding.ex",
+    "lib/trenino/train/output_controller.ex",
+    "lib/trenino/train/script.ex",
+    "lib/trenino/train/script/triggers_type.ex",
+    "lib/trenino/train/script_engine.ex",
+    "lib/trenino/train/script_runner.ex",
+    "lib/trenino/train/sequence.ex",
+    "lib/trenino/train/sequence_command.ex",
+    "lib/trenino/train/train.ex",
+    "lib/trenino/train/train_identifier.ex",
+    "lib/trenino/virtual_joystick.ex",
+    "lib/trenino/virtual_joystick/bridge.ex",
+    "lib/trenino/virtual_joystick/bridge/port_adapter.ex",
+    "lib/trenino/virtual_joystick/configuration.ex",
+    "lib/trenino/virtual_joystick/configurator.ex",
+    "lib/trenino/virtual_joystick/configurator/system_adapter.ex",
+    "lib/trenino/virtual_joystick/manager.ex",
+    "lib/trenino/virtual_joystick/mapper.ex",
+    "lib/trenino/virtual_joystick/mapping.ex",
+    "lib/trenino/virtual_joystick/platform.ex",
+    "lib/trenino_web.ex",
+    "lib/trenino_web/components/core_components.ex",
+    "lib/trenino_web/components/layouts.ex",
+    "lib/trenino_web/components/layouts/app.html.heex",
+    "lib/trenino_web/components/layouts/root.html.heex",
+    "lib/trenino_web/components/nav_components.ex",
+    "lib/trenino_web/components/shared_components.ex",
+    "lib/trenino_web/controllers/api/output_api_controller.ex",
+    "lib/trenino_web/controllers/api/script_controller.ex",
+    "lib/trenino_web/controllers/api/simulator_api_controller.ex",
+    "lib/trenino_web/controllers/api/train_api_controller.ex",
+    "lib/trenino_web/controllers/error_html.ex",
+    "lib/trenino_web/controllers/error_json.ex",
+    "lib/trenino_web/controllers/health_controller.ex",
+    "lib/trenino_web/controllers/mcp/mcp_controller.ex",
+    "lib/trenino_web/controllers/page_controller.ex",
+    "lib/trenino_web/controllers/page_html.ex",
+    "lib/trenino_web/controllers/page_html/home.html.heex",
+    "lib/trenino_web/controllers/redirect_controller.ex",
+    "lib/trenino_web/endpoint.ex",
+    "lib/trenino_web/gettext.ex",
+    "lib/trenino_web/live/calibration_wizard.ex",
+    "lib/trenino_web/live/components/api_explorer_component.ex",
+    "lib/trenino_web/live/components/auto_detect_component.ex",
+    "lib/trenino_web/live/components/configuration_wizard_component.ex",
+    "lib/trenino_web/live/components/display_binding_wizard.ex",
+    "lib/trenino_web/live/components/endpoint_selector_component.ex",
+    "lib/trenino_web/live/components/i2c_module_form_component.ex",
+    "lib/trenino_web/live/components/lever_setup_wizard.ex",
+    "lib/trenino_web/live/components/lever_visualization.ex",
+    "lib/trenino_web/live/components/output_binding_wizard.ex",
+    "lib/trenino_web/live/components/sequence_manager_component.ex",
+    "lib/trenino_web/live/components/virtual_joystick_mapping_form.ex",
+    "lib/trenino_web/live/configuration_edit_live.ex",
+    "lib/trenino_web/live/configuration_list_live.ex",
+    "lib/trenino_web/live/consent_gate_hook.ex",
+    "lib/trenino_web/live/consent_live.ex",
+    "lib/trenino_web/live/firmware_live.ex",
+    "lib/trenino_web/live/matrix_test_wizard.ex",
+    "lib/trenino_web/live/mcp_detection_hook.ex",
+    "lib/trenino_web/live/nav_hook.ex",
+    "lib/trenino_web/live/script_edit_live.ex",
+    "lib/trenino_web/live/settings_live.ex",
+    "lib/trenino_web/live/train_edit_live.ex",
+    "lib/trenino_web/live/train_list_live.ex",
+    "lib/trenino_web/live/virtual_joystick_live.ex",
+    "lib/trenino_web/router.ex",
+    "lib/trenino_web/router/dev_routes.ex",
+    "lib/trenino_web/telemetry.ex",
+    "mise.toml",
+    "mix.exs",
+    "mix.lock",
+    "priv/gettext/en/LC_MESSAGES/errors.po",
+    "priv/gettext/errors.pot",
+    "priv/repo/migrations/.formatter.exs",
+    "priv/repo/migrations/20251124203623_create_devices.exs",
+    "priv/repo/migrations/20251124204015_create_device_inputs.exs",
+    "priv/repo/migrations/20251124212404_create_device_input_calibrations.exs",
+    "priv/repo/migrations/20251128125215_add_config_id_to_devices.exs",
+    "priv/repo/migrations/20251129103558_create_simulator_configs.exs",
+    "priv/repo/migrations/20251129111518_make_config_id_required_add_description.exs",
+    "priv/repo/migrations/20251129112341_populate_missing_config_ids.exs",
+    "priv/repo/migrations/20251129192949_create_trains.exs",
+    "priv/repo/migrations/20251129193005_create_train_elements.exs",
+    "priv/repo/migrations/20251129193018_create_train_lever_configs.exs",
+    "priv/repo/migrations/20251129193032_create_train_lever_notches.exs",
+    "priv/repo/migrations/20251207184747_create_lever_input_bindings.exs",
+    "priv/repo/migrations/20251210154430_create_firmware_tables.exs",
+    "priv/repo/migrations/20251210165321_create_firmware_update_checks.exs",
+    "priv/repo/migrations/20251210215004_remove_firmware_download_tracking.exs",
+    "priv/repo/migrations/20251216212504_add_button_matrix_input_types.exs",
+    "priv/repo/migrations/20251216220651_create_button_input_bindings.exs",
+    "priv/repo/migrations/20251220183323_create_device_outputs.exs",
+    "priv/repo/migrations/20251221173532_allow_nullable_pin_for_matrix_inputs.exs",
+    "priv/repo/migrations/20251221194910_add_virtual_pin_to_button_bindings.exs",
+    "priv/repo/migrations/20251223103929_add_mode_to_button_bindings.exs",
+    "priv/repo/migrations/20251223111818_create_sequences.exs",
+    "priv/repo/migrations/20251223112836_allow_null_endpoint_for_sequences.exs",
+    "priv/repo/migrations/20251223210242_refactor_matrix_to_separate_entity.exs",
+    "priv/repo/migrations/20251223214615_add_lever_type_to_lever_configs.exs",
+    "priv/repo/migrations/20260101201704_add_sim_input_range_to_notches.exs",
+    "priv/repo/migrations/20260103114839_add_inverted_to_lever_configs.exs",
+    "priv/repo/migrations/20260103194112_add_keystroke_to_button_bindings.exs",
+    "priv/repo/migrations/20260106154322_remove_nano_old_bootloader_firmware.exs",
+    "priv/repo/migrations/20260107181338_create_train_output_bindings.exs",
+    "priv/repo/migrations/20260107220815_allow_nullable_value_a_for_boolean_operators.exs",
+    "priv/repo/migrations/20260117101411_add_manifest_support.exs",
+    "priv/repo/migrations/20260201154004_create_scripts.exs",
+    "priv/repo/migrations/20260503000000_remove_bldc_support.exs",
+    "priv/repo/migrations/20260503101628_create_app_settings.exs",
+    "priv/repo/migrations/20260503114723_migrate_simulator_configs_to_app_settings.exs",
+    "priv/repo/migrations/20260503200000_create_device_i2c_modules.exs",
+    "priv/repo/migrations/20260503200001_create_train_display_bindings.exs",
+    "priv/repo/migrations/20260503220000_i2c_module_params.exs",
+    "priv/repo/migrations/20260801000000_create_virtual_joystick_tables.exs",
+    "priv/repo/migrations/20260927000000_create_train_identifiers.exs",
+    "priv/repo/seeds.exs",
+    "priv/static/favicon.ico",
+    "priv/static/images/logo.svg",
+    "priv/static/robots.txt",
+    "scripts/build-desktop.sh",
+    "scripts/build-macos.sh",
+    "scripts/download-avrdude.ps1",
+    "scripts/download-vjoy.ps1",
+    "scripts/setup-updater-signing.ps1",
+    "scripts/stage-vjoy-resources.ps1",
+    "scripts/test-updater-signing.ps1",
+    "scripts/update-version.sh",
+    "scripts/updater-signature-verifier/.gitignore",
+    "scripts/updater-signature-verifier/Cargo.lock",
+    "scripts/updater-signature-verifier/Cargo.toml",
+    "scripts/updater-signature-verifier/src/main.rs",
+    "tauri/keystroke/Cargo.lock",
+    "tauri/keystroke/Cargo.toml",
+    "tauri/keystroke/src/main.rs",
+    "tauri/package-lock.json",
+    "tauri/package.json",
+    "tauri/src-tauri/Cargo.lock",
+    "tauri/src-tauri/Cargo.toml",
+    "tauri/src-tauri/build.rs",
+    "tauri/src-tauri/capabilities/default.json",
+    "tauri/src-tauri/gen/schemas/acl-manifests.json",
+    "tauri/src-tauri/gen/schemas/capabilities.json",
+    "tauri/src-tauri/gen/schemas/desktop-schema.json",
+    "tauri/src-tauri/gen/schemas/macOS-schema.json",
+    "tauri/src-tauri/icons/128x128.png",
+    "tauri/src-tauri/icons/128x128@2x.png",
+    "tauri/src-tauri/icons/32x32.png",
+    "tauri/src-tauri/icons/64x64.png",
+    "tauri/src-tauri/icons/Square107x107Logo.png",
+    "tauri/src-tauri/icons/Square142x142Logo.png",
+    "tauri/src-tauri/icons/Square150x150Logo.png",
+    "tauri/src-tauri/icons/Square284x284Logo.png",
+    "tauri/src-tauri/icons/Square30x30Logo.png",
+    "tauri/src-tauri/icons/Square310x310Logo.png",
+    "tauri/src-tauri/icons/Square44x44Logo.png",
+    "tauri/src-tauri/icons/Square71x71Logo.png",
+    "tauri/src-tauri/icons/Square89x89Logo.png",
+    "tauri/src-tauri/icons/StoreLogo.png",
+    "tauri/src-tauri/icons/android/mipmap-anydpi-v26/ic_launcher.xml",
+    "tauri/src-tauri/icons/android/mipmap-hdpi/ic_launcher.png",
+    "tauri/src-tauri/icons/android/mipmap-hdpi/ic_launcher_foreground.png",
+    "tauri/src-tauri/icons/android/mipmap-hdpi/ic_launcher_round.png",
+    "tauri/src-tauri/icons/android/mipmap-mdpi/ic_launcher.png",
+    "tauri/src-tauri/icons/android/mipmap-mdpi/ic_launcher_foreground.png",
+    "tauri/src-tauri/icons/android/mipmap-mdpi/ic_launcher_round.png",
+    "tauri/src-tauri/icons/android/mipmap-xhdpi/ic_launcher.png",
+    "tauri/src-tauri/icons/android/mipmap-xhdpi/ic_launcher_foreground.png",
+    "tauri/src-tauri/icons/android/mipmap-xhdpi/ic_launcher_round.png",
+    "tauri/src-tauri/icons/android/mipmap-xxhdpi/ic_launcher.png",
+    "tauri/src-tauri/icons/android/mipmap-xxhdpi/ic_launcher_foreground.png",
+    "tauri/src-tauri/icons/android/mipmap-xxhdpi/ic_launcher_round.png",
+    "tauri/src-tauri/icons/android/mipmap-xxxhdpi/ic_launcher.png",
+    "tauri/src-tauri/icons/android/mipmap-xxxhdpi/ic_launcher_foreground.png",
+    "tauri/src-tauri/icons/android/mipmap-xxxhdpi/ic_launcher_round.png",
+    "tauri/src-tauri/icons/android/values/ic_launcher_background.xml",
+    "tauri/src-tauri/icons/icon.icns",
+    "tauri/src-tauri/icons/icon.ico",
+    "tauri/src-tauri/icons/icon.png",
+    "tauri/src-tauri/icons/ios/AppIcon-20x20@1x.png",
+    "tauri/src-tauri/icons/ios/AppIcon-20x20@2x-1.png",
+    "tauri/src-tauri/icons/ios/AppIcon-20x20@2x.png",
+    "tauri/src-tauri/icons/ios/AppIcon-20x20@3x.png",
+    "tauri/src-tauri/icons/ios/AppIcon-29x29@1x.png",
+    "tauri/src-tauri/icons/ios/AppIcon-29x29@2x-1.png",
+    "tauri/src-tauri/icons/ios/AppIcon-29x29@2x.png",
+    "tauri/src-tauri/icons/ios/AppIcon-29x29@3x.png",
+    "tauri/src-tauri/icons/ios/AppIcon-40x40@1x.png",
+    "tauri/src-tauri/icons/ios/AppIcon-40x40@2x-1.png",
+    "tauri/src-tauri/icons/ios/AppIcon-40x40@2x.png",
+    "tauri/src-tauri/icons/ios/AppIcon-40x40@3x.png",
+    "tauri/src-tauri/icons/ios/AppIcon-512@2x.png",
+    "tauri/src-tauri/icons/ios/AppIcon-60x60@2x.png",
+    "tauri/src-tauri/icons/ios/AppIcon-60x60@3x.png",
+    "tauri/src-tauri/icons/ios/AppIcon-76x76@1x.png",
+    "tauri/src-tauri/icons/ios/AppIcon-76x76@2x.png",
+    "tauri/src-tauri/icons/ios/AppIcon-83.5x83.5@2x.png",
+    "tauri/src-tauri/resources/.gitkeep",
+    "tauri/src-tauri/resources/THIRD_PARTY_NOTICES.md",
+    "tauri/src-tauri/resources/vjoy.sha256",
+    "tauri/src-tauri/splash.html",
+    "tauri/src-tauri/src/lib.rs",
+    "tauri/src-tauri/src/main.rs",
+    "tauri/src-tauri/src/update_flow.rs",
+    "tauri/src-tauri/src/updater.rs",
+    "tauri/src-tauri/tauri.conf.json",
+    "tauri/src-tauri/tauri.updater.conf.json",
+    "tauri/src-tauri/tauri.windows.conf.json",
+    "tauri/src-tauri/windows/installer-hooks.nsh",
+    "tauri/src/index.html",
+    "tauri/virtual_joystick/.gitignore",
+    "tauri/virtual_joystick/Cargo.lock",
+    "tauri/virtual_joystick/Cargo.toml",
+    "tauri/virtual_joystick/src/lib.rs",
+    "tauri/virtual_joystick/src/main.rs",
+    "tauri/virtual_joystick/src/protocol.rs",
+    "tauri/virtual_joystick/src/vjoy.rs",
+    "tauri/virtual_joystick/tests/cli_test.rs",
+    "tauri/virtual_joystick/tests/protocol_test.rs",
+    "test/ci/build_desktop_script_test.exs",
+    "test/ci/burrito_prerequisites_test.exs",
+    "test/ci/desktop_distribution_test.exs",
+    "test/ci/installer_hooks_test.exs",
+    "test/ci/migration_module_isolation_test.exs",
+    "test/ci/nightly_artifacts_test.exs",
+    "test/ci/virtual_joystick_workflow_test.exs",
+    "test/support/avrdude_fixtures.ex",
+    "test/support/conn_case.ex",
+    "test/support/data_case.ex",
+    "test/support/fake_virtual_joystick.exs",
+    "test/support/forbidden_serial.ex",
+    "test/support/migration_module_isolation.ex",
+    "test/support/pubsub_helpers.ex",
+    "test/support/serial_safety_case.ex",
+    "test/support/serial_test_helpers.ex",
+    "test/support/virtual_joystick_fixtures.ex",
+    "test/test_helper.exs",
+    "test/trenino/firmware/avrdude_test.exs",
+    "test/trenino/firmware/board_config_test.exs",
+    "test/trenino/firmware/compatibility_test.exs",
+    "test/trenino/firmware/device_registry_test.exs",
+    "test/trenino/firmware/downloader_test.exs",
+    "test/trenino/firmware/firmware_file_test.exs",
+    "test/trenino/firmware/firmware_release_test.exs",
+    "test/trenino/firmware/release_manifest_integration_test.exs",
+    "test/trenino/firmware/update_checker_test.exs",
+    "test/trenino/firmware/upload_flow_test.exs",
+    "test/trenino/firmware/upload_history_test.exs",
+    "test/trenino/firmware/upload_manager_test.exs",
+    "test/trenino/firmware/uploader_test.exs",
+    "test/trenino/firmware_test.exs",
+    "test/trenino/hardware/calibration/analyzer_test.exs",
+    "test/trenino/hardware/calibration/calculator_test.exs",
+    "test/trenino/hardware/configuration_manager_test.exs",
+    "test/trenino/hardware/ht16k33_test.exs",
+    "test/trenino/hardware/i2c_module_test.exs",
+    "test/trenino/hardware/input_detection_session_test.exs",
+    "test/trenino/hardware/input_test.exs",
+    "test/trenino/hardware/output_test.exs",
+    "test/trenino/hardware_test.exs",
+    "test/trenino/mcp/server_test.exs",
+    "test/trenino/mcp/tool_registry_test.exs",
+    "test/trenino/mcp/tools/button_binding_tools_test.exs",
+    "test/trenino/mcp/tools/detection_tools_test.exs",
+    "test/trenino/mcp/tools/device_tools_test.exs",
+    "test/trenino/mcp/tools/display_binding_tools_test.exs",
+    "test/trenino/mcp/tools/element_tools_test.exs",
+    "test/trenino/mcp/tools/output_binding_tools_test.exs",
+    "test/trenino/mcp/tools/script_tools_test.exs",
+    "test/trenino/mcp/tools/sequence_tools_test.exs",
+    "test/trenino/mcp/tools/simulator_tools_test.exs",
+    "test/trenino/mcp/tools/train_tools_test.exs",
+    "test/trenino/mcp/tools/virtual_joystick_tools_test.exs",
+    "test/trenino/paths_test.exs",
+    "test/trenino/repo/migrations/create_train_identifiers_test.exs",
+    "test/trenino/serial/connection/device_connection_test.exs",
+    "test/trenino/serial/connection/state_test.exs",
+    "test/trenino/serial/connection_port_timeout_test.exs",
+    "test/trenino/serial/connection_test.exs",
+    "test/trenino/serial/discovery_test.exs",
+    "test/trenino/serial/framing_test.exs",
+    "test/trenino/serial/protocol/configure_test.exs",
+    "test/trenino/serial/protocol/module_error_test.exs",
+    "test/trenino/serial/protocol/protocol_test.exs",
+    "test/trenino/serial/protocol/retry_calibration_test.exs",
+    "test/trenino/serial/protocol/set_module_brightness_test.exs",
+    "test/trenino/serial/protocol/write_segments_test.exs",
+    "test/trenino/serial/test_isolation_test.exs",
+    "test/trenino/settings/simulator_test.exs",
+    "test/trenino/settings_test.exs",
+    "test/trenino/simulator/client_test.exs",
+    "test/trenino/simulator/connection_state_test.exs",
+    "test/trenino/simulator/connection_test.exs",
+    "test/trenino/simulator/control_detection_session_test.exs",
+    "test/trenino/simulator/lever_analyzer/analysis_test.exs",
+    "test/trenino/simulator/lever_analyzer_test.exs",
+    "test/trenino/simulator_test.exs",
+    "test/trenino/train/button_controller_test.exs",
+    "test/trenino/train/button_input_binding_test.exs",
+    "test/trenino/train/calibration/lever_session_test.exs",
+    "test/trenino/train/calibration/notch_mapping_session_test.exs",
+    "test/trenino/train/detection_test.exs",
+    "test/trenino/train/display_controller_test.exs",
+    "test/trenino/train/display_formatter_test.exs",
+    "test/trenino/train/identifier_test.exs",
+    "test/trenino/train/lever_controller_test.exs",
+    "test/trenino/train/lever_mapper_test.exs",
+    "test/trenino/train/notch_test.exs",
+    "test/trenino/train/output_binding_context_test.exs",
+    "test/trenino/train/output_binding_test.exs",
+    "test/trenino/train/output_controller_test.exs",
+    "test/trenino/train/script_context_test.exs",
+    "test/trenino/train/script_engine_test.exs",
+    "test/trenino/train/script_runner_test.exs",
+    "test/trenino/train/script_test.exs",
+    "test/trenino/train/train_identifier_matching_test.exs",
+    "test/trenino/train/train_identifier_persistence_test.exs",
+    "test/trenino/train/train_identifier_test.exs",
+    "test/trenino/train_test.exs",
+    "test/trenino/virtual_joystick/bridge_test.exs",
+    "test/trenino/virtual_joystick/configurator_test.exs",
+    "test/trenino/virtual_joystick/installed_helpers_test.exs",
+    "test/trenino/virtual_joystick/manager_test.exs",
+    "test/trenino/virtual_joystick/mapper_test.exs",
+    "test/trenino/virtual_joystick_test.exs",
+    "test/trenino_web/controllers/api/script_controller_test.exs",
+    "test/trenino_web/controllers/api/train_api_controller_test.exs",
+    "test/trenino_web/controllers/error_html_test.exs",
+    "test/trenino_web/controllers/error_json_test.exs",
+    "test/trenino_web/controllers/health_controller_test.exs",
+    "test/trenino_web/controllers/mcp/mcp_controller_test.exs",
+    "test/trenino_web/live/calibration_wizard_test.exs",
+    "test/trenino_web/live/components/configuration_wizard_component_test.exs",
+    "test/trenino_web/live/components/endpoint_selector_component_test.exs",
+    "test/trenino_web/live/components/lever_setup_wizard_test.exs",
+    "test/trenino_web/live/components/sequence_manager_component_test.exs",
+    "test/trenino_web/live/configuration_edit_live_test.exs",
+    "test/trenino_web/live/configuration_list_live_test.exs",
+    "test/trenino_web/live/consent_gate_hook_test.exs",
+    "test/trenino_web/live/consent_live_test.exs",
+    "test/trenino_web/live/display_setup_test.exs",
+    "test/trenino_web/live/matrix_test_wizard_test.exs",
+    "test/trenino_web/live/nav_hook_test.exs",
+    "test/trenino_web/live/settings_live_test.exs",
+    "test/trenino_web/live/train_edit_live_test.exs",
+    "test/trenino_web/live/train_list_live_test.exs",
+    "test/trenino_web/live/virtual_joystick_live_test.exs"
+  ],
+  "review_date": "2026-10-25",
+  "source_branch": "master",
+  "files_count": 530,
+  "objects": {
+    ".claude/agents/elixir-code-architect.md": {
+      "git_blob": "f5ac7de1e38013120f184f892c12eabbd01e161a",
+      "mode": "100644"
+    },
+    ".claude/commands/release.md": {
+      "git_blob": "81770c4d9a07c381108e9cd6623d96e52ea7b775",
+      "mode": "100644"
+    },
+    ".claude/skills/elixir-patterns/SKILL.md": {
+      "git_blob": "112332ffabb70f708fbb4e9693c356bdbceeefcd",
+      "mode": "100644"
+    },
+    ".claude/skills/lua-scripting.md": {
+      "git_blob": "8662e825f72d717f0f5aa9a52db204a1cf3b9e24",
+      "mode": "100644"
+    },
+    ".claude/skills/mimic-testing/SKILL.md": {
+      "git_blob": "792a04af55cf7cf80122f5c563c69e0ad1fd64cc",
+      "mode": "100644"
+    },
+    ".claude/skills/phoenix-liveview/SKILL.md": {
+      "git_blob": "778b327c6cf89c79a6589dd7283aa53779784041",
+      "mode": "100644"
+    },
+    ".claude/skills/train-setup.md": {
+      "git_blob": "b462c5368c838856382371da9fc1f7e57c936f3c",
+      "mode": "100644"
+    },
+    ".claude/skills/trenino-mcp.md": {
+      "git_blob": "b968d48a2a7691f0f62847bdf80f8c3262192e99",
+      "mode": "100644"
+    },
+    ".formatter.exs": {
+      "git_blob": "ef8840ce6fe71ab403968d8811eb94774af61cb8",
+      "mode": "100644"
+    },
+    ".gitattributes": {
+      "git_blob": "d18e5ed7e9e4543a43ff365919b796a5c7799677",
+      "mode": "100644"
+    },
+    ".github/CODEOWNERS": {
+      "git_blob": "7b9dc546b3ad6ee6361fd415b1941bf659275f52",
+      "mode": "100644"
+    },
+    ".github/actions/setup-burrito/action.yml": {
+      "git_blob": "a67f24db65e9020aed7564b0721d286d3e56a406",
+      "mode": "100644"
+    },
+    ".github/dependabot.yml": {
+      "git_blob": "811b639d9a506d94e671956c4bf24426a4b52c2d",
+      "mode": "100644"
+    },
+    ".github/workflows/ci.yml": {
+      "git_blob": "c175bf3962d868f4fe79ff7fcfeaec937f6e96ba",
+      "mode": "100644"
+    },
+    ".github/workflows/claude-code-review.yml": {
+      "git_blob": "4340dd4a505c852abae5ec1fe46ad20d9e2f7b7c",
+      "mode": "100644"
+    },
+    ".github/workflows/claude-weekly-docs.yml": {
+      "git_blob": "e97f294e1b1732a99e97db74e8f49792e4e0b0de",
+      "mode": "100644"
+    },
+    ".github/workflows/claude.yml": {
+      "git_blob": "e35823b3bcd965318a6eda4e93b570ebcebc5058",
+      "mode": "100644"
+    },
+    ".github/workflows/dependabot-analyzer.yml": {
+      "git_blob": "1200c3a1a957d6045deb19b60cdfc4c5282bfd87",
+      "mode": "100644"
+    },
+    ".github/workflows/nightly.yml": {
+      "git_blob": "3169981a010c1f978b291256d62e848dec08d50b",
+      "mode": "100644"
+    },
+    ".github/workflows/release.yml": {
+      "git_blob": "19a3784be7d41ac0f484a5b384cf1935e5ac06d5",
+      "mode": "100644"
+    },
+    ".gitignore": {
+      "git_blob": "a2de034a11fe47c73a0a01c775103fe3c1a2a6a5",
+      "mode": "100644"
+    },
+    ".impeccable/design.json": {
+      "git_blob": "f848004c72893841416d00ab578bbfc7eb54a8c7",
+      "mode": "100644"
+    },
+    ".mcp.json": {
+      "git_blob": "1d6b381cf3e531f75e19f07b1f3241a935aec15e",
+      "mode": "100644"
+    },
+    ".superpowers/sdd/2026-08-01-virtual-joystick/task-10-report.md": {
+      "git_blob": "409148ca1498fab4a6de80b18e0571a1bb850271",
+      "mode": "100644"
+    },
+    ".superpowers/sdd/2026-08-01-virtual-joystick/task-9-report.md": {
+      "git_blob": "f86de7cf6f873e90a788c2c7c6daf8a5755f8b8e",
+      "mode": "100644"
+    },
+    "CHANGELOG.md": {
+      "git_blob": "4d20e98f610c5385d81e2f1f116c0a89d5de4175",
+      "mode": "100644"
+    },
+    "CLAUDE.md": {
+      "git_blob": "2039dc67497f473b0e5a3b6ab2eb720437a5f2e4",
+      "mode": "100644"
+    },
+    "DESIGN.md": {
+      "git_blob": "505ffc66104ac8361806d24eb0002bd8674fb882",
+      "mode": "100644"
+    },
+    "LICENSE": {
+      "git_blob": "4f28ea4e8a94bdff25995b3a76d2edfc43b0f783",
+      "mode": "100644"
+    },
+    "PRODUCT.md": {
+      "git_blob": "f72d3ee3e6b6611e694ea4f3563668002f7d3d4d",
+      "mode": "100644"
+    },
+    "README.md": {
+      "git_blob": "73645ffc695128a67f827967696669c573ba6e69",
+      "mode": "100644"
+    },
+    "assets/css/app.css": {
+      "git_blob": "a4b95cdee4d8e4bc9ce6f15e193bbb48a9bb289d",
+      "mode": "100644"
+    },
+    "assets/js/app.js": {
+      "git_blob": "48bb0a0ad76fbc96312336e1c8e130d5e6360c74",
+      "mode": "100644"
+    },
+    "assets/tsconfig.json": {
+      "git_blob": "a9401b623cb96f3ad31673bdc75f0eee63e15a53",
+      "mode": "100644"
+    },
+    "assets/vendor/daisyui-theme.js": {
+      "git_blob": "169c806a1f5450f5f92e7db72f48221abcef49ae",
+      "mode": "100644"
+    },
+    "assets/vendor/daisyui.js": {
+      "git_blob": "46bf6bf02b5f937f26c12910c27ffbfcdaea5157",
+      "mode": "100644"
+    },
+    "assets/vendor/heroicons.js": {
+      "git_blob": "296f80e48317c65bf1c4d63459a36d07564f7ac6",
+      "mode": "100644"
+    },
+    "assets/vendor/topbar.js": {
+      "git_blob": "0552337c2c45ad1e0908dd17e90008c07c2055fd",
+      "mode": "100644"
+    },
+    "config/config.exs": {
+      "git_blob": "16e4c6ab3d03dd843a0fead821334d9e76c4e9ab",
+      "mode": "100644"
+    },
+    "config/dev.exs": {
+      "git_blob": "3df68adbc47da5b703b108cc8fa021b3a4596c6a",
+      "mode": "100644"
+    },
+    "config/prod.exs": {
+      "git_blob": "3c434cb6f02b13e072cb11115adef8321b8519b2",
+      "mode": "100644"
+    },
+    "config/runtime.exs": {
+      "git_blob": "3aac31e2c8d6ab2acccb96aeb10c49c50f06e934",
+      "mode": "100644"
+    },
+    "config/test.exs": {
+      "git_blob": "ff2b19a0b245645a84174929cfea2c8db842994d",
+      "mode": "100644"
+    },
+    "docs/TSW_API_GUIDE.md": {
+      "git_blob": "e02557222ff04894bb4ea51ddf3fc27dbac0a135",
+      "mode": "100644"
+    },
+    "docs/architecture.md": {
+      "git_blob": "5702af845785897b40611735a4a9481e37249719",
+      "mode": "100644"
+    },
+    "docs/control_auto_suggestion.md": {
+      "git_blob": "033bd4b05d0b1d4c10b79751687b6ae8fcd5472d",
+      "mode": "100644"
+    },
+    "docs/development.md": {
+      "git_blob": "bcce7984e6d78d5a0020a9afde611754109dd5f8",
+      "mode": "100644"
+    },
+    "docs/getting-started.md": {
+      "git_blob": "214cba95f1f3b6600a8228ad0b1f0b9b8a262760",
+      "mode": "100644"
+    },
+    "docs/hardware-setup.md": {
+      "git_blob": "abdf171798cfa163d6656241cfb7431283050094",
+      "mode": "100644"
+    },
+    "docs/lever_input_mapping_architecture.md": {
+      "git_blob": "a8b649145ec33d131f84d31008904a9c9b482faf",
+      "mode": "100644"
+    },
+    "docs/lua-scripting.md": {
+      "git_blob": "a0502d3fba55ca4324d77918e8905bd7885468db",
+      "mode": "100644"
+    },
+    "docs/mcp-setup.md": {
+      "git_blob": "9fe8733ead2a5d7232a6d4379ad07657ce938578",
+      "mode": "100644"
+    },
+    "docs/plans/2026-02-01-mcp-server-design.md": {
+      "git_blob": "7feb7a8c5084de8e4f5ab38a9c444fd1111c5831",
+      "mode": "100644"
+    },
+    "docs/release-readiness.md": {
+      "git_blob": "ff3d886083f637283f524d85189cdabaab5e3f39",
+      "mode": "100644"
+    },
+    "docs/superpowers/plans/2026-05-03-display-ui-improvements.md": {
+      "git_blob": "0013e5928a09b8ce99f60d30636b96e5cff0d927",
+      "mode": "100644"
+    },
+    "docs/superpowers/plans/2026-05-03-error-reporting-consent.md": {
+      "git_blob": "f0d410f7908d4f8f48a375860ec13065c13174cf",
+      "mode": "100644"
+    },
+    "docs/superpowers/plans/2026-05-03-firmware-flashing-robustness.md": {
+      "git_blob": "7fe9ef981122995d892f1bd6cadb35b985f7299f",
+      "mode": "100644"
+    },
+    "docs/superpowers/plans/2026-05-03-firmware-version-compatibility.md": {
+      "git_blob": "85119232773af6bc955a0dc5c7ba7f21cc7bb3b6",
+      "mode": "100644"
+    },
+    "docs/superpowers/plans/2026-05-03-i2c-display-output.md": {
+      "git_blob": "c1ddd305007a5ea20ea7d2c1fe300bfccd353279",
+      "mode": "100644"
+    },
+    "docs/superpowers/plans/2026-05-03-test-suite-cleanup.md": {
+      "git_blob": "e9e4bab43a08ea74529b4c8fe5543eddf45f32c2",
+      "mode": "100644"
+    },
+    "docs/superpowers/plans/2026-08-01-virtual-joystick.md": {
+      "git_blob": "736efbebfd27d051a2d168e60a7d7047319c4a29",
+      "mode": "100644"
+    },
+    "docs/superpowers/plans/2026-08-09-burrito-runner-prerequisites.md": {
+      "git_blob": "c8a9e07e976300488daa59457083582f37abf0cb",
+      "mode": "100644"
+    },
+    "docs/superpowers/plans/2026-08-12-nightly-release-virtual-joystick.md": {
+      "git_blob": "ff0ee91e740a5933bff9f1397730294440d6d05e",
+      "mode": "100644"
+    },
+    "docs/superpowers/plans/2026-09-27-multiple-train-identifiers.md": {
+      "git_blob": "c89f41ffe4cd997ae90d51236f7a062ba1a99855",
+      "mode": "100644"
+    },
+    "docs/superpowers/plans/2026-10-23-release-readiness.md": {
+      "git_blob": "a661d0418e8075060956fbfa017a1a4e2f03957c",
+      "mode": "100644"
+    },
+    "docs/superpowers/plans/2026-10-24-tauri-distribution.md": {
+      "git_blob": "81ef88d91a06c04b4a07d113e4eddb796d1c1767",
+      "mode": "100644"
+    },
+    "docs/superpowers/specs/2026-05-03-display-ui-improvements-design.md": {
+      "git_blob": "53925c296c3648c3e77b3ea8eb8c7a9697032569",
+      "mode": "100644"
+    },
+    "docs/superpowers/specs/2026-05-03-error-reporting-consent-design.md": {
+      "git_blob": "7dc92638f57135e72ac06d12a9d5a40a9a4cb1e5",
+      "mode": "100644"
+    },
+    "docs/superpowers/specs/2026-05-03-firmware-flashing-robustness-design.md": {
+      "git_blob": "041b6282462e8abd44c5998a37b4ee15172feb8c",
+      "mode": "100644"
+    },
+    "docs/superpowers/specs/2026-05-03-firmware-version-compatibility-design.md": {
+      "git_blob": "0b66611b7fd94ce5848951ed864b1c0d9befa60c",
+      "mode": "100644"
+    },
+    "docs/superpowers/specs/2026-05-03-i2c-display-output-design.md": {
+      "git_blob": "f257bd964c8ac4ac4e5b3273503d47a5d86a069c",
+      "mode": "100644"
+    },
+    "docs/superpowers/specs/2026-05-03-test-suite-cleanup-design.md": {
+      "git_blob": "c4e703056bbd6760c38e7195afdec5d05bc02e7b",
+      "mode": "100644"
+    },
+    "docs/superpowers/specs/2026-08-01-virtual-joystick-design.md": {
+      "git_blob": "a0ec80c2938ebcce7127ca2de08298658998c1b7",
+      "mode": "100644"
+    },
+    "docs/superpowers/specs/2026-08-09-burrito-runner-prerequisites-design.md": {
+      "git_blob": "9bcae4f1a3e894a9d1b61efb6438a4b8d42a992e",
+      "mode": "100644"
+    },
+    "docs/superpowers/specs/2026-08-12-nightly-release-virtual-joystick-design.md": {
+      "git_blob": "a445f0ccf0ae0e26e6224025922438e1813a8a44",
+      "mode": "100644"
+    },
+    "docs/superpowers/specs/2026-09-27-multiple-train-identifiers-design.md": {
+      "git_blob": "d8e6bad329e0a7120c08184c61b665532e736435",
+      "mode": "100644"
+    },
+    "docs/superpowers/specs/2026-10-23-release-readiness-design.md": {
+      "git_blob": "738562cbcc28a8e293a6914d5beadfd71ae36bc5",
+      "mode": "100644"
+    },
+    "docs/superpowers/specs/2026-10-24-tauri-distribution-design.md": {
+      "git_blob": "f15e3cf28baf30b4ba45799636ac269f4db8e611",
+      "mode": "100644"
+    },
+    "docs/train-configuration.md": {
+      "git_blob": "36d649e584c9c70a8cd53dccf24bb3e3dc7567f5",
+      "mode": "100644"
+    },
+    "docs/windows-distribution.md": {
+      "git_blob": "40d940acf7644bf60fe02246369c2e3efbf65986",
+      "mode": "100644"
+    },
+    "icon.png": {
+      "git_blob": "279104446bf444f2f852aaf9ed0b14a5f2f33ade",
+      "mode": "100644"
+    },
+    "lib/mix/tasks/keystroke.ex": {
+      "git_blob": "5c20e409fd408577b2af2ab942e30278795c3364",
+      "mode": "100644"
+    },
+    "lib/mix/tasks/version.ex": {
+      "git_blob": "2ab1671930ff4af876fd428ef7671a5eaabafa33",
+      "mode": "100644"
+    },
+    "lib/mix/tasks/virtual_joystick.ex": {
+      "git_blob": "4b5f2702986e53b51240209f904530c2eb6d324a",
+      "mode": "100644"
+    },
+    "lib/trenino.ex": {
+      "git_blob": "754081b63b6b22711b235e4422de067ad737a396",
+      "mode": "100644"
+    },
+    "lib/trenino/app_version.ex": {
+      "git_blob": "23dc18d1183aa2c6490308c3a76e61c15410ffb7",
+      "mode": "100644"
+    },
+    "lib/trenino/app_version/update_checker.ex": {
+      "git_blob": "41994d9bb383eee4f68fcb88a499bc9ccb1f77e7",
+      "mode": "100644"
+    },
+    "lib/trenino/application.ex": {
+      "git_blob": "525c9f201217f82fbf3609ca1490531e87de25c8",
+      "mode": "100644"
+    },
+    "lib/trenino/firmware.ex": {
+      "git_blob": "ebcb837885bc87cedf8b796ffa34ebd43c3b1f49",
+      "mode": "100644"
+    },
+    "lib/trenino/firmware/avrdude.ex": {
+      "git_blob": "8759bebadd150c6810a76d6e93273ff046b446cb",
+      "mode": "100644"
+    },
+    "lib/trenino/firmware/avrdude_runner.ex": {
+      "git_blob": "aca660f2b726708fed8a5383a4ca20a95136774b",
+      "mode": "100644"
+    },
+    "lib/trenino/firmware/board_config.ex": {
+      "git_blob": "08d2755f01f999f4680f48e740ad354ff6c76c85",
+      "mode": "100644"
+    },
+    "lib/trenino/firmware/compatibility.ex": {
+      "git_blob": "9d6b5b4d8fd3e9b8775c358c2392575387e6088a",
+      "mode": "100644"
+    },
+    "lib/trenino/firmware/device_registry.ex": {
+      "git_blob": "5227a51297bf40782739300864e6446c1a53e411",
+      "mode": "100644"
+    },
+    "lib/trenino/firmware/downloader.ex": {
+      "git_blob": "9e5492b01d6e9cbe53f06781914d8aecbc6f17f6",
+      "mode": "100644"
+    },
+    "lib/trenino/firmware/file_path.ex": {
+      "git_blob": "7ecf339651f4ee85d8c83eaf47c6ad91120ae1fb",
+      "mode": "100644"
+    },
+    "lib/trenino/firmware/firmware_file.ex": {
+      "git_blob": "eb31bb63f8dfd15c61c80fbcff383f885d6d0bff",
+      "mode": "100644"
+    },
+    "lib/trenino/firmware/firmware_release.ex": {
+      "git_blob": "e2dca9ec41e14ae0480a20ac8194856b8231c574",
+      "mode": "100644"
+    },
+    "lib/trenino/firmware/update_check.ex": {
+      "git_blob": "2ab9b3574c09d38f86c828cfa08e88aa269ee5f3",
+      "mode": "100644"
+    },
+    "lib/trenino/firmware/update_checker.ex": {
+      "git_blob": "12bae71689d99fe090dedee313fa6cb29e2e4bf7",
+      "mode": "100644"
+    },
+    "lib/trenino/firmware/upload_history.ex": {
+      "git_blob": "5221311c54464d7076dbe87363e9ab4bd4f465d2",
+      "mode": "100644"
+    },
+    "lib/trenino/firmware/upload_manager.ex": {
+      "git_blob": "d092574334dcf6428f4d56b694a8b685400adaa7",
+      "mode": "100644"
+    },
+    "lib/trenino/firmware/uploader.ex": {
+      "git_blob": "f5609a8bd22c89e5bda6325bee131aa8ef92664a",
+      "mode": "100644"
+    },
+    "lib/trenino/hardware.ex": {
+      "git_blob": "730ffcc59bbecd418250860eff8b1b6ccaa06f3e",
+      "mode": "100644"
+    },
+    "lib/trenino/hardware/calibration/analyzer.ex": {
+      "git_blob": "1a69c673eafdcb5fa9fbaafc3d5a7913eb80da48",
+      "mode": "100644"
+    },
+    "lib/trenino/hardware/calibration/analyzer/analysis.ex": {
+      "git_blob": "44a3683866336042a52c0ccd3fce5528e55b5a73",
+      "mode": "100644"
+    },
+    "lib/trenino/hardware/calibration/calculator.ex": {
+      "git_blob": "3767d4f8703df0b0aa346eb976993d9114267a83",
+      "mode": "100644"
+    },
+    "lib/trenino/hardware/calibration/session.ex": {
+      "git_blob": "056fef786b3e3ba6145068e4340cb45dfa763fdc",
+      "mode": "100644"
+    },
+    "lib/trenino/hardware/calibration/session_supervisor.ex": {
+      "git_blob": "dfe50217331e7deb7208dbd73aff1baf8bedcc17",
+      "mode": "100644"
+    },
+    "lib/trenino/hardware/config_id.ex": {
+      "git_blob": "1b288eeadb9a926d0ece6beea425fadbc298b60f",
+      "mode": "100644"
+    },
+    "lib/trenino/hardware/configuration_manager.ex": {
+      "git_blob": "b4812b9fcbd7cee43662bad93de469d496caeb74",
+      "mode": "100644"
+    },
+    "lib/trenino/hardware/device.ex": {
+      "git_blob": "96bf79476ca9ea16bc0004c3e6d8c1630500ffda",
+      "mode": "100644"
+    },
+    "lib/trenino/hardware/ht16k33.ex": {
+      "git_blob": "efd860749e23e2563fef6a10e36a86a8fad60e12",
+      "mode": "100644"
+    },
+    "lib/trenino/hardware/ht16k33/params.ex": {
+      "git_blob": "38d5444e9c2320299f893eedb032ba5bff802335",
+      "mode": "100644"
+    },
+    "lib/trenino/hardware/i2c_module.ex": {
+      "git_blob": "46720d03060a848f5be78c687880cbb92ff4a99c",
+      "mode": "100644"
+    },
+    "lib/trenino/hardware/input.ex": {
+      "git_blob": "ba7b2322a748a7be15b20fed83de6207e3b480ac",
+      "mode": "100644"
+    },
+    "lib/trenino/hardware/input/calibration.ex": {
+      "git_blob": "48fa50d8fc3b0766ba776b4c413260cdc4fac9a3",
+      "mode": "100644"
+    },
+    "lib/trenino/hardware/input/matrix_pin.ex": {
+      "git_blob": "ccf554ae5b81ef774d4f2773b62514a313c35859",
+      "mode": "100644"
+    },
+    "lib/trenino/hardware/input_detection_session.ex": {
+      "git_blob": "42c3a1b5a7dce3caef02c5bf512e19c17c6d2ed8",
+      "mode": "100644"
+    },
+    "lib/trenino/hardware/matrix.ex": {
+      "git_blob": "8eca69996b18671118c9ef6e86e3c2f5629defa3",
+      "mode": "100644"
+    },
+    "lib/trenino/hardware/output.ex": {
+      "git_blob": "818c6356ada89d92f5ca2ea429867efe42749d98",
+      "mode": "100644"
+    },
+    "lib/trenino/keyboard.ex": {
+      "git_blob": "6faed19c9435b9bee4b35b34aa2000b2c785d408",
+      "mode": "100644"
+    },
+    "lib/trenino/mcp/server.ex": {
+      "git_blob": "75dcd39bdce55f0406c444d57b3b78257f3c9ec3",
+      "mode": "100644"
+    },
+    "lib/trenino/mcp/tool_registry.ex": {
+      "git_blob": "ae5d1965229c4c77c57e33a8e945102330bc610a",
+      "mode": "100644"
+    },
+    "lib/trenino/mcp/tools/button_binding_tools.ex": {
+      "git_blob": "869e66139e3be324bf81d3fcffa81fff4c67fcd5",
+      "mode": "100644"
+    },
+    "lib/trenino/mcp/tools/detection_tools.ex": {
+      "git_blob": "b895c786f114b7099d882c2d583b61f810a1444c",
+      "mode": "100644"
+    },
+    "lib/trenino/mcp/tools/device_tools.ex": {
+      "git_blob": "a720055a15995589a44e6bd5c97035859376d679",
+      "mode": "100644"
+    },
+    "lib/trenino/mcp/tools/display_binding_tools.ex": {
+      "git_blob": "aea9b3b7e6137faf8cb8c04204adbba18efc5c40",
+      "mode": "100644"
+    },
+    "lib/trenino/mcp/tools/element_tools.ex": {
+      "git_blob": "04533a7b4d0a09fd63e8e372385ac32f5a11ddbb",
+      "mode": "100644"
+    },
+    "lib/trenino/mcp/tools/output_binding_tools.ex": {
+      "git_blob": "9ad81a2896876d76129bab82b4fe2db97498d6a3",
+      "mode": "100644"
+    },
+    "lib/trenino/mcp/tools/script_tools.ex": {
+      "git_blob": "32a2ddc681b3ddf3f4cf7df38a1a3500968a119d",
+      "mode": "100644"
+    },
+    "lib/trenino/mcp/tools/sequence_tools.ex": {
+      "git_blob": "dcc395ff2a261d00212e29233c1a35f466965006",
+      "mode": "100644"
+    },
+    "lib/trenino/mcp/tools/simulator_tools.ex": {
+      "git_blob": "04f21874583b0017f02a4b3edfd41eafd45c93e0",
+      "mode": "100644"
+    },
+    "lib/trenino/mcp/tools/train_tools.ex": {
+      "git_blob": "0a7cfbb347d504c2e898c8dd8c653d94d2e67659",
+      "mode": "100644"
+    },
+    "lib/trenino/mcp/tools/virtual_joystick_tools.ex": {
+      "git_blob": "50e1fd813c84d5e9bc32ba1af52972659e81619c",
+      "mode": "100644"
+    },
+    "lib/trenino/paths.ex": {
+      "git_blob": "cb0be3d88eae685423962f61fca3ba7cc9c7bf43",
+      "mode": "100644"
+    },
+    "lib/trenino/release.ex": {
+      "git_blob": "ce532120e4df3aaaaaaf39e984b0d9c693bb6380",
+      "mode": "100644"
+    },
+    "lib/trenino/repo.ex": {
+      "git_blob": "73455178bfae4e09ce5a1ac02ba9e635431d29e7",
+      "mode": "100644"
+    },
+    "lib/trenino/serial/connection.ex": {
+      "git_blob": "bf6545cfdd989d5b6ed41e03a56e1ac29c1dea24",
+      "mode": "100644"
+    },
+    "lib/trenino/serial/connection/device_connection.ex": {
+      "git_blob": "f66da96afb22f16a42bc6680f7c91a7e2a4fe882",
+      "mode": "100644"
+    },
+    "lib/trenino/serial/connection/state.ex": {
+      "git_blob": "eea5cfdda5b4e588dc5db70e5f87b5c7368a03e7",
+      "mode": "100644"
+    },
+    "lib/trenino/serial/discovery.ex": {
+      "git_blob": "8490a04b13a5480bf8ba4c13f0608f93aa693f38",
+      "mode": "100644"
+    },
+    "lib/trenino/serial/framing.ex": {
+      "git_blob": "f49c4e90569679b894125f9324f1bff7306a7d36",
+      "mode": "100644"
+    },
+    "lib/trenino/serial/protocol/configuration_error.ex": {
+      "git_blob": "af0933e9b6e213ba3aaa0407846ec0ce98e85b1b",
+      "mode": "100644"
+    },
+    "lib/trenino/serial/protocol/configuration_stored.ex": {
+      "git_blob": "e9eabd13fe915dc4ab8a8cbb171595d8b30736ff",
+      "mode": "100644"
+    },
+    "lib/trenino/serial/protocol/configure.ex": {
+      "git_blob": "b2f3bdc6b739e41a833abf2ca7f412dd40b17013",
+      "mode": "100644"
+    },
+    "lib/trenino/serial/protocol/heartbeat.ex": {
+      "git_blob": "ab0e0ba5073a9e5ed5675d2a8ec83f3905002bb2",
+      "mode": "100644"
+    },
+    "lib/trenino/serial/protocol/identity_request.ex": {
+      "git_blob": "c3798cd390c0158eb1b0230c624ed36ec0a37fc0",
+      "mode": "100644"
+    },
+    "lib/trenino/serial/protocol/identity_response.ex": {
+      "git_blob": "ae658cab508a8d79c922498145caf66d1d85b62a",
+      "mode": "100644"
+    },
+    "lib/trenino/serial/protocol/input_value.ex": {
+      "git_blob": "ac5d3a2293acac6c26f55b800c046914bf9654d7",
+      "mode": "100644"
+    },
+    "lib/trenino/serial/protocol/message.ex": {
+      "git_blob": "358a622fac8d1df919592038f7041b2730202ce8",
+      "mode": "100644"
+    },
+    "lib/trenino/serial/protocol/module_error.ex": {
+      "git_blob": "fe5065fa8d763a3f74c1f50053d890e6157dd4b2",
+      "mode": "100644"
+    },
+    "lib/trenino/serial/protocol/retry_calibration.ex": {
+      "git_blob": "7f3bb4a99bac9590046de137adfb116f789c67ff",
+      "mode": "100644"
+    },
+    "lib/trenino/serial/protocol/set_module_brightness.ex": {
+      "git_blob": "296cad16bfe972870d0ca455ef9bbd35339ac654",
+      "mode": "100644"
+    },
+    "lib/trenino/serial/protocol/set_output.ex": {
+      "git_blob": "fdac714083deb4601e55c4a080b94486f2cd0524",
+      "mode": "100644"
+    },
+    "lib/trenino/serial/protocol/write_segments.ex": {
+      "git_blob": "7d4d148f84e8bbf5416386fb8cf831183f80f84d",
+      "mode": "100644"
+    },
+    "lib/trenino/settings.ex": {
+      "git_blob": "250183fa2134e988f2479ebad918e92c37d2ea78",
+      "mode": "100644"
+    },
+    "lib/trenino/settings/setting.ex": {
+      "git_blob": "a099a0bdfd39ef9eaa2c0fdc813d3317021f5e20",
+      "mode": "100644"
+    },
+    "lib/trenino/settings/simulator.ex": {
+      "git_blob": "c1d84933d8ef3823c5a7e6b01cce3c04892b4139",
+      "mode": "100644"
+    },
+    "lib/trenino/simulator.ex": {
+      "git_blob": "d39536e05e21651216679ad55966bbd0e57d16b3",
+      "mode": "100644"
+    },
+    "lib/trenino/simulator/client.ex": {
+      "git_blob": "04c314a07d226de85bbb147e447672f16e01ff06",
+      "mode": "100644"
+    },
+    "lib/trenino/simulator/connection.ex": {
+      "git_blob": "236023cefbf3b6bf0cd0e13ab0527aaa4f3fcfc7",
+      "mode": "100644"
+    },
+    "lib/trenino/simulator/connection_state.ex": {
+      "git_blob": "b2c02acc43ad60e8536907b76ffe121aac00320a",
+      "mode": "100644"
+    },
+    "lib/trenino/simulator/control_detection_session.ex": {
+      "git_blob": "5250370d82aa4e58dbd47d186bedc699a7da05cc",
+      "mode": "100644"
+    },
+    "lib/trenino/simulator/control_detector.ex": {
+      "git_blob": "09ba4428f4bd41c6471e4128f50f7ab07e1c963a",
+      "mode": "100644"
+    },
+    "lib/trenino/simulator/lever_analyzer.ex": {
+      "git_blob": "c3a61033c80bc79064d087e8d05b3efb664c868a",
+      "mode": "100644"
+    },
+    "lib/trenino/train.ex": {
+      "git_blob": "3cbafece31a9f797a735949e6466a2587eaab11b",
+      "mode": "100644"
+    },
+    "lib/trenino/train/button_controller.ex": {
+      "git_blob": "c963baa355d69c472c936d6a45333373455293df",
+      "mode": "100644"
+    },
+    "lib/trenino/train/button_input_binding.ex": {
+      "git_blob": "b52233d57767f23025dfc9a5e518af6cb0447047",
+      "mode": "100644"
+    },
+    "lib/trenino/train/calibration/lever_session.ex": {
+      "git_blob": "937e3686b5b5699f20e411cb6498467fdc288101",
+      "mode": "100644"
+    },
+    "lib/trenino/train/calibration/notch_mapping_session.ex": {
+      "git_blob": "ce22f3601b3cc6a09039468c3882e573e404a796",
+      "mode": "100644"
+    },
+    "lib/trenino/train/calibration/session_supervisor.ex": {
+      "git_blob": "cc1d251928d4f2eb22342c6d6a822804a36e6167",
+      "mode": "100644"
+    },
+    "lib/trenino/train/detection.ex": {
+      "git_blob": "e91810430b6bbd3b7ff8a27f9c448770562ac5c3",
+      "mode": "100644"
+    },
+    "lib/trenino/train/display_binding.ex": {
+      "git_blob": "4a26005895ebb1e61f1467a5a2cf81628587b409",
+      "mode": "100644"
+    },
+    "lib/trenino/train/display_controller.ex": {
+      "git_blob": "d94ef27c56d610f36316abcc7843e374ff362099",
+      "mode": "100644"
+    },
+    "lib/trenino/train/display_formatter.ex": {
+      "git_blob": "a5d7e7f0fcdd06b7fc4a408ac3651f49c1c48eda",
+      "mode": "100644"
+    },
+    "lib/trenino/train/element.ex": {
+      "git_blob": "c14d0c12230f4058c7dd7d43e57a7a70604ec79e",
+      "mode": "100644"
+    },
+    "lib/trenino/train/identifier.ex": {
+      "git_blob": "906916ba153afda22eaa8db82c737d38f1b5477e",
+      "mode": "100644"
+    },
+    "lib/trenino/train/lever_config.ex": {
+      "git_blob": "5222953591f6011b9557dad481bc4d24d79bdcd7",
+      "mode": "100644"
+    },
+    "lib/trenino/train/lever_controller.ex": {
+      "git_blob": "c555e8ae458c5773c8a6cb1a8ad77c3d95d566c3",
+      "mode": "100644"
+    },
+    "lib/trenino/train/lever_input_binding.ex": {
+      "git_blob": "02d42417c4cfce0c4cf73b24a0ece0d181618d18",
+      "mode": "100644"
+    },
+    "lib/trenino/train/lever_mapper.ex": {
+      "git_blob": "9e295acd11e2d0f0a871d1915ceaa3673b5efe23",
+      "mode": "100644"
+    },
+    "lib/trenino/train/notch.ex": {
+      "git_blob": "02cf59a9088db3b15f39789fe692384ad7a567b3",
+      "mode": "100644"
+    },
+    "lib/trenino/train/output_binding.ex": {
+      "git_blob": "c542dcc695787fa5016cfb177e3e18c435a879b6",
+      "mode": "100644"
+    },
+    "lib/trenino/train/output_controller.ex": {
+      "git_blob": "a30996926c35a812bc836d0bcd7d3fcfa81d794d",
+      "mode": "100644"
+    },
+    "lib/trenino/train/script.ex": {
+      "git_blob": "906018094f67ac9ee8d88dd8dd4d5f4166aafa94",
+      "mode": "100644"
+    },
+    "lib/trenino/train/script/triggers_type.ex": {
+      "git_blob": "fd7481ea1aafdf9522a8c20a0e65ebeb39534538",
+      "mode": "100644"
+    },
+    "lib/trenino/train/script_engine.ex": {
+      "git_blob": "60c19a0cae149fda1cf7993968a00943a3ff9363",
+      "mode": "100644"
+    },
+    "lib/trenino/train/script_runner.ex": {
+      "git_blob": "28920df581f6776edc05fda3ea7c06dd62383d95",
+      "mode": "100644"
+    },
+    "lib/trenino/train/sequence.ex": {
+      "git_blob": "ec0c478006012b2ba7264eba444b2c7ba2bbde5e",
+      "mode": "100644"
+    },
+    "lib/trenino/train/sequence_command.ex": {
+      "git_blob": "32a0ba32b4822783fad15ff3e8b21e0e52796a81",
+      "mode": "100644"
+    },
+    "lib/trenino/train/train.ex": {
+      "git_blob": "8cc04ff7e5db5a24475c2e0cca0a79ba3d5fca12",
+      "mode": "100644"
+    },
+    "lib/trenino/train/train_identifier.ex": {
+      "git_blob": "072c7c3d85cc30f093ec8cd58b58a569e3008206",
+      "mode": "100644"
+    },
+    "lib/trenino/virtual_joystick.ex": {
+      "git_blob": "d8b3142fc9b71d490ce68a05aa8162a2498c16f6",
+      "mode": "100644"
+    },
+    "lib/trenino/virtual_joystick/bridge.ex": {
+      "git_blob": "2480409779aab0587a2b25dc7cb2ce9be6d93a81",
+      "mode": "100644"
+    },
+    "lib/trenino/virtual_joystick/bridge/port_adapter.ex": {
+      "git_blob": "b98143efcb034523951dc29aeae3b892f6809586",
+      "mode": "100644"
+    },
+    "lib/trenino/virtual_joystick/configuration.ex": {
+      "git_blob": "57378d4d84e4b193be3e1c6b3eb37133e383f1aa",
+      "mode": "100644"
+    },
+    "lib/trenino/virtual_joystick/configurator.ex": {
+      "git_blob": "61f296641d610398f1482c9b8f5d317c48e1ca58",
+      "mode": "100644"
+    },
+    "lib/trenino/virtual_joystick/configurator/system_adapter.ex": {
+      "git_blob": "d2861727273e047693c22ef7a2dfd03cf056cf46",
+      "mode": "100644"
+    },
+    "lib/trenino/virtual_joystick/manager.ex": {
+      "git_blob": "9a510e7032267580d6ae0cf0789440bbbb085843",
+      "mode": "100644"
+    },
+    "lib/trenino/virtual_joystick/mapper.ex": {
+      "git_blob": "161daf12fead420b92b313cf392b7f1bb93caaef",
+      "mode": "100644"
+    },
+    "lib/trenino/virtual_joystick/mapping.ex": {
+      "git_blob": "a26ef7db7bc67d2fedd16806d082f0dde9fd6b4f",
+      "mode": "100644"
+    },
+    "lib/trenino/virtual_joystick/platform.ex": {
+      "git_blob": "a20eaca0b6e39be91521019c80abf75f5f706b84",
+      "mode": "100644"
+    },
+    "lib/trenino_web.ex": {
+      "git_blob": "3e17d1d630559be3c72e91316c91fea280bfd9f2",
+      "mode": "100644"
+    },
+    "lib/trenino_web/components/core_components.ex": {
+      "git_blob": "8c4ddb0ee2317f8f09e8d6024e36d664b36b44f5",
+      "mode": "100644"
+    },
+    "lib/trenino_web/components/layouts.ex": {
+      "git_blob": "7c22eba9e05869a7e96822bc9e895dd8dba583ac",
+      "mode": "100644"
+    },
+    "lib/trenino_web/components/layouts/app.html.heex": {
+      "git_blob": "056b35f338c330db0f02b3440e58ba0cc3bad601",
+      "mode": "100644"
+    },
+    "lib/trenino_web/components/layouts/root.html.heex": {
+      "git_blob": "458fa8c0640753451a7f1e8391cd0b7d79425941",
+      "mode": "100644"
+    },
+    "lib/trenino_web/components/nav_components.ex": {
+      "git_blob": "991a34e89d31113e3e11038fa4d5e84244c7830f",
+      "mode": "100644"
+    },
+    "lib/trenino_web/components/shared_components.ex": {
+      "git_blob": "4f63c6d41e29f2aa801b4a0548091d369475bc75",
+      "mode": "100644"
+    },
+    "lib/trenino_web/controllers/api/output_api_controller.ex": {
+      "git_blob": "ac64851e925bc459be26c97997f02741c28ac1f1",
+      "mode": "100644"
+    },
+    "lib/trenino_web/controllers/api/script_controller.ex": {
+      "git_blob": "a0d8198ced46138f53a72944e05a3e0fefe7fbe8",
+      "mode": "100644"
+    },
+    "lib/trenino_web/controllers/api/simulator_api_controller.ex": {
+      "git_blob": "f99807a6c9bb461ef7d6fd8ee9863e50408af88e",
+      "mode": "100644"
+    },
+    "lib/trenino_web/controllers/api/train_api_controller.ex": {
+      "git_blob": "e5d3027df77c189ea750e4fbb171453444ea8106",
+      "mode": "100644"
+    },
+    "lib/trenino_web/controllers/error_html.ex": {
+      "git_blob": "588cc7413c5864b0e5d6be21c2cd81c16ddb0a99",
+      "mode": "100644"
+    },
+    "lib/trenino_web/controllers/error_json.ex": {
+      "git_blob": "e51d5e3679ad1f45a3262e0df12c274ff4e7ab54",
+      "mode": "100644"
+    },
+    "lib/trenino_web/controllers/health_controller.ex": {
+      "git_blob": "9d04478704ef53b0bbd50543f23419bc14cc9513",
+      "mode": "100644"
+    },
+    "lib/trenino_web/controllers/mcp/mcp_controller.ex": {
+      "git_blob": "d549fa34b1b322cf930bc075279ec195590612e3",
+      "mode": "100644"
+    },
+    "lib/trenino_web/controllers/page_controller.ex": {
+      "git_blob": "9719d3525bc3123b10c41e0c66f45708be2c3013",
+      "mode": "100644"
+    },
+    "lib/trenino_web/controllers/page_html.ex": {
+      "git_blob": "037d578072d45c8cdf207a71a5206058ca80ade1",
+      "mode": "100644"
+    },
+    "lib/trenino_web/controllers/page_html/home.html.heex": {
+      "git_blob": "7c49a7dcfee39ae1ae81fdbd26ea177f35587034",
+      "mode": "100644"
+    },
+    "lib/trenino_web/controllers/redirect_controller.ex": {
+      "git_blob": "c8839fef413997f661fbb8d519160c0953e09cbd",
+      "mode": "100644"
+    },
+    "lib/trenino_web/endpoint.ex": {
+      "git_blob": "c9a92710b65abed7b5a46d55e0a76cc197baf105",
+      "mode": "100644"
+    },
+    "lib/trenino_web/gettext.ex": {
+      "git_blob": "a126b03f84e20938dfb6e82df9e636ba4653a38f",
+      "mode": "100644"
+    },
+    "lib/trenino_web/live/calibration_wizard.ex": {
+      "git_blob": "fe3ad691f8bd250d460b5deb80bf89c20d3eaf91",
+      "mode": "100644"
+    },
+    "lib/trenino_web/live/components/api_explorer_component.ex": {
+      "git_blob": "76693a712a0166eef22b520f132050a4ece48b10",
+      "mode": "100644"
+    },
+    "lib/trenino_web/live/components/auto_detect_component.ex": {
+      "git_blob": "2418ea9d7a41cf65abd297b9a1206465e1c9467e",
+      "mode": "100644"
+    },
+    "lib/trenino_web/live/components/configuration_wizard_component.ex": {
+      "git_blob": "4103fd6cc4b5d36e57d11e1e18211a706a673052",
+      "mode": "100644"
+    },
+    "lib/trenino_web/live/components/display_binding_wizard.ex": {
+      "git_blob": "cf27619dd7864dc35350d733ba13090ace71849d",
+      "mode": "100644"
+    },
+    "lib/trenino_web/live/components/endpoint_selector_component.ex": {
+      "git_blob": "a896839f035413fd8ee4104f30174e96ac59c782",
+      "mode": "100644"
+    },
+    "lib/trenino_web/live/components/i2c_module_form_component.ex": {
+      "git_blob": "492e23dbdc68b232c50821d73855eb8d2abe8875",
+      "mode": "100644"
+    },
+    "lib/trenino_web/live/components/lever_setup_wizard.ex": {
+      "git_blob": "45eb306ddddf24bac9a1878b216c135b2818e245",
+      "mode": "100644"
+    },
+    "lib/trenino_web/live/components/lever_visualization.ex": {
+      "git_blob": "7caeb4773dc29ca72651643801b9c0b290294b8e",
+      "mode": "100644"
+    },
+    "lib/trenino_web/live/components/output_binding_wizard.ex": {
+      "git_blob": "0ae0b8a1fbc5f6bdac9ef93269d18ca7da3dea00",
+      "mode": "100644"
+    },
+    "lib/trenino_web/live/components/sequence_manager_component.ex": {
+      "git_blob": "685ae85ad9dfb67d559b7f55c08a220254caf48f",
+      "mode": "100644"
+    },
+    "lib/trenino_web/live/components/virtual_joystick_mapping_form.ex": {
+      "git_blob": "4297b6e4ff05d239b7c140350ce9427c8748e5b4",
+      "mode": "100644"
+    },
+    "lib/trenino_web/live/configuration_edit_live.ex": {
+      "git_blob": "8920bcf78f0abac043bac7509107e5f04dcf183b",
+      "mode": "100644"
+    },
+    "lib/trenino_web/live/configuration_list_live.ex": {
+      "git_blob": "2c0e4009f88afb8a444c2ba9a133b3c250bd56d3",
+      "mode": "100644"
+    },
+    "lib/trenino_web/live/consent_gate_hook.ex": {
+      "git_blob": "492c515f0a5a7ef29c615276f28a327be9a0c628",
+      "mode": "100644"
+    },
+    "lib/trenino_web/live/consent_live.ex": {
+      "git_blob": "bf4448ac96ed87fdd0eb1958f43a1d9096485587",
+      "mode": "100644"
+    },
+    "lib/trenino_web/live/firmware_live.ex": {
+      "git_blob": "cde3ec652795d1a5a8fccde88a1c73eb67dae84e",
+      "mode": "100644"
+    },
+    "lib/trenino_web/live/matrix_test_wizard.ex": {
+      "git_blob": "7bab146839f19d8e198de109ba5e7f1dd3825b85",
+      "mode": "100644"
+    },
+    "lib/trenino_web/live/mcp_detection_hook.ex": {
+      "git_blob": "d9d427ebe2b86e8e112b4f24112c5b3efea695c3",
+      "mode": "100644"
+    },
+    "lib/trenino_web/live/nav_hook.ex": {
+      "git_blob": "33fa0d8f7a0a5f462a40927451abbd102eddb6bd",
+      "mode": "100644"
+    },
+    "lib/trenino_web/live/script_edit_live.ex": {
+      "git_blob": "5a3b32b172eb17c02f7f7ff0303d03d02ff7f906",
+      "mode": "100644"
+    },
+    "lib/trenino_web/live/settings_live.ex": {
+      "git_blob": "6691b48be32a654689982fd070c92328de42a48c",
+      "mode": "100644"
+    },
+    "lib/trenino_web/live/train_edit_live.ex": {
+      "git_blob": "b1d7f6ba1f9e8d36eb794148061cc9f7a5db010e",
+      "mode": "100644"
+    },
+    "lib/trenino_web/live/train_list_live.ex": {
+      "git_blob": "23f56f66922baba826a05b8ea39b3643b8ecb789",
+      "mode": "100644"
+    },
+    "lib/trenino_web/live/virtual_joystick_live.ex": {
+      "git_blob": "65975a60f692c8852c36a2b3fa6b2a4a9b8fcee8",
+      "mode": "100644"
+    },
+    "lib/trenino_web/router.ex": {
+      "git_blob": "c3f44027e64de4e6dd371bbecc6549d4425d0ee7",
+      "mode": "100644"
+    },
+    "lib/trenino_web/router/dev_routes.ex": {
+      "git_blob": "e7b463c58ffaf1ac2e3825f6e1b0ac7f9e77f359",
+      "mode": "100644"
+    },
+    "lib/trenino_web/telemetry.ex": {
+      "git_blob": "c37c88c7b314355ddae02a51c5f87f02605d6a2b",
+      "mode": "100644"
+    },
+    "mise.toml": {
+      "git_blob": "1a05543f7d800120487f740d934cb910057a7172",
+      "mode": "100644"
+    },
+    "mix.exs": {
+      "git_blob": "a49c1ee539d5f6962ab321ad689f317a9815e827",
+      "mode": "100644"
+    },
+    "mix.lock": {
+      "git_blob": "5a5b942a3fb9cfeba57d79e16e28b8811db15919",
+      "mode": "100644"
+    },
+    "priv/gettext/en/LC_MESSAGES/errors.po": {
+      "git_blob": "844c4f5cea7b7d15edcafcfa1c45a820b4724ea2",
+      "mode": "100644"
+    },
+    "priv/gettext/errors.pot": {
+      "git_blob": "eef2de2ba4d91adb99805c4fe43e0c7fb8891637",
+      "mode": "100644"
+    },
+    "priv/repo/migrations/.formatter.exs": {
+      "git_blob": "49f9151ed22c4d59136609119e01e3a8f75ab6d6",
+      "mode": "100644"
+    },
+    "priv/repo/migrations/20251124203623_create_devices.exs": {
+      "git_blob": "628506458606b63ef3653e788ccdbae63a28ac2a",
+      "mode": "100644"
+    },
+    "priv/repo/migrations/20251124204015_create_device_inputs.exs": {
+      "git_blob": "568a99ec036928d441066ad822e286c09321f6f9",
+      "mode": "100644"
+    },
+    "priv/repo/migrations/20251124212404_create_device_input_calibrations.exs": {
+      "git_blob": "fa611804151edeecb681a2a1393c71e6da51996b",
+      "mode": "100644"
+    },
+    "priv/repo/migrations/20251128125215_add_config_id_to_devices.exs": {
+      "git_blob": "8382936b88938a39f06985cb54103bc56306ffa9",
+      "mode": "100644"
+    },
+    "priv/repo/migrations/20251129103558_create_simulator_configs.exs": {
+      "git_blob": "5be34f7620f3aadc5dcc9814291f7dda458a95da",
+      "mode": "100644"
+    },
+    "priv/repo/migrations/20251129111518_make_config_id_required_add_description.exs": {
+      "git_blob": "c7a9d97e892bada3f36f4d3d5b4c7308f0893f3d",
+      "mode": "100644"
+    },
+    "priv/repo/migrations/20251129112341_populate_missing_config_ids.exs": {
+      "git_blob": "af97aec54fd20f3308c2492ccb8e426a5aeb7019",
+      "mode": "100644"
+    },
+    "priv/repo/migrations/20251129192949_create_trains.exs": {
+      "git_blob": "0100465e5168a6098589b8d253620a6c56a6e1f7",
+      "mode": "100644"
+    },
+    "priv/repo/migrations/20251129193005_create_train_elements.exs": {
+      "git_blob": "7a0029cd445f07ff0a8f43d9b56a3f5225c7b710",
+      "mode": "100644"
+    },
+    "priv/repo/migrations/20251129193018_create_train_lever_configs.exs": {
+      "git_blob": "5fd34c84c5256ad7d47502988276f8d991783e23",
+      "mode": "100644"
+    },
+    "priv/repo/migrations/20251129193032_create_train_lever_notches.exs": {
+      "git_blob": "0c61896ecce14065508d627ae641534a578fbc8a",
+      "mode": "100644"
+    },
+    "priv/repo/migrations/20251207184747_create_lever_input_bindings.exs": {
+      "git_blob": "0aef45cd2f2089920b530ae1f82020f2c340a4a6",
+      "mode": "100644"
+    },
+    "priv/repo/migrations/20251210154430_create_firmware_tables.exs": {
+      "git_blob": "a7361d735f616579f09898f2070877ce6594e8df",
+      "mode": "100644"
+    },
+    "priv/repo/migrations/20251210165321_create_firmware_update_checks.exs": {
+      "git_blob": "d236eec8c961a3b218c0214ada3112e1f697acd6",
+      "mode": "100644"
+    },
+    "priv/repo/migrations/20251210215004_remove_firmware_download_tracking.exs": {
+      "git_blob": "2078346e45b5e8d6804a05f5e42c2de68cc874ff",
+      "mode": "100644"
+    },
+    "priv/repo/migrations/20251216212504_add_button_matrix_input_types.exs": {
+      "git_blob": "b93bb283e15fe54ee0dc2b7672e3f15f19b29045",
+      "mode": "100644"
+    },
+    "priv/repo/migrations/20251216220651_create_button_input_bindings.exs": {
+      "git_blob": "b7c89b9363525c88e1863be13adff425da59c967",
+      "mode": "100644"
+    },
+    "priv/repo/migrations/20251220183323_create_device_outputs.exs": {
+      "git_blob": "e95bd77525903720404150b6220f42b7f024da67",
+      "mode": "100644"
+    },
+    "priv/repo/migrations/20251221173532_allow_nullable_pin_for_matrix_inputs.exs": {
+      "git_blob": "b7930aa096d0ee652e7b588f4c19412404501b5e",
+      "mode": "100644"
+    },
+    "priv/repo/migrations/20251221194910_add_virtual_pin_to_button_bindings.exs": {
+      "git_blob": "4b1ea811244031b6af7751d2db1e7727bcdc4159",
+      "mode": "100644"
+    },
+    "priv/repo/migrations/20251223103929_add_mode_to_button_bindings.exs": {
+      "git_blob": "b86c3742e0531db48880ae0070b77bce98500ced",
+      "mode": "100644"
+    },
+    "priv/repo/migrations/20251223111818_create_sequences.exs": {
+      "git_blob": "bf6f07fc2e1b0a7f1a87cff0ca837048fda1a8ac",
+      "mode": "100644"
+    },
+    "priv/repo/migrations/20251223112836_allow_null_endpoint_for_sequences.exs": {
+      "git_blob": "f9e8db51283c255a7b1d5a9611ddb880b9c4fc27",
+      "mode": "100644"
+    },
+    "priv/repo/migrations/20251223210242_refactor_matrix_to_separate_entity.exs": {
+      "git_blob": "92246133d3506b63b46e056b25054d1ae3cf3f64",
+      "mode": "100644"
+    },
+    "priv/repo/migrations/20251223214615_add_lever_type_to_lever_configs.exs": {
+      "git_blob": "ed379fdb8c2d6da51386bf4f8218e5b31a36c1dc",
+      "mode": "100644"
+    },
+    "priv/repo/migrations/20260101201704_add_sim_input_range_to_notches.exs": {
+      "git_blob": "cf8b2182919aa27844cd3faa4bd903b3ed2a76e9",
+      "mode": "100644"
+    },
+    "priv/repo/migrations/20260103114839_add_inverted_to_lever_configs.exs": {
+      "git_blob": "6fdce15cd2db7b0bcc29f7542f6829c06a0a1229",
+      "mode": "100644"
+    },
+    "priv/repo/migrations/20260103194112_add_keystroke_to_button_bindings.exs": {
+      "git_blob": "c3f0a616fc90b6ccc33f2eedcc4116235f745a30",
+      "mode": "100644"
+    },
+    "priv/repo/migrations/20260106154322_remove_nano_old_bootloader_firmware.exs": {
+      "git_blob": "c163f42f3a548e4c354ed77fcb2eacba5ef12c02",
+      "mode": "100644"
+    },
+    "priv/repo/migrations/20260107181338_create_train_output_bindings.exs": {
+      "git_blob": "6241e101701a5563f2e825cfdf66cdfccbf84eea",
+      "mode": "100644"
+    },
+    "priv/repo/migrations/20260107220815_allow_nullable_value_a_for_boolean_operators.exs": {
+      "git_blob": "3a4269990d1e42f8c6619da2c61dbae6bc8fd929",
+      "mode": "100644"
+    },
+    "priv/repo/migrations/20260117101411_add_manifest_support.exs": {
+      "git_blob": "f7fa3a270cd7d0849b892743af51fb9ab24a071d",
+      "mode": "100644"
+    },
+    "priv/repo/migrations/20260201154004_create_scripts.exs": {
+      "git_blob": "6af4f7723fd67c5ce4e48fa42e3fb8fe77240bfb",
+      "mode": "100644"
+    },
+    "priv/repo/migrations/20260503000000_remove_bldc_support.exs": {
+      "git_blob": "29c7492ed8391b42fcfb495441d4193c6dd2f9e4",
+      "mode": "100644"
+    },
+    "priv/repo/migrations/20260503101628_create_app_settings.exs": {
+      "git_blob": "ced77f0d4e57afe8b7cc934f79af440339653ed1",
+      "mode": "100644"
+    },
+    "priv/repo/migrations/20260503114723_migrate_simulator_configs_to_app_settings.exs": {
+      "git_blob": "b36252e636ba18940acaac789208358048ae803a",
+      "mode": "100644"
+    },
+    "priv/repo/migrations/20260503200000_create_device_i2c_modules.exs": {
+      "git_blob": "052f736acf8ef5b58fce6f2962f4c3711e153093",
+      "mode": "100644"
+    },
+    "priv/repo/migrations/20260503200001_create_train_display_bindings.exs": {
+      "git_blob": "b73b58e4f0463e19c75fca584688c5af9ee62946",
+      "mode": "100644"
+    },
+    "priv/repo/migrations/20260503220000_i2c_module_params.exs": {
+      "git_blob": "7ff7aa20adcf39b982abb677eaa0095030d33b4e",
+      "mode": "100644"
+    },
+    "priv/repo/migrations/20260801000000_create_virtual_joystick_tables.exs": {
+      "git_blob": "061b3171a7f03ac1d8def8b46d2f3d7bb1ff4772",
+      "mode": "100644"
+    },
+    "priv/repo/migrations/20260927000000_create_train_identifiers.exs": {
+      "git_blob": "3047f982c4972ddac5f1690ba7c84462597be01b",
+      "mode": "100644"
+    },
+    "priv/repo/seeds.exs": {
+      "git_blob": "4a825fe75b6fe2e07f64a5d323520cd01a2d26cd",
+      "mode": "100644"
+    },
+    "priv/static/favicon.ico": {
+      "git_blob": "7f372bfc21cdd8cb47585339d5fa4d9dd424402f",
+      "mode": "100644"
+    },
+    "priv/static/images/logo.svg": {
+      "git_blob": "9f26babac25b9f22a523ea81335cf5a9559f373c",
+      "mode": "100644"
+    },
+    "priv/static/robots.txt": {
+      "git_blob": "26e06b5f19e872df2c99ee3b1c072e65b8ee7fd7",
+      "mode": "100644"
+    },
+    "scripts/build-desktop.sh": {
+      "git_blob": "21e3e197a6fc6799606798cf334558d127ddffe4",
+      "mode": "100755"
+    },
+    "scripts/build-macos.sh": {
+      "git_blob": "984415afb7cf0a230f5726743d7cbc7bbbea58c4",
+      "mode": "100755"
+    },
+    "scripts/download-avrdude.ps1": {
+      "git_blob": "7715fd91a3f25382625aa6c469e4934fc9246807",
+      "mode": "100644"
+    },
+    "scripts/download-vjoy.ps1": {
+      "git_blob": "edb40c1abc4cd1ffc19422396ed27f3fde86c8f3",
+      "mode": "100644"
+    },
+    "scripts/setup-updater-signing.ps1": {
+      "git_blob": "8048acc976b2a2a078413d94af7bb784a362ede8",
+      "mode": "100644"
+    },
+    "scripts/stage-vjoy-resources.ps1": {
+      "git_blob": "c842b7bc28cfe06de078074354f431063aef4324",
+      "mode": "100644"
+    },
+    "scripts/test-updater-signing.ps1": {
+      "git_blob": "1694de6ff57d2630166db55e71acba40d0612065",
+      "mode": "100644"
+    },
+    "scripts/update-version.sh": {
+      "git_blob": "2539cd3f5995c8221d22b0c66d3fcc64c7d0be9d",
+      "mode": "100755"
+    },
+    "scripts/updater-signature-verifier/.gitignore": {
+      "git_blob": "b83d22266ac8aa2f8df2edef68082c789727841d",
+      "mode": "100644"
+    },
+    "scripts/updater-signature-verifier/Cargo.lock": {
+      "git_blob": "635b95946e646bfa883df9e8546398d676c151d7",
+      "mode": "100644"
+    },
+    "scripts/updater-signature-verifier/Cargo.toml": {
+      "git_blob": "eed08e429f1f565f71109509219b85353b776e52",
+      "mode": "100644"
+    },
+    "scripts/updater-signature-verifier/src/main.rs": {
+      "git_blob": "2f780bde2f8b36837af476e0d8b756a35afddddb",
+      "mode": "100644"
+    },
+    "tauri/keystroke/Cargo.lock": {
+      "git_blob": "a3aee70546379e1ea272133bab5520c68d61825c",
+      "mode": "100644"
+    },
+    "tauri/keystroke/Cargo.toml": {
+      "git_blob": "2ba5bd98c2c7f55b545ea502eab678204def7129",
+      "mode": "100644"
+    },
+    "tauri/keystroke/src/main.rs": {
+      "git_blob": "0b28df660415a934bdbaf034142d407ef08571a6",
+      "mode": "100644"
+    },
+    "tauri/package-lock.json": {
+      "git_blob": "69bd357c16ac8812254093f8f4ca20d4d2be24ca",
+      "mode": "100644"
+    },
+    "tauri/package.json": {
+      "git_blob": "6904a4e1dff2df5acf25333166d48a4f0f8cfc55",
+      "mode": "100644"
+    },
+    "tauri/src-tauri/Cargo.lock": {
+      "git_blob": "aa4b82c21ee4cc8fa1919fbc11606ed9d5932831",
+      "mode": "100644"
+    },
+    "tauri/src-tauri/Cargo.toml": {
+      "git_blob": "87135f646cf86240fb85dbe8b2afc23e8ea0b647",
+      "mode": "100644"
+    },
+    "tauri/src-tauri/build.rs": {
+      "git_blob": "d860e1e6a7cac333c3cc0bc9cb67faf286b07d69",
+      "mode": "100644"
+    },
+    "tauri/src-tauri/capabilities/default.json": {
+      "git_blob": "80862df0d95db47053a24f394ae4851376354431",
+      "mode": "100644"
+    },
+    "tauri/src-tauri/gen/schemas/acl-manifests.json": {
+      "git_blob": "491ab894e52abdec70c7eedb38bbfc0f7bbb459d",
+      "mode": "100644"
+    },
+    "tauri/src-tauri/gen/schemas/capabilities.json": {
+      "git_blob": "1870d89aa2a5d91f9b3032a260040154cb784452",
+      "mode": "100644"
+    },
+    "tauri/src-tauri/gen/schemas/desktop-schema.json": {
+      "git_blob": "712793af11c2476a0a17db23ebbc4d8a6cf02024",
+      "mode": "100644"
+    },
+    "tauri/src-tauri/gen/schemas/macOS-schema.json": {
+      "git_blob": "712793af11c2476a0a17db23ebbc4d8a6cf02024",
+      "mode": "100644"
+    },
+    "tauri/src-tauri/icons/128x128.png": {
+      "git_blob": "279104446bf444f2f852aaf9ed0b14a5f2f33ade",
+      "mode": "100644"
+    },
+    "tauri/src-tauri/icons/128x128@2x.png": {
+      "git_blob": "afdc5f3bd37cdd1f1d3b5dd6aa904f91debeb2bc",
+      "mode": "100644"
+    },
+    "tauri/src-tauri/icons/32x32.png": {
+      "git_blob": "65b9988cc80af1c397ffd6818c570fa6264d4cfd",
+      "mode": "100644"
+    },
+    "tauri/src-tauri/icons/64x64.png": {
+      "git_blob": "b3fbb0af7360cf38e3baaaee97d0b7376f9671c4",
+      "mode": "100644"
+    },
+    "tauri/src-tauri/icons/Square107x107Logo.png": {
+      "git_blob": "90846768ddb2b0e6f6eca45060681c541dc2591a",
+      "mode": "100644"
+    },
+    "tauri/src-tauri/icons/Square142x142Logo.png": {
+      "git_blob": "837897808d61da6969af3799499a0e2097a8a546",
+      "mode": "100644"
+    },
+    "tauri/src-tauri/icons/Square150x150Logo.png": {
+      "git_blob": "0b913235e53e4122d649fc53cca89b546b8a22d2",
+      "mode": "100644"
+    },
+    "tauri/src-tauri/icons/Square284x284Logo.png": {
+      "git_blob": "0d8a75ff5c2074ccb4cd1232404482a8868e0618",
+      "mode": "100644"
+    },
+    "tauri/src-tauri/icons/Square30x30Logo.png": {
+      "git_blob": "760d0eb03d118249110460a422a36c4d9ffeee92",
+      "mode": "100644"
+    },
+    "tauri/src-tauri/icons/Square310x310Logo.png": {
+      "git_blob": "d2f00126632cd43ef6a0278f6fd6064dc325b67b",
+      "mode": "100644"
+    },
+    "tauri/src-tauri/icons/Square44x44Logo.png": {
+      "git_blob": "eb6be9fdcea33ea79796f99b1aad948a9c3a85d0",
+      "mode": "100644"
+    },
+    "tauri/src-tauri/icons/Square71x71Logo.png": {
+      "git_blob": "0631635b375dd98927d5227e7bd8bcfd6b680b23",
+      "mode": "100644"
+    },
+    "tauri/src-tauri/icons/Square89x89Logo.png": {
+      "git_blob": "0f5dd48565259eefc7d55671c95e6587072313f9",
+      "mode": "100644"
+    },
+    "tauri/src-tauri/icons/StoreLogo.png": {
+      "git_blob": "7f3616a045a45635190ba67c6fa4e8cd838af85c",
+      "mode": "100644"
+    },
+    "tauri/src-tauri/icons/android/mipmap-anydpi-v26/ic_launcher.xml": {
+      "git_blob": "2ffbf24b68988bd935f5c695a59753fcb1a5de0e",
+      "mode": "100644"
+    },
+    "tauri/src-tauri/icons/android/mipmap-hdpi/ic_launcher.png": {
+      "git_blob": "0eff02328dbb7b12e7f3306ceff4fb76a38ef4b2",
+      "mode": "100644"
+    },
+    "tauri/src-tauri/icons/android/mipmap-hdpi/ic_launcher_foreground.png": {
+      "git_blob": "12a1a9ef1aa8fd2a301023f07994b4d9e148a51b",
+      "mode": "100644"
+    },
+    "tauri/src-tauri/icons/android/mipmap-hdpi/ic_launcher_round.png": {
+      "git_blob": "2a6154f30e01557fc62249d4250b01677a6a098b",
+      "mode": "100644"
+    },
+    "tauri/src-tauri/icons/android/mipmap-mdpi/ic_launcher.png": {
+      "git_blob": "232e4a8f5c8be532e83b3180af8246ab46127a01",
+      "mode": "100644"
+    },
+    "tauri/src-tauri/icons/android/mipmap-mdpi/ic_launcher_foreground.png": {
+      "git_blob": "fcae7d0e41603348933c397d1e0d2c1f8a18dfe1",
+      "mode": "100644"
+    },
+    "tauri/src-tauri/icons/android/mipmap-mdpi/ic_launcher_round.png": {
+      "git_blob": "0660848c5a991de431d3c573c07f1f99cbf8eda7",
+      "mode": "100644"
+    },
+    "tauri/src-tauri/icons/android/mipmap-xhdpi/ic_launcher.png": {
+      "git_blob": "02f6825346d205f9b70a8b77fe3a94ed6fed5424",
+      "mode": "100644"
+    },
+    "tauri/src-tauri/icons/android/mipmap-xhdpi/ic_launcher_foreground.png": {
+      "git_blob": "851541e82b0b0b003dfc9f0c96a5ac1473e015ec",
+      "mode": "100644"
+    },
+    "tauri/src-tauri/icons/android/mipmap-xhdpi/ic_launcher_round.png": {
+      "git_blob": "35a4dd35ba969d9b1f4c7c6a44c69895e285b0c3",
+      "mode": "100644"
+    },
+    "tauri/src-tauri/icons/android/mipmap-xxhdpi/ic_launcher.png": {
+      "git_blob": "41d5a0caedaf60ede9b731bd31a683eb3c33550b",
+      "mode": "100644"
+    },
+    "tauri/src-tauri/icons/android/mipmap-xxhdpi/ic_launcher_foreground.png": {
+      "git_blob": "f877f9f971ae178355d94e09d4f387fa6a80b52e",
+      "mode": "100644"
+    },
+    "tauri/src-tauri/icons/android/mipmap-xxhdpi/ic_launcher_round.png": {
+      "git_blob": "8cfb6c1f0e6dfee0d4d84759cefe7af39228a1c3",
+      "mode": "100644"
+    },
+    "tauri/src-tauri/icons/android/mipmap-xxxhdpi/ic_launcher.png": {
+      "git_blob": "2a518e8e10374705a6d47ec9f5fab7a588811f08",
+      "mode": "100644"
+    },
+    "tauri/src-tauri/icons/android/mipmap-xxxhdpi/ic_launcher_foreground.png": {
+      "git_blob": "13a71b12c811c56effbd370660ae1df73bb36a55",
+      "mode": "100644"
+    },
+    "tauri/src-tauri/icons/android/mipmap-xxxhdpi/ic_launcher_round.png": {
+      "git_blob": "5d7a52ed9c763d7e238199477d3a8008e7433e04",
+      "mode": "100644"
+    },
+    "tauri/src-tauri/icons/android/values/ic_launcher_background.xml": {
+      "git_blob": "ea9c223a6cbab0465000584a9d5dd052adffe3c2",
+      "mode": "100644"
+    },
+    "tauri/src-tauri/icons/icon.icns": {
+      "git_blob": "8e0bf455c4574154da7d1d899fc3676814e73448",
+      "mode": "100644"
+    },
+    "tauri/src-tauri/icons/icon.ico": {
+      "git_blob": "63def9fb6d746f85f9880155217b5bcac02532c5",
+      "mode": "100644"
+    },
+    "tauri/src-tauri/icons/icon.png": {
+      "git_blob": "ef6c032834ac1be05c6cdf1ba2ef0bea1f41df33",
+      "mode": "100644"
+    },
+    "tauri/src-tauri/icons/ios/AppIcon-20x20@1x.png": {
+      "git_blob": "7187c6a2e4ce71068b9f93cb352f55fdafaba63d",
+      "mode": "100644"
+    },
+    "tauri/src-tauri/icons/ios/AppIcon-20x20@2x-1.png": {
+      "git_blob": "ad74c377821bea2510cb66444e8303d69035573a",
+      "mode": "100644"
+    },
+    "tauri/src-tauri/icons/ios/AppIcon-20x20@2x.png": {
+      "git_blob": "ad74c377821bea2510cb66444e8303d69035573a",
+      "mode": "100644"
+    },
+    "tauri/src-tauri/icons/ios/AppIcon-20x20@3x.png": {
+      "git_blob": "acc1c994d60aef3663243a67bb7e14aed6131b7f",
+      "mode": "100644"
+    },
+    "tauri/src-tauri/icons/ios/AppIcon-29x29@1x.png": {
+      "git_blob": "9df6263e80ad050f05a52e7a0cae42693ca073c7",
+      "mode": "100644"
+    },
+    "tauri/src-tauri/icons/ios/AppIcon-29x29@2x-1.png": {
+      "git_blob": "c8477e4861b229bd6820b3d9e4173eb4772de942",
+      "mode": "100644"
+    },
+    "tauri/src-tauri/icons/ios/AppIcon-29x29@2x.png": {
+      "git_blob": "c8477e4861b229bd6820b3d9e4173eb4772de942",
+      "mode": "100644"
+    },
+    "tauri/src-tauri/icons/ios/AppIcon-29x29@3x.png": {
+      "git_blob": "593f6edf00199fde2611e2adb701fdcfd447402e",
+      "mode": "100644"
+    },
+    "tauri/src-tauri/icons/ios/AppIcon-40x40@1x.png": {
+      "git_blob": "ad74c377821bea2510cb66444e8303d69035573a",
+      "mode": "100644"
+    },
+    "tauri/src-tauri/icons/ios/AppIcon-40x40@2x-1.png": {
+      "git_blob": "27e8da6df0905e21c32abaeebd1b056cd1c2855b",
+      "mode": "100644"
+    },
+    "tauri/src-tauri/icons/ios/AppIcon-40x40@2x.png": {
+      "git_blob": "27e8da6df0905e21c32abaeebd1b056cd1c2855b",
+      "mode": "100644"
+    },
+    "tauri/src-tauri/icons/ios/AppIcon-40x40@3x.png": {
+      "git_blob": "5c8e4bc5dcc17a2b077b3bfc242351e886221edd",
+      "mode": "100644"
+    },
+    "tauri/src-tauri/icons/ios/AppIcon-512@2x.png": {
+      "git_blob": "db16a17c9488876b5ba0473900c6fcd3e462a050",
+      "mode": "100644"
+    },
+    "tauri/src-tauri/icons/ios/AppIcon-60x60@2x.png": {
+      "git_blob": "5c8e4bc5dcc17a2b077b3bfc242351e886221edd",
+      "mode": "100644"
+    },
+    "tauri/src-tauri/icons/ios/AppIcon-60x60@3x.png": {
+      "git_blob": "f27a05f4f35cdab611e2402fa85358fa54722291",
+      "mode": "100644"
+    },
+    "tauri/src-tauri/icons/ios/AppIcon-76x76@1x.png": {
+      "git_blob": "ed53bb97a779a2195ba85c10110944cd8bb65db0",
+      "mode": "100644"
+    },
+    "tauri/src-tauri/icons/ios/AppIcon-76x76@2x.png": {
+      "git_blob": "399b995ce927978b4e98ed3e335ef9f7bf6715b4",
+      "mode": "100644"
+    },
+    "tauri/src-tauri/icons/ios/AppIcon-83.5x83.5@2x.png": {
+      "git_blob": "ea99fd0ca023971caccea3f786a4e6b10ea26aca",
+      "mode": "100644"
+    },
+    "tauri/src-tauri/resources/.gitkeep": {
+      "git_blob": "e69de29bb2d1d6434b8b29ae775ad8c2e48c5391",
+      "mode": "100644"
+    },
+    "tauri/src-tauri/resources/THIRD_PARTY_NOTICES.md": {
+      "git_blob": "2f91acb2f874befe215dd699f0bc0432b63d87d9",
+      "mode": "100644"
+    },
+    "tauri/src-tauri/resources/vjoy.sha256": {
+      "git_blob": "80d96eea439a5007b3816b654570580e3ac83ed2",
+      "mode": "100644"
+    },
+    "tauri/src-tauri/splash.html": {
+      "git_blob": "7ffac9996371f162a949035979e7ba4a52c319ea",
+      "mode": "100644"
+    },
+    "tauri/src-tauri/src/lib.rs": {
+      "git_blob": "c9ecbc58b8e0bc9d5bdf9abd5741fa9f8416952c",
+      "mode": "100644"
+    },
+    "tauri/src-tauri/src/main.rs": {
+      "git_blob": "8e1e04d956ccbe15b85cce4292870998183c70e9",
+      "mode": "100644"
+    },
+    "tauri/src-tauri/src/update_flow.rs": {
+      "git_blob": "0f59eb00a6354f4d010a84716841881193dbdc13",
+      "mode": "100644"
+    },
+    "tauri/src-tauri/src/updater.rs": {
+      "git_blob": "1c65df7bd23ea1f6fc706fa573ec62d9b84b42c3",
+      "mode": "100644"
+    },
+    "tauri/src-tauri/tauri.conf.json": {
+      "git_blob": "0427b3f4a52fa3904433aa014343520c3b682325",
+      "mode": "100644"
+    },
+    "tauri/src-tauri/tauri.updater.conf.json": {
+      "git_blob": "d57cd0028f324d4730f002ed5d42e7b25c174e96",
+      "mode": "100644"
+    },
+    "tauri/src-tauri/tauri.windows.conf.json": {
+      "git_blob": "34e9ed9d063cb91a13010f44f764ca7b9857387a",
+      "mode": "100644"
+    },
+    "tauri/src-tauri/windows/installer-hooks.nsh": {
+      "git_blob": "6c7bf7bf399e599688dcf8c2cefdf210a2026032",
+      "mode": "100644"
+    },
+    "tauri/src/index.html": {
+      "git_blob": "0d150f03df93dc2d6cffef560f8d1072b367c4eb",
+      "mode": "100644"
+    },
+    "tauri/virtual_joystick/.gitignore": {
+      "git_blob": "b83d22266ac8aa2f8df2edef68082c789727841d",
+      "mode": "100644"
+    },
+    "tauri/virtual_joystick/Cargo.lock": {
+      "git_blob": "97920fa346972447fa5d9b15e1bde83b7fc2a467",
+      "mode": "100644"
+    },
+    "tauri/virtual_joystick/Cargo.toml": {
+      "git_blob": "288f0b85b9bc7a145fc4081564ac4b563f314354",
+      "mode": "100644"
+    },
+    "tauri/virtual_joystick/src/lib.rs": {
+      "git_blob": "07a2c3ef696ba16b3f71334fa4a2c6a1d2cfa625",
+      "mode": "100644"
+    },
+    "tauri/virtual_joystick/src/main.rs": {
+      "git_blob": "74ab0d7ba08a1957823125d0c4e678284c93f5a5",
+      "mode": "100644"
+    },
+    "tauri/virtual_joystick/src/protocol.rs": {
+      "git_blob": "16e62de5e1486faefe9ed8207d7d07654ff4df79",
+      "mode": "100644"
+    },
+    "tauri/virtual_joystick/src/vjoy.rs": {
+      "git_blob": "8339db3256498f3e82aceaf747f6fb55fe7099e4",
+      "mode": "100644"
+    },
+    "tauri/virtual_joystick/tests/cli_test.rs": {
+      "git_blob": "6e144cdbccdc3733120fe6b3db07ab325d80c513",
+      "mode": "100644"
+    },
+    "tauri/virtual_joystick/tests/protocol_test.rs": {
+      "git_blob": "4afae4a0b6d77139b8c8d3bb4d65abfbe9959488",
+      "mode": "100644"
+    },
+    "test/ci/build_desktop_script_test.exs": {
+      "git_blob": "8ca6c1a1ded60bbe8b363bb18171b56df54263da",
+      "mode": "100644"
+    },
+    "test/ci/burrito_prerequisites_test.exs": {
+      "git_blob": "589e62e5fd5738104f19f8dfc172ba3d22da4ba6",
+      "mode": "100644"
+    },
+    "test/ci/desktop_distribution_test.exs": {
+      "git_blob": "7761d1a60291f36da57e176610b2f01188891541",
+      "mode": "100644"
+    },
+    "test/ci/installer_hooks_test.exs": {
+      "git_blob": "637d2c69bd9662d39279f3600d8824813b7281d5",
+      "mode": "100644"
+    },
+    "test/ci/migration_module_isolation_test.exs": {
+      "git_blob": "1c06bf0dd9285d93a0e4fa5caec1568ab93a5fc3",
+      "mode": "100644"
+    },
+    "test/ci/nightly_artifacts_test.exs": {
+      "git_blob": "b34f2cd021573fa529a0304ca0221c96d87f82c5",
+      "mode": "100644"
+    },
+    "test/ci/virtual_joystick_workflow_test.exs": {
+      "git_blob": "286bed66bedb31fdc6092c2c79503b3405a9bab7",
+      "mode": "100644"
+    },
+    "test/support/avrdude_fixtures.ex": {
+      "git_blob": "348b2d71780dff38d057698df9ea71e105a459e6",
+      "mode": "100644"
+    },
+    "test/support/conn_case.ex": {
+      "git_blob": "692da6b2ae975adb306d7f73a3ebf58e3debaea3",
+      "mode": "100644"
+    },
+    "test/support/data_case.ex": {
+      "git_blob": "309efd72b22d86a25e15d4792ded0713744333ed",
+      "mode": "100644"
+    },
+    "test/support/fake_virtual_joystick.exs": {
+      "git_blob": "a5578a8826f190a7ff6b4b5a58f3740d7e3efc5d",
+      "mode": "100644"
+    },
+    "test/support/forbidden_serial.ex": {
+      "git_blob": "306482f051d7be044630503d85c7ea268b751ba8",
+      "mode": "100644"
+    },
+    "test/support/migration_module_isolation.ex": {
+      "git_blob": "e63f70eefd2fab04ea0a013e2721e827f71a2d12",
+      "mode": "100644"
+    },
+    "test/support/pubsub_helpers.ex": {
+      "git_blob": "9da92f883f9f83ef39ad809778283f7acd555627",
+      "mode": "100644"
+    },
+    "test/support/serial_safety_case.ex": {
+      "git_blob": "09e2572c9d0210f6cc60e8bb56be918beba32179",
+      "mode": "100644"
+    },
+    "test/support/serial_test_helpers.ex": {
+      "git_blob": "8344fa781b618e2875f0ea4d39061ec3d65c8581",
+      "mode": "100644"
+    },
+    "test/support/virtual_joystick_fixtures.ex": {
+      "git_blob": "b05e5a2e7b88e413c9d7bc1540c836e793e1a459",
+      "mode": "100644"
+    },
+    "test/test_helper.exs": {
+      "git_blob": "b8a4c00edfefbb19d53368b8e1d6e7d1f3710b65",
+      "mode": "100644"
+    },
+    "test/trenino/firmware/avrdude_test.exs": {
+      "git_blob": "2650f5cc8bf604c2e2001d3faa715b68899b0f4a",
+      "mode": "100644"
+    },
+    "test/trenino/firmware/board_config_test.exs": {
+      "git_blob": "11073c656c3a86eb8bea9942f34a21554256e74d",
+      "mode": "100644"
+    },
+    "test/trenino/firmware/compatibility_test.exs": {
+      "git_blob": "73162240a58ee75ec741b2b5c7d4210faf886950",
+      "mode": "100644"
+    },
+    "test/trenino/firmware/device_registry_test.exs": {
+      "git_blob": "0e582f3e401cecbedae7f011bebf1432b23cb65b",
+      "mode": "100644"
+    },
+    "test/trenino/firmware/downloader_test.exs": {
+      "git_blob": "96b25dd28696387981da640daf712f4dca4df1c7",
+      "mode": "100644"
+    },
+    "test/trenino/firmware/firmware_file_test.exs": {
+      "git_blob": "d1524d6a038e2dfc512fc1556a61484a5edc254f",
+      "mode": "100644"
+    },
+    "test/trenino/firmware/firmware_release_test.exs": {
+      "git_blob": "563aed989c80a935cd67cbd3366ceb855296ef5a",
+      "mode": "100644"
+    },
+    "test/trenino/firmware/release_manifest_integration_test.exs": {
+      "git_blob": "8f1d9f81192237c1757bba1a58493ec679ad9cf8",
+      "mode": "100644"
+    },
+    "test/trenino/firmware/update_checker_test.exs": {
+      "git_blob": "ebaabf196f8caafb609e4ed21183e80487416571",
+      "mode": "100644"
+    },
+    "test/trenino/firmware/upload_flow_test.exs": {
+      "git_blob": "2243ee348b115c834ad774db3463cc968dad71c0",
+      "mode": "100644"
+    },
+    "test/trenino/firmware/upload_history_test.exs": {
+      "git_blob": "cf9f95557046746658bd620e58663bbbc8aade83",
+      "mode": "100644"
+    },
+    "test/trenino/firmware/upload_manager_test.exs": {
+      "git_blob": "79a910e022ed8ccf81d84266f2cff45aa7d5db0e",
+      "mode": "100644"
+    },
+    "test/trenino/firmware/uploader_test.exs": {
+      "git_blob": "4792a4de2e8bfe4c0362ca6fc3121a30195b646b",
+      "mode": "100644"
+    },
+    "test/trenino/firmware_test.exs": {
+      "git_blob": "5957ff8088e1e870fe0bc9345e3d9cee1df9175f",
+      "mode": "100644"
+    },
+    "test/trenino/hardware/calibration/analyzer_test.exs": {
+      "git_blob": "c283e530fcb5add3296a2ed746de29567b5e063b",
+      "mode": "100644"
+    },
+    "test/trenino/hardware/calibration/calculator_test.exs": {
+      "git_blob": "d88fa4191f85767131482d97feec757ed84fc190",
+      "mode": "100644"
+    },
+    "test/trenino/hardware/configuration_manager_test.exs": {
+      "git_blob": "62040bbe93883d6b20266445b7b8b3bf53e3870e",
+      "mode": "100644"
+    },
+    "test/trenino/hardware/ht16k33_test.exs": {
+      "git_blob": "65c306af7ea0bba5e006d650944763b600d3c4d4",
+      "mode": "100644"
+    },
+    "test/trenino/hardware/i2c_module_test.exs": {
+      "git_blob": "992550f958431eab9cbc3b248d9f0af7e27e13cb",
+      "mode": "100644"
+    },
+    "test/trenino/hardware/input_detection_session_test.exs": {
+      "git_blob": "8a811e20a8b54408e71ec2062643a7c259d70d9b",
+      "mode": "100644"
+    },
+    "test/trenino/hardware/input_test.exs": {
+      "git_blob": "3c69c3695827a708494f332f9feea900ef38c7ed",
+      "mode": "100644"
+    },
+    "test/trenino/hardware/output_test.exs": {
+      "git_blob": "055165d1fb7e8af8f70aee273f2a658c2bc24652",
+      "mode": "100644"
+    },
+    "test/trenino/hardware_test.exs": {
+      "git_blob": "f70f112b3b9ff2d022a02e973e736ba6ff6fa0fa",
+      "mode": "100644"
+    },
+    "test/trenino/mcp/server_test.exs": {
+      "git_blob": "31c3a7eb6aa1a978f6860539ac6f2a3db2120eac",
+      "mode": "100644"
+    },
+    "test/trenino/mcp/tool_registry_test.exs": {
+      "git_blob": "ade15e16204f42902a61b2f73c1531a313c16d7f",
+      "mode": "100644"
+    },
+    "test/trenino/mcp/tools/button_binding_tools_test.exs": {
+      "git_blob": "f8fbbc54aa477f8dd2c019d5a4456ae4fb8b7e58",
+      "mode": "100644"
+    },
+    "test/trenino/mcp/tools/detection_tools_test.exs": {
+      "git_blob": "af2c476ac07ed796e3957cc9b3cbd0d44076e53a",
+      "mode": "100644"
+    },
+    "test/trenino/mcp/tools/device_tools_test.exs": {
+      "git_blob": "b657dc070763831456723deedc6187b17709d4e9",
+      "mode": "100644"
+    },
+    "test/trenino/mcp/tools/display_binding_tools_test.exs": {
+      "git_blob": "cc7e6cc6306d0d3ce99983f9f49881e7114ad16d",
+      "mode": "100644"
+    },
+    "test/trenino/mcp/tools/element_tools_test.exs": {
+      "git_blob": "67cb90a6d43e4b0ff153f125f6aaf3f1e27ec5a0",
+      "mode": "100644"
+    },
+    "test/trenino/mcp/tools/output_binding_tools_test.exs": {
+      "git_blob": "dd4f2514a300b1247bc384384adb565e3c8924d0",
+      "mode": "100644"
+    },
+    "test/trenino/mcp/tools/script_tools_test.exs": {
+      "git_blob": "f522d213309fc41f6724fffd33f0b809710ca6e7",
+      "mode": "100644"
+    },
+    "test/trenino/mcp/tools/sequence_tools_test.exs": {
+      "git_blob": "fad76c6b310756c5c3ab2de70ccdcc2549e9d98b",
+      "mode": "100644"
+    },
+    "test/trenino/mcp/tools/simulator_tools_test.exs": {
+      "git_blob": "c37adf55f81499597ba8959282adeb6b3689af29",
+      "mode": "100644"
+    },
+    "test/trenino/mcp/tools/train_tools_test.exs": {
+      "git_blob": "c88e496b206b8004a59f73fdff1d548ee5f1a25e",
+      "mode": "100644"
+    },
+    "test/trenino/mcp/tools/virtual_joystick_tools_test.exs": {
+      "git_blob": "c975170fb86a631c3cf686a122d6f2f351b12cf3",
+      "mode": "100644"
+    },
+    "test/trenino/paths_test.exs": {
+      "git_blob": "e6f63b70bef607e3657dcd84ef8fd3daacf5bbb2",
+      "mode": "100644"
+    },
+    "test/trenino/repo/migrations/create_train_identifiers_test.exs": {
+      "git_blob": "da9b9e5a6966c426d537d0b77e536a4d0860b718",
+      "mode": "100644"
+    },
+    "test/trenino/serial/connection/device_connection_test.exs": {
+      "git_blob": "6311c6be237dc0f2d7eed0b53818dd16da62787c",
+      "mode": "100644"
+    },
+    "test/trenino/serial/connection/state_test.exs": {
+      "git_blob": "4238bf6911d5f9a05a3cbd335374e696f6cc42d7",
+      "mode": "100644"
+    },
+    "test/trenino/serial/connection_port_timeout_test.exs": {
+      "git_blob": "7f3a4e428346b1e5f4350d4f89d57f1081ca7d80",
+      "mode": "100644"
+    },
+    "test/trenino/serial/connection_test.exs": {
+      "git_blob": "a1373151577754f1f0e614a68e59308f6ab2b1fe",
+      "mode": "100644"
+    },
+    "test/trenino/serial/discovery_test.exs": {
+      "git_blob": "c8d357c4513f518f962fad736bef83d4920adf2f",
+      "mode": "100644"
+    },
+    "test/trenino/serial/framing_test.exs": {
+      "git_blob": "df3a0fc5fc4f97361c57fe0a908354c2ec941e07",
+      "mode": "100644"
+    },
+    "test/trenino/serial/protocol/configure_test.exs": {
+      "git_blob": "65e2faa972d30cddeb6b9389656cccf042b35a8c",
+      "mode": "100644"
+    },
+    "test/trenino/serial/protocol/module_error_test.exs": {
+      "git_blob": "cc21a92ae001c9e26786ee0eb897f1fd75ca272a",
+      "mode": "100644"
+    },
+    "test/trenino/serial/protocol/protocol_test.exs": {
+      "git_blob": "435930908cf9304edc2ef043fcd52da29e87c83e",
+      "mode": "100644"
+    },
+    "test/trenino/serial/protocol/retry_calibration_test.exs": {
+      "git_blob": "1f8f7858020f5a9767708875eec9d62e9db98ee8",
+      "mode": "100644"
+    },
+    "test/trenino/serial/protocol/set_module_brightness_test.exs": {
+      "git_blob": "80a0a4c7e0a778836cdc908337c599acaf79074e",
+      "mode": "100644"
+    },
+    "test/trenino/serial/protocol/write_segments_test.exs": {
+      "git_blob": "1800983a267831eaddba8f5ff47a621f5660a35c",
+      "mode": "100644"
+    },
+    "test/trenino/serial/test_isolation_test.exs": {
+      "git_blob": "53f25453ad13056b0eb880520a23d9fee42d2baa",
+      "mode": "100644"
+    },
+    "test/trenino/settings/simulator_test.exs": {
+      "git_blob": "f2c56fccc209893a95fc7c9ed212ebb3abdd0336",
+      "mode": "100644"
+    },
+    "test/trenino/settings_test.exs": {
+      "git_blob": "b59928b8a12935ce616f4aac9169f08e8e1bbb31",
+      "mode": "100644"
+    },
+    "test/trenino/simulator/client_test.exs": {
+      "git_blob": "7502164c98342cb7c996ad422ef8dbf22d052313",
+      "mode": "100644"
+    },
+    "test/trenino/simulator/connection_state_test.exs": {
+      "git_blob": "db67c8c6c4bcfd26f12709f1302a13ce8f8bd463",
+      "mode": "100644"
+    },
+    "test/trenino/simulator/connection_test.exs": {
+      "git_blob": "6cf2f972978653a4b46d348f098734abba75a385",
+      "mode": "100644"
+    },
+    "test/trenino/simulator/control_detection_session_test.exs": {
+      "git_blob": "b275e0c674a51746500e06f4727dfd490bade70a",
+      "mode": "100644"
+    },
+    "test/trenino/simulator/lever_analyzer/analysis_test.exs": {
+      "git_blob": "c34a83da9639ed3ed030e24ba5be3c21c21b5be3",
+      "mode": "100644"
+    },
+    "test/trenino/simulator/lever_analyzer_test.exs": {
+      "git_blob": "625a63c566877041a7e49a80c49e5ceadb552745",
+      "mode": "100644"
+    },
+    "test/trenino/simulator_test.exs": {
+      "git_blob": "0d72b7dcf07366f0ed293accf2aafabc7488a7cd",
+      "mode": "100644"
+    },
+    "test/trenino/train/button_controller_test.exs": {
+      "git_blob": "1c1e44f360b77c015373c3b8659a8e11af59dff0",
+      "mode": "100644"
+    },
+    "test/trenino/train/button_input_binding_test.exs": {
+      "git_blob": "7e0937b8972e29957bac92bb56e8d0f2e29f47c3",
+      "mode": "100644"
+    },
+    "test/trenino/train/calibration/lever_session_test.exs": {
+      "git_blob": "c135110221dddda6fdf2101bd0df3f2a588c62b0",
+      "mode": "100644"
+    },
+    "test/trenino/train/calibration/notch_mapping_session_test.exs": {
+      "git_blob": "452086daaf1369925180cb67fca4b9e600efa772",
+      "mode": "100644"
+    },
+    "test/trenino/train/detection_test.exs": {
+      "git_blob": "91393737b1fa473257a8730bb3f76444aa85db8e",
+      "mode": "100644"
+    },
+    "test/trenino/train/display_controller_test.exs": {
+      "git_blob": "92d8fcb387b6fb9b73e44a882fb03c17881ead89",
+      "mode": "100644"
+    },
+    "test/trenino/train/display_formatter_test.exs": {
+      "git_blob": "98f766f02838b8a642399764425a446d2a9aa722",
+      "mode": "100644"
+    },
+    "test/trenino/train/identifier_test.exs": {
+      "git_blob": "fd06a8a4a8cbd2bd721be57046b18a0ea80a9b17",
+      "mode": "100644"
+    },
+    "test/trenino/train/lever_controller_test.exs": {
+      "git_blob": "dcca883d38d618f0b73714b286b7f6fb8046e5ef",
+      "mode": "100644"
+    },
+    "test/trenino/train/lever_mapper_test.exs": {
+      "git_blob": "68ff463a3190e9696a1413652072e5847e26a2d4",
+      "mode": "100644"
+    },
+    "test/trenino/train/notch_test.exs": {
+      "git_blob": "6f1fd04479e8a0418ceddbbb53c45b60c6ecff86",
+      "mode": "100644"
+    },
+    "test/trenino/train/output_binding_context_test.exs": {
+      "git_blob": "e4ef9dcae4ee387cb11b93537b3263bb6fba5608",
+      "mode": "100644"
+    },
+    "test/trenino/train/output_binding_test.exs": {
+      "git_blob": "77eb77d37805b7385f3ab291e8e8a72981c80d2a",
+      "mode": "100644"
+    },
+    "test/trenino/train/output_controller_test.exs": {
+      "git_blob": "c17c932f61f9fa2796cf3cf77925573aa59f605a",
+      "mode": "100644"
+    },
+    "test/trenino/train/script_context_test.exs": {
+      "git_blob": "7f84742d42a8d52c44d733a18c66798d3e827f5d",
+      "mode": "100644"
+    },
+    "test/trenino/train/script_engine_test.exs": {
+      "git_blob": "cec16c8f125546090458218287ea034d665d238b",
+      "mode": "100644"
+    },
+    "test/trenino/train/script_runner_test.exs": {
+      "git_blob": "210228b687ca5a98162bac08e74ded5987abdbd8",
+      "mode": "100644"
+    },
+    "test/trenino/train/script_test.exs": {
+      "git_blob": "e0186605465f0f3610b3623f2f8f395eb537c889",
+      "mode": "100644"
+    },
+    "test/trenino/train/train_identifier_matching_test.exs": {
+      "git_blob": "233bcc12a7183a394a5541abdd609f9894290adc",
+      "mode": "100644"
+    },
+    "test/trenino/train/train_identifier_persistence_test.exs": {
+      "git_blob": "66c2bd1852b6ae3afc80c84fbc2fec6a2b8f3f59",
+      "mode": "100644"
+    },
+    "test/trenino/train/train_identifier_test.exs": {
+      "git_blob": "afa848f1b608cfd643bf7aa968cc5e757a95e1e2",
+      "mode": "100644"
+    },
+    "test/trenino/train_test.exs": {
+      "git_blob": "2217818c62b76b4e7fa11d09feea7e9839f60d1a",
+      "mode": "100644"
+    },
+    "test/trenino/virtual_joystick/bridge_test.exs": {
+      "git_blob": "263c7a5b9a280ec5d63c7679d9acdb4668e47eb8",
+      "mode": "100644"
+    },
+    "test/trenino/virtual_joystick/configurator_test.exs": {
+      "git_blob": "bdc54deb649e376fbb5dddecbb71047a626efe3d",
+      "mode": "100644"
+    },
+    "test/trenino/virtual_joystick/installed_helpers_test.exs": {
+      "git_blob": "2620a95a248bc3f70acdb390d12e947b08a8b163",
+      "mode": "100644"
+    },
+    "test/trenino/virtual_joystick/manager_test.exs": {
+      "git_blob": "e36f31a088e28b1f13acb1d2441730210ed9a282",
+      "mode": "100644"
+    },
+    "test/trenino/virtual_joystick/mapper_test.exs": {
+      "git_blob": "bf39c9a7c82267f047845698347a13f64882b543",
+      "mode": "100644"
+    },
+    "test/trenino/virtual_joystick_test.exs": {
+      "git_blob": "db3e85391b20eb3dceb6072ea99f6be0e91b7ff5",
+      "mode": "100644"
+    },
+    "test/trenino_web/controllers/api/script_controller_test.exs": {
+      "git_blob": "fce3449f35225c91cf869fcf523c13e7ad655e0f",
+      "mode": "100644"
+    },
+    "test/trenino_web/controllers/api/train_api_controller_test.exs": {
+      "git_blob": "bf1fafaf9a01c3bdfdb1d8af4c3f993f200b47b6",
+      "mode": "100644"
+    },
+    "test/trenino_web/controllers/error_html_test.exs": {
+      "git_blob": "f00b80d29bee574b49cb9c6c9016f7c18a4897fd",
+      "mode": "100644"
+    },
+    "test/trenino_web/controllers/error_json_test.exs": {
+      "git_blob": "d3aaac48f61b56206a79249d5f3f6263b7585339",
+      "mode": "100644"
+    },
+    "test/trenino_web/controllers/health_controller_test.exs": {
+      "git_blob": "ee873a4743b8645e98ddccc676526898c95c627a",
+      "mode": "100644"
+    },
+    "test/trenino_web/controllers/mcp/mcp_controller_test.exs": {
+      "git_blob": "889c832dd4d93e3dd6b8082ae8111a1a910a30c8",
+      "mode": "100644"
+    },
+    "test/trenino_web/live/calibration_wizard_test.exs": {
+      "git_blob": "1fd4183e910fbb2eda00ed800279282788f6a217",
+      "mode": "100644"
+    },
+    "test/trenino_web/live/components/configuration_wizard_component_test.exs": {
+      "git_blob": "bdc69ee39d6d4d319210ed443c180c19ce409597",
+      "mode": "100644"
+    },
+    "test/trenino_web/live/components/endpoint_selector_component_test.exs": {
+      "git_blob": "639aa62d5858035692794c54e70781da4522b810",
+      "mode": "100644"
+    },
+    "test/trenino_web/live/components/lever_setup_wizard_test.exs": {
+      "git_blob": "cc0d3cfd8285c4957568e26d754947ecd4f3cc7c",
+      "mode": "100644"
+    },
+    "test/trenino_web/live/components/sequence_manager_component_test.exs": {
+      "git_blob": "05d0f068cfedfbd79b05bbc6c38ac8ad8bea62b9",
+      "mode": "100644"
+    },
+    "test/trenino_web/live/configuration_edit_live_test.exs": {
+      "git_blob": "842249f0b5e212ee1025507c2e4eb2d310b6f59a",
+      "mode": "100644"
+    },
+    "test/trenino_web/live/configuration_list_live_test.exs": {
+      "git_blob": "48d736f3b5c7f00f0f696d7fb83cba68ed3fa0f2",
+      "mode": "100644"
+    },
+    "test/trenino_web/live/consent_gate_hook_test.exs": {
+      "git_blob": "add7915c21921415ee5c8039bc3c51088f46ced9",
+      "mode": "100644"
+    },
+    "test/trenino_web/live/consent_live_test.exs": {
+      "git_blob": "38b18b026a971c6dc7d002d061f7a32db66d0e45",
+      "mode": "100644"
+    },
+    "test/trenino_web/live/display_setup_test.exs": {
+      "git_blob": "7a8e126fc399ebdcdd87aebfd8048dd4c381b029",
+      "mode": "100644"
+    },
+    "test/trenino_web/live/matrix_test_wizard_test.exs": {
+      "git_blob": "7d43d32b39e75da7f77e4c6cdf2de13211656c62",
+      "mode": "100644"
+    },
+    "test/trenino_web/live/nav_hook_test.exs": {
+      "git_blob": "0921ad720d3e3f298cf050e2c9063fbfe56645a1",
+      "mode": "100644"
+    },
+    "test/trenino_web/live/settings_live_test.exs": {
+      "git_blob": "87254c3cc523d727efdb06cff922335c5b8f0547",
+      "mode": "100644"
+    },
+    "test/trenino_web/live/train_edit_live_test.exs": {
+      "git_blob": "14ae6c0240ca73b6f24ae01e2824a0b90aa47637",
+      "mode": "100644"
+    },
+    "test/trenino_web/live/train_list_live_test.exs": {
+      "git_blob": "fda91d8eb427476abc38a7d0c648dbf46abbb8cc",
+      "mode": "100644"
+    },
+    "test/trenino_web/live/virtual_joystick_live_test.exs": {
+      "git_blob": "dce0ff015110b01b0a32b48d67a9b7099d4bf443",
+      "mode": "100644"
+    }
+  }
+}
