@@ -173,7 +173,9 @@ fn validate_command(draft: &SequenceCommandDraft) -> DbResult<()> {
 }
 
 fn rounded(value: f64) -> f64 {
-    (value * 100.0).round() / 100.0
+    // Float.round/2 semantics: ties cross toward even significant digits
+    // (0.015 -> 0.01), unlike naive (v*100).round()/100 (0.02).
+    trenino_core::rounding::round_elixir(value, 2).unwrap_or(value)
 }
 
 fn timestamp() -> String {

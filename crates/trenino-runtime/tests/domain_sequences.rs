@@ -281,11 +281,13 @@ fn set_sequence_commands_rounds_values() {
         .set_sequence_commands(
             OperationId(2),
             sequence.id,
-            vec![command("Test.InputValue", 0.123456, 0)],
+            vec![command("Test.InputValue", 0.123456, 0), command("Test.Other", 0.015, 0)],
         )
         .unwrap()
         .record;
     assert_eq!(created[0].value, 0.12);
+    // Float.round/2 tie behavior: 0.015 rounds to 0.01 (naive half-up gives 0.02).
+    assert_eq!(created[1].value, 0.01);
 }
 
 // Extra coverage for the Ecto delay_ms bounds in SequenceCommand.changeset/1:
