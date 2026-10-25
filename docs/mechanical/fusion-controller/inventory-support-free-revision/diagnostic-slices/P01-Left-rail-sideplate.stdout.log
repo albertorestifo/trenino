@@ -1,6 +1,0 @@
-[2026-10-25 10:08:10.744177] [0x00003ea0] [trace]   Initializing StaticPrintConfigs
-[2026-10-25 10:08:10.756680] [0x00003ea0] [warning] cli mode, Current BambuStudio Version 02.04.00.70
-[2026-10-25 10:08:10.793192] [0x00003ea0] [error]   3198: nozzle_volume_type not found, when different_extruder or multiple extruder, new_printer_name Bambu Lab P2S 0.4 nozzle, extruder_count 1
-[2026-10-25 10:08:10.793692] [0x00003ea0] [warning] no filament colors found in projects
-[2026-10-25 10:08:11.195308] [0x00003ea0] [warning] tree support default to organic support
-[2026-10-25 10:08:11.572519] [0x00003ea0] [error]   Invalid T command (T65535).

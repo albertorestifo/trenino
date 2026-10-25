@@ -1,9 +1,0 @@
-{
-  "status": "passed geometry checks; physical commissioning required",
-  "initial_sweep": "pre-fix-clearance-check.json: 116 poses, eight rotor/brace clashes",
-  "resolution": "Braces lowered 5 mm; final-regression-check.json verifies affected motion at 1 degree increments over +/-60 degrees with zero clashes",
-  "final_neutral": "neutral-check.json: no clashes",
-  "cam_and_service": "final-cam-proof.json and cam-profile-check.json",
-  "stop_contacts": "stop-check.json: clear through +/-60 degrees, contact at +/-60.1 degrees",
-  "limits": "Finite sampling, modeled hardware, unmeasured pot terminals/travel and spring solid height; not a strength test"
-}
