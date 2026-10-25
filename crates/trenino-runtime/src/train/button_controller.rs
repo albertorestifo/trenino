@@ -173,13 +173,15 @@ impl ButtonController {
         let (control, control_rx) = mpsc::unbounded_channel();
         let (broadcast, broadcast_rx) = mpsc::channel(BROADCAST_CAPACITY);
         tokio::spawn(run(
-            clock,
-            resolver,
-            keystrokes,
-            broadcast,
-            commands.clone(),
+            RunContext {
+                clock,
+                resolver,
+                keystrokes,
+                broadcast,
+                self_tx: commands.clone(),
+                control_tx: control.clone(),
+            },
             command_rx,
-            control.clone(),
             control_rx,
         ));
         (Self { commands, control }, broadcast_rx)
@@ -225,7 +227,9 @@ impl ButtonController {
     }
 
     pub fn release(&self) -> Result<(), QueueError> {
-        self.control.send(Control::Release).map_err(|_| QueueError::Closed)
+        self.control
+            .send(Control::Release)
+            .map_err(|_| QueueError::Closed)
     }
 
     pub fn simulator_connected(&self, client: Arc<SimulatorClient>) -> Result<(), QueueError> {
@@ -339,9 +343,10 @@ impl WorkerState {
     fn drain_pending_repeats(&mut self) {
         let ids: Vec<EntityId> = self.pending_repeats.iter().copied().collect();
         for id in ids {
-            if !self.active_buttons.contains_key(&id) {
-                self.pending_repeats.remove(&id);
-            } else if self.self_tx.try_send(Command::MomentaryRepeat(id)).is_ok() {
+            let still_active = self.active_buttons.contains_key(&id);
+            let queued =
+                still_active && self.self_tx.try_send(Command::MomentaryRepeat(id)).is_ok();
+            if !still_active || queued {
                 self.pending_repeats.remove(&id);
             }
         }
@@ -385,7 +390,11 @@ impl WorkerState {
         }
     }
 
-    fn spawn_sequence(&self, element_id: EntityId, commands: Vec<SequenceCommand>) -> JoinHandle<()> {
+    fn spawn_sequence(
+        &self,
+        element_id: EntityId,
+        commands: Vec<SequenceCommand>,
+    ) -> JoinHandle<()> {
         let generation = self.generation;
         let client_slot = self.client_slot.clone();
         let clock = self.clock.clone();
@@ -428,16 +437,29 @@ fn derive_interacting_endpoint(endpoint: &str) -> String {
     endpoint.to_owned()
 }
 
-async fn run(
+/// Bundled worker inputs for [`run`] (keeps the argument list within limits).
+struct RunContext {
     clock: Arc<dyn Clock>,
     resolver: Arc<InputResolver>,
     keystrokes: Arc<dyn ButtonKeystrokes>,
     broadcast: mpsc::Sender<ButtonStateChange>,
     self_tx: mpsc::Sender<Command>,
-    mut commands: mpsc::Receiver<Command>,
     control_tx: mpsc::UnboundedSender<Control>,
+}
+
+async fn run(
+    ctx: RunContext,
+    mut commands: mpsc::Receiver<Command>,
     mut control: mpsc::UnboundedReceiver<Control>,
 ) {
+    let RunContext {
+        clock,
+        resolver,
+        keystrokes,
+        broadcast,
+        self_tx,
+        control_tx,
+    } = ctx;
     let client_slot: ClientSlot = Arc::new(RwLock::new(None));
     let mut state = WorkerState {
         generation: 0,
@@ -643,7 +665,9 @@ async fn release(state: &mut WorkerState, binding: &BindingRuntime) {
                     state.send_value(endpoint, binding.off_value).await;
                 }
                 state.broadcast(binding.element_id, binding.off_value, false);
-                state.last_sent.insert(binding.element_id, binding.off_value);
+                state
+                    .last_sent
+                    .insert(binding.element_id, binding.off_value);
             }
         }
         ButtonMode::Momentary => {
@@ -654,7 +678,9 @@ async fn release(state: &mut WorkerState, binding: &BindingRuntime) {
                 .send_with_interacting(&endpoint, binding.off_value, false)
                 .await;
             state.broadcast(binding.element_id, binding.off_value, false);
-            state.last_sent.insert(binding.element_id, binding.off_value);
+            state
+                .last_sent
+                .insert(binding.element_id, binding.off_value);
         }
         ButtonMode::Sequence => {
             // Momentary hardware: the on-sequence dies on release (579-594).
@@ -684,7 +710,9 @@ async fn release(state: &mut WorkerState, binding: &BindingRuntime) {
                 );
             }
             state.broadcast(binding.element_id, binding.off_value, false);
-            state.last_sent.insert(binding.element_id, binding.off_value);
+            state
+                .last_sent
+                .insert(binding.element_id, binding.off_value);
         }
         ButtonMode::Keystroke => {
             // Ownership bookkeeping remembers the pressed keys; a missing

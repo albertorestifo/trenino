@@ -22,8 +22,8 @@ use std::path::PathBuf;
 use tempfile::TempDir;
 use trenino_core::EntityId;
 use trenino_runtime::keyboard::{
-    combo_of, key_actions, parse_keystroke, FakeAdapter, HoldOwner, KeystrokeAction,
-    KeystrokeAdapter, KeystrokeError, KeyboardOwnership, Key, ProcessKeystrokeAdapter,
+    combo_of, key_actions, parse_keystroke, FakeAdapter, HoldOwner, Key, KeyboardOwnership,
+    KeystrokeAction, KeystrokeAdapter, KeystrokeError, ProcessKeystrokeAdapter,
 };
 
 fn owner(id: i64, generation: u64) -> HoldOwner {
@@ -244,10 +244,7 @@ fn release_wins_over_repeats() {
     // A late repeat for a released holder re-presses from a clean slate
     // (exactly one down), never a duplicate.
     kb.press(owner(1, 0), binding(10), "W");
-    assert_eq!(
-        calls(&fake),
-        vec![("down".into(), "W".into())]
-    );
+    assert_eq!(calls(&fake), vec![("down".into(), "W".into())]);
 
     // A stale generation never owns the live generation's keys.
     kb.owner_gone(owner(1, 5)); // wrong generation: nothing held under it
@@ -486,7 +483,10 @@ fn process_adapter_reports_spawn_failure() {
         fs::set_permissions(&exe, perms).unwrap();
     }
     let adapter = ProcessKeystrokeAdapter::new(exe).unwrap();
-    assert!(matches!(adapter.key_tap("W"), Err(KeystrokeError::Spawn(_))));
+    assert!(matches!(
+        adapter.key_tap("W"),
+        Err(KeystrokeError::Spawn(_))
+    ));
 }
 
 #[test]
@@ -516,4 +516,3 @@ fn process_adapter_works_behind_ownership_layer() {
             .collect::<Vec<_>>()
     );
 }
-

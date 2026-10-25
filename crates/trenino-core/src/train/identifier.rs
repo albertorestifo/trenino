@@ -55,8 +55,7 @@ pub fn common_prefix(strings: &[String]) -> String {
         // identifier.ex returns a lone string as-is, without stripping.
         return (*first).clone();
     }
-    let mut shared: Vec<&str> =
-        graphemes(first.as_str());
+    let mut shared: Vec<&str> = graphemes(first.as_str());
     for string in &strings[1..] {
         let other = graphemes(string.as_str());
         let common = shared

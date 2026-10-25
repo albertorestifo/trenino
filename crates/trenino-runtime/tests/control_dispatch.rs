@@ -28,18 +28,16 @@ use trenino_runtime::routing::{InputIdentity, InputResolver};
 use trenino_runtime::simulator::client::SimulatorClient;
 use trenino_runtime::simulator::services::clock::FakeClock;
 use trenino_runtime::storage::bindings::{ButtonHardwareType, ButtonMode};
+use trenino_runtime::train::button_controller::QueueError as ButtonQueueError;
 use trenino_runtime::train::button_controller::{
     ButtonController, ButtonSample, ButtonStateChange, KeystrokeOwner,
 };
-use trenino_runtime::train::button_controller::QueueError as ButtonQueueError;
 use trenino_runtime::train::detection::{
     ButtonBindingInfo, LeverBindingInfo, SequenceCommand, TrainConfigSnapshot,
 };
 use trenino_runtime::train::lever_controller::{LeverController, LeverSample, QueueError};
 
-use fixtures::{
-    advance_until, settle, yield_until, FakeConfig, FakeKeystrokes, ScriptedSim,
-};
+use fixtures::{advance_until, settle, yield_until, FakeConfig, FakeKeystrokes, ScriptedSim};
 
 const THROTTLE: &str = "CurrentDrivableActor/Throttle(Lever).InputValue";
 const HORN: &str = "CurrentDrivableActor/Horn.InputValue";
@@ -166,8 +164,10 @@ fn lever_harness(sim: ScriptedSim) -> LeverHarness {
 }
 
 async fn patch_count(sim: &ScriptedSim, target: usize) {
-    yield_until(|| (sim.log().iter().filter(|r| r.method == "PATCH").count() >= target).then_some(()))
-        .await;
+    yield_until(|| {
+        (sim.log().iter().filter(|r| r.method == "PATCH").count() >= target).then_some(())
+    })
+    .await;
 }
 
 async fn expect_no_patch(sim: &ScriptedSim, beyond: usize, clock: &FakeClock) {
@@ -199,7 +199,11 @@ async fn lever_sends_latest_jittered_value_not_a_fifo() {
     }
     gate.release();
     patch_count(&sim, 2).await;
-    let values: Vec<f64> = sim.set_values().into_iter().map(|(_, value)| value).collect();
+    let values: Vec<f64> = sim
+        .set_values()
+        .into_iter()
+        .map(|(_, value)| value)
+        .collect();
     assert_eq!(values, vec![0.1, 0.8]);
 
     expect_no_patch(&sim, 2, &harness.clock).await;
@@ -231,7 +235,11 @@ async fn lever_reconnect_retries_retained_failed_write() {
 
     harness.lever.simulator_connected(client(&sim)).unwrap();
     patch_count(&sim, 2).await;
-    let values: Vec<f64> = sim.set_values().into_iter().map(|(_, value)| value).collect();
+    let values: Vec<f64> = sim
+        .set_values()
+        .into_iter()
+        .map(|(_, value)| value)
+        .collect();
     assert_eq!(values, vec![0.5, 0.5]);
     expect_no_patch(&sim, 2, &harness.clock).await;
     harness.lever.shutdown().await.unwrap();
@@ -295,7 +303,11 @@ async fn lever_reconnect_before_old_writer_fails_delivers_newest() {
     patch_count(&sim, 2).await;
     settle().await;
 
-    let values: Vec<f64> = sim.set_values().into_iter().map(|(_, value)| value).collect();
+    let values: Vec<f64> = sim
+        .set_values()
+        .into_iter()
+        .map(|(_, value)| value)
+        .collect();
     assert_eq!(values, vec![0.5, 0.8]);
     expect_no_patch(&sim, 2, &harness.clock).await;
     harness.lever.shutdown().await.unwrap();
@@ -393,7 +405,11 @@ async fn lever_pending_retry_coalesces_fresh_input() {
     gate2.release();
     patch_count(&sim, 2).await;
     settle().await;
-    let values: Vec<f64> = sim.set_values().into_iter().map(|(_, value)| value).collect();
+    let values: Vec<f64> = sim
+        .set_values()
+        .into_iter()
+        .map(|(_, value)| value)
+        .collect();
     assert_eq!(values, vec![0.5, 0.9]);
     harness.lever.shutdown().await.unwrap();
 }
@@ -421,7 +437,11 @@ async fn lever_disconnect_suspends_retries_and_retains_latest() {
     harness.lever.simulator_connected(client(&sim)).unwrap();
     patch_count(&sim, 2).await;
     settle().await;
-    let values: Vec<f64> = sim.set_values().into_iter().map(|(_, value)| value).collect();
+    let values: Vec<f64> = sim
+        .set_values()
+        .into_iter()
+        .map(|(_, value)| value)
+        .collect();
     assert_eq!(values, vec![0.5, 0.9]);
     harness.lever.shutdown().await.unwrap();
 }
@@ -445,10 +465,7 @@ async fn lever_lifecycle_events_cancel_scheduled_retries() {
         match variant {
             "reload" => harness.lever.activate(2, &lever_snapshot(42)).unwrap(),
             "deactivate" => harness.lever.release().unwrap(),
-            _ => harness
-                .lever
-                .activate(2, &lever_snapshot(43))
-                .unwrap(),
+            _ => harness.lever.activate(2, &lever_snapshot(43)).unwrap(),
         }
         let state = harness.lever.state().await.unwrap();
         assert_eq!(state.pending, 0, "{variant}: pending cleared");
@@ -535,7 +552,11 @@ async fn lever_ten_thousand_samples_leave_bounded_state() {
     patch_count(&sim, 2).await;
     settle().await;
     let values = sim.set_values();
-    assert_eq!(values.len(), 2, "exactly one in-flight plus one latest write");
+    assert_eq!(
+        values.len(),
+        2,
+        "exactly one in-flight plus one latest write"
+    );
     assert_eq!(values[1].1, 0.99);
     expect_no_patch(&sim, 2, &harness.clock).await;
     let state = harness.lever.state().await.unwrap();
@@ -593,11 +614,8 @@ fn button_harness(sim: ScriptedSim, bindings: Vec<ButtonBindingInfo>) -> ButtonH
     let resolver = resolver("COM1", 5, 42);
     let clock = FakeClock::new();
     let keystrokes = Arc::new(FakeKeystrokes::default());
-    let (buttons, broadcast) = ButtonController::start(
-        Arc::new(clock.clone()),
-        resolver,
-        keystrokes.clone(),
-    );
+    let (buttons, broadcast) =
+        ButtonController::start(Arc::new(clock.clone()), resolver, keystrokes.clone());
     buttons
         .activate(1, EntityId(7), &button_snapshot(bindings))
         .unwrap();
@@ -624,7 +642,11 @@ async fn simple_button_deduplicates_repeated_edges() {
     let sim = ScriptedSim::spawn();
     let mut harness = button_harness(sim.clone(), vec![simple_binding(42, 5)]);
 
-    harness.buttons.input(button_sample("COM1", 5, 1)).await.unwrap();
+    harness
+        .buttons
+        .input(button_sample("COM1", 5, 1))
+        .await
+        .unwrap();
     let change = next_broadcast(&mut harness.broadcast).await;
     assert_eq!(
         change,
@@ -635,16 +657,28 @@ async fn simple_button_deduplicates_repeated_edges() {
         }
     );
     // A repeated press is deduplicated: no second write, no broadcast.
-    harness.buttons.input(button_sample("COM1", 5, 1)).await.unwrap();
+    harness
+        .buttons
+        .input(button_sample("COM1", 5, 1))
+        .await
+        .unwrap();
     settle().await;
     assert_eq!(sim.set_values().len(), 1);
     assert!(harness.broadcast.try_recv().is_err());
 
-    harness.buttons.input(button_sample("COM1", 5, 0)).await.unwrap();
+    harness
+        .buttons
+        .input(button_sample("COM1", 5, 0))
+        .await
+        .unwrap();
     let change = next_broadcast(&mut harness.broadcast).await;
     assert_eq!(change.value, 0.0);
     assert!(!change.pressed);
-    harness.buttons.input(button_sample("COM1", 5, 0)).await.unwrap();
+    harness
+        .buttons
+        .input(button_sample("COM1", 5, 0))
+        .await
+        .unwrap();
     settle().await;
     assert_eq!(sim.set_values().len(), 2);
     assert_eq!(sim.set_values()[1], (HORN.to_owned(), 0.0));
@@ -663,14 +697,24 @@ async fn momentary_button_orders_interacting_and_repeats_while_held() {
     binding.repeat_interval_ms = 50;
     let mut harness = button_harness(sim.clone(), vec![binding]);
 
-    harness.buttons.input(button_sample("COM1", 5, 1)).await.unwrap();
+    harness
+        .buttons
+        .input(button_sample("COM1", 5, 1))
+        .await
+        .unwrap();
     let change = next_broadcast(&mut harness.broadcast).await;
-    assert_eq!(change, ButtonStateChange { element_id: EntityId(5), value: 1.0, pressed: true });
+    assert_eq!(
+        change,
+        ButtonStateChange {
+            element_id: EntityId(5),
+            value: 1.0,
+            pressed: true
+        }
+    );
 
     // Request-paced repeats: several on-value sends land while held.
     yield_until(|| {
-        (sim
-            .set_values()
+        (sim.set_values()
             .iter()
             .filter(|(path, value)| path == HORN && *value == 1.0)
             .count()
@@ -679,7 +723,11 @@ async fn momentary_button_orders_interacting_and_repeats_while_held() {
     })
     .await;
 
-    harness.buttons.input(button_sample("COM1", 5, 0)).await.unwrap();
+    harness
+        .buttons
+        .input(button_sample("COM1", 5, 0))
+        .await
+        .unwrap();
     let change = next_broadcast(&mut harness.broadcast).await;
     assert_eq!(change.value, 0.0);
     assert!(!change.pressed);
@@ -714,20 +762,32 @@ async fn momentary_release_cancels_repeats_and_ignores_stale_ticks() {
     binding.mode = ButtonMode::Momentary;
     let mut harness = button_harness(sim.clone(), vec![binding]);
 
-    harness.buttons.input(button_sample("COM1", 5, 1)).await.unwrap();
+    harness
+        .buttons
+        .input(button_sample("COM1", 5, 1))
+        .await
+        .unwrap();
     let _ = next_broadcast(&mut harness.broadcast).await;
     yield_until(|| (sim.set_values().len() >= 2).then_some(())).await;
     let state = harness.buttons.state().await.unwrap();
     assert_eq!(state.active_buttons, 1);
 
-    harness.buttons.input(button_sample("COM1", 5, 0)).await.unwrap();
+    harness
+        .buttons
+        .input(button_sample("COM1", 5, 0))
+        .await
+        .unwrap();
     let _ = next_broadcast(&mut harness.broadcast).await;
     let state = harness.buttons.state().await.unwrap();
     assert_eq!(state.active_buttons, 0);
 
     let count = sim.set_values().len();
     settle().await;
-    assert_eq!(sim.set_values().len(), count, "stale repeat ticks kept writing");
+    assert_eq!(
+        sim.set_values().len(),
+        count,
+        "stale repeat ticks kept writing"
+    );
     harness.buttons.shutdown().await.unwrap();
 }
 
@@ -754,7 +814,11 @@ async fn sequence_mode_executes_ordered_commands_with_delays() {
     ]);
     let mut harness = button_harness(sim.clone(), vec![binding]);
 
-    harness.buttons.input(button_sample("COM1", 5, 1)).await.unwrap();
+    harness
+        .buttons
+        .input(button_sample("COM1", 5, 1))
+        .await
+        .unwrap();
     let change = next_broadcast(&mut harness.broadcast).await;
     assert_eq!(change.value, 1.0);
     assert!(change.pressed);
@@ -766,7 +830,10 @@ async fn sequence_mode_executes_ordered_commands_with_delays() {
         (sim.set_paths().len() >= 2).then_some(())
     })
     .await;
-    assert_eq!(sim.set_paths(), ["DoorKey.InputValue", "DoorOpen.InputValue"]);
+    assert_eq!(
+        sim.set_paths(),
+        ["DoorKey.InputValue", "DoorOpen.InputValue"]
+    );
 
     // Completion removes the active entry.
     yield_until(|| {
@@ -803,14 +870,25 @@ async fn sequence_mode_skips_missing_and_empty_sequences() {
         1,
         ConfigId::new(11).unwrap(),
         [
-            (5, InputIdentity { device_id: EntityId(9), input_id: EntityId(42) }),
-            (6, InputIdentity { device_id: EntityId(9), input_id: EntityId(43) }),
+            (
+                5,
+                InputIdentity {
+                    device_id: EntityId(9),
+                    input_id: EntityId(42),
+                },
+            ),
+            (
+                6,
+                InputIdentity {
+                    device_id: EntityId(9),
+                    input_id: EntityId(43),
+                },
+            ),
         ],
     );
     let clock = FakeClock::new();
     let keystrokes = Arc::new(FakeKeystrokes::default());
-    let (buttons, _broadcast) =
-        ButtonController::start(Arc::new(clock), resolver, keystrokes);
+    let (buttons, _broadcast) = ButtonController::start(Arc::new(clock), resolver, keystrokes);
     buttons
         .activate(1, EntityId(7), &button_snapshot(vec![missing, empty]))
         .unwrap();
@@ -849,11 +927,19 @@ async fn sequence_release_cancels_momentary_hardware_mid_delay() {
     ]);
     let mut harness = button_harness(sim.clone(), vec![binding]);
 
-    harness.buttons.input(button_sample("COM1", 5, 1)).await.unwrap();
+    harness
+        .buttons
+        .input(button_sample("COM1", 5, 1))
+        .await
+        .unwrap();
     let _ = next_broadcast(&mut harness.broadcast).await;
     patch_count(&sim, 1).await;
 
-    harness.buttons.input(button_sample("COM1", 5, 0)).await.unwrap();
+    harness
+        .buttons
+        .input(button_sample("COM1", 5, 0))
+        .await
+        .unwrap();
     let change = next_broadcast(&mut harness.broadcast).await;
     assert_eq!(change.value, 0.0);
     assert!(!change.pressed);
@@ -891,7 +977,11 @@ async fn sequence_failure_continues_with_remaining_commands() {
     ]);
     let mut harness = button_harness(sim.clone(), vec![binding]);
 
-    harness.buttons.input(button_sample("COM1", 5, 1)).await.unwrap();
+    harness
+        .buttons
+        .input(button_sample("COM1", 5, 1))
+        .await
+        .unwrap();
     let _ = next_broadcast(&mut harness.broadcast).await;
     patch_count(&sim, 1).await;
     advance_until(&harness.clock, Duration::from_millis(20), || {
@@ -928,14 +1018,26 @@ async fn sequence_rapid_repress_cancels_previous_execution() {
     ]);
     let mut harness = button_harness(sim.clone(), vec![binding]);
 
-    harness.buttons.input(button_sample("COM1", 5, 1)).await.unwrap();
+    harness
+        .buttons
+        .input(button_sample("COM1", 5, 1))
+        .await
+        .unwrap();
     let _ = next_broadcast(&mut harness.broadcast).await;
     patch_count(&sim, 1).await;
     let state = harness.buttons.state().await.unwrap();
     assert_eq!(state.active_buttons, 1);
 
-    harness.buttons.input(button_sample("COM1", 5, 0)).await.unwrap();
-    harness.buttons.input(button_sample("COM1", 5, 1)).await.unwrap();
+    harness
+        .buttons
+        .input(button_sample("COM1", 5, 0))
+        .await
+        .unwrap();
+    harness
+        .buttons
+        .input(button_sample("COM1", 5, 1))
+        .await
+        .unwrap();
     let _ = next_broadcast(&mut harness.broadcast).await;
     let _ = next_broadcast(&mut harness.broadcast).await;
     // The re-press ran the first command again with a fresh 5s delay.
@@ -973,11 +1075,19 @@ async fn sequence_latching_release_starts_off_sequence() {
     }]);
     let mut harness = button_harness(sim.clone(), vec![binding]);
 
-    harness.buttons.input(button_sample("COM1", 5, 1)).await.unwrap();
+    harness
+        .buttons
+        .input(button_sample("COM1", 5, 1))
+        .await
+        .unwrap();
     let _ = next_broadcast(&mut harness.broadcast).await;
     patch_count(&sim, 1).await;
 
-    harness.buttons.input(button_sample("COM1", 5, 0)).await.unwrap();
+    harness
+        .buttons
+        .input(button_sample("COM1", 5, 0))
+        .await
+        .unwrap();
     let change = next_broadcast(&mut harness.broadcast).await;
     assert_eq!(change.value, 0.0);
     patch_count(&sim, 2).await;
@@ -996,17 +1106,38 @@ async fn keystroke_mode_presses_and_releases_through_the_port() {
     binding.keystroke = Some("CTRL+W".to_owned());
     let mut harness = button_harness(sim.clone(), vec![binding]);
 
-    harness.buttons.input(button_sample("COM1", 5, 1)).await.unwrap();
+    harness
+        .buttons
+        .input(button_sample("COM1", 5, 1))
+        .await
+        .unwrap();
     let change = next_broadcast(&mut harness.broadcast).await;
-    assert_eq!(change, ButtonStateChange { element_id: EntityId(5), value: 1.0, pressed: true });
+    assert_eq!(
+        change,
+        ButtonStateChange {
+            element_id: EntityId(5),
+            value: 1.0,
+            pressed: true
+        }
+    );
     let calls = harness.keystrokes.calls();
     assert_eq!(calls.len(), 1);
     assert_eq!(calls[0].action, "press");
     assert_eq!(calls[0].combo.as_deref(), Some("CTRL+W"));
     assert_eq!(calls[0].binding, Some(EntityId(100)));
-    assert_eq!(calls[0].owner, KeystrokeOwner { owner: EntityId(7), generation: 1 });
+    assert_eq!(
+        calls[0].owner,
+        KeystrokeOwner {
+            owner: EntityId(7),
+            generation: 1
+        }
+    );
 
-    harness.buttons.input(button_sample("COM1", 5, 0)).await.unwrap();
+    harness
+        .buttons
+        .input(button_sample("COM1", 5, 0))
+        .await
+        .unwrap();
     let change = next_broadcast(&mut harness.broadcast).await;
     assert_eq!(change.value, 0.0);
     let calls = harness.keystrokes.calls();
@@ -1015,7 +1146,11 @@ async fn keystroke_mode_presses_and_releases_through_the_port() {
 
     // A failed press broadcasts nothing (Elixir :error → :skip).
     harness.keystrokes.fail_next("press", "no keyboard");
-    harness.buttons.input(button_sample("COM1", 5, 1)).await.unwrap();
+    harness
+        .buttons
+        .input(button_sample("COM1", 5, 1))
+        .await
+        .unwrap();
     settle().await;
     assert!(harness.broadcast.try_recv().is_err());
     assert_eq!(harness.keystrokes.calls().len(), 3);
@@ -1033,7 +1168,11 @@ async fn train_switch_releases_held_keystrokes() {
     binding.keystroke = Some("W".to_owned());
     let mut harness = button_harness(sim.clone(), vec![binding]);
 
-    harness.buttons.input(button_sample("COM1", 5, 1)).await.unwrap();
+    harness
+        .buttons
+        .input(button_sample("COM1", 5, 1))
+        .await
+        .unwrap();
     let _ = next_broadcast(&mut harness.broadcast).await;
     assert_eq!(harness.keystrokes.calls().len(), 1);
 
@@ -1044,7 +1183,13 @@ async fn train_switch_releases_held_keystrokes() {
     let calls = harness.keystrokes.calls();
     assert_eq!(calls.len(), 2);
     assert_eq!(calls[1].action, "owner_gone");
-    assert_eq!(calls[1].owner, KeystrokeOwner { owner: EntityId(7), generation: 1 });
+    assert_eq!(
+        calls[1].owner,
+        KeystrokeOwner {
+            owner: EntityId(7),
+            generation: 1
+        }
+    );
     harness.buttons.shutdown().await.unwrap();
 }
 
@@ -1071,7 +1216,11 @@ async fn train_switch_cancels_running_sequence() {
     ]);
     let mut harness = button_harness(sim.clone(), vec![binding]);
 
-    harness.buttons.input(button_sample("COM1", 5, 1)).await.unwrap();
+    harness
+        .buttons
+        .input(button_sample("COM1", 5, 1))
+        .await
+        .unwrap();
     let _ = next_broadcast(&mut harness.broadcast).await;
     patch_count(&sim, 1).await;
 
@@ -1096,8 +1245,7 @@ async fn button_release_survives_queue_saturation() {
     let resolver = resolver("COM1", 5, 42);
     let clock = FakeClock::new();
     let keystrokes = Arc::new(FakeKeystrokes::default());
-    let (buttons, mut broadcast) =
-        ButtonController::start(Arc::new(clock), resolver, keystrokes);
+    let (buttons, mut broadcast) = ButtonController::start(Arc::new(clock), resolver, keystrokes);
     buttons
         .activate(1, EntityId(7), &button_snapshot(vec![binding]))
         .unwrap();
@@ -1145,7 +1293,11 @@ async fn button_release_survives_queue_saturation() {
     // however many repeats completed before the release).
     let frozen = sim.set_values().len();
     settle().await;
-    assert_eq!(sim.set_values().len(), frozen, "queued edges wrote after release");
+    assert_eq!(
+        sim.set_values().len(),
+        frozen,
+        "queued edges wrote after release"
+    );
     buttons.shutdown().await.unwrap();
 }
 
@@ -1161,7 +1313,11 @@ async fn momentary_repeat_survives_queue_saturation() {
     binding.mode = ButtonMode::Momentary;
     let mut harness = button_harness(sim.clone(), vec![binding]);
 
-    harness.buttons.input(button_sample("COM1", 5, 1)).await.unwrap();
+    harness
+        .buttons
+        .input(button_sample("COM1", 5, 1))
+        .await
+        .unwrap();
     let _ = next_broadcast(&mut harness.broadcast).await;
     // Repeats are running.
     yield_until(|| (horn_on_count(&sim) >= 3).then_some(())).await;
@@ -1185,14 +1341,25 @@ async fn momentary_repeat_survives_queue_saturation() {
     let before = horn_on_count(&sim);
     settle().await;
     let after = horn_on_count(&sim);
-    assert!(after > before, "repeat loop died under saturation: {before} → {after}");
+    assert!(
+        after > before,
+        "repeat loop died under saturation: {before} → {after}"
+    );
 
     // Release still lands and stops the loop.
-    harness.buttons.input(button_sample("COM1", 5, 0)).await.unwrap();
+    harness
+        .buttons
+        .input(button_sample("COM1", 5, 0))
+        .await
+        .unwrap();
     let _ = next_broadcast(&mut harness.broadcast).await;
     let frozen = horn_on_count(&sim);
     settle().await;
-    assert_eq!(horn_on_count(&sim), frozen, "repeats continued after release");
+    assert_eq!(
+        horn_on_count(&sim),
+        frozen,
+        "repeats continued after release"
+    );
     harness.buttons.shutdown().await.unwrap();
 }
 

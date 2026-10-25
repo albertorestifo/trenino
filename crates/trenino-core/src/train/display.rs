@@ -108,15 +108,39 @@ mod tests {
     fn min_clamp_only_raises_numeric_readings_below_the_minimum() {
         // display_controller_test.exs "a persisted nil minimum renders negative
         // simulator values" and the min_value: 50.0 replay fixture
-        assert_eq!(clamp_to_min(SimValue::Number(42.5), Some(50.0)), SimValue::Number(50.0));
-        assert_eq!(clamp_to_min(SimValue::Number(50.0), Some(50.0)), SimValue::Number(50.0));
-        assert_eq!(clamp_to_min(SimValue::Number(51.2), Some(50.0)), SimValue::Number(51.2));
-        assert_eq!(clamp_to_min(SimValue::Number(-12.5), None), SimValue::Number(-12.5));
-        assert_eq!(clamp_to_min(SimValue::Number(-12.5), Some(0.0)), SimValue::Number(0.0));
-        assert_eq!(clamp_to_min(SimValue::Integer(3), Some(4.5)), SimValue::Number(4.5));
+        assert_eq!(
+            clamp_to_min(SimValue::Number(42.5), Some(50.0)),
+            SimValue::Number(50.0)
+        );
+        assert_eq!(
+            clamp_to_min(SimValue::Number(50.0), Some(50.0)),
+            SimValue::Number(50.0)
+        );
+        assert_eq!(
+            clamp_to_min(SimValue::Number(51.2), Some(50.0)),
+            SimValue::Number(51.2)
+        );
+        assert_eq!(
+            clamp_to_min(SimValue::Number(-12.5), None),
+            SimValue::Number(-12.5)
+        );
+        assert_eq!(
+            clamp_to_min(SimValue::Number(-12.5), Some(0.0)),
+            SimValue::Number(0.0)
+        );
+        assert_eq!(
+            clamp_to_min(SimValue::Integer(3), Some(4.5)),
+            SimValue::Number(4.5)
+        );
         // non-numeric readings pass through even with a minimum configured
-        assert_eq!(clamp_to_min(SimValue::Bool(true), Some(4.5)), SimValue::Bool(true));
-        assert_eq!(clamp_to_min(SimValue::String("x".into()), Some(4.5)), SimValue::String("x".into()));
+        assert_eq!(
+            clamp_to_min(SimValue::Bool(true), Some(4.5)),
+            SimValue::Bool(true)
+        );
+        assert_eq!(
+            clamp_to_min(SimValue::String("x".into()), Some(4.5)),
+            SimValue::String("x".into())
+        );
         assert_eq!(clamp_to_min(SimValue::Null, Some(4.5)), SimValue::Null);
     }
 
@@ -156,13 +180,28 @@ mod tests {
     fn format_display_covers_every_valid_precision_and_the_legacy_invalid_fallbacks() {
         // display_formatter_test.exs
         assert_eq!(format_display("{value}", &SimValue::Number(42.5)), "42.5");
-        assert_eq!(format_display("{value}", &SimValue::String("hello".into())), "hello");
+        assert_eq!(
+            format_display("{value}", &SimValue::String("hello".into())),
+            "hello"
+        );
         assert_eq!(format_display("{value}", &SimValue::Bool(true)), "true");
         assert_eq!(format_display("{value:.0f}", &SimValue::Number(42.5)), "43");
-        assert_eq!(format_display("{value:.1f}", &SimValue::Number(42.5)), "42.5");
-        assert_eq!(format_display("{value:.2f}", &SimValue::Number(42.5)), "42.50");
-        assert_eq!(format_display("{value:.1f}", &SimValue::Integer(42)), "42.0");
-        assert_eq!(format_display("V:{value:.1f}", &SimValue::Number(42.5)), "V:42.5");
+        assert_eq!(
+            format_display("{value:.1f}", &SimValue::Number(42.5)),
+            "42.5"
+        );
+        assert_eq!(
+            format_display("{value:.2f}", &SimValue::Number(42.5)),
+            "42.50"
+        );
+        assert_eq!(
+            format_display("{value:.1f}", &SimValue::Integer(42)),
+            "42.0"
+        );
+        assert_eq!(
+            format_display("V:{value:.1f}", &SimValue::Number(42.5)),
+            "V:42.5"
+        );
         assert_eq!(format_display("~{value}~", &SimValue::Integer(42)), "~42~");
         assert_eq!(format_display("HELLO", &SimValue::Integer(42)), "HELLO");
         for (precision, expected) in [
@@ -180,11 +219,20 @@ mod tests {
         }
         // "legacy invalid precision remains safe to render"
         assert_eq!(
-            format_display("{value:.999999999999999999999999f}", &SimValue::Number(42.5)),
+            format_display(
+                "{value:.999999999999999999999999f}",
+                &SimValue::Number(42.5)
+            ),
             "42.5"
         );
-        assert_eq!(format_display("{value:.11f}", &SimValue::Number(42.5)), "42.5");
-        assert_eq!(format_display("{value:.01f}", &SimValue::Number(42.56)), "42.56");
+        assert_eq!(
+            format_display("{value:.11f}", &SimValue::Number(42.5)),
+            "42.5"
+        );
+        assert_eq!(
+            format_display("{value:.01f}", &SimValue::Number(42.56)),
+            "42.56"
+        );
     }
 
     #[test]
@@ -192,6 +240,9 @@ mod tests {
         assert_eq!(format_display("{value}", &SimValue::Null), "");
         assert_eq!(format_display("x{value:.2f}y", &SimValue::Null), "xy");
         assert_eq!(format_display("{value:.2f}", &SimValue::Bool(true)), "true");
-        assert_eq!(format_display("{value:.2f}", &SimValue::String("7".into())), "7");
+        assert_eq!(
+            format_display("{value:.2f}", &SimValue::String("7".into())),
+            "7"
+        );
     }
 }

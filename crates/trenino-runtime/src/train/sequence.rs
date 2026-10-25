@@ -122,8 +122,10 @@ async fn execute(
 ) {
     for command in commands {
         // Controller-death check before each send (`receive ... after 0`):
-        // non-blocking; a live owner never resolves the monitor.
-        if owner.is_closed() {
+        // non-blocking; a live owner never resolves the monitor. `has_changed`
+        // only fails when every sender half is gone (the owner never sends),
+        // which is the controller-death signal.
+        if owner.has_changed().is_err() {
             return;
         }
         let _outcome = simulator.set(&command.endpoint, command.value);
@@ -147,4 +149,3 @@ async fn execute(
     // simply drops the message.
     let _ = events.send(SequenceEvent::Complete { element_id, run });
 }
-

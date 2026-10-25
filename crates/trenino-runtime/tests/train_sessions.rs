@@ -28,11 +28,11 @@ use trenino_runtime::routing::{InputIdentity, InputResolver};
 use trenino_runtime::simulator::client::SimulatorClient;
 use trenino_runtime::simulator::services::clock::FakeClock;
 use trenino_runtime::storage::bindings::{ButtonHardwareType, ButtonMode};
+use trenino_runtime::train::button_controller::ButtonSample;
 use trenino_runtime::train::detection::{
     ButtonBindingInfo, LeverBindingInfo, SequenceCommand, TrainConfigSnapshot,
 };
 use trenino_runtime::train::lever_controller::LeverSample;
-use trenino_runtime::train::button_controller::ButtonSample;
 use trenino_runtime::train::service::{TrainEvent, TrainServiceHandle};
 
 use fixtures::{advance_until, settle, yield_until, FakeConfig, FakeKeystrokes, ScriptedSim};
@@ -115,19 +115,22 @@ fn harness(sim: ScriptedSim) -> Harness {
         "COM1",
         1,
         ConfigId::new(11).unwrap(),
-        [(
-            2,
-            InputIdentity {
-                device_id: EntityId(9),
-                input_id: EntityId(42),
-            },
-        ),(
-            5,
-            InputIdentity {
-                device_id: EntityId(9),
-                input_id: EntityId(43),
-            },
-        )],
+        [
+            (
+                2,
+                InputIdentity {
+                    device_id: EntityId(9),
+                    input_id: EntityId(42),
+                },
+            ),
+            (
+                5,
+                InputIdentity {
+                    device_id: EntityId(9),
+                    input_id: EntityId(43),
+                },
+            ),
+        ],
     );
     let arbiter = Arc::new(ResourceArbiter::new(Arc::new(NoopConsumers)));
     let routing = Arc::new(RoutingService::new(resolver.clone(), arbiter));
@@ -230,7 +233,11 @@ async fn activation_commits_routing_and_loads_controllers() {
         Some(snapshot(7)),
     );
     connect(&harness);
-    harness.service.simulator_connected(client(&sim)).await.unwrap();
+    harness
+        .service
+        .simulator_connected(client(&sim))
+        .await
+        .unwrap();
 
     expect_event(
         &mut harness,
@@ -249,7 +256,10 @@ async fn activation_commits_routing_and_loads_controllers() {
     })
     .await;
     let snapshot = harness.service.snapshot();
-    assert_eq!(snapshot.detected_identifier.as_deref(), Some("RVM_PBO_Class142_DMSL"));
+    assert_eq!(
+        snapshot.detected_identifier.as_deref(),
+        Some("RVM_PBO_Class142_DMSL")
+    );
     assert!(snapshot.ambiguous_candidates.is_empty());
     // RoutingService convergence: desired == active, no degraded reasons.
     assert_eq!(snapshot.desired_revision, snapshot.active_revision);
@@ -257,7 +267,7 @@ async fn activation_commits_routing_and_loads_controllers() {
 
     // The lever controller is live: an input sample reaches the simulator.
     lever_input(&harness, 500);
-    yield_until(|| (sim.set_values().len() >= 1).then_some(())).await;
+    yield_until(|| (!sim.set_values().is_empty()).then_some(())).await;
     assert_eq!(sim.set_values()[0], (THROTTLE.to_owned(), 0.5));
 
     harness.service.shutdown().await.unwrap();
@@ -272,11 +282,14 @@ async fn activation_falls_back_to_formation_index_zero() {
     sim.state.lock().unwrap().object_class = Some("RVM_Train_Class_C".to_owned());
     // DrivableIndex stays unset → the fake answers 500 → fallback to index 0.
     let mut harness = harness(sim.clone());
-    harness.config.commit(
-        profile(7, "Class", &["RVM_Train_Class"]),
-        Some(snapshot(7)),
-    );
-    harness.service.simulator_connected(client(&sim)).await.unwrap();
+    harness
+        .config
+        .commit(profile(7, "Class", &["RVM_Train_Class"]), Some(snapshot(7)));
+    harness
+        .service
+        .simulator_connected(client(&sim))
+        .await
+        .unwrap();
 
     expect_event(
         &mut harness,
@@ -299,13 +312,19 @@ async fn ambiguous_detection_deactivates_routing() {
     let sim = ScriptedSim::spawn();
     sim.state.lock().unwrap().object_class = Some("RVM_DB_BR423_C".to_owned());
     let mut harness = harness(sim.clone());
-    harness.config.commit(profile(7, "BR 423", &["RVM_DB_BR423"]), Some(snapshot(7)));
+    harness
+        .config
+        .commit(profile(7, "BR 423", &["RVM_DB_BR423"]), Some(snapshot(7)));
     harness.config.commit(
         profile(8, "BR 423 Red", &["RVM_DB_BR423_RED"]),
         Some(snapshot(8)),
     );
     connect(&harness);
-    harness.service.simulator_connected(client(&sim)).await.unwrap();
+    harness
+        .service
+        .simulator_connected(client(&sim))
+        .await
+        .unwrap();
     expect_event(
         &mut harness,
         &TrainEvent::TrainDetected {
@@ -315,7 +334,15 @@ async fn ambiguous_detection_deactivates_routing() {
     )
     .await;
     expect_event(&mut harness, &TrainEvent::TrainChanged(Some(EntityId(7)))).await;
-    yield_until(|| harness.service.snapshot().active_revision.is_some().then_some(())).await;
+    yield_until(|| {
+        harness
+            .service
+            .snapshot()
+            .active_revision
+            .is_some()
+            .then_some(())
+    })
+    .await;
 
     // The formation changes to a variant matching BOTH profiles: ambiguity
     // deactivates instead of choosing the longest prefix.
@@ -340,12 +367,12 @@ async fn ambiguous_detection_deactivates_routing() {
     .await;
     expect_event(&mut harness, &TrainEvent::TrainChanged(None)).await;
 
-    yield_until(|| {
-        (harness.service.snapshot().active_train_id.is_none()).then_some(())
-    })
-    .await;
+    yield_until(|| (harness.service.snapshot().active_train_id.is_none()).then_some(())).await;
     let snapshot = harness.service.snapshot();
-    assert_eq!(snapshot.ambiguous_candidates, vec![EntityId(7), EntityId(8)]);
+    assert_eq!(
+        snapshot.ambiguous_candidates,
+        vec![EntityId(7), EntityId(8)]
+    );
     // Identifier-driven deactivation keeps the fresh identifier (Elixir
     // semantics: current_identifier is set, active_train is nil).
     assert_eq!(
@@ -371,7 +398,11 @@ async fn disconnect_without_active_train_deactivates_immediately() {
     sim.state.lock().unwrap().object_class = Some("RVM_Unknown_Thing_C".to_owned());
     let mut harness = harness(sim.clone());
     connect(&harness);
-    harness.service.simulator_connected(client(&sim)).await.unwrap();
+    harness
+        .service
+        .simulator_connected(client(&sim))
+        .await
+        .unwrap();
 
     // Unknown identifier: no active train.
     expect_event(
@@ -405,7 +436,11 @@ async fn grace_period_keeps_train_then_expires() {
         Some(snapshot(7)),
     );
     connect(&harness);
-    harness.service.simulator_connected(client(&sim)).await.unwrap();
+    harness
+        .service
+        .simulator_connected(client(&sim))
+        .await
+        .unwrap();
     expect_event(
         &mut harness,
         &TrainEvent::TrainDetected {
@@ -416,7 +451,15 @@ async fn grace_period_keeps_train_then_expires() {
     .await;
     expect_event(&mut harness, &TrainEvent::TrainChanged(Some(EntityId(7)))).await;
     // Wait for the activation commit before disconnecting.
-    yield_until(|| harness.service.snapshot().active_revision.is_some().then_some(())).await;
+    yield_until(|| {
+        harness
+            .service
+            .snapshot()
+            .active_revision
+            .is_some()
+            .then_some(())
+    })
+    .await;
     let active_revision = harness.service.snapshot().desired_revision;
 
     harness.service.simulator_disconnected().await.unwrap();
@@ -425,7 +468,10 @@ async fn grace_period_keeps_train_then_expires() {
     // further events fire.
     advance_grace(&harness.clock, Duration::from_secs(20)).await;
     settle().await;
-    assert_eq!(harness.service.snapshot().active_train_id, Some(EntityId(7)));
+    assert_eq!(
+        harness.service.snapshot().active_train_id,
+        Some(EntityId(7))
+    );
     assert_eq!(harness.service.snapshot().desired_revision, active_revision);
     assert!(harness.events.try_recv().is_err());
 
@@ -434,7 +480,10 @@ async fn grace_period_keeps_train_then_expires() {
     sim.state.lock().unwrap().object_class_fails = true;
     advance_grace(&harness.clock, Duration::from_secs(15)).await;
     settle().await;
-    assert_eq!(harness.service.snapshot().active_train_id, Some(EntityId(7)));
+    assert_eq!(
+        harness.service.snapshot().active_train_id,
+        Some(EntityId(7))
+    );
     advance_grace(&harness.clock, Duration::from_secs(16)).await;
     expect_event(&mut harness, &TrainEvent::TrainChanged(None)).await;
     let snapshot = harness.service.snapshot();
@@ -464,7 +513,11 @@ async fn grace_recovery_preserves_profile_and_resumes_polling() {
         Some(snapshot(7)),
     );
     connect(&harness);
-    harness.service.simulator_connected(client(&sim)).await.unwrap();
+    harness
+        .service
+        .simulator_connected(client(&sim))
+        .await
+        .unwrap();
     expect_event(
         &mut harness,
         &TrainEvent::TrainDetected {
@@ -474,16 +527,31 @@ async fn grace_recovery_preserves_profile_and_resumes_polling() {
     )
     .await;
     expect_event(&mut harness, &TrainEvent::TrainChanged(Some(EntityId(7)))).await;
-    yield_until(|| harness.service.snapshot().active_revision.is_some().then_some(())).await;
+    yield_until(|| {
+        harness
+            .service
+            .snapshot()
+            .active_revision
+            .is_some()
+            .then_some(())
+    })
+    .await;
     let baseline_revision = harness.service.snapshot().desired_revision;
 
     harness.service.simulator_disconnected().await.unwrap();
     advance_grace(&harness.clock, Duration::from_secs(2)).await;
-    harness.service.simulator_connected(client(&sim)).await.unwrap();
+    harness
+        .service
+        .simulator_connected(client(&sim))
+        .await
+        .unwrap();
 
     // The same identifier re-detects: no change events, no re-activation.
     expect_no_event(&mut harness).await;
-    assert_eq!(harness.service.snapshot().active_train_id, Some(EntityId(7)));
+    assert_eq!(
+        harness.service.snapshot().active_train_id,
+        Some(EntityId(7))
+    );
     assert_eq!(
         harness.service.snapshot().desired_revision,
         baseline_revision,
@@ -506,7 +574,10 @@ async fn grace_recovery_preserves_profile_and_resumes_polling() {
         .iter()
         .filter(|request| request.method == "GET")
         .count();
-    assert!(after > formation_gets, "polling did not resume after recovery");
+    assert!(
+        after > formation_gets,
+        "polling did not resume after recovery"
+    );
     assert!(harness.events.try_recv().is_err(), "duplicate poll loops");
     harness.service.shutdown().await.unwrap();
 }
@@ -529,7 +600,11 @@ async fn train_switch_aborts_obsolete_writers_before_activation() {
         Some(snapshot(8)),
     );
     connect(&harness);
-    harness.service.simulator_connected(client(&sim)).await.unwrap();
+    harness
+        .service
+        .simulator_connected(client(&sim))
+        .await
+        .unwrap();
     expect_event(
         &mut harness,
         &TrainEvent::TrainDetected {
@@ -539,7 +614,15 @@ async fn train_switch_aborts_obsolete_writers_before_activation() {
     )
     .await;
     expect_event(&mut harness, &TrainEvent::TrainChanged(Some(EntityId(7)))).await;
-    yield_until(|| harness.service.snapshot().active_revision.is_some().then_some(())).await;
+    yield_until(|| {
+        harness
+            .service
+            .snapshot()
+            .active_revision
+            .is_some()
+            .then_some(())
+    })
+    .await;
 
     // Start a blocked write for train A.
     let gate = sim.gate(THROTTLE);
@@ -558,10 +641,8 @@ async fn train_switch_aborts_obsolete_writers_before_activation() {
     )
     .await;
     expect_event(&mut harness, &TrainEvent::TrainChanged(Some(EntityId(8)))).await;
-    yield_until(|| {
-        (harness.service.snapshot().active_train_id == Some(EntityId(8))).then_some(())
-    })
-    .await;
+    yield_until(|| (harness.service.snapshot().active_train_id == Some(EntityId(8))).then_some(()))
+        .await;
 
     // The obsolete writer was aborted: releasing the gate only fails the
     // dead request; no completion touches the new train's state.
@@ -591,7 +672,11 @@ async fn manual_sync_after_crud_reloads_committed_configuration() {
         Some(snapshot(7)),
     );
     connect(&harness);
-    harness.service.simulator_connected(client(&sim)).await.unwrap();
+    harness
+        .service
+        .simulator_connected(client(&sim))
+        .await
+        .unwrap();
     expect_event(
         &mut harness,
         &TrainEvent::TrainDetected {
@@ -601,7 +686,15 @@ async fn manual_sync_after_crud_reloads_committed_configuration() {
     )
     .await;
     expect_event(&mut harness, &TrainEvent::TrainChanged(Some(EntityId(7)))).await;
-    yield_until(|| harness.service.snapshot().active_revision.is_some().then_some(())).await;
+    yield_until(|| {
+        harness
+            .service
+            .snapshot()
+            .active_revision
+            .is_some()
+            .then_some(())
+    })
+    .await;
 
     // A button input before the CRUD writes nothing.
     button_input(&harness, 1);
@@ -625,9 +718,10 @@ async fn manual_sync_after_crud_reloads_committed_configuration() {
         on_sequence: None,
         off_sequence: None,
     });
-    harness
-        .config
-        .commit(profile(7, "Class 142", &["RVM_PBO_Class142"]), Some(updated));
+    harness.config.commit(
+        profile(7, "Class 142", &["RVM_PBO_Class142"]),
+        Some(updated),
+    );
 
     let revision_before_sync = harness.service.snapshot().desired_revision.unwrap();
     harness.service.sync().await.unwrap();
@@ -658,7 +752,7 @@ async fn manual_sync_after_crud_reloads_committed_configuration() {
     );
     let revision_after_sync = harness.service.snapshot().desired_revision;
     button_input(&harness, 1);
-    yield_until(|| (sim.set_values().len() >= 1).then_some(())).await;
+    yield_until(|| (!sim.set_values().is_empty()).then_some(())).await;
     assert_eq!(sim.set_values()[0], (HORN.to_owned(), 1.0));
     // The press's own `button_state_changed` broadcast is merged into the
     // event stream; sync itself must not emit anything else (no TrainChanged).
@@ -711,12 +805,15 @@ async fn shutdown_releases_held_state_and_stops_writers() {
         on_sequence: None,
         off_sequence: None,
     });
-    harness.config.commit(
-        profile(7, "Class 142", &["RVM_PBO_Class142"]),
-        Some(snap),
-    );
+    harness
+        .config
+        .commit(profile(7, "Class 142", &["RVM_PBO_Class142"]), Some(snap));
     connect(&harness);
-    harness.service.simulator_connected(client(&sim)).await.unwrap();
+    harness
+        .service
+        .simulator_connected(client(&sim))
+        .await
+        .unwrap();
     expect_event(
         &mut harness,
         &TrainEvent::TrainDetected {
@@ -726,7 +823,15 @@ async fn shutdown_releases_held_state_and_stops_writers() {
     )
     .await;
     expect_event(&mut harness, &TrainEvent::TrainChanged(Some(EntityId(7)))).await;
-    yield_until(|| harness.service.snapshot().active_revision.is_some().then_some(())).await;
+    yield_until(|| {
+        harness
+            .service
+            .snapshot()
+            .active_revision
+            .is_some()
+            .then_some(())
+    })
+    .await;
 
     // Hold a key and block a lever write.
     button_input(&harness, 1);
@@ -781,12 +886,15 @@ async fn activated_train_runs_sequences_through_the_service() {
         ]),
         off_sequence: None,
     });
-    harness.config.commit(
-        profile(7, "Class 142", &["RVM_PBO_Class142"]),
-        Some(snap),
-    );
+    harness
+        .config
+        .commit(profile(7, "Class 142", &["RVM_PBO_Class142"]), Some(snap));
     connect(&harness);
-    harness.service.simulator_connected(client(&sim)).await.unwrap();
+    harness
+        .service
+        .simulator_connected(client(&sim))
+        .await
+        .unwrap();
     expect_event(
         &mut harness,
         &TrainEvent::TrainDetected {
@@ -796,7 +904,15 @@ async fn activated_train_runs_sequences_through_the_service() {
     )
     .await;
     expect_event(&mut harness, &TrainEvent::TrainChanged(Some(EntityId(7)))).await;
-    yield_until(|| harness.service.snapshot().active_revision.is_some().then_some(())).await;
+    yield_until(|| {
+        harness
+            .service
+            .snapshot()
+            .active_revision
+            .is_some()
+            .then_some(())
+    })
+    .await;
 
     button_input(&harness, 1);
     // The press broadcast arrives through the service event stream.
@@ -808,12 +924,15 @@ async fn activated_train_runs_sequences_through_the_service() {
         }
         other => panic!("expected button broadcast, got {other:?}"),
     }
-    yield_until(|| (sim.set_paths().len() >= 1).then_some(())).await;
+    yield_until(|| (!sim.set_paths().is_empty()).then_some(())).await;
     advance_until(&harness.clock, Duration::from_millis(20), || {
         (sim.set_paths().len() >= 2).then_some(())
     })
     .await;
-    assert_eq!(sim.set_paths(), ["DoorKey.InputValue", "DoorOpen.InputValue"]);
+    assert_eq!(
+        sim.set_paths(),
+        ["DoorKey.InputValue", "DoorOpen.InputValue"]
+    );
     harness.service.shutdown().await.unwrap();
 }
 
@@ -829,7 +948,11 @@ async fn reactivation_after_deactivation_commits_fresh_revision() {
         Some(snapshot(7)),
     );
     connect(&harness);
-    harness.service.simulator_connected(client(&sim)).await.unwrap();
+    harness
+        .service
+        .simulator_connected(client(&sim))
+        .await
+        .unwrap();
     expect_event(
         &mut harness,
         &TrainEvent::TrainDetected {
@@ -839,7 +962,15 @@ async fn reactivation_after_deactivation_commits_fresh_revision() {
     )
     .await;
     expect_event(&mut harness, &TrainEvent::TrainChanged(Some(EntityId(7)))).await;
-    yield_until(|| harness.service.snapshot().active_revision.is_some().then_some(())).await;
+    yield_until(|| {
+        harness
+            .service
+            .snapshot()
+            .active_revision
+            .is_some()
+            .then_some(())
+    })
+    .await;
     let first_revision = harness.service.snapshot().desired_revision.unwrap();
 
     // Lose the train (unknown identifier), then re-detect it.
@@ -866,15 +997,13 @@ async fn reactivation_after_deactivation_commits_fresh_revision() {
     )
     .await;
     expect_event(&mut harness, &TrainEvent::TrainChanged(Some(EntityId(7)))).await;
-    yield_until(|| {
-        (harness.service.snapshot().active_train_id == Some(EntityId(7))).then_some(())
-    })
-    .await;
+    yield_until(|| (harness.service.snapshot().active_train_id == Some(EntityId(7))).then_some(()))
+        .await;
     let second_revision = harness.service.snapshot().desired_revision.unwrap();
     assert!(second_revision > first_revision);
 
     lever_input(&harness, 900);
-    yield_until(|| (sim.set_values().len() >= 1).then_some(())).await;
+    yield_until(|| (!sim.set_values().is_empty()).then_some(())).await;
     assert_eq!(sim.set_values()[0], (THROTTLE.to_owned(), 0.9));
     harness.service.shutdown().await.unwrap();
 }

@@ -733,7 +733,10 @@ fn extract_train_name_pattern_priority_and_fallback() {
     // Model number without hyphen suffix.
     assert_eq!(extract_train_name("RVM_LIRREX_M9_C"), "M9");
     // Company + model for a known operator.
-    assert_eq!(extract_train_name("RVM_NJT_AMTK_AcelaA21_C"), "AMTK AcelaA21");
+    assert_eq!(
+        extract_train_name("RVM_NJT_AMTK_AcelaA21_C"),
+        "AMTK AcelaA21"
+    );
     // Fallback: first part with letters AND digits, 2-10 chars.
     assert_eq!(extract_train_name("RVM_XYZ_XYZ1234_C"), "XYZ1234");
     // No candidate: pure route/part words without digits or patterns.
@@ -747,13 +750,19 @@ fn extract_train_name_pattern_priority_and_fallback() {
 fn normalize_object_class_strips_suffix_and_trailing_junk() {
     // derive_from_formation normalization (identifier.ex:41-46): `_C` suffix
     // plus trailing non-alphanumerics.
-    assert_eq!(normalize_object_class("RVM_SBN_OBB_1116_C"), "RVM_SBN_OBB_1116");
+    assert_eq!(
+        normalize_object_class("RVM_SBN_OBB_1116_C"),
+        "RVM_SBN_OBB_1116"
+    );
     assert_eq!(
         normalize_object_class("RVM_PBO_Class142_DMSL_C"),
         "RVM_PBO_Class142_DMSL"
     );
     assert_eq!(normalize_object_class("RVM_Train_Class"), "RVM_Train_Class");
-    assert_eq!(normalize_object_class("RVM_FSN_DB_BR430__"), "RVM_FSN_DB_BR430");
+    assert_eq!(
+        normalize_object_class("RVM_FSN_DB_BR430__"),
+        "RVM_FSN_DB_BR430"
+    );
 }
 
 #[test]

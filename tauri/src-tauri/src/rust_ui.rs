@@ -205,10 +205,10 @@ impl RustAppState {
     /// firmware upload manager), registers every one as a shutdown
     /// participant, and stores handles for the command surface. None of these
     /// hold `Arc<AppServices>`; they hold `Database` clones, so the app
-    /// shutdown strong-count drain contract holds. The MCP server is not
-    /// constructed here: the wave integrator builds the storage-backed `Ports`
-    /// (`mcp::storage_ports::StoragePorts::new(database).into_ports()`) and
-    /// installs it through `install_mcp_server`.
+    /// shutdown strong-count drain contract holds. The MCP HTTP server is
+    /// constructed and started here from the storage-backed ports
+    /// (`mcp::storage_ports::StoragePorts`) and installed via
+    /// `install_mcp_server`.
     fn wire_runtime_services(
         &self,
         app: &AppHandle,
@@ -253,9 +253,27 @@ impl RustAppState {
             arbiter.clone(),
             adapter,
         ));
-        let vjoy = Arc::new(VjoyRuntime { manager });
+        let vjoy = Arc::new(VjoyRuntime { manager: manager.clone() });
         self.shutdown.register(vjoy.clone())?;
-        *self.vjoy.lock().map_err(|_| "vjoy registry unavailable")? = Some(vjoy);
+        // MCP HTTP server: storage-backed tool ports plus the live vJoy
+        // manager. Port choice (least-surprising default): the Elixir stack
+        // served MCP from the Phoenix app, whose `PORT` env default is 4000,
+        // so bind 127.0.0.1:4000 unless `TRENINO_MCP_PORT` overrides it.
+        // A busy port stays non-fatal: `start` reports `Degraded` instead of
+        // an error and app startup continues.
+        let mcp_ports = trenino_runtime::mcp::storage_ports::StoragePorts::new(database.clone())
+            .with_vjoy_runtime(manager.clone())
+            .into_ports();
+        let mcp_server = Arc::new(trenino_runtime::mcp::server::McpServer::new(
+            Arc::new(mcp_ports),
+            None,
+        ));
+        let mcp_port: u16 = std::env::var("TRENINO_MCP_PORT")
+            .ok()
+            .and_then(|value| value.parse().ok())
+            .unwrap_or(4000);
+        let _ = mcp_server.start(([127, 0, 0, 1], mcp_port).into());
+        self.install_mcp_server(mcp_server)?;
 
         let upload = Arc::new(trenino_runtime::firmware::UploadManager::new(
             arbiter,
@@ -1589,7 +1607,15 @@ publishing_command!(ui_create_input(app, state, device_id: String, pin: i32, kin
             .map(|value| parse_entity_id("matrix_id", &value))
             .transpose()
             .map_err(to_app_failure)?;
-        services.create_input(device_id, pin, &kind, sensitivity, debounce, name, matrix_id)
+        services.create_input(trenino_runtime::app::CreateInputParams {
+            device_id,
+            pin,
+            kind,
+            sensitivity,
+            debounce,
+            name,
+            matrix_id,
+        })
     });
 
 publishing_command!(ui_update_input(app, state, id: String, pin: i32, kind: String, sensitivity: Option<i32>, debounce: Option<i32>, name: Option<String>) -> UiSnapshot<trenino_core::ui::DeviceDetailView>, Topic::Hardware,
@@ -1818,13 +1844,31 @@ publishing_command!(ui_delete_element(app, state, id: String) -> UiSnapshot<tren
 publishing_command!(ui_create_lever(app, state, element_id: String, min_endpoint: String, max_endpoint: String, value_endpoint: String, notch_count_endpoint: Option<String>, notch_index_endpoint: Option<String>, lever_type: Option<String>, inverted: bool) -> UiSnapshot<trenino_core::ui::TrainDetailView>, Topic::Trains,
     |services: Arc<AppServices>, element_id: String, min_endpoint: String, max_endpoint: String, value_endpoint: String, notch_count_endpoint: Option<String>, notch_index_endpoint: Option<String>, lever_type: Option<String>, inverted: bool| {
         let element_id = parse_entity_id("element_id", &element_id).map_err(to_app_failure)?;
-        services.create_lever(element_id, min_endpoint, max_endpoint, value_endpoint, notch_count_endpoint, notch_index_endpoint, lever_type.as_deref(), inverted)
+        services.create_lever(trenino_runtime::app::CreateLeverParams {
+            element_id,
+            min_endpoint,
+            max_endpoint,
+            value_endpoint,
+            notch_count_endpoint,
+            notch_index_endpoint,
+            lever_type,
+            inverted,
+        })
     });
 
 publishing_command!(ui_update_lever(app, state, id: String, min_endpoint: Option<String>, max_endpoint: Option<String>, value_endpoint: Option<String>, notch_count_endpoint: Option<Option<String>>, notch_index_endpoint: Option<Option<String>>, lever_type: Option<Option<String>>, inverted: Option<bool>) -> UiSnapshot<trenino_core::ui::TrainDetailView>, Topic::Trains,
     |services: Arc<AppServices>, id: String, min_endpoint: Option<String>, max_endpoint: Option<String>, value_endpoint: Option<String>, notch_count_endpoint: Option<Option<String>>, notch_index_endpoint: Option<Option<String>>, lever_type: Option<Option<String>>, inverted: Option<bool>| {
         let id = parse_entity_id("id", &id).map_err(to_app_failure)?;
-        services.update_lever(id, min_endpoint, max_endpoint, value_endpoint, notch_count_endpoint, notch_index_endpoint, lever_type.as_ref().map(|option| option.as_deref()), inverted)
+        services.update_lever(trenino_runtime::app::UpdateLeverParams {
+            lever_config_id: id,
+            min_endpoint,
+            max_endpoint,
+            value_endpoint,
+            notch_count_endpoint,
+            notch_index_endpoint,
+            lever_type,
+            inverted,
+        })
     });
 
 publishing_command!(ui_create_notch(app, state, lever_config_id: String, notch: NotchInput) -> UiSnapshot<trenino_core::ui::TrainDetailView>, Topic::Trains,

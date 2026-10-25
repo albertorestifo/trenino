@@ -33,8 +33,8 @@ use trenino_runtime::train::display_controller::{
     DisplayBindingConfig, DisplayBindingSource, DisplayController,
 };
 use trenino_runtime::train::output_controller::{
-    HardwareDispatch, OutputBindingConfig, OutputBindingSource, OutputController,
-    OutputLevel, SimulatorConnectionView, SimulatorSubscriptions,
+    HardwareDispatch, OutputBindingConfig, OutputBindingSource, OutputController, OutputLevel,
+    SimulatorConnectionView, SimulatorSubscriptions,
 };
 use trenino_runtime::train::sequence::{
     SequenceEvent, SequenceExecutor, SequenceSendOutcome, SequenceSimulator,
@@ -56,7 +56,11 @@ async fn yield_until<T>(mut probe: impl FnMut() -> Option<T>) -> T {
     panic!("condition never observed while yielding");
 }
 
-async fn advance_until<T>(clock: &FakeClock, step: Duration, mut probe: impl FnMut() -> Option<T>) -> T {
+async fn advance_until<T>(
+    clock: &FakeClock,
+    step: Duration,
+    mut probe: impl FnMut() -> Option<T>,
+) -> T {
     for _ in 0..DRIVE_LIMIT {
         if let Some(value) = probe() {
             return value;
@@ -152,7 +156,11 @@ impl SimulatorSubscriptions for FakeSimulator {
     }
 
     fn unsubscribe(&self, id: i64) -> Result<(), String> {
-        self.inner.lock().unwrap().trace.push(SimCall::Unsubscribe { id });
+        self.inner
+            .lock()
+            .unwrap()
+            .trace
+            .push(SimCall::Unsubscribe { id });
         Ok(())
     }
 }
@@ -178,9 +186,21 @@ impl SimulatorConnectionView for FakeConnection {
 
 #[derive(Clone, Debug, PartialEq)]
 enum HardwareCall {
-    SetOutput { port: String, pin: i32, level: OutputLevel },
-    SetBrightness { port: String, address: i32, brightness: i32 },
-    Segments { port: String, address: i32, data: Vec<u8> },
+    SetOutput {
+        port: String,
+        pin: i32,
+        level: OutputLevel,
+    },
+    SetBrightness {
+        port: String,
+        address: i32,
+        brightness: i32,
+    },
+    Segments {
+        port: String,
+        address: i32,
+        data: Vec<u8>,
+    },
 }
 
 struct FakeHardware {
@@ -242,11 +262,14 @@ impl HardwareDispatch for FakeHardware {
         i2c_address: i32,
         brightness: i32,
     ) -> Result<(), String> {
-        self.trace.lock().unwrap().push(HardwareCall::SetBrightness {
-            port: port.to_owned(),
-            address: i2c_address,
-            brightness,
-        });
+        self.trace
+            .lock()
+            .unwrap()
+            .push(HardwareCall::SetBrightness {
+                port: port.to_owned(),
+                address: i2c_address,
+                brightness,
+            });
         if self.fail_brightness.load(Ordering::SeqCst) {
             return Err("write failed".to_owned());
         }
@@ -344,7 +367,12 @@ fn output_binding(id: i64, endpoint: &str, operator: OutputOperator) -> OutputBi
     }
 }
 
-fn numeric_binding(id: i64, endpoint: &str, operator: OutputOperator, value_a: f64) -> OutputBindingConfig {
+fn numeric_binding(
+    id: i64,
+    endpoint: &str,
+    operator: OutputOperator,
+    value_a: f64,
+) -> OutputBindingConfig {
     let mut binding = output_binding(id, endpoint, operator);
     binding.value_a = Some(value_a);
     binding
@@ -405,7 +433,10 @@ impl OutputHarness {
         self.controller.train_changed(Some(train(train_id))).await;
         yield_until(|| {
             let trace = self.simulator.trace();
-            trace.iter().any(|c| matches!(c, SimCall::Subscribe { .. })).then_some(())
+            trace
+                .iter()
+                .any(|c| matches!(c, SimCall::Subscribe { .. }))
+                .then_some(())
         })
         .await;
     }
@@ -466,7 +497,10 @@ impl DisplayHarness {
         self.controller.train_changed(Some(train(train_id))).await;
         yield_until(|| {
             let trace = self.simulator.trace();
-            trace.iter().any(|c| matches!(c, SimCall::Subscribe { .. })).then_some(())
+            trace
+                .iter()
+                .any(|c| matches!(c, SimCall::Subscribe { .. }))
+                .then_some(())
         })
         .await;
     }
@@ -527,11 +561,7 @@ impl SequenceSimulator for RecordingSequenceSimulator {
     }
 }
 
-fn sequence_harness() -> (
-    Arc<RecordingSequenceSimulator>,
-    FakeClock,
-    SequenceExecutor,
-) {
+fn sequence_harness() -> (Arc<RecordingSequenceSimulator>, FakeClock, SequenceExecutor) {
     let simulator = Arc::new(RecordingSequenceSimulator {
         sends: Mutex::new(Vec::new()),
         outcome: Mutex::new(SequenceSendOutcome::Sent),
@@ -865,7 +895,16 @@ async fn outputs_write_only_on_state_change_and_share_one_reading_per_endpoint()
             .hardware
             .trace()
             .iter()
-            .any(|c| matches!(c, HardwareCall::SetOutput { pin: 14, level: OutputLevel::High, .. }))
+            .any(|c| {
+                matches!(
+                    c,
+                    HardwareCall::SetOutput {
+                        pin: 14,
+                        level: OutputLevel::High,
+                        ..
+                    }
+                )
+            })
             .then_some(())
     })
     .await;
@@ -921,9 +960,10 @@ async fn outputs_write_only_on_state_change_and_share_one_reading_per_endpoint()
 #[tokio::test]
 async fn output_readings_are_rounded_to_two_decimals_before_evaluation() {
     let harness = OutputHarness::start();
-    harness
-        .source
-        .set(1, vec![numeric_binding(1, "Speed", OutputOperator::Gt, 50.0)]);
+    harness.source.set(
+        1,
+        vec![numeric_binding(1, "Speed", OutputOperator::Gt, 50.0)],
+    );
     harness.activate(1).await;
 
     harness
@@ -963,9 +1003,10 @@ async fn output_readings_are_rounded_to_two_decimals_before_evaluation() {
 #[tokio::test]
 async fn invalid_or_failed_readings_leave_output_state_untouched() {
     let harness = OutputHarness::start();
-    harness
-        .source
-        .set(1, vec![numeric_binding(1, "Speed", OutputOperator::Gt, 50.0)]);
+    harness.source.set(
+        1,
+        vec![numeric_binding(1, "Speed", OutputOperator::Gt, 50.0)],
+    );
     harness.activate(1).await;
 
     // Drive HIGH first.
@@ -987,9 +1028,10 @@ async fn invalid_or_failed_readings_leave_output_state_untouched() {
     assert_eq!(harness.hardware.trace().len(), 1);
 
     // Empty Values map — untouched.
-    harness
-        .simulator
-        .set_reading(1000, json!({"Entries": [{"NodeValid": true, "Values": {}}]}));
+    harness.simulator.set_reading(
+        1000,
+        json!({"Entries": [{"NodeValid": true, "Values": {}}]}),
+    );
     harness.poll_until_reads(4).await;
     assert_eq!(harness.hardware.trace().len(), 1);
 
@@ -1134,10 +1176,7 @@ async fn train_switch_drives_outputs_low_even_when_simulator_disconnected() {
     // then LOW writes in binding-id order).
     harness.connection.connected.store(false, Ordering::SeqCst);
     harness.controller.train_changed(None).await;
-    yield_until(|| {
-        (harness.hardware.trace().len() == 3).then_some(())
-    })
-    .await;
+    yield_until(|| (harness.hardware.trace().len() == 3).then_some(())).await;
 
     assert_eq!(
         harness.hardware.trace()[1..],
@@ -1171,9 +1210,10 @@ async fn train_switch_drives_outputs_low_even_when_simulator_disconnected() {
 #[tokio::test]
 async fn reload_replaces_bindings_and_the_output_controller_ignores_reconnects() {
     let harness = OutputHarness::start();
-    harness
-        .source
-        .set(1, vec![numeric_binding(1, "Speed", OutputOperator::Gt, 50.0)]);
+    harness.source.set(
+        1,
+        vec![numeric_binding(1, "Speed", OutputOperator::Gt, 50.0)],
+    );
     harness.controller.train_changed(None).await;
     settle().await;
 
@@ -1213,9 +1253,10 @@ async fn reload_replaces_bindings_and_the_output_controller_ignores_reconnects()
 #[tokio::test]
 async fn reload_while_active_rebuilds_subscriptions_and_resets_state() {
     let harness = OutputHarness::start();
-    harness
-        .source
-        .set(1, vec![numeric_binding(1, "Speed", OutputOperator::Gt, 50.0)]);
+    harness.source.set(
+        1,
+        vec![numeric_binding(1, "Speed", OutputOperator::Gt, 50.0)],
+    );
     harness.activate(1).await;
 
     harness
@@ -1278,10 +1319,9 @@ async fn display_bindings_sharing_an_endpoint_update_from_one_reading() {
     let harness = DisplayHarness::start();
     let mut second = display_binding(2, "Speed", "{value:.0f}");
     second.i2c_address = 0x72;
-    harness.source.set(
-        1,
-        vec![display_binding(1, "Speed", "{value:.1f}"), second],
-    );
+    harness
+        .source
+        .set(1, vec![display_binding(1, "Speed", "{value:.1f}"), second]);
     harness.activate(1).await;
     // A single subscription serves both bindings.
     assert_eq!(
@@ -1371,7 +1411,10 @@ async fn display_failed_writes_are_not_cached_and_retry_the_unchanged_value() {
     harness.poll().await;
     assert_eq!(harness.hardware.trace().len(), 2);
 
-    harness.hardware.fail_segments.store(false, Ordering::SeqCst);
+    harness
+        .hardware
+        .fail_segments
+        .store(false, Ordering::SeqCst);
     harness.poll().await;
     // Retried with brightness again (last_text was never cached).
     let successes = harness
@@ -1404,7 +1447,10 @@ async fn display_failed_brightness_blocks_segments_and_caching() {
     harness
         .simulator
         .set_reading(3000, harness.simulator.reading_of(json!(42.5)));
-    harness.hardware.fail_brightness.store(true, Ordering::SeqCst);
+    harness
+        .hardware
+        .fail_brightness
+        .store(true, Ordering::SeqCst);
 
     harness.poll().await;
     assert_eq!(
@@ -1413,7 +1459,10 @@ async fn display_failed_brightness_blocks_segments_and_caching() {
         "brightness failure must stop the segments write"
     );
 
-    harness.hardware.fail_brightness.store(false, Ordering::SeqCst);
+    harness
+        .hardware
+        .fail_brightness
+        .store(false, Ordering::SeqCst);
     harness.poll().await;
     let segments_sent = harness
         .hardware
@@ -1466,10 +1515,7 @@ async fn devices_updated_replays_stable_text_with_brightness_once() {
     harness.poll().await;
     // Invalidation resends brightness + segments for the same text.
     assert_eq!(harness.hardware.trace().len(), 4);
-    assert_eq!(
-        harness.hardware.trace()[2],
-        brightness("port-123", 0x70, 7)
-    );
+    assert_eq!(harness.hardware.trace()[2], brightness("port-123", 0x70, 7));
 
     harness.poll().await;
     assert_eq!(harness.hardware.trace().len(), 4);
@@ -1647,10 +1693,7 @@ async fn train_switch_blanks_displays_without_brightness_and_unsubscribes() {
     assert_eq!(harness.hardware.trace().len(), 2);
 
     harness.controller.train_changed(None).await;
-    yield_until(|| {
-        (harness.hardware.trace().len() == 3).then_some(())
-    })
-    .await;
+    yield_until(|| (harness.hardware.trace().len() == 3).then_some(())).await;
 
     // Blank = empty-text encoding, no brightness message.
     let blank = trenino_core::hardware::ht16k33::encode_string("", 4, false, false, true);
@@ -1689,10 +1732,7 @@ async fn display_blank_cleanup_still_runs_when_simulator_is_disconnected() {
 
     harness.connection.connected.store(false, Ordering::SeqCst);
     harness.controller.train_changed(None).await;
-    yield_until(|| {
-        (harness.hardware.trace().len() == 3).then_some(())
-    })
-    .await;
+    yield_until(|| (harness.hardware.trace().len() == 3).then_some(())).await;
     // Unsubscribe was skipped (no client) but the blank went out anyway.
     assert!(!harness
         .simulator

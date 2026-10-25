@@ -161,25 +161,41 @@ mod tests {
     #[test]
     fn predicates_match_the_output_controller_fixture_matrix() {
         // test/trenino/train/output_controller_test.exs "evaluate_condition/2 logic"
-        let gt = OutputBinding { operator: OutputOperator::Gt, value_a: Some(50.0), value_b: None };
+        let gt = OutputBinding {
+            operator: OutputOperator::Gt,
+            value_a: Some(50.0),
+            value_b: None,
+        };
         assert!(evaluate_output(&gt, &SimValue::Number(50.01)));
         assert!(evaluate_output(&gt, &SimValue::Number(100.0)));
         assert!(!evaluate_output(&gt, &SimValue::Number(50.0)));
         assert!(!evaluate_output(&gt, &SimValue::Number(49.99)));
         assert!(!evaluate_output(&gt, &SimValue::Number(0.0)));
 
-        let gte = OutputBinding { operator: OutputOperator::Gte, value_a: Some(50.0), value_b: None };
+        let gte = OutputBinding {
+            operator: OutputOperator::Gte,
+            value_a: Some(50.0),
+            value_b: None,
+        };
         assert!(evaluate_output(&gte, &SimValue::Number(50.0)));
         assert!(!evaluate_output(&gte, &SimValue::Number(49.99)));
         assert!(!evaluate_output(&gte, &SimValue::Number(0.0)));
 
-        let lt = OutputBinding { operator: OutputOperator::Lt, value_a: Some(50.0), value_b: None };
+        let lt = OutputBinding {
+            operator: OutputOperator::Lt,
+            value_a: Some(50.0),
+            value_b: None,
+        };
         assert!(evaluate_output(&lt, &SimValue::Number(49.99)));
         assert!(evaluate_output(&lt, &SimValue::Number(-10.0)));
         assert!(!evaluate_output(&lt, &SimValue::Number(50.0)));
         assert!(!evaluate_output(&lt, &SimValue::Number(50.01)));
 
-        let lte = OutputBinding { operator: OutputOperator::Lte, value_a: Some(50.0), value_b: None };
+        let lte = OutputBinding {
+            operator: OutputOperator::Lte,
+            value_a: Some(50.0),
+            value_b: None,
+        };
         assert!(evaluate_output(&lte, &SimValue::Number(50.0)));
         assert!(evaluate_output(&lte, &SimValue::Number(0.0)));
         assert!(!evaluate_output(&lte, &SimValue::Number(50.01)));
@@ -210,34 +226,62 @@ mod tests {
 
     #[test]
     fn thresholds_cover_negatives_zero_and_precision_edges() {
-        let gt = OutputBinding { operator: OutputOperator::Gt, value_a: Some(-10.0), value_b: None };
+        let gt = OutputBinding {
+            operator: OutputOperator::Gt,
+            value_a: Some(-10.0),
+            value_b: None,
+        };
         assert!(evaluate_output(&gt, &SimValue::Number(-9.0)));
         assert!(!evaluate_output(&gt, &SimValue::Number(-10.0)));
         assert!(!evaluate_output(&gt, &SimValue::Number(-11.0)));
 
-        let gte = OutputBinding { operator: OutputOperator::Gte, value_a: Some(0.0), value_b: None };
+        let gte = OutputBinding {
+            operator: OutputOperator::Gte,
+            value_a: Some(0.0),
+            value_b: None,
+        };
         assert!(evaluate_output(&gte, &SimValue::Number(0.0)));
         assert!(evaluate_output(&gte, &SimValue::Number(0.01)));
         assert!(!evaluate_output(&gte, &SimValue::Number(-0.01)));
 
-        let precise = OutputBinding { operator: OutputOperator::Gt, value_a: Some(50.55), value_b: None };
+        let precise = OutputBinding {
+            operator: OutputOperator::Gt,
+            value_a: Some(50.55),
+            value_b: None,
+        };
         assert!(evaluate_output(&precise, &SimValue::Number(50.56)));
         assert!(!evaluate_output(&precise, &SimValue::Number(50.55)));
         assert!(!evaluate_output(&precise, &SimValue::Number(50.54)));
 
-        let large = OutputBinding { operator: OutputOperator::Lt, value_a: Some(1_000_000.0), value_b: None };
+        let large = OutputBinding {
+            operator: OutputOperator::Lt,
+            value_a: Some(1_000_000.0),
+            value_b: None,
+        };
         assert!(evaluate_output(&large, &SimValue::Number(999_999.99)));
         assert!(!evaluate_output(&large, &SimValue::Number(1_000_000.0)));
 
-        let small = OutputBinding { operator: OutputOperator::Gt, value_a: Some(0.01), value_b: None };
+        let small = OutputBinding {
+            operator: OutputOperator::Gt,
+            value_a: Some(0.01),
+            value_b: None,
+        };
         assert!(evaluate_output(&small, &SimValue::Number(0.02)));
         assert!(!evaluate_output(&small, &SimValue::Number(0.01)));
     }
 
     #[test]
     fn boolean_operators_are_boolean_only_and_numeric_are_number_only() {
-        let eq_true = OutputBinding { operator: OutputOperator::EqTrue, value_a: None, value_b: None };
-        let eq_false = OutputBinding { operator: OutputOperator::EqFalse, value_a: None, value_b: None };
+        let eq_true = OutputBinding {
+            operator: OutputOperator::EqTrue,
+            value_a: None,
+            value_b: None,
+        };
+        let eq_false = OutputBinding {
+            operator: OutputOperator::EqFalse,
+            value_a: None,
+            value_b: None,
+        };
         assert!(evaluate_output(&eq_true, &SimValue::Bool(true)));
         assert!(!evaluate_output(&eq_true, &SimValue::Bool(false)));
         assert!(evaluate_output(&eq_false, &SimValue::Bool(false)));
@@ -247,7 +291,11 @@ mod tests {
         assert!(!evaluate_output(&eq_true, &SimValue::Integer(0)));
         assert!(!evaluate_output(&eq_true, &SimValue::Number(1.0)));
 
-        let gt = OutputBinding { operator: OutputOperator::Gt, value_a: Some(0.5), value_b: None };
+        let gt = OutputBinding {
+            operator: OutputOperator::Gt,
+            value_a: Some(0.5),
+            value_b: None,
+        };
         // "numeric operators return false for boolean values"
         assert!(!evaluate_output(&gt, &SimValue::Bool(true)));
         assert!(!evaluate_output(&gt, &SimValue::Bool(false)));
@@ -259,7 +307,11 @@ mod tests {
 
     #[test]
     fn integer_values_compare_exactly_against_float_thresholds() {
-        let gte = OutputBinding { operator: OutputOperator::Gte, value_a: Some(50.0), value_b: None };
+        let gte = OutputBinding {
+            operator: OutputOperator::Gte,
+            value_a: Some(50.0),
+            value_b: None,
+        };
         assert!(evaluate_output(&gte, &SimValue::Integer(50)));
         assert!(evaluate_output(&gte, &SimValue::Integer(51)));
         assert!(!evaluate_output(&gte, &SimValue::Integer(49)));
@@ -305,7 +357,8 @@ mod tests {
 
     #[test]
     fn subscription_readings_round_numbers_to_two_decimals_and_pass_other_scalars() {
-        let read = |value| reading(json!({"Entries": [{"NodeValid": true, "Values": {"Speed": value}}]}));
+        let read =
+            |value| reading(json!({"Entries": [{"NodeValid": true, "Values": {"Speed": value}}]}));
         assert_eq!(read(json!(50.006)), Some(SimValue::Number(50.01)));
         assert_eq!(read(json!(50.004)), Some(SimValue::Number(50.0)));
         assert_eq!(read(json!(42.485)), Some(SimValue::Number(42.48)));

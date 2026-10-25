@@ -70,6 +70,13 @@ pub struct RequestLog {
     pub set_value: Option<f64>,
 }
 
+/// Per-endpoint gate: entered notification plus proceed channel
+/// (see [`SimState::gates`]).
+pub type Gate = (
+    std_mpsc::Sender<()>,
+    Arc<Mutex<Option<std_mpsc::Receiver<bool>>>>,
+);
+
 #[derive(Default)]
 pub struct SimState {
     /// ObjectClass served at `CurrentFormation/{i}.ObjectClass`.
@@ -80,7 +87,7 @@ pub struct SimState {
     /// Per-endpoint set behavior; missing entry means Ok.
     pub set_behavior: HashMap<String, SetBehavior>,
     /// Gates: endpoint → (entered notification, proceed channel).
-    pub gates: HashMap<String, (std_mpsc::Sender<()>, Arc<Mutex<Option<std_mpsc::Receiver<bool>>>>)>,
+    pub gates: HashMap<String, Gate>,
 }
 
 #[derive(Clone)]
@@ -202,11 +209,10 @@ impl ScriptedSim {
             .unwrap()
             .set_behavior
             .insert(endpoint.to_owned(), SetBehavior::Gate(handle.clone()));
-        self.state
-            .lock()
-            .unwrap()
-            .gates
-            .insert(endpoint.to_owned(), (entered_tx, Arc::new(Mutex::new(Some(proceed_rx)))));
+        self.state.lock().unwrap().gates.insert(
+            endpoint.to_owned(),
+            (entered_tx, Arc::new(Mutex::new(Some(proceed_rx)))),
+        );
         handle
     }
 
@@ -283,7 +289,11 @@ fn handle_connection(
         query
             .split('&')
             .find_map(|pair| pair.split_once('='))
-            .and_then(|(name, value)| (name == "Value").then(|| value.parse::<f64>().ok()).flatten())
+            .and_then(|(name, value)| {
+                (name == "Value")
+                    .then(|| value.parse::<f64>().ok())
+                    .flatten()
+            })
     } else {
         None
     };
@@ -300,7 +310,11 @@ fn handle_connection(
     });
 
     let (status, response_body) = respond(&method, &path, set_value, &state);
-    let reason = if status == 200 { "OK" } else { "Internal Server Error" };
+    let reason = if status == 200 {
+        "OK"
+    } else {
+        "Internal Server Error"
+    };
     let response = format!(
         "HTTP/1.1 {status} {reason}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{response_body}",
         response_body.len()
@@ -325,7 +339,10 @@ fn respond(
             None => (500, r#"{"error":"no drivable index"}"#.to_owned()),
         };
     }
-    if method == "GET" && path.starts_with("/get/CurrentFormation/") && path.ends_with(".ObjectClass") {
+    if method == "GET"
+        && path.starts_with("/get/CurrentFormation/")
+        && path.ends_with(".ObjectClass")
+    {
         let state = state.lock().unwrap();
         if state.object_class_fails {
             return (500, r#"{"error":"gone"}"#.to_owned());
@@ -340,12 +357,7 @@ fn respond(
     }
     if method == "PATCH" && path.starts_with("/set/") {
         let endpoint = path.trim_start_matches("/set/").to_owned();
-        let behavior = state
-            .lock()
-            .unwrap()
-            .set_behavior
-            .get(&endpoint)
-            .cloned();
+        let behavior = state.lock().unwrap().set_behavior.get(&endpoint).cloned();
         return match behavior {
             None | Some(SetBehavior::Ok) => (200, r#"{"Result":"Success"}"#.to_owned()),
             Some(SetBehavior::Fail(status)) => (status, r#"{"error":"set failed"}"#.to_owned()),
@@ -353,7 +365,7 @@ fn respond(
                 // Signal entry, then block until released.
                 let entered_gate = {
                     let state = state.lock().unwrap();
-                    state.gates.get(&endpoint).map(|gate| gate.clone())
+                    state.gates.get(&endpoint).cloned()
                 };
                 if let Some((entered_tx, _)) = entered_gate {
                     let _ = entered_tx.send(());
@@ -401,7 +413,10 @@ pub struct FakeKeystrokes {
 
 impl FakeKeystrokes {
     pub fn fail_next(&self, action: &'static str, error: &str) {
-        self.failures.lock().unwrap().push_back((action, error.to_owned()));
+        self.failures
+            .lock()
+            .unwrap()
+            .push_back((action, error.to_owned()));
     }
 
     pub fn calls(&self) -> Vec<KeystrokeCall> {

@@ -57,12 +57,7 @@ pub trait HardwareDispatch: Send + Sync + 'static {
         brightness: i32,
     ) -> Result<(), String>;
     /// `Hardware.write_segments/3`.
-    fn write_segments(
-        &self,
-        port: &str,
-        i2c_address: i32,
-        data: Vec<u8>,
-    ) -> Result<(), String>;
+    fn write_segments(&self, port: &str, i2c_address: i32, data: Vec<u8>) -> Result<(), String>;
 }
 
 /// `SimulatorClient` subscription operations used by both controllers.
@@ -156,17 +151,28 @@ impl OutputController {
     }
 
     pub async fn train_changed(&self, train: Option<TrainProfile>) {
-        let _ = self.sender.send(OutputControllerCommand::TrainChanged(train)).await;
+        let _ = self
+            .sender
+            .send(OutputControllerCommand::TrainChanged(train))
+            .await;
     }
 
     pub async fn reload_bindings(&self) {
-        let _ = self.sender.send(OutputControllerCommand::ReloadBindings).await;
+        let _ = self
+            .sender
+            .send(OutputControllerCommand::ReloadBindings)
+            .await;
     }
 
     /// Cleanup (outputs LOW, subscriptions released) then stop the task.
     pub async fn shutdown(&self) {
         let (reply, done) = oneshot::channel();
-        if self.sender.send(OutputControllerCommand::Shutdown(reply)).await.is_ok() {
+        if self
+            .sender
+            .send(OutputControllerCommand::Shutdown(reply))
+            .await
+            .is_ok()
+        {
             let _ = done.await;
         }
         let mut worker = self.worker.lock().await;
@@ -299,7 +305,11 @@ fn setup_subscriptions(
 /// `cleanup_subscriptions/2`: cancel the timer, unsubscribe every live
 /// subscription (skipped when the simulator is disconnected), then drive
 /// every tracked output LOW regardless of connection state.
-fn cleanup(state: &mut State, connection: &dyn SimulatorConnectionView, sink: &dyn HardwareDispatch) {
+fn cleanup(
+    state: &mut State,
+    connection: &dyn SimulatorConnectionView,
+    sink: &dyn HardwareDispatch,
+) {
     state.poll_deadline = None;
     if let Some(client) = connection.connected_client() {
         for subscription_id in state.subscriptions.values() {
@@ -307,7 +317,7 @@ fn cleanup(state: &mut State, connection: &dyn SimulatorConnectionView, sink: &d
         }
     }
     for info in state.bindings.values() {
-        set_output_state(&*sink, &info.binding, false);
+        set_output_state(sink, &info.binding, false);
     }
 }
 
@@ -317,7 +327,11 @@ fn cleanup(state: &mut State, connection: &dyn SimulatorConnectionView, sink: &d
 /// even when the write fails.
 fn set_output_state(sink: &dyn HardwareDispatch, binding: &OutputBindingConfig, level: bool) {
     if let Some(port) = sink.resolve_port(binding.device_config_id) {
-        let level = if level { OutputLevel::High } else { OutputLevel::Low };
+        let level = if level {
+            OutputLevel::High
+        } else {
+            OutputLevel::Low
+        };
         let _ = sink.set_output(&port, binding.pin, level);
     }
 }
@@ -334,7 +348,10 @@ fn poll_and_update_outputs(
     };
     let mut by_subscription: BTreeMap<i64, Vec<i64>> = BTreeMap::new();
     for (id, info) in &state.bindings {
-        by_subscription.entry(info.subscription_id).or_default().push(*id);
+        by_subscription
+            .entry(info.subscription_id)
+            .or_default()
+            .push(*id);
     }
     for (subscription_id, binding_ids) in by_subscription {
         let Ok(body) = client.get_subscription(subscription_id) else {
@@ -355,7 +372,9 @@ fn update_bindings_with_value(
     value: &SimValue,
 ) {
     for id in binding_ids {
-        let Some(info) = state.bindings.get(id) else { continue };
+        let Some(info) = state.bindings.get(id) else {
+            continue;
+        };
         let predicate = PredicateBinding {
             operator: info.binding.operator,
             value_a: info.binding.value_a,

@@ -20,7 +20,9 @@ use trenino_runtime::mcp::server::{McpServer, McpServerStatus};
 use trenino_runtime::mcp::storage_ports::StoragePorts;
 use trenino_runtime::storage::bindings::{OutputBindingDraft, OutputBindingOperator};
 use trenino_runtime::storage::trains::{ElementDraft, ElementKind, TrainDraft};
-use trenino_runtime::storage::{Database, DeviceDraft, I2cModuleDraft, InputDraft, InputKind, OutputDraft};
+use trenino_runtime::storage::{
+    Database, DeviceDraft, I2cModuleDraft, InputDraft, InputKind, OutputDraft,
+};
 
 // ---------------------------------------------------------------------------
 // Seeded fixture
@@ -173,7 +175,9 @@ struct Session {
 
 fn connect(port: u16) -> Session {
     let mut stream = TcpStream::connect(("127.0.0.1", port)).unwrap();
-    stream.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
+    stream
+        .set_read_timeout(Some(Duration::from_secs(5)))
+        .unwrap();
     let request = "GET /mcp/sse HTTP/1.1\r\nAccept: text/event-stream\r\n\r\n";
     stream.write_all(request.as_bytes()).unwrap();
     let mut session = Session {
@@ -186,12 +190,7 @@ fn connect(port: u16) -> Session {
     assert!(head.starts_with("HTTP/1.1 200"));
     let (event, data) = session.next_event();
     assert_eq!(event, "endpoint");
-    session.session_id = data
-        .split("session_id=")
-        .nth(1)
-        .unwrap()
-        .trim()
-        .to_string();
+    session.session_id = data.split("session_id=").nth(1).unwrap().trim().to_string();
     session
 }
 
@@ -200,7 +199,8 @@ impl Session {
         let mut chunk = [0_u8; 4096];
         let read = self.stream.read(&mut chunk).unwrap();
         assert!(read > 0, "SSE stream ended unexpectedly");
-        self.buffer.push_str(&String::from_utf8_lossy(&chunk[..read]));
+        self.buffer
+            .push_str(&String::from_utf8_lossy(&chunk[..read]));
     }
 
     fn read_until(&mut self, marker: &str) -> String {
@@ -243,10 +243,13 @@ impl Session {
         let (_, data) = self.next_event();
         let message: Value = serde_json::from_str(&data).unwrap();
         let result = &message["result"];
-        let is_error = result.get("isError").and_then(Value::as_bool).unwrap_or(false);
+        let is_error = result
+            .get("isError")
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
         let text = result["content"][0]["text"].as_str().unwrap();
-        let payload = serde_json::from_str::<Value>(text)
-            .unwrap_or_else(|_| Value::String(text.to_string()));
+        let payload =
+            serde_json::from_str::<Value>(text).unwrap_or_else(|_| Value::String(text.to_string()));
         (is_error, payload)
     }
 
@@ -284,11 +287,7 @@ fn trains_list_and_get_over_http() {
             "identifiers": ["AAA", "DB_CARGO"], "description": null}]})
     );
 
-    let (error, payload) = session.call(
-        2,
-        "get_train",
-        json!({"train_id": 9999}),
-    );
+    let (error, payload) = session.call(2, "get_train", json!({"train_id": 9999}));
     assert!(error);
     assert_eq!(payload, json!("Train not found with id 9999"));
 }
@@ -337,7 +336,11 @@ fn elements_crud_and_errors_over_http() {
     let (error, payload) = session.call(4, "delete_element", json!({"id": element_id}));
     assert!(!error);
     assert_eq!(payload, json!({"deleted": true, "id": element_id}));
-    assert!(fixture.db.get_train_element(EntityId(element_id)).unwrap().is_none());
+    assert!(fixture
+        .db
+        .get_train_element(EntityId(element_id))
+        .unwrap()
+        .is_none());
 }
 
 // ---------------------------------------------------------------------------
@@ -402,7 +405,10 @@ fn i2c_module_crud_and_errors_over_http() {
         json!({"device_id": 1, "module_chip": "ht16k33", "i2c_address": "0x71"}),
     );
     assert!(error);
-    assert_eq!(payload, json!("Validation failed: i2c_address has already been taken"));
+    assert_eq!(
+        payload,
+        json!("Validation failed: i2c_address has already been taken")
+    );
 
     // Brightness bounds mirror validate_number messages.
     let (error, payload) = session.call(
@@ -487,7 +493,11 @@ fn output_bindings_crud_over_http() {
         .unwrap();
     assert_eq!(follow.receipt.metadata.revision, 2);
 
-    let (error, payload) = session.call(2, "list_output_bindings", json!({"train_id": fixture.train_id}));
+    let (error, payload) = session.call(
+        2,
+        "list_output_bindings",
+        json!({"train_id": fixture.train_id}),
+    );
     assert!(!error);
     assert_eq!(payload["output_bindings"].as_array().unwrap().len(), 2);
     assert_eq!(payload["output_bindings"][0]["name"], "Headlights"); // ordered by name
@@ -579,7 +589,10 @@ fn button_bindings_and_destination_conflict_over_http() {
     assert!(error);
     assert_eq!(
         payload,
-        json!(format!("No button binding found for element {}", fixture.button_element_id))
+        json!(format!(
+            "No button binding found for element {}",
+            fixture.button_element_id
+        ))
     );
 
     // Simple mode requires an endpoint.
@@ -642,19 +655,37 @@ fn vjoy_mappings_and_lifecycle_over_http() {
     assert_eq!(payload["mappings"].as_array().unwrap().len(), 1);
 
     // Unknown input mirrors {:error, :not_found}.
-    let (error, payload) = session.call(5, "map_virtual_joystick_axis", json!({"input_id": 9999, "axis": "y"}));
+    let (error, payload) = session.call(
+        5,
+        "map_virtual_joystick_axis",
+        json!({"input_id": 9999, "axis": "y"}),
+    );
     assert!(!error);
-    assert_eq!(payload, json!({"status": "error", "reason": {"code": "not_found"}}));
+    assert_eq!(
+        payload,
+        json!({"status": "error", "reason": {"code": "not_found"}})
+    );
 
     // Structural argument validation rejects a bad axis.
-    let (error, payload) = session.call(6, "map_virtual_joystick_axis", json!({"input_id": fixture.analog_input_id, "axis": "wobble"}));
+    let (error, payload) = session.call(
+        6,
+        "map_virtual_joystick_axis",
+        json!({"input_id": fixture.analog_input_id, "axis": "wobble"}),
+    );
     assert!(!error);
     assert_eq!(payload["reason"]["code"], "validation_failed");
 
     let mapping_id = stored_mapping_id(&mut session);
-    let (error, payload) = session.call(8, "delete_virtual_joystick_mapping", json!({"id": mapping_id}));
+    let (error, payload) = session.call(
+        8,
+        "delete_virtual_joystick_mapping",
+        json!({"id": mapping_id}),
+    );
     assert!(!error);
-    assert_eq!(payload, json!({"status": "ok", "reason": null, "deleted": true, "id": mapping_id}));
+    assert_eq!(
+        payload,
+        json!({"status": "ok", "reason": null, "deleted": true, "id": mapping_id})
+    );
 }
 
 fn stored_mapping_id(session: &mut Session) -> i64 {
@@ -681,7 +712,11 @@ fn display_bindings_crud_over_http() {
     let binding_id = payload["display_binding"]["id"].as_i64().unwrap();
     assert_eq!(payload["display_binding"]["enabled"], true);
 
-    let (error, payload) = session.call(2, "list_display_bindings", json!({"train_id": fixture.train_id}));
+    let (error, payload) = session.call(
+        2,
+        "list_display_bindings",
+        json!({"train_id": fixture.train_id}),
+    );
     assert!(!error);
     assert_eq!(payload["display_bindings"].as_array().unwrap().len(), 1);
 
@@ -776,7 +811,11 @@ fn sequences_crud_over_http() {
     let (error, payload) = session.call(6, "delete_sequence", json!({"id": sequence_id}));
     assert!(!error);
     assert_eq!(payload, json!({"deleted": true, "id": sequence_id}));
-    assert!(fixture.db.sequence_commands(EntityId(sequence_id)).unwrap().is_empty());
+    assert!(fixture
+        .db
+        .sequence_commands(EntityId(sequence_id))
+        .unwrap()
+        .is_empty());
 }
 
 // ---------------------------------------------------------------------------
@@ -797,7 +836,10 @@ fn scripts_crud_over_http() {
     assert!(!error);
     let script_id = payload["script"]["id"].as_i64().unwrap();
     assert_eq!(payload["script"]["enabled"], true);
-    assert_eq!(payload["script"]["triggers"], json!(["CurrentDrivableActor/Speed"]));
+    assert_eq!(
+        payload["script"]["triggers"],
+        json!(["CurrentDrivableActor/Speed"])
+    );
 
     let (error, payload) = session.call(2, "list_scripts", json!({"train_id": fixture.train_id}));
     assert!(!error);

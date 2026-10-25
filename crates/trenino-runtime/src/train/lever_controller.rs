@@ -130,7 +130,9 @@ impl LeverController {
         let (commands, command_rx) = mpsc::channel(COMMAND_CAPACITY);
         let (control, control_rx) = mpsc::unbounded_channel();
         let (writes, writes_rx) = mpsc::channel(WRITE_CAPACITY);
-        tokio::spawn(run(clock, resolver, command_rx, control_rx, writes_rx, writes));
+        tokio::spawn(run(
+            clock, resolver, command_rx, control_rx, writes_rx, writes,
+        ));
         Self { commands, control }
     }
 
@@ -158,13 +160,18 @@ impl LeverController {
             );
         }
         self.control
-            .send(Control::Activate { generation, bindings })
+            .send(Control::Activate {
+                generation,
+                bindings,
+            })
             .map_err(|_| QueueError::Closed)
     }
 
     /// Stop driving any lever (train deactivated or switched).
     pub fn release(&self) -> Result<(), QueueError> {
-        self.control.send(Control::Release).map_err(|_| QueueError::Closed)
+        self.control
+            .send(Control::Release)
+            .map_err(|_| QueueError::Closed)
     }
 
     pub fn simulator_connected(&self, client: Arc<SimulatorClient>) -> Result<(), QueueError> {
@@ -181,7 +188,10 @@ impl LeverController {
 
     /// Queue an input sample, waiting while the bounded queue is full.
     pub async fn input(&self, sample: LeverSample) -> Result<(), QueueError> {
-        self.commands.send(sample).await.map_err(|_| QueueError::Closed)
+        self.commands
+            .send(sample)
+            .await
+            .map_err(|_| QueueError::Closed)
     }
 
     /// Non-blocking ingress: reports [`QueueError::Overflow`] instead of
@@ -245,13 +255,26 @@ impl WorkerState {
         self.retries.remove(&id);
     }
 
-    fn start_write(&mut self, id: EntityId, endpoint: String, value: f64, writes: &mpsc::Sender<WriteDone>) {
+    fn start_write(
+        &mut self,
+        id: EntityId,
+        endpoint: String,
+        value: f64,
+        writes: &mpsc::Sender<WriteDone>,
+    ) {
         self.write_seq += 1;
         let seq = self.write_seq;
         let inflight = self.client.clone().map(|client| {
             let generation = self.generation;
-            let writer =
-                tokio::spawn(send_value(client, endpoint.clone(), value, generation, id, seq, writes.clone()));
+            let writer = tokio::spawn(send_value(
+                client,
+                endpoint.clone(),
+                value,
+                generation,
+                id,
+                seq,
+                writes.clone(),
+            ));
             let abort = writer.abort_handle();
             // A writer killed without reporting (abort, panic) must still
             // release the lever: the Elixir `:DOWN` handler folds it into
@@ -272,7 +295,14 @@ impl WorkerState {
             });
             InFlight { seq, abort }
         });
-        self.pending.insert(id, PendingWrite { value, endpoint, inflight });
+        self.pending.insert(
+            id,
+            PendingWrite {
+                value,
+                endpoint,
+                inflight,
+            },
+        );
     }
 
     fn schedule_retry(&mut self, id: EntityId, clock: &Arc<dyn Clock>) {

@@ -7,7 +7,7 @@ use std::sync::{Arc, Mutex};
 use tempfile::tempdir;
 use trenino_core::ui::UiFailure;
 use trenino_core::{EntityId, Topic};
-use trenino_runtime::app::AppServices;
+use trenino_runtime::app::{AppServices, CreateInputParams, CreateLeverParams};
 use trenino_runtime::lifecycle::{ShutdownCoordinator, ShutdownParticipant};
 use trenino_runtime::storage::bindings::OutputBindingOperator;
 use trenino_runtime::storage::firmware_records::{
@@ -25,7 +25,10 @@ struct Fixture {
 fn seed() -> Fixture {
     let dir = tempdir().expect("tempdir");
     let services = AppServices::open_full(dir.path().join("app.db"), None).expect("open");
-    Fixture { _dir: dir, services }
+    Fixture {
+        _dir: dir,
+        services,
+    }
 }
 
 fn seed_device(services: &AppServices) -> EntityId {
@@ -41,26 +44,22 @@ fn seed_device(services: &AppServices) -> EntityId {
 
 fn seed_analog_input(services: &AppServices, device_id: EntityId) -> EntityId {
     let snapshot = services
-        .create_input(
+        .create_input(CreateInputParams {
             device_id,
-            3,
-            "analog",
-            Some(5),
-            None,
-            Some("Throttle".into()),
-            None,
-        )
+            pin: 3,
+            kind: "analog".into(),
+            sensitivity: Some(5),
+            debounce: None,
+            name: Some("Throttle".into()),
+            matrix_id: None,
+        })
         .expect("create input");
     snapshot.value.inputs[0].id
 }
 
 fn seed_train(services: &AppServices) -> EntityId {
     let snapshot = services
-        .create_train_entry(
-            "BR 185.2",
-            None,
-            vec!["br185".into(), "185".into()],
-        )
+        .create_train_entry("BR 185.2", None, vec!["br185".into(), "185".into()])
         .expect("create train");
     snapshot.value.id
 }
@@ -71,16 +70,16 @@ fn seed_lever(services: &AppServices, train_id: EntityId) -> EntityId {
         .expect("create element");
     let element_id = element.value.elements[0].id;
     let detail = services
-        .create_lever(
+        .create_lever(CreateLeverParams {
             element_id,
-            "TD:MainLoco:Throttle:0".into(),
-            "TD:MainLoco:Throttle:1".into(),
-            "TD:MainLoco:Throttle".into(),
-            None,
-            None,
-            Some("discrete"),
-            false,
-        )
+            min_endpoint: "TD:MainLoco:Throttle:0".into(),
+            max_endpoint: "TD:MainLoco:Throttle:1".into(),
+            value_endpoint: "TD:MainLoco:Throttle".into(),
+            notch_count_endpoint: None,
+            notch_index_endpoint: None,
+            lever_type: Some("discrete".into()),
+            inverted: false,
+        })
         .expect("create lever");
     detail.value.elements[0]
         .lever_config
@@ -108,8 +107,14 @@ fn every_topic_returns_a_snapshot_from_a_seeded_database() {
         Topic::Vjoy,
     ] {
         let json = services.snapshot_json(topic).expect("snapshot");
-        assert_eq!(json["topic"], serde_json::to_value(topic).expect("topic serializes"));
-        assert!(json["epoch"].as_str().is_some(), "{topic:?} epoch is a string");
+        assert_eq!(
+            json["topic"],
+            serde_json::to_value(topic).expect("topic serializes")
+        );
+        assert!(
+            json["epoch"].as_str().is_some(),
+            "{topic:?} epoch is a string"
+        );
         assert!(json["revision"].as_str().is_some());
     }
 
@@ -127,13 +132,28 @@ fn hardware_detail_and_child_crud_round_trip() {
     let device = seed_device(services);
 
     let input = services
-        .create_input(device, 5, "button", Some(12), Some(3), Some("Horn".into()), None)
+        .create_input(CreateInputParams {
+            device_id: device,
+            pin: 5,
+            kind: "button".into(),
+            sensitivity: Some(12),
+            debounce: Some(3),
+            name: Some("Horn".into()),
+            matrix_id: None,
+        })
         .expect("input");
     assert_eq!(input.value.inputs.len(), 1);
     assert_eq!(input.value.inputs[0].kind, "button");
 
     let updated = services
-        .update_input(input.value.inputs[0].id, 5, "button", None, Some(3), Some("Horn 2".into()))
+        .update_input(
+            input.value.inputs[0].id,
+            5,
+            "button",
+            None,
+            Some(3),
+            Some("Horn 2".into()),
+        )
         .expect("update input");
     assert_eq!(updated.value.inputs[0].name.as_deref(), Some("Horn 2"));
 
@@ -179,7 +199,9 @@ fn hardware_detail_and_child_crud_round_trip() {
         "seven_segment"
     );
 
-    services.delete_input(input.value.inputs[0].id).expect("delete input");
+    services
+        .delete_input(input.value.inputs[0].id)
+        .expect("delete input");
     services.delete_matrix(matrix_id).expect("delete matrix");
     services
         .delete_output(output.value.outputs[0].id)
@@ -197,7 +219,9 @@ fn hardware_detail_and_child_crud_round_trip() {
         .update_configuration(device, Some("Renamed".into()), None)
         .expect("update configuration");
     assert_eq!(listed.value[0].name, "Renamed");
-    let listed = services.delete_configuration(device).expect("delete configuration");
+    let listed = services
+        .delete_configuration(device)
+        .expect("delete configuration");
     assert!(listed.value.is_empty());
 }
 
@@ -239,7 +263,15 @@ fn train_detail_crud_auto_distribute_and_validation() {
             ],
         )
         .expect("save notches");
-    assert_eq!(detail.value.elements[0].lever_config.as_ref().expect("cfg").notches.len(), 2);
+    assert_eq!(
+        detail.value.elements[0]
+            .lever_config
+            .as_ref()
+            .expect("cfg")
+            .notches
+            .len(),
+        2
+    );
 
     // Stored notches carry no input ranges yet, so validation reports gaps.
     let validation = services.validate_notch_ranges(lever).expect("validate");
@@ -247,11 +279,11 @@ fn train_detail_crud_auto_distribute_and_validation() {
     assert!(!validation.value.gaps.is_empty());
 
     let distributed = services.auto_distribute_notches(lever).expect("distribute");
-    let validation = services.validate_notch_ranges(lever).expect("validate again");
+    let validation = services
+        .validate_notch_ranges(lever)
+        .expect("validate again");
     assert!(validation.value.valid, "auto-distributed ranges cover");
-    assert!(distributed
-        .value
-        .elements[0]
+    assert!(distributed.value.elements[0]
         .lever_config
         .as_ref()
         .expect("cfg")
@@ -259,9 +291,7 @@ fn train_detail_crud_auto_distribute_and_validation() {
         .iter()
         .all(|notch| notch.input_min.is_some() && notch.input_max.is_some()));
     assert_eq!(
-        distributed
-            .value
-            .elements[0]
+        distributed.value.elements[0]
             .lever_config
             .as_ref()
             .expect("cfg")
@@ -287,7 +317,15 @@ fn binding_crud_publishes_the_bindings_topic() {
     let device = seed_device(services);
     let analog = seed_analog_input(services, device);
     let button = services
-        .create_input(device, 9, "button", None, Some(20), Some("Pantograph".into()), None)
+        .create_input(CreateInputParams {
+            device_id: device,
+            pin: 9,
+            kind: "button".into(),
+            sensitivity: None,
+            debounce: Some(20),
+            name: Some("Pantograph".into()),
+            matrix_id: None,
+        })
         .expect("button input")
         .value
         .inputs[0]
@@ -381,7 +419,6 @@ fn binding_crud_publishes_the_bindings_topic() {
     assert!(bindings.value.button.is_empty());
 }
 
-
 #[test]
 fn sequences_commands_and_scripts_round_trip() {
     let fixture = seed();
@@ -425,7 +462,12 @@ fn sequences_commands_and_scripts_round_trip() {
     assert!(detail.value.sequences.is_empty());
 
     services
-        .create_script_entry(train, "Adhesion", "return 1.0", vec!["TD:MainLoco:Speed".into()])
+        .create_script_entry(
+            train,
+            "Adhesion",
+            "return 1.0",
+            vec!["TD:MainLoco:Speed".into()],
+        )
         .expect("create script");
     let scripts = services.get_scripts_snapshot().expect("scripts");
     assert_eq!(scripts.value.scripts.len(), 1);
@@ -530,7 +572,15 @@ fn invalid_input_maps_to_validation_field_errors() {
 
     let failure = UiFailure::from(
         services
-            .create_input(device, 1, "rotary", None, None, None, None)
+            .create_input(CreateInputParams {
+                device_id: device,
+                pin: 1,
+                kind: "rotary".into(),
+                sensitivity: None,
+                debounce: None,
+                name: None,
+                matrix_id: None,
+            })
             .expect_err("bad kind"),
     );
     assert_eq!(failure.code, "validation");
@@ -552,7 +602,9 @@ fn invalid_input_maps_to_validation_field_errors() {
 
     // Invalid mutations never advance the topic revision.
     let before = services.list_trains().expect("trains").revision;
-    assert!(services.create_train_entry("", None, vec!["x".into()]).is_err());
+    assert!(services
+        .create_train_entry("", None, vec!["x".into()])
+        .is_err());
     let after = services.list_trains().expect("trains").revision;
     assert_eq!(before, after);
 }
@@ -594,7 +646,10 @@ struct RecordingParticipant {
 
 impl ShutdownParticipant for RecordingParticipant {
     fn stop_admission(&self) -> Result<(), String> {
-        self.log.lock().expect("log").push(format!("{}:admission", self.name));
+        self.log
+            .lock()
+            .expect("log")
+            .push(format!("{}:admission", self.name));
         Ok(())
     }
     fn cancel_and_join_producers(&self) -> Result<(), String> {
@@ -625,10 +680,16 @@ fn shutdown_participants_run_in_registration_order_without_hanging() {
     let coordinator = ShutdownCoordinator::default();
     let log = Arc::new(Mutex::new(Vec::new()));
     coordinator
-        .register(Arc::new(RecordingParticipant { name: "mcp", log: log.clone() }))
+        .register(Arc::new(RecordingParticipant {
+            name: "mcp",
+            log: log.clone(),
+        }))
         .expect("register mcp");
     coordinator
-        .register(Arc::new(RecordingParticipant { name: "vjoy", log: log.clone() }))
+        .register(Arc::new(RecordingParticipant {
+            name: "vjoy",
+            log: log.clone(),
+        }))
         .expect("register vjoy");
 
     let result = std::thread::spawn(move || {
@@ -638,10 +699,14 @@ fn shutdown_participants_run_in_registration_order_without_hanging() {
     assert_eq!(
         *log.lock().expect("log"),
         vec![
-            "mcp:admission", "vjoy:admission",
-            "mcp:producers", "vjoy:producers",
-            "mcp:outputs", "vjoy:outputs",
-            "mcp:ports", "vjoy:ports",
+            "mcp:admission",
+            "vjoy:admission",
+            "mcp:producers",
+            "vjoy:producers",
+            "mcp:outputs",
+            "vjoy:outputs",
+            "mcp:ports",
+            "vjoy:ports",
         ]
     );
 }
@@ -786,7 +851,11 @@ mod mcp_fakes {
         fn get_script(&self, _id: i64) -> Result<ScriptRecord, PortError> {
             fail("get_script")
         }
-        fn create_script(&self, _train_id: i64, _attrs: ScriptAttrs) -> Result<ScriptRecord, PortError> {
+        fn create_script(
+            &self,
+            _train_id: i64,
+            _attrs: ScriptAttrs,
+        ) -> Result<ScriptRecord, PortError> {
             fail("create_script")
         }
         fn update_script(
@@ -883,7 +952,11 @@ mod mcp_fakes {
         fn get_value(&self, _path: &str) -> Result<serde_json::Value, String> {
             Err("not connected".into())
         }
-        fn set_value(&self, _path: &str, _value: &serde_json::Value) -> Result<serde_json::Value, String> {
+        fn set_value(
+            &self,
+            _path: &str,
+            _value: &serde_json::Value,
+        ) -> Result<serde_json::Value, String> {
             Err("not connected".into())
         }
     }
@@ -947,8 +1020,6 @@ mod mcp_fakes {
             McpServerStatus::Degraded { reason } => panic!("ephemeral port degraded: {reason}"),
         }
     }
-
-
 }
 
 struct McpStopParticipant {
@@ -998,10 +1069,8 @@ fn busy_mcp_port_is_a_degraded_start_error_not_a_crash() {
     // caller treats as degraded (non-fatal), exactly like the wave-1 server
     // contract ("not prevent startup").
     let port = _port;
-    let second = trenino_runtime::mcp::server::McpServer::new(
-        Arc::new(mcp_fakes::fake_ports()),
-        None,
-    );
+    let second =
+        trenino_runtime::mcp::server::McpServer::new(Arc::new(mcp_fakes::fake_ports()), None);
     match second.start(([127, 0, 0, 1], port).into()) {
         Ok(trenino_runtime::mcp::server::McpServerStatus::Degraded { .. }) => {}
         Ok(trenino_runtime::mcp::server::McpServerStatus::Running { .. }) => {

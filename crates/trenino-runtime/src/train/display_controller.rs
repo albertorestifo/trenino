@@ -310,7 +310,6 @@ fn setup_subscriptions(
     (binding_map, subscription_map)
 }
 
-
 /// `poll_and_update/1` + `process_subscription/4`.
 fn poll_and_update(
     state: &mut State,
@@ -322,7 +321,10 @@ fn poll_and_update(
     };
     let mut by_subscription: BTreeMap<i64, Vec<i64>> = BTreeMap::new();
     for (id, info) in &state.bindings {
-        by_subscription.entry(info.subscription_id).or_default().push(*id);
+        by_subscription
+            .entry(info.subscription_id)
+            .or_default()
+            .push(*id);
     }
     for (subscription_id, binding_ids) in by_subscription {
         let Ok(body) = client.get_subscription(subscription_id) else {
@@ -344,7 +346,9 @@ fn update_displays(
     value: &trenino_core::train::output::SimValue,
 ) {
     for id in binding_ids {
-        let Some(info) = state.bindings.get(id) else { continue };
+        let Some(info) = state.bindings.get(id) else {
+            continue;
+        };
         let clamped = clamp_to_min(value.clone(), info.binding.min_value);
         let text = format_display(&info.binding.format_string, &clamped);
         if info.last_text.as_deref() == Some(text.as_str()) {
@@ -399,10 +403,7 @@ fn send_to_display(
 }
 
 /// `blank_display/1`: empty text encoding, no brightness message.
-fn blank_display(
-    sink: &dyn HardwareDispatch,
-    binding: &DisplayBindingConfig,
-) {
+fn blank_display(sink: &dyn HardwareDispatch, binding: &DisplayBindingConfig) {
     if let Some(port) = sink.resolve_port(binding.device_config_id) {
         let bytes = encode(binding, "");
         let _ = sink.write_segments(&port, binding.i2c_address, bytes);

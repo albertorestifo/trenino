@@ -37,15 +37,14 @@ use serde_json::Value;
 use trenino_core::{EntityId, OperationId};
 
 use crate::mcp::ports::{
-    BindingOperator, ButtonBindingAttrs, ButtonBindingRecord, ButtonMode,
-    DetectionOutcome, DetectionPort, DetectionRequest, DeviceSummary, DisplayBindingAttrs,
-    DisplayBindingRecord, ElementType, ElementRecord, HardwareOutputRecord, HardwarePort,
-    HardwareType, I2cModuleAttrs, I2cModuleChanges, I2cModuleParams, I2cModuleRecord, InputRecord,
-    InputType, OutputBindingAttrs, OutputBindingRecord, PortError, Ports, ScriptAttrs,
-    ScriptRecord, ScriptsPort, SequenceCommandDraft, SequenceCommandRecord, SequenceRecord,
-    SequencesPort, SimulatorPort, TrainDetail, TrainSummary, TrainsPort, VjoyCommand,
-    VjoyMappingDraft, VjoyMappingRecord, VjoyPort, VjoyPutError, VjoyReason, VjoyStatus,
-    VjoyStatusDetails, VjoyTarget,
+    BindingOperator, ButtonBindingAttrs, ButtonBindingRecord, ButtonMode, DetectionOutcome,
+    DetectionPort, DetectionRequest, DeviceSummary, DisplayBindingAttrs, DisplayBindingRecord,
+    ElementRecord, ElementType, HardwareOutputRecord, HardwarePort, HardwareType, I2cModuleAttrs,
+    I2cModuleChanges, I2cModuleParams, I2cModuleRecord, InputRecord, InputType, OutputBindingAttrs,
+    OutputBindingRecord, PortError, Ports, ScriptAttrs, ScriptRecord, ScriptsPort,
+    SequenceCommandDraft, SequenceCommandRecord, SequenceRecord, SequencesPort, SimulatorPort,
+    TrainDetail, TrainSummary, TrainsPort, VjoyCommand, VjoyMappingDraft, VjoyMappingRecord,
+    VjoyPort, VjoyPutError, VjoyReason, VjoyStatus, VjoyStatusDetails, VjoyTarget,
 };
 use crate::storage::Database;
 use crate::storage::StorageError;
@@ -53,11 +52,11 @@ use crate::vjoy::VjoyManager;
 
 /// Qualified namespace for the storage record/draft types used below.
 mod st {
-    pub use crate::storage::*;
     pub use crate::storage::bindings::*;
     pub use crate::storage::scripts::*;
     pub use crate::storage::sequences::*;
     pub use crate::storage::trains::*;
+    pub use crate::storage::*;
     pub use crate::vjoy::{MappingDraft, MappingRecord, Target, VjoyAxis};
 }
 
@@ -76,14 +75,8 @@ fn port_error(error: StorageError) -> PortError {
         // A UNIQUE violation on a table is an Ecto changeset error
         // ("has already been taken"), never a destination conflict; only the
         // destination-exclusivity rule produces plain `Conflict` details.
-        StorageError::Conflict { detail }
-            if detail.contains("UNIQUE constraint failed") =>
-        {
-            let field = detail
-                .rsplit('.')
-                .next()
-                .unwrap_or("id")
-                .to_string();
+        StorageError::Conflict { detail } if detail.contains("UNIQUE constraint failed") => {
+            let field = detail.rsplit('.').next().unwrap_or("id").to_string();
             PortError::Validation(vec![(field, vec!["has already been taken".to_string()])])
         }
         StorageError::Conflict { .. } => PortError::DestinationConflict,
@@ -106,7 +99,10 @@ fn port_error(error: StorageError) -> PortError {
 
 /// `value_a`/`endpoint`-style blank-required changeset error.
 fn cant_be_blank(field: &str) -> PortError {
-    PortError::Validation(vec![(field.to_string(), vec!["can't be blank".to_string()])])
+    PortError::Validation(vec![(
+        field.to_string(),
+        vec!["can't be blank".to_string()],
+    )])
 }
 
 // ---------------------------------------------------------------------------
@@ -124,10 +120,7 @@ impl StorageTrains {
         next_operation(&self.operations)
     }
 
-    fn sequence_view(
-        &self,
-        record: st::SequenceRecord,
-    ) -> Result<SequenceRecord, PortError> {
+    fn sequence_view(&self, record: st::SequenceRecord) -> Result<SequenceRecord, PortError> {
         let commands = self
             .db
             .sequence_commands(record.id)
@@ -309,11 +302,7 @@ impl StorageHardware {
         next_operation(&self.operations)
     }
 
-    fn validate_i2c_attrs(
-        &self,
-        attrs: &I2cModuleAttrs,
-        address: i64,
-    ) -> Result<(), PortError> {
+    fn validate_i2c_attrs(&self, attrs: &I2cModuleAttrs, address: i64) -> Result<(), PortError> {
         if let Some(chip) = attrs.module_chip.as_deref() {
             if chip != "ht16k33" {
                 return Err(PortError::Validation(vec![(
@@ -356,8 +345,9 @@ impl StorageHardware {
         if !(0..=255).contains(&address) {
             return Err(PortError::Validation(vec![(
                 "i2c_address".to_string(),
-                vec!["must be greater than or equal to 0 and less than or equal to 255"
-                    .to_string()],
+                vec![
+                    "must be greater than or equal to 0 and less than or equal to 255".to_string(),
+                ],
             )]));
         }
         Ok(())
@@ -595,9 +585,7 @@ impl HardwarePort for StorageHardware {
                     module_chip: current.module_chip,
                     i2c_address: current.i2c_address,
                     params: Some(st::Ht16k33Params {
-                        brightness: changes
-                            .brightness
-                            .unwrap_or(current_params.brightness) as i32,
+                        brightness: changes.brightness.unwrap_or(current_params.brightness) as i32,
                         num_digits: changes.num_digits.unwrap_or(current_params.num_digits) as i32,
                         display_type: match current_params.display_type.as_str() {
                             "seven_segment" => st::DisplayType::SevenSegment,
@@ -690,11 +678,7 @@ impl SequencesPort for StorageSequences {
         }
         let record = self
             .db
-            .create_sequence(
-                self.op(),
-                EntityId(train_id),
-                st::SequenceDraft { name },
-            )
+            .create_sequence(self.op(), EntityId(train_id), st::SequenceDraft { name })
             .map_err(port_error)?
             .record;
         self.view(record)
@@ -989,18 +973,15 @@ impl crate::mcp::ports::BindingsPort for StorageBindings {
         train_id: i64,
         attrs: OutputBindingAttrs,
     ) -> Result<OutputBindingRecord, PortError> {
-        let (name, output_id, endpoint) = (
-            attrs.name.clone(),
-            attrs.output_id,
-            attrs.endpoint.clone(),
-        );
-        if name.as_deref().map(str::trim).unwrap_or("") == "" {
+        let (name, output_id, endpoint) =
+            (attrs.name.clone(), attrs.output_id, attrs.endpoint.clone());
+        if name.as_deref().map(str::trim).unwrap_or("").is_empty() {
             return Err(cant_be_blank("name"));
         }
         let Some(output_id) = output_id else {
             return Err(cant_be_blank("output_id"));
         };
-        if endpoint.as_deref().map(str::trim).unwrap_or("") == "" {
+        if endpoint.as_deref().map(str::trim).unwrap_or("").is_empty() {
             return Err(cant_be_blank("endpoint"));
         }
         let Some(operator) = attrs.operator else {
@@ -1170,7 +1151,13 @@ impl crate::mcp::ports::BindingsPort for StorageBindings {
         train_id: i64,
         attrs: DisplayBindingAttrs,
     ) -> Result<DisplayBindingRecord, PortError> {
-        if attrs.endpoint.as_deref().map(str::trim).unwrap_or("") == "" {
+        if attrs
+            .endpoint
+            .as_deref()
+            .map(str::trim)
+            .unwrap_or("")
+            .is_empty()
+        {
             return Err(cant_be_blank("endpoint"));
         }
         let Some(i2c_module_id) = attrs.i2c_module_id else {
@@ -1304,20 +1291,19 @@ fn vjoy_error_reason(error: crate::vjoy::VjoyError) -> VjoyReason {
         E::DriverUnavailable(detail) => {
             VjoyReason::CodeWithDetails("driver_unavailable".to_string(), detail)
         }
-        E::DeviceMissing(device) => VjoyReason::CodeWithDetails(
-            "device_missing".to_string(),
-            device.to_string(),
-        ),
+        E::DeviceMissing(device) => {
+            VjoyReason::CodeWithDetails("device_missing".to_string(), device.to_string())
+        }
         E::DeviceBusy(device) => {
             VjoyReason::CodeWithDetails("device_busy".to_string(), device.to_string())
         }
-        E::IncompatibleDevice(device, detail) => {
-            VjoyReason::CodeWithDetails("incompatible_device".to_string(), format!("{device}: {detail}"))
-        }
-        E::AcquireFailed(device, detail) => VjoyReason::CodeWithDetails(
-            "acquire_failed".to_string(),
+        E::IncompatibleDevice(device, detail) => VjoyReason::CodeWithDetails(
+            "incompatible_device".to_string(),
             format!("{device}: {detail}"),
         ),
+        E::AcquireFailed(device, detail) => {
+            VjoyReason::CodeWithDetails("acquire_failed".to_string(), format!("{device}: {detail}"))
+        }
         E::NeutralizeFailed(device, detail) => VjoyReason::CodeWithDetails(
             "neutralize_failed".to_string(),
             format!("{device}: {detail}"),
@@ -1325,10 +1311,9 @@ fn vjoy_error_reason(error: crate::vjoy::VjoyError) -> VjoyReason {
         E::InvalidState(detail) => {
             VjoyReason::CodeWithDetails("invalid_state".to_string(), detail.to_string())
         }
-        E::Quarantined(device, detail) => VjoyReason::CodeWithDetails(
-            "quarantined".to_string(),
-            format!("{device}: {detail}"),
-        ),
+        E::Quarantined(device, detail) => {
+            VjoyReason::CodeWithDetails("quarantined".to_string(), format!("{device}: {detail}"))
+        }
         E::ArbiterBusy => VjoyReason::Code("arbiter_busy".to_string()),
         E::Storage(detail) => VjoyReason::CodeWithDetails("storage".to_string(), detail),
     }
@@ -1425,21 +1410,28 @@ impl VjoyPort for StorageVjoy {
         })?;
         let target = match draft.target_type {
             VjoyTarget::Axis => {
-                let axis = draft.axis.as_deref().and_then(st::VjoyAxis::parse).ok_or_else(|| {
-                    VjoyPutError::Validation(vec![(
-                        "axis".to_string(),
-                        vec!["is invalid".to_string()],
-                    )])
-                })?;
+                let axis = draft
+                    .axis
+                    .as_deref()
+                    .and_then(st::VjoyAxis::parse)
+                    .ok_or_else(|| {
+                        VjoyPutError::Validation(vec![(
+                            "axis".to_string(),
+                            vec!["is invalid".to_string()],
+                        )])
+                    })?;
                 st::Target::Axis(axis)
             }
             VjoyTarget::Button => {
-                let button = u8::try_from(draft.button.unwrap_or(0)).ok().filter(|b| (1..=32).contains(b)).ok_or_else(|| {
-                    VjoyPutError::Validation(vec![(
-                        "button".to_string(),
-                        vec!["must be an integer from 1 to 32".to_string()],
-                    )])
-                })?;
+                let button = u8::try_from(draft.button.unwrap_or(0))
+                    .ok()
+                    .filter(|b| (1..=32).contains(b))
+                    .ok_or_else(|| {
+                        VjoyPutError::Validation(vec![(
+                            "button".to_string(),
+                            vec!["must be an integer from 1 to 32".to_string()],
+                        )])
+                    })?;
                 st::Target::Button(button)
             }
         };
@@ -1465,15 +1457,14 @@ impl VjoyPort for StorageVjoy {
                     )])
                 }
                 StorageError::Conflict { .. } => VjoyPutError::DestinationConflict,
-                StorageError::Constraint { detail } => match detail.split_once(' ') {
-                    Some((field, message)) if !field.is_empty() => {
-                        VjoyPutError::Validation(vec![(
-                            field.to_string(),
-                            vec![message.to_string()],
-                        )])
+                StorageError::Constraint { detail } => {
+                    match detail.split_once(' ') {
+                        Some((field, message)) if !field.is_empty() => VjoyPutError::Validation(
+                            vec![(field.to_string(), vec![message.to_string()])],
+                        ),
+                        _ => VjoyPutError::Validation(vec![(String::new(), vec![detail])]),
                     }
-                    _ => VjoyPutError::Validation(vec![(String::new(), vec![detail])]),
-                },
+                }
                 other => VjoyPutError::Validation(vec![(String::new(), vec![other.to_string()])]),
             })?
             .record;

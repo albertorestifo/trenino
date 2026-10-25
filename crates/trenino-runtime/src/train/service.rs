@@ -31,7 +31,7 @@ use std::sync::{Arc, Mutex};
 use trenino_core::{EntityId, Revision};
 
 use crate::routing::reconcile::{
-    DegradedReason, DestinationId, DestinationPlan, DesiredRouting, InputRoute, RouteTarget,
+    DegradedReason, DesiredRouting, DestinationId, DestinationPlan, InputRoute, RouteTarget,
     RoutingError, RoutingService,
 };
 use crate::routing::{InputIdentity, InputResolver};
@@ -40,9 +40,7 @@ use crate::simulator::services::clock::Clock;
 use crate::simulator::services::train_detection::TrainDetectionEvent;
 use crate::storage::bindings::ButtonMode;
 
-use super::button_controller::{
-    ButtonController, ButtonKeystrokes, ButtonStateChange, QueueError,
-};
+use super::button_controller::{ButtonController, ButtonKeystrokes, ButtonStateChange, QueueError};
 use super::detection::{TrainConfigError, TrainConfigSnapshot, TrainConfigSource, TrainDetection};
 use super::lever_controller::LeverController;
 use crate::routing::reconcile::{ActivationContext, RoutingDestination};
@@ -179,7 +177,11 @@ impl RoutingDestination for TswDestination {
         Ok(())
     }
 
-    fn activate(&self, _context: &ActivationContext, _plan: &DestinationPlan) -> Result<(), String> {
+    fn activate(
+        &self,
+        _context: &ActivationContext,
+        _plan: &DestinationPlan,
+    ) -> Result<(), String> {
         self.activate_controllers()
     }
 }
@@ -196,9 +198,10 @@ pub struct TrainServiceHandle {
     state: Arc<Mutex<ServiceState>>,
 }
 
-/// Shared detection commands (the monitor is not Clone).
+/// Shared detection commands (the monitor handle is behind an `Arc` so callers
+/// can clone it out of the lock and never hold the guard across an await).
 struct TrainDetectionShared {
-    monitor: Mutex<Option<super::detection::TrainDetection>>,
+    monitor: Mutex<Option<Arc<super::detection::TrainDetection>>>,
 }
 
 impl TrainServiceHandle {
@@ -255,7 +258,7 @@ impl TrainServiceHandle {
         (
             Self {
                 detection: Arc::new(TrainDetectionShared {
-                    monitor: Mutex::new(Some(detection)),
+                    monitor: Mutex::new(Some(Arc::new(detection))),
                 }),
                 lever,
                 buttons,
@@ -276,15 +279,31 @@ impl TrainServiceHandle {
 
     /// Forward a simulator connection: the detection monitor (grace handling)
     /// and both controllers see it.
-    pub async fn simulator_connected(&self, client: Arc<SimulatorClient>) -> Result<(), QueueError> {
+    pub async fn simulator_connected(
+        &self,
+        client: Arc<SimulatorClient>,
+    ) -> Result<(), QueueError> {
         self.state
             .lock()
             .expect("train service poisoned")
             .connection_lost = false;
-        if let Some(detection) = self.detection.monitor.lock().expect("detection poisoned").as_ref() {
-            detection.connected(client.clone()).await.map_err(|_| QueueError::Closed)?;
+        // Clone the handle out of the lock so the guard is dropped before
+        // awaiting (clippy::await_holding_lock); ordering is unchanged.
+        let detection = self
+            .detection
+            .monitor
+            .lock()
+            .expect("detection poisoned")
+            .clone();
+        if let Some(detection) = detection.as_ref() {
+            detection
+                .connected(client.clone())
+                .await
+                .map_err(|_| QueueError::Closed)?;
         }
-        self.lever.simulator_connected(client.clone()).map_err(|_| QueueError::Closed)?;
+        self.lever
+            .simulator_connected(client.clone())
+            .map_err(|_| QueueError::Closed)?;
         self.buttons.simulator_connected(client)
     }
 
@@ -293,17 +312,35 @@ impl TrainServiceHandle {
             .lock()
             .expect("train service poisoned")
             .connection_lost = true;
-        if let Some(detection) = self.detection.monitor.lock().expect("detection poisoned").as_ref() {
-            detection.disconnected().await.map_err(|_| QueueError::Closed)?;
+        // Same lock-scoping as `simulator_connected`: clone before awaiting.
+        let detection = self
+            .detection
+            .monitor
+            .lock()
+            .expect("detection poisoned")
+            .clone();
+        if let Some(detection) = detection.as_ref() {
+            detection
+                .disconnected()
+                .await
+                .map_err(|_| QueueError::Closed)?;
         }
-        self.lever.simulator_disconnected().map_err(|_| QueueError::Closed)?;
+        self.lever
+            .simulator_disconnected()
+            .map_err(|_| QueueError::Closed)?;
         self.buttons.simulator_disconnected()
     }
 
     /// Manual sync after CRUD: forces full re-detection (cleared identifier)
     /// and reloads the committed configuration when it changed.
     pub async fn sync(&self) -> Result<(), QueueError> {
-        let detection = self.detection.monitor.lock().expect("detection poisoned");
+        // Clone before awaiting (clippy::await_holding_lock).
+        let detection = self
+            .detection
+            .monitor
+            .lock()
+            .expect("detection poisoned")
+            .clone();
         match detection.as_ref() {
             Some(detection) => detection.sync().await.map_err(|_| QueueError::Closed),
             None => Err(QueueError::Closed),
@@ -338,7 +375,10 @@ impl TrainServiceHandle {
         }
         self.lever.release().map_err(|_| QueueError::Closed)?;
         self.buttons.release()?;
-        self.lever.shutdown().await.map_err(|_| QueueError::Closed)?;
+        self.lever
+            .shutdown()
+            .await
+            .map_err(|_| QueueError::Closed)?;
         self.buttons.shutdown().await
     }
 }
@@ -385,7 +425,8 @@ async fn pump(
                     == train_id;
                 if same_active {
                     if let Some(id) = train_id {
-                        reactivate_if_moved(&source, &routing, &destination, &state, &events, id).await;
+                        reactivate_if_moved(&source, &routing, &destination, &state, &events, id)
+                            .await;
                     }
                 }
             }
@@ -455,7 +496,8 @@ fn tsw_plan(snapshot: &TrainConfigSnapshot) -> DestinationPlan {
     }
     for binding in &snapshot.button_bindings {
         let dynamic = matches!(binding.mode, ButtonMode::Sequence | ButtonMode::Keystroke);
-        if let (Some(device_id), Some(endpoint)) = (binding.input_device, binding.endpoint.clone()) {
+        if let (Some(device_id), Some(endpoint)) = (binding.input_device, binding.endpoint.clone())
+        {
             if !dynamic {
                 routes.push(InputRoute {
                     input: InputIdentity {
@@ -497,7 +539,9 @@ async fn activate(
     let snapshot = match snapshot_train(source, train_id).await {
         Ok(snapshot) => snapshot,
         Err(error) => {
-            let _ = events.send(TrainEvent::DetectionError(error.to_string())).await;
+            let _ = events
+                .send(TrainEvent::DetectionError(error.to_string()))
+                .await;
             return;
         }
     };
@@ -518,7 +562,9 @@ async fn reactivate_if_moved(
     let snapshot = match snapshot_train(source, train_id).await {
         Ok(snapshot) => snapshot,
         Err(error) => {
-            let _ = events.send(TrainEvent::DetectionError(error.to_string())).await;
+            let _ = events
+                .send(TrainEvent::DetectionError(error.to_string()))
+                .await;
             return;
         }
     };
@@ -565,14 +611,19 @@ async fn commit_and_reconcile(
                     if destination.applied_generation() != generation {
                         if let Err(error) = destination.activate_controllers() {
                             let _ = events
-                                .send(TrainEvent::RoutingDegraded(DegradedReason::ActivationFailed {
-                                    destination: DestinationId::Tsw,
-                                    error,
-                                }))
+                                .send(TrainEvent::RoutingDegraded(
+                                    DegradedReason::ActivationFailed {
+                                        destination: DestinationId::Tsw,
+                                        error,
+                                    },
+                                ))
                                 .await;
                         }
                     }
-                    state.lock().expect("train service poisoned").active_train_id = Some(train_id);
+                    state
+                        .lock()
+                        .expect("train service poisoned")
+                        .active_train_id = Some(train_id);
                 }
                 Err(error) => {
                     // Saved-but-not-active: the desired revision stays
@@ -583,16 +634,21 @@ async fn commit_and_reconcile(
                         RoutingError::Superseded | RoutingError::ReconcileInProgress
                     ) {
                         let _ = events
-                            .send(TrainEvent::RoutingDegraded(match routing.degraded_reasons().first() {
-                                Some(reason) => reason.clone(),
-                                None => DegradedReason::ActivationFailed {
-                                    destination: DestinationId::Tsw,
-                                    error: format!("{error:?}"),
+                            .send(TrainEvent::RoutingDegraded(
+                                match routing.degraded_reasons().first() {
+                                    Some(reason) => reason.clone(),
+                                    None => DegradedReason::ActivationFailed {
+                                        destination: DestinationId::Tsw,
+                                        error: format!("{error:?}"),
+                                    },
                                 },
-                            }))
+                            ))
                             .await;
                     }
-                    state.lock().expect("train service poisoned").active_train_id = Some(train_id);
+                    state
+                        .lock()
+                        .expect("train service poisoned")
+                        .active_train_id = Some(train_id);
                 }
             }
         }

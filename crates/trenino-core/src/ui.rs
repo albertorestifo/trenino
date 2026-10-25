@@ -5,8 +5,8 @@
 
 use crate::{AppError, ConfigId, Epoch, ErrorCode, Revision, Topic};
 use serde::{Deserialize, Serialize};
-use std::path::Path;
 use std::collections::BTreeMap;
+use std::path::Path;
 use ts_rs::TS;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, TS)]
@@ -438,7 +438,9 @@ pub struct NotchRangesValidationView {
 pub struct UiSnapshot<T> {
     #[ts(type = "string")]
     pub epoch: Epoch,
-    #[ts(type = "'settings' | 'hardware' | 'trains' | 'bindings' | 'scripts' | 'firmware' | 'vjoy'")]
+    #[ts(
+        type = "'settings' | 'hardware' | 'trains' | 'bindings' | 'scripts' | 'firmware' | 'vjoy'"
+    )]
     pub topic: Topic,
     #[ts(type = "string")]
     pub revision: Revision,
@@ -449,7 +451,9 @@ pub struct UiSnapshot<T> {
 pub struct UiChange<T> {
     #[ts(type = "string")]
     pub epoch: Epoch,
-    #[ts(type = "'settings' | 'hardware' | 'trains' | 'bindings' | 'scripts' | 'firmware' | 'vjoy'")]
+    #[ts(
+        type = "'settings' | 'hardware' | 'trains' | 'bindings' | 'scripts' | 'firmware' | 'vjoy'"
+    )]
     pub topic: Topic,
     #[ts(type = "string")]
     pub revision: Revision,
@@ -500,45 +504,45 @@ impl From<AppError> for UiFailure {
 pub fn export_typescript_contracts(output: &Path) -> Result<(), ts_rs::ExportError> {
     let config = ts_rs::Config::new().with_out_dir(output);
     for result in [
-            BindingsView::export_all(&config),
-            ButtonBindingView::export_all(&config),
-            CalibrationView::export_all(&config),
-            ConfigurationSummaryView::export_all(&config),
-            ConnectedDeviceView::export_all(&config),
-            ConsentState::export_all(&config),
-            DeviceDetailView::export_all(&config),
-            DisplayBindingView::export_all(&config),
-            ElementView::export_all(&config),
-            FirmwareFileView::export_all(&config),
-            FirmwareReleaseView::export_all(&config),
-            FirmwareView::export_all(&config),
-            Ht16k33ParamsView::export_all(&config),
-            I2cModuleView::export_all(&config),
-            InputView::export_all(&config),
-            LeverBindingView::export_all(&config),
-            LeverConfigView::export_all(&config),
-            MatrixPinView::export_all(&config),
-            MatrixView::export_all(&config),
-            NotchRangeGapView::export_all(&config),
-            NotchRangesValidationView::export_all(&config),
-            NotchView::export_all(&config),
-            OutputBindingView::export_all(&config),
-            OutputView::export_all(&config),
-            ScriptView::export_all(&config),
-            ScriptsView::export_all(&config),
-            SequenceCommandView::export_all(&config),
-            SequenceView::export_all(&config),
-            SettingsView::export_all(&config),
-            SimulatorSettingsView::export_all(&config),
-            TrainDetailView::export_all(&config),
-            TrainSummaryView::export_all(&config),
-            UpdateCheckView::export_all(&config),
-            UploadHistoryView::export_all(&config),
-            UiFailure::export_all(&config),
-            VjoyMappingView::export_all(&config),
-            VjoyView::export_all(&config),
-            UiSnapshot::<SettingsView>::export_all(&config),
-            UiChange::<SettingsView>::export_all(&config),
+        BindingsView::export_all(&config),
+        ButtonBindingView::export_all(&config),
+        CalibrationView::export_all(&config),
+        ConfigurationSummaryView::export_all(&config),
+        ConnectedDeviceView::export_all(&config),
+        ConsentState::export_all(&config),
+        DeviceDetailView::export_all(&config),
+        DisplayBindingView::export_all(&config),
+        ElementView::export_all(&config),
+        FirmwareFileView::export_all(&config),
+        FirmwareReleaseView::export_all(&config),
+        FirmwareView::export_all(&config),
+        Ht16k33ParamsView::export_all(&config),
+        I2cModuleView::export_all(&config),
+        InputView::export_all(&config),
+        LeverBindingView::export_all(&config),
+        LeverConfigView::export_all(&config),
+        MatrixPinView::export_all(&config),
+        MatrixView::export_all(&config),
+        NotchRangeGapView::export_all(&config),
+        NotchRangesValidationView::export_all(&config),
+        NotchView::export_all(&config),
+        OutputBindingView::export_all(&config),
+        OutputView::export_all(&config),
+        ScriptView::export_all(&config),
+        ScriptsView::export_all(&config),
+        SequenceCommandView::export_all(&config),
+        SequenceView::export_all(&config),
+        SettingsView::export_all(&config),
+        SimulatorSettingsView::export_all(&config),
+        TrainDetailView::export_all(&config),
+        TrainSummaryView::export_all(&config),
+        UpdateCheckView::export_all(&config),
+        UploadHistoryView::export_all(&config),
+        UiFailure::export_all(&config),
+        VjoyMappingView::export_all(&config),
+        VjoyView::export_all(&config),
+        UiSnapshot::<SettingsView>::export_all(&config),
+        UiChange::<SettingsView>::export_all(&config),
     ] {
         result?;
     }
@@ -593,7 +597,6 @@ mod tests {
         "VjoyMappingView.ts",
         "VjoyView.ts",
     ];
-
 
     fn compare_generated_files(
         generated: &Path,

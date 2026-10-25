@@ -157,7 +157,8 @@ impl TrainDetection {
         clock: Arc<dyn Clock>,
         source: Arc<dyn TrainConfigSource>,
     ) -> (Self, tokio::sync::mpsc::Receiver<TrainDetectionEvent>) {
-        let (monitor, events) = TrainDetectionMonitor::start(clock, Arc::new(SourceProfiles(source)));
+        let (monitor, events) =
+            TrainDetectionMonitor::start(clock, Arc::new(SourceProfiles(source)));
         (Self { monitor }, events)
     }
 
@@ -176,7 +177,7 @@ impl TrainDetection {
         self.monitor.sync().await
     }
 
-    pub async fn shutdown(self) -> Result<(), MonitorError> {
+    pub async fn shutdown(&self) -> Result<(), MonitorError> {
         self.monitor.shutdown().await
     }
 }
@@ -222,7 +223,8 @@ impl TrainConfigSource for DbTrainConfigSource {
     }
 
     fn snapshot(&self, train_id: EntityId) -> Result<TrainConfigSnapshot, TrainConfigError> {
-        let storage = |error: crate::storage::StorageError| TrainConfigError::Storage(error.to_string());
+        let storage =
+            |error: crate::storage::StorageError| TrainConfigError::Storage(error.to_string());
         let train: TrainRecord = self
             .db
             .get_train(train_id)
@@ -239,7 +241,12 @@ impl TrainConfigSource for DbTrainConfigSource {
                 let config = train
                     .elements
                     .iter()
-                    .find_map(|element| element.lever_config.as_ref().filter(|config| config.id == binding.lever_config_id))
+                    .find_map(|element| {
+                        element
+                            .lever_config
+                            .as_ref()
+                            .filter(|config| config.id == binding.lever_config_id)
+                    })
                     .ok_or(TrainConfigError::NotFound(binding.lever_config_id))?;
                 let input = self.db.get_input(binding.input_id).map_err(storage)?;
                 let calibration = input
@@ -337,14 +344,20 @@ impl TrainConfigSource for DbTrainConfigSource {
     }
 }
 
-fn core_notches(config: &crate::storage::trains::LeverConfigRecord) -> Vec<trenino_core::train::lever::Notch> {
+fn core_notches(
+    config: &crate::storage::trains::LeverConfigRecord,
+) -> Vec<trenino_core::train::lever::Notch> {
     config
         .notches
         .iter()
         .map(|notch| trenino_core::train::lever::Notch {
             kind: match notch.kind {
-                crate::storage::trains::NotchKind::Gate => trenino_core::train::lever::NotchType::Gate,
-                crate::storage::trains::NotchKind::Linear => trenino_core::train::lever::NotchType::Linear,
+                crate::storage::trains::NotchKind::Gate => {
+                    trenino_core::train::lever::NotchType::Gate
+                }
+                crate::storage::trains::NotchKind::Linear => {
+                    trenino_core::train::lever::NotchType::Linear
+                }
             },
             input_min: notch.input_min,
             input_max: notch.input_max,
@@ -361,9 +374,9 @@ fn load_sequence(
     let Some(id) = id else {
         return Ok(None);
     };
-    let commands: Vec<SequenceCommandRecord> = db.sequence_commands(id).map_err(|error| {
-        TrainConfigError::Storage(error.to_string())
-    })?;
+    let commands: Vec<SequenceCommandRecord> = db
+        .sequence_commands(id)
+        .map_err(|error| TrainConfigError::Storage(error.to_string()))?;
     Ok(Some(
         commands
             .into_iter()

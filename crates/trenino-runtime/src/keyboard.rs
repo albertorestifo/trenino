@@ -147,7 +147,10 @@ use trenino_core::EntityId;
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum KeystrokeError {
     /// The bundled executable exited non-zero (oracle: `{:command_failed, _}`).
-    CommandFailed { exit_code: Option<i32>, output: String },
+    CommandFailed {
+        exit_code: Option<i32>,
+        output: String,
+    },
     /// The executable could not be spawned (missing, not executable, ...).
     Spawn(String),
     /// The configured executable path is not a trusted absolute file path.
@@ -163,7 +166,11 @@ impl std::fmt::Display for KeystrokeError {
             ),
             KeystrokeError::Spawn(msg) => write!(f, "keystroke spawn failed: {msg}"),
             KeystrokeError::UntrustedPath(path) => {
-                write!(f, "keystroke executable path is not trusted: {}", path.display())
+                write!(
+                    f,
+                    "keystroke executable path is not trusted: {}",
+                    path.display()
+                )
             }
         }
     }
@@ -377,10 +384,7 @@ impl<A: KeystrokeAdapter> KeyboardOwnership<A> {
         let mut keys = Vec::with_capacity(modifiers.len() + 1);
         let mut errors = Vec::new();
         for key in modifiers.iter().copied().chain(main.into_iter()) {
-            let fresh = self
-                .held
-                .get(&key)
-                .is_none_or(|holders| holders.is_empty());
+            let fresh = self.held.get(&key).is_none_or(|holders| holders.is_empty());
             if fresh {
                 if let Err(error) = self.adapter.key_down(&combo_of(key)) {
                     errors.push(error);

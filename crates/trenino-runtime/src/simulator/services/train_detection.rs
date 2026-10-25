@@ -119,7 +119,7 @@ impl TrainDetectionMonitor {
         self.send(TrainDetectionCommand::Sync).await
     }
 
-    pub async fn shutdown(self) -> Result<(), MonitorError> {
+    pub async fn shutdown(&self) -> Result<(), MonitorError> {
         let (reply, reply_receiver) = oneshot::channel();
         self.commands
             .send(TrainDetectionCommand::Shutdown(reply))

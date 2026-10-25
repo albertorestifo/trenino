@@ -13,26 +13,24 @@ use std::{
 use crate::hardware::repository::DatabaseHardwareRepository;
 use crate::hardware::service::HardwareRepository;
 use crate::storage::bindings::{
-    BindOptions, ButtonBindingDraft, ButtonBindingPatch, ButtonBindingRecord,
-    DisplayBindingDraft, DisplayBindingPatch, DisplayBindingRecord, OutputBindingDraft,
-    OutputBindingPatch, OutputBindingRecord,
+    BindOptions, ButtonBindingDraft, ButtonBindingPatch, ButtonBindingRecord, DisplayBindingDraft,
+    DisplayBindingPatch, DisplayBindingRecord, OutputBindingDraft, OutputBindingPatch,
+    OutputBindingRecord,
 };
 use crate::storage::firmware_records::{
     CatalogUpsert, FirmwareFileRecord, UpdateCheckDraft, UploadHistoryRecord,
     UploadStatus as UploadStatusRecord,
 };
 use crate::storage::scripts::{ScriptDraft, ScriptPatch, ScriptRecord};
-use crate::storage::sequences::{
-    SequenceCommandDraft, SequenceDraft, SequencePatch,
-};
+use crate::storage::sequences::{SequenceCommandDraft, SequenceDraft, SequencePatch};
 use crate::storage::trains::{
     ElementDraft, ElementKind, LeverConfigDraft, LeverConfigPatch, LeverType, NotchDraft,
     NotchPatch, RangesValidation, TrainDraft, TrainPatch, TrainRecord as TrainRecordFull,
 };
 use crate::storage::{
-    ConfigurationRecord, Database, DeviceDraft, DevicePatch, DeviceRecord,
-    HardwareSnapshot, Ht16k33Params, I2cModuleDraft, InputDraft, InputKind, InputRecord,
-    MatrixDraft, OutputDraft, RuntimeMetadata, StorageError, TrainRecord,
+    ConfigurationRecord, Database, DeviceDraft, DevicePatch, DeviceRecord, HardwareSnapshot,
+    Ht16k33Params, I2cModuleDraft, InputDraft, InputKind, InputRecord, MatrixDraft, OutputDraft,
+    RuntimeMetadata, StorageError, TrainRecord,
 };
 use crate::vjoy::store::{MappingDraft, MappingRecord, Target};
 use trenino_core::ui::{
@@ -44,10 +42,43 @@ use trenino_core::ui::{
     SettingsView, SimulatorSettingsView, TrainDetailView, TrainSummaryView, UiSnapshot,
     UpdateCheckView, UploadHistoryView, VjoyMappingView, VjoyView,
 };
-use trenino_core::{
-    AppError, ConfigId, Epoch, ErrorCode, EntityId, OperationId, Revision, Topic,
-};
+use trenino_core::{AppError, ConfigId, EntityId, Epoch, ErrorCode, OperationId, Revision, Topic};
 const DEFAULT_SIMULATOR_URL: &str = "http://localhost:31270";
+
+/// Parameters for [`AppServices::create_input`].
+pub struct CreateInputParams {
+    pub device_id: EntityId,
+    pub pin: i32,
+    pub kind: String,
+    pub sensitivity: Option<i32>,
+    pub debounce: Option<i32>,
+    pub name: Option<String>,
+    pub matrix_id: Option<EntityId>,
+}
+
+/// Parameters for [`AppServices::create_lever`].
+pub struct CreateLeverParams {
+    pub element_id: EntityId,
+    pub min_endpoint: String,
+    pub max_endpoint: String,
+    pub value_endpoint: String,
+    pub notch_count_endpoint: Option<String>,
+    pub notch_index_endpoint: Option<String>,
+    pub lever_type: Option<String>,
+    pub inverted: bool,
+}
+
+/// Parameters for [`AppServices::update_lever`].
+pub struct UpdateLeverParams {
+    pub lever_config_id: EntityId,
+    pub min_endpoint: Option<String>,
+    pub max_endpoint: Option<String>,
+    pub value_endpoint: Option<String>,
+    pub notch_count_endpoint: Option<Option<String>>,
+    pub notch_index_endpoint: Option<Option<String>>,
+    pub lever_type: Option<Option<String>>,
+    pub inverted: Option<bool>,
+}
 
 pub struct AppServices {
     db: Arc<Database>,
@@ -450,7 +481,10 @@ impl AppServices {
         self.hardware_detail_unguarded(device_id)
     }
 
-    pub fn get_train_detail(&self, train_id: EntityId) -> Result<UiSnapshot<TrainDetailView>, AppError> {
+    pub fn get_train_detail(
+        &self,
+        train_id: EntityId,
+    ) -> Result<UiSnapshot<TrainDetailView>, AppError> {
         let _guard = self.begin_operation()?;
         self.train_detail_unguarded(train_id)
     }
@@ -543,7 +577,10 @@ impl AppServices {
         })
     }
 
-    fn hardware_detail_unguarded(&self, device_id: EntityId) -> Result<UiSnapshot<DeviceDetailView>, AppError> {
+    fn hardware_detail_unguarded(
+        &self,
+        device_id: EntityId,
+    ) -> Result<UiSnapshot<DeviceDetailView>, AppError> {
         let (snapshot, metadata) = self.db.hardware_snapshot().map_err(to_app_error)?;
         let device = snapshot
             .devices
@@ -564,7 +601,10 @@ impl AppServices {
         })
     }
 
-    fn train_detail_unguarded(&self, train_id: EntityId) -> Result<UiSnapshot<TrainDetailView>, AppError> {
+    fn train_detail_unguarded(
+        &self,
+        train_id: EntityId,
+    ) -> Result<UiSnapshot<TrainDetailView>, AppError> {
         let record = self
             .db
             .get_train(train_id)
@@ -608,7 +648,11 @@ impl AppServices {
             {
                 view.button.push(button_binding_view(record));
             }
-            for record in self.db.list_output_bindings(train.id).map_err(to_app_error)? {
+            for record in self
+                .db
+                .list_output_bindings(train.id)
+                .map_err(to_app_error)?
+            {
                 view.output.push(output_binding_view(record));
             }
             for record in self
@@ -785,15 +829,17 @@ impl AppServices {
 
     pub fn create_input(
         &self,
-        device_id: EntityId,
-        pin: i32,
-        kind: &str,
-        sensitivity: Option<i32>,
-        debounce: Option<i32>,
-        name: Option<String>,
-        matrix_id: Option<EntityId>,
+        CreateInputParams {
+            device_id,
+            pin,
+            kind,
+            sensitivity,
+            debounce,
+            name,
+            matrix_id,
+        }: CreateInputParams,
     ) -> Result<UiSnapshot<DeviceDetailView>, AppError> {
-        let kind = parse_input_kind(kind)?;
+        let kind = parse_input_kind(&kind)?;
         let _guard = self.begin_operation()?;
         self.db
             .create_input(
@@ -846,7 +892,10 @@ impl AppServices {
         self.hardware_detail_unguarded(device_id)
     }
 
-    pub fn delete_input(&self, input_id: EntityId) -> Result<UiSnapshot<DeviceDetailView>, AppError> {
+    pub fn delete_input(
+        &self,
+        input_id: EntityId,
+    ) -> Result<UiSnapshot<DeviceDetailView>, AppError> {
         let _guard = self.begin_operation()?;
         let device_id = self.device_of_input(input_id)?;
         self.db
@@ -863,11 +912,7 @@ impl AppServices {
     ) -> Result<UiSnapshot<DeviceDetailView>, AppError> {
         let _guard = self.begin_operation()?;
         self.db
-            .create_output(
-                self.next_operation(),
-                device_id,
-                OutputDraft { pin, name },
-            )
+            .create_output(self.next_operation(), device_id, OutputDraft { pin, name })
             .map_err(to_app_error)?;
         self.hardware_detail_unguarded(device_id)
     }
@@ -886,16 +931,15 @@ impl AppServices {
             .ok_or_else(not_found("output"))?
             .device_id;
         self.db
-            .update_output(
-                self.next_operation(),
-                output_id,
-                OutputDraft { pin, name },
-            )
+            .update_output(self.next_operation(), output_id, OutputDraft { pin, name })
             .map_err(to_app_error)?;
         self.hardware_detail_unguarded(device_id)
     }
 
-    pub fn delete_output(&self, output_id: EntityId) -> Result<UiSnapshot<DeviceDetailView>, AppError> {
+    pub fn delete_output(
+        &self,
+        output_id: EntityId,
+    ) -> Result<UiSnapshot<DeviceDetailView>, AppError> {
         let _guard = self.begin_operation()?;
         let device_id = self
             .db
@@ -951,7 +995,10 @@ impl AppServices {
         self.hardware_detail_unguarded(device_id)
     }
 
-    pub fn delete_matrix(&self, matrix_id: EntityId) -> Result<UiSnapshot<DeviceDetailView>, AppError> {
+    pub fn delete_matrix(
+        &self,
+        matrix_id: EntityId,
+    ) -> Result<UiSnapshot<DeviceDetailView>, AppError> {
         let _guard = self.begin_operation()?;
         let device_id = self
             .db
@@ -1124,7 +1171,10 @@ impl AppServices {
         self.train_detail_unguarded(train_id)
     }
 
-    pub fn delete_element(&self, element_id: EntityId) -> Result<UiSnapshot<TrainDetailView>, AppError> {
+    pub fn delete_element(
+        &self,
+        element_id: EntityId,
+    ) -> Result<UiSnapshot<TrainDetailView>, AppError> {
         let _guard = self.begin_operation()?;
         let train_id = self.train_of_element(element_id)?;
         self.db
@@ -1135,16 +1185,18 @@ impl AppServices {
 
     pub fn create_lever(
         &self,
-        element_id: EntityId,
-        min_endpoint: String,
-        max_endpoint: String,
-        value_endpoint: String,
-        notch_count_endpoint: Option<String>,
-        notch_index_endpoint: Option<String>,
-        lever_type: Option<&str>,
-        inverted: bool,
+        CreateLeverParams {
+            element_id,
+            min_endpoint,
+            max_endpoint,
+            value_endpoint,
+            notch_count_endpoint,
+            notch_index_endpoint,
+            lever_type,
+            inverted,
+        }: CreateLeverParams,
     ) -> Result<UiSnapshot<TrainDetailView>, AppError> {
-        let lever_type = match lever_type {
+        let lever_type = match lever_type.as_deref() {
             Some(value) => Some(parse_lever_type(value)?),
             None => None,
         };
@@ -1170,17 +1222,19 @@ impl AppServices {
 
     pub fn update_lever(
         &self,
-        lever_config_id: EntityId,
-        min_endpoint: Option<String>,
-        max_endpoint: Option<String>,
-        value_endpoint: Option<String>,
-        notch_count_endpoint: Option<Option<String>>,
-        notch_index_endpoint: Option<Option<String>>,
-        lever_type: Option<Option<&str>>,
-        inverted: Option<bool>,
+        UpdateLeverParams {
+            lever_config_id,
+            min_endpoint,
+            max_endpoint,
+            value_endpoint,
+            notch_count_endpoint,
+            notch_index_endpoint,
+            lever_type,
+            inverted,
+        }: UpdateLeverParams,
     ) -> Result<UiSnapshot<TrainDetailView>, AppError> {
         let lever_type = match lever_type {
-            Some(Some(value)) => Some(Some(parse_lever_type(value)?)),
+            Some(Some(value)) => Some(Some(parse_lever_type(&value)?)),
             Some(None) => Some(None),
             None => None,
         };
@@ -1233,7 +1287,10 @@ impl AppServices {
         self.train_detail_unguarded(train_id)
     }
 
-    pub fn delete_notch_entry(&self, notch_id: EntityId) -> Result<UiSnapshot<TrainDetailView>, AppError> {
+    pub fn delete_notch_entry(
+        &self,
+        notch_id: EntityId,
+    ) -> Result<UiSnapshot<TrainDetailView>, AppError> {
         let _guard = self.begin_operation()?;
         let train_id = self.train_of_notch(notch_id)?;
         self.db
@@ -1603,7 +1660,10 @@ impl AppServices {
         self.scripts_snapshot_unguarded()
     }
 
-    pub fn delete_script_entry(&self, script_id: EntityId) -> Result<UiSnapshot<ScriptsView>, AppError> {
+    pub fn delete_script_entry(
+        &self,
+        script_id: EntityId,
+    ) -> Result<UiSnapshot<ScriptsView>, AppError> {
         let _guard = self.begin_operation()?;
         self.db
             .delete_script(self.next_operation(), script_id)
@@ -1693,9 +1753,7 @@ impl AppServices {
     // ----- Internal lookups (guard held) ----------------------------------
 
     fn next_operation(&self) -> OperationId {
-        let sequence = self
-            .next_operation_id
-            .fetch_add(1, Ordering::Relaxed);
+        let sequence = self.next_operation_id.fetch_add(1, Ordering::Relaxed);
         OperationId(((self.epoch as u128) << 64) | sequence as u128)
     }
 
@@ -1855,7 +1913,7 @@ fn device_detail_view(device: &DeviceRecord, snapshot: &HardwareSnapshot) -> Dev
                 params: module.params.as_ref().map(|params| Ht16k33ParamsView {
                     brightness: params.brightness,
                     num_digits: params.num_digits,
-                    display_type: serde_json::to_value(&params.display_type)
+                    display_type: serde_json::to_value(params.display_type)
                         .ok()
                         .and_then(|value| value.as_str().map(str::to_owned))
                         .unwrap_or_else(|| "seven_segment".into()),
@@ -2133,7 +2191,10 @@ fn round_output_patch(patch: OutputBindingPatch) -> OutputBindingPatch {
 fn validate_name(value: &str, field: &str) -> Result<(), AppError> {
     let trimmed = value.trim();
     if trimmed.is_empty() || value.chars().count() > 100 {
-        return Err(validation_error(field, "Enter between 1 and 100 characters."));
+        return Err(validation_error(
+            field,
+            "Enter between 1 and 100 characters.",
+        ));
     }
     Ok(())
 }
