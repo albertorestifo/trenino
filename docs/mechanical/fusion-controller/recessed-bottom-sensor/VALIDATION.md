@@ -1,0 +1,17 @@
+# Recessed hanging layout v2 — validation
+
+Saved and unmodified: AIDesignedLever Recessed Bottom Sensor v2. Separate lineage: `urn:adsk.wipprod:dm.lineage:8phaaOK2S5SnbORU7BqJyQ`. Coupling v6 and upper-sensor geared v3 remain unchanged. Native archive: Recessed-Bottom-Sensor.f3d.
+
+Final native feature health passes. All 30 printable body exports are closed, consistently wound, correctly scaled, bed-oriented and within the P2S build envelope. The panel face is a non-printable reference, excluded from STL exports. Four parts changed from the upper-sensor version: P01R, P02R, G01R and G03R. The lower pinion's assembly position and indexing also changed, although its printable geometry did not.
+
+The initial recessed layout was checked at 23 lever angles for all three cams, using the 2:1 pinion motion, plus nominal rail envelopes and cam withdrawal with G01 and the sensor/panel/pinion assembly removed. No operating or withdrawal collisions were reported. That intermediate report identified stationary mounting intersections: suspension arms filled four crossblock bores and the lower sensor panel needed a sideplate rebate. Those were corrected. The intermediate report is retained as history, not a final pass certificate.
+
+Final checks performed 54 exact candidate intersections: the changed mounting parts and reference panel against the assembled components, plus nine sampled handle poses against the new faceplate. No overlaps above 0.01 mm³ or unhealthy features were found. A separate 0.5-degree mesh sweep checks the handle against the panel slab at Z55–58: intersection bounds X−7..7 and Y±63.764 mm fit inside the 20 × 136 mm opening. Minimum grip Z is 70.110 mm, about 12.1 mm above the panel top.
+
+The final hanging arms are outside the cam's radial operating envelope; the additional rebate removes material, and the crossblock holes restore the original clearance. The final panel was explicitly rechecked rather than reusing the earlier lower panel plane. The large gear's maximum Z49.25 remains 5.75 mm below the frame-top/panel-underside plane. Top rail-slot engagement uses the retained 9 mm mounting thickness and M5 × 14 screws: tip Z50, nominal rail web Z48.8. Physical T-nut engagement and the actual frame's corner hardware remain fit checks.
+
+The four changed parts generated complete layers using the existing P2S standard-flow 0.4 mm, PLA Basic and 0.20mm Standard defaults, without support extrusion or floating-region warnings. First, bridge and final layers were visually inspected. Long reported bridge paths include skins over infill and are not measurements of unsupported free spans.
+
+These are prototype geometry files, not certified toolpaths. Existing Bambu CLI machine/tool-selection errors remain; the unchanged lower shaft retains the previously documented clipping diagnostic. No G-code is included. Slice in the normal Bambu Studio UI and inspect the result. Physical strength, printed fits, spring behavior, sensor dimensions/travel, wiring and button-body clearances are not established by these CAD checks.
+
+Reproduction order: 01_recess_layout.py, 02_panel_and_service.py, 05_top_rail_hanging_mount.py, 07_restore_crossblock_clearances.py. Validation scripts: 03_clearance.py (intermediate configuration) and 06_validate_hanging.py (final changed mounts/panel). Export: 04_export.py, then orient_and_check.py. Never run mutation scripts again on the already revised document.

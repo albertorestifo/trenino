@@ -1,0 +1,16 @@
+SUPPORT-REDUCED CONTROLLER PARTS - 25 October 2026
+
+Open Support-Reduced-P2S-PLA.3mf for the editable plate, or use the matching .gcode.3mf for its prepared slice. Files only: nothing was sent to a printer.
+
+Printer: Bambu P2S, 0.4 mm standard-flow nozzle.
+Material/plate: Bambu PLA Basic and Cool Plate SuperTack (user confirmed).
+Settings: 0.20 mm layers, 5 walls, 5 top/bottom layers, 35% gyroid, outer brim 5 mm with 0.1 mm gap, 25 mm/s bridges. Supports OFF. Vendor temperatures: 220 C nozzle, 40 C bed.
+Estimated whole plate: 1 h 57 min 37 s, 55.39 g.
+
+Included: P09 and P10 grip halves, P17 input coupling, both P18 discs (4.2 and 4.1 mm fit), P19 and P20 sensor clamps. These are seven print objects for six part numbers. Install only one P18 disc. Try the 4.2 mm version first; use the tighter version only if it slides freely throughout operation.
+
+P09/P10 stand upright with 45-degree internal socket roofs. Their external grip shape and screw locations are unchanged. P17 retains socket-end-down orientation and has a 45-degree flange ramp, including a flat washer-clearance relief. P19/P20 stand axial-end-down with tongues upward. Preserve these orientations; do not auto-orient.
+
+After printing: remove brims, check the groove roofs for sag, check small horizontal screw and insert holes, confirm the coupling slides without binding and that the grip seats on the original stem. Heat-set inserts gently and do not overtighten clamps. The design has not yet been physically tested in these orientations.
+
+Already-printed P01/P02/P25/P26 are unchanged and remain compatible. Shaft P05, follower P11 and crossblock P13 retain their supported-print recommendations. P07 needs local support inspection at the lug and radial insert pocket.

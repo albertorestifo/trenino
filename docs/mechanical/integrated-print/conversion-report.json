@@ -1,0 +1,212 @@
+[
+  {
+    "source": "controller-moving.3mf",
+    "object_id": "2",
+    "object_name": "M02 Printed bushing 4 - replaces 625 bearing",
+    "file": "moving-M02-Printed-bushing-4---replaces-625-bearing-id2.stl",
+    "triangles": 464
+  },
+  {
+    "source": "controller-moving.3mf",
+    "object_id": "3",
+    "object_name": "M07 Printed shaft carrier and stop lug",
+    "file": "moving-M07-Printed-shaft-carrier-and-stop-lug-id3.stl",
+    "triangles": 2640
+  },
+  {
+    "source": "controller-moving.3mf",
+    "object_id": "4",
+    "object_name": "M01 Printed shaft - 12 mm D, 9.2 mm journals",
+    "file": "moving-M01-Printed-shaft---12-mm-D-9.2-mm-journals-id4.stl",
+    "triangles": 1120
+  },
+  {
+    "source": "controller-moving.3mf",
+    "object_id": "5",
+    "object_name": "M02 Printed bushing 54 - replaces 625 bearing",
+    "file": "moving-M02-Printed-bushing-54---replaces-625-bearing-id5.stl",
+    "triangles": 464
+  },
+  {
+    "source": "controller-moving.3mf",
+    "object_id": "6",
+    "object_name": "M06 Replaceable cam sector - 8 mm",
+    "file": "moving-M06-Replaceable-cam-sector---8-mm-id6.stl",
+    "triangles": 2380
+  },
+  {
+    "source": "controller-moving.3mf",
+    "object_id": "7",
+    "object_name": "M09 Roller - 10 mm diameter",
+    "file": "moving-M09-Roller---10-mm-diameter-id7.stl",
+    "triangles": 464
+  },
+  {
+    "source": "controller-moving.3mf",
+    "object_id": "8",
+    "object_name": "M04 Printed lever and grip - flat underside",
+    "file": "moving-M04-Printed-lever-and-grip---flat-underside-id8.stl",
+    "triangles": 1482
+  },
+  {
+    "source": "controller-moving.3mf",
+    "object_id": "9",
+    "object_name": "M05 Drive spacer 3.1999999999999993 mm",
+    "file": "moving-M05-Drive-spacer-3.1999999999999993-mm-id9.stl",
+    "triangles": 464
+  },
+  {
+    "source": "controller-moving.3mf",
+    "object_id": "10",
+    "object_name": "M08 Forked roller arm - 36 mm pivot radius",
+    "file": "moving-M08-Forked-roller-arm---36-mm-pivot-radius-id10.stl",
+    "triangles": 1768
+  },
+  {
+    "source": "controller-moving.3mf",
+    "object_id": "11",
+    "object_name": "M03 Shaft retaining washer 64.8",
+    "file": "moving-M03-Shaft-retaining-washer-64.8-id11.stl",
+    "triangles": 464
+  },
+  {
+    "source": "controller-moving.3mf",
+    "object_id": "12",
+    "object_name": "M05 Drive spacer 2.5 mm",
+    "file": "moving-M05-Drive-spacer-2.5-mm-id12.stl",
+    "triangles": 464
+  },
+  {
+    "source": "controller-moving.3mf",
+    "object_id": "13",
+    "object_name": "M03 Shaft retaining washer -1.9",
+    "file": "moving-M03-Shaft-retaining-washer--1.9-id13.stl",
+    "triangles": 464
+  },
+  {
+    "source": "controller-supports.3mf",
+    "object_id": "2",
+    "object_name": "S5 Spacer 9.5 mm",
+    "file": "supports-S5-Spacer-9.5-mm-id2.stl",
+    "triangles": 1152
+  },
+  {
+    "source": "controller-supports.3mf",
+    "object_id": "3",
+    "object_name": "S8 Spacer 10.5 mm",
+    "file": "supports-S8-Spacer-10.5-mm-id3.stl",
+    "triangles": 1152
+  },
+  {
+    "source": "controller-supports.3mf",
+    "object_id": "4",
+    "object_name": "S12 Spacer 8 mm",
+    "file": "supports-S12-Spacer-8-mm-id4.stl",
+    "triangles": 1152
+  },
+  {
+    "source": "controller-supports.3mf",
+    "object_id": "5",
+    "object_name": "S11 Spacer 20 mm",
+    "file": "supports-S11-Spacer-20-mm-id5.stl",
+    "triangles": 2304
+  },
+  {
+    "source": "controller-supports.3mf",
+    "object_id": "6",
+    "object_name": "S14 Spacer 8 mm",
+    "file": "supports-S14-Spacer-8-mm-id6.stl",
+    "triangles": 1728
+  },
+  {
+    "source": "controller-supports.3mf",
+    "object_id": "7",
+    "object_name": "S01 Lower follower plate - flat",
+    "file": "supports-S01-Lower-follower-plate---flat-id7.stl",
+    "triangles": 3532
+  },
+  {
+    "source": "controller-supports.3mf",
+    "object_id": "8",
+    "object_name": "S03 Spring block - four M3 inserts",
+    "file": "supports-S03-Spring-block---four-M3-inserts-id8.stl",
+    "triangles": 2944
+  },
+  {
+    "source": "controller-supports.3mf",
+    "object_id": "9",
+    "object_name": "S6 Spacer 20 mm",
+    "file": "supports-S6-Spacer-20-mm-id9.stl",
+    "triangles": 2304
+  },
+  {
+    "source": "controller-supports.3mf",
+    "object_id": "10",
+    "object_name": "S9 Spacer 8 mm",
+    "file": "supports-S9-Spacer-8-mm-id10.stl",
+    "triangles": 1728
+  },
+  {
+    "source": "controller-supports.3mf",
+    "object_id": "11",
+    "object_name": "S10 Spacer 9.5 mm",
+    "file": "supports-S10-Spacer-9.5-mm-id11.stl",
+    "triangles": 1152
+  },
+  {
+    "source": "controller-supports.3mf",
+    "object_id": "12",
+    "object_name": "S13 Spacer 10.5 mm",
+    "file": "supports-S13-Spacer-10.5-mm-id12.stl",
+    "triangles": 1152
+  },
+  {
+    "source": "controller-supports.3mf",
+    "object_id": "13",
+    "object_name": "S02 Upper follower plate - flat",
+    "file": "supports-S02-Upper-follower-plate---flat-id13.stl",
+    "triangles": 3532
+  },
+  {
+    "source": "controller-supports.3mf",
+    "object_id": "14",
+    "object_name": "S04 Stop arch - flat, supported at both ends",
+    "file": "supports-S04-Stop-arch---flat-supported-at-both-ends-id14.stl",
+    "triangles": 2872
+  },
+  {
+    "source": "controller-supports.3mf",
+    "object_id": "15",
+    "object_name": "S7 Spacer 2 mm",
+    "file": "supports-S7-Spacer-2-mm-id15.stl",
+    "triangles": 1152
+  },
+  {
+    "source": "controller-frame.3mf",
+    "object_id": "2",
+    "object_name": "Other Frame",
+    "file": "frame-Other-Frame-id2.stl",
+    "triangles": 3744
+  },
+  {
+    "source": "controller-frame.3mf",
+    "object_id": "3",
+    "object_name": "Frame pot",
+    "file": "frame-Frame-pot-id3.stl",
+    "triangles": 4340
+  },
+  {
+    "source": "controller-frame.3mf",
+    "object_id": "4",
+    "object_name": "F03 Original 48T gear - enlarged printed shaft bore",
+    "file": "frame-F03-Original-48T-gear---enlarged-printed-shaft-bore-id4.stl",
+    "triangles": 158462
+  },
+  {
+    "source": "controller-frame.3mf",
+    "object_id": "5",
+    "object_name": "F04 Original 24T potentiometer gear",
+    "file": "frame-F04-Original-24T-potentiometer-gear-id5.stl",
+    "triangles": 3648
+  }
+]

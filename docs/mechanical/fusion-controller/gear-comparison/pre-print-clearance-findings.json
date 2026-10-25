@@ -1,0 +1,105 @@
+{
+  "document": "AIDesignedLever Gear Comparison v2",
+  "unhealthy_features": [],
+  "solid_count": 66,
+  "sampled_angles": [
+    -52,
+    -50,
+    -45,
+    -40,
+    -35,
+    -30,
+    -25,
+    -20,
+    -15,
+    -10,
+    -5,
+    0,
+    5,
+    10,
+    15,
+    20,
+    25,
+    30,
+    35,
+    40,
+    45,
+    50,
+    52
+  ],
+  "cam_profiles": [
+    3,
+    5,
+    7
+  ],
+  "neutral_and_motion_clashes": [
+    {
+      "pose": "neutral",
+      "a": "G03 Radially adjustable potentiometer panel",
+      "b": "HARDWARE Geared panel M3x12 -16",
+      "overlap_mm3": 2.2072649687093695
+    },
+    {
+      "pose": "neutral",
+      "a": "G03 Radially adjustable potentiometer panel",
+      "b": "HARDWARE Geared panel M3x12 16",
+      "overlap_mm3": 2.2072649687093695
+    },
+    {
+      "pose": "service cam3 shift30",
+      "a": "P08 Cam 3 gates - stable endpoints",
+      "b": "G01 48T lever gear",
+      "overlap_mm3": 280.6558588004544
+    },
+    {
+      "pose": "service cam3 shift35",
+      "a": "P08 Cam 3 gates - stable endpoints",
+      "b": "G01 48T lever gear",
+      "overlap_mm3": 405.39179604510355
+    },
+    {
+      "pose": "service cam3 shift40",
+      "a": "P08 Cam 3 gates - stable endpoints",
+      "b": "G01 48T lever gear",
+      "overlap_mm3": 93.5519529334851
+    },
+    {
+      "pose": "service cam5 shift30",
+      "a": "P08 Cam 5 gates - stable endpoints",
+      "b": "G01 48T lever gear",
+      "overlap_mm3": 280.743112526053
+    },
+    {
+      "pose": "service cam5 shift35",
+      "a": "P08 Cam 5 gates - stable endpoints",
+      "b": "G01 48T lever gear",
+      "overlap_mm3": 405.51782920430145
+    },
+    {
+      "pose": "service cam5 shift40",
+      "a": "P08 Cam 5 gates - stable endpoints",
+      "b": "G01 48T lever gear",
+      "overlap_mm3": 93.58103750868464
+    },
+    {
+      "pose": "service cam7 shift30",
+      "a": "P08 Cam 7 gates - stable endpoints",
+      "b": "G01 48T lever gear",
+      "overlap_mm3": 279.23360404960164
+    },
+    {
+      "pose": "service cam7 shift35",
+      "a": "P08 Cam 7 gates - stable endpoints",
+      "b": "G01 48T lever gear",
+      "overlap_mm3": 403.3374280716501
+    },
+    {
+      "pose": "service cam7 shift40",
+      "a": "P08 Cam 7 gates - stable endpoints",
+      "b": "G01 48T lever gear",
+      "overlap_mm3": 93.07786801653432
+    }
+  ],
+  "tolerance_mm3": 0.01,
+  "scope": "Solid interference; spring deformation, actual sensor dimensions, fastener torque, physical strength and fixed mesh frame are separate checks."
+}

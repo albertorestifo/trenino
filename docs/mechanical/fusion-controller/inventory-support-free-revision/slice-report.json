@@ -1,0 +1,365 @@
+[
+  {
+    "part": "P01-Left-rail-sideplate.stl",
+    "exit_code": 0,
+    "output_exists": true,
+    "issues": [
+      "[2026-10-25 10:08:10.756680] [0x00003ea0] [warning] cli mode, Current BambuStudio Version 02.04.00.70",
+      "[2026-10-25 10:08:10.793192] [0x00003ea0] [error]   3198: nozzle_volume_type not found, when different_extruder or multiple extruder, new_printer_name Bambu Lab P2S 0.4 nozzle, extruder_count 1",
+      "[2026-10-25 10:08:10.793692] [0x00003ea0] [warning] no filament colors found in projects",
+      "[2026-10-25 10:08:11.195308] [0x00003ea0] [warning] tree support default to organic support",
+      "[2026-10-25 10:08:11.572519] [0x00003ea0] [error]   Invalid T command (T65535)."
+    ]
+  },
+  {
+    "part": "P02-Right-rail-sideplate.stl",
+    "exit_code": 0,
+    "output_exists": true,
+    "issues": [
+      "[2026-10-25 10:08:12.422206] [0x00003ce8] [warning] cli mode, Current BambuStudio Version 02.04.00.70",
+      "[2026-10-25 10:08:12.429908] [0x00003ce8] [error]   3198: nozzle_volume_type not found, when different_extruder or multiple extruder, new_printer_name Bambu Lab P2S 0.4 nozzle, extruder_count 1",
+      "[2026-10-25 10:08:12.430408] [0x00003ce8] [warning] no filament colors found in projects",
+      "[2026-10-25 10:08:12.770236] [0x00003ce8] [warning] tree support default to organic support",
+      "[2026-10-25 10:08:13.240013] [0x00003ce8] [error]   Invalid T command (T65535)."
+    ]
+  },
+  {
+    "part": "P03-Left-flanged-journal-bush.stl",
+    "exit_code": 0,
+    "output_exists": true,
+    "issues": [
+      "[2026-10-25 10:08:14.068275] [0x00001e98] [warning] cli mode, Current BambuStudio Version 02.04.00.70",
+      "[2026-10-25 10:08:14.081076] [0x00001e98] [error]   3198: nozzle_volume_type not found, when different_extruder or multiple extruder, new_printer_name Bambu Lab P2S 0.4 nozzle, extruder_count 1",
+      "[2026-10-25 10:08:14.081625] [0x00001e98] [warning] no filament colors found in projects",
+      "[2026-10-25 10:08:14.277253] [0x00001e98] [warning] tree support default to organic support",
+      "[2026-10-25 10:08:14.699001] [0x00001e98] [error]   Invalid T command (T65535)."
+    ]
+  },
+  {
+    "part": "P04-Right-flanged-journal-bush.stl",
+    "exit_code": 0,
+    "output_exists": true,
+    "issues": [
+      "[2026-10-25 10:08:15.452164] [0x00000ab4] [warning] cli mode, Current BambuStudio Version 02.04.00.70",
+      "[2026-10-25 10:08:15.464155] [0x00000ab4] [error]   3198: nozzle_volume_type not found, when different_extruder or multiple extruder, new_printer_name Bambu Lab P2S 0.4 nozzle, extruder_count 1",
+      "[2026-10-25 10:08:15.465208] [0x00000ab4] [warning] no filament colors found in projects",
+      "[2026-10-25 10:08:15.646732] [0x00000ab4] [warning] tree support default to organic support",
+      "[2026-10-25 10:08:16.039360] [0x00000ab4] [error]   Invalid T command (T65535)."
+    ]
+  },
+  {
+    "part": "P05-Shaft-lower-half.stl",
+    "exit_code": 0,
+    "output_exists": true,
+    "issues": [
+      "[2026-10-25 10:08:16.818050] [0x00004614] [warning] cli mode, Current BambuStudio Version 02.04.00.70",
+      "[2026-10-25 10:08:16.826360] [0x00004614] [error]   3198: nozzle_volume_type not found, when different_extruder or multiple extruder, new_printer_name Bambu Lab P2S 0.4 nozzle, extruder_count 1",
+      "[2026-10-25 10:08:16.826939] [0x00004614] [warning] no filament colors found in projects",
+      "[2026-10-25 10:08:16.935335] [0x00004354] [error]   ZFiller: encounter idx from clip: 28",
+      "[2026-10-25 10:08:16.988572] [0x00004614] [warning] tree support default to organic support",
+      "[2026-10-25 10:08:17.234317] [0x00004614] [error]   Invalid T command (T65535)."
+    ]
+  },
+  {
+    "part": "P05-Shaft-upper-half.stl",
+    "exit_code": 0,
+    "output_exists": true,
+    "issues": [
+      "[2026-10-25 10:08:17.966870] [0x000010f8] [warning] cli mode, Current BambuStudio Version 02.04.00.70",
+      "[2026-10-25 10:08:17.974871] [0x000010f8] [error]   3198: nozzle_volume_type not found, when different_extruder or multiple extruder, new_printer_name Bambu Lab P2S 0.4 nozzle, extruder_count 1",
+      "[2026-10-25 10:08:17.976371] [0x000010f8] [warning] no filament colors found in projects",
+      "[2026-10-25 10:08:18.113010] [0x000010f8] [warning] tree support default to organic support",
+      "[2026-10-25 10:08:18.354408] [0x000010f8] [error]   Invalid T command (T65535)."
+    ]
+  },
+  {
+    "part": "P06-Shaft-retaining-cap.stl",
+    "exit_code": 0,
+    "output_exists": true,
+    "issues": [
+      "[2026-10-25 10:08:19.122360] [0x00004bec] [warning] cli mode, Current BambuStudio Version 02.04.00.70",
+      "[2026-10-25 10:08:19.132748] [0x00004bec] [error]   3198: nozzle_volume_type not found, when different_extruder or multiple extruder, new_printer_name Bambu Lab P2S 0.4 nozzle, extruder_count 1",
+      "[2026-10-25 10:08:19.133748] [0x00004bec] [warning] no filament colors found in projects",
+      "[2026-10-25 10:08:19.184274] [0x00004bec] [warning] tree support default to organic support",
+      "[2026-10-25 10:08:19.282114] [0x00004bec] [error]   Invalid T command (T65535)."
+    ]
+  },
+  {
+    "part": "P07-Integral-lever-rotor-and-cam-carrier.stl",
+    "exit_code": 0,
+    "output_exists": true,
+    "issues": [
+      "[2026-10-25 10:08:19.988536] [0x000061a8] [warning] cli mode, Current BambuStudio Version 02.04.00.70",
+      "[2026-10-25 10:08:19.997041] [0x000061a8] [error]   3198: nozzle_volume_type not found, when different_extruder or multiple extruder, new_printer_name Bambu Lab P2S 0.4 nozzle, extruder_count 1",
+      "[2026-10-25 10:08:19.998339] [0x000061a8] [warning] no filament colors found in projects",
+      "[2026-10-25 10:08:20.284461] [0x000061a8] [warning] tree support default to organic support",
+      "[2026-10-25 10:08:20.634612] [0x000061a8] [error]   Invalid T command (T65535)."
+    ]
+  },
+  {
+    "part": "P08-Cam-3-gates---stable-endpoints.stl",
+    "exit_code": 0,
+    "output_exists": true,
+    "issues": [
+      "[2026-10-25 10:08:21.447930] [0x000063d8] [warning] cli mode, Current BambuStudio Version 02.04.00.70",
+      "[2026-10-25 10:08:21.472897] [0x000063d8] [error]   3198: nozzle_volume_type not found, when different_extruder or multiple extruder, new_printer_name Bambu Lab P2S 0.4 nozzle, extruder_count 1",
+      "[2026-10-25 10:08:21.473485] [0x000063d8] [warning] no filament colors found in projects",
+      "[2026-10-25 10:08:21.673507] [0x000063d8] [warning] tree support default to organic support",
+      "[2026-10-25 10:08:21.945979] [0x000063d8] [error]   Invalid T command (T65535)."
+    ]
+  },
+  {
+    "part": "P08-Cam-5-gates---stable-endpoints.stl",
+    "exit_code": 0,
+    "output_exists": true,
+    "issues": [
+      "[2026-10-25 10:08:22.726668] [0x000045c0] [warning] cli mode, Current BambuStudio Version 02.04.00.70",
+      "[2026-10-25 10:08:22.736670] [0x000045c0] [error]   3198: nozzle_volume_type not found, when different_extruder or multiple extruder, new_printer_name Bambu Lab P2S 0.4 nozzle, extruder_count 1",
+      "[2026-10-25 10:08:22.737670] [0x000045c0] [warning] no filament colors found in projects",
+      "[2026-10-25 10:08:22.943420] [0x000045c0] [warning] tree support default to organic support",
+      "[2026-10-25 10:08:23.206739] [0x000045c0] [error]   Invalid T command (T65535)."
+    ]
+  },
+  {
+    "part": "P08-Cam-7-gates---stable-endpoints.stl",
+    "exit_code": 0,
+    "output_exists": true,
+    "issues": [
+      "[2026-10-25 10:08:23.970953] [0x0000259c] [warning] cli mode, Current BambuStudio Version 02.04.00.70",
+      "[2026-10-25 10:08:23.980197] [0x0000259c] [error]   3198: nozzle_volume_type not found, when different_extruder or multiple extruder, new_printer_name Bambu Lab P2S 0.4 nozzle, extruder_count 1",
+      "[2026-10-25 10:08:23.980714] [0x0000259c] [warning] no filament colors found in projects",
+      "[2026-10-25 10:08:24.192955] [0x0000259c] [warning] tree support default to organic support",
+      "[2026-10-25 10:08:24.452517] [0x0000259c] [error]   Invalid T command (T65535)."
+    ]
+  },
+  {
+    "part": "P09-Grip-insert-half.stl",
+    "exit_code": 0,
+    "output_exists": true,
+    "issues": [
+      "[2026-10-25 10:08:25.195016] [0x00004f10] [warning] cli mode, Current BambuStudio Version 02.04.00.70",
+      "[2026-10-25 10:08:25.278638] [0x00004f10] [error]   3198: nozzle_volume_type not found, when different_extruder or multiple extruder, new_printer_name Bambu Lab P2S 0.4 nozzle, extruder_count 1",
+      "[2026-10-25 10:08:25.279165] [0x00004f10] [warning] no filament colors found in projects",
+      "[2026-10-25 10:08:25.562089] [0x00004f10] [warning] tree support default to organic support",
+      "[2026-10-25 10:08:26.501289] [0x00004f10] [error]   Invalid T command (T65535)."
+    ]
+  },
+  {
+    "part": "P10-Grip-screw-half.stl",
+    "exit_code": 0,
+    "output_exists": true,
+    "issues": [
+      "[2026-10-25 10:08:27.363836] [0x00006604] [warning] cli mode, Current BambuStudio Version 02.04.00.70",
+      "[2026-10-25 10:08:27.427523] [0x00006604] [error]   3198: nozzle_volume_type not found, when different_extruder or multiple extruder, new_printer_name Bambu Lab P2S 0.4 nozzle, extruder_count 1",
+      "[2026-10-25 10:08:27.428559] [0x00006604] [warning] no filament colors found in projects",
+      "[2026-10-25 10:08:27.696144] [0x00006604] [warning] tree support default to organic support",
+      "[2026-10-25 10:08:28.776287] [0x00006604] [error]   Invalid T command (T65535)."
+    ]
+  },
+  {
+    "part": "P11-Forked-roller-follower.stl",
+    "exit_code": 0,
+    "output_exists": true,
+    "issues": [
+      "[2026-10-25 10:08:29.605265] [0x00001e28] [warning] cli mode, Current BambuStudio Version 02.04.00.70",
+      "[2026-10-25 10:08:29.613081] [0x00001e28] [error]   3198: nozzle_volume_type not found, when different_extruder or multiple extruder, new_printer_name Bambu Lab P2S 0.4 nozzle, extruder_count 1",
+      "[2026-10-25 10:08:29.614132] [0x00001e28] [warning] no filament colors found in projects",
+      "[2026-10-25 10:08:29.677210] [0x00001e28] [warning] tree support default to organic support",
+      "[2026-10-25 10:08:29.969771] [0x00001e28] [error]   Invalid T command (T65535)."
+    ]
+  },
+  {
+    "part": "P13-Spring-reaction-crossblock.stl",
+    "exit_code": 0,
+    "output_exists": true,
+    "issues": [
+      "[2026-10-25 10:08:30.822747] [0x000062ec] [warning] cli mode, Current BambuStudio Version 02.04.00.70",
+      "[2026-10-25 10:08:30.831832] [0x000062ec] [error]   3198: nozzle_volume_type not found, when different_extruder or multiple extruder, new_printer_name Bambu Lab P2S 0.4 nozzle, extruder_count 1",
+      "[2026-10-25 10:08:30.832879] [0x000062ec] [warning] no filament colors found in projects",
+      "[2026-10-25 10:08:31.022362] [0x000062ec] [warning] tree support default to organic support",
+      "[2026-10-25 10:08:31.392010] [0x000062ec] [error]   Invalid T command (T65535)."
+    ]
+  },
+  {
+    "part": "P14-Captive-spring-cup-for-9-mm-spring.stl",
+    "exit_code": 0,
+    "output_exists": true,
+    "issues": [
+      "[2026-10-25 10:08:32.210899] [0x00000a10] [warning] cli mode, Current BambuStudio Version 02.04.00.70",
+      "[2026-10-25 10:08:32.218400] [0x00000a10] [error]   3198: nozzle_volume_type not found, when different_extruder or multiple extruder, new_printer_name Bambu Lab P2S 0.4 nozzle, extruder_count 1",
+      "[2026-10-25 10:08:32.218900] [0x00000a10] [warning] no filament colors found in projects",
+      "[2026-10-25 10:08:32.288551] [0x00000a10] [warning] tree support default to organic support",
+      "[2026-10-25 10:08:32.486819] [0x00000a10] [error]   Invalid T command (T65535)."
+    ]
+  },
+  {
+    "part": "P15-Recessed-preload-limit-collar-1-mm.stl",
+    "exit_code": 0,
+    "output_exists": true,
+    "issues": [
+      "[2026-10-25 10:08:33.178534] [0x00002d64] [warning] cli mode, Current BambuStudio Version 02.04.00.70",
+      "[2026-10-25 10:08:33.189577] [0x00002d64] [error]   3198: nozzle_volume_type not found, when different_extruder or multiple extruder, new_printer_name Bambu Lab P2S 0.4 nozzle, extruder_count 1",
+      "[2026-10-25 10:08:33.190192] [0x00002d64] [warning] no filament colors found in projects",
+      "[2026-10-25 10:08:33.220698] [0x00002d64] [warning] tree support default to organic support",
+      "[2026-10-25 10:08:33.367561] [0x00002d64] [error]   Invalid T command (T65535)."
+    ]
+  },
+  {
+    "part": "P16-Compact-adjustable-RK097-mount.stl",
+    "exit_code": 0,
+    "output_exists": true,
+    "issues": [
+      "[2026-10-25 10:08:34.061368] [0x000050f4] [warning] cli mode, Current BambuStudio Version 02.04.00.70",
+      "[2026-10-25 10:08:34.067765] [0x000050f4] [error]   3198: nozzle_volume_type not found, when different_extruder or multiple extruder, new_printer_name Bambu Lab P2S 0.4 nozzle, extruder_count 1",
+      "[2026-10-25 10:08:34.068818] [0x000050f4] [warning] no filament colors found in projects",
+      "[2026-10-25 10:08:34.149938] [0x000050f4] [warning] tree support default to organic support",
+      "[2026-10-25 10:08:34.289837] [0x000050f4] [error]   Invalid T command (T65535)."
+    ]
+  },
+  {
+    "part": "P18-Compact-floating-coupling-disc.stl",
+    "exit_code": 0,
+    "output_exists": true,
+    "issues": [
+      "[2026-10-25 10:08:35.006797] [0x000056f0] [warning] cli mode, Current BambuStudio Version 02.04.00.70",
+      "[2026-10-25 10:08:35.016542] [0x000056f0] [error]   3198: nozzle_volume_type not found, when different_extruder or multiple extruder, new_printer_name Bambu Lab P2S 0.4 nozzle, extruder_count 1",
+      "[2026-10-25 10:08:35.017228] [0x000056f0] [warning] no filament colors found in projects",
+      "[2026-10-25 10:08:35.106645] [0x000056f0] [warning] tree support default to organic support",
+      "[2026-10-25 10:08:35.343814] [0x000056f0] [error]   Invalid T command (T65535)."
+    ]
+  },
+  {
+    "part": "P19-Compact-one-piece-sensor-clamp.stl",
+    "exit_code": 0,
+    "output_exists": true,
+    "issues": [
+      "[2026-10-25 10:08:36.055198] [0x00005d74] [warning] cli mode, Current BambuStudio Version 02.04.00.70",
+      "[2026-10-25 10:08:36.063395] [0x00005d74] [error]   3198: nozzle_volume_type not found, when different_extruder or multiple extruder, new_printer_name Bambu Lab P2S 0.4 nozzle, extruder_count 1",
+      "[2026-10-25 10:08:36.063896] [0x00005d74] [warning] no filament colors found in projects",
+      "[2026-10-25 10:08:36.156630] [0x00004bf4] [error]   ZFiller: encounter idx from clip: 2",
+      "[2026-10-25 10:08:36.159130] [0x00004bf4] [error]   ZFiller: encounter idx from clip: 122",
+      "[2026-10-25 10:08:36.166133] [0x00005d74] [warning] tree support default to organic support",
+      "[2026-10-25 10:08:36.437602] [0x00005d74] [error]   Invalid T command (T65535)."
+    ]
+  },
+  {
+    "part": "P21-Follower-left-axial-spacer.stl",
+    "exit_code": 0,
+    "output_exists": true,
+    "issues": [
+      "[2026-10-25 10:08:37.131657] [0x00005b1c] [warning] cli mode, Current BambuStudio Version 02.04.00.70",
+      "[2026-10-25 10:08:37.142279] [0x00005b1c] [error]   3198: nozzle_volume_type not found, when different_extruder or multiple extruder, new_printer_name Bambu Lab P2S 0.4 nozzle, extruder_count 1",
+      "[2026-10-25 10:08:37.142805] [0x00005b1c] [warning] no filament colors found in projects",
+      "[2026-10-25 10:08:37.442411] [0x00005b1c] [warning] tree support default to organic support",
+      "[2026-10-25 10:08:37.916340] [0x00005b1c] [error]   Invalid T command (T65535)."
+    ]
+  },
+  {
+    "part": "P22-Follower-right-axial-spacer.stl",
+    "exit_code": 0,
+    "output_exists": true,
+    "issues": [
+      "[2026-10-25 10:08:38.622903] [0x00006698] [warning] cli mode, Current BambuStudio Version 02.04.00.70",
+      "[2026-10-25 10:08:38.636381] [0x00006698] [error]   3198: nozzle_volume_type not found, when different_extruder or multiple extruder, new_printer_name Bambu Lab P2S 0.4 nozzle, extruder_count 1",
+      "[2026-10-25 10:08:38.637381] [0x00006698] [warning] no filament colors found in projects",
+      "[2026-10-25 10:08:38.724330] [0x00006698] [warning] tree support default to organic support",
+      "[2026-10-25 10:08:38.940876] [0x00006698] [error]   Invalid T command (T65535)."
+    ]
+  },
+  {
+    "part": "P23-Left-rotor-thrust-spacer.stl",
+    "exit_code": 0,
+    "output_exists": true,
+    "issues": [
+      "[2026-10-25 10:08:39.628747] [0x000007ec] [warning] cli mode, Current BambuStudio Version 02.04.00.70",
+      "[2026-10-25 10:08:39.640687] [0x000007ec] [error]   3198: nozzle_volume_type not found, when different_extruder or multiple extruder, new_printer_name Bambu Lab P2S 0.4 nozzle, extruder_count 1",
+      "[2026-10-25 10:08:39.641187] [0x000007ec] [warning] no filament colors found in projects",
+      "[2026-10-25 10:08:39.899245] [0x000007ec] [warning] tree support default to organic support",
+      "[2026-10-25 10:08:40.294893] [0x000007ec] [error]   Invalid T command (T65535)."
+    ]
+  },
+  {
+    "part": "P24-Right-rotor-thrust-spacer.stl",
+    "exit_code": 0,
+    "output_exists": true,
+    "issues": [
+      "[2026-10-25 10:08:41.021983] [0x00001748] [warning] cli mode, Current BambuStudio Version 02.04.00.70",
+      "[2026-10-25 10:08:41.033265] [0x00001748] [error]   3198: nozzle_volume_type not found, when different_extruder or multiple extruder, new_printer_name Bambu Lab P2S 0.4 nozzle, extruder_count 1",
+      "[2026-10-25 10:08:41.034265] [0x00001748] [warning] no filament colors found in projects",
+      "[2026-10-25 10:08:41.292954] [0x00001748] [warning] tree support default to organic support",
+      "[2026-10-25 10:08:41.655277] [0x00001748] [error]   Invalid T command (T65535)."
+    ]
+  },
+  {
+    "part": "P25-Captured-printed-pivot-lower-half.stl",
+    "exit_code": 0,
+    "output_exists": true,
+    "issues": [
+      "[2026-10-25 10:08:42.362568] [0x000063f8] [warning] cli mode, Current BambuStudio Version 02.04.00.70",
+      "[2026-10-25 10:08:42.370070] [0x000063f8] [error]   3198: nozzle_volume_type not found, when different_extruder or multiple extruder, new_printer_name Bambu Lab P2S 0.4 nozzle, extruder_count 1",
+      "[2026-10-25 10:08:42.370570] [0x000063f8] [warning] no filament colors found in projects",
+      "[2026-10-25 10:08:42.388804] [0x000063f8] [warning] tree support default to organic support",
+      "[2026-10-25 10:08:42.552095] [0x000063f8] [error]   Invalid T command (T65535)."
+    ]
+  },
+  {
+    "part": "P26-Captured-printed-pivot-upper-half.stl",
+    "exit_code": 0,
+    "output_exists": true,
+    "issues": [
+      "[2026-10-25 10:08:43.264530] [0x00006538] [warning] cli mode, Current BambuStudio Version 02.04.00.70",
+      "[2026-10-25 10:08:43.275125] [0x00006538] [error]   3198: nozzle_volume_type not found, when different_extruder or multiple extruder, new_printer_name Bambu Lab P2S 0.4 nozzle, extruder_count 1",
+      "[2026-10-25 10:08:43.276122] [0x00006538] [warning] no filament colors found in projects",
+      "[2026-10-25 10:08:43.296676] [0x00006538] [warning] tree support default to organic support",
+      "[2026-10-25 10:08:43.463116] [0x00006538] [error]   Invalid T command (T65535)."
+    ]
+  },
+  {
+    "part": "P27-Printed-guide-sleeve-20.stl",
+    "exit_code": 0,
+    "output_exists": true,
+    "issues": [
+      "[2026-10-25 10:08:44.156646] [0x00000978] [warning] cli mode, Current BambuStudio Version 02.04.00.70",
+      "[2026-10-25 10:08:44.170081] [0x00000978] [error]   3198: nozzle_volume_type not found, when different_extruder or multiple extruder, new_printer_name Bambu Lab P2S 0.4 nozzle, extruder_count 1",
+      "[2026-10-25 10:08:44.171131] [0x00000978] [warning] no filament colors found in projects",
+      "[2026-10-25 10:08:44.213601] [0x00000978] [warning] tree support default to organic support",
+      "[2026-10-25 10:08:44.452817] [0x00000978] [error]   Invalid T command (T65535)."
+    ]
+  },
+  {
+    "part": "P27-Printed-guide-sleeve-4.stl",
+    "exit_code": 0,
+    "output_exists": true,
+    "issues": [
+      "[2026-10-25 10:08:45.142990] [0x00005688] [warning] cli mode, Current BambuStudio Version 02.04.00.70",
+      "[2026-10-25 10:08:45.154326] [0x00005688] [error]   3198: nozzle_volume_type not found, when different_extruder or multiple extruder, new_printer_name Bambu Lab P2S 0.4 nozzle, extruder_count 1",
+      "[2026-10-25 10:08:45.154839] [0x00005688] [warning] no filament colors found in projects",
+      "[2026-10-25 10:08:45.201968] [0x00005688] [warning] tree support default to organic support",
+      "[2026-10-25 10:08:45.444610] [0x00005688] [error]   Invalid T command (T65535)."
+    ]
+  },
+  {
+    "part": "P28-Shaft-alignment-key--5.stl",
+    "exit_code": 0,
+    "output_exists": true,
+    "issues": [
+      "[2026-10-25 10:08:46.156541] [0x0000592c] [warning] cli mode, Current BambuStudio Version 02.04.00.70",
+      "[2026-10-25 10:08:46.164687] [0x0000592c] [error]   3198: nozzle_volume_type not found, when different_extruder or multiple extruder, new_printer_name Bambu Lab P2S 0.4 nozzle, extruder_count 1",
+      "[2026-10-25 10:08:46.165570] [0x0000592c] [warning] no filament colors found in projects",
+      "[2026-10-25 10:08:46.177166] [0x0000592c] [warning] tree support default to organic support",
+      "[2026-10-25 10:08:46.205388] [0x0000592c] [error]   Invalid T command (T65535)."
+    ]
+  },
+  {
+    "part": "P28-Shaft-alignment-key-5.stl",
+    "exit_code": 0,
+    "output_exists": true,
+    "issues": [
+      "[2026-10-25 10:08:46.981411] [0x000026fc] [warning] cli mode, Current BambuStudio Version 02.04.00.70",
+      "[2026-10-25 10:08:46.988500] [0x000026fc] [error]   3198: nozzle_volume_type not found, when different_extruder or multiple extruder, new_printer_name Bambu Lab P2S 0.4 nozzle, extruder_count 1",
+      "[2026-10-25 10:08:46.989500] [0x000026fc] [warning] no filament colors found in projects",
+      "[2026-10-25 10:08:47.001110] [0x000026fc] [warning] tree support default to organic support",
+      "[2026-10-25 10:08:47.026987] [0x000026fc] [error]   Invalid T command (T65535)."
+    ]
+  }
+]

@@ -1,0 +1,50 @@
+[
+  {
+    "part": "G01R-48T-gear-with-upper-clamp.stl",
+    "exit_code": 0,
+    "output_exists": true,
+    "issues": [
+      "[2026-10-25 13:47:26.509740] [0x000012d4] [warning] cli mode, Current BambuStudio Version 02.04.00.70",
+      "[2026-10-25 13:47:26.544365] [0x000012d4] [error]   3198: nozzle_volume_type not found, when different_extruder or multiple extruder, new_printer_name Bambu Lab P2S 0.4 nozzle, extruder_count 1",
+      "[2026-10-25 13:47:26.545393] [0x000012d4] [warning] no filament colors found in projects",
+      "[2026-10-25 13:47:26.950278] [0x000012d4] [warning] tree support default to organic support",
+      "[2026-10-25 13:47:27.358385] [0x000012d4] [error]   Invalid T command (T65535)."
+    ]
+  },
+  {
+    "part": "G03R-Lower-removable-potentiometer-panel.stl",
+    "exit_code": 0,
+    "output_exists": true,
+    "issues": [
+      "[2026-10-25 13:47:28.210103] [0x0000201c] [warning] cli mode, Current BambuStudio Version 02.04.00.70",
+      "[2026-10-25 13:47:28.216202] [0x0000201c] [error]   3198: nozzle_volume_type not found, when different_extruder or multiple extruder, new_printer_name Bambu Lab P2S 0.4 nozzle, extruder_count 1",
+      "[2026-10-25 13:47:28.217219] [0x0000201c] [warning] no filament colors found in projects",
+      "[2026-10-25 13:47:28.268219] [0x0000201c] [warning] tree support default to organic support",
+      "[2026-10-25 13:47:28.313180] [0x0000201c] [error]   Invalid T command (T65535)."
+    ]
+  },
+  {
+    "part": "P01R-Top-rail-hanging-left-sideplate.stl",
+    "exit_code": 0,
+    "output_exists": true,
+    "issues": [
+      "[2026-10-25 13:47:29.041392] [0x00005914] [warning] cli mode, Current BambuStudio Version 02.04.00.70",
+      "[2026-10-25 13:47:29.049569] [0x00005914] [error]   3198: nozzle_volume_type not found, when different_extruder or multiple extruder, new_printer_name Bambu Lab P2S 0.4 nozzle, extruder_count 1",
+      "[2026-10-25 13:47:29.049569] [0x00005914] [warning] no filament colors found in projects",
+      "[2026-10-25 13:47:29.414862] [0x00005914] [warning] tree support default to organic support",
+      "[2026-10-25 13:47:29.788694] [0x00005914] [error]   Invalid T command (T65535)."
+    ]
+  },
+  {
+    "part": "P02R-Top-rail-hanging-right-sensor-sideplate.stl",
+    "exit_code": 0,
+    "output_exists": true,
+    "issues": [
+      "[2026-10-25 13:47:30.575980] [0x000025f0] [warning] cli mode, Current BambuStudio Version 02.04.00.70",
+      "[2026-10-25 13:47:30.583114] [0x000025f0] [error]   3198: nozzle_volume_type not found, when different_extruder or multiple extruder, new_printer_name Bambu Lab P2S 0.4 nozzle, extruder_count 1",
+      "[2026-10-25 13:47:30.583114] [0x000025f0] [warning] no filament colors found in projects",
+      "[2026-10-25 13:47:30.910085] [0x000025f0] [warning] tree support default to organic support",
+      "[2026-10-25 13:47:31.238553] [0x000025f0] [error]   Invalid T command (T65535)."
+    ]
+  }
+]

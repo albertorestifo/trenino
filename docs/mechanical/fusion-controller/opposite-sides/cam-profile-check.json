@@ -1,0 +1,34 @@
+[
+  {
+    "gates": 3,
+    "gate_pitch_deg": 58.0,
+    "poses": 481,
+    "min_roller_gap_mm": -1.3322676295501878e-14,
+    "max_roller_gap_mm": 1.5987211554602254e-14,
+    "polygon_valid": true
+  },
+  {
+    "gates": 5,
+    "gate_pitch_deg": 29.0,
+    "poses": 481,
+    "min_roller_gap_mm": -1.2739976976483547e-05,
+    "max_roller_gap_mm": 1.2434497875801753e-14,
+    "polygon_valid": true
+  },
+  {
+    "gates": 7,
+    "gate_pitch_deg": 19.333333333333332,
+    "poses": 481,
+    "min_roller_gap_mm": -0.00015235573538507907,
+    "max_roller_gap_mm": 1.687538997430238e-14,
+    "polygon_valid": true
+  },
+  {
+    "gates": 8,
+    "gate_pitch_deg": 16.571428571428573,
+    "poses": 481,
+    "min_roller_gap_mm": -0.0003255636698735742,
+    "max_roller_gap_mm": 1.509903313490213e-14,
+    "polygon_valid": true
+  }
+]

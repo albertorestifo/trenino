@@ -1,0 +1,812 @@
+[
+  {
+    "file": "frame-F03-Original-48T-gear---enlarged-printed-shaft-bore-id4.stl",
+    "triangles": 158462,
+    "connected_components": 1,
+    "nonmanifold_edges": 0,
+    "inconsistent_edge_winding": 0,
+    "bounds_mm": [
+      [
+        200.0,
+        5.0,
+        0.0
+      ],
+      [
+        249.99522,
+        53.22462,
+        12.0
+      ]
+    ],
+    "size_mm": [
+      49.99522,
+      48.22462,
+      12.0
+    ],
+    "volume_mm3": 19233.006,
+    "bottom_on_bed": true,
+    "inside_p2s_envelope": true
+  },
+  {
+    "file": "frame-F04-Original-24T-potentiometer-gear-id5.stl",
+    "triangles": 3648,
+    "connected_components": 1,
+    "nonmanifold_edges": 0,
+    "inconsistent_edge_winding": 0,
+    "bounds_mm": [
+      [
+        205.0,
+        65.0,
+        0.0
+      ],
+      [
+        230.85228,
+        90.85228,
+        8.0
+      ]
+    ],
+    "size_mm": [
+      25.85228,
+      25.85228,
+      8.0
+    ],
+    "volume_mm3": 3290.147,
+    "bottom_on_bed": true,
+    "inside_p2s_envelope": true
+  },
+  {
+    "file": "frame-Frame-pot-id3.stl",
+    "triangles": 4340,
+    "connected_components": 1,
+    "nonmanifold_edges": 0,
+    "inconsistent_edge_winding": 0,
+    "bounds_mm": [
+      [
+        5.0,
+        5.0,
+        0.0
+      ],
+      [
+        195.0,
+        98.0,
+        10.5
+      ]
+    ],
+    "size_mm": [
+      190.0,
+      93.0,
+      10.5
+    ],
+    "volume_mm3": 141327.482,
+    "bottom_on_bed": true,
+    "inside_p2s_envelope": true
+  },
+  {
+    "file": "frame-Other-Frame-id2.stl",
+    "triangles": 3744,
+    "connected_components": 1,
+    "nonmanifold_edges": 0,
+    "inconsistent_edge_winding": 0,
+    "bounds_mm": [
+      [
+        5.0,
+        115.0,
+        0.0
+      ],
+      [
+        195.0,
+        208.0,
+        10.5
+      ]
+    ],
+    "size_mm": [
+      190.0,
+      93.0,
+      10.5
+    ],
+    "volume_mm3": 143468.825,
+    "bottom_on_bed": true,
+    "inside_p2s_envelope": true
+  },
+  {
+    "file": "moving-M01-Printed-shaft---12-mm-D-9.2-mm-journals-id4.stl",
+    "triangles": 1120,
+    "connected_components": 1,
+    "nonmanifold_edges": 0,
+    "inconsistent_edge_winding": 0,
+    "bounds_mm": [
+      [
+        145.00012,
+        10.0,
+        0.0
+      ],
+      [
+        156.99989,
+        75.09999,
+        10.99113
+      ]
+    ],
+    "size_mm": [
+      11.99977,
+      65.09999,
+      10.99113
+    ],
+    "volume_mm3": 5917.942,
+    "bottom_on_bed": true,
+    "inside_p2s_envelope": true
+  },
+  {
+    "file": "moving-M02-Printed-bushing-4---replaces-625-bearing-id2.stl",
+    "triangles": 464,
+    "connected_components": 1,
+    "nonmanifold_edges": 0,
+    "inconsistent_edge_winding": 0,
+    "bounds_mm": [
+      [
+        145.0,
+        100.01166,
+        0.0
+      ],
+      [
+        160.89999,
+        115.88834,
+        6.5
+      ]
+    ],
+    "size_mm": [
+      15.89999,
+      15.87668,
+      6.5
+    ],
+    "volume_mm3": 818.529,
+    "bottom_on_bed": true,
+    "inside_p2s_envelope": true
+  },
+  {
+    "file": "moving-M02-Printed-bushing-54---replaces-625-bearing-id5.stl",
+    "triangles": 464,
+    "connected_components": 1,
+    "nonmanifold_edges": 0,
+    "inconsistent_edge_winding": 0,
+    "bounds_mm": [
+      [
+        170.0,
+        100.01166,
+        0.0
+      ],
+      [
+        185.89999,
+        115.88834,
+        6.5
+      ]
+    ],
+    "size_mm": [
+      15.89999,
+      15.87668,
+      6.5
+    ],
+    "volume_mm3": 818.529,
+    "bottom_on_bed": true,
+    "inside_p2s_envelope": true
+  },
+  {
+    "file": "moving-M03-Shaft-retaining-washer--1.9-id13.stl",
+    "triangles": 464,
+    "connected_components": 1,
+    "nonmanifold_edges": 0,
+    "inconsistent_edge_winding": 0,
+    "bounds_mm": [
+      [
+        145.0,
+        125.01027,
+        0.0
+      ],
+      [
+        158.99998,
+        138.98973,
+        1.6
+      ]
+    ],
+    "size_mm": [
+      13.99998,
+      13.97946,
+      1.6
+    ],
+    "volume_mm3": 231.321,
+    "bottom_on_bed": true,
+    "inside_p2s_envelope": true
+  },
+  {
+    "file": "moving-M03-Shaft-retaining-washer-64.8-id11.stl",
+    "triangles": 464,
+    "connected_components": 1,
+    "nonmanifold_edges": 0,
+    "inconsistent_edge_winding": 0,
+    "bounds_mm": [
+      [
+        170.0,
+        125.01027,
+        0.0
+      ],
+      [
+        184.0,
+        138.98973,
+        1.6
+      ]
+    ],
+    "size_mm": [
+      14.0,
+      13.97946,
+      1.6
+    ],
+    "volume_mm3": 231.321,
+    "bottom_on_bed": true,
+    "inside_p2s_envelope": true
+  },
+  {
+    "file": "moving-M04-Printed-lever-and-grip---flat-underside-id8.stl",
+    "triangles": 1482,
+    "connected_components": 1,
+    "nonmanifold_edges": 0,
+    "inconsistent_edge_winding": 0,
+    "bounds_mm": [
+      [
+        10.0,
+        10.02343,
+        0.0
+      ],
+      [
+        44.0,
+        170.97655,
+        16.0
+      ]
+    ],
+    "size_mm": [
+      34.0,
+      160.95312,
+      16.0
+    ],
+    "volume_mm3": 37503.31,
+    "bottom_on_bed": true,
+    "inside_p2s_envelope": true
+  },
+  {
+    "file": "moving-M05-Drive-spacer-2.5-mm-id12.stl",
+    "triangles": 464,
+    "connected_components": 1,
+    "nonmanifold_edges": 0,
+    "inconsistent_edge_winding": 0,
+    "bounds_mm": [
+      [
+        170.0,
+        150.01173,
+        0.0
+      ],
+      [
+        186.0,
+        165.98827,
+        2.5
+      ]
+    ],
+    "size_mm": [
+      16.0,
+      15.97654,
+      2.5
+    ],
+    "volume_mm3": 190.557,
+    "bottom_on_bed": true,
+    "inside_p2s_envelope": true
+  },
+  {
+    "file": "moving-M05-Drive-spacer-3.1999999999999993-mm-id9.stl",
+    "triangles": 464,
+    "connected_components": 1,
+    "nonmanifold_edges": 0,
+    "inconsistent_edge_winding": 0,
+    "bounds_mm": [
+      [
+        145.0,
+        150.01173,
+        0.0
+      ],
+      [
+        161.0,
+        165.98827,
+        3.2
+      ]
+    ],
+    "size_mm": [
+      16.0,
+      15.97654,
+      3.2
+    ],
+    "volume_mm3": 243.912,
+    "bottom_on_bed": true,
+    "inside_p2s_envelope": true
+  },
+  {
+    "file": "moving-M06-Replaceable-cam-sector---8-mm-id6.stl",
+    "triangles": 2380,
+    "connected_components": 1,
+    "nonmanifold_edges": 0,
+    "inconsistent_edge_winding": 0,
+    "bounds_mm": [
+      [
+        55.0,
+        10.0027,
+        0.0
+      ],
+      [
+        138.72543,
+        47.76012,
+        8.0
+      ]
+    ],
+    "size_mm": [
+      83.72543,
+      37.75742,
+      8.0
+    ],
+    "volume_mm3": 13910.147,
+    "bottom_on_bed": true,
+    "inside_p2s_envelope": true
+  },
+  {
+    "file": "moving-M07-Printed-shaft-carrier-and-stop-lug-id3.stl",
+    "triangles": 2640,
+    "connected_components": 1,
+    "nonmanifold_edges": 0,
+    "inconsistent_edge_winding": 0,
+    "bounds_mm": [
+      [
+        55.02345,
+        60.0066,
+        0.0
+      ],
+      [
+        110.97655,
+        126.99559,
+        13.5
+      ]
+    ],
+    "size_mm": [
+      55.9531,
+      66.98899,
+      13.5
+    ],
+    "volume_mm3": 15567.321,
+    "bottom_on_bed": true,
+    "inside_p2s_envelope": true
+  },
+  {
+    "file": "moving-M08-Forked-roller-arm---36-mm-pivot-radius-id10.stl",
+    "triangles": 1768,
+    "connected_components": 1,
+    "nonmanifold_edges": 0,
+    "inconsistent_edge_winding": 0,
+    "bounds_mm": [
+      [
+        55.0,
+        145.0,
+        5e-05
+      ],
+      [
+        117.99271,
+        163.0,
+        9.99994
+      ]
+    ],
+    "size_mm": [
+      62.99271,
+      18.0,
+      9.99989
+    ],
+    "volume_mm3": 3559.426,
+    "bottom_on_bed": true,
+    "inside_p2s_envelope": true
+  },
+  {
+    "file": "moving-M09-Roller---10-mm-diameter-id7.stl",
+    "triangles": 464,
+    "connected_components": 1,
+    "nonmanifold_edges": 0,
+    "inconsistent_edge_winding": 0,
+    "bounds_mm": [
+      [
+        125.0,
+        145.00732,
+        0.0
+      ],
+      [
+        135.00002,
+        154.99268,
+        10.0
+      ]
+    ],
+    "size_mm": [
+      10.00002,
+      9.98536,
+      10.0
+    ],
+    "volume_mm3": 638.927,
+    "bottom_on_bed": true,
+    "inside_p2s_envelope": true
+  },
+  {
+    "file": "supports-S01-Lower-follower-plate---flat-id7.stl",
+    "triangles": 3532,
+    "connected_components": 1,
+    "nonmanifold_edges": 0,
+    "inconsistent_edge_winding": 0,
+    "bounds_mm": [
+      [
+        10.0,
+        10.0,
+        0.0
+      ],
+      [
+        172.0,
+        54.0,
+        6.0
+      ]
+    ],
+    "size_mm": [
+      162.0,
+      44.0,
+      6.0
+    ],
+    "volume_mm3": 15639.574,
+    "bottom_on_bed": true,
+    "inside_p2s_envelope": true
+  },
+  {
+    "file": "supports-S02-Upper-follower-plate---flat-id13.stl",
+    "triangles": 3532,
+    "connected_components": 1,
+    "nonmanifold_edges": 0,
+    "inconsistent_edge_winding": 0,
+    "bounds_mm": [
+      [
+        10.0,
+        65.0,
+        0.0
+      ],
+      [
+        61.0,
+        109.0,
+        6.0
+      ]
+    ],
+    "size_mm": [
+      51.0,
+      44.0,
+      6.0
+    ],
+    "volume_mm3": 6465.385,
+    "bottom_on_bed": true,
+    "inside_p2s_envelope": true
+  },
+  {
+    "file": "supports-S03-Spring-block---four-M3-inserts-id8.stl",
+    "triangles": 2944,
+    "connected_components": 1,
+    "nonmanifold_edges": 0,
+    "inconsistent_edge_winding": 0,
+    "bounds_mm": [
+      [
+        190.0,
+        10.0,
+        0.0
+      ],
+      [
+        213.0,
+        30.0,
+        24.0
+      ]
+    ],
+    "size_mm": [
+      23.0,
+      20.0,
+      24.0
+    ],
+    "volume_mm3": 5357.79,
+    "bottom_on_bed": true,
+    "inside_p2s_envelope": true
+  },
+  {
+    "file": "supports-S04-Stop-arch---flat-supported-at-both-ends-id14.stl",
+    "triangles": 2872,
+    "connected_components": 1,
+    "nonmanifold_edges": 0,
+    "inconsistent_edge_winding": 0,
+    "bounds_mm": [
+      [
+        10.0,
+        120.0,
+        0.0
+      ],
+      [
+        172.0,
+        165.9892,
+        11.0
+      ]
+    ],
+    "size_mm": [
+      162.0,
+      45.9892,
+      11.0
+    ],
+    "volume_mm3": 17405.677,
+    "bottom_on_bed": true,
+    "inside_p2s_envelope": true
+  },
+  {
+    "file": "supports-S10-Spacer-9.5-mm-id11.stl",
+    "triangles": 1152,
+    "connected_components": 1,
+    "nonmanifold_edges": 0,
+    "inconsistent_edge_winding": 0,
+    "bounds_mm": [
+      [
+        210.0,
+        85.0,
+        0.0
+      ],
+      [
+        222.0,
+        97.0,
+        9.5
+      ]
+    ],
+    "size_mm": [
+      12.0,
+      12.0,
+      9.5
+    ],
+    "volume_mm3": 987.859,
+    "bottom_on_bed": true,
+    "inside_p2s_envelope": true
+  },
+  {
+    "file": "supports-S11-Spacer-20-mm-id5.stl",
+    "triangles": 2304,
+    "connected_components": 1,
+    "nonmanifold_edges": 0,
+    "inconsistent_edge_winding": 0,
+    "bounds_mm": [
+      [
+        190.0,
+        105.0,
+        0.0
+      ],
+      [
+        202.0,
+        117.0,
+        20.0
+      ]
+    ],
+    "size_mm": [
+      12.0,
+      12.0,
+      20.0
+    ],
+    "volume_mm3": 2032.989,
+    "bottom_on_bed": true,
+    "inside_p2s_envelope": true
+  },
+  {
+    "file": "supports-S12-Spacer-8-mm-id4.stl",
+    "triangles": 1152,
+    "connected_components": 1,
+    "nonmanifold_edges": 0,
+    "inconsistent_edge_winding": 0,
+    "bounds_mm": [
+      [
+        210.0,
+        105.0,
+        0.0
+      ],
+      [
+        222.0,
+        117.0,
+        8.0
+      ]
+    ],
+    "size_mm": [
+      12.0,
+      12.0,
+      8.0
+    ],
+    "volume_mm3": 831.881,
+    "bottom_on_bed": true,
+    "inside_p2s_envelope": true
+  },
+  {
+    "file": "supports-S13-Spacer-10.5-mm-id12.stl",
+    "triangles": 1152,
+    "connected_components": 1,
+    "nonmanifold_edges": 0,
+    "inconsistent_edge_winding": 0,
+    "bounds_mm": [
+      [
+        190.0,
+        125.0,
+        0.0
+      ],
+      [
+        202.0,
+        136.99998,
+        10.5
+      ]
+    ],
+    "size_mm": [
+      12.0,
+      11.99998,
+      10.5
+    ],
+    "volume_mm3": 1091.844,
+    "bottom_on_bed": true,
+    "inside_p2s_envelope": true
+  },
+  {
+    "file": "supports-S14-Spacer-8-mm-id6.stl",
+    "triangles": 1728,
+    "connected_components": 1,
+    "nonmanifold_edges": 0,
+    "inconsistent_edge_winding": 0,
+    "bounds_mm": [
+      [
+        210.0,
+        125.0,
+        0.0
+      ],
+      [
+        222.0,
+        136.99998,
+        8.0
+      ]
+    ],
+    "size_mm": [
+      12.0,
+      11.99998,
+      8.0
+    ],
+    "volume_mm3": 808.524,
+    "bottom_on_bed": true,
+    "inside_p2s_envelope": true
+  },
+  {
+    "file": "supports-S5-Spacer-9.5-mm-id2.stl",
+    "triangles": 1152,
+    "connected_components": 1,
+    "nonmanifold_edges": 0,
+    "inconsistent_edge_winding": 0,
+    "bounds_mm": [
+      [
+        190.0,
+        45.0,
+        0.0
+      ],
+      [
+        202.0,
+        57.0,
+        9.5
+      ]
+    ],
+    "size_mm": [
+      12.0,
+      12.0,
+      9.5
+    ],
+    "volume_mm3": 987.859,
+    "bottom_on_bed": true,
+    "inside_p2s_envelope": true
+  },
+  {
+    "file": "supports-S6-Spacer-20-mm-id9.stl",
+    "triangles": 2304,
+    "connected_components": 1,
+    "nonmanifold_edges": 0,
+    "inconsistent_edge_winding": 0,
+    "bounds_mm": [
+      [
+        210.0,
+        45.0,
+        0.0
+      ],
+      [
+        222.0,
+        57.0,
+        20.0
+      ]
+    ],
+    "size_mm": [
+      12.0,
+      12.0,
+      20.0
+    ],
+    "volume_mm3": 2032.989,
+    "bottom_on_bed": true,
+    "inside_p2s_envelope": true
+  },
+  {
+    "file": "supports-S7-Spacer-2-mm-id15.stl",
+    "triangles": 1152,
+    "connected_components": 1,
+    "nonmanifold_edges": 0,
+    "inconsistent_edge_winding": 0,
+    "bounds_mm": [
+      [
+        190.0,
+        65.0,
+        0.0
+      ],
+      [
+        202.0,
+        77.0,
+        2.0
+      ]
+    ],
+    "size_mm": [
+      12.0,
+      12.0,
+      2.0
+    ],
+    "volume_mm3": 207.97,
+    "bottom_on_bed": true,
+    "inside_p2s_envelope": true
+  },
+  {
+    "file": "supports-S8-Spacer-10.5-mm-id3.stl",
+    "triangles": 1152,
+    "connected_components": 1,
+    "nonmanifold_edges": 0,
+    "inconsistent_edge_winding": 0,
+    "bounds_mm": [
+      [
+        210.0,
+        65.0,
+        0.0
+      ],
+      [
+        222.0,
+        77.0,
+        10.5
+      ]
+    ],
+    "size_mm": [
+      12.0,
+      12.0,
+      10.5
+    ],
+    "volume_mm3": 1091.844,
+    "bottom_on_bed": true,
+    "inside_p2s_envelope": true
+  },
+  {
+    "file": "supports-S9-Spacer-8-mm-id10.stl",
+    "triangles": 1728,
+    "connected_components": 1,
+    "nonmanifold_edges": 0,
+    "inconsistent_edge_winding": 0,
+    "bounds_mm": [
+      [
+        190.0,
+        85.0,
+        0.0
+      ],
+      [
+        202.0,
+        97.0,
+        8.0
+      ]
+    ],
+    "size_mm": [
+      12.0,
+      12.0,
+      8.0
+    ],
+    "volume_mm3": 808.525,
+    "bottom_on_bed": true,
+    "inside_p2s_envelope": true
+  }
+]

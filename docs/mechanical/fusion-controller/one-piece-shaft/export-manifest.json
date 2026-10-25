@@ -1,0 +1,74 @@
+[
+  {
+    "component": "P05 One-piece shaft with continuous print flat",
+    "name": "P05 One-piece shaft with continuous print flat",
+    "file": "P05-One-piece-shaft-with-continuous-print-flat.stl",
+    "volume_mm3": 10764.162971053434,
+    "assembly_transform": [
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      -3.5,
+      0.0,
+      0.0,
+      0.0,
+      1.0
+    ],
+    "bounds_mm": [
+      [
+        -37.35,
+        -4.2,
+        55.0
+      ],
+      [
+        43.35,
+        8.000000000000002,
+        75.0
+      ]
+    ]
+  },
+  {
+    "component": "P08 Cam 9 gates Class 323 - strong center and Emergency",
+    "name": "P08 Cam 9 gates Class 323 - strong center and Emergency",
+    "file": "P08-Cam-9-gates-Class-323---strong-center-and-Emergency.stl",
+    "volume_mm3": 11961.804993037855,
+    "assembly_transform": [
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      0.0,
+      0.0,
+      0.0,
+      0.0,
+      1.0,
+      -3.5,
+      0.0,
+      0.0,
+      0.0,
+      1.0
+    ],
+    "bounds_mm": [
+      [
+        7.0,
+        -41.38277669104313,
+        16.378523239144798
+      ],
+      [
+        15.0,
+        41.41059643770077,
+        50.5
+      ]
+    ]
+  }
+]

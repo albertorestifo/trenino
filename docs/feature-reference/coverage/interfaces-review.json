@@ -1,0 +1,632 @@
+[
+  {
+    "path": "assets/css/app.css",
+    "document": "user-interface.md",
+    "summary": "Tailwind/daisyUI light and dark application themes, loading variants and LiveView wrapper layout rules.",
+    "review": "source"
+  },
+  {
+    "path": "assets/js/app.js",
+    "document": "user-interface.md",
+    "summary": "LiveSocket bootstrap, CSRF, longpoll fallback, info-flash dismissal, keyboard capture, navigation topbar and development reload hooks.",
+    "review": "source"
+  },
+  {
+    "path": "assets/tsconfig.json",
+    "document": "user-interface.md",
+    "summary": "Editor-only JavaScript/Phoenix dependency path completion configuration; no emitted runtime code.",
+    "review": "source"
+  },
+  {
+    "path": "assets/vendor/daisyui-theme.js",
+    "document": "user-interface.md",
+    "summary": "Vendor theme plugin executable selector/default/prefers-dark logic and bundled static theme-token inventory; no application workflow.",
+    "review": "vendor"
+  },
+  {
+    "path": "assets/vendor/daisyui.js",
+    "document": "user-interface.md",
+    "summary": "Vendor daisyUI 5.0.35 build plugin, prefix/filter/theme logic and bundled CSS-definition inventory; dormant classes are not product features.",
+    "review": "vendor"
+  },
+  {
+    "path": "assets/vendor/heroicons.js",
+    "document": "user-interface.md",
+    "summary": "Build-time Heroicons SVG mask generator for outline, solid, mini and micro icon variants.",
+    "review": "vendor"
+  },
+  {
+    "path": "assets/vendor/topbar.js",
+    "document": "user-interface.md",
+    "summary": "Vendor topbar 3.0.0 canvas progress animation, delayed show and fade/hide lifecycle used during LiveView navigation.",
+    "review": "vendor"
+  },
+  {
+    "path": "docs/mcp-setup.md",
+    "document": "api-and-mcp.md",
+    "summary": "Existing Claude/SSE setup and example workflow guide; tool-count claim of 37 is stale against 47 registered tools.",
+    "review": "reference"
+  },
+  {
+    "path": "lib/trenino/mcp/server.ex",
+    "document": "api-and-mcp.md",
+    "summary": "JSON-RPC initialize/ping/tool list/call dispatch, content encoding, protocol versus tool errors and notification reply behavior.",
+    "review": "source"
+  },
+  {
+    "path": "lib/trenino/mcp/tool_registry.ex",
+    "document": "api-and-mcp.md",
+    "summary": "Ordered registration of eleven MCP tool modules, flattened discovery and name-based dispatch without generic schema validation.",
+    "review": "source"
+  },
+  {
+    "path": "lib/trenino/mcp/tools/button_binding_tools.ex",
+    "document": "api-and-mcp.md",
+    "summary": "Four button-binding tools, mode/hardware enums, conditional fields, serialization, controller reload and joystick destination conflict errors.",
+    "review": "source"
+  },
+  {
+    "path": "lib/trenino/mcp/tools/detection_tools.ex",
+    "document": "api-and-mcp.md",
+    "summary": "Blocking hardware-input detection MCP tool with prompt/completion PubSub broadcasts, filter fallback and undocumented timeout override.",
+    "review": "source"
+  },
+  {
+    "path": "lib/trenino/mcp/tools/device_tools.ex",
+    "document": "api-and-mcp.md",
+    "summary": "Saved-device/input/output listing plus I2C module CRUD, address parser, flattened serialization and top-level option mismatch.",
+    "review": "source"
+  },
+  {
+    "path": "lib/trenino/mcp/tools/display_binding_tools.ex",
+    "document": "api-and-mcp.md",
+    "summary": "Four display-binding CRUD tools, format/name schemas, controller reload and missing/validation errors.",
+    "review": "source"
+  },
+  {
+    "path": "lib/trenino/mcp/tools/element_tools.ex",
+    "document": "api-and-mcp.md",
+    "summary": "Logical train element list/create/delete tools, enum conversion, serialization and validation errors.",
+    "review": "source"
+  },
+  {
+    "path": "lib/trenino/mcp/tools/output_binding_tools.ex",
+    "document": "api-and-mcp.md",
+    "summary": "Four LED-output binding CRUD tools with threshold/boolean operator schemas and OutputController reload.",
+    "review": "source"
+  },
+  {
+    "path": "lib/trenino/mcp/tools/script_tools.ex",
+    "document": "api-and-mcp.md",
+    "summary": "Five Lua script CRUD tools, code-free list summaries, full retrieval and no explicit ScriptRunner reload.",
+    "review": "source"
+  },
+  {
+    "path": "lib/trenino/mcp/tools/sequence_tools.ex",
+    "document": "api-and-mcp.md",
+    "summary": "Four sequence CRUD tools, zero-based command order/replacement, optional delays, JSON-string compatibility and partial-write boundaries.",
+    "review": "source"
+  },
+  {
+    "path": "lib/trenino/mcp/tools/simulator_tools.ex",
+    "document": "api-and-mcp.md",
+    "summary": "Three simulator browse/read/write MCP tools with connected-client gating and upstream data/error passthrough.",
+    "review": "source"
+  },
+  {
+    "path": "lib/trenino/mcp/tools/train_tools.ex",
+    "document": "api-and-mcp.md",
+    "summary": "Train list/detail MCP serializers including identifiers, elements, output/button bindings and sequences.",
+    "review": "source"
+  },
+  {
+    "path": "lib/trenino/mcp/tools/virtual_joystick_tools.ex",
+    "document": "api-and-mcp.md",
+    "summary": "Ten strictly validated joystick status/mapping/lifecycle tools, structured reasons, explicit replacement and asynchronous acceptance.",
+    "review": "source"
+  },
+  {
+    "path": "lib/trenino_web.ex",
+    "document": "user-interface.md",
+    "summary": "Shared controller/LiveView/component imports, verified routes, static paths and Sentry LiveView on_mount macro.",
+    "review": "source"
+  },
+  {
+    "path": "lib/trenino_web/components/core_components.ex",
+    "document": "user-interface.md",
+    "summary": "Shared flash, form input/error, button, table, list and icon components; validation visibility and transition helpers.",
+    "review": "source"
+  },
+  {
+    "path": "lib/trenino_web/components/layouts.ex",
+    "document": "user-interface.md",
+    "summary": "Flash/reconnect group and system/light/dark theme-toggle helper not rendered by the current application layout.",
+    "review": "source"
+  },
+  {
+    "path": "lib/trenino_web/components/layouts/app.html.heex",
+    "document": "user-interface.md",
+    "summary": "Application layout assembling flashes, shared navigation, global MCP detection overlay and page content.",
+    "review": "source"
+  },
+  {
+    "path": "lib/trenino_web/components/layouts/root.html.heex",
+    "document": "user-interface.md",
+    "summary": "English HTML shell, assets/title/CSRF and pre-render/cross-tab localStorage theme application.",
+    "review": "source"
+  },
+  {
+    "path": "lib/trenino_web/components/nav_components.ex",
+    "document": "user-interface.md",
+    "summary": "Responsive navigation, device dropdown/status/count, simulator banners and app/firmware update actions.",
+    "review": "source"
+  },
+  {
+    "path": "lib/trenino_web/components/shared_components.ex",
+    "document": "user-interface.md",
+    "summary": "Reusable delete/modal, danger-zone, list-card, empty-state and heading presentation components.",
+    "review": "source"
+  },
+  {
+    "path": "lib/trenino_web/controllers/api/output_api_controller.ex",
+    "document": "api-and-mcp.md",
+    "summary": "Read-only HTTP listing of saved hardware outputs with parent device IDs/names.",
+    "review": "source"
+  },
+  {
+    "path": "lib/trenino_web/controllers/api/script_controller.ex",
+    "document": "api-and-mcp.md",
+    "summary": "HTTP Lua script CRUD, flat field whitelist, full timestamp serialization, changeset errors and explicit runner reload.",
+    "review": "source"
+  },
+  {
+    "path": "lib/trenino_web/controllers/api/simulator_api_controller.ex",
+    "document": "api-and-mcp.md",
+    "summary": "HTTP endpoint-list/value proxy with path validation and 400/502/503 failures.",
+    "review": "source"
+  },
+  {
+    "path": "lib/trenino_web/controllers/api/train_api_controller.ex",
+    "document": "api-and-mcp.md",
+    "summary": "Read-only HTTP train summaries/details, sorted identifier arrays, elements and reduced output-binding data.",
+    "review": "source"
+  },
+  {
+    "path": "lib/trenino_web/controllers/error_html.ex",
+    "document": "user-interface.md",
+    "summary": "Generic HTML status-message renderer without custom branded templates.",
+    "review": "source"
+  },
+  {
+    "path": "lib/trenino_web/controllers/error_json.ex",
+    "document": "user-interface.md",
+    "summary": "Generic JSON errors.detail status-message renderer.",
+    "review": "source"
+  },
+  {
+    "path": "lib/trenino_web/controllers/health_controller.ex",
+    "document": "api-and-mcp.md",
+    "summary": "Database/migration readiness response and delayed backend shutdown endpoint.",
+    "review": "source"
+  },
+  {
+    "path": "lib/trenino_web/controllers/mcp/mcp_controller.ex",
+    "document": "api-and-mcp.md",
+    "summary": "SSE session registry/endpoint event, POST message dispatch, 202 transport acceptance and session 400/404 errors.",
+    "review": "source"
+  },
+  {
+    "path": "lib/trenino_web/controllers/page_controller.ex",
+    "document": "user-interface.md",
+    "summary": "Retained Phoenix welcome controller with no route in the main product router.",
+    "review": "source"
+  },
+  {
+    "path": "lib/trenino_web/controllers/page_html.ex",
+    "document": "user-interface.md",
+    "summary": "Template embed module for retained, unrouted Phoenix welcome page.",
+    "review": "source"
+  },
+  {
+    "path": "lib/trenino_web/controllers/page_html/home.html.heex",
+    "document": "user-interface.md",
+    "summary": "Unrouted Phoenix scaffold welcome view with external community links and theme-toggle usage.",
+    "review": "source"
+  },
+  {
+    "path": "lib/trenino_web/controllers/redirect_controller.ex",
+    "document": "user-interface.md",
+    "summary": "Legacy simulator-config URL redirect to current Settings page.",
+    "review": "source"
+  },
+  {
+    "path": "lib/trenino_web/endpoint.ex",
+    "document": "user-interface.md",
+    "summary": "Phoenix static assets, signed cookie, live socket/longpoll, body parsers, telemetry and Sentry pipeline.",
+    "review": "source"
+  },
+  {
+    "path": "lib/trenino_web/gettext.ex",
+    "document": "user-interface.md",
+    "summary": "Gettext backend used by shared UI and changeset-error translations.",
+    "review": "source"
+  },
+  {
+    "path": "lib/trenino_web/live/calibration_wizard.ex",
+    "document": "user-interface.md",
+    "summary": "Hardware analog calibration ready/min/sweep/max/analyzing UI, session ownership, sample gating and cancellation.",
+    "review": "source"
+  },
+  {
+    "path": "lib/trenino_web/live/components/api_explorer_component.ex",
+    "document": "user-interface.md",
+    "summary": "Hierarchical simulator API browsing/search/preview/selection plus lever/button endpoint recognition and parent events.",
+    "review": "source"
+  },
+  {
+    "path": "lib/trenino_web/live/components/auto_detect_component.ex",
+    "document": "user-interface.md",
+    "summary": "Simulator-control detection idle/starting/listening/result/timeout/error modal and selection/retry/cancel events.",
+    "review": "source"
+  },
+  {
+    "path": "lib/trenino_web/live/components/configuration_wizard_component.ex",
+    "document": "user-interface.md",
+    "summary": "Button setup type/browse/configure flow, physical detection, ON/OFF capture, sequence/key modes and save requirements.",
+    "review": "source"
+  },
+  {
+    "path": "lib/trenino_web/live/components/display_binding_wizard.ex",
+    "document": "user-interface.md",
+    "summary": "Display-first binding flow, offline format editing, decimal/custom validation, sample preview and accessible modal lifecycle.",
+    "review": "source"
+  },
+  {
+    "path": "lib/trenino_web/live/components/endpoint_selector_component.ex",
+    "document": "user-interface.md",
+    "summary": "Reusable endpoint selection and optional one-value detection/manual entry with combined confirmation event.",
+    "review": "source"
+  },
+  {
+    "path": "lib/trenino_web/live/components/i2c_module_form_component.ex",
+    "document": "user-interface.md",
+    "summary": "HT16K33 display hardware form, address/brightness coercion, nested settings preservation and blank-minimum semantics.",
+    "review": "source"
+  },
+  {
+    "path": "lib/trenino_web/live/components/lever_setup_wizard.ex",
+    "document": "user-interface.md",
+    "summary": "Analog lever setup/edit dependency steps, simulator calibration, notch mapping/capture and incomplete manual/auto-detect paths.",
+    "review": "source"
+  },
+  {
+    "path": "lib/trenino_web/live/components/lever_visualization.ex",
+    "document": "user-interface.md",
+    "summary": "Schematic gate/linear notch bar, capture labels, active/clickable markers and optional live normalized position.",
+    "review": "source"
+  },
+  {
+    "path": "lib/trenino_web/live/components/output_binding_wizard.ex",
+    "document": "user-interface.md",
+    "summary": "Endpoint/output/LED/condition wizard with boolean/numeric thresholds, save gating and controller reload.",
+    "review": "source"
+  },
+  {
+    "path": "lib/trenino_web/live/components/sequence_manager_component.ex",
+    "document": "user-interface.md",
+    "summary": "Sequence creation/list/edit/delete/test and command drafts/selector routing; no actual reorder or rename UI.",
+    "review": "source"
+  },
+  {
+    "path": "lib/trenino_web/live/components/virtual_joystick_mapping_form.ex",
+    "document": "user-interface.md",
+    "summary": "Accessible axis/button mapping modal, compatible hardware selection, locked edit input and preview hints.",
+    "review": "source"
+  },
+  {
+    "path": "lib/trenino_web/live/configuration_edit_live.ex",
+    "document": "user-interface.md",
+    "summary": "Hardware profile mount/autosave/apply/delete, input/matrix/output/display management, live values and calibration/test integration.",
+    "review": "source"
+  },
+  {
+    "path": "lib/trenino_web/live/configuration_list_live.ex",
+    "document": "user-interface.md",
+    "summary": "Saved hardware profile cards, active config highlighting, empty state and shared nav events.",
+    "review": "source"
+  },
+  {
+    "path": "lib/trenino_web/live/consent_gate_hook.ex",
+    "document": "user-interface.md",
+    "summary": "Default LiveView preference gate redirecting to consent until either reporting choice is explicitly saved.",
+    "review": "source"
+  },
+  {
+    "path": "lib/trenino_web/live/consent_live.ex",
+    "document": "user-interface.md",
+    "summary": "Standalone anonymous error-reporting accept/decline card and unconditional home redirect after choice.",
+    "review": "source"
+  },
+  {
+    "path": "lib/trenino_web/live/firmware_live.ex",
+    "document": "user-interface.md",
+    "summary": "Firmware releases/compatibility/history and port/board upload modal with download, progress/cancel and failure states.",
+    "review": "source"
+  },
+  {
+    "path": "lib/trenino_web/live/matrix_test_wizard.ex",
+    "document": "user-interface.md",
+    "summary": "Matrix grid GPIO/virtual-pin visualization, pressed/tested states, progress/reset/close interaction.",
+    "review": "source"
+  },
+  {
+    "path": "lib/trenino_web/live/mcp_detection_hook.ex",
+    "document": "user-interface.md",
+    "summary": "Global default-session MCP prompt overlay and ID-unfiltered completion clearing.",
+    "review": "source"
+  },
+  {
+    "path": "lib/trenino_web/live/nav_hook.ex",
+    "document": "user-interface.md",
+    "summary": "Connected-page status subscriptions, deferred initial state, path tracking, update dismissal/check interception.",
+    "review": "source"
+  },
+  {
+    "path": "lib/trenino_web/live/script_edit_live.ex",
+    "document": "user-interface.md",
+    "summary": "Lua textarea/trigger drafts, explicit save/reload, enabled/manual-run/log/output reference UI and missing shared-nav handlers.",
+    "review": "source"
+  },
+  {
+    "path": "lib/trenino_web/live/settings_live.ex",
+    "document": "user-interface.md",
+    "summary": "Immediate reporting toggle and URL/key settings save/reconfigure with asynchronous outcome and 15-second timeout.",
+    "review": "source"
+  },
+  {
+    "path": "lib/trenino_web/live/train_edit_live.ex",
+    "document": "user-interface.md",
+    "summary": "Train identity/editor sections, logical elements, controller reloads and simulator/hardware wizard event routing.",
+    "review": "source"
+  },
+  {
+    "path": "lib/trenino_web/live/train_list_live.ex",
+    "document": "user-interface.md",
+    "summary": "Train profile cards, all identifiers, active detection and unconfigured/ambiguous identity banners.",
+    "review": "source"
+  },
+  {
+    "path": "lib/trenino_web/live/virtual_joystick_live.ex",
+    "document": "user-interface.md",
+    "summary": "Offline joystick mapping/preview/replacement, transition guards and reason-specific lifecycle recovery UI.",
+    "review": "source"
+  },
+  {
+    "path": "lib/trenino_web/router.ex",
+    "document": "user-interface.md",
+    "summary": "Authoritative browser/API/MCP route inventory, pipeline protections and default-session consent/nav/detection hooks.",
+    "review": "source"
+  },
+  {
+    "path": "lib/trenino_web/router/dev_routes.ex",
+    "document": "user-interface.md",
+    "summary": "Conditionally compiled development LiveDashboard router, not forwarded by the main product router.",
+    "review": "source"
+  },
+  {
+    "path": "lib/trenino_web/telemetry.ex",
+    "document": "user-interface.md",
+    "summary": "Phoenix/repository/VM telemetry metric definitions and ten-second poller with no custom periodic measurements.",
+    "review": "source"
+  },
+  {
+    "path": "test/trenino/mcp/server_test.exs",
+    "document": "api-and-mcp.md",
+    "summary": "Verifies initialize/ping/notifications, 47 tool schemas, encoded content, protocol codes and unknown-tool error content.",
+    "review": "test"
+  },
+  {
+    "path": "test/trenino/mcp/tool_registry_test.exs",
+    "document": "api-and-mcp.md",
+    "summary": "Verifies 47 unique tools with required definition fields and known/unknown name dispatch.",
+    "review": "test"
+  },
+  {
+    "path": "test/trenino/mcp/tools/button_binding_tools_test.exs",
+    "document": "api-and-mcp.md",
+    "summary": "Verifies button CRUD, four modes, latching hardware and readable joystick destination conflicts.",
+    "review": "test"
+  },
+  {
+    "path": "test/trenino/mcp/tools/detection_tools_test.exs",
+    "document": "api-and-mcp.md",
+    "summary": "Verifies hardware detection success, type filtering, timeout, default-any and request/completion broadcasts with simulated values.",
+    "review": "test"
+  },
+  {
+    "path": "test/trenino/mcp/tools/device_tools_test.exs",
+    "document": "api-and-mcp.md",
+    "summary": "Verifies saved-device/input/output list fields and cross-device output metadata; no I2C CRUD coverage.",
+    "review": "test"
+  },
+  {
+    "path": "test/trenino/mcp/tools/display_binding_tools_test.exs",
+    "document": "api-and-mcp.md",
+    "summary": "Verifies display tool count and empty list for unknown train only.",
+    "review": "test"
+  },
+  {
+    "path": "test/trenino/mcp/tools/element_tools_test.exs",
+    "document": "api-and-mcp.md",
+    "summary": "Verifies scoped element listing, create enum/name validation and delete/missing-record outcomes.",
+    "review": "test"
+  },
+  {
+    "path": "test/trenino/mcp/tools/output_binding_tools_test.exs",
+    "document": "api-and-mcp.md",
+    "summary": "Verifies output binding CRUD, boolean/between/numeric operators, defaults, validation and missing records.",
+    "review": "test"
+  },
+  {
+    "path": "test/trenino/mcp/tools/script_tools_test.exs",
+    "document": "api-and-mcp.md",
+    "summary": "Verifies script tool schemas, summary/full-code distinction, defaults, partial updates and CRUD/missing/validation cases.",
+    "review": "test"
+  },
+  {
+    "path": "test/trenino/mcp/tools/sequence_tools_test.exs",
+    "document": "api-and-mcp.md",
+    "summary": "Verifies sequence list/create/empty defaults, command replacement/name update/delete and error cases.",
+    "review": "test"
+  },
+  {
+    "path": "test/trenino/mcp/tools/simulator_tools_test.exs",
+    "document": "api-and-mcp.md",
+    "summary": "Verifies simulator connected gating, root/path browsing, read/write dispatch and upstream failure mapping with mocks.",
+    "review": "test"
+  },
+  {
+    "path": "test/trenino/mcp/tools/train_tools_test.exs",
+    "document": "api-and-mcp.md",
+    "summary": "Verifies train summaries/details, sorted identifier arrays and nested empty bindings/sequences with missing-record errors.",
+    "review": "test"
+  },
+  {
+    "path": "test/trenino/mcp/tools/virtual_joystick_tools_test.exs",
+    "document": "api-and-mcp.md",
+    "summary": "Verifies strict schemas/types/extra keys, target ranges, mapping CRUD/replacement conflicts, platform/Manager status and async acceptance.",
+    "review": "test"
+  },
+  {
+    "path": "test/trenino_web/controllers/api/script_controller_test.exs",
+    "document": "api-and-mcp.md",
+    "summary": "Verifies HTTP script CRUD success, invalid create422 and missing-script404.",
+    "review": "test"
+  },
+  {
+    "path": "test/trenino_web/controllers/api/train_api_controller_test.exs",
+    "document": "api-and-mcp.md",
+    "summary": "Verifies HTTP sorted identifier arrays, no singular identifier, nested detail and missing train404.",
+    "review": "test"
+  },
+  {
+    "path": "test/trenino_web/controllers/error_html_test.exs",
+    "document": "user-interface.md",
+    "summary": "Verifies plain HTML404/500 status messages.",
+    "review": "test"
+  },
+  {
+    "path": "test/trenino_web/controllers/error_json_test.exs",
+    "document": "user-interface.md",
+    "summary": "Verifies JSON errors.detail404/500 status messages.",
+    "review": "test"
+  },
+  {
+    "path": "test/trenino_web/controllers/health_controller_test.exs",
+    "document": "api-and-mcp.md",
+    "summary": "Verifies readiness200/statusok and JSON content type only; no shutdown invocation.",
+    "review": "test"
+  },
+  {
+    "path": "test/trenino_web/controllers/mcp/mcp_controller_test.exs",
+    "document": "api-and-mcp.md",
+    "summary": "Verifies MCP POST missing/unknown session, transport202 and normal/error response delivery with 47 tools.",
+    "review": "test"
+  },
+  {
+    "path": "test/trenino_web/live/calibration_wizard_test.exs",
+    "document": "user-interface.md",
+    "summary": "Verifies real calibration session public state, step/sample/unique gating, PubSub progression, cancellation and persistence; largely not browser rendering.",
+    "review": "test"
+  },
+  {
+    "path": "test/trenino_web/live/components/configuration_wizard_component_test.exs",
+    "document": "user-interface.md",
+    "summary": "Verifies connected/disconnected wizard entry, step presentation, integer/float auto-detect forwarding and cancellation.",
+    "review": "test"
+  },
+  {
+    "path": "test/trenino_web/live/components/endpoint_selector_component_test.exs",
+    "document": "user-interface.md",
+    "summary": "Verifies selector render branches, browse/detection events, optional value step, confirm gating and cancellation controls.",
+    "review": "test"
+  },
+  {
+    "path": "test/trenino_web/live/components/lever_setup_wizard_test.exs",
+    "document": "user-interface.md",
+    "summary": "Verifies new/edit step differences, clickable navigation, analog type and conditional input dependency invalidation; stale step-count labels noted.",
+    "review": "test"
+  },
+  {
+    "path": "test/trenino_web/live/components/sequence_manager_component_test.exs",
+    "document": "user-interface.md",
+    "summary": "Verifies list/count/order rendering, empty/client-nil states and action presence/zero-command test disabling.",
+    "review": "test"
+  },
+  {
+    "path": "test/trenino_web/live/configuration_edit_live_test.exs",
+    "document": "user-interface.md",
+    "summary": "Verifies bad config routes, physical input required/range/unique constraints, calibration/context integration and helper-mirrored apply messages.",
+    "review": "test"
+  },
+  {
+    "path": "test/trenino_web/live/configuration_list_live_test.exs",
+    "document": "user-interface.md",
+    "summary": "Verifies saved/empty list rendering, simulator banners and scan pending/reset state; includes helper-mirrored color assertions.",
+    "review": "test"
+  },
+  {
+    "path": "test/trenino_web/live/consent_gate_hook_test.exs",
+    "document": "user-interface.md",
+    "summary": "Verifies redirect while reporting preference unset and normal entry after either enabled or disabled choice.",
+    "review": "test"
+  },
+  {
+    "path": "test/trenino_web/live/consent_live_test.exs",
+    "document": "user-interface.md",
+    "summary": "Verifies consent card access and accept/decline persistence plus home redirects.",
+    "review": "test"
+  },
+  {
+    "path": "test/trenino_web/live/display_setup_test.exs",
+    "document": "user-interface.md",
+    "summary": "Verifies display nested settings/error retention, nullable minimum, unchecked booleans, prerequisite links, format validation/offline edit and current-train-ID fill.",
+    "review": "test"
+  },
+  {
+    "path": "test/trenino_web/live/matrix_test_wizard_test.exs",
+    "document": "user-interface.md",
+    "summary": "Verifies matrix creation/grid data, virtual-pin formula, helper-mirrored pressed/tested/progress state and pin parsing/validation.",
+    "review": "test"
+  },
+  {
+    "path": "test/trenino_web/live/nav_hook_test.exs",
+    "document": "user-interface.md",
+    "summary": "Verifies initial HTTP and LiveView mount survive serial Connection blocked on UART work.",
+    "review": "test"
+  },
+  {
+    "path": "test/trenino_web/live/settings_live_test.exs",
+    "document": "user-interface.md",
+    "summary": "Verifies reporting toggle, platform key instructions, URL/key persistence/blank-key retention and actual connection feedback.",
+    "review": "test"
+  },
+  {
+    "path": "test/trenino_web/live/train_edit_live_test.exs",
+    "document": "user-interface.md",
+    "summary": "Verifies train identity create/conflicts/remove-last protection, element create/delete and mapping message survivability.",
+    "review": "test"
+  },
+  {
+    "path": "test/trenino_web/live/train_list_live_test.exs",
+    "document": "user-interface.md",
+    "summary": "Verifies every profile identifier appears in list and runtime ambiguity banner.",
+    "review": "test"
+  },
+  {
+    "path": "test/trenino_web/live/virtual_joystick_live_test.exs",
+    "document": "user-interface.md",
+    "summary": "Verifies offline forms/preview, capacity/unused targets, platform/status/recovery UI, CRUD, replacement and transition guards.",
+    "review": "test"
+  }
+]

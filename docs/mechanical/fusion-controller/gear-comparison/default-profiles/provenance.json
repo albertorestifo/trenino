@@ -1,0 +1,72 @@
+{
+  "profiles": {
+    "machine": "Bambu Lab P2S 0.4 nozzle",
+    "process": "0.20mm Standard @BBL P2S",
+    "filament": "Bambu PLA Basic @BBL P2S"
+  },
+  "process_overrides": {},
+  "filament_overrides": {},
+  "hardware_selection": "0.4 mm standard flow, Supertack Plate",
+  "process_values": {
+    "enable_support": "0",
+    "layer_height": "0.2",
+    "wall_loops": "2",
+    "sparse_infill_density": "15%",
+    "brim_type": null,
+    "brim_width": "5",
+    "bridge_speed": [
+      "50",
+      "50"
+    ]
+  },
+  "source_files": [
+    {
+      "path": "C:\\Users\\Alberto\\AppData\\Roaming\\BambuStudio\\system\\BBL\\machine\\fdm_machine_common.json",
+      "sha256": "54cc60f22b54510f9acb28616ea4f07a69e6e34104dc8c41d41195713b6418b4"
+    },
+    {
+      "path": "C:\\Users\\Alberto\\AppData\\Roaming\\BambuStudio\\system\\BBL\\machine\\fdm_bbl_3dp_001_common.json",
+      "sha256": "2ca207f457c1f9b3eb25a1801adb2eaa8ddc5620f5a8945abb51a3fcddab5e47"
+    },
+    {
+      "path": "C:\\Users\\Alberto\\AppData\\Roaming\\BambuStudio\\system\\BBL\\machine\\Bambu Lab P2S 0.4 nozzle.json",
+      "sha256": "7d61891103c1874c77b35f3fc01db2be6edb8c78e4b914dd432b26d72bb67b74"
+    },
+    {
+      "path": "C:\\Users\\Alberto\\AppData\\Roaming\\BambuStudio\\system\\BBL\\process\\fdm_process_common.json",
+      "sha256": "12b6ffafbef8d9491ffdc72568cd54432f407937fbaa7f807bbde757fa12db05"
+    },
+    {
+      "path": "C:\\Users\\Alberto\\AppData\\Roaming\\BambuStudio\\system\\BBL\\process\\fdm_process_single_common.json",
+      "sha256": "05b38ac1318e465e817978b36da51754f928da0172738a20bb3a8d4a69eb4769"
+    },
+    {
+      "path": "C:\\Users\\Alberto\\AppData\\Roaming\\BambuStudio\\system\\BBL\\process\\fdm_process_single_0.20.json",
+      "sha256": "cdda8d56d67f62a0faa892cb6efc605ebb5c745bf742f6ead4daaeb6627c182a"
+    },
+    {
+      "path": "C:\\Users\\Alberto\\AppData\\Roaming\\BambuStudio\\system\\BBL\\process\\0.20mm Standard @BBL P2S.json",
+      "sha256": "f17be588cfd6e9d41985ec2fb1d41f07d4efa41ac6e6a288faffa80fc9de36bf"
+    },
+    {
+      "path": "C:\\Users\\Alberto\\AppData\\Roaming\\BambuStudio\\system\\BBL\\filament\\fdm_filament_common.json",
+      "sha256": "b6b648e64d4675d817cb0be9055fb1e43904608ef5c99826793f1d05f7af4b4e"
+    },
+    {
+      "path": "C:\\Users\\Alberto\\AppData\\Roaming\\BambuStudio\\system\\BBL\\filament\\fdm_filament_pla.json",
+      "sha256": "3ae5cdf6f02587cac56b7ba358b56d14ebe119295dfd17a3a3a57717a2fa0f79"
+    },
+    {
+      "path": "C:\\Users\\Alberto\\AppData\\Roaming\\BambuStudio\\system\\BBL\\filament\\Bambu PLA Basic @base.json",
+      "sha256": "bb29da8f90e3d54313154195c3b5c733d1093b9ef40e84972148917e32af43e0"
+    },
+    {
+      "path": "C:\\Users\\Alberto\\AppData\\Roaming\\BambuStudio\\system\\BBL\\filament\\fdm_filament_template_direct_dual.json",
+      "sha256": "970a3948cec092cb8474aee6cb34903ffa65f9874e39c543bfc601136df4c140"
+    },
+    {
+      "path": "C:\\Users\\Alberto\\AppData\\Roaming\\BambuStudio\\system\\BBL\\filament\\Bambu PLA Basic @BBL P2S.json",
+      "sha256": "5fa745547d69268b680d0c52c7e7179c595349dbdcdec7ea5d36465cafc9d351"
+    }
+  ]
+}

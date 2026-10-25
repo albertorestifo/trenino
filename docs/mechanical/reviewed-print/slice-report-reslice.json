@@ -1,0 +1,22 @@
+﻿{
+    "Part":  "supports-S03-Spring-block---four-M3-inserts-id5.stl",
+    "Supports":  true,
+    "ExitCode":  0,
+    "Success":  true,
+    "Output":  "C:\\Users\\Alberto\\Documents\\tsw_io\\docs\\mechanical\\reviewed-print\\sliced\\supports-S03-Spring-block---four-M3-inserts-id5.gcode.3mf",
+    "OutputBytes":  403610,
+    "Issues":  [
+                   "[2026-10-24 14:17:56.358587] [0x000064d0] [warning] cli mode, Current BambuStudio Version 02.04.00.70",
+                   "[2026-10-24 14:17:56.369037] [0x000064d0] [error]   3198: nozzle_volume_type not found, when different_extruder or multiple extruder, new_printer_name Bambu Lab P2S 0.4 nozzle, extruder_count 1",
+                   "[2026-10-24 14:17:56.369555] [0x000064d0] [warning] no filament colors found in projects",
+                   "[2026-10-24 14:17:56.487782] [0x00004fd0] [error]   ZFiller: encounter idx from clip: 74",
+                   "[2026-10-24 14:17:56.500096] [0x000064d0] [warning] tree support default to organic support",
+                   "[2026-10-24 14:17:56.551598] [0x000064d0] [warning] tree support default to organic support",
+                   "Error: Not precalculated Placeable areas requested., critical: 0",
+                   "Error: Not precalculated Placeable areas requested., critical: 0",
+                   "[2026-10-24 14:17:57.071842] [0x000064d0] [error]   Invalid T command (T65535).",
+                   "[2026-10-24 14:17:57.654798] [0x000064d0] [info]    record_exit_reson:535 Slicer_Info_Report: plate_id=0, return_code=0, error_message=Success., slice_time_s=0.736, pring_time_s=1689.21, filament_usage_g=7.94807"
+               ],
+    "StdoutLog":  "C:\\Users\\Alberto\\Documents\\tsw_io\\docs\\mechanical\\reviewed-print\\sliced\\supports-S03-Spring-block---four-M3-inserts-id5.stdout.log",
+    "StderrLog":  "C:\\Users\\Alberto\\Documents\\tsw_io\\docs\\mechanical\\reviewed-print\\sliced\\supports-S03-Spring-block---four-M3-inserts-id5.stderr.log"
+}

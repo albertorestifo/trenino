@@ -1,0 +1,32 @@
+{
+  "reviewed_reprint_files": 10,
+  "verified_manifest_hashes": true,
+  "watertight_single_shell": true,
+  "sliced_files": 10,
+  "slice_exit_codes": [
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0,
+    0
+  ],
+  "support_segments": 0,
+  "P04_bridge_segments": 0,
+  "shaft_lower_consecutive_layers": 50,
+  "shaft_lower_z_range_mm": [
+    0.2,
+    10.0
+  ],
+  "shaft_lower_diagnostic": "ZFiller: encounter idx from clip: 28 (error; unresolved)",
+  "release_scope": "Oriented geometry, not printer-ready toolpaths; GUI re-slice and preview required",
+  "reviewed_previews": [
+    "layer-review/critical-1.png",
+    "layer-review/critical-2.png",
+    "fdm-review-shaft/critical-1.png"
+  ]
+}

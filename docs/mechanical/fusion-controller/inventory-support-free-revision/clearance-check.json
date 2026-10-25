@@ -1,0 +1,38 @@
+{
+  "document": "AIDesignedLever v5",
+  "unhealthy_features": [],
+  "solid_count": 65,
+  "sampled_angles": [
+    -52,
+    -50,
+    -45,
+    -40,
+    -35,
+    -30,
+    -25,
+    -20,
+    -15,
+    -10,
+    -5,
+    0,
+    5,
+    10,
+    15,
+    20,
+    25,
+    30,
+    35,
+    40,
+    45,
+    50,
+    52
+  ],
+  "cam_profiles": [
+    3,
+    5,
+    7
+  ],
+  "neutral_and_motion_clashes": [],
+  "tolerance_mm3": 0.01,
+  "scope": "Solid interference; spring deformation, actual sensor dimensions, fastener torque, physical strength and fixed mesh frame are separate checks."
+}

@@ -1,0 +1,328 @@
+[2026-10-24 14:12:45.565173] [0x00006ce8] [trace]   Initializing StaticPrintConfigs
+[2026-10-24 14:12:45.580444] [0x00006ce8] [warning] cli mode, Current BambuStudio Version 02.04.00.70
+[2026-10-24 14:12:45.580970] [0x00006ce8] [info]    Will start to read model file now, file count :1
+
+[2026-10-24 14:12:45.581509] [0x00006ce8] [info]    allow_multicolor_oneplate 1, allow_rotations 1 skip_modified_gcodes 0 avoid_extrusion_cali_region 0 loaded_filament_ids size 1, clone_objects size 0, skip_useless_pick 0, allow_newer_file 0, allow_mix_temp 0
+[2026-10-24 14:12:45.581509] [0x00006ce8] [info]    plate_to_slice=0, normative_check=1, use_first_fila_as_default=1
+[2026-10-24 14:12:45.582018] [0x00006ce8] [info]    read model file:C:\Users\Alberto\Documents\tsw_io\docs\mechanical\reviewed-print\stl\moving-M08-Forked-roller-arm---flat-side-sleeved-pivot-id13.stl
+
+[2026-10-24 14:12:45.584098] [0x00006ce8] [info]    object moving-M08-Forked-roller-arm---flat-side-sleeved-pivot-id13.stl, id :5, from stl or other 3mf
+
+[2026-10-24 14:12:45.584638] [0x00006ce8] [info]    Slic3r::CLI::run:before load settings, file count=2
+
+[2026-10-24 14:12:45.584638] [0x00006ce8] [info]    Slic3r::CLI::run::<lambda_bbbff4fb699d3b327ae7896810bfc329>::operator ():load setting file C:\Users\Alberto\Documents\tsw_io\docs\mechanical\reviewed-print\profiles\machine-p2s-04-full.json, with rule 1
+
+[2026-10-24 14:12:45.586285] [0x00006ce8] [info]    no substitutions performed from file C:\Users\Alberto\Documents\tsw_io\docs\mechanical\reviewed-print\profiles\machine-p2s-04-full.json
+
+[2026-10-24 14:12:45.586799] [0x00006ce8] [info]    loaded machine config C:\Users\Alberto\Documents\tsw_io\docs\mechanical\reviewed-print\profiles\machine-p2s-04-full.json, type Bambu Lab P2S 0.4 nozzle, name User, inherits Bambu Lab P2S 0.4 nozzle, printer_model_id 
+[2026-10-24 14:12:45.586799] [0x00006ce8] [info]    Slic3r::CLI::run::<lambda_bbbff4fb699d3b327ae7896810bfc329>::operator ():load setting file C:\Users\Alberto\Documents\tsw_io\docs\mechanical\reviewed-print\profiles\process-reviewed-supports.json, with rule 1
+
+[2026-10-24 14:12:45.587840] [0x00006ce8] [info]    no substitutions performed from file C:\Users\Alberto\Documents\tsw_io\docs\mechanical\reviewed-print\profiles\process-reviewed-supports.json
+
+[2026-10-24 14:12:45.587840] [0x00006ce8] [info]    loaded process config C:\Users\Alberto\Documents\tsw_io\docs\mechanical\reviewed-print\profiles\process-reviewed-supports.json, type 0.20mm Standard @BBL P2S — reviewed CLI check, name User, inherits fdm_process_single_0.20
+[2026-10-24 14:12:45.587840] [0x00006ce8] [info]    Slic3r::CLI::run::<lambda_bbbff4fb699d3b327ae7896810bfc329>::operator ():load setting file C:\Users\Alberto\Documents\tsw_io\docs\mechanical\reviewed-print\profiles\filament-pla-basic-p2s-full.json, with rule 1
+
+[2026-10-24 14:12:45.589134] [0x00006ce8] [info]    no substitutions performed from file C:\Users\Alberto\Documents\tsw_io\docs\mechanical\reviewed-print\profiles\filament-pla-basic-p2s-full.json
+
+[2026-10-24 14:12:45.589644] [0x00006ce8] [info]    loaded default filament config C:\Users\Alberto\Documents\tsw_io\docs\mechanical\reviewed-print\profiles\filament-pla-basic-p2s-full.json, type User, name Bambu PLA Basic @BBL P2S, inherits Bambu PLA Basic @base
+[2026-10-24 14:12:45.589644] [0x00006ce8] [info]    Slic3r::CLI::run::<lambda_bbbff4fb699d3b327ae7896810bfc329>::operator ():load setting file C:\Users\Alberto\Documents\tsw_io\docs\mechanical\reviewed-print\profiles\filament-pla-basic-p2s-full.json, with rule 1
+
+[2026-10-24 14:12:45.590702] [0x00006ce8] [info]    no substitutions performed from file C:\Users\Alberto\Documents\tsw_io\docs\mechanical\reviewed-print\profiles\filament-pla-basic-p2s-full.json
+
+[2026-10-24 14:12:45.590702] [0x00006ce8] [info]    loaded filament 1 from file C:\Users\Alberto\Documents\tsw_io\docs\mechanical\reviewed-print\profiles\filament-pla-basic-p2s-full.json, type User, name Bambu PLA Basic @BBL P2S, inherits Bambu PLA Basic @base
+[2026-10-24 14:12:45.590702] [0x00006ce8] [info]    current printer , new printer Bambu Lab P2S 0.4 nozzle, current process , new process 0.20mm Standard @BBL P2S — reviewed CLI check
+[2026-10-24 14:12:45.591239] [0x00006ce8] [info]    current printer inherits , new printer inherits Bambu Lab P2S 0.4 nozzle, current process inherits , new process inherits fdm_process_single_0.20
+[2026-10-24 14:12:45.591773] [0x00006ce8] [info]    index 0, new print compatible printer Bambu Lab P2S 0.4 nozzle
+[2026-10-24 14:12:45.591773] [0x00006ce8] [info]    new printer Bambu Lab P2S 0.4 nozzle, inherited from Bambu Lab P2S 0.4 nozzle, new process 0.20mm Standard @BBL P2S — reviewed CLI check, inherited from fdm_process_single_0.20 ,compatible 1
+[2026-10-24 14:12:45.591773] [0x00006ce8] [info]    update printer config to newest, different size 0, different_settings: 
+[2026-10-24 14:12:45.591773] [0x00006ce8] [info]    update_full_config: config keys count 107
+[2026-10-24 14:12:45.592292] [0x00006ce8] [info]    load a new printer, update all the keys, different_settings: 
+[2026-10-24 14:12:45.592292] [0x00006ce8] [info]    check printer cli safe params, current_printer_name , new_printer_name Bambu Lab P2S 0.4 nozzle, printer_model Bambu Lab P2S
+[2026-10-24 14:12:45.592292] [0x00006ce8] [info]    line 3036 , will parse file C:\Program Files\Bambu Studio\resources/profiles/BBL/cli_config.json
+[2026-10-24 14:12:45.593359] [0x00006ce8] [info]    can not find machine_limits for printer Bambu Lab P2S in cli_config.json
+[2026-10-24 14:12:45.593359] [0x00006ce8] [info]    update process config to newest, different size 0, different_settings: 
+[2026-10-24 14:12:45.593359] [0x00006ce8] [info]    update_full_config: config keys count 165
+[2026-10-24 14:12:45.593869] [0x00006ce8] [info]    load a new process, update all the keys, different_settings: 
+[2026-10-24 14:12:45.593869] [0x00006ce8] [error]   3198: nozzle_volume_type not found, when different_extruder or multiple extruder, new_printer_name Bambu Lab P2S 0.4 nozzle, extruder_count 1
+[2026-10-24 14:12:45.593869] [0x00006ce8] [info]    update filament 1's config to newest, different size 0, name Bambu PLA Basic @BBL P2S, different_settings 
+[2026-10-24 14:12:45.594393] [0x00006ce8] [info]    skip scalar option inherits from filament 1: Bambu PLA Basic @BBL P2S
+[2026-10-24 14:12:45.594393] [0x00006ce8] [warning] no filament colors found in projects
+[2026-10-24 14:12:45.594393] [0x00006ce8] [info]    total 1 models, 0 objects
+
+[2026-10-24 14:12:45.595936] [0x00006ce8] [info]    3835, remove_wrapping_detect 0, old value 0
+[2026-10-24 14:12:45.595936] [0x00006ce8] [info]    translate_old 0, shrink_to_new_bed 0, old bed size {256, 256, 256}
+[2026-10-24 14:12:45.595936] [0x00006ce8] [info]    Slic3r::GUI::PartPlateList::reset_size:before size: plate_width 0, plate_depth 0, plate_height 0
+[2026-10-24 14:12:45.596472] [0x00006ce8] [info]    Slic3r::GUI::PartPlateList::reset_size:after size: plate_width 256, plate_depth 256, plate_height 256
+[2026-10-24 14:12:45.596472] [0x00006ce8] [info]    Slic3r::GUI::PartPlate::set_pos_and_size: plate_id 0, before, origin {0,0,0}, plate_width 0, plate_depth 0, plate_height 0
+[2026-10-24 14:12:45.596472] [0x00006ce8] [info]    Slic3r::GUI::PartPlate::set_pos_and_size: with_instance_move 0, after, origin {0,0,0}, plate_width 256, plate_depth 256, plate_height 256
+[2026-10-24 14:12:45.596472] [0x00006ce8] [info]    Slic3r::GUI::PartPlate::update_slice_result_valid_state: plate 0 , update slice result from 0 to 0
+[2026-10-24 14:12:45.596472] [0x00006ce8] [info]    Slic3r::GUI::PartPlate::set_pos_and_size: plate_id 1, before, origin {0,0,0}, plate_width 0, plate_depth 0, plate_height 0
+[2026-10-24 14:12:45.596991] [0x00006ce8] [info]    Slic3r::GUI::PartPlate::set_pos_and_size: with_instance_move 0, after, origin {307.2,0,0}, plate_width 256, plate_depth 256, plate_height 256
+[2026-10-24 14:12:45.596991] [0x00006ce8] [info]    Slic3r::GUI::PartPlate::update_slice_result_valid_state: plate 1 , update slice result from 0 to 0
+[2026-10-24 14:12:45.596991] [0x00006ce8] [info]    Slic3r::GUI::PartPlate::update_slice_result_valid_state: plate 0 , update slice result from 0 to 0
+[2026-10-24 14:12:45.596991] [0x00006ce8] [info]    Slic3r::GUI::PartPlate::update_slice_result_valid_state: plate 1 , update slice result from 0 to 0
+[2026-10-24 14:12:45.597504] [0x00006ce8] [info]    will start transforms, commands count 0
+
+[2026-10-24 14:12:45.597504] [0x00006ce8] [info]    finished model pre-process commands
+
+[2026-10-24 14:12:45.597504] [0x00006ce8] [info]    before arrange, need_arrange=1, duplicate_count 0, filament_color_changed 0
+[2026-10-24 14:12:45.598621] [0x00006ce8] [info]    prime_tower_width 35 wipe_tower_rotation_angle 0 prime_volume 30
+[2026-10-24 14:12:45.598621] [0x00006ce8] [info]    Slic3r::GUI::PartPlate::estimate_wipe_tower_polygonarrange wipe_tower: wp_brim_width 3
+[2026-10-24 14:12:45.598621] [0x00006ce8] [info]    5339, after estimate_wipe_tower_polygon,  pos {165, 238}, size {0, 0}, plate 0
+[2026-10-24 14:12:45.598621] [0x00006ce8] [info]    Slic3r::GUI::PartPlate::estimate_wipe_tower_polygonarrange wipe_tower: wp_brim_width 3
+[2026-10-24 14:12:45.598621] [0x00006ce8] [info]    Slic3r::GUI::PartPlate::estimate_wipe_tower_polygonarrange wipe_tower: wp_brim_width 3
+[2026-10-24 14:12:45.599150] [0x00006ce8] [info]    Slic3r::GUI::PartPlate::estimate_wipe_tower_polygonarrange wipe_tower: wp_brim_width 3
+[2026-10-24 14:12:45.599150] [0x00006ce8] [info]    Slic3r::GUI::PartPlate::estimate_wipe_tower_polygonarrange wipe_tower: wp_brim_width 3
+[2026-10-24 14:12:45.599150] [0x00006ce8] [info]    Slic3r::GUI::PartPlate::estimate_wipe_tower_polygonarrange wipe_tower: wp_brim_width 3
+[2026-10-24 14:12:45.599150] [0x00006ce8] [info]    Slic3r::GUI::PartPlate::estimate_wipe_tower_polygonarrange wipe_tower: wp_brim_width 3
+[2026-10-24 14:12:45.599150] [0x00006ce8] [info]    Slic3r::GUI::PartPlate::estimate_wipe_tower_polygonarrange wipe_tower: wp_brim_width 3
+[2026-10-24 14:12:45.599679] [0x00006ce8] [info]    Slic3r::GUI::PartPlate::estimate_wipe_tower_polygonarrange wipe_tower: wp_brim_width 3
+[2026-10-24 14:12:45.599679] [0x00006ce8] [info]    Slic3r::GUI::PartPlate::estimate_wipe_tower_polygonarrange wipe_tower: wp_brim_width 3
+[2026-10-24 14:12:45.599679] [0x00006ce8] [info]    Slic3r::GUI::PartPlate::estimate_wipe_tower_polygonarrange wipe_tower: wp_brim_width 3
+[2026-10-24 14:12:45.599679] [0x00006ce8] [info]    Slic3r::GUI::PartPlate::estimate_wipe_tower_polygonarrange wipe_tower: wp_brim_width 3
+[2026-10-24 14:12:45.599679] [0x00006ce8] [info]    Slic3r::GUI::PartPlate::estimate_wipe_tower_polygonarrange wipe_tower: wp_brim_width 3
+[2026-10-24 14:12:45.600186] [0x00006ce8] [info]    Slic3r::GUI::PartPlate::estimate_wipe_tower_polygonarrange wipe_tower: wp_brim_width 3
+[2026-10-24 14:12:45.600186] [0x00006ce8] [info]    Slic3r::GUI::PartPlate::estimate_wipe_tower_polygonarrange wipe_tower: wp_brim_width 3
+[2026-10-24 14:12:45.600186] [0x00006ce8] [info]    Slic3r::GUI::PartPlate::estimate_wipe_tower_polygonarrange wipe_tower: wp_brim_width 3
+[2026-10-24 14:12:45.600186] [0x00006ce8] [info]    Slic3r::GUI::PartPlate::estimate_wipe_tower_polygonarrange wipe_tower: wp_brim_width 3
+[2026-10-24 14:12:45.600186] [0x00006ce8] [info]    Slic3r::GUI::PartPlate::estimate_wipe_tower_polygonarrange wipe_tower: wp_brim_width 3
+[2026-10-24 14:12:45.600706] [0x00006ce8] [info]    Slic3r::GUI::PartPlate::estimate_wipe_tower_polygonarrange wipe_tower: wp_brim_width 3
+[2026-10-24 14:12:45.600706] [0x00006ce8] [info]    Slic3r::GUI::PartPlate::estimate_wipe_tower_polygonarrange wipe_tower: wp_brim_width 3
+[2026-10-24 14:12:45.600706] [0x00006ce8] [info]    Slic3r::GUI::PartPlate::estimate_wipe_tower_polygonarrange wipe_tower: wp_brim_width 3
+[2026-10-24 14:12:45.600706] [0x00006ce8] [info]    Slic3r::GUI::PartPlate::estimate_wipe_tower_polygonarrange wipe_tower: wp_brim_width 3
+[2026-10-24 14:12:45.600706] [0x00006ce8] [info]    Slic3r::GUI::PartPlate::estimate_wipe_tower_polygonarrange wipe_tower: wp_brim_width 3
+[2026-10-24 14:12:45.601215] [0x00006ce8] [info]    Slic3r::GUI::PartPlate::estimate_wipe_tower_polygonarrange wipe_tower: wp_brim_width 3
+[2026-10-24 14:12:45.601215] [0x00006ce8] [info]    Slic3r::GUI::PartPlate::estimate_wipe_tower_polygonarrange wipe_tower: wp_brim_width 3
+[2026-10-24 14:12:45.601215] [0x00006ce8] [info]    Slic3r::GUI::PartPlate::estimate_wipe_tower_polygonarrange wipe_tower: wp_brim_width 3
+[2026-10-24 14:12:45.601215] [0x00006ce8] [info]    Slic3r::GUI::PartPlate::estimate_wipe_tower_polygonarrange wipe_tower: wp_brim_width 3
+[2026-10-24 14:12:45.601215] [0x00006ce8] [info]    Slic3r::GUI::PartPlate::estimate_wipe_tower_polygonarrange wipe_tower: wp_brim_width 3
+[2026-10-24 14:12:45.601727] [0x00006ce8] [info]    Slic3r::GUI::PartPlate::estimate_wipe_tower_polygonarrange wipe_tower: wp_brim_width 3
+[2026-10-24 14:12:45.601727] [0x00006ce8] [info]    Slic3r::GUI::PartPlate::estimate_wipe_tower_polygonarrange wipe_tower: wp_brim_width 3
+[2026-10-24 14:12:45.601727] [0x00006ce8] [info]    Slic3r::GUI::PartPlate::estimate_wipe_tower_polygonarrange wipe_tower: wp_brim_width 3
+[2026-10-24 14:12:45.601727] [0x00006ce8] [info]    Slic3r::GUI::PartPlate::estimate_wipe_tower_polygonarrange wipe_tower: wp_brim_width 3
+[2026-10-24 14:12:45.601727] [0x00006ce8] [info]    Slic3r::GUI::PartPlate::estimate_wipe_tower_polygonarrange wipe_tower: wp_brim_width 3
+[2026-10-24 14:12:45.602236] [0x00006ce8] [info]    Slic3r::GUI::PartPlate::estimate_wipe_tower_polygonarrange wipe_tower: wp_brim_width 3
+[2026-10-24 14:12:45.602236] [0x00006ce8] [info]    Slic3r::GUI::PartPlate::estimate_wipe_tower_polygonarrange wipe_tower: wp_brim_width 3
+[2026-10-24 14:12:45.602236] [0x00006ce8] [info]    Slic3r::GUI::PartPlate::estimate_wipe_tower_polygonarrange wipe_tower: wp_brim_width 3
+[2026-10-24 14:12:45.602236] [0x00006ce8] [info]    Arrange full params: {"min_obj_distance":0,"accuracy":1.000000,"parallel":1,"allow_rotations":1,"do_final_align":1,"allow_multi_materials_on_same_plate":1,"avoid_extrusion_cali_region":0,"is_seq_print":0,"bed_shrink_x":0.000000,"bed_shrink_y":0.000000,"brim_skirt_distance":24.000000,"clearance_height_to_rod":32.500000,"clearance_height_to_lid":141.500000,"cleareance_radius":72.000000,"printable_height":256.000000,
+[2026-10-24 14:12:45.602756] [0x00006ce8] [info]    arrange: items selected before arranging: 1
+[2026-10-24 14:12:45.602756] [0x00006ce8] [info]    arrange: items unselected before arranging: 36
+[2026-10-24 14:12:45.602756] [0x00006ce8] [info]    start 1 th arranging...
+[2026-10-24 14:12:45.604838] [0x00006ce8] [info]    finished 1 th arranging...
+[2026-10-24 14:12:45.604838] [0x00006ce8] [info]    Slic3r::GUI::PartPlate::update_slice_result_valid_state: plate 0 , update slice result from 0 to 0
+[2026-10-24 14:12:45.605338] [0x00006ce8] [info]    Slic3r::GUI::PartPlate::update_slice_result_valid_state: plate 1 , update slice result from 0 to 0
+[2026-10-24 14:12:45.605338] [0x00006ce8] [info]    Slic3r::GUI::PartPlateList::rebuild_plates_after_arrangement:before rebuild, plates count 1, recycle_plates 1
+[2026-10-24 14:12:45.605338] [0x00006ce8] [info]    Slic3r::GUI::PartPlate::update_slice_result_valid_state: plate 0 , update slice result from 0 to 0
+[2026-10-24 14:12:45.605338] [0x00006ce8] [info]    Slic3r::GUI::PartPlate::update_slice_result_valid_state: plate 1 , update slice result from 0 to 0
+[2026-10-24 14:12:45.605338] [0x00006ce8] [info]    Slic3r::GUI::PartPlate::add_instance: plate 0 , m_ready_for_slice changes to 1
+[2026-10-24 14:12:45.606165] [0x00006ce8] [info]    Slic3r::GUI::PartPlateList::rebuild_plates_after_arrangement:after rebuild, plates count 1
+[2026-10-24 14:12:45.606165] [0x00006ce8] [info]    Need to slice for plate 0, total plate count 1 partplates!
+
+[2026-10-24 14:12:45.606165] [0x00006ce8] [info]    Plate 1: pre_check 1, start
+[2026-10-24 14:12:45.606165] [0x00006ce8] [info]    Slic3r::Model::update_print_volume_state, print_volume {0, 0, 0} to {256, 256, 256}, got 1 printable istances
+[2026-10-24 14:12:45.606945] [0x00006ce8] [info]    plate 1: load cached data success, go on.
+[2026-10-24 14:12:45.606945] [0x00006ce8] [info]    Slic3r::Print::apply, Line 1117: enter
+[2026-10-24 14:12:45.606945] [0x00006ce8] [info]    Slic3r::Print::apply, has_scarf_joint_seam:false
+[2026-10-24 14:12:45.606945] [0x00006ce8] [info]    Slic3r::Print::apply, has_scarf_joint_seam:false
+[2026-10-24 14:12:45.606945] [0x00006ce8] [info]    Slic3r::DynamicPrintConfig::update_values_to_printer_extruders, Line 7563: extruder_count 1, extruder_nozzle_volume_count 1
+[2026-10-24 14:12:45.607949] [0x00006ce8] [info]    Slic3r::DynamicPrintConfig::update_values_to_printer_extruders, Line 7567: different nozzle volume processing
+[2026-10-24 14:12:45.607949] [0x00006ce8] [info]    Slic3r::DynamicPrintConfig::update_values_to_printer_extruders, Line 7563: extruder_count 1, extruder_nozzle_volume_count 1
+[2026-10-24 14:12:45.607949] [0x00006ce8] [info]    Slic3r::DynamicPrintConfig::update_values_to_printer_extruders, Line 7567: different nozzle volume processing
+[2026-10-24 14:12:45.607949] [0x00006ce8] [info]    Slic3r::DynamicPrintConfig::update_values_to_printer_extruders, Line 7563: extruder_count 1, extruder_nozzle_volume_count 1
+[2026-10-24 14:12:45.608510] [0x00006ce8] [info]    Slic3r::DynamicPrintConfig::update_values_to_printer_extruders, Line 7567: different nozzle volume processing
+[2026-10-24 14:12:45.608510] [0x00006ce8] [info]    Slic3r::DynamicPrintConfig::update_values_to_printer_extruders_for_multiple_filaments, Line 7768: extruder_count 1, extruder_nozzle_volume_count 1
+[2026-10-24 14:12:45.608510] [0x00006ce8] [info]    Slic3r::DynamicPrintConfig::update_values_to_printer_extruders_for_multiple_filaments, Line 7772: different nozzle volume processing
+[2026-10-24 14:12:45.609577] [0x00006ce8] [info]    Slic3r::Print::apply, got print_diff 121, object_diff 14, region_diff 30, set status to APPLY_STATUS_CHANGED
+[2026-10-24 14:12:45.609577] [0x00006ce8] [info]    Slic3r::Print::apply 1386: found full_config_diff changed.
+[2026-10-24 14:12:45.610081] [0x00006ce8] [info]    Slic3r::Print::apply 1712: found print object changed.
+[2026-10-24 14:12:45.610081] [0x00006ce8] [info]    Slic3r::Print::apply, got new_changed_keys, size=1
+[2026-10-24 14:12:45.610081] [0x00006ce8] [info]    Slic3r::Print::apply, i=0, key=enable_prime_tower
+[2026-10-24 14:12:45.610619] [0x00006ce8] [info]    Slic3r::Print::apply 1899: finished,  this 000001B8E7B4A940, m_modified_count 1, apply_status 1, m_support_used 1
+[2026-10-24 14:12:45.610619] [0x00006ce8] [info]    set no_check to 0:
+[2026-10-24 14:12:45.610619] [0x00006ce8] [info]    start Print::process for partplate 1
+
+[2026-10-24 14:12:45.611130] [0x00006ce8] [info]    set print's callback to default_status_callback.
+[2026-10-24 14:12:45.611130] [0x00006ce8] [info]    printer_model_string: Bambu Lab P2S, is_bbl_vendor_preset 1
+[2026-10-24 14:12:45.612194] [0x00006ce8] [info]    Slic3r::Print::process: this=000001B8E7B4A940, enter, use_cache=0, object size=1
+[2026-10-24 14:12:45.612194] [0x00006ce8] [info]    Slic3r::Print::process: total object counts 1 in current print, need to slice 1
+[2026-10-24 14:12:45.612194] [0x00006ce8] [info]    Starting the slicing process. WorkingSet: 56MB; PrivateBytes: 58MB; Pagefile(peak): 58MB(58MB)
+[2026-10-24 14:12:45.612194] [0x00006ce8] [info]    Slicing volumes... WorkingSet: 56MB; PrivateBytes: 58MB; Pagefile(peak): 58MB(58MB)
+[2026-10-24 14:12:45.618384] [0x00006ce8] [info]    Generating walls... WorkingSet: 60MB; PrivateBytes: 62MB; Pagefile(peak): 62MB(62MB)
+[2026-10-24 14:12:45.638904] [0x00006ce8] [info]    Detecting solid surfaces... WorkingSet: 63MB; PrivateBytes: 64MB; Pagefile(peak): 64MB(64MB)
+[2026-10-24 14:12:45.640785] [0x00006ce8] [info]    Preparing fill surfaces... WorkingSet: 63MB; PrivateBytes: 64MB; Pagefile(peak): 64MB(64MB)
+[2026-10-24 14:12:45.640785] [0x00006ce8] [info]    Discovering vertical shells... WorkingSet: 63MB; PrivateBytes: 64MB; Pagefile(peak): 64MB(64MB)
+[2026-10-24 14:12:45.646305] [0x00006ce8] [info]    Processing external surfaces... WorkingSet: 64MB; PrivateBytes: 65MB; Pagefile(peak): 65MB(65MB)
+[2026-10-24 14:12:45.650340] [0x00006ce8] [info]    Bridge over infill - Start WorkingSet: 64MB; PrivateBytes: 65MB; Pagefile(peak): 65MB(65MB)
+[2026-10-24 14:12:45.651982] [0x00006ce8] [info]    Bridge over infill - Directions and expanded surfaces computed WorkingSet: 65MB; PrivateBytes: 65MB; Pagefile(peak): 65MB(65MB)
+[2026-10-24 14:12:45.652495] [0x00006ce8] [info]    Bridge over infill - End WorkingSet: 65MB; PrivateBytes: 65MB; Pagefile(peak): 65MB(65MB)
+[2026-10-24 14:12:45.664200] [0x00006ce8] [warning] tree support default to organic support
+[2026-10-24 14:12:45.666782] [0x00006ce8] [info]    Processing support tree mesh group 1 of 1 containing 1 meshes.
+[2026-10-24 14:12:45.669665] [0x00006ce8] [info]    max_cantilever_dist=401378
+[2026-10-24 14:12:45.672629] [0x00006ce8] [info]    Tree support overhang detection done. 6 layers with overhangs. nEnforced=0
+[2026-10-24 14:12:45.695049] [0x00006ce8] [info]    Precalculating collision took6.189 ms. Precalculating avoidance took 16.065 ms.
+[2026-10-24 14:12:45.695549] [0x00006ce8] [warning] tree support default to organic support
+[2026-10-24 14:12:45.715546] [0x00006ce8] [info]    Time spent with creating influence areas' subtasks: Increasing areas 13 ms merging areas: 4 ms
+Error: Not precalculated Placeable areas requested., critical: 0
+Error: Not precalculated Placeable areas requested., critical: 0
+Error: Not precalculated Placeable areas requested., critical: 0
+Error: Not precalculated Placeable areas requested., critical: 0
+Error: Not precalculated Placeable areas requested., critical: 0
+Error: Not precalculated Placeable areas requested., critical: 0
+Error: Not precalculated Placeable areas requested., critical: 0
+Error: Not precalculated Placeable areas requested., critical: 0
+Error: Not precalculated Placeable areas requested., critical: 0
+Error: Not precalculated Placeable areas requested., critical: 0
+Error: Not precalculated Placeable areas requested., critical: 0
+Error: Not precalculated Placeable areas requested., critical: 0
+Error: Not precalculated Placeable areas requested., critical: 0
+Error: Not precalculated Placeable areas requested., critical: 0
+Error: Not precalculated Placeable areas requested., critical: 0
+[2026-10-24 14:12:45.742059] [0x00006ce8] [info]    Total time used creating Tree support for the currently grouped meshes: 75.265 ms. Different subtasks:
+Calculating Avoidance: 28.794 ms Creating inital influence areas: 1.025 ms Influence area creation: 19.255ms Placement of Points in InfluenceAreas: 0.119ms Drawing result as support 26.07 ms
+[2026-10-24 14:12:45.758150] [0x00006ce8] [info]    Total time of organic tree support: 91.339 ms
+[2026-10-24 14:12:45.760974] [0x00006ce8] [info]    Slic3r::Print::update_filament_maps_to_config: filament maps changed after pre-slicing.
+[2026-10-24 14:12:45.761503] [0x00006ce8] [info]    Slic3r::Print::update_filament_maps_to_config, Line 2691:  extruder_count 1, extruder_volume_type_count 1
+[2026-10-24 14:12:45.761503] [0x00006ce8] [info]    Slic3r::DynamicPrintConfig::update_values_to_printer_extruders_for_multiple_filaments, Line 7768: extruder_count 1, extruder_nozzle_volume_count 1
+[2026-10-24 14:12:45.762019] [0x00006ce8] [info]    Slic3r::DynamicPrintConfig::update_values_to_printer_extruders_for_multiple_filaments, Line 7772: different nozzle volume processing
+[2026-10-24 14:12:45.770628] [0x00006ce8] [info]    gcode path conflicts check takes 0 secs.
+[2026-10-24 14:12:45.771353] [0x00006ce8] [info]    Slicing process finished. WorkingSet: 73MB; PrivateBytes: 75MB; Pagefile(peak): 75MB(75MB)
+[2026-10-24 14:12:45.771353] [0x00006ce8] [info]    print::process: first time_using_cache is 1 secs.
+[2026-10-24 14:12:45.771353] [0x00006ce8] [info]    process finished, will export gcode temporily to C:\Users\Alberto\Documents\tsw_io\docs\mechanical\reviewed-print\sliced/plate_1.gcode
+
+[2026-10-24 14:12:45.771886] [0x00006ce8] [info]    Slic3r::GCodeProcessorResult::reset 1485: this=0000009A954C1820 reset finished
+[2026-10-24 14:12:45.772406] [0x00006ce8] [info]    Will export G-code to plate_1.gcode soon
+[2026-10-24 14:12:45.772406] [0x00006ce8] [info]    Exporting G-code... WorkingSet: 73MB; PrivateBytes: 75MB; Pagefile(peak): 75MB(75MB)
+[2026-10-24 14:12:45.773656] [0x00006ce8] [info]    Slic3r::GCodeProcessorResult::reset 1485: this=0000009A954C1820 reset finished
+[2026-10-24 14:12:46.022943] [0x00006ce8] [error]   Invalid T command (T65535).
+[2026-10-24 14:12:46.031208] [0x00006ce8] [info]    Slic3r::GCodeProcessor::TimeProcessor::post_process:  before process plate_1.gcode.tmp
+[2026-10-24 14:12:46.041325] [0x00006ce8] [info]    Slic3r::GCodeProcessor::TimeProcessor::post_process:  after process plate_1.gcode.tmp
+[2026-10-24 14:12:46.052147] [0x00006ce8] [info]    rename_file from plate_1.gcode.tmp to plate_1.gcode successfully
+[2026-10-24 14:12:46.052647] [0x00006ce8] [info]    Exporting G-code finished WorkingSet: 84MB; PrivateBytes: 86MB; Pagefile(peak): 86MB(86MB)
+[2026-10-24 14:12:46.055519] [0x00006ce8] [info]    export_gcode finished: time_using_cache update to 285 secs.
+[2026-10-24 14:12:46.056020] [0x00006ce8] [info]    Slicing result exported to C:\Users\Alberto\Documents\tsw_io\docs\mechanical\reviewed-print\sliced/plate_1.gcode
+
+[2026-10-24 14:12:46.056020] [0x00006ce8] [info]    Slic3r::GUI::PartPlate::update_slice_result_valid_state: plate 0 , update slice result from 0 to 1
+[2026-10-24 14:12:46.056020] [0x00006ce8] [info]    Slic3r::GUI::PartPlateList::store_to_3mf_structure: plate 1 before load, width 0, height 0, size 0!
+[2026-10-24 14:12:46.056020] [0x00006ce8] [info]    Slic3r::GUI::PartPlateList::store_to_3mf_structure: plate 1 after load, width 0, height 0, size 0!
+[2026-10-24 14:12:46.056876] [0x00006ce8] [info]    Slic3r::GUI::PartPlateList::store_to_3mf_structure: plate 0, gcode_filename=plate_1.gcode, with_slice_info=1, slice_valid 1, object item count 1.
+[2026-10-24 14:12:46.056876] [0x00006ce8] [info]    Slic3r::GUI::PartPlateList::store_to_3mf_structure:stored 1 plates!
+[2026-10-24 14:12:46.056876] [0x00006ce8] [info]    thumbnails stage: plate 1's thumbnail data is invalid, check the file  exist or not
+[2026-10-24 14:12:46.056876] [0x00006ce8] [info]    thumbnails stage: plate 1's thumbnail file also not there, need to regenerate
+[2026-10-24 14:12:46.057413] [0x00006ce8] [info]    thumbnails stage: plate 1's no_light_thumbnail_file  also not there, need to regenerate
+[2026-10-24 14:12:46.057413] [0x00006ce8] [info]    thumbnails stage: plate 1's top_file  also not there, need to regenerate
+[2026-10-24 14:12:46.057413] [0x00006ce8] [info]    opengl version 3.3.7
+[2026-10-24 14:12:46.282028] [0x00006ce8] [info]    glfwInit Success.
+
+[2026-10-24 14:12:46.345607] [0x00006ce8] [info]    got opengl version 4.6.0 Compatibility Profile Context 26.10.1.261008, glsl version 4.60, vendor ATI Technologies Inc. , graphics card model AMD Radeon RX 5600 XT
+
+[2026-10-24 14:12:46.346107] [0x00006ce8] [info]    Opengl version >= 30, FrameBuffer normal.
+
+[2026-10-24 14:12:46.439178] [0x00006ce8] [info]    glewInit Sucess.
+
+[2026-10-24 14:12:46.440178] [0x00006ce8] [info]    init_opengl_and_colors finished, gl_valid=1
+[2026-10-24 14:12:46.440178] [0x00006ce8] [info]    plate 1's thumbnail, need to regenerate
+[2026-10-24 14:12:46.440922] [0x00006ce8] [info]    framebuffer_type: Supported
+[2026-10-24 14:12:46.440922] [0x00006ce8] [info]    framebuffer msaa type: X4
+[2026-10-24 14:12:46.440922] [0x00006ce8] [info]    render_thumbnail: plate_idx 0 volumes size 1, shader 000001B8E9915730, use_top_view=0, for_picking=0
+[2026-10-24 14:12:46.441631] [0x00006ce8] [info]    render_thumbnail: finished
+[2026-10-24 14:12:46.461163] [0x00006ce8] [info]    render_thumbnail prepare: w 512, h 512, samples  4, render_fbo 2
+[2026-10-24 14:12:46.461707] [0x00006ce8] [info]    render_thumbnail prepare: finished
+[2026-10-24 14:12:46.462249] [0x00006ce8] [info]    plate 1's thumbnail,finished rendering
+[2026-10-24 14:12:46.462249] [0x00006ce8] [info]    plate 1: add thumbnail data into group
+[2026-10-24 14:12:46.462775] [0x00006ce8] [info]    plate 1's no_light_thumbnail_file missed, need to regenerate
+[2026-10-24 14:12:46.462775] [0x00006ce8] [info]    framebuffer_type: Supported
+[2026-10-24 14:12:46.463274] [0x00006ce8] [info]    framebuffer msaa type: X4
+[2026-10-24 14:12:46.463274] [0x00006ce8] [info]    render_thumbnail: plate_idx 0 volumes size 1, shader 000001B8E9915730, use_top_view=0, for_picking=0
+[2026-10-24 14:12:46.463775] [0x00006ce8] [info]    render_thumbnail: finished
+[2026-10-24 14:12:46.464991] [0x00006ce8] [info]    render_thumbnail prepare: w 512, h 512, samples  4, render_fbo 2
+[2026-10-24 14:12:46.465492] [0x00006ce8] [info]    render_thumbnail prepare: finished
+[2026-10-24 14:12:46.465492] [0x00006ce8] [info]    plate 1's no_light thumbnail,finished rendering
+[2026-10-24 14:12:46.466024] [0x00006ce8] [info]    plate 1: add thumbnail data for no_light into group
+[2026-10-24 14:12:46.466024] [0x00006ce8] [info]    plate 1's top/pick thumbnail missed, need to regenerate, objects count 1, skip_useless_pick 0
+[2026-10-24 14:12:46.466024] [0x00006ce8] [info]    framebuffer_type: Supported
+[2026-10-24 14:12:46.466544] [0x00006ce8] [info]    framebuffer_type: Supported
+[2026-10-24 14:12:46.466544] [0x00006ce8] [info]    framebuffer msaa type: X4
+[2026-10-24 14:12:46.467141] [0x00006ce8] [info]    render_thumbnail: plate_idx 0 volumes size 1, shader 000001B8E9915730, use_top_view=9, for_picking=0
+[2026-10-24 14:12:46.467141] [0x00006ce8] [info]    render_thumbnail: finished
+[2026-10-24 14:12:46.468723] [0x00006ce8] [info]    render_thumbnail prepare: w 512, h 512, samples  4, render_fbo 2
+[2026-10-24 14:12:46.468723] [0x00006ce8] [info]    render_thumbnail prepare: finished
+[2026-10-24 14:12:46.469308] [0x00006ce8] [info]    framebuffer_type: Supported
+[2026-10-24 14:12:46.469308] [0x00006ce8] [info]    render_thumbnail: plate_idx 0 volumes size 1, shader 000001B8E9915730, use_top_view=9, for_picking=1
+[2026-10-24 14:12:46.469308] [0x00006ce8] [info]    render_thumbnail: finished
+[2026-10-24 14:12:46.471723] [0x00006ce8] [info]    render_thumbnail prepare: w 512, h 512, samples  0, render_fbo 1
+[2026-10-24 14:12:46.471723] [0x00006ce8] [info]    render_thumbnail prepare: finished
+[2026-10-24 14:12:46.472290] [0x00006ce8] [info]    plate 1's top_thumbnail,finished rendering
+[2026-10-24 14:12:46.472290] [0x00006ce8] [info]    plate 1: add thumbnail data for top and pick into group
+[2026-10-24 14:12:46.472826] [0x00006ce8] [info]    plate 1 bed type: Textured PEI Plate, set from global
+[2026-10-24 14:12:46.472826] [0x00006ce8] [info]    will export 3mf to C:\Users\Alberto\Documents\tsw_io\docs\mechanical\reviewed-print\sliced/moving-M08-Forked-roller-arm---flat-side-sleeved-pivot-id13.gcode.3mf
+
+[2026-10-24 14:12:46.472826] [0x00006ce8] [info]    Slic3r::_BBS_3MF_Exporter::_save_model_to_file:5893,before open zip writer, m_skip_static 0, m_save_gcode 1, m_use_loaded_id 1
+[2026-10-24 14:12:46.473442] [0x00006ce8] [info]    Slic3r::_BBS_3MF_Exporter::_save_model_to_file:5921, before add _add_content_types_file_to_archive
+
+[2026-10-24 14:12:46.474072] [0x00006ce8] [info]    Slic3r::_BBS_3MF_Exporter::_save_model_to_file:5935,before add thumbnails, count 1
+[2026-10-24 14:12:46.474072] [0x00006ce8] [info]    Slic3r::_BBS_3MF_Exporter::_save_model_to_file:5936,top&&pick thumbnails, count 1
+[2026-10-24 14:12:46.485871] [0x00006ce8] [info]    Slic3r::_BBS_3MF_Exporter::_save_model_to_file:5985,add thumbnail 1's data into 3mf
+[2026-10-24 14:12:46.491231] [0x00006ce8] [info]    Slic3r::_BBS_3MF_Exporter::_save_model_to_file:5996,add no light thumbnail 1's data into 3mf
+[2026-10-24 14:12:46.491231] [0x00006ce8] [info]    Slic3r::_BBS_3MF_Exporter::_save_model_to_file:6005,add top thumbnail 1's data into 3mf
+[2026-10-24 14:12:46.494960] [0x00006ce8] [info]    Slic3r::_BBS_3MF_Exporter::_save_model_to_file:6014,add pick thumbnail 1's data into 3mf
+[2026-10-24 14:12:46.497782] [0x00006ce8] [info]    Slic3r::_BBS_3MF_Exporter::_save_model_to_file:6074,before add calibration thumbnails, count 0
+
+[2026-10-24 14:12:46.498282] [0x00006ce8] [info]    Slic3r::_BBS_3MF_Exporter::_save_model_to_file:6096,before add calibration boundingbox, count 1
+
+[2026-10-24 14:12:46.498282] [0x00006ce8] [info]    Slic3r::_BBS_3MF_Exporter::_save_model_to_file:6112, before add models
+
+[2026-10-24 14:12:46.498782] [0x00006ce8] [info]    Slic3r::_BBS_3MF_Exporter::_add_model_file_to_archive:6585, filename moving-M08-Forked-roller-arm---flat-side-sleeved-pivot-id13.gcode.3mf.tmp, m_split_model 1,  sub_model 0
+[2026-10-24 14:12:46.498782] [0x00006ce8] [info]    bbs_3mf: save key= Application, value = BambuStudio-02.04.00.70
+[2026-10-24 14:12:46.498782] [0x00006ce8] [info]    bbs_3mf: save key= BambuStudio:3mfVersion, value = 1
+[2026-10-24 14:12:46.499282] [0x00006ce8] [info]    bbs_3mf: save key= Copyright, value = 
+[2026-10-24 14:12:46.499282] [0x00006ce8] [info]    bbs_3mf: save key= CreationDate, value = 2026-10-24
+[2026-10-24 14:12:46.502783] [0x00006ce8] [info]    bbs_3mf: save key= Description, value = 
+[2026-10-24 14:12:46.503783] [0x00006ce8] [info]    bbs_3mf: save key= Designer, value = 
+[2026-10-24 14:12:46.504783] [0x00006ce8] [info]    bbs_3mf: save key= DesignerCover, value = 
+[2026-10-24 14:12:46.506284] [0x00006ce8] [info]    bbs_3mf: save key= DesignerUserId, value = 
+[2026-10-24 14:12:46.506784] [0x00006ce8] [info]    bbs_3mf: save key= License, value = 
+[2026-10-24 14:12:46.508783] [0x00006ce8] [info]    bbs_3mf: save key= ModificationDate, value = 2026-10-24
+[2026-10-24 14:12:46.509284] [0x00006ce8] [info]    bbs_3mf: save key= Origin, value = 
+[2026-10-24 14:12:46.509784] [0x00006ce8] [info]    bbs_3mf: save key= ProfileCover, value = 
+[2026-10-24 14:12:46.510784] [0x00006ce8] [info]    bbs_3mf: save key= ProfileDescription, value = 
+[2026-10-24 14:12:46.510784] [0x00006ce8] [info]    bbs_3mf: save key= ProfileTitle, value = 
+[2026-10-24 14:12:46.510784] [0x00006ce8] [info]    bbs_3mf: save key= Title, value = 
+[2026-10-24 14:12:46.511284] [0x00006ce8] [info]    Slic3r::_BBS_3MF_Exporter::_add_model_file_to_archive:6585, filename object_1.model, m_split_model 1,  sub_model 1
+[2026-10-24 14:12:46.511284] [0x00006ce8] [info]    bbs_3mf: save key= BambuStudio:3mfVersion, value = 1
+[2026-10-24 14:12:46.520286] [0x00006ce8] [info]    Slic3r::_BBS_3MF_Exporter::_save_model_to_file:6175, before add custom gcodes
+
+[2026-10-24 14:12:46.520786] [0x00006ce8] [info]    Slic3r::_BBS_3MF_Exporter::_save_model_to_file:6186, before add project_settings
+
+[2026-10-24 14:12:46.522286] [0x00006ce8] [info]    model 000001B8E8896170, id 3, backup_path empty, set to 14_12_46#23504#3
+[2026-10-24 14:12:46.522286] [0x00006ce8] [info]    create /3D/Objects in 14_12_46#23504#3
+[2026-10-24 14:12:46.523786] [0x00006ce8] [info]    create /Metadata in 14_12_46#23504#3
+[2026-10-24 14:12:46.524287] [0x00006ce8] [info]    create /lock.txt in 14_12_46#23504#3
+[2026-10-24 14:12:46.575687] [0x00006ce8] [info]    Slic3r::ConfigBase::save_to_json:1485, saved config to _temp_1.config
+
+[2026-10-24 14:12:46.587099] [0x00006ce8] [info]    Slic3r::_BBS_3MF_Exporter::_add_file_to_archive:6360, add file _temp_1.config to archive Metadata/project_settings.config
+
+[2026-10-24 14:12:46.587769] [0x00006ce8] [info]    Slic3r::_BBS_3MF_Exporter::_save_model_to_file:6201, before add project embedded settings
+
+[2026-10-24 14:12:46.620091] [0x00006ce8] [info]    Slic3r::_BBS_3MF_Exporter::_add_gcode_file_to_archive::<lambda_f13c6ef83f2f8090da22bd4ae960e761>::operator ():8246, store  plate_1.gcode to 3mf plate_1.gcode
+
+[2026-10-24 14:12:46.620620] [0x00006ce8] [info]    Slic3r::_BBS_3MF_Exporter::_save_model_to_file:6276, before add sliced info to 3mf
+
+[2026-10-24 14:12:46.620620] [0x00006ce8] [info]    Slic3r::_BBS_3MF_Exporter::_save_model_to_file:6296, before add auxiliary dir to 3mf
+
+[2026-10-24 14:12:46.621160] [0x00006ce8] [info]    create missing sub_pathAuxiliaries
+[2026-10-24 14:12:46.622660] [0x00006ce8] [info]    Slic3r::_BBS_3MF_Exporter::_save_model_to_file:6309, before add relation file to 3mf
+
+[2026-10-24 14:12:46.622660] [0x00006ce8] [info]    Slic3r::_BBS_3MF_Exporter::_save_model_to_file:6331, finished exporting 3mf
+
+[2026-10-24 14:12:46.623660] [0x00006ce8] [info]    Project exported to C:\Users\Alberto\Documents\tsw_io\docs\mechanical\reviewed-print\sliced/moving-M08-Forked-roller-arm---flat-side-sleeved-pivot-id13.gcode.3mf
+
+[2026-10-24 14:12:46.624664] [0x00006ce8] [info]    Slic3r::Model::remove_backup_path_if_existmodel 000001B8E8896170, id 3 remove backup_path 14_12_46#23504#3
+[2026-10-24 14:12:46.641465] [0x00006ce8] [info]    Slic3r::CLI::run, Finished
+
+[2026-10-24 14:12:46.641465] [0x00006ce8] [info]    record_exit_reson:535 Slicer_Info_Report: plate_id=0, return_code=0, error_message=Success., slice_time_s=0.45, pring_time_s=1210.35, filament_usage_g=7.07459
+
+[2026-10-24 14:12:46.641465] [0x00006ce8] [info]    Slic3r::GUI::PartPlate::update_slice_result_valid_state: plate 0 , update slice result from 1 to 0
+[2026-10-24 14:12:46.642452] [0x00006ce8] [info]    Slic3r::GUI::PartPlate::update_slice_result_valid_state: plate 0 , update slice result from 0 to 0
+[2026-10-24 14:12:46.642452] [0x00006ce8] [info]    Slic3r::PrintObject::~PrintObject: this=000001B8E7B80FC0, m_shared_object 0000000000000000
+[2026-10-24 14:12:46.647150] [0x00006ce8] [info]    Slic3r::GUI::PartPlate::update_slice_result_valid_state: plate 1 , update slice result from 0 to 0
+[2026-10-24 14:12:46.647150] [0x00006ce8] [info]    Slic3r::GUI::PartPlate::update_slice_result_valid_state: plate 1 , update slice result from 0 to 0

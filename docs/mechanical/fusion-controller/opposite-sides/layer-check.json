@@ -1,0 +1,468 @@
+[
+  {
+    "file": "G01R-48T-gear-with-upper-clamp.gcode.3mf",
+    "layers_with_extrusion": 40,
+    "max_z": 8.0,
+    "support_segments": 0,
+    "max_bridge_segment_mm": 56.2687292197007,
+    "bridge_layers": [
+      1.2,
+      1.6,
+      5.8,
+      6.2,
+      7.2
+    ],
+    "enable_support": "0",
+    "printer_ready": false
+  },
+  {
+    "file": "G02-24T-sensor-pinion.gcode.3mf",
+    "layers_with_extrusion": 40,
+    "max_z": 8.0,
+    "support_segments": 0,
+    "max_bridge_segment_mm": 21.87777685232208,
+    "bridge_layers": [
+      1.2,
+      1.6,
+      5.8,
+      6.2,
+      7.2
+    ],
+    "enable_support": "0",
+    "printer_ready": false
+  },
+  {
+    "file": "G03S-Compact-adjustable-pot-panel.gcode.3mf",
+    "layers_with_extrusion": 15,
+    "max_z": 3.0,
+    "support_segments": 0,
+    "max_bridge_segment_mm": 38.26366925688126,
+    "bridge_layers": [
+      2.2
+    ],
+    "enable_support": "0",
+    "printer_ready": false
+  },
+  {
+    "file": "P01S-Continuous-left-structural-plate.gcode.3mf",
+    "layers_with_extrusion": 108,
+    "max_z": 21.6,
+    "support_segments": 0,
+    "max_bridge_segment_mm": 151.68713248657582,
+    "bridge_layers": [
+      2.6,
+      5.4,
+      8.2,
+      9.2,
+      10.0,
+      11.2,
+      14.0
+    ],
+    "enable_support": "0",
+    "printer_ready": false
+  },
+  {
+    "file": "P02S-Continuous-right-sensor-plate.gcode.3mf",
+    "layers_with_extrusion": 60,
+    "max_z": 12.0,
+    "support_segments": 0,
+    "max_bridge_segment_mm": 115.7279242361151,
+    "bridge_layers": [
+      2.6,
+      9.2,
+      10.0,
+      11.2
+    ],
+    "enable_support": "0",
+    "printer_ready": false
+  },
+  {
+    "file": "P03-Left-flanged-journal-bush.gcode.3mf",
+    "layers_with_extrusion": 65,
+    "max_z": 13.0,
+    "support_segments": 0,
+    "max_bridge_segment_mm": 0,
+    "bridge_layers": [],
+    "enable_support": "0",
+    "printer_ready": false
+  },
+  {
+    "file": "P04-Right-flanged-journal-bush.gcode.3mf",
+    "layers_with_extrusion": 66,
+    "max_z": 13.2,
+    "support_segments": 0,
+    "max_bridge_segment_mm": 0,
+    "bridge_layers": [],
+    "enable_support": "0",
+    "printer_ready": false
+  },
+  {
+    "file": "P05S-Shaft-lower-half.gcode.3mf",
+    "layers_with_extrusion": 40,
+    "max_z": 8.0,
+    "support_segments": 0,
+    "max_bridge_segment_mm": 16.171566312512827,
+    "bridge_layers": [
+      1.8,
+      2.2,
+      5.0,
+      7.0
+    ],
+    "enable_support": "0",
+    "printer_ready": false
+  },
+  {
+    "file": "P05S-Shaft-upper-half.gcode.3mf",
+    "layers_with_extrusion": 32,
+    "max_z": 6.4,
+    "support_segments": 0,
+    "max_bridge_segment_mm": 16.04804592466012,
+    "bridge_layers": [
+      1.8,
+      2.2,
+      2.4,
+      2.8,
+      4.0,
+      5.0,
+      5.6
+    ],
+    "enable_support": "0",
+    "printer_ready": false
+  },
+  {
+    "file": "P06-Shaft-retaining-cap.gcode.3mf",
+    "layers_with_extrusion": 10,
+    "max_z": 2.0,
+    "support_segments": 0,
+    "max_bridge_segment_mm": 17.41745423418704,
+    "bridge_layers": [
+      1.2
+    ],
+    "enable_support": "0",
+    "printer_ready": false
+  },
+  {
+    "file": "P07S-Planar-lever-rotor-with-lower-stop-lug.gcode.3mf",
+    "layers_with_extrusion": 70,
+    "max_z": 14.0,
+    "support_segments": 0,
+    "max_bridge_segment_mm": 43.89153212181138,
+    "bridge_layers": [
+      4.2,
+      4.6,
+      9.6,
+      10.0,
+      13.2
+    ],
+    "enable_support": "0",
+    "printer_ready": false
+  },
+  {
+    "file": "P08-Cam-3-gates---116-degree-span.gcode.3mf",
+    "layers_with_extrusion": 40,
+    "max_z": 8.0,
+    "support_segments": 0,
+    "max_bridge_segment_mm": 49.293120828367115,
+    "bridge_layers": [
+      4.2,
+      7.2
+    ],
+    "enable_support": "0",
+    "printer_ready": false
+  },
+  {
+    "file": "P08-Cam-5-gates---116-degree-span.gcode.3mf",
+    "layers_with_extrusion": 40,
+    "max_z": 8.0,
+    "support_segments": 0,
+    "max_bridge_segment_mm": 49.83830015159024,
+    "bridge_layers": [
+      4.2,
+      7.2
+    ],
+    "enable_support": "0",
+    "printer_ready": false
+  },
+  {
+    "file": "P08-Cam-7-gates---116-degree-span.gcode.3mf",
+    "layers_with_extrusion": 40,
+    "max_z": 8.0,
+    "support_segments": 0,
+    "max_bridge_segment_mm": 50.16922612518553,
+    "bridge_layers": [
+      4.2,
+      7.2
+    ],
+    "enable_support": "0",
+    "printer_ready": false
+  },
+  {
+    "file": "P08-Cam-8-gates---116-degree-span.gcode.3mf",
+    "layers_with_extrusion": 40,
+    "max_z": 8.0,
+    "support_segments": 0,
+    "max_bridge_segment_mm": 49.17220556371252,
+    "bridge_layers": [
+      4.2,
+      7.2
+    ],
+    "enable_support": "0",
+    "printer_ready": false
+  },
+  {
+    "file": "P09-Grip-insert-half.gcode.3mf",
+    "layers_with_extrusion": 300,
+    "max_z": 60.0,
+    "support_segments": 0,
+    "max_bridge_segment_mm": 10.981368311827074,
+    "bridge_layers": [
+      12.2,
+      17.2,
+      22.2,
+      27.2,
+      58.0,
+      58.6
+    ],
+    "enable_support": "0",
+    "printer_ready": false
+  },
+  {
+    "file": "P10-Grip-screw-half.gcode.3mf",
+    "layers_with_extrusion": 300,
+    "max_z": 60.0,
+    "support_segments": 0,
+    "max_bridge_segment_mm": 12.533467716478135,
+    "bridge_layers": [
+      11.2,
+      19.6,
+      21.2,
+      29.6,
+      58.0,
+      58.6
+    ],
+    "enable_support": "0",
+    "printer_ready": false
+  },
+  {
+    "file": "P11-Forked-roller-follower.gcode.3mf",
+    "layers_with_extrusion": 70,
+    "max_z": 14.0,
+    "support_segments": 0,
+    "max_bridge_segment_mm": 16.257799113041102,
+    "bridge_layers": [
+      3.2,
+      8.6,
+      9.0,
+      9.2,
+      11.2,
+      12.0
+    ],
+    "enable_support": "0",
+    "printer_ready": false
+  },
+  {
+    "file": "P13-Outboard-spring-reaction-block.gcode.3mf",
+    "layers_with_extrusion": 105,
+    "max_z": 21.0,
+    "support_segments": 0,
+    "max_bridge_segment_mm": 18.220020444554926,
+    "bridge_layers": [
+      4.2,
+      7.2,
+      13.0,
+      13.4,
+      20.2
+    ],
+    "enable_support": "0",
+    "printer_ready": false
+  },
+  {
+    "file": "P14-Captive-spring-cup-for-9-mm-spring.gcode.3mf",
+    "layers_with_extrusion": 40,
+    "max_z": 8.0,
+    "support_segments": 0,
+    "max_bridge_segment_mm": 14.508416936385583,
+    "bridge_layers": [
+      1.2,
+      7.2
+    ],
+    "enable_support": "0",
+    "printer_ready": false
+  },
+  {
+    "file": "P15-Recessed-preload-limit-collar-1-mm.gcode.3mf",
+    "layers_with_extrusion": 5,
+    "max_z": 1.0,
+    "support_segments": 0,
+    "max_bridge_segment_mm": 0,
+    "bridge_layers": [],
+    "enable_support": "0",
+    "printer_ready": false
+  },
+  {
+    "file": "P21-Follower-inner-thrust-spacer.gcode.3mf",
+    "layers_with_extrusion": 24,
+    "max_z": 4.8,
+    "support_segments": 0,
+    "max_bridge_segment_mm": 0,
+    "bridge_layers": [],
+    "enable_support": "0",
+    "printer_ready": false
+  },
+  {
+    "file": "P23-Rotor-thrust-spacer.gcode.3mf",
+    "layers_with_extrusion": 24,
+    "max_z": 4.8,
+    "support_segments": 0,
+    "max_bridge_segment_mm": 0,
+    "bridge_layers": [],
+    "enable_support": "0",
+    "printer_ready": false
+  },
+  {
+    "file": "P24-Rotor-thrust-spacer.gcode.3mf",
+    "layers_with_extrusion": 24,
+    "max_z": 4.8,
+    "support_segments": 0,
+    "max_bridge_segment_mm": 0,
+    "bridge_layers": [],
+    "enable_support": "0",
+    "printer_ready": false
+  },
+  {
+    "file": "P25-Captured-follower-axle-lower-half.gcode.3mf",
+    "layers_with_extrusion": 20,
+    "max_z": 4.0,
+    "support_segments": 0,
+    "max_bridge_segment_mm": 0,
+    "bridge_layers": [],
+    "enable_support": "0",
+    "printer_ready": false
+  },
+  {
+    "file": "P26-Captured-follower-axle-upper-half.gcode.3mf",
+    "layers_with_extrusion": 20,
+    "max_z": 4.0,
+    "support_segments": 0,
+    "max_bridge_segment_mm": 0,
+    "bridge_layers": [],
+    "enable_support": "0",
+    "printer_ready": false
+  },
+  {
+    "file": "P27-Printed-guide-sleeve-20.gcode.3mf",
+    "layers_with_extrusion": 30,
+    "max_z": 6.0,
+    "support_segments": 0,
+    "max_bridge_segment_mm": 0,
+    "bridge_layers": [],
+    "enable_support": "0",
+    "printer_ready": false
+  },
+  {
+    "file": "P27-Printed-guide-sleeve-4.gcode.3mf",
+    "layers_with_extrusion": 30,
+    "max_z": 6.0,
+    "support_segments": 0,
+    "max_bridge_segment_mm": 0,
+    "bridge_layers": [],
+    "enable_support": "0",
+    "printer_ready": false
+  },
+  {
+    "file": "P28-Shaft-alignment-key.gcode.3mf",
+    "layers_with_extrusion": 15,
+    "max_z": 3.0,
+    "support_segments": 0,
+    "max_bridge_segment_mm": 0,
+    "bridge_layers": [],
+    "enable_support": "0",
+    "printer_ready": false
+  },
+  {
+    "file": "P30-Crossbrace--60.gcode.3mf",
+    "layers_with_extrusion": 120,
+    "max_z": 24.0,
+    "support_segments": 0,
+    "max_bridge_segment_mm": 19.878892952073553,
+    "bridge_layers": [
+      8.8,
+      14.8,
+      23.2
+    ],
+    "enable_support": "0",
+    "printer_ready": false
+  },
+  {
+    "file": "P30-Crossbrace-60.gcode.3mf",
+    "layers_with_extrusion": 120,
+    "max_z": 24.0,
+    "support_segments": 0,
+    "max_bridge_segment_mm": 19.878892952073553,
+    "bridge_layers": [
+      8.8,
+      14.8,
+      23.2
+    ],
+    "enable_support": "0",
+    "printer_ready": false
+  },
+  {
+    "file": "P31-Positively-located-stop--1.gcode.3mf",
+    "layers_with_extrusion": 85,
+    "max_z": 17.0,
+    "support_segments": 0,
+    "max_bridge_segment_mm": 16.155268645243886,
+    "bridge_layers": [
+      2.8,
+      11.2
+    ],
+    "enable_support": "0",
+    "printer_ready": false
+  },
+  {
+    "file": "P31-Positively-located-stop-1.gcode.3mf",
+    "layers_with_extrusion": 85,
+    "max_z": 17.0,
+    "support_segments": 0,
+    "max_bridge_segment_mm": 16.155268645243886,
+    "bridge_layers": [
+      2.8,
+      11.2
+    ],
+    "enable_support": "0",
+    "printer_ready": false
+  },
+  {
+    "file": "P32-External-keyed-cam-carrier.gcode.3mf",
+    "layers_with_extrusion": 63,
+    "max_z": 12.6,
+    "support_segments": 0,
+    "max_bridge_segment_mm": 43.215538038997046,
+    "bridge_layers": [
+      4.2,
+      6.8,
+      9.6,
+      10.0,
+      10.8,
+      11.8
+    ],
+    "enable_support": "0",
+    "printer_ready": false
+  },
+  {
+    "file": "P33-Integral-follower-support-cassette.gcode.3mf",
+    "layers_with_extrusion": 79,
+    "max_z": 15.8,
+    "support_segments": 0,
+    "max_bridge_segment_mm": 41.378474621474396,
+    "bridge_layers": [
+      1.2,
+      2.2,
+      3.2,
+      15.0
+    ],
+    "enable_support": "0",
+    "printer_ready": false
+  }
+]

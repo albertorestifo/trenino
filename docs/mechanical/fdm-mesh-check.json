@@ -1,0 +1,137 @@
+[
+  {
+    "file": "Cam Detent \u2014 FDM print layout - 01 \u2014 Roller \u2014 print end face down.stl",
+    "triangles": 464,
+    "connected_components": 1,
+    "nonmanifold_edges": 0,
+    "inconsistent_edge_winding": 0,
+    "bounds_mm": [
+      [
+        90.0,
+        175.00732,
+        0.0
+      ],
+      [
+        100.0,
+        184.99268,
+        10.0
+      ]
+    ],
+    "size_mm": [
+      10.0,
+      9.98536,
+      10.0
+    ],
+    "volume_mm3": 693.248,
+    "bottom_on_bed": true,
+    "inside_p2s_envelope": true
+  },
+  {
+    "file": "Cam Detent \u2014 FDM print layout - 02 \u2014 Hub \u2014 flat carrier underside down.stl",
+    "triangles": 3524,
+    "connected_components": 1,
+    "nonmanifold_edges": 0,
+    "inconsistent_edge_winding": 0,
+    "bounds_mm": [
+      [
+        110.02345,
+        100.0066,
+        0.0
+      ],
+      [
+        165.97655,
+        166.99561,
+        21.0
+      ]
+    ],
+    "size_mm": [
+      55.9531,
+      66.98901,
+      21.0
+    ],
+    "volume_mm3": 18208.534,
+    "bottom_on_bed": true,
+    "inside_p2s_envelope": true
+  },
+  {
+    "file": "Cam Detent \u2014 FDM print layout - 03 \u2014 Cam \u2014 flat underside down.stl",
+    "triangles": 2380,
+    "connected_components": 1,
+    "nonmanifold_edges": 0,
+    "inconsistent_edge_winding": 0,
+    "bounds_mm": [
+      [
+        10.0,
+        100.00271,
+        0.0
+      ],
+      [
+        93.72544,
+        137.76012,
+        8.0
+      ]
+    ],
+    "size_mm": [
+      83.72544,
+      37.75741,
+      8.0
+    ],
+    "volume_mm3": 13910.146,
+    "bottom_on_bed": true,
+    "inside_p2s_envelope": true
+  },
+  {
+    "file": "Cam Detent \u2014 FDM print layout - 04 \u2014 Fork \u2014 long flat side down \u2014 bore supports.stl",
+    "triangles": 1440,
+    "connected_components": 1,
+    "nonmanifold_edges": 0,
+    "inconsistent_edge_winding": 0,
+    "bounds_mm": [
+      [
+        10.0,
+        175.0,
+        0.0
+      ],
+      [
+        71.99413,
+        193.0,
+        8.0
+      ]
+    ],
+    "size_mm": [
+      61.99413,
+      18.0,
+      8.0
+    ],
+    "volume_mm3": 3488.358,
+    "bottom_on_bed": true,
+    "inside_p2s_envelope": true
+  },
+  {
+    "file": "Cam Detent \u2014 FDM print layout - 05 \u2014 Bracket \u2014 mounting face down \u2014 supports required.stl",
+    "triangles": 1828,
+    "connected_components": 1,
+    "nonmanifold_edges": 0,
+    "inconsistent_edge_winding": 0,
+    "bounds_mm": [
+      [
+        10.0,
+        10.0,
+        0.0
+      ],
+      [
+        140.5834,
+        74.5,
+        80.0
+      ]
+    ],
+    "size_mm": [
+      130.5834,
+      64.5,
+      80.0
+    ],
+    "volume_mm3": 29084.596,
+    "bottom_on_bed": true,
+    "inside_p2s_envelope": true
+  }
+]

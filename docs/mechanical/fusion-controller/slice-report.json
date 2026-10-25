@@ -1,0 +1,486 @@
+[
+  {
+    "Part": "P01-Left-rail-sideplate.stl",
+    "Supports": true,
+    "ExitCode": 0,
+    "Success": true,
+    "Output": "C:\\Users\\Alberto\\Documents\\tsw_io\\docs\\mechanical\\fusion-controller\\sliced\\P01-Left-rail-sideplate.gcode.3mf",
+    "OutputBytes": 2332044,
+    "Issues": [
+      "[2026-10-24 15:24:11.441444] [0x00005df0] [warning] cli mode, Current BambuStudio Version 02.04.00.70",
+      "[2026-10-24 15:24:11.452870] [0x00005df0] [error]   3198: nozzle_volume_type not found, when different_extruder or multiple extruder, new_printer_name Bambu Lab P2S 0.4 nozzle, extruder_count 1",
+      "[2026-10-24 15:24:11.453387] [0x00005df0] [warning] no filament colors found in projects",
+      "[2026-10-24 15:24:13.513587] [0x00005df0] [error]   Invalid T command (T65535).",
+      "[2026-10-24 15:24:14.697078] [0x00005df0] [info]    record_exit_reson:535 Slicer_Info_Report: plate_id=0, return_code=0, error_message=Success., slice_time_s=2.304, pring_time_s=9288.51, filament_usage_g=82.4483"
+    ],
+    "StdoutLog": "C:\\Users\\Alberto\\Documents\\tsw_io\\docs\\mechanical\\fusion-controller\\sliced\\P01-Left-rail-sideplate.stdout.log",
+    "StderrLog": "C:\\Users\\Alberto\\Documents\\tsw_io\\docs\\mechanical\\fusion-controller\\sliced\\P01-Left-rail-sideplate.stderr.log"
+  },
+  {
+    "Part": "P02-Right-rail-sideplate.stl",
+    "Supports": true,
+    "ExitCode": 0,
+    "Success": true,
+    "Output": "C:\\Users\\Alberto\\Documents\\tsw_io\\docs\\mechanical\\fusion-controller\\sliced\\P02-Right-rail-sideplate.gcode.3mf",
+    "OutputBytes": 2067390,
+    "Issues": [
+      "[2026-10-24 15:24:15.088346] [0x00006f08] [warning] cli mode, Current BambuStudio Version 02.04.00.70",
+      "[2026-10-24 15:24:15.101220] [0x00006f08] [error]   3198: nozzle_volume_type not found, when different_extruder or multiple extruder, new_printer_name Bambu Lab P2S 0.4 nozzle, extruder_count 1",
+      "[2026-10-24 15:24:15.101734] [0x00006f08] [warning] no filament colors found in projects",
+      "[2026-10-24 15:24:16.919889] [0x00006f08] [error]   Invalid T command (T65535).",
+      "[2026-10-24 15:24:18.009798] [0x00006f08] [info]    record_exit_reson:535 Slicer_Info_Report: plate_id=0, return_code=0, error_message=Success., slice_time_s=1.998, pring_time_s=8338.27, filament_usage_g=78.5762"
+    ],
+    "StdoutLog": "C:\\Users\\Alberto\\Documents\\tsw_io\\docs\\mechanical\\fusion-controller\\sliced\\P02-Right-rail-sideplate.stdout.log",
+    "StderrLog": "C:\\Users\\Alberto\\Documents\\tsw_io\\docs\\mechanical\\fusion-controller\\sliced\\P02-Right-rail-sideplate.stderr.log"
+  },
+  {
+    "Part": "P03-Left-flanged-journal-bush.stl",
+    "Supports": false,
+    "ExitCode": 0,
+    "Success": true,
+    "Output": "C:\\Users\\Alberto\\Documents\\tsw_io\\docs\\mechanical\\fusion-controller\\sliced\\P03-Left-flanged-journal-bush.gcode.3mf",
+    "OutputBytes": 115975,
+    "Issues": [
+      "[2026-10-24 15:24:18.363537] [0x000040ac] [warning] cli mode, Current BambuStudio Version 02.04.00.70",
+      "[2026-10-24 15:24:18.383197] [0x000040ac] [error]   3198: nozzle_volume_type not found, when different_extruder or multiple extruder, new_printer_name Bambu Lab P2S 0.4 nozzle, extruder_count 1",
+      "[2026-10-24 15:24:18.383697] [0x000040ac] [warning] no filament colors found in projects",
+      "[2026-10-24 15:24:18.569249] [0x000040ac] [warning] tree support default to organic support",
+      "[2026-10-24 15:24:18.979291] [0x000040ac] [error]   Invalid T command (T65535).",
+      "[2026-10-24 15:24:19.468071] [0x000040ac] [info]    record_exit_reson:535 Slicer_Info_Report: plate_id=0, return_code=0, error_message=Success., slice_time_s=0.593, pring_time_s=830.708, filament_usage_g=3.59209"
+    ],
+    "StdoutLog": "C:\\Users\\Alberto\\Documents\\tsw_io\\docs\\mechanical\\fusion-controller\\sliced\\P03-Left-flanged-journal-bush.stdout.log",
+    "StderrLog": "C:\\Users\\Alberto\\Documents\\tsw_io\\docs\\mechanical\\fusion-controller\\sliced\\P03-Left-flanged-journal-bush.stderr.log"
+  },
+  {
+    "Part": "P04-Right-flanged-journal-bush.stl",
+    "Supports": false,
+    "ExitCode": 0,
+    "Success": true,
+    "Output": "C:\\Users\\Alberto\\Documents\\tsw_io\\docs\\mechanical\\fusion-controller\\sliced\\P04-Right-flanged-journal-bush.gcode.3mf",
+    "OutputBytes": 121942,
+    "Issues": [
+      "[2026-10-24 15:24:19.715239] [0x0000149c] [warning] cli mode, Current BambuStudio Version 02.04.00.70",
+      "[2026-10-24 15:24:19.729766] [0x0000149c] [error]   3198: nozzle_volume_type not found, when different_extruder or multiple extruder, new_printer_name Bambu Lab P2S 0.4 nozzle, extruder_count 1",
+      "[2026-10-24 15:24:19.730285] [0x0000149c] [warning] no filament colors found in projects",
+      "[2026-10-24 15:24:19.892017] [0x0000149c] [warning] tree support default to organic support",
+      "[2026-10-24 15:24:20.297611] [0x0000149c] [error]   Invalid T command (T65535).",
+      "[2026-10-24 15:24:20.810182] [0x0000149c] [info]    record_exit_reson:535 Slicer_Info_Report: plate_id=0, return_code=0, error_message=Success., slice_time_s=0.579, pring_time_s=833.813, filament_usage_g=3.5921"
+    ],
+    "StdoutLog": "C:\\Users\\Alberto\\Documents\\tsw_io\\docs\\mechanical\\fusion-controller\\sliced\\P04-Right-flanged-journal-bush.stdout.log",
+    "StderrLog": "C:\\Users\\Alberto\\Documents\\tsw_io\\docs\\mechanical\\fusion-controller\\sliced\\P04-Right-flanged-journal-bush.stderr.log"
+  },
+  {
+    "Part": "P05-Printed-main-shaft---horizontal-print.stl",
+    "Supports": true,
+    "ExitCode": 0,
+    "Success": true,
+    "Output": "C:\\Users\\Alberto\\Documents\\tsw_io\\docs\\mechanical\\fusion-controller\\sliced\\P05-Printed-main-shaft---horizontal-print.gcode.3mf",
+    "OutputBytes": 349535,
+    "Issues": [
+      "[2026-10-24 15:24:21.092871] [0x00002430] [warning] cli mode, Current BambuStudio Version 02.04.00.70",
+      "[2026-10-24 15:24:21.105232] [0x00002430] [error]   3198: nozzle_volume_type not found, when different_extruder or multiple extruder, new_printer_name Bambu Lab P2S 0.4 nozzle, extruder_count 1",
+      "[2026-10-24 15:24:21.105781] [0x00002430] [warning] no filament colors found in projects",
+      "[2026-10-24 15:24:21.496712] [0x00002430] [error]   Invalid T command (T65535).",
+      "[2026-10-24 15:24:22.060025] [0x00002430] [info]    record_exit_reson:535 Slicer_Info_Report: plate_id=0, return_code=0, error_message=Success., slice_time_s=0.425, pring_time_s=1831.34, filament_usage_g=11.8218"
+    ],
+    "StdoutLog": "C:\\Users\\Alberto\\Documents\\tsw_io\\docs\\mechanical\\fusion-controller\\sliced\\P05-Printed-main-shaft---horizontal-print.stdout.log",
+    "StderrLog": "C:\\Users\\Alberto\\Documents\\tsw_io\\docs\\mechanical\\fusion-controller\\sliced\\P05-Printed-main-shaft---horizontal-print.stderr.log"
+  },
+  {
+    "Part": "P06-Shaft-retaining-cap.stl",
+    "Supports": false,
+    "ExitCode": 0,
+    "Success": true,
+    "Output": "C:\\Users\\Alberto\\Documents\\tsw_io\\docs\\mechanical\\fusion-controller\\sliced\\P06-Shaft-retaining-cap.gcode.3mf",
+    "OutputBytes": 74847,
+    "Issues": [
+      "[2026-10-24 15:24:22.331023] [0x00006774] [warning] cli mode, Current BambuStudio Version 02.04.00.70",
+      "[2026-10-24 15:24:22.345667] [0x00006774] [error]   3198: nozzle_volume_type not found, when different_extruder or multiple extruder, new_printer_name Bambu Lab P2S 0.4 nozzle, extruder_count 1",
+      "[2026-10-24 15:24:22.346175] [0x00006774] [warning] no filament colors found in projects",
+      "[2026-10-24 15:24:22.408235] [0x00006774] [warning] tree support default to organic support",
+      "[2026-10-24 15:24:22.515861] [0x00006774] [error]   Invalid T command (T65535).",
+      "[2026-10-24 15:24:23.010312] [0x00006774] [info]    record_exit_reson:535 Slicer_Info_Report: plate_id=0, return_code=0, error_message=Success., slice_time_s=0.176, pring_time_s=568.405, filament_usage_g=0.746357"
+    ],
+    "StdoutLog": "C:\\Users\\Alberto\\Documents\\tsw_io\\docs\\mechanical\\fusion-controller\\sliced\\P06-Shaft-retaining-cap.stdout.log",
+    "StderrLog": "C:\\Users\\Alberto\\Documents\\tsw_io\\docs\\mechanical\\fusion-controller\\sliced\\P06-Shaft-retaining-cap.stderr.log"
+  },
+  {
+    "Part": "P07-Integral-lever-rotor-and-cam-carrier.stl",
+    "Supports": false,
+    "ExitCode": 0,
+    "Success": true,
+    "Output": "C:\\Users\\Alberto\\Documents\\tsw_io\\docs\\mechanical\\fusion-controller\\sliced\\P07-Integral-lever-rotor-and-cam-carrier.gcode.3mf",
+    "OutputBytes": 1670242,
+    "Issues": [
+      "[2026-10-24 15:24:23.293526] [0x00002f4c] [warning] cli mode, Current BambuStudio Version 02.04.00.70",
+      "[2026-10-24 15:24:23.304523] [0x00002f4c] [error]   3198: nozzle_volume_type not found, when different_extruder or multiple extruder, new_printer_name Bambu Lab P2S 0.4 nozzle, extruder_count 1",
+      "[2026-10-24 15:24:23.304523] [0x00002f4c] [warning] no filament colors found in projects",
+      "[2026-10-24 15:24:23.856511] [0x00002f4c] [warning] tree support default to organic support",
+      "[2026-10-24 15:24:24.356270] [0x00002f4c] [error]   Invalid T command (T65535).",
+      "[2026-10-24 15:24:25.343010] [0x00002f4c] [info]    record_exit_reson:535 Slicer_Info_Report: plate_id=0, return_code=0, error_message=Success., slice_time_s=1.178, pring_time_s=5320.97, filament_usage_g=46.8097"
+    ],
+    "StdoutLog": "C:\\Users\\Alberto\\Documents\\tsw_io\\docs\\mechanical\\fusion-controller\\sliced\\P07-Integral-lever-rotor-and-cam-carrier.stdout.log",
+    "StderrLog": "C:\\Users\\Alberto\\Documents\\tsw_io\\docs\\mechanical\\fusion-controller\\sliced\\P07-Integral-lever-rotor-and-cam-carrier.stderr.log"
+  },
+  {
+    "Part": "P08-Cam-3-gates---stable-endpoints.stl",
+    "Supports": false,
+    "ExitCode": 0,
+    "Success": true,
+    "Output": "C:\\Users\\Alberto\\Documents\\tsw_io\\docs\\mechanical\\fusion-controller\\sliced\\P08-Cam-3-gates---stable-endpoints.gcode.3mf",
+    "OutputBytes": 455710,
+    "Issues": [
+      "[2026-10-24 15:24:25.681461] [0x00005b9c] [warning] cli mode, Current BambuStudio Version 02.04.00.70",
+      "[2026-10-24 15:24:25.708393] [0x00005b9c] [error]   3198: nozzle_volume_type not found, when different_extruder or multiple extruder, new_printer_name Bambu Lab P2S 0.4 nozzle, extruder_count 1",
+      "[2026-10-24 15:24:25.708915] [0x00005b9c] [warning] no filament colors found in projects",
+      "[2026-10-24 15:24:25.991925] [0x00005b9c] [warning] tree support default to organic support",
+      "[2026-10-24 15:24:26.317676] [0x00005b9c] [error]   Invalid T command (T65535).",
+      "[2026-10-24 15:24:26.911040] [0x00005b9c] [info]    record_exit_reson:535 Slicer_Info_Report: plate_id=0, return_code=0, error_message=Success., slice_time_s=0.628, pring_time_s=1567.17, filament_usage_g=10.8335"
+    ],
+    "StdoutLog": "C:\\Users\\Alberto\\Documents\\tsw_io\\docs\\mechanical\\fusion-controller\\sliced\\P08-Cam-3-gates---stable-endpoints.stdout.log",
+    "StderrLog": "C:\\Users\\Alberto\\Documents\\tsw_io\\docs\\mechanical\\fusion-controller\\sliced\\P08-Cam-3-gates---stable-endpoints.stderr.log"
+  },
+  {
+    "Part": "P08-Cam-5-gates---stable-endpoints.stl",
+    "Supports": false,
+    "ExitCode": 0,
+    "Success": true,
+    "Output": "C:\\Users\\Alberto\\Documents\\tsw_io\\docs\\mechanical\\fusion-controller\\sliced\\P08-Cam-5-gates---stable-endpoints.gcode.3mf",
+    "OutputBytes": 492557,
+    "Issues": [
+      "[2026-10-24 15:24:27.162813] [0x00005234] [warning] cli mode, Current BambuStudio Version 02.04.00.70",
+      "[2026-10-24 15:24:27.176423] [0x00005234] [error]   3198: nozzle_volume_type not found, when different_extruder or multiple extruder, new_printer_name Bambu Lab P2S 0.4 nozzle, extruder_count 1",
+      "[2026-10-24 15:24:27.176935] [0x00005234] [warning] no filament colors found in projects",
+      "[2026-10-24 15:24:27.464101] [0x00005234] [warning] tree support default to organic support",
+      "[2026-10-24 15:24:27.785650] [0x00005234] [error]   Invalid T command (T65535).",
+      "[2026-10-24 15:24:28.359724] [0x00005234] [info]    record_exit_reson:535 Slicer_Info_Report: plate_id=0, return_code=0, error_message=Success., slice_time_s=0.639, pring_time_s=1574.38, filament_usage_g=10.8926"
+    ],
+    "StdoutLog": "C:\\Users\\Alberto\\Documents\\tsw_io\\docs\\mechanical\\fusion-controller\\sliced\\P08-Cam-5-gates---stable-endpoints.stdout.log",
+    "StderrLog": "C:\\Users\\Alberto\\Documents\\tsw_io\\docs\\mechanical\\fusion-controller\\sliced\\P08-Cam-5-gates---stable-endpoints.stderr.log"
+  },
+  {
+    "Part": "P08-Cam-7-gates---stable-endpoints.stl",
+    "Supports": false,
+    "ExitCode": 0,
+    "Success": true,
+    "Output": "C:\\Users\\Alberto\\Documents\\tsw_io\\docs\\mechanical\\fusion-controller\\sliced\\P08-Cam-7-gates---stable-endpoints.gcode.3mf",
+    "OutputBytes": 530024,
+    "Issues": [
+      "[2026-10-24 15:24:28.696242] [0x000024b8] [warning] cli mode, Current BambuStudio Version 02.04.00.70",
+      "[2026-10-24 15:24:28.709245] [0x000024b8] [error]   3198: nozzle_volume_type not found, when different_extruder or multiple extruder, new_printer_name Bambu Lab P2S 0.4 nozzle, extruder_count 1",
+      "[2026-10-24 15:24:28.709745] [0x000024b8] [warning] no filament colors found in projects",
+      "[2026-10-24 15:24:29.010292] [0x000024b8] [warning] tree support default to organic support",
+      "[2026-10-24 15:24:29.307157] [0x000024b8] [error]   Invalid T command (T65535).",
+      "[2026-10-24 15:24:29.883765] [0x000024b8] [info]    record_exit_reson:535 Slicer_Info_Report: plate_id=0, return_code=0, error_message=Success., slice_time_s=0.625, pring_time_s=1570.46, filament_usage_g=10.7372"
+    ],
+    "StdoutLog": "C:\\Users\\Alberto\\Documents\\tsw_io\\docs\\mechanical\\fusion-controller\\sliced\\P08-Cam-7-gates---stable-endpoints.stdout.log",
+    "StderrLog": "C:\\Users\\Alberto\\Documents\\tsw_io\\docs\\mechanical\\fusion-controller\\sliced\\P08-Cam-7-gates---stable-endpoints.stderr.log"
+  },
+  {
+    "Part": "P09-Grip-insert-half.stl",
+    "Supports": true,
+    "ExitCode": 0,
+    "Success": true,
+    "Output": "C:\\Users\\Alberto\\Documents\\tsw_io\\docs\\mechanical\\fusion-controller\\sliced\\P09-Grip-insert-half.gcode.3mf",
+    "OutputBytes": 1371604,
+    "Issues": [
+      "[2026-10-24 15:24:30.180164] [0x00006518] [warning] cli mode, Current BambuStudio Version 02.04.00.70",
+      "[2026-10-24 15:24:30.271078] [0x00006518] [error]   3198: nozzle_volume_type not found, when different_extruder or multiple extruder, new_printer_name Bambu Lab P2S 0.4 nozzle, extruder_count 1",
+      "[2026-10-24 15:24:30.271591] [0x00006518] [warning] no filament colors found in projects",
+      "[2026-10-24 15:24:31.603822] [0x00006518] [error]   Invalid T command (T65535).",
+      "[2026-10-24 15:24:32.436735] [0x00006518] [info]    record_exit_reson:535 Slicer_Info_Report: plate_id=0, return_code=0, error_message=Success., slice_time_s=1.376, pring_time_s=2584.55, filament_usage_g=19.8742"
+    ],
+    "StdoutLog": "C:\\Users\\Alberto\\Documents\\tsw_io\\docs\\mechanical\\fusion-controller\\sliced\\P09-Grip-insert-half.stdout.log",
+    "StderrLog": "C:\\Users\\Alberto\\Documents\\tsw_io\\docs\\mechanical\\fusion-controller\\sliced\\P09-Grip-insert-half.stderr.log"
+  },
+  {
+    "Part": "P10-Grip-screw-half.stl",
+    "Supports": true,
+    "ExitCode": 0,
+    "Success": true,
+    "Output": "C:\\Users\\Alberto\\Documents\\tsw_io\\docs\\mechanical\\fusion-controller\\sliced\\P10-Grip-screw-half.gcode.3mf",
+    "OutputBytes": 1264077,
+    "Issues": [
+      "[2026-10-24 15:24:32.773991] [0x0000635c] [warning] cli mode, Current BambuStudio Version 02.04.00.70",
+      "[2026-10-24 15:24:32.852006] [0x0000635c] [error]   3198: nozzle_volume_type not found, when different_extruder or multiple extruder, new_printer_name Bambu Lab P2S 0.4 nozzle, extruder_count 1",
+      "[2026-10-24 15:24:32.852505] [0x0000635c] [warning] no filament colors found in projects",
+      "[2026-10-24 15:24:34.380933] [0x0000635c] [error]   Invalid T command (T65535).",
+      "[2026-10-24 15:24:35.169614] [0x0000635c] [info]    record_exit_reson:535 Slicer_Info_Report: plate_id=0, return_code=0, error_message=Success., slice_time_s=1.569, pring_time_s=2567.22, filament_usage_g=19.9327"
+    ],
+    "StdoutLog": "C:\\Users\\Alberto\\Documents\\tsw_io\\docs\\mechanical\\fusion-controller\\sliced\\P10-Grip-screw-half.stdout.log",
+    "StderrLog": "C:\\Users\\Alberto\\Documents\\tsw_io\\docs\\mechanical\\fusion-controller\\sliced\\P10-Grip-screw-half.stderr.log"
+  },
+  {
+    "Part": "P11-Forked-roller-follower.stl",
+    "Supports": true,
+    "ExitCode": 0,
+    "Success": true,
+    "Output": "C:\\Users\\Alberto\\Documents\\tsw_io\\docs\\mechanical\\fusion-controller\\sliced\\P11-Forked-roller-follower.gcode.3mf",
+    "OutputBytes": 178705,
+    "Issues": [
+      "[2026-10-24 15:24:35.409676] [0x000066e4] [warning] cli mode, Current BambuStudio Version 02.04.00.70",
+      "[2026-10-24 15:24:35.420789] [0x000066e4] [error]   3198: nozzle_volume_type not found, when different_extruder or multiple extruder, new_printer_name Bambu Lab P2S 0.4 nozzle, extruder_count 1",
+      "[2026-10-24 15:24:35.421362] [0x000066e4] [warning] no filament colors found in projects",
+      "[2026-10-24 15:24:35.803970] [0x000066e4] [error]   Invalid T command (T65535).",
+      "[2026-10-24 15:24:36.331318] [0x000066e4] [info]    record_exit_reson:535 Slicer_Info_Report: plate_id=0, return_code=0, error_message=Success., slice_time_s=0.411, pring_time_s=1256.29, filament_usage_g=6.85314"
+    ],
+    "StdoutLog": "C:\\Users\\Alberto\\Documents\\tsw_io\\docs\\mechanical\\fusion-controller\\sliced\\P11-Forked-roller-follower.stdout.log",
+    "StderrLog": "C:\\Users\\Alberto\\Documents\\tsw_io\\docs\\mechanical\\fusion-controller\\sliced\\P11-Forked-roller-follower.stderr.log"
+  },
+  {
+    "Part": "P12-Replaceable-plain-roller.stl",
+    "Supports": false,
+    "ExitCode": 0,
+    "Success": true,
+    "Output": "C:\\Users\\Alberto\\Documents\\tsw_io\\docs\\mechanical\\fusion-controller\\sliced\\P12-Replaceable-plain-roller.gcode.3mf",
+    "OutputBytes": 84607,
+    "Issues": [
+      "[2026-10-24 15:24:36.580682] [0x00000edc] [warning] cli mode, Current BambuStudio Version 02.04.00.70",
+      "[2026-10-24 15:24:36.594456] [0x00000edc] [error]   3198: nozzle_volume_type not found, when different_extruder or multiple extruder, new_printer_name Bambu Lab P2S 0.4 nozzle, extruder_count 1",
+      "[2026-10-24 15:24:36.594956] [0x00000edc] [warning] no filament colors found in projects",
+      "[2026-10-24 15:24:36.732727] [0x00000edc] [warning] tree support default to organic support",
+      "[2026-10-24 15:24:36.977425] [0x00000edc] [error]   Invalid T command (T65535).",
+      "[2026-10-24 15:24:37.510455] [0x00000edc] [info]    record_exit_reson:535 Slicer_Info_Report: plate_id=0, return_code=0, error_message=Success., slice_time_s=0.39, pring_time_s=701.702, filament_usage_g=0.743365"
+    ],
+    "StdoutLog": "C:\\Users\\Alberto\\Documents\\tsw_io\\docs\\mechanical\\fusion-controller\\sliced\\P12-Replaceable-plain-roller.stdout.log",
+    "StderrLog": "C:\\Users\\Alberto\\Documents\\tsw_io\\docs\\mechanical\\fusion-controller\\sliced\\P12-Replaceable-plain-roller.stderr.log"
+  },
+  {
+    "Part": "P13-Spring-reaction-crossblock.stl",
+    "Supports": true,
+    "ExitCode": 0,
+    "Success": true,
+    "Output": "C:\\Users\\Alberto\\Documents\\tsw_io\\docs\\mechanical\\fusion-controller\\sliced\\P13-Spring-reaction-crossblock.gcode.3mf",
+    "OutputBytes": 808838,
+    "Issues": [
+      "[2026-10-24 15:24:37.779299] [0x000043f0] [warning] cli mode, Current BambuStudio Version 02.04.00.70",
+      "[2026-10-24 15:24:37.791603] [0x000043f0] [error]   3198: nozzle_volume_type not found, when different_extruder or multiple extruder, new_printer_name Bambu Lab P2S 0.4 nozzle, extruder_count 1",
+      "[2026-10-24 15:24:37.791603] [0x000043f0] [warning] no filament colors found in projects",
+      "[2026-10-24 15:24:38.719662] [0x000043f0] [error]   Invalid T command (T65535).",
+      "[2026-10-24 15:24:39.411743] [0x000043f0] [info]    record_exit_reson:535 Slicer_Info_Report: plate_id=0, return_code=0, error_message=Success., slice_time_s=0.994, pring_time_s=2827.16, filament_usage_g=20.3715"
+    ],
+    "StdoutLog": "C:\\Users\\Alberto\\Documents\\tsw_io\\docs\\mechanical\\fusion-controller\\sliced\\P13-Spring-reaction-crossblock.stdout.log",
+    "StderrLog": "C:\\Users\\Alberto\\Documents\\tsw_io\\docs\\mechanical\\fusion-controller\\sliced\\P13-Spring-reaction-crossblock.stderr.log"
+  },
+  {
+    "Part": "P14-Captive-spring-cup.stl",
+    "Supports": false,
+    "ExitCode": 0,
+    "Success": true,
+    "Output": "C:\\Users\\Alberto\\Documents\\tsw_io\\docs\\mechanical\\fusion-controller\\sliced\\P14-Captive-spring-cup.gcode.3mf",
+    "OutputBytes": 90261,
+    "Issues": [
+      "[2026-10-24 15:24:39.681214] [0x00004e2c] [warning] cli mode, Current BambuStudio Version 02.04.00.70",
+      "[2026-10-24 15:24:39.692468] [0x00004e2c] [error]   3198: nozzle_volume_type not found, when different_extruder or multiple extruder, new_printer_name Bambu Lab P2S 0.4 nozzle, extruder_count 1",
+      "[2026-10-24 15:24:39.692468] [0x00004e2c] [warning] no filament colors found in projects",
+      "[2026-10-24 15:24:39.781791] [0x00004e2c] [warning] tree support default to organic support",
+      "[2026-10-24 15:24:39.973210] [0x00004e2c] [error]   Invalid T command (T65535).",
+      "[2026-10-24 15:24:40.581223] [0x00004e2c] [info]    record_exit_reson:535 Slicer_Info_Report: plate_id=0, return_code=0, error_message=Success., slice_time_s=0.299, pring_time_s=661.013, filament_usage_g=0.654232"
+    ],
+    "StdoutLog": "C:\\Users\\Alberto\\Documents\\tsw_io\\docs\\mechanical\\fusion-controller\\sliced\\P14-Captive-spring-cup.stdout.log",
+    "StderrLog": "C:\\Users\\Alberto\\Documents\\tsw_io\\docs\\mechanical\\fusion-controller\\sliced\\P14-Captive-spring-cup.stderr.log"
+  },
+  {
+    "Part": "P15-Preload-limit-collar-2-mm.stl",
+    "Supports": false,
+    "ExitCode": 0,
+    "Success": true,
+    "Output": "C:\\Users\\Alberto\\Documents\\tsw_io\\docs\\mechanical\\fusion-controller\\sliced\\P15-Preload-limit-collar-2-mm.gcode.3mf",
+    "OutputBytes": 55467,
+    "Issues": [
+      "[2026-10-24 15:24:40.832795] [0x00000bcc] [warning] cli mode, Current BambuStudio Version 02.04.00.70",
+      "[2026-10-24 15:24:40.848146] [0x00000bcc] [error]   3198: nozzle_volume_type not found, when different_extruder or multiple extruder, new_printer_name Bambu Lab P2S 0.4 nozzle, extruder_count 1",
+      "[2026-10-24 15:24:40.848694] [0x00000bcc] [warning] no filament colors found in projects",
+      "[2026-10-24 15:24:40.895512] [0x00000bcc] [warning] tree support default to organic support",
+      "[2026-10-24 15:24:41.045170] [0x00000bcc] [error]   Invalid T command (T65535).",
+      "[2026-10-24 15:24:41.512131] [0x00000bcc] [info]    record_exit_reson:535 Slicer_Info_Report: plate_id=0, return_code=0, error_message=Success., slice_time_s=0.201, pring_time_s=519.11, filament_usage_g=0.0421978"
+    ],
+    "StdoutLog": "C:\\Users\\Alberto\\Documents\\tsw_io\\docs\\mechanical\\fusion-controller\\sliced\\P15-Preload-limit-collar-2-mm.stdout.log",
+    "StderrLog": "C:\\Users\\Alberto\\Documents\\tsw_io\\docs\\mechanical\\fusion-controller\\sliced\\P15-Preload-limit-collar-2-mm.stderr.log"
+  },
+  {
+    "Part": "P16-Sliding-replaceable-RK097-mount.stl",
+    "Supports": false,
+    "ExitCode": 0,
+    "Success": true,
+    "Output": "C:\\Users\\Alberto\\Documents\\tsw_io\\docs\\mechanical\\fusion-controller\\sliced\\P16-Sliding-replaceable-RK097-mount.gcode.3mf",
+    "OutputBytes": 164448,
+    "Issues": [
+      "[2026-10-24 15:24:41.744383] [0x000019f4] [warning] cli mode, Current BambuStudio Version 02.04.00.70",
+      "[2026-10-24 15:24:41.755699] [0x000019f4] [error]   3198: nozzle_volume_type not found, when different_extruder or multiple extruder, new_printer_name Bambu Lab P2S 0.4 nozzle, extruder_count 1",
+      "[2026-10-24 15:24:41.756726] [0x000019f4] [warning] no filament colors found in projects",
+      "[2026-10-24 15:24:41.886367] [0x000019f4] [warning] tree support default to organic support",
+      "[2026-10-24 15:24:42.016747] [0x000019f4] [error]   Invalid T command (T65535).",
+      "[2026-10-24 15:24:42.526822] [0x000019f4] [info]    record_exit_reson:535 Slicer_Info_Report: plate_id=0, return_code=0, error_message=Success., slice_time_s=0.284, pring_time_s=1574.81, filament_usage_g=9.29445"
+    ],
+    "StdoutLog": "C:\\Users\\Alberto\\Documents\\tsw_io\\docs\\mechanical\\fusion-controller\\sliced\\P16-Sliding-replaceable-RK097-mount.stdout.log",
+    "StderrLog": "C:\\Users\\Alberto\\Documents\\tsw_io\\docs\\mechanical\\fusion-controller\\sliced\\P16-Sliding-replaceable-RK097-mount.stderr.log"
+  },
+  {
+    "Part": "P17-Shaft-side-floating-coupling-hub.stl",
+    "Supports": true,
+    "ExitCode": 0,
+    "Success": true,
+    "Output": "C:\\Users\\Alberto\\Documents\\tsw_io\\docs\\mechanical\\fusion-controller\\sliced\\P17-Shaft-side-floating-coupling-hub.gcode.3mf",
+    "OutputBytes": 186856,
+    "Issues": [
+      "[2026-10-24 15:24:42.762901] [0x00005254] [warning] cli mode, Current BambuStudio Version 02.04.00.70",
+      "[2026-10-24 15:24:42.763445] [0x00005254] [info]    read model file:C:\\Users\\Alberto\\Documents\\tsw_io\\docs\\mechanical\\fusion-controller\\stl\\P17-Shaft-side-floating-coupling-hub.stl",
+      "[2026-10-24 15:24:42.766548] [0x00005254] [info]    object P17-Shaft-side-floating-coupling-hub.stl, id :5, from stl or other 3mf",
+      "[2026-10-24 15:24:42.775963] [0x00005254] [error]   3198: nozzle_volume_type not found, when different_extruder or multiple extruder, new_printer_name Bambu Lab P2S 0.4 nozzle, extruder_count 1",
+      "[2026-10-24 15:24:42.776475] [0x00005254] [warning] no filament colors found in projects",
+      "[2026-10-24 15:24:43.283691] [0x00005254] [error]   Invalid T command (T65535).",
+      "[2026-10-24 15:24:43.678615] [0x00005254] [info]    will export 3mf to C:\\Users\\Alberto\\Documents\\tsw_io\\docs\\mechanical\\fusion-controller\\sliced/P17-Shaft-side-floating-coupling-hub.gcode.3mf",
+      "[2026-10-24 15:24:43.696018] [0x00005254] [info]    Slic3r::_BBS_3MF_Exporter::_add_model_file_to_archive:6585, filename P17-Shaft-side-floating-coupling-hub.gcode.3mf.tmp, m_split_model 1,  sub_model 0",
+      "[2026-10-24 15:24:43.779384] [0x00005254] [info]    Project exported to C:\\Users\\Alberto\\Documents\\tsw_io\\docs\\mechanical\\fusion-controller\\sliced/P17-Shaft-side-floating-coupling-hub.gcode.3mf",
+      "[2026-10-24 15:24:43.793698] [0x00005254] [info]    record_exit_reson:535 Slicer_Info_Report: plate_id=0, return_code=0, error_message=Success., slice_time_s=0.519, pring_time_s=1098.35, filament_usage_g=4.16131"
+    ],
+    "StdoutLog": "C:\\Users\\Alberto\\Documents\\tsw_io\\docs\\mechanical\\fusion-controller\\sliced\\P17-Shaft-side-floating-coupling-hub.stdout.log",
+    "StderrLog": "C:\\Users\\Alberto\\Documents\\tsw_io\\docs\\mechanical\\fusion-controller\\sliced\\P17-Shaft-side-floating-coupling-hub.stderr.log"
+  },
+  {
+    "Part": "P18-Floating-cross-slot-coupling-disc.stl",
+    "Supports": true,
+    "ExitCode": 0,
+    "Success": true,
+    "Output": "C:\\Users\\Alberto\\Documents\\tsw_io\\docs\\mechanical\\fusion-controller\\sliced\\P18-Floating-cross-slot-coupling-disc.gcode.3mf",
+    "OutputBytes": 131588,
+    "Issues": [
+      "[2026-10-24 15:24:44.059831] [0x00002610] [warning] cli mode, Current BambuStudio Version 02.04.00.70",
+      "[2026-10-24 15:24:44.060861] [0x00002610] [info]    read model file:C:\\Users\\Alberto\\Documents\\tsw_io\\docs\\mechanical\\fusion-controller\\stl\\P18-Floating-cross-slot-coupling-disc.stl",
+      "[2026-10-24 15:24:44.063929] [0x00002610] [info]    object P18-Floating-cross-slot-coupling-disc.stl, id :5, from stl or other 3mf",
+      "[2026-10-24 15:24:44.072111] [0x00002610] [error]   3198: nozzle_volume_type not found, when different_extruder or multiple extruder, new_printer_name Bambu Lab P2S 0.4 nozzle, extruder_count 1",
+      "[2026-10-24 15:24:44.073131] [0x00002610] [warning] no filament colors found in projects",
+      "[2026-10-24 15:24:44.395434] [0x00002610] [error]   Invalid T command (T65535).",
+      "[2026-10-24 15:24:44.815795] [0x00002610] [info]    will export 3mf to C:\\Users\\Alberto\\Documents\\tsw_io\\docs\\mechanical\\fusion-controller\\sliced/P18-Floating-cross-slot-coupling-disc.gcode.3mf",
+      "[2026-10-24 15:24:44.831980] [0x00002610] [info]    Slic3r::_BBS_3MF_Exporter::_add_model_file_to_archive:6585, filename P18-Floating-cross-slot-coupling-disc.gcode.3mf.tmp, m_split_model 1,  sub_model 0",
+      "[2026-10-24 15:24:44.906968] [0x00002610] [info]    Project exported to C:\\Users\\Alberto\\Documents\\tsw_io\\docs\\mechanical\\fusion-controller\\sliced/P18-Floating-cross-slot-coupling-disc.gcode.3mf",
+      "[2026-10-24 15:24:44.921379] [0x00002610] [info]    record_exit_reson:535 Slicer_Info_Report: plate_id=0, return_code=0, error_message=Success., slice_time_s=0.318, pring_time_s=835.699, filament_usage_g=3.26386"
+    ],
+    "StdoutLog": "C:\\Users\\Alberto\\Documents\\tsw_io\\docs\\mechanical\\fusion-controller\\sliced\\P18-Floating-cross-slot-coupling-disc.stdout.log",
+    "StderrLog": "C:\\Users\\Alberto\\Documents\\tsw_io\\docs\\mechanical\\fusion-controller\\sliced\\P18-Floating-cross-slot-coupling-disc.stderr.log"
+  },
+  {
+    "Part": "P18-Tight-fit-alternate-disc---4-1-mm-slots.stl",
+    "Supports": true,
+    "ExitCode": 0,
+    "Success": true,
+    "Output": "C:\\Users\\Alberto\\Documents\\tsw_io\\docs\\mechanical\\fusion-controller\\sliced\\P18-Tight-fit-alternate-disc---4-1-mm-slots.gcode.3mf",
+    "OutputBytes": 131185,
+    "Issues": [
+      "[2026-10-24 15:24:45.145142] [0x0000657c] [warning] cli mode, Current BambuStudio Version 02.04.00.70",
+      "[2026-10-24 15:24:45.158589] [0x0000657c] [error]   3198: nozzle_volume_type not found, when different_extruder or multiple extruder, new_printer_name Bambu Lab P2S 0.4 nozzle, extruder_count 1",
+      "[2026-10-24 15:24:45.159098] [0x0000657c] [warning] no filament colors found in projects",
+      "[2026-10-24 15:24:45.481278] [0x0000657c] [error]   Invalid T command (T65535).",
+      "[2026-10-24 15:24:45.962004] [0x0000657c] [info]    record_exit_reson:535 Slicer_Info_Report: plate_id=0, return_code=0, error_message=Success., slice_time_s=0.325, pring_time_s=843.753, filament_usage_g=3.27846"
+    ],
+    "StdoutLog": "C:\\Users\\Alberto\\Documents\\tsw_io\\docs\\mechanical\\fusion-controller\\sliced\\P18-Tight-fit-alternate-disc---4-1-mm-slots.stdout.log",
+    "StderrLog": "C:\\Users\\Alberto\\Documents\\tsw_io\\docs\\mechanical\\fusion-controller\\sliced\\P18-Tight-fit-alternate-disc---4-1-mm-slots.stderr.log"
+  },
+  {
+    "Part": "P19-RK097-clamp-insert-half.stl",
+    "Supports": true,
+    "ExitCode": 0,
+    "Success": true,
+    "Output": "C:\\Users\\Alberto\\Documents\\tsw_io\\docs\\mechanical\\fusion-controller\\sliced\\P19-RK097-clamp-insert-half.gcode.3mf",
+    "OutputBytes": 153722,
+    "Issues": [
+      "[2026-10-24 15:24:46.194260] [0x00004d30] [warning] cli mode, Current BambuStudio Version 02.04.00.70",
+      "[2026-10-24 15:24:46.204557] [0x00004d30] [error]   3198: nozzle_volume_type not found, when different_extruder or multiple extruder, new_printer_name Bambu Lab P2S 0.4 nozzle, extruder_count 1",
+      "[2026-10-24 15:24:46.205066] [0x00004d30] [warning] no filament colors found in projects",
+      "[2026-10-24 15:24:46.581729] [0x00004d30] [error]   Invalid T command (T65535).",
+      "[2026-10-24 15:24:47.132774] [0x00004d30] [info]    record_exit_reson:535 Slicer_Info_Report: plate_id=0, return_code=0, error_message=Success., slice_time_s=0.398, pring_time_s=900.636, filament_usage_g=2.12629"
+    ],
+    "StdoutLog": "C:\\Users\\Alberto\\Documents\\tsw_io\\docs\\mechanical\\fusion-controller\\sliced\\P19-RK097-clamp-insert-half.stdout.log",
+    "StderrLog": "C:\\Users\\Alberto\\Documents\\tsw_io\\docs\\mechanical\\fusion-controller\\sliced\\P19-RK097-clamp-insert-half.stderr.log"
+  },
+  {
+    "Part": "P20-RK097-clamp-screw-half.stl",
+    "Supports": true,
+    "ExitCode": 0,
+    "Success": true,
+    "Output": "C:\\Users\\Alberto\\Documents\\tsw_io\\docs\\mechanical\\fusion-controller\\sliced\\P20-RK097-clamp-screw-half.gcode.3mf",
+    "OutputBytes": 168569,
+    "Issues": [
+      "[2026-10-24 15:24:47.772194] [0x000051a8] [warning] cli mode, Current BambuStudio Version 02.04.00.70",
+      "[2026-10-24 15:24:47.782523] [0x000051a8] [error]   3198: nozzle_volume_type not found, when different_extruder or multiple extruder, new_printer_name Bambu Lab P2S 0.4 nozzle, extruder_count 1",
+      "[2026-10-24 15:24:47.783032] [0x000051a8] [warning] no filament colors found in projects",
+      "[2026-10-24 15:24:48.159361] [0x000051a8] [error]   Invalid T command (T65535).",
+      "[2026-10-24 15:24:48.659309] [0x000051a8] [info]    record_exit_reson:535 Slicer_Info_Report: plate_id=0, return_code=0, error_message=Success., slice_time_s=0.394, pring_time_s=878.47, filament_usage_g=2.06119"
+    ],
+    "StdoutLog": "C:\\Users\\Alberto\\Documents\\tsw_io\\docs\\mechanical\\fusion-controller\\sliced\\P20-RK097-clamp-screw-half.stdout.log",
+    "StderrLog": "C:\\Users\\Alberto\\Documents\\tsw_io\\docs\\mechanical\\fusion-controller\\sliced\\P20-RK097-clamp-screw-half.stderr.log"
+  },
+  {
+    "Part": "P21-Follower-left-axial-spacer.stl",
+    "Supports": false,
+    "ExitCode": 0,
+    "Success": true,
+    "Output": "C:\\Users\\Alberto\\Documents\\tsw_io\\docs\\mechanical\\fusion-controller\\sliced\\P21-Follower-left-axial-spacer.gcode.3mf",
+    "OutputBytes": 101850,
+    "Issues": [
+      "[2026-10-24 15:24:48.933326] [0x00000140] [warning] cli mode, Current BambuStudio Version 02.04.00.70",
+      "[2026-10-24 15:24:48.968112] [0x00000140] [error]   3198: nozzle_volume_type not found, when different_extruder or multiple extruder, new_printer_name Bambu Lab P2S 0.4 nozzle, extruder_count 1",
+      "[2026-10-24 15:24:48.969132] [0x00000140] [warning] no filament colors found in projects",
+      "[2026-10-24 15:24:49.941520] [0x00000140] [warning] tree support default to organic support",
+      "[2026-10-24 15:24:50.533001] [0x00000140] [error]   Invalid T command (T65535).",
+      "[2026-10-24 15:24:51.078678] [0x00000140] [info]    record_exit_reson:535 Slicer_Info_Report: plate_id=0, return_code=0, error_message=Success., slice_time_s=1.485, pring_time_s=1089.01, filament_usage_g=1.92577"
+    ],
+    "StdoutLog": "C:\\Users\\Alberto\\Documents\\tsw_io\\docs\\mechanical\\fusion-controller\\sliced\\P21-Follower-left-axial-spacer.stdout.log",
+    "StderrLog": "C:\\Users\\Alberto\\Documents\\tsw_io\\docs\\mechanical\\fusion-controller\\sliced\\P21-Follower-left-axial-spacer.stderr.log"
+  },
+  {
+    "Part": "P22-Follower-right-axial-spacer.stl",
+    "Supports": false,
+    "ExitCode": 0,
+    "Success": true,
+    "Output": "C:\\Users\\Alberto\\Documents\\tsw_io\\docs\\mechanical\\fusion-controller\\sliced\\P22-Follower-right-axial-spacer.gcode.3mf",
+    "OutputBytes": 61930,
+    "Issues": [
+      "[2026-10-24 15:24:51.382619] [0x00000674] [warning] cli mode, Current BambuStudio Version 02.04.00.70",
+      "[2026-10-24 15:24:51.398696] [0x00000674] [error]   3198: nozzle_volume_type not found, when different_extruder or multiple extruder, new_printer_name Bambu Lab P2S 0.4 nozzle, extruder_count 1",
+      "[2026-10-24 15:24:51.399202] [0x00000674] [warning] no filament colors found in projects",
+      "[2026-10-24 15:24:51.492966] [0x00000674] [warning] tree support default to organic support",
+      "[2026-10-24 15:24:51.680995] [0x00000674] [error]   Invalid T command (T65535).",
+      "[2026-10-24 15:24:52.170487] [0x00000674] [info]    record_exit_reson:535 Slicer_Info_Report: plate_id=0, return_code=0, error_message=Success., slice_time_s=0.29, pring_time_s=573.004, filament_usage_g=0.261102"
+    ],
+    "StdoutLog": "C:\\Users\\Alberto\\Documents\\tsw_io\\docs\\mechanical\\fusion-controller\\sliced\\P22-Follower-right-axial-spacer.stdout.log",
+    "StderrLog": "C:\\Users\\Alberto\\Documents\\tsw_io\\docs\\mechanical\\fusion-controller\\sliced\\P22-Follower-right-axial-spacer.stderr.log"
+  },
+  {
+    "Part": "P23-Left-rotor-thrust-spacer.stl",
+    "Supports": false,
+    "ExitCode": 0,
+    "Success": true,
+    "Output": "C:\\Users\\Alberto\\Documents\\tsw_io\\docs\\mechanical\\fusion-controller\\sliced\\P23-Left-rotor-thrust-spacer.gcode.3mf",
+    "OutputBytes": 94417,
+    "Issues": [
+      "[2026-10-24 15:24:52.452134] [0x00002430] [warning] cli mode, Current BambuStudio Version 02.04.00.70",
+      "[2026-10-24 15:24:52.467822] [0x00002430] [error]   3198: nozzle_volume_type not found, when different_extruder or multiple extruder, new_printer_name Bambu Lab P2S 0.4 nozzle, extruder_count 1",
+      "[2026-10-24 15:24:52.468329] [0x00002430] [warning] no filament colors found in projects",
+      "[2026-10-24 15:24:52.723377] [0x00002430] [warning] tree support default to organic support",
+      "[2026-10-24 15:24:53.082416] [0x00002430] [error]   Invalid T command (T65535).",
+      "[2026-10-24 15:24:54.644160] [0x00002430] [info]    record_exit_reson:535 Slicer_Info_Report: plate_id=0, return_code=0, error_message=Success., slice_time_s=0.624, pring_time_s=860.492, filament_usage_g=2.07689"
+    ],
+    "StdoutLog": "C:\\Users\\Alberto\\Documents\\tsw_io\\docs\\mechanical\\fusion-controller\\sliced\\P23-Left-rotor-thrust-spacer.stdout.log",
+    "StderrLog": "C:\\Users\\Alberto\\Documents\\tsw_io\\docs\\mechanical\\fusion-controller\\sliced\\P23-Left-rotor-thrust-spacer.stderr.log"
+  },
+  {
+    "Part": "P24-Right-rotor-thrust-spacer.stl",
+    "Supports": false,
+    "ExitCode": 0,
+    "Success": true,
+    "Output": "C:\\Users\\Alberto\\Documents\\tsw_io\\docs\\mechanical\\fusion-controller\\sliced\\P24-Right-rotor-thrust-spacer.gcode.3mf",
+    "OutputBytes": 94440,
+    "Issues": [
+      "[2026-10-24 15:24:54.936752] [0x00004c2c] [warning] cli mode, Current BambuStudio Version 02.04.00.70",
+      "[2026-10-24 15:24:54.954591] [0x00004c2c] [error]   3198: nozzle_volume_type not found, when different_extruder or multiple extruder, new_printer_name Bambu Lab P2S 0.4 nozzle, extruder_count 1",
+      "[2026-10-24 15:24:54.955157] [0x00004c2c] [warning] no filament colors found in projects",
+      "[2026-10-24 15:24:55.209348] [0x00004c2c] [warning] tree support default to organic support",
+      "[2026-10-24 15:24:55.599109] [0x00004c2c] [error]   Invalid T command (T65535).",
+      "[2026-10-24 15:24:56.177674] [0x00004c2c] [info]    record_exit_reson:535 Slicer_Info_Report: plate_id=0, return_code=0, error_message=Success., slice_time_s=0.66, pring_time_s=860.492, filament_usage_g=2.07689"
+    ],
+    "StdoutLog": "C:\\Users\\Alberto\\Documents\\tsw_io\\docs\\mechanical\\fusion-controller\\sliced\\P24-Right-rotor-thrust-spacer.stdout.log",
+    "StderrLog": "C:\\Users\\Alberto\\Documents\\tsw_io\\docs\\mechanical\\fusion-controller\\sliced\\P24-Right-rotor-thrust-spacer.stderr.log"
+  }
+]

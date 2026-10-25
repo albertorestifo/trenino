@@ -1,0 +1,39 @@
+{
+  "document": "AIDesignedLever v6",
+  "unhealthy": [],
+  "angles": [
+    -52,
+    -51,
+    -50,
+    -45,
+    -40,
+    -35,
+    -30,
+    -25,
+    -20,
+    -15,
+    -10,
+    -5,
+    0,
+    5,
+    10,
+    15,
+    20,
+    25,
+    30,
+    35,
+    40,
+    45,
+    50,
+    51,
+    52
+  ],
+  "cams": [
+    3,
+    5,
+    7
+  ],
+  "clashes": [],
+  "tolerance_mm3": 0.01,
+  "service": "Remove sensor carriage and floating coupling, retain follower at -4 degrees, remove cam screws, withdraw cam +X. Spring preload and holding method require care; no new service-pin device included."
+}

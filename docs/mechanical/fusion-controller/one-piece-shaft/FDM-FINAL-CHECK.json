@@ -1,0 +1,34 @@
+{
+  "parts": [
+    {
+      "file": "P05-One-piece-shaft-with-continuous-print-flat.stl",
+      "sha256": "00d3ac5e0206e0e3254bf2a1053cbecd5a7a317bb22eecbe9b0c1f64959ef9b0",
+      "watertight": true,
+      "shells": 1,
+      "winding_consistent": true,
+      "positive_volume": true,
+      "nondegenerate": true,
+      "consecutive_0_2mm_layers": 61,
+      "last_layer_mm": 12.2
+    },
+    {
+      "file": "P08-Cam-9-gates-Class-323---strong-center-and-Emergency.stl",
+      "sha256": "db84b00bb1cc4b1b73817628d7c05c54da95fc2ffb6ae3a63f72e9e6a4689add",
+      "watertight": true,
+      "shells": 1,
+      "winding_consistent": true,
+      "positive_volume": true,
+      "nondegenerate": true,
+      "consecutive_0_2mm_layers": 40,
+      "last_layer_mm": 8.0
+    }
+  ],
+  "review": "Accepted as oriented prototype geometry; generate printer output through configured GUI",
+  "support_segments": 0,
+  "specific_clipping_error": "Prior split-shaft ZFiller error absent",
+  "machine_configuration": "Known CLI nozzle_volume_type and T65535 errors persist; no Gcode release",
+  "preview_paths": [
+    "layer-review/critical-1.png",
+    "fdm-layer-review/critical-1.png"
+  ]
+}

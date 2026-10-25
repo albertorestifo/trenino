@@ -1,0 +1,41 @@
+{
+  "retained_part": "P09",
+  "bore_mm": 3.8,
+  "mouth_chamfer_mm": 0.2,
+  "status": "unvalidated fit candidate",
+  "shaft_rotor": "Converted to accessible captive nuts",
+  "sketches": [
+    [
+      "P05",
+      "M3 heat-set end retention"
+    ],
+    [
+      "P05",
+      "Shaft half joining insert pocket"
+    ],
+    [
+      "P05",
+      "Shaft half joining insert pocket (1)"
+    ],
+    [
+      "P07",
+      "Cam M3 insert pocket"
+    ],
+    [
+      "P07",
+      "Cam M3 insert pocket (1)"
+    ],
+    [
+      "P07",
+      "Cam M3 insert pocket (2)"
+    ],
+    [
+      "P09",
+      "M3 grip heat set"
+    ],
+    [
+      "P09",
+      "M3 grip heat set (1)"
+    ]
+  ]
+}

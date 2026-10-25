@@ -1,0 +1,208 @@
+{
+  "changes": [
+    {
+      "part": "P01 Left rail sideplate",
+      "before_mm3": 124419.53457131573,
+      "after_mm3": 124419.53457131573,
+      "removed_mm3": 0.0,
+      "added_mm3": 0.0
+    },
+    {
+      "part": "P02 Right rail sideplate",
+      "before_mm3": 103804.39606933887,
+      "after_mm3": 103804.39606933887,
+      "removed_mm3": 0.0,
+      "added_mm3": 0.0
+    },
+    {
+      "part": "P03 Left flanged journal bush",
+      "before_mm3": 2852.0886073763095,
+      "after_mm3": 2852.0886073763095,
+      "removed_mm3": 0.0,
+      "added_mm3": 0.0
+    },
+    {
+      "part": "P04 Right flanged journal bush",
+      "before_mm3": 2852.08860737631,
+      "after_mm3": 2852.08860737631,
+      "removed_mm3": 0.0,
+      "added_mm3": 0.0
+    },
+    {
+      "part": "P05 Printed main shaft - horizontal print",
+      "before_mm3": 13404.649192321458,
+      "after_mm3": 13404.649192321458,
+      "removed_mm3": 0.0,
+      "added_mm3": 0.0
+    },
+    {
+      "part": "P06 Shaft retaining cap",
+      "before_mm3": 610.1601251802364,
+      "after_mm3": 610.1601251802364,
+      "removed_mm3": 0.0,
+      "added_mm3": 0.0
+    },
+    {
+      "part": "P07 Integral lever rotor and cam carrier",
+      "before_mm3": 63662.549292577234,
+      "after_mm3": 63662.549292577234,
+      "removed_mm3": 0.0,
+      "added_mm3": 0.0
+    },
+    {
+      "part": "P08 Cam 7 gates - stable endpoints",
+      "before_mm3": 12219.048340464578,
+      "after_mm3": 12219.048340464578,
+      "removed_mm3": 0.0,
+      "added_mm3": 0.0
+    },
+    {
+      "part": "P08 Cam 5 gates - stable endpoints",
+      "before_mm3": 12445.69452315692,
+      "after_mm3": 12445.69452315692,
+      "removed_mm3": 0.0,
+      "added_mm3": 0.0
+    },
+    {
+      "part": "P08 Cam 3 gates - stable endpoints",
+      "before_mm3": 12408.743227456356,
+      "after_mm3": 12408.743227456356,
+      "removed_mm3": 0.0,
+      "added_mm3": 0.0
+    },
+    {
+      "part": "P09 Grip insert half",
+      "before_mm3": 25340.75058877348,
+      "after_mm3": 24967.502588773485,
+      "removed_mm3": 373.2479999999967,
+      "added_mm3": 0.0
+    },
+    {
+      "part": "P10 Grip screw half",
+      "before_mm3": 25095.57495117202,
+      "after_mm3": 24722.32695117202,
+      "removed_mm3": 373.2480000000003,
+      "added_mm3": 0.0
+    },
+    {
+      "part": "P11 Forked roller follower",
+      "before_mm3": 5769.622966877676,
+      "after_mm3": 5769.622966877676,
+      "removed_mm3": 0.0,
+      "added_mm3": 0.0
+    },
+    {
+      "part": "P12 Replaceable plain roller",
+      "before_mm3": 608.1691408360233,
+      "after_mm3": 608.1691408360233,
+      "removed_mm3": 0.0,
+      "added_mm3": 0.0
+    },
+    {
+      "part": "P13 Spring reaction crossblock",
+      "before_mm3": 25104.136912468242,
+      "after_mm3": 25104.136912468242,
+      "removed_mm3": 0.0,
+      "added_mm3": 0.0
+    },
+    {
+      "part": "P14 Captive spring cup",
+      "before_mm3": 543.7097311413735,
+      "after_mm3": 543.7097311413735,
+      "removed_mm3": 0.0,
+      "added_mm3": 0.0
+    },
+    {
+      "part": "P16 Sliding replaceable RK097 mount",
+      "before_mm3": 8520.26717532414,
+      "after_mm3": 8520.26717532414,
+      "removed_mm3": 0.0,
+      "added_mm3": 0.0
+    },
+    {
+      "part": "P17 Shaft side floating coupling hub",
+      "before_mm3": 2818.223442284663,
+      "after_mm3": 3095.8004425390222,
+      "removed_mm3": -4.884981308350689e-12,
+      "added_mm3": 277.5770002543543
+    },
+    {
+      "part": "P18 Floating cross-slot coupling disc",
+      "before_mm3": 3117.699185569001,
+      "after_mm3": 3117.699185569001,
+      "removed_mm3": 0.0,
+      "added_mm3": 0.0
+    },
+    {
+      "part": "P19 RK097 clamp insert half",
+      "before_mm3": 1699.474071884794,
+      "after_mm3": 1699.474071884794,
+      "removed_mm3": 0.0,
+      "added_mm3": 0.0
+    },
+    {
+      "part": "P20 RK097 clamp screw half",
+      "before_mm3": 1715.609291753627,
+      "after_mm3": 1715.609291753627,
+      "removed_mm3": 0.0,
+      "added_mm3": 0.0
+    },
+    {
+      "part": "P21 Follower left axial spacer",
+      "before_mm3": 1603.4940231333896,
+      "after_mm3": 1603.4940231333896,
+      "removed_mm3": 0.0,
+      "added_mm3": 0.0
+    },
+    {
+      "part": "P22 Follower right axial spacer",
+      "before_mm3": 219.18263625566186,
+      "after_mm3": 219.18263625566186,
+      "removed_mm3": 0.0,
+      "added_mm3": 0.0
+    },
+    {
+      "part": "P23 Left rotor thrust spacer",
+      "before_mm3": 1734.1779943375602,
+      "after_mm3": 1734.1779943375602,
+      "removed_mm3": 0.0,
+      "added_mm3": 0.0
+    },
+    {
+      "part": "P24 Right rotor thrust spacer",
+      "before_mm3": 1734.1779943375602,
+      "after_mm3": 1734.1779943375602,
+      "removed_mm3": 0.0,
+      "added_mm3": 0.0
+    },
+    {
+      "part": "P15 Preload limit collar 2 mm",
+      "before_mm3": 36.61526237759056,
+      "after_mm3": 36.61526237759056,
+      "removed_mm3": 0.0,
+      "added_mm3": 0.0
+    },
+    {
+      "part": "P18 Tight fit alternate disc - 4.1 mm slots",
+      "before_mm3": 3129.518413980592,
+      "after_mm3": 3129.518413980592,
+      "removed_mm3": 0.0,
+      "added_mm3": 0.0
+    },
+    {
+      "part": "P25 Left pivot sleeve centering insert",
+      "before_mm3": 63.33450789636756,
+      "after_mm3": 63.33450789636756,
+      "removed_mm3": 0.0,
+      "added_mm3": 0.0
+    },
+    {
+      "part": "P26 Right pivot sleeve centering insert",
+      "before_mm3": 63.33450789636759,
+      "after_mm3": 63.33450789636759,
+      "removed_mm3": 0.0,
+      "added_mm3": 0.0
+    }
+  ],
+  "unhealthy": []
+}

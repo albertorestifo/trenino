@@ -1,0 +1,26 @@
+[
+  {
+    "center_distance_mm": 45,
+    "max_polygon_intersection_mm2": 0.0,
+    "poses": 417,
+    "theoretical_contact_ratio": 1.6747051481919784
+  },
+  {
+    "center_distance_mm": 45.15,
+    "max_polygon_intersection_mm2": 0.0,
+    "poses": 417,
+    "theoretical_contact_ratio": 1.5573106616990782
+  },
+  {
+    "center_distance_mm": 45.5,
+    "max_polygon_intersection_mm2": 0.0,
+    "poses": 417,
+    "theoretical_contact_ratio": 1.2937412261959045
+  },
+  {
+    "center_distance_mm": 46,
+    "max_polygon_intersection_mm2": 0.0,
+    "poses": 417,
+    "theoretical_contact_ratio": 0.9385453462391646
+  }
+]

@@ -1,0 +1,188 @@
+{
+  "profile": 5,
+  "poses": [
+    -52,
+    -50,
+    -48,
+    -46,
+    -44,
+    -42,
+    -40,
+    -38,
+    -36,
+    -34,
+    -32,
+    -30,
+    -28,
+    -26,
+    -24,
+    -22,
+    -20,
+    -18,
+    -16,
+    -14,
+    -12,
+    -10,
+    -8,
+    -6,
+    -4,
+    -2,
+    0,
+    2,
+    4,
+    6,
+    8,
+    10,
+    12,
+    14,
+    16,
+    18,
+    20,
+    22,
+    24,
+    26,
+    28,
+    30,
+    32,
+    34,
+    36,
+    38,
+    40,
+    42,
+    44,
+    46,
+    48,
+    50,
+    52
+  ],
+  "threshold_mm3": 0.01,
+  "clashes": [],
+  "subthreshold_contacts": [
+    {
+      "pose_deg": -52,
+      "a": "P08 Cam 5 gates - stable endpoints",
+      "b": "P12 Replaceable plain roller",
+      "volume_mm3": 0.00013077402465009683
+    },
+    {
+      "pose_deg": -50,
+      "a": "P08 Cam 5 gates - stable endpoints",
+      "b": "P12 Replaceable plain roller",
+      "volume_mm3": 0.00019801920792629702
+    },
+    {
+      "pose_deg": -48,
+      "a": "P08 Cam 5 gates - stable endpoints",
+      "b": "P12 Replaceable plain roller",
+      "volume_mm3": 1.1794666228317109e-05
+    },
+    {
+      "pose_deg": -46,
+      "a": "P08 Cam 5 gates - stable endpoints",
+      "b": "P12 Replaceable plain roller",
+      "volume_mm3": 1.8951842244613962e-05
+    },
+    {
+      "pose_deg": -28,
+      "a": "P08 Cam 5 gates - stable endpoints",
+      "b": "P12 Replaceable plain roller",
+      "volume_mm3": 7.027931394873346e-05
+    },
+    {
+      "pose_deg": -26,
+      "a": "P08 Cam 5 gates - stable endpoints",
+      "b": "P12 Replaceable plain roller",
+      "volume_mm3": 0.00018124243167505258
+    },
+    {
+      "pose_deg": -24,
+      "a": "P08 Cam 5 gates - stable endpoints",
+      "b": "P12 Replaceable plain roller",
+      "volume_mm3": 2.0514240555437454e-05
+    },
+    {
+      "pose_deg": -22,
+      "a": "P08 Cam 5 gates - stable endpoints",
+      "b": "P12 Replaceable plain roller",
+      "volume_mm3": 7.284781940392618e-05
+    },
+    {
+      "pose_deg": -4,
+      "a": "P08 Cam 5 gates - stable endpoints",
+      "b": "P12 Replaceable plain roller",
+      "volume_mm3": 1.7721494277248175e-05
+    },
+    {
+      "pose_deg": -2,
+      "a": "P08 Cam 5 gates - stable endpoints",
+      "b": "P12 Replaceable plain roller",
+      "volume_mm3": 0.0001346520607063267
+    },
+    {
+      "pose_deg": 0,
+      "a": "P08 Cam 5 gates - stable endpoints",
+      "b": "P12 Replaceable plain roller",
+      "volume_mm3": 2.4297637387265822e-05
+    },
+    {
+      "pose_deg": 2,
+      "a": "P08 Cam 5 gates - stable endpoints",
+      "b": "P12 Replaceable plain roller",
+      "volume_mm3": 0.00013396056663790158
+    },
+    {
+      "pose_deg": 4,
+      "a": "P08 Cam 5 gates - stable endpoints",
+      "b": "P12 Replaceable plain roller",
+      "volume_mm3": 1.6165424467111025e-05
+    },
+    {
+      "pose_deg": 22,
+      "a": "P08 Cam 5 gates - stable endpoints",
+      "b": "P12 Replaceable plain roller",
+      "volume_mm3": 7.434187968908445e-05
+    },
+    {
+      "pose_deg": 24,
+      "a": "P08 Cam 5 gates - stable endpoints",
+      "b": "P12 Replaceable plain roller",
+      "volume_mm3": 2.054105068988599e-05
+    },
+    {
+      "pose_deg": 26,
+      "a": "P08 Cam 5 gates - stable endpoints",
+      "b": "P12 Replaceable plain roller",
+      "volume_mm3": 0.00018113562488540597
+    },
+    {
+      "pose_deg": 28,
+      "a": "P08 Cam 5 gates - stable endpoints",
+      "b": "P12 Replaceable plain roller",
+      "volume_mm3": 6.874230542041116e-05
+    },
+    {
+      "pose_deg": 46,
+      "a": "P08 Cam 5 gates - stable endpoints",
+      "b": "P12 Replaceable plain roller",
+      "volume_mm3": 2.055289121314987e-05
+    },
+    {
+      "pose_deg": 48,
+      "a": "P08 Cam 5 gates - stable endpoints",
+      "b": "P12 Replaceable plain roller",
+      "volume_mm3": 1.1921268594696655e-05
+    },
+    {
+      "pose_deg": 50,
+      "a": "P08 Cam 5 gates - stable endpoints",
+      "b": "P12 Replaceable plain roller",
+      "volume_mm3": 0.00019801927578371985
+    },
+    {
+      "pose_deg": 52,
+      "a": "P08 Cam 5 gates - stable endpoints",
+      "b": "P12 Replaceable plain roller",
+      "volume_mm3": 0.00013002475296646377
+    }
+  ]
+}

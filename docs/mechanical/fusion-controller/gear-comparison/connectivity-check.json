@@ -1,0 +1,182 @@
+[
+  {
+    "file": "G01-48T-lever-gear.stl",
+    "shells": 1,
+    "degenerate_faces": 0,
+    "watertight": true
+  },
+  {
+    "file": "G02-24T-sensor-pinion.stl",
+    "shells": 1,
+    "degenerate_faces": 0,
+    "watertight": true
+  },
+  {
+    "file": "G03-Radially-adjustable-potentiometer-panel.stl",
+    "shells": 1,
+    "degenerate_faces": 0,
+    "watertight": true
+  },
+  {
+    "file": "P01-Left-rail-sideplate.stl",
+    "shells": 1,
+    "degenerate_faces": 0,
+    "watertight": true
+  },
+  {
+    "file": "P02G-Right-plate-with-upper-sensor-supports.stl",
+    "shells": 1,
+    "degenerate_faces": 0,
+    "watertight": true
+  },
+  {
+    "file": "P03-Left-flanged-journal-bush.stl",
+    "shells": 1,
+    "degenerate_faces": 0,
+    "watertight": true
+  },
+  {
+    "file": "P04-Right-flanged-journal-bush.stl",
+    "shells": 1,
+    "degenerate_faces": 0,
+    "watertight": true
+  },
+  {
+    "file": "P05G-Shaft-lower-half.stl",
+    "shells": 1,
+    "degenerate_faces": 0,
+    "watertight": true
+  },
+  {
+    "file": "P05G-Shaft-upper-half.stl",
+    "shells": 1,
+    "degenerate_faces": 0,
+    "watertight": true
+  },
+  {
+    "file": "P06-Shaft-retaining-cap.stl",
+    "shells": 1,
+    "degenerate_faces": 0,
+    "watertight": true
+  },
+  {
+    "file": "P07-Integral-lever-rotor-and-cam-carrier.stl",
+    "shells": 1,
+    "degenerate_faces": 0,
+    "watertight": true
+  },
+  {
+    "file": "P08-Cam-3-gates---stable-endpoints.stl",
+    "shells": 1,
+    "degenerate_faces": 0,
+    "watertight": true
+  },
+  {
+    "file": "P08-Cam-5-gates---stable-endpoints.stl",
+    "shells": 1,
+    "degenerate_faces": 0,
+    "watertight": true
+  },
+  {
+    "file": "P08-Cam-7-gates---stable-endpoints.stl",
+    "shells": 1,
+    "degenerate_faces": 0,
+    "watertight": true
+  },
+  {
+    "file": "P09-Grip-insert-half.stl",
+    "shells": 1,
+    "degenerate_faces": 0,
+    "watertight": true
+  },
+  {
+    "file": "P10-Grip-screw-half.stl",
+    "shells": 1,
+    "degenerate_faces": 0,
+    "watertight": true
+  },
+  {
+    "file": "P11-Forked-roller-follower.stl",
+    "shells": 1,
+    "degenerate_faces": 0,
+    "watertight": true
+  },
+  {
+    "file": "P13-Spring-reaction-crossblock.stl",
+    "shells": 1,
+    "degenerate_faces": 0,
+    "watertight": true
+  },
+  {
+    "file": "P14-Captive-spring-cup-for-9-mm-spring.stl",
+    "shells": 1,
+    "degenerate_faces": 0,
+    "watertight": true
+  },
+  {
+    "file": "P15-Recessed-preload-limit-collar-1-mm.stl",
+    "shells": 1,
+    "degenerate_faces": 0,
+    "watertight": true
+  },
+  {
+    "file": "P21-Follower-left-axial-spacer.stl",
+    "shells": 1,
+    "degenerate_faces": 0,
+    "watertight": true
+  },
+  {
+    "file": "P22-Follower-right-axial-spacer.stl",
+    "shells": 1,
+    "degenerate_faces": 0,
+    "watertight": true
+  },
+  {
+    "file": "P23-Left-rotor-thrust-spacer.stl",
+    "shells": 1,
+    "degenerate_faces": 0,
+    "watertight": true
+  },
+  {
+    "file": "P24-Right-rotor-thrust-spacer.stl",
+    "shells": 1,
+    "degenerate_faces": 0,
+    "watertight": true
+  },
+  {
+    "file": "P25-Captured-printed-pivot-lower-half.stl",
+    "shells": 1,
+    "degenerate_faces": 0,
+    "watertight": true
+  },
+  {
+    "file": "P26-Captured-printed-pivot-upper-half.stl",
+    "shells": 1,
+    "degenerate_faces": 0,
+    "watertight": true
+  },
+  {
+    "file": "P27-Printed-guide-sleeve-20.stl",
+    "shells": 1,
+    "degenerate_faces": 0,
+    "watertight": true
+  },
+  {
+    "file": "P27-Printed-guide-sleeve-4.stl",
+    "shells": 1,
+    "degenerate_faces": 0,
+    "watertight": true
+  },
+  {
+    "file": "P28-Shaft-alignment-key--5.stl",
+    "shells": 1,
+    "degenerate_faces": 0,
+    "watertight": true
+  },
+  {
+    "file": "P28-Shaft-alignment-key-5.stl",
+    "shells": 1,
+    "degenerate_faces": 0,
+    "watertight": true
+  }
+]

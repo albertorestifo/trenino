@@ -1,0 +1,12 @@
+{
+  "part": "P05-Shaft-lower-half.stl",
+  "exit_code": 0,
+  "output_exists": true,
+  "issues": [
+    "[2026-10-25 21:57:28.403464] [0x00002b10] [warning] cli mode, Current BambuStudio Version 02.04.00.70",
+    "[2026-10-25 21:57:28.427355] [0x00002b10] [error]   3198: nozzle_volume_type not found, when different_extruder or multiple extruder, new_printer_name Bambu Lab P2S 0.4 nozzle, extruder_count 1",
+    "[2026-10-25 21:57:28.427355] [0x00002b10] [warning] no filament colors found in projects",
+    "[2026-10-25 21:57:28.687317] [0x00002b10] [warning] tree support default to organic support",
+    "[2026-10-25 21:57:29.093718] [0x00002b10] [error]   Invalid T command (T65535)."
+  ]
+}

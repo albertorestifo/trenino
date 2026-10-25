@@ -1,0 +1,18 @@
+{
+  "rotor_poses": 27,
+  "follower_radians": [
+    0,
+    -0.04,
+    -0.08726646259971647
+  ],
+  "preload_offsets_mm": [
+    -1,
+    0,
+    1
+  ],
+  "threshold_mm3": 0.01,
+  "clashes": [],
+  "insert_min_wall_mm": 1.7000000000000002,
+  "rail_counterbore_web_mm": 1.5,
+  "rail_tip_to_web_mm": 1.2000000000000028
+}

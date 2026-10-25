@@ -1,0 +1,292 @@
+[
+  {
+    "file": "P01-Left-rail-sideplate.stl",
+    "orientation": "X minimum face down",
+    "size_mm": [
+      190.0,
+      92.0,
+      27.0
+    ],
+    "supports": true
+  },
+  {
+    "file": "P02-Right-rail-sideplate.stl",
+    "orientation": "X minimum face down",
+    "size_mm": [
+      190.0,
+      88.0,
+      56.0
+    ],
+    "supports": true
+  },
+  {
+    "file": "P03-Left-flanged-journal-bush.stl",
+    "orientation": "X minimum face down",
+    "size_mm": [
+      25.499040603637695,
+      25.49808120727539,
+      13.200000762939453
+    ],
+    "supports": false
+  },
+  {
+    "file": "P04-Right-flanged-journal-bush.stl",
+    "orientation": "X maximum face down",
+    "size_mm": [
+      25.499040603637695,
+      25.49808120727539,
+      13.200000762939453
+    ],
+    "supports": false
+  },
+  {
+    "file": "P05-Printed-main-shaft---horizontal-print.stl",
+    "orientation": "Y maximum face down",
+    "size_mm": [
+      87.69999694824219,
+      19.998580932617188,
+      16.5
+    ],
+    "supports": true
+  },
+  {
+    "file": "P06-Shaft-retaining-cap.stl",
+    "orientation": "X minimum face down",
+    "size_mm": [
+      19.99929428100586,
+      19.99858856201172,
+      2.0
+    ],
+    "supports": false
+  },
+  {
+    "file": "P07-Integral-lever-rotor-and-cam-carrier.stl",
+    "orientation": "X maximum face down",
+    "size_mm": [
+      71.01408386230469,
+      171.0,
+      25.0
+    ],
+    "supports": false
+  },
+  {
+    "file": "P08-Cam-7-gates---stable-endpoints.stl",
+    "orientation": "X minimum face down",
+    "size_mm": [
+      84.63738250732422,
+      34.4117374420166,
+      8.0
+    ],
+    "supports": false
+  },
+  {
+    "file": "P08-Cam-5-gates---stable-endpoints.stl",
+    "orientation": "X minimum face down",
+    "size_mm": [
+      85.92472839355469,
+      33.98422431945801,
+      8.0
+    ],
+    "supports": false
+  },
+  {
+    "file": "P08-Cam-3-gates---stable-endpoints.stl",
+    "orientation": "X minimum face down",
+    "size_mm": [
+      84.45703125,
+      33.5,
+      8.0
+    ],
+    "supports": false
+  },
+  {
+    "file": "P09-Grip-insert-half.stl",
+    "orientation": "X maximum face down",
+    "size_mm": [
+      40.07235145568848,
+      60.0,
+      20.03486251831055
+    ],
+    "supports": true
+  },
+  {
+    "file": "P10-Grip-screw-half.stl",
+    "orientation": "X minimum face down",
+    "size_mm": [
+      40.07235145568848,
+      60.0,
+      20.035863876342773
+    ],
+    "supports": true
+  },
+  {
+    "file": "P11-Forked-roller-follower.stl",
+    "orientation": "Z minimum face down",
+    "size_mm": [
+      16.0,
+      66.99659538269043,
+      14.0
+    ],
+    "supports": true
+  },
+  {
+    "file": "P12-Replaceable-plain-roller.stl",
+    "orientation": "X minimum face down",
+    "size_mm": [
+      9.998292922973633,
+      10.0,
+      9.5
+    ],
+    "supports": false
+  },
+  {
+    "file": "P13-Spring-reaction-crossblock.stl",
+    "orientation": "Z maximum face down",
+    "size_mm": [
+      48.0,
+      30.0,
+      21.0
+    ],
+    "supports": true
+  },
+  {
+    "file": "P14-Captive-spring-cup.stl",
+    "orientation": "Z maximum face down",
+    "size_mm": [
+      21.0,
+      12.0,
+      10.0
+    ],
+    "supports": false
+  },
+  {
+    "file": "P16-Sliding-replaceable-RK097-mount.stl",
+    "orientation": "X maximum face down",
+    "size_mm": [
+      66.0,
+      38.0,
+      15.0
+    ],
+    "supports": false
+  },
+  {
+    "file": "P17-Shaft-side-floating-coupling-hub.stl",
+    "orientation": "X minimum face down",
+    "size_mm": [
+      21.999865531921387,
+      24.0,
+      13.700000762939453
+    ],
+    "supports": true
+  },
+  {
+    "file": "P18-Floating-cross-slot-coupling-disc.stl",
+    "orientation": "X minimum face down",
+    "size_mm": [
+      24.0,
+      24.0,
+      8.0
+    ],
+    "supports": true
+  },
+  {
+    "file": "P19-RK097-clamp-insert-half.stl",
+    "orientation": "Y maximum face down",
+    "size_mm": [
+      14.200000762939453,
+      22.0,
+      8.799999997019768
+    ],
+    "supports": true
+  },
+  {
+    "file": "P20-RK097-clamp-screw-half.stl",
+    "orientation": "Y minimum face down",
+    "size_mm": [
+      14.200000762939453,
+      22.0,
+      8.799999997019768
+    ],
+    "supports": true
+  },
+  {
+    "file": "P21-Follower-left-axial-spacer.stl",
+    "orientation": "X minimum face down",
+    "size_mm": [
+      11.999189376831055,
+      11.998375415802002,
+      27.799999952316284
+    ],
+    "supports": false
+  },
+  {
+    "file": "P22-Follower-right-axial-spacer.stl",
+    "orientation": "X minimum face down",
+    "size_mm": [
+      11.999567031860352,
+      11.99913501739502,
+      3.799999237060547
+    ],
+    "supports": false
+  },
+  {
+    "file": "P23-Left-rotor-thrust-spacer.stl",
+    "orientation": "X minimum face down",
+    "size_mm": [
+      19.999176025390625,
+      19.99835205078125,
+      16.850000381469727
+    ],
+    "supports": false
+  },
+  {
+    "file": "P24-Right-rotor-thrust-spacer.stl",
+    "orientation": "X minimum face down",
+    "size_mm": [
+      19.999176025390625,
+      19.99835205078125,
+      16.850000381469727
+    ],
+    "supports": false
+  },
+  {
+    "file": "P15-Preload-limit-collar-2-mm.stl",
+    "orientation": "Z minimum face down",
+    "size_mm": [
+      6.59952449798584,
+      6.599761962890625,
+      2.0
+    ],
+    "supports": false
+  },
+  {
+    "file": "P18-Tight-fit-alternate-disc---4-1-mm-slots.stl",
+    "orientation": "X minimum face down",
+    "size_mm": [
+      24.0,
+      24.0,
+      8.0
+    ],
+    "supports": true
+  },
+  {
+    "file": "P25-Left-pivot-sleeve-centering-insert.stl",
+    "orientation": "X minimum face down",
+    "size_mm": [
+      4.9997711181640625,
+      4.99953556060791,
+      6.0
+    ],
+    "supports": false
+  },
+  {
+    "file": "P26-Right-pivot-sleeve-centering-insert.stl",
+    "orientation": "X minimum face down",
+    "size_mm": [
+      4.9997711181640625,
+      4.99953556060791,
+      6.0
+    ],
+    "supports": false
+  }
+]

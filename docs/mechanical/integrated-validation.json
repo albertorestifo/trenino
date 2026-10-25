@@ -1,0 +1,25 @@
+{
+  "SEVEN": {
+    "notices": [],
+    "sourceMicroversion": "3ed0860c6d3a832aaa352575",
+    "console": [
+      "Bodies=84 interference=0",
+      "Removal path 41 poses, clashes=0",
+      "53 poses, interference=0 contactgap=ValueWithUnits : { \"unit\" : UnitSpec : { \"meter\" : 1 } , \"value\" : 0 }"
+    ]
+  },
+  "THREE": {
+    "notices": [],
+    "sourceMicroversion": "4ab6f1092ac0e6637f3f4435",
+    "console": [
+      "53 poses, interference=0 contactgap=ValueWithUnits : { \"unit\" : UnitSpec : { \"meter\" : 1 } , \"value\" : 0 }"
+    ]
+  },
+  "FIVE": {
+    "notices": [],
+    "sourceMicroversion": "cc5eaf1ba35a63d97a7aef30",
+    "console": [
+      "53 poses, interference=0 contactgap=ValueWithUnits : { \"unit\" : UnitSpec : { \"meter\" : 1 } , \"value\" : 0 }"
+    ]
+  }
+}

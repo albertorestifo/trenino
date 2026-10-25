@@ -1,0 +1,47 @@
+{
+  "slab_z": [
+    55,
+    58
+  ],
+  "travel_degrees": [
+    -52,
+    52
+  ],
+  "sample_step": 0.5,
+  "intersection_bounds_mm": [
+    [
+      -7.0,
+      -63.76383367964561,
+      55.0
+    ],
+    [
+      7.0,
+      63.76383367964561,
+      58.0
+    ]
+  ],
+  "slot_bounds_mm": [
+    [
+      -10,
+      -68
+    ],
+    [
+      10,
+      68
+    ]
+  ],
+  "part_lowest_points": [
+    {
+      "part": "P07",
+      "lowest_z_over_travel": -23.000001068482526
+    },
+    {
+      "part": "P09",
+      "lowest_z_over_travel": 70.11001848928517
+    },
+    {
+      "part": "P10",
+      "lowest_z_over_travel": 70.11001848928517
+    }
+  ]
+}

@@ -1,0 +1,198 @@
+{
+  "ok": true,
+  "data": {
+    "project_version": 1,
+    "inventory_revision": 476,
+    "checked_at": "2026-10-25T08:56:21.189911+00:00",
+    "stock_sufficient": true,
+    "ready_for_checkout": false,
+    "requirements_complete": false,
+    "unresolved_requirements": [
+      {
+        "description": "Confirm actual RK097 shaft, bushing, body, rotation and supplied mounting nut/washer",
+        "kind": "measurement",
+        "status": "unresolved",
+        "notes": "Inventory has purchased A10K and15mm shaft label only. CAD uses replaceable provisional6mm shaft/M7 bushing interface."
+      },
+      {
+        "description": "Confirm spring solid height, rate and low-load detent feel",
+        "kind": "measurement",
+        "status": "unresolved",
+        "notes": "User authorized assumptions while away; stock OD9/free20/wire1 confirmed by purchase. Assumed solid<=14mm; verify before loading."
+      },
+      {
+        "description": "Recount remaining kit contents and estimated hardware before assembly",
+        "kind": "component",
+        "status": "unresolved",
+        "notes": "All BOM identities exist; most counts are estimated. CNC Kitchen insert count100 is known."
+      },
+      {
+        "description": "Check printed shaft/pivot strength, bearing inner-race contact and coupling free sliding",
+        "kind": "compatibility",
+        "status": "unresolved",
+        "notes": "No cut metal. Printed split pivot is not proven equivalent to a metal sleeve. Test gently; tighten bearing axle without dragging shields."
+      },
+      {
+        "description": "Verify rail T-nut fit and effective thread engagement without bottoming",
+        "kind": "compatibility",
+        "status": "unresolved",
+        "notes": "Nominal screw tipZ50 clears recorded rail webZ48.8 by1.2mm; nut dimensions unmeasured."
+      }
+    ],
+    "check_scope": "Recorded BOM stock and declared requirements only; engineering compatibility is not verified.",
+    "blockers": [
+      "UNRESOLVED_REQUIREMENTS"
+    ],
+    "warnings": [
+      {
+        "code": "ESTIMATED_COUNT",
+        "message": "stock count is an estimate; verify before relying on it",
+        "part_id": "09ab5aa5-6a4d-4125-ae2e-f2db61b06db7",
+        "field": null
+      },
+      {
+        "code": "ESTIMATED_COUNT",
+        "message": "stock count is an estimate; verify before relying on it",
+        "part_id": "177b0eab-4097-4db3-8e5b-a33c6deae4a1",
+        "field": null
+      },
+      {
+        "code": "ESTIMATED_COUNT",
+        "message": "stock count is an estimate; verify before relying on it",
+        "part_id": "79970166-200c-4516-b0a7-b9d8a4fed625",
+        "field": null
+      },
+      {
+        "code": "ESTIMATED_COUNT",
+        "message": "stock count is an estimate; verify before relying on it",
+        "part_id": "b4049550-e8ea-445f-9c37-16a7d1ec9efd",
+        "field": null
+      },
+      {
+        "code": "ESTIMATED_COUNT",
+        "message": "stock count is an estimate; verify before relying on it",
+        "part_id": "c4d42b8a-8252-402c-a14a-8a8e318ed8de",
+        "field": null
+      },
+      {
+        "code": "ESTIMATED_COUNT",
+        "message": "stock count is an estimate; verify before relying on it",
+        "part_id": "c8f2c1fb-fa66-4225-a0dc-50b69f9adf61",
+        "field": null
+      }
+    ],
+    "items": [
+      {
+        "part_id": "09ab5aa5-6a4d-4125-ae2e-f2db61b06db7",
+        "required": 2,
+        "available": 40,
+        "shortage": 0,
+        "count_status": "estimated",
+        "count_basis": "piece",
+        "identity_status": "confirmed",
+        "archived": false
+      },
+      {
+        "part_id": "177b0eab-4097-4db3-8e5b-a33c6deae4a1",
+        "required": 4,
+        "available": 10,
+        "shortage": 0,
+        "count_status": "estimated",
+        "count_basis": "piece",
+        "identity_status": "confirmed",
+        "archived": false
+      },
+      {
+        "part_id": "57f53679-420c-4774-bfff-15b3e06df7cd",
+        "required": 19,
+        "available": 100,
+        "shortage": 0,
+        "count_status": "known",
+        "count_basis": "piece",
+        "identity_status": "confirmed",
+        "archived": false
+      },
+      {
+        "part_id": "79970166-200c-4516-b0a7-b9d8a4fed625",
+        "required": 4,
+        "available": 50,
+        "shortage": 0,
+        "count_status": "estimated",
+        "count_basis": "piece",
+        "identity_status": "confirmed",
+        "archived": false
+      },
+      {
+        "part_id": "b4049550-e8ea-445f-9c37-16a7d1ec9efd",
+        "required": 1,
+        "available": 1,
+        "shortage": 0,
+        "count_status": "estimated",
+        "count_basis": "kit",
+        "identity_status": "confirmed",
+        "archived": false
+      },
+      {
+        "part_id": "c4d42b8a-8252-402c-a14a-8a8e318ed8de",
+        "required": 1,
+        "available": 10,
+        "shortage": 0,
+        "count_status": "estimated",
+        "count_basis": "piece",
+        "identity_status": "confirmed",
+        "archived": false
+      },
+      {
+        "part_id": "c8f2c1fb-fa66-4225-a0dc-50b69f9adf61",
+        "required": 1,
+        "available": 10,
+        "shortage": 0,
+        "count_status": "estimated",
+        "count_basis": "piece",
+        "identity_status": "confirmed",
+        "archived": false
+      }
+    ]
+  },
+  "app_url": null,
+  "summary": "Project is not ready: UNRESOLVED_REQUIREMENTS",
+  "warnings": [
+    {
+      "code": "ESTIMATED_COUNT",
+      "message": "stock count is an estimate; verify before relying on it",
+      "part_id": "09ab5aa5-6a4d-4125-ae2e-f2db61b06db7",
+      "field": null
+    },
+    {
+      "code": "ESTIMATED_COUNT",
+      "message": "stock count is an estimate; verify before relying on it",
+      "part_id": "177b0eab-4097-4db3-8e5b-a33c6deae4a1",
+      "field": null
+    },
+    {
+      "code": "ESTIMATED_COUNT",
+      "message": "stock count is an estimate; verify before relying on it",
+      "part_id": "79970166-200c-4516-b0a7-b9d8a4fed625",
+      "field": null
+    },
+    {
+      "code": "ESTIMATED_COUNT",
+      "message": "stock count is an estimate; verify before relying on it",
+      "part_id": "b4049550-e8ea-445f-9c37-16a7d1ec9efd",
+      "field": null
+    },
+    {
+      "code": "ESTIMATED_COUNT",
+      "message": "stock count is an estimate; verify before relying on it",
+      "part_id": "c4d42b8a-8252-402c-a14a-8a8e318ed8de",
+      "field": null
+    },
+    {
+      "code": "ESTIMATED_COUNT",
+      "message": "stock count is an estimate; verify before relying on it",
+      "part_id": "c8f2c1fb-fa66-4225-a0dc-50b69f9adf61",
+      "field": null
+    }
+  ],
+  "replayed": false
+}

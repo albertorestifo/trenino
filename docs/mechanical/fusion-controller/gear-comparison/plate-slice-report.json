@@ -1,0 +1,64 @@
+[
+  {
+    "part": "Plate-01.3mf",
+    "exit_code": 0,
+    "output_exists": true,
+    "issues": [
+      "[2026-10-25 12:22:09.741219] [0x00002724] [warning] cli mode, Current BambuStudio Version 02.04.00.70",
+      "[2026-10-25 12:22:10.270427] [0x00002724] [error]   3198: nozzle_volume_type not found, when different_extruder or multiple extruder, new_printer_name Bambu Lab P2S 0.4 nozzle, extruder_count 1",
+      "[2026-10-25 12:22:10.270959] [0x00002724] [warning] no filament colors found in projects",
+      "[2026-10-25 12:22:12.534247] [0x00002724] [warning] tree support default to organic support",
+      "[2026-10-25 12:22:12.534748] [0x00004c10] [warning] tree support default to organic support",
+      "[2026-10-25 12:22:12.534748] [0x00005edc] [warning] tree support default to organic support",
+      "[2026-10-25 12:22:12.534748] [0x00005160] [warning] tree support default to organic support",
+      "[2026-10-25 12:22:12.535248] [0x0000517c] [warning] tree support default to organic support",
+      "[2026-10-25 12:22:12.535248] [0x000060fc] [warning] tree support default to organic support",
+      "[2026-10-25 12:22:12.535248] [0x000054b0] [warning] tree support default to organic support",
+      "[2026-10-25 12:22:12.535747] [0x00006628] [warning] tree support default to organic support",
+      "[2026-10-25 12:22:12.536248] [0x000061f4] [warning] tree support default to organic support",
+      "[2026-10-25 12:22:12.536248] [0x00002798] [warning] tree support default to organic support",
+      "[2026-10-25 12:22:12.536748] [0x00005f7c] [warning] tree support default to organic support",
+      "[2026-10-25 12:22:12.538248] [0x00002798] [warning] tree support default to organic support",
+      "[2026-10-25 12:22:12.539749] [0x00001094] [warning] tree support default to organic support",
+      "[2026-10-25 12:22:12.541249] [0x00001094] [warning] tree support default to organic support",
+      "[2026-10-25 12:22:12.541748] [0x000061f4] [warning] tree support default to organic support",
+      "[2026-10-25 12:22:12.544750] [0x000061f4] [warning] tree support default to organic support",
+      "[2026-10-25 12:22:12.545750] [0x000054b0] [warning] tree support default to organic support",
+      "[2026-10-25 12:22:12.598767] [0x000054b0] [warning] tree support default to organic support",
+      "[2026-10-25 12:22:12.609269] [0x00002798] [warning] tree support default to organic support",
+      "[2026-10-25 12:22:18.344251] [0x00002724] [error]   Invalid T command (T65535)."
+    ]
+  },
+  {
+    "part": "Plate-02.3mf",
+    "exit_code": 0,
+    "output_exists": true,
+    "issues": [
+      "[2026-10-25 12:22:20.009692] [0x00003e2c] [warning] cli mode, Current BambuStudio Version 02.04.00.70",
+      "[2026-10-25 12:22:20.075457] [0x00003e2c] [error]   3198: nozzle_volume_type not found, when different_extruder or multiple extruder, new_printer_name Bambu Lab P2S 0.4 nozzle, extruder_count 1",
+      "[2026-10-25 12:22:20.076294] [0x00003e2c] [warning] no filament colors found in projects",
+      "[2026-10-25 12:22:21.189174] [0x000011a4] [warning] tree support default to organic support",
+      "[2026-10-25 12:22:21.189674] [0x00003e2c] [warning] tree support default to organic support",
+      "[2026-10-25 12:22:21.189674] [0x00005bb4] [warning] tree support default to organic support",
+      "[2026-10-25 12:22:21.189674] [0x00005794] [warning] tree support default to organic support",
+      "[2026-10-25 12:22:22.743757] [0x00003e2c] [error]   Invalid T command (T65535)."
+    ]
+  },
+  {
+    "part": "Plate-03.3mf",
+    "exit_code": 0,
+    "output_exists": true,
+    "issues": [
+      "[2026-10-25 12:22:23.787993] [0x000007ec] [warning] cli mode, Current BambuStudio Version 02.04.00.70",
+      "[2026-10-25 12:22:23.847396] [0x000007ec] [error]   3198: nozzle_volume_type not found, when different_extruder or multiple extruder, new_printer_name Bambu Lab P2S 0.4 nozzle, extruder_count 1",
+      "[2026-10-25 12:22:23.847932] [0x000007ec] [warning] no filament colors found in projects",
+      "[2026-10-25 12:22:24.538528] [0x00005fec] [error]   ZFiller: encounter idx from clip: 24",
+      "[2026-10-25 12:22:24.775575] [0x00006548] [warning] tree support default to organic support",
+      "[2026-10-25 12:22:24.775575] [0x000007ec] [warning] tree support default to organic support",
+      "[2026-10-25 12:22:24.776075] [0x00003910] [warning] tree support default to organic support",
+      "[2026-10-25 12:22:24.776075] [0x00000424] [warning] tree support default to organic support",
+      "[2026-10-25 12:22:24.776575] [0x00005fec] [warning] tree support default to organic support",
+      "[2026-10-25 12:22:26.081318] [0x000007ec] [error]   Invalid T command (T65535)."
+    ]
+  }
+]

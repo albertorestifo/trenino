@@ -1,0 +1,59 @@
+CAM DETENT — BAMBU P2S / 0.4 mm — PLA PROTOTYPE
+24 October 2026
+
+PRINT LAYOUT (five printable parts only)
+https://cad.onshape.com/documents/b8296e54dd613316c44885e0/w/c3ae9023e20b2a467edaad8c/e/dacb8478b35b52fa42ce9648
+Original assembled-view prototype remains in its separate tab. The shared FeatureScript now generates the revised FDM geometry in both tabs.
+
+READY FILES
+Cam-Detent-FDM-P2S-layout.3mf is the combined oriented geometry package, exported directly from Onshape. It contains geometry, not validated printer/filament settings; select your P2S and actual PLA profile in Bambu Studio. Cam-Detent-FDM-P2S.zip contains the five separate STL exports.
+fdm-stl/ contains separate binary STL files exported from Onshape in millimetres, Fine resolution, Z up. Each part is already on the bed at Z=0. Import into Bambu Studio without auto-orientation. Auto-arrange may translate parts but must not rotate them onto different faces. All five parts occupy x10..166, y10..193, z0..80 mm, within the P2S 256 mm build envelope. This is an orientation layout, not an instruction to print them sequentially on one plate.
+
+PRINT ORDER — RECOMMENDED SEPARATE JOBS
+1. 01 Roller: cylindrical end face on bed, bore vertical. 10 x 10 x 10 mm. No supports; 3 mm brim if needed. Check a smooth 3 mm steel axle turns freely in the nominal 3.4 mm bore, without excessive wobble. Deburr/size the hole before proceeding.
+2. 02 Hub: broad flat carrier underside on bed, shaft bore vertical. Approximately 56 x 67 x 21 mm. Enable removable supports where the preview shows the radial boss underside or its horizontal insert-bore roof. Four CNC Kitchen M3x5.7 heat-set inserts fit the three carrier bosses and one radial side boss. Install each insert flush with its boss entry face. Check D-shaft fit, insert fit, M3x10 radial set-screw engagement and indexing-dowel socket before printing the other large parts. Do not force the shaft or an insert into a splitting fit.
+3. 03 Cam: broad underside on bed, screw-head recesses face upward. Approximately 83.73 x 37.76 x 8 mm. Enable removable supports for the three underside boss-relief roofs; inspect removal access before printing. Print at 0.16 mm if desired for the cam; keep the roller-contact perimeter free of support and put the seam on a radial end/inner edge. Check pilot seating, three M3x8 button-head screws and all fixing holes against the hub.
+4. 04 Fork: supplied long flat side down. 62 x 18 x 8 mm. The two cheeks stand next to each other, eliminating the original 54 mm unsupported upper-arm span. Use local supports under curved ends/horizontal bore roofs if the slicer requests them; inspect access before printing. Clear/ream horizontal bores, keeping paired holes coaxial. Do not clamp the roller solid with its axle.
+5. 05 Bracket: supplied broad mounting face down. 130.58 x 64.5 x 80 mm. Supports REQUIRED under the elevated stop crossbar, projecting stops and other downward-facing ledges. Use supports from the build plate and permit local supports where the preview shows islands; a 5 mm brim is recommended. Inspect the support structure in preview through the full height. Fit both original frame screws before applying spring load.
+
+Print one job at a time in the order above for the first prototype, checking fits between jobs. If printing several parts together, use ordinary by-layer printing. Do NOT use by-object/sequential printing with this layout: no toolhead-clearance analysis for sequential printing was performed.
+
+STARTING BAMBU STUDIO SETTINGS
+Printer: Bambu Lab P2S, 0.4 mm nozzle. Select the actual PLA filament profile, not an unrelated material profile. Use the filament manufacturer's temperatures and the P2S cooling/ventilation behavior from the installed preset.
+Layer height: 0.20 mm; cam optionally 0.16 mm. First layer 0.20 mm.
+Walls: 5. Top/bottom shell layers: 5 (1 mm at 0.20 mm layers). Infill: 35% gyroid. Small roller may effectively be nearly solid with five walls. Slow down outer walls around the cam/bores if fit or surface finish is poor; maximum advertised printer speed is not a dimensional-quality target.
+Support material: same PLA is acceptable. Start with the preset support-interface gap (normally around one layer); inspect and tune on the actual filament. Supports must be removable from the hub's radial insert-bore roof and the cam's three underside relief roofs. Do not leave support material on sliding/locating surfaces or insert seats.
+PLA is intended here for a room-temperature fit-and-feel prototype. PETG is an alternative for a later loaded prototype, but repeat the hub/roller fit checks because dimensions and support release differ. A machined POM roller or bearing arrangement is preferable to relying on a printed roller for long wear life.
+
+CHANGES MADE FOR FDM
+- Removed the lower hub projection: the carrier now has a continuous bed face at assembly z27; 21 mm total hub height remains.
+- Carrier thickness is 5 mm. Three fixing centers are at radius 25.5 mm with Ø9 mm bosses extending from z27 to z35.5.
+- Three carrier bosses and one radial side boss use CNC Kitchen standard M3x5.7 heat-set inserts. Each printed pocket is Ø4.0 x 6.7 mm effective depth; the CAD cutting tool extends 0.1 mm past the open boss face to ensure a clean opening, and that overrun is not extra pocket depth. The vertical pockets leave 1.8 mm below the blind-hole bottom. The Ø9 mm bosses leave 2.2 mm radial wall around the insert's Ø4.6 mm outside diameter. Install the three carrier inserts flush with the tops of their bosses and the side insert flush with the radial entry face. Confirm iron temperature and technique on a scrap boss first; do not push inserts past flush or melt the thin bottom floor.
+- Fit three M3 x 8 mm button-head screws through the cam into the vertical inserts. The cam head recess is Ø6.2 mm; confirm the actual screw head fits and seats. Tighten lightly; do not crush the plastic.
+- The radial side insert accepts one metal M3 x 10 mm set screw to clamp the shaft. Its clearance passage meets the D-shaft bore. The radial screw bears on the round side of the shaft; the D-shaped bore provides angular indexing. Confirm gentle shaft contact and secure retention; use a metal fastener, not printed threads.
+- Replaced the integral 3 mm indexing peg with a separate 3 x 6 mm steel dowel. The carrier socket is nominally 3.1 mm and 3 mm deep; cam clearance is 3.4 mm. Ream or drill the carrier socket to fit the actual dowel if needed. Retain the dowel in the hub if the printed socket is loose; it must not remain loose in service.
+- Increased pilot radial clearance to 0.35 mm (40 mm pilot, 40.7 mm cam opening), roller/axle clearance to 3.4 mm, and follower pivot bore to 5.3 mm. These are starting nominal print fits, not universal guaranteed tolerances.
+- Extended bracket attachment overlaps to the mounting face; doubled the stop crossbar in-plane width from 6 to 12 mm, widened the upright from 6 to 10 mm, and widened the post feet from 8 to 12 mm. The original z23.5..26.5 axial envelope is retained to avoid taking additional space from the gear stack.
+- Increased spring-adjuster nut block thickness from 4 to 6 mm. Its 7.4 mm AF, 3.3 mm-deep M4 pocket now leaves a 2.7 mm back wall instead of 0.7 mm.
+- Added explicit FDM layout mode that places all five printable bodies on Z=0, rotates the fork/bracket, and excludes reference plates and metal/spring hardware.
+
+DO NOT PRINT THESE AS PLASTIC HARDWARE
+Four M3 heat-set inserts; M3 and M4 screws; the M4 captive nut; steel indexing dowel; 3 mm roller axle/shoulder screw; 5 mm pivot/shoulder pin; compression spring; metal thrust/retention hardware; frame mounting bolts. The assembly-view cylinders are schematic hardware envelopes. Axle/pivot retainers and the final spring specification still require hardware selection. Use positive axial retention and washers/spacers so tightening does not bind the moving parts.
+
+CHECKS COMPLETED
+Onshape compiled and generated assembled and print-layout modes without notices. The revised 3/5/7-notch geometries at maximum 1.5 mm lift passed 29 sampled poses over +/-70 degrees against the new bracket/reference support plates. Neutral sector removal at 1 mm lift passed 41 sampled poses. All-body neutral collision check reported no volumetric clashes.
+All five refreshed exported STLs were checked as one connected, closed, consistently wound mesh: zero nonmanifold edges, positive volume, minimum Z=0 and bounds within the P2S envelope. Mesh verification is reproducible with check_stl.py; detailed results in fdm-mesh-check.json. This does not replace a physical load/wear test or certify complete original-drivetrain clearance.
+
+LOCAL SLICER CHECK
+Bambu Studio 02.04.00.70 generated toolpaths for all five refreshed meshes using resolved P2S 0.4 mm / Bambu PLA Basic settings, 0.20 mm layers, 5 walls, 5 top/bottom layers and 35% gyroid. Orientations were preserved. Estimated separate-job times: roller 11m52s; refreshed hub 39m43s; refreshed cam 31m25s; fork 14m32s; final bracket 1h16m49s. Their combined estimate is about 2h54m22s and 65.23g, before fit checks and cooling. Actual material/profile settings may change these estimates.
+Only the refreshed hub and cam were re-sliced for the insert revision; unchanged roller, fork and bracket results are retained from the earlier run. Auto tree supports are enabled for hub, cam, fork and bracket. The refreshed hub support check detected 4 overhang layers and cam detected 1; inspect support removability around the radial insert bore and underside cam relief roofs. Fork and bracket support results are unchanged.
+The CLI logged missing nozzle-volume/color metadata and a T65535 warning from the unchanged vendor end-code. Those generated G-code packages are retained only as validation evidence, not as printer-ready deliverables. Open the supplied geometry STL/3MF in Bambu Studio, select your P2S and actual PLA profile, inspect supports, and slice there. No printer job was sent. Full diagnostic report: slicer-check/validation-report.md.
+
+SOURCES
+Bambu P2S specifications: https://blog.bambulab.com/the-icon-redefined-meet-the-p2s-a-completely-reengineered-version-of-the-ultra-productive-p1-series/
+Prusa guidance on orientation, support finish and printer-dependent tolerances: https://help.prusa3d.com/article/modeling-with-3d-printing-in-mind_164135
+CNC Kitchen standard M3x5.7 insert drawing: https://cnckitchen.store/products/heat-set-insert-m3-x-5-7-100-pieces (Ø4.6 mm insert; Ø4.0 mm hole; 6.7 mm minimum blind-hole depth; 1.6 mm minimum wall)
+
+The earlier README.txt describes the pre-FDM prototype. This guide and cam_detent_fdm.fs supersede its fixing, index-pin, nut-pocket, hub and print-orientation dimensions. Complete drivetrain/shaft alignment, spring-rate selection, retention hardware and physical durability are still separate validation items.
+
+

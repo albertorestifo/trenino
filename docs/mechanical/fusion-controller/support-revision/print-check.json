@@ -1,0 +1,66 @@
+{
+  "date": "2026-10-25",
+  "native": {
+    "document": "AIDesignedLever v5",
+    "modified": false,
+    "features": 396,
+    "nonhealthy_features": [],
+    "joints": 3,
+    "rigid_groups": 2
+  },
+  "parts": [
+    "P19-RK097-clamp-insert-half.stl",
+    "P10-Grip-screw-half.stl",
+    "P17-Shaft-side-floating-coupling-hub.stl",
+    "P18-Floating-cross-slot-coupling-disc.stl",
+    "P09-Grip-insert-half.stl",
+    "P18-Tight-fit-alternate-disc---4-1-mm-slots.stl",
+    "P20-RK097-clamp-screw-half.stl"
+  ],
+  "settings": {
+    "printer_model": "Bambu Lab P2S",
+    "printer_variant": "0.4",
+    "nozzle_diameter": [
+      "0.4"
+    ],
+    "enable_support": "0",
+    "layer_height": "0.2",
+    "wall_loops": "5",
+    "sparse_infill_density": "35%",
+    "sparse_infill_pattern": "gyroid",
+    "top_shell_layers": "5",
+    "bottom_shell_layers": "5",
+    "brim_type": "outer_only",
+    "brim_width": "5",
+    "brim_object_gap": "0.1",
+    "bridge_speed": [
+      "25",
+      "50"
+    ],
+    "curr_bed_type": "Supertack Plate",
+    "filament_type": [
+      "PLA",
+      "PLA",
+      "ABS",
+      "PLA",
+      "ABS"
+    ],
+    "filament_settings_id": [
+      "Bambu PLA Basic @BBL P2S",
+      "Figutech PLA One @Bambu Lab P2S 0.4 nozzle",
+      "Bambu ABS @BBL P2S",
+      "Bambu PLA Basic @BBL P2S",
+      "Bambu ABS @BBL P2S"
+    ]
+  },
+  "gcode_header": "; HEADER_BLOCK_START\n; BambuStudio 02.04.00.70\n; model printing time: 1h 49m 40s; total estimated time: 1h 57m 37s\n; total layer number: 300\n; total filament length [mm] : 18277.36\n; total filament volume [cm^3] : 43962.21\n; total filament weight [g] : 55.39\n; model label id: 148,170,192,214,236,258,280\n; filament_density: 1.26,1.26,1.04,1.26,1.04\n; filament_diameter: 1.75,1.75,1.75,1.75,1.75\n; max_z_height: 60.00\n; filament: 1\n",
+  "support_toolpaths": false,
+  "seven_objects_present": true,
+  "md5_valid": true,
+  "checks": "GUI slice succeeded; inspected first layer, disc bridges at layer14 and sloped grip roofs at layer169; nozzle220/bed40 commands present. No physical print validation yet.",
+  "printer_action": "Files only. Nothing sent to printer.",
+  "sha256": {
+    "Support-Reduced-P2S-PLA.3mf": "41ecc0e5d75e541119a1642d5daba395cf46f83c14e8ec67b125e300c1985910",
+    "Support-Reduced-P2S-PLA.gcode.3mf": "a35e5acddba33f29c04ad216a2d57c65bcc8fe18f156668208d24b1c17e295ca"
+  }
+}
