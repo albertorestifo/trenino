@@ -1,6 +1,6 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
-import type { ConfigurationSummaryView, SettingsView, TrainSummaryView, UiChange, UiFailure, UiSnapshot } from './generated';
+import type { CalibrationView, ConfigurationSummaryView, DeviceDetailView, SettingsView, TrainSummaryView, UiChange, UiFailure, UiSnapshot } from './generated';
 import { TopicStream } from './stream';
 
 export type Result<T> = { ok: true; value: T } | { ok: false; error: UiFailure };
@@ -19,7 +19,43 @@ export interface UiBridge {
   getConfigurations(): Promise<Result<UiSnapshot<ConfigurationSummaryView[]>>>;
   getTrains(): Promise<Result<UiSnapshot<TrainSummaryView[]>>>;
   setConsent(value: 'enabled' | 'disabled'): Promise<Result<UiSnapshot<SettingsView>>>;
+  // ---- Configuration detail + settings edit (UiGroupA track) ----
+  // Optional so parallel UI tracks can extend this interface without merge conflicts.
+  getHardwareDetail?(id: string): Promise<Result<UiSnapshot<DeviceDetailView>>>;
+  getHardwareDetailByConfig?(configId: string): Promise<Result<UiSnapshot<DeviceDetailView>>>;
+  createConfiguration?(name: string, description?: string | null): Promise<Result<UiSnapshot<DeviceDetailView>>>;
+  updateConfiguration?(id: string, patch: { name?: string; description?: string | null }): Promise<Result<UiSnapshot<ConfigurationSummaryView[]>>>;
+  deleteConfiguration?(id: string): Promise<Result<UiSnapshot<ConfigurationSummaryView[]>>>;
+  createInput?(params: { device_id: string; pin: number; kind: 'analog' | 'button'; sensitivity?: number | null; debounce?: number | null; name?: string | null; matrix_id?: string | null }): Promise<Result<UiSnapshot<DeviceDetailView>>>;
+  updateInput?(params: { id: string; pin: number; kind: 'analog' | 'button'; sensitivity?: number | null; debounce?: number | null; name?: string | null }): Promise<Result<UiSnapshot<DeviceDetailView>>>;
+  deleteInput?(id: string): Promise<Result<UiSnapshot<DeviceDetailView>>>;
+  createOutput?(params: { device_id: string; pin: number; name?: string | null }): Promise<Result<UiSnapshot<DeviceDetailView>>>;
+  updateOutput?(params: { id: string; pin: number; name?: string | null }): Promise<Result<UiSnapshot<DeviceDetailView>>>;
+  deleteOutput?(id: string): Promise<Result<UiSnapshot<DeviceDetailView>>>;
+  createMatrix?(params: { device_id: string; name: string; row_pins: number[]; col_pins: number[] }): Promise<Result<UiSnapshot<DeviceDetailView>>>;
+  updateMatrix?(params: { id: string; row_pins: number[]; col_pins: number[] }): Promise<Result<UiSnapshot<DeviceDetailView>>>;
+  deleteMatrix?(id: string): Promise<Result<UiSnapshot<DeviceDetailView>>>;
+  createI2cModule?(params: { device_id: string; name?: string | null; module_chip: string; i2c_address: number }): Promise<Result<UiSnapshot<DeviceDetailView>>>;
+  updateI2cModule?(params: { id: string; name?: string | null; module_chip: string; i2c_address: number }): Promise<Result<UiSnapshot<DeviceDetailView>>>;
+  deleteI2cModule?(id: string): Promise<Result<UiSnapshot<DeviceDetailView>>>;
+  startCalibration?(params: { port: string; generation: number; pin: number; input_id: string; max_hardware_value: number }): Promise<Result<string>>;
+  advanceCalibration?(session_id: string): Promise<Result<CalibrationView | null>>;
+  cancelCalibration?(session_id: string): Promise<Result<boolean>>;
+  setSimulatorUrl?(value: string): Promise<Result<UiSnapshot<SettingsView>>>;
+  setApiKey?(value: string): Promise<Result<UiSnapshot<SettingsView>>>;
+  testSimulator?(): Promise<Result<boolean>>;
+  onHardwareInput?(handler: (event: HardwareInputEvent) => void): Promise<Unsubscribe>;
   subscribe<T>(topic: Topic, onValue: (value: UiSnapshot<T>) => void, onUnavailable: (error: UiFailure) => void): Promise<Unsubscribe>;
+}
+
+/** Live hardware input sample emitted on `ui://hardware/input` (hand-written; not ts-rs generated). */
+export interface HardwareInputEvent {
+  device_id: string;
+  input_id: string;
+  pin: number;
+  value: number;
+  config_id: number;
+  port_generation: number;
 }
 
 const ERROR_CODES = new Set<UiFailure['code']>(['validation', 'conflict', 'not_found', 'unavailable', 'cancelled', 'internal']);
@@ -88,6 +124,34 @@ export function createBridge(ipc: IpcTransport): UiBridge {
     getConfigurations: () => command('ui_list_configurations'),
     getTrains: () => command('ui_list_trains'),
     setConsent: (value) => command('ui_set_consent', { value }),
+    // ---- Configuration detail + settings edit (UiGroupA track) ----
+    getHardwareDetail: (id) => command('ui_get_hardware_detail', { id }),
+    getHardwareDetailByConfig: (config_id) => command('ui_get_hardware_detail_by_config', { config_id }),
+    createConfiguration: (name, description) => command('ui_create_configuration', { name, description }),
+    updateConfiguration: (id, patch) => command('ui_update_configuration', { id, ...patch }),
+    deleteConfiguration: (id) => command('ui_delete_configuration', { id }),
+    createInput: (params) => command('ui_create_input', { ...params }),
+    updateInput: (params) => command('ui_update_input', { ...params }),
+    deleteInput: (id) => command('ui_delete_input', { id }),
+    createOutput: (params) => command('ui_create_output', { ...params }),
+    updateOutput: (params) => command('ui_update_output', { ...params }),
+    deleteOutput: (id) => command('ui_delete_output', { id }),
+    createMatrix: (params) => command('ui_create_matrix', { ...params }),
+    updateMatrix: (params) => command('ui_update_matrix', { ...params }),
+    deleteMatrix: (id) => command('ui_delete_matrix', { id }),
+    createI2cModule: (params) => command('ui_create_i2c_module', { ...params }),
+    updateI2cModule: (params) => command('ui_update_i2c_module', { ...params }),
+    deleteI2cModule: (id) => command('ui_delete_i2c_module', { id }),
+    startCalibration: (params) => command('ui_start_calibration', { ...params }),
+    advanceCalibration: (session_id) => command('ui_advance_calibration', { session_id }),
+    cancelCalibration: (session_id) => command('ui_cancel_calibration', { session_id }),
+    setSimulatorUrl: (value) => command('ui_set_simulator_url', { value }),
+    setApiKey: (value) => command('ui_set_api_key', { value }),
+    testSimulator: () => command('ui_test_simulator'),
+    onHardwareInput: (handler) => {
+      if (!ipc.isDesktop()) return Promise.resolve(() => {});
+      return ipc.listen('ui://hardware/input', (payload) => handler(payload as HardwareInputEvent));
+    },
     async subscribe<T>(topic: Topic, onValue: (value: UiSnapshot<T>) => void, onUnavailable: (error: UiFailure) => void) {
       if (!ipc.isDesktop()) {
         onUnavailable(unavailable('Desktop subscriptions are unavailable in this browser.'));

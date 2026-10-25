@@ -10,6 +10,7 @@ function fakeBridge(consent: 'unset' | 'disabled' = 'disabled'): UiBridge {
     getConfigurations: vi.fn(async () => ({ ok: true as const, value: { epoch: '1', topic: 'hardware' as const, revision: '1', value: [] } })),
     getTrains: vi.fn(async () => ({ ok: true as const, value: { epoch: '1', topic: 'trains' as const, revision: '1', value: [] } })),
     setConsent: vi.fn(async () => ({ ok: false as const, error: unavailable })),
+    onHardwareInput: vi.fn(async () => () => {}),
     subscribe: vi.fn(async () => () => {}),
   };
 }
@@ -43,11 +44,37 @@ describe('shell', () => {
     await waitFor(() => expect(location.hash).toBe('#/consent'));
   });
 
-  it('shows settings values read-only', async () => {
+  it('shows the editable settings form seeded from the settings snapshot', async () => {
     location.hash = '#/settings';
     render(App, { props: { bridge: fakeBridge() } });
-    expect(await screen.findByText('Settings are shown read-only in this migration slice.')).toBeInTheDocument();
-    expect(await screen.findByText('http://localhost:31270')).toBeInTheDocument();
+    expect(await screen.findByLabelText('URL')).toHaveValue('http://localhost:31270');
+    expect(screen.getByRole('button', { name: 'Save and test connection' })).toBeInTheDocument();
+    expect(screen.getByTestId('error-reporting-toggle')).toBeInTheDocument();
+  });
+
+  it('renders the configuration editor for #/configurations/:config_id', async () => {
+    const api = fakeBridge();
+    api.getHardwareDetailByConfig = vi.fn(async () => ({ ok: true as const, value: { epoch: '1', topic: 'hardware' as const, revision: '2', value: { id: '7', name: 'Mega Panel', description: null, config_id: 4242, inputs: [], outputs: [], matrices: [], i2c_modules: [] } } }));
+    location.hash = '#/configurations/4242';
+    render(App, { props: { bridge: api } });
+    expect(await screen.findByDisplayValue('Mega Panel')).toBeInTheDocument();
+    expect(api.getHardwareDetailByConfig).toHaveBeenCalledWith('4242');
+    expect(screen.getByText('No inputs configured. Add your first input to get started.')).toBeInTheDocument();
+  });
+
+  it('opens new-configuration mode without a detail request', async () => {
+    const api = fakeBridge();
+    api.getHardwareDetailByConfig = vi.fn(async () => ({ ok: true as const, value: { epoch: '1', topic: 'hardware' as const, revision: '1', value: { id: '7', name: 'New Configuration', description: null, config_id: 99, inputs: [], outputs: [], matrices: [], i2c_modules: [] } } }));
+    location.hash = '#/configurations/new';
+    render(App, { props: { bridge: api } });
+    expect(await screen.findByLabelText('Configuration Name')).toHaveValue('New Configuration');
+    expect(api.getHardwareDetailByConfig).not.toHaveBeenCalled();
+  });
+
+  it('shows the connected-device indicator from the hardware stream', async () => {
+    location.hash = '#/';
+    render(App, { props: { bridge: fakeBridge() } });
+    expect(await screen.findByText('No device connected')).toBeInTheDocument();
   });
 
   it('keeps normal routes behind a delayed or failed consent bootstrap', async () => {

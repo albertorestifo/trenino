@@ -4,6 +4,8 @@
   import EmptyState from '../components/EmptyState.svelte';
   import Unavailable from '../components/Unavailable.svelte';
   import { bridge as productionBridge, type Result, type UiBridge } from '../bridge/client';
+  import ConfigurationEdit from './pages/configuration/ConfigurationEdit.svelte';
+  import SettingsEdit from './pages/settings/SettingsEdit.svelte';
   import { parseRoute, routeHref, type Route } from '../bridge/route';
   import type { ConfigurationSummaryView, SettingsView, TrainSummaryView, UiSnapshot } from '../bridge/generated';
 
@@ -97,6 +99,39 @@
     }
   }
 
+
+  let hardwareSummaries = $state<ConfigurationSummaryView[] | null>(null);
+  let hardwareInputValues = $state<Record<number, number>>({});
+  let liveConfigId = $state<number | null>(null);
+  let unsubscribeHardware: (() => void) | null = null;
+
+  const activeBridge = $derived(injectedBridge ?? productionBridge);
+
+  onMount(() => {
+    void api()
+      .subscribe<ConfigurationSummaryView[]>('hardware', (snapshot) => {
+        hardwareSummaries = snapshot.value;
+      }, () => {
+        hardwareSummaries = null;
+      })
+      .then((stop) => {
+        unsubscribeHardware = stop;
+      });
+    void api().onHardwareInput?.((event) => {
+      if (event.config_id !== liveConfigId) hardwareInputValues = {};
+      liveConfigId = event.config_id;
+      hardwareInputValues = { ...hardwareInputValues, [event.pin]: event.value };
+    });
+  });
+
+  $effect(() => {
+    return () => {
+      unsubscribeHardware?.();
+      unsubscribeHardware = null;
+    };
+  });
+
+  const activeConfigurationCount = $derived(hardwareSummaries?.filter((summary) => summary.active).length ?? 0);
   onMount(() => {
     mounted = true;
     window.addEventListener('hashchange', updateRoute);
@@ -119,12 +154,20 @@
   }
 
   function unavailableMessage(current: Route): string {
-    if (current.page === 'configuration-new') return 'Configuration creation is not integrated with the Rust service yet.';
     if (current.page === 'train-new') return 'Train creation is not integrated with the Rust service yet.';
-    if (current.page === 'configuration' || current.page === 'train') return 'This screen will appear when its Rust service is integrated.';
+    if (current.page === 'train') return 'This screen will appear when its Rust service is integrated.';
     if (current.page === 'firmware') return 'Firmware release and upload services are not integrated in this UI slice.';
     if (current.page === 'joystick') return 'Joystick service capabilities are not integrated in this UI slice.';
     return `No screen is registered for ${current.path}.`;
+  }
+
+  async function settingsConsent(value: 'enabled' | 'disabled'): Promise<string | null> {
+    const result = await safeRequest(api().setConsent(value));
+    if (result.ok) {
+      settings = result.value;
+      return null;
+    }
+    return result.error.message;
   }
 </script>
 
@@ -158,35 +201,16 @@
   <main class="consent-layout" role="status"><section class="card w-full max-w-md bg-base-100 shadow-xl"><div class="card-body items-center text-center"><h1 class="card-title text-lg">Opening consent choices</h1><p class="text-sm text-base-content/70">Choose whether Trenino may share anonymous error reports.</p></div></section></main>
 {:else}
   <div class="min-h-screen bg-base-200 text-base-content">
-    <Navigation {route} />
+    <Navigation {route} connectedCount={activeConfigurationCount} />
     <main class="flex-1 px-4 py-8 sm:px-8">
       {#if route.page === 'settings'}
         <div class="mx-auto max-w-2xl">
-          <header class="mb-10"><h1 class="text-2xl font-semibold">Settings</h1></header>
-          <section aria-labelledby="reporting-title">
-            <h2 id="reporting-title" class="mb-5 text-base font-semibold">Error Reporting</h2>
-            <div class="flex items-start justify-between gap-6">
-              <div>
-                <div class="font-medium">Share anonymous error reports</div>
-                <p class="mt-1 text-sm text-base-content/70">Crash reports are sent to help fix bugs. No personal data is included.</p>
-                <a class="mt-3 inline-block text-sm text-base-content/60 underline underline-offset-2" href="#/consent">Review consent details</a>
-              </div>
-              <p class="badge badge-outline shrink-0">{settings?.value.error_reporting ?? 'Unavailable'}</p>
-            </div>
-          </section>
-          <div class="my-10 border-t border-base-300"></div>
-          <section aria-labelledby="simulator-title">
-            <h2 id="simulator-title" class="mb-5 text-base font-semibold">Simulator Connection</h2>
-            {#if settings}
-              <dl class="settings-readout">
-                <div><dt>URL</dt><dd class="font-mono">{settings.value.simulator.url}</dd></div>
-                <div><dt>API key</dt><dd>{settings.value.simulator.api_key_configured ? 'Configured' : 'Not configured'}</dd></div>
-              </dl>
-            {:else}
-              <p class="text-sm text-base-content/70">Settings are unavailable until the Rust service is integrated.</p>
-            {/if}
-            <p class="mt-4 text-xs text-base-content/60">Settings are shown read-only in this migration slice.</p>
-          </section>
+          {#if settings}
+            <SettingsEdit bridge={activeBridge} settings={settings.value} onConsent={settingsConsent} />
+          {:else}
+            <header class="mb-10"><h1 class="text-2xl font-semibold">Settings</h1></header>
+            <Unavailable message="Settings are unavailable until the Rust service is connected." />
+          {/if}
         </div>
       {:else if route.page === 'configurations'}
         <div class="mx-auto max-w-2xl">
@@ -209,6 +233,16 @@
             {:else}<div class="space-y-4">{#each trains.value as train (train.id)}<a class:active-card={train.active} class="list-card" href={routeHref(`/trains/${train.id}`)}><div><h2 class="font-medium">{train.name}</h2>{#if train.description}<p class="mt-1 text-sm text-base-content/70">{train.description}</p>{/if}<p class="mt-2 text-xs text-base-content/60">{train.identifiers.join(', ')} · {train.element_count} elements</p></div><span>{train.active ? 'Active' : '›'}</span></a>{/each}</div>{/if}
           {:else}<Unavailable message="Loading saved train configurations…" />{/if}
         </div>
+      {:else if route.page === 'configuration' || route.page === 'configuration-new'}
+        <ConfigurationEdit
+          bridge={activeBridge}
+          mode={route.page === 'configuration-new' ? 'new' : 'existing'}
+          routeId={route.page === 'configuration' ? route.configId : null}
+          inputValues={route.page === 'configuration' && liveConfigId === Number(route.configId) ? hardwareInputValues : {}}
+          activePort={route.page === 'configuration' && liveConfigId === Number(route.configId) ? 'live' : null}
+          created={(summaryRouteId) => (location.hash = `#/configurations/${summaryRouteId}`)}
+          deleted={() => (location.hash = '#/')}
+        />
       {:else}
         <div class="mx-auto max-w-2xl"><header class="mb-8"><h1 class="text-2xl font-semibold">{title(route.page)}</h1></header><Unavailable message={unavailableMessage(route)} /></div>
       {/if}
