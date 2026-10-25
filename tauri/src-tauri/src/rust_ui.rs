@@ -2117,7 +2117,9 @@ async fn ui_set_simulator_url(
 }
 
 /// Probes the configured TSW API (`Settings.test_connection` oracle): returns
-/// `true` when the simulator answers the info endpoint.
+/// `true` when the simulator answers the info endpoint. Transport, key and
+/// HTTP failures surface distinct, actionable messages instead of a bare
+/// `false`, so the settings form never fails silently.
 #[tauri::command]
 async fn ui_test_simulator(state: State<'_, RustAppState>) -> Result<bool, UiFailure> {
     let services = state.services()?;
@@ -2142,7 +2144,49 @@ async fn ui_test_simulator(state: State<'_, RustAppState>) -> Result<bool, UiFai
                     "Enter a valid HTTP or HTTPS URL.",
                 ))
             })?;
-    Ok(client.info().await.is_ok())
+    match client.info().await {
+        Ok(_) => Ok(true),
+        Err(error) => Err(UiFailure::from(simulator_probe_error(&url, &error))),
+    }
+}
+
+/// Maps a failed `/info` probe to a user-facing error with a distinct message
+/// per failure class (unreachable host, rejected key, unexpected HTTP status).
+fn simulator_probe_error(
+    url: &str,
+    error: &trenino_runtime::simulator::client::SimulatorError,
+) -> AppError {
+    use trenino_runtime::simulator::client::SimulatorError;
+    let unavailable = |message: String| AppError {
+        code: trenino_core::ErrorCode::Unavailable,
+        message,
+        field_errors: std::collections::BTreeMap::new(),
+        retryable: true,
+    };
+    match error {
+        SimulatorError::HttpStatus { status: 403, .. } => AppError {
+            code: trenino_core::ErrorCode::Validation,
+            message: "The simulator rejected the API key (HTTP 403). Re-copy the key from CommAPIKey.txt on the PC running Train Sim World.".into(),
+            field_errors: std::collections::BTreeMap::new(),
+            retryable: false,
+        },
+        SimulatorError::HttpStatus { status, .. } => unavailable(format!(
+            "The simulator at {url} returned HTTP {status}."
+        )),
+        SimulatorError::Transport(detail) => unavailable(format!(
+            "Could not reach the simulator at {url} within the timeout. Check that the PC is awake, Windows Firewall allows TCP 31270 from your network, and Train Sim World runs with the API enabled. ({detail})"
+        )),
+        SimulatorError::InvalidJson(detail) => unavailable(format!(
+            "The simulator at {url} answered but the response could not be read. ({detail})"
+        )),
+        SimulatorError::InvalidKey => AppError {
+            code: trenino_core::ErrorCode::Validation,
+            message: "The saved API key contains characters that cannot be sent. Re-enter the key from CommAPIKey.txt.".into(),
+            field_errors: std::collections::BTreeMap::new(),
+            retryable: false,
+        },
+        other => unavailable(format!("The simulator probe failed: {other:?}.")),
+    }
 }
 
 fn validation_failure_error(field: &str, message: &str) -> AppError {
@@ -3122,6 +3166,40 @@ command!(ui_get_firmware(state) -> UiSnapshot<trenino_core::ui::FirmwareView> =
 mod tests {
     use super::*;
 
+    #[test]
+    fn simulator_probe_errors_carry_distinct_actionable_messages() {
+        use trenino_runtime::simulator::client::SimulatorError;
+
+        let rejected = simulator_probe_error(
+            "http://192.168.1.31:31270",
+            &SimulatorError::HttpStatus {
+                status: 403,
+                body: serde_json::json!({}),
+            },
+        );
+        assert_eq!(rejected.code, trenino_core::ErrorCode::Validation);
+        assert!(!rejected.retryable);
+        assert!(rejected.message.contains("rejected the API key"));
+
+        let unreachable = simulator_probe_error(
+            "http://192.168.1.31:31270",
+            &SimulatorError::Transport("connection timed out".into()),
+        );
+        assert_eq!(unreachable.code, trenino_core::ErrorCode::Unavailable);
+        assert!(unreachable.retryable);
+        assert!(unreachable.message.contains("192.168.1.31:31270"));
+        assert!(unreachable.message.contains("Firewall"));
+
+        let server_error = simulator_probe_error(
+            "http://localhost:31270",
+            &SimulatorError::HttpStatus {
+                status: 500,
+                body: serde_json::json!({}),
+            },
+        );
+        assert_eq!(server_error.code, trenino_core::ErrorCode::Unavailable);
+        assert!(server_error.message.contains("HTTP 500"));
+    }
     #[test]
     fn observer_registration_is_window_scoped_and_idempotent() {
         let state = RustAppState::empty();

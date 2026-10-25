@@ -2,18 +2,36 @@ name: Rust parity
 
 on:
   pull_request:
-    paths: ['Cargo.*', 'crates/**', 'vendor/vjoy/**', 'tauri/**', 'scripts/build*desktop.sh', '.github/workflows/rust-parity.yml']
+    paths: ['Cargo.*', 'crates/**', 'vendor/vjoy/**', 'tauri/**', 'scripts/**', '.github/workflows/rust-parity.yml', '.github/actions/**']
   push:
-    branches: [codex/rust-rewrite, master, main]
-    paths: ['Cargo.*', 'crates/**', 'vendor/vjoy/**', 'tauri/**', 'scripts/build*desktop.sh', '.github/workflows/rust-parity.yml']
+    branches: [master, main]
+    paths: ['Cargo.*', 'crates/**', 'vendor/vjoy/**', 'tauri/**', 'scripts/**', '.github/workflows/rust-parity.yml', '.github/actions/**']
   workflow_dispatch:
 
 permissions:
   contents: read
 
+concurrency:
+  group: rust-parity-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  verify:
-    name: Rust and desktop (${{ matrix.os }})
+  lint:
+    name: Format and lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@1.91.1
+        with:
+          components: clippy, rustfmt
+      - uses: swatinem/rust-cache@v2
+      - name: Verify formatting and lint
+        run: |
+          cargo fmt --all --check
+          cargo clippy --workspace --all-targets -- -D warnings
+
+  rust-tests:
+    name: Runtime tests (${{ matrix.os }})
     strategy:
       fail-fast: false
       matrix:
@@ -24,40 +42,55 @@ jobs:
         if: runner.os == 'Windows'
         run: git config --global core.autocrlf false
       - uses: actions/checkout@v7
-      - uses: dtolnay/rust-toolchain@stable
-      - name: Use the repository Rust toolchain
-        run: |
-          rustup toolchain install 1.91.1 --profile minimal --component clippy --component rustfmt
-          rustup default 1.91.1
-      - name: Install Linux desktop build dependencies
+      - name: Install libclang for the vendored vJoy bindings
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev libclang-dev patchelf
-      - name: Locate Windows libclang for the vendored vJoy bindings
+        run: sudo apt-get update && sudo apt-get install -y libclang-dev
+      - uses: ./.github/actions/setup-libclang
         if: runner.os == 'Windows'
-        shell: pwsh
+      - uses: dtolnay/rust-toolchain@1.91.1
+      - uses: swatinem/rust-cache@v2
+      - name: Run runtime and core tests
+        run: cargo test --workspace -- --test-threads=1
+
+  desktop:
+    name: Desktop shell (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Preserve generated contract line endings
+        if: runner.os == 'Windows'
+        run: git config --global core.autocrlf false
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/linux-desktop-deps
+        if: runner.os == 'Linux'
+      - uses: ./.github/actions/setup-libclang
+        if: runner.os == 'Windows'
+      - uses: dtolnay/rust-toolchain@1.91.1
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: tauri/src-tauri -> target
+      - name: Verify desktop commands and updater quiescence
         run: |
-          $locations = @('C:\Program Files\LLVM\bin', 'C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools\Llvm\x64\bin')
-          $clang = $locations | Where-Object { Test-Path (Join-Path $_ 'libclang.dll') } | Select-Object -First 1
-          if (-not $clang) { throw 'A real libclang.dll is required for vendored vJoy bindings.' }
-          "LIBCLANG_PATH=$clang" >> $env:GITHUB_ENV
+          cargo fmt --manifest-path tauri/src-tauri/Cargo.toml --check
+          cargo test --manifest-path tauri/src-tauri/Cargo.toml --features "rust-ui desktop-updater" -- --test-threads=1
+          cargo check --manifest-path tauri/src-tauri/Cargo.toml --features "rust-ui desktop-updater"
+
+  ui:
+    name: Desktop UI
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
           cache-dependency-path: tauri/ui/package-lock.json
-      - name: Verify Rust runtime and generated wire contracts
-        run: |
-          cargo fmt --all --check
-          cargo clippy --workspace --all-targets -- -D warnings
-          cargo test --workspace -- --test-threads=1
       - name: Verify and build the UI
         run: |
           npm --prefix tauri/ui ci
           npm --prefix tauri/ui run check
           npm --prefix tauri/ui test
           npm --prefix tauri/ui run build
-      - name: Verify desktop commands and updater quiescence
-        run: |
-          cargo fmt --manifest-path tauri/src-tauri/Cargo.toml --check
-          cargo test --manifest-path tauri/src-tauri/Cargo.toml --features "rust-ui desktop-updater" -- --test-threads=1
-          cargo check --manifest-path tauri/src-tauri/Cargo.toml --features "rust-ui desktop-updater"

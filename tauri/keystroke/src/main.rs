@@ -100,7 +100,14 @@ fn parse_key_parts(parts: &[&str]) -> (Vec<Key>, Option<Key>) {
             "ESCAPE" | "ESC" => main_key = Some(Key::Escape),
             "BACKSPACE" => main_key = Some(Key::Backspace),
             "DELETE" | "DEL" => main_key = Some(Key::Delete),
+            // macOS keyboards have no Insert key and enigo does not expose
+            // one there; report it as unsupported instead of failing to build.
+            #[cfg(any(target_os = "windows", all(unix, not(target_os = "macos"))))]
             "INSERT" | "INS" => main_key = Some(Key::Insert),
+            #[cfg(target_os = "macos")]
+            "INSERT" | "INS" => {
+                eprintln!("Warning: Key INSERT does not exist on macOS keyboards; skipping it");
+            }
             "HOME" => main_key = Some(Key::Home),
             "END" => main_key = Some(Key::End),
             "PAGEUP" | "PGUP" => main_key = Some(Key::PageUp),

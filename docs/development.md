@@ -99,24 +99,15 @@ The Windows build uses `vjoy-sys` to generate bindings and requires the LLVM
 that DLL before invoking Cargo if bindgen cannot locate it. This is a build-time
 prerequisite; the packaged application does not require LLVM or libclang.
 
-The native feeder is a standalone Rust crate:
-
-```bash
-cargo run --manifest-path tauri/virtual_joystick/Cargo.toml
-cargo test --manifest-path tauri/virtual_joystick/Cargo.toml
-```
-
-On Windows the bridge passes an absolute, trusted packaged-resource path to the
-sidecar, which requires `serve --vjoy-interface <absolute DLL path>`. Do not
-restore bare-name DLL loading or accept executable/DLL paths from UI or MCP
-input. Non-Windows builds compile the unsupported adapter but do not bundle the
-Windows sidecar or vJoy resources.
+The vJoy integration lives in `crates/trenino-runtime/src/vjoy/` and drives the
+driver in-process through the vendored `vjoy` crate and the packaged, checksum
+verified `vJoyInterface.dll`. There is no feeder sidecar executable.
 
 Tests that install/remove the driver or create real Windows devices run only on
 the disposable, elevated Windows VM. Ordinary hosted CI must remain
 non-mutating: its Windows packaging job verifies downloads and Authenticode,
-builds both native crates and the Tauri/NSIS package, inspects the packaged
-layout, and performs a sidecar handshake without installing the driver.
+builds the keystroke sidecar and the Tauri/NSIS package, inspects the packaged
+layout, and performs a read-only vJoyConfig probe without installing the driver.
 
 ## Project Structure
 
@@ -153,7 +144,6 @@ tauri/
 ├── src-tauri/                 # Tauri shell (rust-ui IPC commands, updater, sidecars)
 ├── ui/                        # Svelte/TypeScript desktop frontend
 ├── keystroke/                 # Keyboard input sidecar (Rust)
-└── virtual_joystick/          # Windows vJoy feeder sidecar (Rust)
 ```
 
 ## Coding Guidelines
@@ -214,8 +204,6 @@ cargo test -p trenino-runtime --test simulator_detection
 # Desktop UI
 npm --prefix tauri/ui test
 
-# Windows vJoy feeder
-cargo test --manifest-path tauri/virtual_joystick/Cargo.toml
 ```
 
 Integration suites run against fake services (no real hardware, serial ports or
@@ -345,9 +333,8 @@ The desktop app bundles:
 - **avrdude** - AVR programmer for firmware uploads
 - **avrdude.conf** - Configuration file for avrdude
 - **keystroke** - Keyboard input simulator for keystroke button bindings
-- **virtual_joystick** (Windows only) - persistent vJoy feeder sidecar
-- **vJoy runtime** (Windows only) - pinned signed installer, configurator, x64
-  feeder DLL, license, and third-party notices
+- **vJoy runtime** (Windows only) - pinned signed installer, configurator, and
+  x64 interface DLL (loaded in-process), license, and third-party notices
 
 ### Updating the pinned vJoy release
 

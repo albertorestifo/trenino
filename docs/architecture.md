@@ -91,15 +91,16 @@ Communicates with Train Sim World's External Interface API.
 - **services** - Train detection, interactive control detection, lever
   analysis, guided calibration, endpoint explorer/suggestions
 
-### Virtual Joystick Domain (`crates/trenino-runtime/src/vjoy/`, `tauri/virtual_joystick/`)
+### Virtual Joystick Domain (`crates/trenino-runtime/src/vjoy/`)
 
 Provides a standalone Windows DirectInput destination backed by vJoy device 1.
 
 - **manager** owns lifecycle reconciliation, mappings, cached hardware state,
-  safe defaults, bridge restart/backoff, and the public runtime state machine.
-- The **bridge** owns a persistent sidecar child process, enforces bounded
-  JSON Lines framing, correlates acknowledgements, and coalesces newer
-  updates for an in-flight control.
+  safe defaults, degraded-state repair/backoff, and the public runtime state
+  machine.
+- **adapter/windows** drive vJoy in-process through the vendored crate and the
+  packaged, checksum-verified `vJoyInterface.dll`; ownership states
+  distinguish devices owned by this process from foreign ones.
 - **configurator** performs fixed elevated create/delete commands, waits for
   Windows enumeration, validates the exact eight-axis/32-button descriptor, and
   records device ownership only after confirmed creation.
@@ -170,18 +171,16 @@ Low-level USB/UART communication with hardware devices.
 hardware service input event
   -> exclusive destination lookup
   -> vjoy::Manager
-  -> bridge (persistent sidecar process)
-  -> virtual_joystick.exe
+  -> in-process adapter (vendored vjoy crate)
   -> trusted absolute vJoyInterface.dll
   -> vJoy device 1 complete report
 ```
 
-The native protocol is versioned UTF-8 JSON Lines over stdin/stdout. Commands
-include `hello`, `set_axis`, `set_button`, `reset`, and `shutdown`; mutations
-carry monotonically increasing request IDs. Diagnostics use stderr. The Rust
-sidecar owns one complete eight-axis/32-button report, so changing one control
-cannot reset another, and it acquires/releases an existing compatible device
-without creating, deleting, or stealing it.
+The runtime links the vendored vjoy crate and loads the packaged, checksum
+verified `vJoyInterface.dll` in-process; no feeder sidecar executable is
+involved. The adapter owns one complete eight-axis/32-button report, so
+changing one control cannot reset another, and it acquires/releases an
+existing compatible device without creating, deleting, or stealing it.
 
 ### Train Detection Flow
 

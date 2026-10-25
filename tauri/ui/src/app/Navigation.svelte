@@ -33,7 +33,7 @@
 
 <svelte:window onkeydown={onKeydown} />
 <header class="sticky top-0 z-40 border-b border-base-300 bg-base-100">
-  <div class="mx-auto flex max-w-2xl flex-wrap items-center gap-y-3 px-4 py-3 sm:px-8">
+  <div class="flex flex-wrap items-center gap-y-3 px-4 py-3 sm:px-8">
     <a href="#/" class="mr-6 flex-1 text-lg font-semibold sm:flex-none">Trenino</a>
     <nav aria-label="Primary navigation" class="order-last flex w-full items-center gap-1 sm:order-none sm:w-auto">
       {#each tabs as tab}

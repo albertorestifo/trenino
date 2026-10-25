@@ -55,7 +55,8 @@ jobs:
             "Cargo.toml"
             ".github/workflows/"
             "test/"
-            "_test.exs"
+            "/tests/"
+            "fixtures/"
           )
 
           FILTERED_COUNT=0
@@ -161,9 +162,7 @@ jobs:
             | `docs/development.md` | Developers | Development setup and workflow |
             | `docs/control_auto_suggestion.md` | Developers | Auto-suggestion system design |
             | `docs/lever_input_mapping_architecture.md` | Developers | Lever mapping internals |
-            | `docs/features/bldc-levers.md` | Both | BLDC lever feature documentation |
             | `CLAUDE.md` | Developers (AI agents) | Coding guidelines for AI assistants |
-            | `AGENTS.md` | Developers (AI agents) | Agent-specific instructions |
 
             ## Context
 

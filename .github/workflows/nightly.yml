@@ -7,11 +7,16 @@ on:
 
 permissions:
   contents: read
-  actions: read
 
 concurrency:
   group: nightly-build
   cancel-in-progress: true
+
+env:
+  AVRDUDE_LINUX_X86_64_URL: https://github.com/avrdudes/avrdude/releases/download/v8.1/avrdude_v8.1_Linux_64bit.tar.gz
+  AVRDUDE_LINUX_X86_64_SHA256: c751c88b1c0b886834d85cd4b19f100cc3415c896ab9f98cf7e2955edbcd678f
+  VCREDIST_X64_URL: https://aka.ms/vs/17/release/vc_redist.x64.exe
+  VCREDIST_X64_SHA256: cc0ff0eb1dc3f5188ae6300faef32bf5beeba4bdd6e8e445a9184072096b713b
 
 jobs:
   check-changes:
@@ -56,180 +61,9 @@ jobs:
             echo "should_build=true" >> $GITHUB_OUTPUT
           fi
 
-  build-keystroke:
-    name: Build Keystroke (${{ matrix.target }})
-    needs: [check-changes]
-    if: needs.check-changes.outputs.should_build == 'true'
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: windows-2022
-            target: windows_x86_64
-            tauri_target: x86_64-pc-windows-msvc
-            binary_ext: ".exe"
-
-          - os: ubuntu-22.04
-            target: linux_x86_64
-            tauri_target: x86_64-unknown-linux-gnu
-            binary_ext: ""
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v7
-
-      - name: Install Linux build dependencies
-        if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y libxdo-dev
-
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ matrix.tauri_target }}
-
-      - name: Cache Rust
-        uses: swatinem/rust-cache@v2
-        with:
-          workspaces: tauri/keystroke -> target
-
-      - name: Build keystroke utility
-        working-directory: tauri/keystroke
-        run: cargo build --release
-
-      - name: Upload keystroke binary (Windows)
-        if: runner.os == 'Windows'
-        uses: actions/upload-artifact@v7
-        with:
-          name: keystroke-${{ matrix.target }}
-          path: tauri/keystroke/target/release/keystroke.exe
-          retention-days: 7
-
-      - name: Upload keystroke binary (Unix)
-        if: runner.os != 'Windows'
-        uses: actions/upload-artifact@v7
-        with:
-          name: keystroke-${{ matrix.target }}
-          path: tauri/keystroke/target/release/keystroke
-          retention-days: 7
-
-  build-virtual-joystick:
-    name: Build Virtual Joystick (${{ matrix.target }})
-    needs: [check-changes]
-    if: needs.check-changes.outputs.should_build == 'true'
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: windows-2022
-            target: windows_x86_64
-            tauri_target: x86_64-pc-windows-msvc
-
-          - os: ubuntu-22.04
-            target: linux_x86_64
-            tauri_target: x86_64-unknown-linux-gnu
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v7
-
-      - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ matrix.tauri_target }}
-
-      - name: Cache Rust
-        uses: swatinem/rust-cache@v2
-        with:
-          workspaces: tauri/virtual_joystick -> target
-
-      - name: Build virtual joystick utility
-        working-directory: tauri/virtual_joystick
-        run: cargo build --release
-
-      - name: Upload virtual joystick binary (Windows)
-        if: runner.os == 'Windows'
-        uses: actions/upload-artifact@v7
-        with:
-          name: virtual-joystick-${{ matrix.target }}
-          path: tauri/virtual_joystick/target/release/virtual_joystick.exe
-          retention-days: 7
-
-      - name: Upload virtual joystick binary (Unix)
-        if: runner.os != 'Windows'
-        uses: actions/upload-artifact@v7
-        with:
-          name: virtual-joystick-${{ matrix.target }}
-          path: tauri/virtual_joystick/target/release/virtual_joystick
-          retention-days: 7
-
-  download-avrdude:
-    name: Download avrdude (${{ matrix.target }})
-    needs: [check-changes]
-    if: needs.check-changes.outputs.should_build == 'true'
-    runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - target: windows_x86_64
-            avrdude_url: https://github.com/avrdudes/avrdude/releases/download/v8.1/avrdude-v8.1-windows-x64.zip
-            avrdude_binary: avrdude.exe
-            extract_cmd: unzip -o
-
-          - target: linux_x86_64
-            avrdude_url: https://github.com/avrdudes/avrdude/releases/download/v8.1/avrdude_v8.1_Linux_64bit.tar.gz
-            avrdude_binary: avrdude
-            extract_cmd: tar xzf
-
-    steps:
-      - name: Download avrdude
-        run: |
-          curl -L -o avrdude-archive.zip "${{ matrix.avrdude_url }}"
-          ${{ matrix.extract_cmd }} avrdude-archive.zip
-          # Find and copy the avrdude binary
-          find . -name "${{ matrix.avrdude_binary }}" -type f | head -1 | xargs -I {} cp {} avrdude-binary
-          # Also copy avrdude.conf if it exists
-          find . -name "avrdude.conf" -type f | head -1 | xargs -I {} cp {} avrdude.conf || true
-          ls -la
-
-      - name: Upload avrdude binary
-        uses: actions/upload-artifact@v7
-        with:
-          name: avrdude-${{ matrix.target }}
-          path: |
-            avrdude-binary
-            avrdude.conf
-          retention-days: 7
-
-  download-vcredist:
-    name: Download VC++ Redistributable
-    needs: [check-changes]
-    if: needs.check-changes.outputs.should_build == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - name: Cache VC++ Redistributable
-        id: cache-vcredist
-        uses: actions/cache@v6
-        with:
-          path: vc_redist.x64.exe
-          key: vcredist-x64-2022
-
-      - name: Download VC++ Redistributable
-        if: steps.cache-vcredist.outputs.cache-hit != 'true'
-        run: curl -L -o vc_redist.x64.exe https://aka.ms/vs/17/release/vc_redist.x64.exe
-
-      - name: Upload VC++ Redistributable
-        uses: actions/upload-artifact@v7
-        with:
-          name: vcredist
-          path: vc_redist.x64.exe
-          retention-days: 7
-
   build-tauri:
     name: Build Tauri (${{ matrix.target }})
-    needs: [check-changes, build-keystroke, build-virtual-joystick, download-avrdude, download-vcredist]
+    needs: [check-changes]
     if: needs.check-changes.outputs.should_build == 'true'
     runs-on: ${{ matrix.os }}
     strategy:
@@ -257,78 +91,59 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v7
 
-      - name: Download avrdude
-        if: runner.os == 'Linux'
-        uses: actions/download-artifact@v8
-        with:
-          name: avrdude-${{ matrix.target }}
-          path: tauri/src-tauri/binaries/avrdude-download
-
-      - name: Prepare avrdude binary (Unix)
+      - name: Stage checksum-verified avrdude sidecar (Linux)
         if: runner.os == 'Linux'
         run: |
-          mv "tauri/src-tauri/binaries/avrdude-download/avrdude-binary" \
-             "tauri/src-tauri/binaries/avrdude-${{ matrix.tauri_target }}"
+          curl -fL -o avrdude.tar.gz "$AVRDUDE_LINUX_X86_64_URL"
+          echo "$AVRDUDE_LINUX_X86_64_SHA256  avrdude.tar.gz" | sha256sum -c -
+          tar -xzf avrdude.tar.gz
+          mkdir -p tauri/src-tauri/binaries
+          cp avrdude_Linux_64bit/bin/avrdude "tauri/src-tauri/binaries/avrdude-${{ matrix.tauri_target }}"
           chmod +x "tauri/src-tauri/binaries/avrdude-${{ matrix.tauri_target }}"
+          cp avrdude_Linux_64bit/etc/avrdude.conf tauri/src-tauri/binaries/avrdude.conf
 
-          if [ -f "tauri/src-tauri/binaries/avrdude-download/avrdude.conf" ]; then
-            cp "tauri/src-tauri/binaries/avrdude-download/avrdude.conf" \
-               "tauri/src-tauri/binaries/"
-          fi
-
-          rm -rf "tauri/src-tauri/binaries/avrdude-download"
-          ls -la tauri/src-tauri/binaries/
-
-      - name: Download VC++ Redistributable
+      - name: Stage checksum-verified VC++ Redistributable (Windows)
         if: runner.os == 'Windows'
-        uses: actions/download-artifact@v8
-        with:
-          name: vcredist
-          path: tauri/src-tauri/resources
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory -Force tauri/src-tauri/resources | Out-Null
+          Invoke-WebRequest -UseBasicParsing -Uri "$env:VCREDIST_X64_URL" -OutFile vc_redist.x64.exe
+          $hash = (Get-FileHash -Algorithm SHA256 vc_redist.x64.exe).Hash.ToLower()
+          if ($hash -ne "$env:VCREDIST_X64_SHA256") { throw "vc_redist checksum mismatch: $hash" }
+          Move-Item vc_redist.x64.exe tauri/src-tauri/resources/vc_redist.x64.exe
 
       - name: Install pinned vJoy extractor
         if: runner.os == 'Windows'
         shell: pwsh
         run: choco install innoextract --version 1.9 -y --no-progress
 
-      - name: Locate Windows libclang for the vendored vJoy bindings
+      - uses: ./.github/actions/setup-libclang
         if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          $locations = @('C:\Program Files\LLVM\bin', 'C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools\Llvm\x64\bin')
-          $clang = $locations | Where-Object { Test-Path (Join-Path $_ 'libclang.dll') } | Select-Object -First 1
-          if (-not $clang) { throw 'A real libclang.dll is required for vendored vJoy bindings.' }
-          "LIBCLANG_PATH=$clang" >> $env:GITHUB_ENV
 
-      - name: Install Linux system dependencies
+      - uses: ./.github/actions/linux-desktop-deps
         if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            libwebkit2gtk-4.1-dev \
-            build-essential \
-            libssl-dev \
-            libayatana-appindicator3-dev \
-            librsvg2-dev \
-            patchelf \
-            libxdo-dev
 
       - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@1.91.1
         with:
           targets: ${{ matrix.tauri_target }}
 
       - name: Cache Rust
         uses: swatinem/rust-cache@v2
         with:
-          workspaces: tauri/src-tauri -> target
+          workspaces: |
+            tauri/src-tauri -> target
+            tauri/keystroke -> target
 
       - name: Setup Node.js
         uses: actions/setup-node@v7
         with:
-          node-version: 20
+          node-version: 22
           cache: 'npm'
-          cache-dependency-path: tauri/ui/package-lock.json
+          cache-dependency-path: |
+            tauri/package-lock.json
+            tauri/ui/package-lock.json
 
       - name: Build Rust desktop package
         shell: bash

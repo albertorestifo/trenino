@@ -1,0 +1,15 @@
+name: 'Locate Windows libclang'
+description: >-
+  Sets LIBCLANG_PATH for bindgen, which needs a real libclang.dll to generate
+  the vendored vJoy bindings. Fails when neither LLVM nor the Visual Studio
+  component is present.
+runs:
+  using: 'composite'
+  steps:
+    - name: Locate Windows libclang for the vendored vJoy bindings
+      shell: pwsh
+      run: |
+        $locations = @('C:\Program Files\LLVM\bin', 'C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools\Llvm\x64\bin')
+        $clang = $locations | Where-Object { Test-Path (Join-Path $_ 'libclang.dll') } | Select-Object -First 1
+        if (-not $clang) { throw 'A real libclang.dll is required for vendored vJoy bindings.' }
+        "LIBCLANG_PATH=$clang" >> $env:GITHUB_ENV

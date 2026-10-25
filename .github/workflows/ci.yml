@@ -3,11 +3,17 @@ name: CI
 on:
   push:
     branches: [master, main]
+    paths: ['Cargo.*', 'crates/**', 'vendor/vjoy/**', 'tauri/**', 'scripts/**', '.github/workflows/ci.yml', '.github/actions/**']
   pull_request:
     branches: [master, main]
+    paths: ['Cargo.*', 'crates/**', 'vendor/vjoy/**', 'tauri/**', 'scripts/**', '.github/workflows/ci.yml', '.github/actions/**']
 
 permissions:
   contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   verify-bundle-config:
@@ -31,14 +37,16 @@ jobs:
       - uses: actions/checkout@v7
 
       - name: Set up Rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@1.91.1
         with:
           targets: x86_64-pc-windows-msvc
 
       - name: Set up Node.js for signing regression tests
         uses: actions/setup-node@v7
         with:
-          node-version: 20
+          node-version: 22
+          cache: npm
+          cache-dependency-path: tauri/package-lock.json
 
       - name: Install pinned Tauri CLI dependencies
         working-directory: tauri
@@ -48,20 +56,18 @@ jobs:
         shell: pwsh
         run: ./scripts/test-updater-signing.ps1
 
-      - name: Install Tauri CLI and stage existing Windows prerequisite
+      - name: Stage existing Windows prerequisite
         shell: pwsh
         run: |
-          cargo install tauri-cli --version "^2.0" --locked
           choco install innoextract --version 1.9 -y --no-progress
-          Invoke-WebRequest -UseBasicParsing -Uri https://aka.ms/vs/17/release/vc_redist.x64.exe -OutFile tauri/src-tauri/resources/vc_redist.x64.exe
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory -Force tauri/src-tauri/resources | Out-Null
+          Invoke-WebRequest -UseBasicParsing -Uri https://aka.ms/vs/17/release/vc_redist.x64.exe -OutFile vc_redist.x64.exe
+          $hash = (Get-FileHash -Algorithm SHA256 vc_redist.x64.exe).Hash.ToLower()
+          if ($hash -ne 'cc0ff0eb1dc3f5188ae6300faef32bf5beeba4bdd6e8e445a9184072096b713b') { throw "vc_redist checksum mismatch: $hash" }
+          Move-Item vc_redist.x64.exe tauri/src-tauri/resources/vc_redist.x64.exe
 
-      - name: Locate Windows libclang for the vendored vJoy bindings
-        shell: pwsh
-        run: |
-          $locations = @('C:\Program Files\LLVM\bin', 'C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools\Llvm\x64\bin')
-          $clang = $locations | Where-Object { Test-Path (Join-Path $_ 'libclang.dll') } | Select-Object -First 1
-          if (-not $clang) { throw 'A real libclang.dll is required for vendored vJoy bindings.' }
-          "LIBCLANG_PATH=$clang" >> $env:GITHUB_ENV
+      - uses: ./.github/actions/setup-libclang
 
       - name: Exercise checksum failure and success paths
         shell: pwsh
@@ -97,12 +103,9 @@ jobs:
           if ($signature.SignerCertificate.Subject -notmatch 'BRUNNER') { throw "Unexpected vJoy signer: $($signature.SignerCertificate.Subject)" }
           Write-Host "Verified vJoy signer: $($signature.SignerCertificate.Subject)"
 
-      - name: Build and test native crates
+      - name: Build keystroke sidecar
         shell: pwsh
-        run: |
-          cargo test --manifest-path tauri/virtual_joystick/Cargo.toml
-          cargo build --release --manifest-path tauri/virtual_joystick/Cargo.toml --target x86_64-pc-windows-msvc
-          cargo build --release --manifest-path tauri/keystroke/Cargo.toml --target x86_64-pc-windows-msvc
+        run: cargo build --release --manifest-path tauri/keystroke/Cargo.toml --target x86_64-pc-windows-msvc
 
       - name: Build Rust desktop package
         shell: bash

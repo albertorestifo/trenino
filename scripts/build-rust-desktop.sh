@@ -5,7 +5,7 @@ set -euo pipefail
 # Builds the Rust UI, stages the native sidecars/resources, and packages the
 # Tauri app with the Rust bundle configuration.
 #
-# Extra arguments are forwarded to `cargo tauri build`
+# Extra arguments are forwarded to the Tauri build
 # (e.g. ./scripts/build-rust-desktop.sh --bundles appimage).
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -15,11 +15,8 @@ BINARIES_DIR="$TAURI_DIR/binaries"
 RESOURCES_DIR="$TAURI_DIR/resources"
 AVRDUDE_VERSION="8.1"
 AVRDUDE_WINDOWS_X64_SHA256="e4d571d81fee3387d51bfdedd0b6565e4c201e974101cac2caec7adfd6201da3"
+AVRDUDE_MACOS_X86_64_SHA256="d7739fbb5d1fe649511121a695dac3f4ca5ccb348919bf1f45f9bc5a2ea0ce72"
 VJOY_VERSION="2.2.2.0"
-VJOY_RELEASE_BASE="https://github.com/BrunnerInnovation/vJoy/releases/download/v$VJOY_VERSION"
-VJOY_INSTALLER_SHA256="ef569a3105cd301b89580f18f60c66b339e95296acf2c0dfcaf4b4bbf8ab68fe"
-VJOY_SDK_SHA256="0e796b185b66819d5fbeae645f3f038ecbfbbde837d3d3f06cba82ae1db07c67"
-VJOY_LICENSE_SHA256="7f0ed151caab68bbfd1a37727c8fe75c94be45aff98a88d63bc7e46e3fb0c5e1"
 
 # Detect current platform
 detect_platform() {
@@ -48,34 +45,45 @@ cd "$PROJECT_DIR"
 # and macOS (Apple Silicon) fetches the official release; other targets
 # require a standalone compatible tool staged explicitly before building.
 if [ "$PLATFORM" = "aarch64-apple-darwin" ]; then
-    echo "==> Fetching avrdude $AVRDUDE_VERSION for macOS ARM64..."
-    AVRDUDE_STAGE=$(mktemp -d)
-    if [ -z "$AVRDUDE_STAGE" ] || [ ! -d "$AVRDUDE_STAGE" ]; then
-        echo "Error: could not create the avrdude staging directory" >&2
-        exit 1
-    fi
-    trap 'if [ -n "${AVRDUDE_STAGE:-}" ] && [ -d "${AVRDUDE_STAGE:-}" ]; then rm -r "$AVRDUDE_STAGE"; fi' EXIT
+    # Upstream publishes no Apple Silicon macOS build; prefer a natively
+    # installed avrdude (brew install avrdude) and fall back to the official
+    # x86_64 build, which requires Rosetta 2 to run on Apple Silicon.
     mkdir -p "$BINARIES_DIR"
-    curl -fL -o "$AVRDUDE_STAGE/avrdude.tar.gz" \
-        "https://github.com/avrdudes/avrdude/releases/download/v${AVRDUDE_VERSION}/avrdude-v${AVRDUDE_VERSION}-macOS-arm64.tar.gz"
-    tar -xzf "$AVRDUDE_STAGE/avrdude.tar.gz" -C "$AVRDUDE_STAGE"
-    AVRDUDE_BIN=$(find "$AVRDUDE_STAGE" -name "avrdude" -type f | head -1)
-    if [ -z "$AVRDUDE_BIN" ]; then
-        echo "Error: avrdude binary not found in the official archive" >&2
-        exit 1
+    AVRDUDE_BIN="$(command -v avrdude || true)"
+    AVRDUDE_CONF=""
+    if [ -n "$AVRDUDE_BIN" ]; then
+        AVRDUDE_ROOT="$(cd "$(dirname "$AVRDUDE_BIN")/.." && pwd)"
+        for CANDIDATE in "$AVRDUDE_ROOT/etc/avrdude.conf" /opt/homebrew/etc/avrdude.conf /usr/local/etc/avrdude.conf; do
+            if [ -f "$CANDIDATE" ]; then AVRDUDE_CONF="$CANDIDATE"; break; fi
+        done
     fi
-    cp "$AVRDUDE_BIN" "$BINARIES_DIR/avrdude-$PLATFORM"
-    chmod +x "$BINARIES_DIR/avrdude-$PLATFORM"
-    AVRDUDE_CONF=$(find "$AVRDUDE_STAGE" -name "avrdude.conf" -type f | head -1)
-    if [ -n "$AVRDUDE_CONF" ]; then
-        cp "$AVRDUDE_CONF" "$BINARIES_DIR/avrdude.conf"
-    else
-        echo "Error: avrdude.conf not found in the official archive" >&2
-        exit 1
+    if [ -z "$AVRDUDE_BIN" ] || [ -z "$AVRDUDE_CONF" ]; then
+        echo "==> Fetching official avrdude $AVRDUDE_VERSION for macOS (x86_64; requires Rosetta 2)..."
+        AVRDUDE_STAGE=$(mktemp -d)
+        if [ -z "$AVRDUDE_STAGE" ] || [ ! -d "$AVRDUDE_STAGE" ]; then
+            echo "Error: could not create the avrdude staging directory" >&2
+            exit 1
+        fi
+        trap 'if [ -n "${AVRDUDE_STAGE:-}" ] && [ -d "${AVRDUDE_STAGE:-}" ]; then rm -r "$AVRDUDE_STAGE"; fi' EXIT
+        curl -fL -o "$AVRDUDE_STAGE/avrdude.tar.gz" \
+            "https://github.com/avrdudes/avrdude/releases/download/v${AVRDUDE_VERSION}/avrdude_v${AVRDUDE_VERSION}_macOS_64bit.tar.gz"
+        echo "$AVRDUDE_MACOS_X86_64_SHA256  $AVRDUDE_STAGE/avrdude.tar.gz" | shasum -a 256 -c -
+        tar -xzf "$AVRDUDE_STAGE/avrdude.tar.gz" -C "$AVRDUDE_STAGE"
+        AVRDUDE_BIN=$(find "$AVRDUDE_STAGE" -name "avrdude" -type f | head -1)
+        AVRDUDE_CONF=$(find "$AVRDUDE_STAGE" -name "avrdude.conf" -type f | head -1)
+        if [ -z "$AVRDUDE_BIN" ] || [ -z "$AVRDUDE_CONF" ]; then
+            echo "Error: avrdude or avrdude.conf not found in the official archive" >&2
+            exit 1
+        fi
+        echo "Warning: no native avrdude found; bundled the x86_64 build. Install one with 'brew install avrdude' for a native sidecar." >&2
     fi
-    rm -r "$AVRDUDE_STAGE"
-    unset AVRDUDE_STAGE
-    trap - EXIT
+    install -m 755 "$AVRDUDE_BIN" "$BINARIES_DIR/avrdude-$PLATFORM"
+    install -m 644 "$AVRDUDE_CONF" "$BINARIES_DIR/avrdude.conf"
+    if [ -n "${AVRDUDE_STAGE:-}" ] && [ -d "$AVRDUDE_STAGE" ]; then
+        rm -r "$AVRDUDE_STAGE"
+        unset AVRDUDE_STAGE
+        trap - EXIT
+    fi
 elif [ "$PLATFORM" != "x86_64-pc-windows-msvc" ]; then
     for REQUIRED_INPUT in "$BINARIES_DIR/avrdude-$PLATFORM" "$BINARIES_DIR/avrdude.conf"; do
         if [ ! -f "$REQUIRED_INPUT" ]; then
@@ -86,10 +94,11 @@ elif [ "$PLATFORM" != "x86_64-pc-windows-msvc" ]; then
     done
 fi
 
-# Step 2: Build the desktop UI
-echo "==> Building Rust desktop UI..."
-npm --prefix "$PROJECT_DIR/tauri/ui" ci
-npm --prefix "$PROJECT_DIR/tauri/ui" run build
+ # Step 2: Build the desktop UI and install the pinned Tauri CLI
+ echo "==> Building Rust desktop UI..."
+npm --prefix "$PROJECT_DIR/tauri" ci
+ npm --prefix "$PROJECT_DIR/tauri/ui" ci
+ npm --prefix "$PROJECT_DIR/tauri/ui" run build
 
 # Step 3: Stage the pinned avrdude sidecar required by the Windows Tauri config.
 if [ "$PLATFORM" = "x86_64-pc-windows-msvc" ]; then
@@ -103,62 +112,29 @@ echo "==> Building keystroke utility..."
 cd "$PROJECT_DIR/tauri/keystroke"
 cargo build --release
 if [ "$PLATFORM" = "x86_64-pc-windows-msvc" ]; then
-    cp "target/release/keystroke.exe" "$BINARIES_DIR/keystroke-$PLATFORM.exe"
+    install -m 755 "target/release/keystroke.exe" "$BINARIES_DIR/keystroke-$PLATFORM.exe"
 else
-    cp "target/release/keystroke" "$BINARIES_DIR/keystroke-$PLATFORM"
+    install -m 755 "target/release/keystroke" "$BINARIES_DIR/keystroke-$PLATFORM"
 fi
 echo "Copied keystroke to: $BINARIES_DIR/keystroke-$PLATFORM"
 
-# Step 5: Stage the pinned vJoy runtime for Windows. The release installer,
-# SDK and license are independently checksum verified before extraction.
+# Step 5: Stage the pinned vJoy runtime for Windows. The shared PowerShell
+# helper downloads with checksum verification, checks the installer's
+# Authenticode signature, and extracts the packaged resources.
 if [ "$PLATFORM" = "x86_64-pc-windows-msvc" ]; then
     echo "==> Staging verified vJoy $VJOY_VERSION runtime..."
     mkdir -p "$RESOURCES_DIR"
-    powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PROJECT_DIR/scripts/download-vjoy.ps1" -Version "$VJOY_VERSION" -Url "$VJOY_RELEASE_BASE/vJoySetup_v2.2.2.0_Win10_Win11.exe" -ExpectedSha256 "$VJOY_INSTALLER_SHA256" -Destination "$RESOURCES_DIR/vJoySetup.exe"
-    powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PROJECT_DIR/scripts/download-vjoy.ps1" -Version "$VJOY_VERSION-sdk" -Url "$VJOY_RELEASE_BASE/SDK.zip" -ExpectedSha256 "$VJOY_SDK_SHA256" -Destination "$RESOURCES_DIR/SDK.zip"
-    powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PROJECT_DIR/scripts/download-vjoy.ps1" -Version "$VJOY_VERSION-license" -Url "https://raw.githubusercontent.com/BrunnerInnovation/vJoy/v$VJOY_VERSION/LICENSE.txt" -ExpectedSha256 "$VJOY_LICENSE_SHA256" -Destination "$RESOURCES_DIR/vJoy-LICENSE.txt"
-
-    VJOY_STAGE=$(mktemp -d)
-    if [ -z "$VJOY_STAGE" ] || [ ! -d "$VJOY_STAGE" ]; then
-        echo "Error: could not create the vJoy staging directory"
-        exit 1
-    fi
-    trap 'if [ -n "${VJOY_STAGE:-}" ] && [ -d "${VJOY_STAGE:-}" ]; then rm -r "$VJOY_STAGE"; fi' EXIT
-
-    mkdir -p "$VJOY_STAGE/sdk"
-    7z x -y -o"$VJOY_STAGE/sdk" "$RESOURCES_DIR/SDK.zip" >/dev/null
-    cp "$VJOY_STAGE/sdk/SDK/lib/x64/vJoyInterface.dll" "$RESOURCES_DIR/vJoyInterface.dll"
-
-    # vJoySetup.exe is an Inno Setup installer, so use its dedicated extractor.
-    # 7-Zip remains in use above for the SDK.zip archive.
-    mkdir -p "$VJOY_STAGE/installer"
-    innoextract --silent --extract --output-dir "$VJOY_STAGE/installer" "$RESOURCES_DIR/vJoySetup.exe"
-    VJOY_CONFIG="$VJOY_STAGE/installer/app/x64/vJoyConfig.exe"
-    if [ ! -f "$VJOY_CONFIG" ]; then
-        echo "Error: vJoyConfig.exe was not found in the verified installer"
-        exit 1
-    fi
-    cp "$VJOY_CONFIG" "$RESOURCES_DIR/vJoyConfig.exe"
-    VJOY_INSTALL_DLL="$VJOY_STAGE/installer/app/x64/vJoyInstall.dll"
-    if [ ! -f "$VJOY_INSTALL_DLL" ]; then
-        echo "Error: vJoyInstall.dll was not found in the verified installer"
-        exit 1
-    fi
-    cp "$VJOY_INSTALL_DLL" "$RESOURCES_DIR/vJoyInstall.dll"
-    rm "$RESOURCES_DIR/SDK.zip"
-    rm -r "$VJOY_STAGE"
-    unset VJOY_STAGE
-    trap - EXIT
+    powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PROJECT_DIR/scripts/stage-vjoy-resources.ps1" -DestinationDirectory "$RESOURCES_DIR"
 fi
 
 # Step 6: Build Tauri application
 echo "==> Building Tauri application..."
-cd "$TAURI_DIR"
+cd "$PROJECT_DIR/tauri"
 RUST_BUNDLE_CONFIG="tauri.rust.conf.json"
 if [ "$PLATFORM" = "x86_64-pc-windows-msvc" ]; then
     RUST_BUNDLE_CONFIG="tauri.rust.windows.conf.json"
 fi
-TRENINO_RUST_BUNDLE=1 cargo tauri build --features "rust-ui desktop-updater" --config "$RUST_BUNDLE_CONFIG" "$@"
+TRENINO_RUST_BUNDLE=1 npx tauri build --features "rust-ui desktop-updater" --config "src-tauri/$RUST_BUNDLE_CONFIG" "$@"
 
 echo "==> Build complete!"
 echo "Output: $TAURI_DIR/target/release/bundle/"

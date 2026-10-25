@@ -233,7 +233,7 @@ Structured inside a `fieldset` wrapper with a `label` above. The label is a smal
 
 ### Navigation
 
-Sticky top bar on base-100 with a 1px base-300 bottom border. Content constrained to max-w-2xl. Two navigation tabs (text links with active state) and two icon-labeled control buttons for Settings and Devices.
+Sticky full-width top bar on base-100 with a 1px base-300 bottom border; its padding follows the page gutter (px-4/sm:px-8). Page content below stays in the centered max-w-2xl column. One header row: brand link, three navigation tabs (text links with active state), then Settings and Devices control buttons flush right. Below `sm` the tab row wraps under the brand while control buttons stay right-aligned. Full-width firmware-notice and simulator-status bars may follow the header; their inner text aligns with the centered content column.
 
 - **Tab style:** Inactive: base-content/70 text, transparent background, hover reveals base-200 tint. Active: primary-color background, primary-content text. 8px radius. No underlines, no side borders.
 - **Control buttons** (Settings, Devices): base-200 background, hover reveals base-300. Icon + label (hidden on mobile). A 2×2 status dot precedes the icon to show live state. 8px radius.
@@ -262,7 +262,7 @@ Small badges (`badge badge-sm`) used inline in card titles to show active state.
 - **Do** surface complex actions progressively — wizards for first-time setup, compact controls for experienced users once configuration is complete.
 - **Do** use large, clearly bordered interactive targets. Users may be cross-referencing wiring diagrams or have tools in hand. Precise taps should not be required.
 - **Do** use OKLCH for all new color values. Reduce chroma as lightness approaches 0 or 100 to avoid garish extremes.
-- **Do** constrain all content to max-w-2xl centered layout. The narrower column improves readability and makes the interface feel organized rather than sprawling.
+- **Do** constrain all page content to the centered max-w-2xl layout. The narrower column improves readability and makes the interface feel organized rather than sprawling. Full-width chrome (sticky navigation, notice and status bars) is exempt: it spans the window and frames the column.
 
 ### Don't:
 

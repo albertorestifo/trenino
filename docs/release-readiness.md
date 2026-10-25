@@ -13,12 +13,10 @@ cargo fmt --all --check
 cargo clippy --workspace --all-targets -- -D warnings
 cargo test --workspace -- --test-threads=1
 npm --prefix tauri/ui run check && npm --prefix tauri/ui test && npm --prefix tauri/ui run build
-cargo test --manifest-path tauri/virtual_joystick/Cargo.toml
 ```
-
-Check that the Tauri configuration, Cargo package/lockfile, npm package/lockfile
-and splash screen all identify the application as 0.8.0. Keep the changelog
-unreleased until a release is actually published.
+Check that the Tauri configuration, Cargo package/lockfile, and both npm
+package/lockfiles (tauri/ and tauri/ui/) identify the application as 0.8.0.
+Keep the changelog unreleased until a release is actually published.
 
 ## Validation completed on October 23, 2026
 
