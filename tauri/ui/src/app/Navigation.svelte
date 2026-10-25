@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { Route } from '../bridge/route';
 
-  let { route }: { route: Route } = $props();
+  let { route, connectedCount = 0 }: { route: Route; connectedCount?: number } = $props();
   let open = $state(false);
   let menuButton: HTMLButtonElement;
 
@@ -37,14 +37,14 @@
       <a href="#/settings" class="nav-utility" aria-label="Settings" title="Settings"><span aria-hidden="true">⚙</span><span class="hidden text-sm font-medium sm:inline">Settings</span></a>
       <div class="relative">
         <button bind:this={menuButton} class="nav-utility" aria-label="Connected devices" aria-expanded={open} aria-haspopup="menu" onclick={() => (open = !open)}>
-          <span class="h-2 w-2 rounded-full bg-base-content/30" aria-hidden="true"></span>
-          <span class="hidden text-sm font-medium sm:inline">Devices unavailable</span>
+          <span class="h-2 w-2 rounded-full {connectedCount > 0 ? 'bg-success animate-pulse' : 'bg-base-content/30'}" aria-hidden="true"></span>
+          <span class="hidden text-sm font-medium sm:inline">{connectedCount > 0 ? `${connectedCount} device${connectedCount === 1 ? '' : 's'} active` : 'No device connected'}</span>
           <span aria-hidden="true">⌄</span>
         </button>
         {#if open}
           <div class="device-menu" role="menu" aria-label="Connected devices">
-            <p class="text-sm text-base-content/70">Device service is not connected.</p>
-            <button class="btn btn-sm mt-3" role="menuitem" onclick={() => closeMenu(true)} disabled>Scan devices</button>
+            <p class="text-sm text-base-content/70">{connectedCount > 0 ? `${connectedCount} active configuration${connectedCount === 1 ? '' : 's'} on connected devices.` : 'No configuration is active on a connected device.'}</p>
+            <button class="btn btn-sm mt-3" role="menuitem" onclick={() => closeMenu(true)}>Close</button>
           </div>
         {/if}
       </div>
