@@ -87,7 +87,10 @@ fn create_train_with_valid_attributes() {
     // Mirrors: "creates a train with valid attributes"
     assert_eq!(created.record.name, "Class 66");
     assert_eq!(created.record.identifiers, ["BR_Class_66"]);
-    assert_eq!(created.record.description.as_deref(), Some("Freight locomotive"));
+    assert_eq!(
+        created.record.description.as_deref(),
+        Some("Freight locomotive")
+    );
     assert_eq!(created.receipt.metadata.revision, 1);
 }
 
@@ -215,7 +218,10 @@ fn get_train_by_identifier_matches_prefix() {
     // ("RVM_FSN_DB_BR423-A" matches stored "RVM_FSN_DB_BR423").
     let (_dir, db) = database();
     let record = train(&db, "Class 66", "RVM_FSN_DB_BR423");
-    match db.get_train_by_identifier("RVM_FSN_DB_BR423-A".into()).unwrap() {
+    match db
+        .get_train_by_identifier("RVM_FSN_DB_BR423-A".into())
+        .unwrap()
+    {
         IdentifierMatch::Unique(found) => assert_eq!(found.id, record.id),
         other => panic!("expected unique match, got {other:?}"),
     }
@@ -226,15 +232,13 @@ fn get_train_by_identifier_matches_prefix() {
         TrainPatch {
             name: None,
             description: None,
-            identifiers: Some(vec![
-                "RVM_FSN_DB_BR423".into(),
-                "RVM_OTHER_DB_BR423".into(),
-            ]),
+            identifiers: Some(vec!["RVM_FSN_DB_BR423".into(), "RVM_OTHER_DB_BR423".into()]),
         },
     )
     .unwrap();
     assert!(matches!(
-        db.get_train_by_identifier("RVM_OTHER_DB_BR423-B".into()).unwrap(),
+        db.get_train_by_identifier("RVM_OTHER_DB_BR423-B".into())
+            .unwrap(),
         IdentifierMatch::Unique(_)
     ));
 }
@@ -376,7 +380,12 @@ fn list_trains_ordered_by_name() {
     train(&db, "Zebra", "id1");
     train(&db, "Alpha", "id2");
     train(&db, "Beta", "id3");
-    let names: Vec<_> = db.list_trains().unwrap().into_iter().map(|t| t.name).collect();
+    let names: Vec<_> = db
+        .list_trains()
+        .unwrap()
+        .into_iter()
+        .map(|t| t.name)
+        .collect();
     assert_eq!(names, ["Alpha", "Beta", "Zebra"]);
 }
 
@@ -479,7 +488,10 @@ fn get_element_and_delete_element_cascades() {
     let (_dir, db) = database();
     let record = train(&db, "Class 66", "BR_Class_66");
     let element = lever_element(&db, record.id, "Throttle");
-    assert_eq!(db.get_train_element(element.id).unwrap().unwrap().id, element.id);
+    assert_eq!(
+        db.get_train_element(element.id).unwrap().unwrap().id,
+        element.id
+    );
     assert_eq!(db.get_train_element(EntityId(999_999)).unwrap(), None);
 
     let config = db
@@ -539,12 +551,16 @@ fn lever_config_notch_endpoints_must_be_paired() {
         let mut draft = config_draft();
         draft.notch_count_endpoint = count;
         draft.notch_index_endpoint = index;
-        assert!(db.create_lever_config(OperationId(3), element.id, draft).is_err());
+        assert!(db
+            .create_lever_config(OperationId(3), element.id, draft)
+            .is_err());
     }
     let mut draft = config_draft();
     draft.notch_count_endpoint = Some("Count".into());
     draft.notch_index_endpoint = Some("Index".into());
-    assert!(db.create_lever_config(OperationId(4), element.id, draft).is_ok());
+    assert!(db
+        .create_lever_config(OperationId(4), element.id, draft)
+        .is_ok());
 }
 
 #[test]
@@ -573,13 +589,12 @@ fn get_lever_config_by_element() {
         .create_lever_config(OperationId(3), element.id, config_draft())
         .unwrap()
         .record;
-    db.save_lever_calibration(
-        OperationId(4),
-        config.id,
-        vec![gate(0.0), gate(1.0)],
-    )
-    .unwrap();
-    let found = db.get_lever_config_for_element(element.id).unwrap().unwrap();
+    db.save_lever_calibration(OperationId(4), config.id, vec![gate(0.0), gate(1.0)])
+        .unwrap();
+    let found = db
+        .get_lever_config_for_element(element.id)
+        .unwrap()
+        .unwrap();
     assert_eq!(found.id, config.id);
     assert_eq!(found.notches.len(), 2);
 }
@@ -608,7 +623,10 @@ fn update_lever_config_merges_and_validates() {
         .record;
     assert_eq!(updated.min_endpoint, "Other/Min");
     assert!(updated.inverted);
-    assert_eq!(updated.value_endpoint, "CurrentDrivableActor/Throttle.InputValue");
+    assert_eq!(
+        updated.value_endpoint,
+        "CurrentDrivableActor/Throttle.InputValue"
+    );
 
     // Unbalanced notch endpoints on update are rejected and change nothing.
     let err = db
@@ -623,7 +641,10 @@ fn update_lever_config_merges_and_validates() {
         .unwrap_err();
     assert!(matches!(err, StorageError::Constraint { .. }));
     assert_eq!(
-        db.get_lever_config_for_element(element.id).unwrap().unwrap().notch_count_endpoint,
+        db.get_lever_config_for_element(element.id)
+            .unwrap()
+            .unwrap()
+            .notch_count_endpoint,
         None
     );
 }
@@ -729,7 +750,10 @@ fn save_calibration_rolls_back_atomically_on_invalid_notch() {
         .save_lever_calibration(OperationId(5), config.id, vec![gate(0.0), bad])
         .unwrap_err();
     assert!(matches!(err, StorageError::Constraint { .. }));
-    let after = db.get_lever_config_for_element(element.id).unwrap().unwrap();
+    let after = db
+        .get_lever_config_for_element(element.id)
+        .unwrap()
+        .unwrap();
     assert_eq!(after.notches.len(), 2);
     assert_eq!(after.calibrated_at, before.record.calibrated_at);
     assert_eq!(
@@ -755,7 +779,10 @@ fn save_notches_replaces_without_calibrated_at() {
     assert_eq!(saved.calibrated_at, None);
     assert_eq!(saved.notches.len(), 2);
     // Replace with a single notch.
-    let saved = db.save_notches(OperationId(5), config.id, vec![gate(0.25)]).unwrap().record;
+    let saved = db
+        .save_notches(OperationId(5), config.id, vec![gate(0.25)])
+        .unwrap()
+        .record;
     assert_eq!(saved.notches.len(), 1);
     assert_eq!(saved.notches[0].index, 0);
     assert_eq!(saved.calibrated_at, None);
@@ -807,7 +834,10 @@ fn create_notch_validates_and_rounds() {
         value: Some(0.126), // rounded to 0.13
         ..gate(0.0)
     };
-    let created = db.create_notch(OperationId(8), config.id, ok).unwrap().record;
+    let created = db
+        .create_notch(OperationId(8), config.id, ok)
+        .unwrap()
+        .record;
     assert_eq!(created.value, Some(0.13));
     assert_eq!(created.sim_input_min, Some(-0.86));
     assert_eq!(created.sim_input_max, Some(1.2));
@@ -900,7 +930,10 @@ fn delete_notch() {
         .notches
         .remove(0);
     db.delete_notch(OperationId(5), notch.id).unwrap();
-    let config = db.get_lever_config_for_element(element.id).unwrap().unwrap();
+    let config = db
+        .get_lever_config_for_element(element.id)
+        .unwrap()
+        .unwrap();
     assert_eq!(config.notches.len(), 1);
     assert!(db.delete_notch(OperationId(6), notch.id).is_err());
 }
@@ -991,7 +1024,10 @@ fn update_notch_input_ranges_unknown_notch_rolls_back() {
         )
         .unwrap_err();
     assert!(matches!(err, StorageError::Constraint { .. }));
-    let config = db.get_lever_config_for_element(element.id).unwrap().unwrap();
+    let config = db
+        .get_lever_config_for_element(element.id)
+        .unwrap()
+        .unwrap();
     assert_eq!(config.notches[0].input_min, None);
     assert_eq!(
         db.trains_snapshot().unwrap().1.revision,
@@ -1046,10 +1082,14 @@ fn auto_distribute_with_no_notches_is_read_only() {
         .create_lever_config(OperationId(3), element.id, config_draft())
         .unwrap();
     let revision_before = db.trains_snapshot().unwrap().1.revision;
-    let result = db.auto_distribute_input_ranges(OperationId(4), config.record.id).unwrap();
+    let result = db
+        .auto_distribute_input_ranges(OperationId(4), config.record.id)
+        .unwrap();
     assert!(result.record.notches.is_empty());
     assert_eq!(result.receipt.metadata.revision, revision_before);
-    assert!(db.auto_distribute_input_ranges(OperationId(5), EntityId(999_999)).is_err());
+    assert!(db
+        .auto_distribute_input_ranges(OperationId(5), EntityId(999_999))
+        .is_err());
 }
 
 #[test]
@@ -1074,7 +1114,12 @@ fn validate_notch_ranges_detects_gaps() {
         OperationId(5),
         config.id,
         vec![NotchInputRange {
-            notch_id: db.get_lever_config_for_element(element.id).unwrap().unwrap().notches[0].id,
+            notch_id: db
+                .get_lever_config_for_element(element.id)
+                .unwrap()
+                .unwrap()
+                .notches[0]
+                .id,
             input_min: 0.0,
             input_max: 0.5,
         }],
@@ -1086,13 +1131,12 @@ fn validate_notch_ranges_detects_gaps() {
         Some(RangesValidation::Gaps(vec![(0.5, 1.0)]))
     );
     // Overlap tolerance: adjacent ranges within the 0.001 epsilon are fine.
-    db.save_lever_calibration(
-        OperationId(6),
-        config.id,
-        vec![gate(0.0), gate(1.0)],
-    )
-    .unwrap();
-    let reloaded = db.get_lever_config_for_element(element.id).unwrap().unwrap();
+    db.save_lever_calibration(OperationId(6), config.id, vec![gate(0.0), gate(1.0)])
+        .unwrap();
+    let reloaded = db
+        .get_lever_config_for_element(element.id)
+        .unwrap()
+        .unwrap();
     let mut notches = reloaded.notches;
     notches.sort_by_key(|n| n.index);
     db.update_notch_input_ranges(

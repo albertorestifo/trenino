@@ -21,7 +21,7 @@ pub use updates::{
 };
 pub use upload::{
     parse_error_output, retryable_baud_rates, run_device_upload, CancelKind, DeviceUpload,
-    UploadCancelError, UploadCancelHandle, UploadEvent, UploadFailure, UploadHooks,
-    UploadHistoryPort, UploadInfo, UploadManager, UploadOutcome, UploadRequest, UploadRunResult,
+    UploadCancelError, UploadCancelHandle, UploadEvent, UploadFailure, UploadHistoryPort,
+    UploadHooks, UploadInfo, UploadManager, UploadOutcome, UploadRequest, UploadRunResult,
     UploadStartError, UploadStartRecord, UploadStatus, UploadTimings, UploadTooling,
 };

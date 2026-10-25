@@ -74,7 +74,10 @@ impl FakeDestination {
     }
 
     fn fail_next_release(&self, error: &str) {
-        self.fail_releases.lock().unwrap().push_back(error.to_owned());
+        self.fail_releases
+            .lock()
+            .unwrap()
+            .push_back(error.to_owned());
     }
 
     /// Arm the next `release` call to signal entry and block until released.
@@ -202,10 +205,7 @@ fn vjoy_plan(button: u8) -> DestinationPlan {
         destination: DestinationId::VJoy,
         routes: vec![InputRoute {
             input: input(1, 2),
-            target: RouteTarget::VJoyButton {
-                device: 1,
-                button,
-            },
+            target: RouteTarget::VJoyButton { device: 1, button },
         }],
     }
 }
@@ -250,8 +250,14 @@ fn normal_swap_releases_old_destinations_before_activating_replacements() {
         .unwrap();
     h.service.reconcile().unwrap();
     assert_eq!(h.service.active_revision(), Some(Revision(1)));
-    assert_eq!(h.tsw.calls(), vec![DestCall::Activate(Revision(1), tsw_plan("a"))]);
-    assert_eq!(h.vjoy.calls(), vec![DestCall::Activate(Revision(1), vjoy_plan(1))]);
+    assert_eq!(
+        h.tsw.calls(),
+        vec![DestCall::Activate(Revision(1), tsw_plan("a"))]
+    );
+    assert_eq!(
+        h.vjoy.calls(),
+        vec![DestCall::Activate(Revision(1), vjoy_plan(1))]
+    );
     let snapshot = h.service.snapshot();
     assert_eq!(snapshot.train_id, Some(EntityId(7)));
     assert!(snapshot.degraded.is_empty());
@@ -325,18 +331,35 @@ fn failed_release_leaves_revision_saved_but_inactive_and_retry_converges() {
             error: "tsw driver stuck".to_owned()
         }]
     );
-    assert_eq!(destination_status(&snapshot, &DestinationId::Tsw), DestinationStatus::Stale);
-    assert_eq!(destination_status(&snapshot, &DestinationId::VJoy), DestinationStatus::Pending);
     assert_eq!(
-        h.tsw.calls().iter().filter(|call| matches!(call, DestCall::Activate(_, _))).count(),
+        destination_status(&snapshot, &DestinationId::Tsw),
+        DestinationStatus::Stale
+    );
+    assert_eq!(
+        destination_status(&snapshot, &DestinationId::VJoy),
+        DestinationStatus::Pending
+    );
+    assert_eq!(
+        h.tsw
+            .calls()
+            .iter()
+            .filter(|call| matches!(call, DestCall::Activate(_, _)))
+            .count(),
         1,
         "replacement TSW routing must not activate behind a failed release"
     );
     assert!(
-        !h.vjoy.calls().iter().any(|call| matches!(call, DestCall::Activate(rev, _) if *rev == Revision(2))),
+        !h.vjoy
+            .calls()
+            .iter()
+            .any(|call| matches!(call, DestCall::Activate(rev, _) if *rev == Revision(2))),
         "no destination activates when the release barrier fails"
     );
-    assert_eq!(h.tsw.driving(), Some(tsw_plan("a")), "old TSW routing is still engaged");
+    assert_eq!(
+        h.tsw.driving(),
+        Some(tsw_plan("a")),
+        "old TSW routing is still engaged"
+    );
 
     // Retry with a healthy driver converges on the saved revision.
     h.service.reconcile().unwrap();
@@ -391,7 +414,10 @@ fn racing_revisions_older_reconciliation_loses() {
             DestCall::Activate(Revision(2), tsw_plan("b")),
         ]
     );
-    assert_eq!(h.vjoy.calls(), vec![DestCall::Activate(Revision(2), vjoy_plan(2))]);
+    assert_eq!(
+        h.vjoy.calls(),
+        vec![DestCall::Activate(Revision(2), vjoy_plan(2))]
+    );
     assert_eq!(h.tsw.driving(), Some(tsw_plan("b")));
 }
 
@@ -432,7 +458,10 @@ fn generation_fence_stops_remaining_activations() {
             DestCall::Activate(Revision(2), tsw_plan("b")),
         ]
     );
-    assert_eq!(h.vjoy.calls(), vec![DestCall::Activate(Revision(2), vjoy_plan(2))]);
+    assert_eq!(
+        h.vjoy.calls(),
+        vec![DestCall::Activate(Revision(2), vjoy_plan(2))]
+    );
 }
 
 /// Mirrors connection `disconnect` semantics and the lifecycle shutdown phases:
@@ -464,7 +493,8 @@ fn shutdown_releases_active_destinations_and_blocks_new_admission() {
 
     assert_eq!(h.service.reconcile(), Err(RoutingError::Shutdown));
     assert_eq!(
-        h.service.activate_train_revision(desired(2, vec![tsw_plan("b")])),
+        h.service
+            .activate_train_revision(desired(2, vec![tsw_plan("b")])),
         Err(RoutingError::Shutdown)
     );
 }
@@ -498,7 +528,10 @@ fn generation_fence_discards_superseded_release_barrier() {
     let snapshot = h.service.snapshot();
     assert_eq!(snapshot.desired_revision, Some(Revision(3)));
     assert_eq!(snapshot.active_revision, None);
-    assert_eq!(destination_status(&snapshot, &DestinationId::Tsw), DestinationStatus::Stale);
+    assert_eq!(
+        destination_status(&snapshot, &DestinationId::Tsw),
+        DestinationStatus::Stale
+    );
 
     h.service.reconcile().unwrap();
     assert_eq!(h.service.active_revision(), Some(Revision(3)));
@@ -545,7 +578,10 @@ fn shutdown_cancels_in_flight_reconciliation() {
     );
     assert_eq!(
         h.tsw.calls(),
-        vec![DestCall::Activate(Revision(1), tsw_plan("a")), DestCall::Release],
+        vec![
+            DestCall::Activate(Revision(1), tsw_plan("a")),
+            DestCall::Release
+        ],
         "shutdown releases the stale activation left by the fenced pass"
     );
     let snapshot = h.service.snapshot();
@@ -608,7 +644,11 @@ fn reconciliation_defers_activation_while_arbiter_suspended() {
         h.service.reconcile(),
         Err(RoutingError::ArbitrationSuspended)
     );
-    assert_eq!(h.tsw.driving(), None, "old routing was released during suspension");
+    assert_eq!(
+        h.tsw.driving(),
+        None,
+        "old routing was released during suspension"
+    );
     assert_eq!(h.service.active_revision(), None);
 
     h.arbiter.release(lease).unwrap();
@@ -626,14 +666,16 @@ fn stale_revisions_are_rejected_and_never_roll_back_newer_intent() {
         .activate_train_revision(desired(5, vec![tsw_plan("e")]))
         .unwrap();
     assert_eq!(
-        h.service.activate_train_revision(desired(3, vec![tsw_plan("c")])),
+        h.service
+            .activate_train_revision(desired(3, vec![tsw_plan("c")])),
         Err(RoutingError::StaleRevision {
             current: Revision(5),
             attempted: Revision(3)
         })
     );
     assert_eq!(
-        h.service.activate_train_revision(desired(5, vec![tsw_plan("other")])),
+        h.service
+            .activate_train_revision(desired(5, vec![tsw_plan("other")])),
         Err(RoutingError::StaleRevision {
             current: Revision(5),
             attempted: Revision(5)
@@ -667,8 +709,14 @@ fn desired_destination_without_driver_is_degraded_until_registered() {
     );
     let snapshot = service.snapshot();
     assert_eq!(snapshot.active_revision, None);
-    assert_eq!(destination_status(&snapshot, &DestinationId::Tsw), DestinationStatus::Active);
-    assert_eq!(destination_status(&snapshot, &DestinationId::VJoy), DestinationStatus::Degraded);
+    assert_eq!(
+        destination_status(&snapshot, &DestinationId::Tsw),
+        DestinationStatus::Active
+    );
+    assert_eq!(
+        destination_status(&snapshot, &DestinationId::VJoy),
+        DestinationStatus::Degraded
+    );
     assert_eq!(
         snapshot.degraded,
         vec![DegradedReason::DestinationUnavailable {

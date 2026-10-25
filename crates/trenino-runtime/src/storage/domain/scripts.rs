@@ -41,11 +41,10 @@ impl Triggers {
     /// (Elixir's `TriggersType.load/1` degrades to `[]`, but only well-formed
     /// rows written through this API can exist in the full-v2 schema).
     pub fn decode(raw: &str) -> DbResult<Self> {
-        let decoded: Self = serde_json::from_str(raw).map_err(|error| {
-            StorageError::InvalidLegacyData {
+        let decoded: Self =
+            serde_json::from_str(raw).map_err(|error| StorageError::InvalidLegacyData {
                 detail: format!("invalid script triggers JSON: {error}"),
-            }
-        })?;
+            })?;
         Ok(decoded)
     }
 }

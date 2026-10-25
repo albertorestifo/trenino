@@ -69,7 +69,8 @@ fn jsonrpc_error(id: Value, code: i64, message: String) -> Value {
 
 /// `Trenino.MCP.Server.handle_message/1`.
 pub fn handle_message(message: &Value, ports: &Ports) -> MessageOutcome {
-    let invalid = || MessageOutcome::Error(jsonrpc_error(Value::Null, -32600, "Invalid request".into()));
+    let invalid =
+        || MessageOutcome::Error(jsonrpc_error(Value::Null, -32600, "Invalid request".into()));
     let Some(fields) = message.as_object() else {
         return invalid();
     };
@@ -124,7 +125,10 @@ pub fn handle_message(message: &Value, ports: &Ports) -> MessageOutcome {
                     "Invalid params: name and arguments required".into(),
                 ));
             }
-            let arguments = params.get("arguments").cloned().unwrap_or_else(|| json!({}));
+            let arguments = params
+                .get("arguments")
+                .cloned()
+                .unwrap_or_else(|| json!({}));
             let name_text = term_string(name);
             match tools::call_tool(ports, &name_text, &arguments) {
                 Ok(result) => MessageOutcome::Reply(jsonrpc_response(
@@ -394,9 +398,13 @@ fn base64_url_nopad(data: &[u8]) -> String {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum McpServerStatus {
     Stopped,
-    Running { address: SocketAddr },
+    Running {
+        address: SocketAddr,
+    },
     /// Bind failure or busy port: the app stays up, retry via `start`.
-    Degraded { reason: String },
+    Degraded {
+        reason: String,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

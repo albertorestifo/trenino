@@ -102,9 +102,8 @@ fn top_level_code_runs_at_compile_and_mutates_state() {
 // script_engine.ex `new/1` + `add_side_effect/1` vs `execute/2`).
 #[test]
 fn top_level_effects_are_discarded() {
-    let mut vm = compile(
-        "output.set(3, true)\nprint(\"boot\")\nfunction on_change(e) print(\"go\") end",
-    );
+    let mut vm =
+        compile("output.set(3, true)\nprint(\"boot\")\nfunction on_change(e) print(\"go\") end");
     let effects = run(&mut vm, &ev("test"));
     assert_eq!(logs(&effects), vec!["go".to_string()]);
     assert!(!effects
@@ -122,8 +121,8 @@ fn top_level_infinite_loop_hits_compile_deadline() {
         compile_wall: Duration::from_millis(100),
         ..fast_limits()
     };
-    let err = ScriptVm::compile("while true do end", limits)
-        .expect_err("compile deadline expected");
+    let err =
+        ScriptVm::compile("while true do end", limits).expect_err("compile deadline expected");
     assert!(matches!(err, ScriptError::Timeout), "got: {err:?}");
 }
 
@@ -149,7 +148,10 @@ fn execute_calls_on_change_with_event_source() {
 fn execute_errors_when_on_change_missing() {
     let mut vm = compile("x = 1");
     let err = vm.execute(&ev("test")).expect_err("error expected");
-    assert!(match &err { ScriptError::Runtime(m) if m.contains("on_change") => true, _ => false }, "got: {err:?}");
+    assert!(
+        matches!(&err, ScriptError::Runtime(m) if m.contains("on_change")),
+        "got: {err:?}"
+    );
 }
 
 // Mirrors script_engine.ex `execute/2` + lua.ex `encode!/2` + Lua 5.3 number
@@ -213,11 +215,16 @@ fn event_data_table_and_nil() {
 // Mirrors script_engine_test.exs "collects output.set side effects".
 #[test]
 fn output_set_effects() {
-    let mut vm =
-        compile("function on_change(e) output.set(3, true) output.set(7, false) end");
+    let mut vm = compile("function on_change(e) output.set(3, true) output.set(7, false) end");
     let effects = run(&mut vm, &ev("test"));
-    assert!(effects.contains(&ScriptEffect::OutputSet { output_id: 3, on: true }));
-    assert!(effects.contains(&ScriptEffect::OutputSet { output_id: 7, on: false }));
+    assert!(effects.contains(&ScriptEffect::OutputSet {
+        output_id: 3,
+        on: true
+    }));
+    assert!(effects.contains(&ScriptEffect::OutputSet {
+        output_id: 7,
+        on: false
+    }));
 }
 
 // Mirrors script_engine.ex `truthy?/1`: only `false` and `nil` are falsy —
@@ -229,11 +236,26 @@ fn output_set_truthiness_including_zero() {
         "function on_change(e)\n  output.set(1, 0)\n  output.set(2, 0.0)\n  output.set(3, \"\")\n  output.set(4, nil)\n  output.set(5, false)\nend",
     );
     let effects = run(&mut vm, &ev("test"));
-    assert!(effects.contains(&ScriptEffect::OutputSet { output_id: 1, on: true }));
-    assert!(effects.contains(&ScriptEffect::OutputSet { output_id: 2, on: true }));
-    assert!(effects.contains(&ScriptEffect::OutputSet { output_id: 3, on: true }));
-    assert!(effects.contains(&ScriptEffect::OutputSet { output_id: 4, on: false }));
-    assert!(effects.contains(&ScriptEffect::OutputSet { output_id: 5, on: false }));
+    assert!(effects.contains(&ScriptEffect::OutputSet {
+        output_id: 1,
+        on: true
+    }));
+    assert!(effects.contains(&ScriptEffect::OutputSet {
+        output_id: 2,
+        on: true
+    }));
+    assert!(effects.contains(&ScriptEffect::OutputSet {
+        output_id: 3,
+        on: true
+    }));
+    assert!(effects.contains(&ScriptEffect::OutputSet {
+        output_id: 4,
+        on: false
+    }));
+    assert!(effects.contains(&ScriptEffect::OutputSet {
+        output_id: 5,
+        on: false
+    }));
 }
 
 // Mirrors script_engine.ex `setup_output/1`: `trunc(id)` truncates toward
@@ -242,8 +264,14 @@ fn output_set_truthiness_including_zero() {
 fn output_set_truncates_ids() {
     let mut vm = compile("function on_change(e) output.set(3.9, true) output.set(7.2, true) end");
     let effects = run(&mut vm, &ev("test"));
-    assert!(effects.contains(&ScriptEffect::OutputSet { output_id: 3, on: true }));
-    assert!(effects.contains(&ScriptEffect::OutputSet { output_id: 7, on: true }));
+    assert!(effects.contains(&ScriptEffect::OutputSet {
+        output_id: 3,
+        on: true
+    }));
+    assert!(effects.contains(&ScriptEffect::OutputSet {
+        output_id: 7,
+        on: true
+    }));
 }
 
 // Mirrors script_engine.ex `setup_output/1` fallback: wrong usage returns
@@ -277,7 +305,10 @@ fn output_set_arity_quirks() {
     // valid two-argument call with on=nil → falsy, returns true.
     assert_eq!(logs(&effects), vec!["\ttrue\t".to_string()]);
     // output.set(4, nil) DID record an effect with on=false.
-    assert!(effects.contains(&ScriptEffect::OutputSet { output_id: 4, on: false }));
+    assert!(effects.contains(&ScriptEffect::OutputSet {
+        output_id: 4,
+        on: false
+    }));
 }
 
 // -- display.set -------------------------------------------------------------
@@ -290,7 +321,10 @@ fn display_set_effects() {
     let effects = run(&mut vm, &ev("test"));
     assert_eq!(
         effects,
-        vec![ScriptEffect::DisplaySet { i2c_address: 112, text: "1234".to_string() }]
+        vec![ScriptEffect::DisplaySet {
+            i2c_address: 112,
+            text: "1234".to_string()
+        }]
     );
 }
 
@@ -307,7 +341,10 @@ fn display_set_usage_and_truncation() {
         logs(&effects),
         vec!["\tusage: display.set(i2c_address, text)".to_string()]
     );
-    assert!(effects.contains(&ScriptEffect::DisplaySet { i2c_address: 99, text: "txt".into() }));
+    assert!(effects.contains(&ScriptEffect::DisplaySet {
+        i2c_address: 99,
+        text: "txt".into()
+    }));
 }
 
 // -- schedule ----------------------------------------------------------------
@@ -358,7 +395,9 @@ fn api_get_placeholder_returns_and_ignored_intent() {
     );
     let effects = run(&mut vm, &ev("test"));
     assert_eq!(effects.len(), 2);
-    assert!(effects.contains(&ScriptEffect::ApiGet { path: "SomeEndpoint".to_string() }));
+    assert!(effects.contains(&ScriptEffect::ApiGet {
+        path: "SomeEndpoint".to_string()
+    }));
     // print(nil, err) — Elixir to_string(nil) == "", joined with a tab.
     assert_eq!(logs(&effects), vec!["\tnot available".to_string()]);
 }
@@ -370,7 +409,12 @@ fn api_get_placeholder_returns_and_ignored_intent() {
 fn api_get_no_argument_records_empty_path() {
     let mut vm = compile("function on_change(e) api.get() end");
     let effects = run(&mut vm, &ev("test"));
-    assert_eq!(effects, vec![ScriptEffect::ApiGet { path: String::new() }]);
+    assert_eq!(
+        effects,
+        vec![ScriptEffect::ApiGet {
+            path: String::new()
+        }]
+    );
 }
 
 // Mirrors script_engine_test.exs "collects api.set side effects" and
@@ -383,7 +427,10 @@ fn api_set_effect_and_return_value() {
     let effects = run(&mut vm, &ev("test"));
     assert_eq!(
         effects[0],
-        ScriptEffect::ApiSet { path: "SomeEndpoint".to_string(), value: ScriptValue::Float(0.5) }
+        ScriptEffect::ApiSet {
+            path: "SomeEndpoint".to_string(),
+            value: ScriptValue::Float(0.5)
+        }
     );
     assert_eq!(logs(&effects), vec!["true".to_string()]);
 }
@@ -401,11 +448,26 @@ fn api_set_value_conversion_and_quirks() {
     assert_eq!(
         effects,
         vec![
-            ScriptEffect::ApiSet { path: "a".into(), value: ScriptValue::Nil },
-            ScriptEffect::ApiSet { path: "b".into(), value: ScriptValue::Integer(3) },
-            ScriptEffect::ApiSet { path: "c".into(), value: ScriptValue::Boolean(true) },
-            ScriptEffect::ApiSet { path: "d".into(), value: ScriptValue::String("txt".into()) },
-            ScriptEffect::ApiSet { path: "42".into(), value: ScriptValue::Integer(1) },
+            ScriptEffect::ApiSet {
+                path: "a".into(),
+                value: ScriptValue::Nil
+            },
+            ScriptEffect::ApiSet {
+                path: "b".into(),
+                value: ScriptValue::Integer(3)
+            },
+            ScriptEffect::ApiSet {
+                path: "c".into(),
+                value: ScriptValue::Boolean(true)
+            },
+            ScriptEffect::ApiSet {
+                path: "d".into(),
+                value: ScriptValue::String("txt".into())
+            },
+            ScriptEffect::ApiSet {
+                path: "42".into(),
+                value: ScriptValue::Integer(1)
+            },
         ]
     );
 }
@@ -421,7 +483,10 @@ fn api_set_table_value_records_opaque() {
     let effects = run(&mut vm, &ev("test"));
     assert_eq!(
         effects,
-        vec![ScriptEffect::ApiSet { path: "x".into(), value: ScriptValue::Opaque }]
+        vec![ScriptEffect::ApiSet {
+            path: "x".into(),
+            value: ScriptValue::Opaque
+        }]
     );
 }
 
@@ -469,11 +534,22 @@ fn effects_are_ordered_chronologically() {
     assert_eq!(
         effects,
         vec![
-            ScriptEffect::ApiSet { path: "A".into(), value: ScriptValue::Integer(1) },
-            ScriptEffect::OutputSet { output_id: 1, on: true },
-            ScriptEffect::Log { message: "mid".into() },
+            ScriptEffect::ApiSet {
+                path: "A".into(),
+                value: ScriptValue::Integer(1)
+            },
+            ScriptEffect::OutputSet {
+                output_id: 1,
+                on: true
+            },
+            ScriptEffect::Log {
+                message: "mid".into()
+            },
             ScriptEffect::Schedule { ms: 100 },
-            ScriptEffect::DisplaySet { i2c_address: 0x70, text: "txt".into() },
+            ScriptEffect::DisplaySet {
+                i2c_address: 0x70,
+                text: "txt".into()
+            },
             ScriptEffect::ApiGet { path: "B".into() },
         ]
     );
@@ -502,10 +578,16 @@ fn globals_upvalues_closures_and_tables_persist() {
     let mut vm = compile(
         "local count = 0\nlocal function inc() count = count + 1 return count end\nfunction on_change(e)\n  inc() inc()\n  global_counter = (global_counter or 0) + inc()\n  t = t or {}\n  t[#t + 1] = count\n  print(count, global_counter, #t)\nend",
     );
-    assert_eq!(logs(&run(&mut vm, &ev("test"))), vec!["3\t3\t1".to_string()]);
+    assert_eq!(
+        logs(&run(&mut vm, &ev("test"))),
+        vec!["3\t3\t1".to_string()]
+    );
     // then global_counter = 3 + inc() where inc() advances count to 6 and
     // returns 6 → 9. Identical to the oracle's pure-Lua semantics.
-    assert_eq!(logs(&run(&mut vm, &ev("test"))), vec!["6\t9\t2".to_string()]);
+    assert_eq!(
+        logs(&run(&mut vm, &ev("test"))),
+        vec!["6\t9\t2".to_string()]
+    );
 }
 
 // -- language surface -----------------------------------------------------------------
@@ -543,8 +625,7 @@ fn strings_and_unicode() {
 // oracle. The engine mirrors that absence.
 #[test]
 fn coroutines_are_absent_like_oracle() {
-    let mut vm =
-        compile("function on_change(e) local c = coroutine.create(function() end) end");
+    let mut vm = compile("function on_change(e) local c = coroutine.create(function() end) end");
     let err = vm.execute(&ev("test")).expect_err("coroutine must be nil");
     assert!(
         matches!(&err, ScriptError::Runtime(m) if m.contains("coroutine")),
@@ -574,7 +655,11 @@ fn pcall_catches_errors_inside_script() {
     );
     let effects = run(&mut vm, &ev("test"));
     assert_eq!(logs(&effects).len(), 1);
-    assert!(logs(&effects)[0].starts_with("false\t"), "got: {}", logs(&effects)[0]);
+    assert!(
+        logs(&effects)[0].starts_with("false\t"),
+        "got: {}",
+        logs(&effects)[0]
+    );
 }
 
 // -- sandbox ------------------------------------------------------------------------
@@ -666,7 +751,9 @@ fn instruction_limit_bounds_execution() {
         ..fast_limits()
     };
     let mut vm = ScriptVm::compile("function on_change(e) while true do end end", limits).unwrap();
-    let err = vm.execute(&ev("test")).expect_err("instruction limit expected");
+    let err = vm
+        .execute(&ev("test"))
+        .expect_err("instruction limit expected");
     assert!(matches!(err, ScriptError::InstructionLimit), "got: {err:?}");
 }
 
@@ -713,9 +800,21 @@ fn effect_limit_bounds_effect_storms() {
 #[test]
 fn matching_scripts_exact_endpoint() {
     let scripts = vec![
-        ScriptTriggerEntry { id: 1, enabled: true, triggers: vec!["Endpoint.A".into()] },
-        ScriptTriggerEntry { id: 2, enabled: true, triggers: vec!["Endpoint.B".into(), "Endpoint.A".into()] },
-        ScriptTriggerEntry { id: 3, enabled: true, triggers: vec!["Endpoint.AB".into()] },
+        ScriptTriggerEntry {
+            id: 1,
+            enabled: true,
+            triggers: vec!["Endpoint.A".into()],
+        },
+        ScriptTriggerEntry {
+            id: 2,
+            enabled: true,
+            triggers: vec!["Endpoint.B".into(), "Endpoint.A".into()],
+        },
+        ScriptTriggerEntry {
+            id: 3,
+            enabled: true,
+            triggers: vec!["Endpoint.AB".into()],
+        },
     ];
     assert_eq!(matching_scripts(&scripts, "Endpoint.A"), vec![1, 2]);
     assert_eq!(matching_scripts(&scripts, "Endpoint.AB"), vec![3]);
@@ -728,8 +827,16 @@ fn matching_scripts_exact_endpoint() {
 #[test]
 fn matching_scripts_enabled_only() {
     let scripts = vec![
-        ScriptTriggerEntry { id: 1, enabled: false, triggers: vec!["Endpoint.A".into()] },
-        ScriptTriggerEntry { id: 2, enabled: true, triggers: vec!["Endpoint.A".into()] },
+        ScriptTriggerEntry {
+            id: 1,
+            enabled: false,
+            triggers: vec!["Endpoint.A".into()],
+        },
+        ScriptTriggerEntry {
+            id: 2,
+            enabled: true,
+            triggers: vec!["Endpoint.A".into()],
+        },
     ];
     assert_eq!(matching_scripts(&scripts, "Endpoint.A"), vec![2]);
 }
@@ -739,7 +846,11 @@ fn matching_scripts_enabled_only() {
 // endpoint ever matches an empty trigger list.
 #[test]
 fn matching_scripts_no_triggers_never_match() {
-    let scripts = vec![ScriptTriggerEntry { id: 7, enabled: true, triggers: vec![] }];
+    let scripts = vec![ScriptTriggerEntry {
+        id: 7,
+        enabled: true,
+        triggers: vec![],
+    }];
     assert_eq!(matching_scripts(&scripts, "Endpoint.A"), Vec::<i64>::new());
 }
 

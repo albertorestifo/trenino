@@ -26,7 +26,11 @@ fn database() -> (tempfile::TempDir, Database) {
     (dir, db)
 }
 
-fn release_draft(version: &str, tag_name: &str, published_at: Option<&str>) -> FirmwareReleaseDraft {
+fn release_draft(
+    version: &str,
+    tag_name: &str,
+    published_at: Option<&str>,
+) -> FirmwareReleaseDraft {
     FirmwareReleaseDraft {
         version: version.into(),
         tag_name: tag_name.into(),
@@ -107,7 +111,10 @@ fn refresh_upsert_replaces_release_and_files_in_place() {
         )
         .unwrap();
     assert_eq!(second.record.id, first.record.id);
-    assert_eq!(second.record.release_notes.as_deref(), Some("Updated notes"));
+    assert_eq!(
+        second.record.release_notes.as_deref(),
+        Some("Updated notes")
+    );
 
     let uno_after = db
         .upsert_firmware_file(
@@ -117,7 +124,10 @@ fn refresh_upsert_replaces_release_and_files_in_place() {
         )
         .unwrap();
     assert_eq!(uno_after.record.id, uno.record.id);
-    assert_eq!(uno_after.record.download_url, "https://cdn.example.com/uno-v2.hex");
+    assert_eq!(
+        uno_after.record.download_url,
+        "https://cdn.example.com/uno-v2.hex"
+    );
     assert_eq!(uno_after.record.file_size, Some(18_000));
     assert_eq!(uno_after.record.environment.as_deref(), Some("uno"));
 
@@ -243,15 +253,20 @@ fn release_lookup_by_id_and_tag() {
 fn create_release_validates_required_fields_and_unique_tag() {
     let (_dir, db) = database();
 
-    let blank_version = db.create_firmware_release(OperationId(1), release_draft("", "v1.0.0", None));
-    assert!(matches!(blank_version, Err(StorageError::Constraint { .. })));
+    let blank_version =
+        db.create_firmware_release(OperationId(1), release_draft("", "v1.0.0", None));
+    assert!(matches!(
+        blank_version,
+        Err(StorageError::Constraint { .. })
+    ));
 
     let blank_tag = db.create_firmware_release(OperationId(2), release_draft("1.0.0", "", None));
     assert!(matches!(blank_tag, Err(StorageError::Constraint { .. })));
 
     db.create_firmware_release(OperationId(3), release_draft("1.0.0", "v1.0.0", None))
         .unwrap();
-    let duplicate = db.create_firmware_release(OperationId(4), release_draft("1.0.1", "v1.0.0", None));
+    let duplicate =
+        db.create_firmware_release(OperationId(4), release_draft("1.0.1", "v1.0.0", None));
     assert!(matches!(duplicate, Err(StorageError::Conflict { .. })));
 }
 
@@ -320,11 +335,8 @@ fn firmware_file_creation_constraints_and_lookups() {
         file_draft("", "https://example.com/x.hex", 1),
     );
     assert!(matches!(blank_board, Err(StorageError::Constraint { .. })));
-    let blank_url = db.create_firmware_file(
-        OperationId(6),
-        release.record.id,
-        file_draft("uno", "", 1),
-    );
+    let blank_url =
+        db.create_firmware_file(OperationId(6), release.record.id, file_draft("uno", "", 1));
     assert!(matches!(blank_url, Err(StorageError::Constraint { .. })));
 }
 
@@ -436,9 +448,15 @@ fn refresh_preserves_recorded_checksum() {
         .unwrap();
     assert_eq!(refreshed.record.id, file.record.id);
     assert_eq!(refreshed.record.environment.as_deref(), Some("uno_rev3"));
-    assert_eq!(refreshed.record.download_url, "https://example.com/uno-new.hex");
+    assert_eq!(
+        refreshed.record.download_url,
+        "https://example.com/uno-new.hex"
+    );
     assert_eq!(refreshed.record.file_size, Some(18_000));
-    assert_eq!(refreshed.record.checksum_sha256.as_deref(), Some("deadbeef"));
+    assert_eq!(
+        refreshed.record.checksum_sha256.as_deref(),
+        Some("deadbeef")
+    );
 }
 
 /// Mirrors "UpdateCheck persistence" (update_checker_test.exs): insert and
@@ -472,7 +490,10 @@ fn update_checks_append_order_and_prune_to_latest_hundred() {
         )
         .unwrap();
     assert!(!older.record.found_updates);
-    assert_eq!(older.record.error_message.as_deref(), Some("GitHub API error: 403"));
+    assert_eq!(
+        older.record.error_message.as_deref(),
+        Some("GitHub API error: 403")
+    );
     assert!(!older.record.inserted_at.is_empty());
 
     let newer = db
@@ -584,7 +605,10 @@ fn upload_history_complete_fail_cancel_lifecycle() {
     let (_dir, db) = database();
 
     let started = db
-        .start_upload_history(OperationId(1), upload_start("complete_test", "/dev/ttyUSB0", "uno"))
+        .start_upload_history(
+            OperationId(1),
+            upload_start("complete_test", "/dev/ttyUSB0", "uno"),
+        )
         .unwrap();
     let completed = db
         .complete_upload_history(OperationId(2), started.record.id, Some("success".into()))
@@ -597,7 +621,10 @@ fn upload_history_complete_fail_cancel_lifecycle() {
     assert_eq!(completed.record.avrdude_output.as_deref(), Some("success"));
 
     let started = db
-        .start_upload_history(OperationId(3), upload_start("fail_test", "/dev/ttyUSB0", "leonardo"))
+        .start_upload_history(
+            OperationId(3),
+            upload_start("fail_test", "/dev/ttyUSB0", "leonardo"),
+        )
         .unwrap();
     let failed = db
         .fail_upload_history(
@@ -608,15 +635,26 @@ fn upload_history_complete_fail_cancel_lifecycle() {
         )
         .unwrap();
     assert_eq!(failed.record.status, UploadStatus::Failed);
-    assert_eq!(failed.record.error_message.as_deref(), Some("Device not responding"));
-    assert_eq!(failed.record.avrdude_output.as_deref(), Some("avrdude: error"));
+    assert_eq!(
+        failed.record.error_message.as_deref(),
+        Some("Device not responding")
+    );
+    assert_eq!(
+        failed.record.avrdude_output.as_deref(),
+        Some("avrdude: error")
+    );
     assert!(failed.record.completed_at.is_some());
     assert!(failed.record.duration_ms.is_some());
 
     let started = db
-        .start_upload_history(OperationId(5), upload_start("cancel_test", "/dev/ttyUSB0", "micro"))
+        .start_upload_history(
+            OperationId(5),
+            upload_start("cancel_test", "/dev/ttyUSB0", "micro"),
+        )
         .unwrap();
-    let cancelled = db.cancel_upload_history(OperationId(6), started.record.id).unwrap();
+    let cancelled = db
+        .cancel_upload_history(OperationId(6), started.record.id)
+        .unwrap();
     assert_eq!(cancelled.record.status, UploadStatus::Cancelled);
     assert!(cancelled.record.completed_at.is_some());
     assert_eq!(cancelled.record.error_message, None);
@@ -730,10 +768,15 @@ fn release_delete_cascades_files_and_detaches_upload_history() {
         .fail_upload_history(OperationId(4), history.record.id, "boom".into(), None)
         .unwrap();
 
-    let deleted = db.delete_firmware_release(OperationId(5), release.record.id).unwrap();
+    let deleted = db
+        .delete_firmware_release(OperationId(5), release.record.id)
+        .unwrap();
     assert_eq!(deleted.record.id, release.record.id);
     assert_eq!(db.get_firmware_release(release.record.id).unwrap(), None);
-    assert_eq!(db.firmware_files_for_release(release.record.id).unwrap(), vec![]);
+    assert_eq!(
+        db.firmware_files_for_release(release.record.id).unwrap(),
+        vec![]
+    );
     assert_eq!(db.get_firmware_file(file.record.id).unwrap(), None);
 
     let detached = db.get_upload_history("upload_detach").unwrap().unwrap();
@@ -771,12 +814,20 @@ fn file_delete_detaches_upload_history() {
     )
     .unwrap();
 
-    let deleted = db.delete_firmware_file(OperationId(4), file.record.id).unwrap();
+    let deleted = db
+        .delete_firmware_file(OperationId(4), file.record.id)
+        .unwrap();
     assert_eq!(deleted.record.id, file.record.id);
     // The release itself is untouched by a file delete.
-    assert!(db.get_firmware_release(release.record.id).unwrap().is_some());
+    assert!(db
+        .get_firmware_release(release.record.id)
+        .unwrap()
+        .is_some());
 
-    let detached = db.get_upload_history("upload_file_detach").unwrap().unwrap();
+    let detached = db
+        .get_upload_history("upload_file_detach")
+        .unwrap()
+        .unwrap();
     assert_eq!(detached.firmware_file_id, None);
     assert_eq!(detached.status, UploadStatus::Started);
 
@@ -814,13 +865,20 @@ fn mutation_receipts_track_operation_and_revision() {
     assert_eq!(check.receipt.metadata.revision, initial.revision + 2);
 
     let upload = db
-        .start_upload_history(OperationId(13), upload_start("op_test", "/dev/ttyUSB0", "uno"))
+        .start_upload_history(
+            OperationId(13),
+            upload_start("op_test", "/dev/ttyUSB0", "uno"),
+        )
         .unwrap();
     assert_eq!(upload.receipt.metadata.revision, initial.revision + 3);
 
     // Rejected mutation: no revision bump, no content change.
-    let duplicate = db.create_firmware_release(OperationId(14), release_draft("1.0.1", "v1.0.0", None));
+    let duplicate =
+        db.create_firmware_release(OperationId(14), release_draft("1.0.1", "v1.0.0", None));
     assert!(matches!(duplicate, Err(StorageError::Conflict { .. })));
-    assert_eq!(db.firmware_metadata().unwrap().revision, initial.revision + 3);
+    assert_eq!(
+        db.firmware_metadata().unwrap().revision,
+        initial.revision + 3
+    );
     assert_eq!(db.list_firmware_releases().unwrap().len(), 1);
 }

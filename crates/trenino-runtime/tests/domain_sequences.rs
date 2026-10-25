@@ -6,8 +6,8 @@
 use rusqlite::Connection;
 use tempfile::tempdir;
 use trenino_core::{EntityId, OperationId};
-use trenino_runtime::storage::{Database, MutationOutcome, StorageError};
 use trenino_runtime::storage::sequences::{SequenceCommandDraft, SequenceDraft, SequencePatch};
+use trenino_runtime::storage::{Database, MutationOutcome, StorageError};
 
 fn database() -> (tempfile::TempDir, Database, std::path::PathBuf) {
     let dir = tempdir().unwrap();
@@ -44,7 +44,13 @@ fn create_sequence_with_valid_attributes() {
     let (_dir, db, path) = database();
     let train = seed_train(&path, "Class 66");
     let mutation = db
-        .create_sequence(OperationId(1), train, SequenceDraft { name: "Door Open".into() })
+        .create_sequence(
+            OperationId(1),
+            train,
+            SequenceDraft {
+                name: "Door Open".into(),
+            },
+        )
         .unwrap();
     assert_eq!(mutation.record.name, "Door Open");
     assert_eq!(mutation.record.train_id, train);
@@ -61,20 +67,44 @@ fn create_sequence_validates_name_and_uniqueness() {
         Err(StorageError::Constraint { .. })
     ));
     assert!(matches!(
-        db.create_sequence(OperationId(2), train, SequenceDraft { name: "x".repeat(101) }),
+        db.create_sequence(
+            OperationId(2),
+            train,
+            SequenceDraft {
+                name: "x".repeat(101)
+            }
+        ),
         Err(StorageError::Constraint { .. })
     ));
-    db.create_sequence(OperationId(3), train, SequenceDraft { name: "Door Open".into() })
-        .unwrap();
+    db.create_sequence(
+        OperationId(3),
+        train,
+        SequenceDraft {
+            name: "Door Open".into(),
+        },
+    )
+    .unwrap();
     // Ecto surfaces "has already been taken" via the (train_id, name) unique index.
     assert!(matches!(
-        db.create_sequence(OperationId(4), train, SequenceDraft { name: "Door Open".into() }),
+        db.create_sequence(
+            OperationId(4),
+            train,
+            SequenceDraft {
+                name: "Door Open".into()
+            }
+        ),
         Err(StorageError::Conflict { .. })
     ));
     // Invalid mutations must not change content or revision.
     let revision = db.revision("trains").unwrap();
     assert!(matches!(
-        db.create_sequence(OperationId(5), train, SequenceDraft { name: "Door Open".into() }),
+        db.create_sequence(
+            OperationId(5),
+            train,
+            SequenceDraft {
+                name: "Door Open".into()
+            }
+        ),
         Err(StorageError::Conflict { .. })
     ));
     assert_eq!(db.revision("trains").unwrap(), revision);
@@ -88,7 +118,9 @@ fn create_sequence_rejects_unknown_train() {
         db.create_sequence(
             OperationId(1),
             EntityId(999_999),
-            SequenceDraft { name: "Ghost".into() }
+            SequenceDraft {
+                name: "Ghost".into()
+            }
         ),
         Err(StorageError::ForeignKey { .. })
     ));
@@ -101,7 +133,13 @@ fn get_sequence_returns_commands_or_not_found() {
     let (_dir, db, path) = database();
     let train = seed_train(&path, "Class 66");
     let sequence = db
-        .create_sequence(OperationId(1), train, SequenceDraft { name: "Door Open".into() })
+        .create_sequence(
+            OperationId(1),
+            train,
+            SequenceDraft {
+                name: "Door Open".into(),
+            },
+        )
         .unwrap()
         .record;
     db.add_sequence_command(
@@ -123,12 +161,30 @@ fn list_sequences_scoped_and_ordered_by_name() {
     let (_dir, db, path) = database();
     let train1 = seed_train(&path, "Class 66");
     let train2 = seed_train(&path, "Class 43");
-    db.create_sequence(OperationId(1), train1, SequenceDraft { name: "Zebra".into() })
-        .unwrap();
-    db.create_sequence(OperationId(2), train1, SequenceDraft { name: "Alpha".into() })
-        .unwrap();
-    db.create_sequence(OperationId(3), train2, SequenceDraft { name: "Bell".into() })
-        .unwrap();
+    db.create_sequence(
+        OperationId(1),
+        train1,
+        SequenceDraft {
+            name: "Zebra".into(),
+        },
+    )
+    .unwrap();
+    db.create_sequence(
+        OperationId(2),
+        train1,
+        SequenceDraft {
+            name: "Alpha".into(),
+        },
+    )
+    .unwrap();
+    db.create_sequence(
+        OperationId(3),
+        train2,
+        SequenceDraft {
+            name: "Bell".into(),
+        },
+    )
+    .unwrap();
     let names: Vec<String> = db
         .list_sequences(train1)
         .unwrap()
@@ -144,7 +200,13 @@ fn set_sequence_commands_assigns_positions() {
     let (_dir, db, path) = database();
     let train = seed_train(&path, "Class 66");
     let sequence = db
-        .create_sequence(OperationId(1), train, SequenceDraft { name: "Door Open".into() })
+        .create_sequence(
+            OperationId(1),
+            train,
+            SequenceDraft {
+                name: "Door Open".into(),
+            },
+        )
         .unwrap()
         .record;
     let created = db
@@ -159,7 +221,10 @@ fn set_sequence_commands_assigns_positions() {
         )
         .unwrap()
         .record;
-    assert_eq!(created.iter().map(|c| c.position).collect::<Vec<_>>(), [0, 1, 2]);
+    assert_eq!(
+        created.iter().map(|c| c.position).collect::<Vec<_>>(),
+        [0, 1, 2]
+    );
     assert_eq!(created[0].delay_ms, 500);
     assert_eq!(created[1].delay_ms, 250);
     assert_eq!(created[2].delay_ms, 0);
@@ -171,7 +236,13 @@ fn set_sequence_commands_replaces_existing() {
     let (_dir, db, path) = database();
     let train = seed_train(&path, "Class 66");
     let sequence = db
-        .create_sequence(OperationId(1), train, SequenceDraft { name: "Door Open".into() })
+        .create_sequence(
+            OperationId(1),
+            train,
+            SequenceDraft {
+                name: "Door Open".into(),
+            },
+        )
         .unwrap()
         .record;
     db.set_sequence_commands(
@@ -197,7 +268,13 @@ fn set_sequence_commands_rounds_values() {
     let (_dir, db, path) = database();
     let train = seed_train(&path, "Class 66");
     let sequence = db
-        .create_sequence(OperationId(1), train, SequenceDraft { name: "Test".into() })
+        .create_sequence(
+            OperationId(1),
+            train,
+            SequenceDraft {
+                name: "Test".into(),
+            },
+        )
         .unwrap()
         .record;
     let created = db
@@ -219,7 +296,13 @@ fn set_sequence_commands_is_atomic_on_invalid_draft() {
     let (_dir, db, path) = database();
     let train = seed_train(&path, "Class 66");
     let sequence = db
-        .create_sequence(OperationId(1), train, SequenceDraft { name: "Test".into() })
+        .create_sequence(
+            OperationId(1),
+            train,
+            SequenceDraft {
+                name: "Test".into(),
+            },
+        )
         .unwrap()
         .record;
     db.set_sequence_commands(
@@ -245,11 +328,7 @@ fn set_sequence_commands_is_atomic_on_invalid_draft() {
     assert_eq!(commands[0].endpoint, "Keep.InputValue");
     assert_eq!(db.revision("trains").unwrap(), revision);
     assert!(matches!(
-        db.set_sequence_commands(
-            OperationId(4),
-            sequence.id,
-            vec![command("  ", 1.0, 0)],
-        ),
+        db.set_sequence_commands(OperationId(4), sequence.id, vec![command("  ", 1.0, 0)],),
         Err(StorageError::Constraint { .. })
     ));
 }
@@ -260,15 +339,29 @@ fn add_sequence_command_appends_at_max_position_plus_one() {
     let (_dir, db, path) = database();
     let train = seed_train(&path, "Class 66");
     let sequence = db
-        .create_sequence(OperationId(1), train, SequenceDraft { name: "Test".into() })
+        .create_sequence(
+            OperationId(1),
+            train,
+            SequenceDraft {
+                name: "Test".into(),
+            },
+        )
         .unwrap()
         .record;
     let first = db
-        .add_sequence_command(OperationId(2), sequence.id, command("First.InputValue", 1.0, 0))
+        .add_sequence_command(
+            OperationId(2),
+            sequence.id,
+            command("First.InputValue", 1.0, 0),
+        )
         .unwrap()
         .record;
     let second = db
-        .add_sequence_command(OperationId(3), sequence.id, command("Second.InputValue", 2.0, 0))
+        .add_sequence_command(
+            OperationId(3),
+            sequence.id,
+            command("Second.InputValue", 2.0, 0),
+        )
         .unwrap()
         .record;
     assert_eq!(first.position, 0);
@@ -281,7 +374,13 @@ fn delete_sequence_cascades_commands() {
     let (_dir, db, path) = database();
     let train = seed_train(&path, "Class 66");
     let sequence = db
-        .create_sequence(OperationId(1), train, SequenceDraft { name: "Test".into() })
+        .create_sequence(
+            OperationId(1),
+            train,
+            SequenceDraft {
+                name: "Test".into(),
+            },
+        )
         .unwrap()
         .record;
     db.set_sequence_commands(
@@ -306,7 +405,13 @@ fn deleting_train_cascades_sequences_and_commands() {
     let (_dir, db, path) = database();
     let train = seed_train(&path, "Class 66");
     let sequence = db
-        .create_sequence(OperationId(1), train, SequenceDraft { name: "Test".into() })
+        .create_sequence(
+            OperationId(1),
+            train,
+            SequenceDraft {
+                name: "Test".into(),
+            },
+        )
         .unwrap()
         .record;
     db.set_sequence_commands(
@@ -338,7 +443,9 @@ fn update_sequence_renames() {
         .update_sequence(
             OperationId(2),
             sequence.id,
-            SequencePatch { name: Some("New".into()) },
+            SequencePatch {
+                name: Some("New".into()),
+            },
         )
         .unwrap()
         .record;
@@ -348,7 +455,9 @@ fn update_sequence_renames() {
         db.update_sequence(
             OperationId(3),
             sequence.id,
-            SequencePatch { name: Some("".into()) },
+            SequencePatch {
+                name: Some("".into())
+            },
         ),
         Err(StorageError::Constraint { .. })
     ));
@@ -360,7 +469,13 @@ fn delete_sequence_command_removes_only_that_command() {
     let (_dir, db, path) = database();
     let train = seed_train(&path, "Class 66");
     let sequence = db
-        .create_sequence(OperationId(1), train, SequenceDraft { name: "Test".into() })
+        .create_sequence(
+            OperationId(1),
+            train,
+            SequenceDraft {
+                name: "Test".into(),
+            },
+        )
         .unwrap()
         .record;
     db.set_sequence_commands(
@@ -370,7 +485,8 @@ fn delete_sequence_command_removes_only_that_command() {
     )
     .unwrap();
     let commands = db.sequence_commands(sequence.id).unwrap();
-    db.delete_sequence_command(OperationId(3), commands[0].id).unwrap();
+    db.delete_sequence_command(OperationId(3), commands[0].id)
+        .unwrap();
     let remaining = db.sequence_commands(sequence.id).unwrap();
     assert_eq!(remaining.len(), 1);
     assert_eq!(remaining[0].endpoint, "B");

@@ -330,9 +330,17 @@ pub trait HardwarePort: Send + Sync {
 pub trait SequencesPort: Send + Sync {
     /// Ordered by name, commands preloaded.
     fn list_sequences(&self, train_id: i64) -> Vec<SequenceRecord>;
-    fn create_sequence(&self, train_id: i64, name: Option<String>) -> Result<SequenceRecord, PortError>;
+    fn create_sequence(
+        &self,
+        train_id: i64,
+        name: Option<String>,
+    ) -> Result<SequenceRecord, PortError>;
     fn get_sequence(&self, id: i64) -> Result<SequenceRecord, PortError>;
-    fn update_sequence_name(&self, sequence: &SequenceRecord, name: Option<String>) -> Result<(), PortError>;
+    fn update_sequence_name(
+        &self,
+        sequence: &SequenceRecord,
+        name: Option<String>,
+    ) -> Result<(), PortError>;
     /// Replaces all commands; `Validation` mirrors changeset errors,
     /// `Failed` mirrors `{:error, reason}` from `set_sequence_commands`.
     fn set_sequence_commands(
@@ -348,7 +356,11 @@ pub trait ScriptsPort: Send + Sync {
     fn list_scripts(&self, train_id: i64) -> Vec<ScriptRecord>;
     fn get_script(&self, id: i64) -> Result<ScriptRecord, PortError>;
     fn create_script(&self, train_id: i64, attrs: ScriptAttrs) -> Result<ScriptRecord, PortError>;
-    fn update_script(&self, script: &ScriptRecord, changes: ScriptAttrs) -> Result<ScriptRecord, PortError>;
+    fn update_script(
+        &self,
+        script: &ScriptRecord,
+        changes: ScriptAttrs,
+    ) -> Result<ScriptRecord, PortError>;
     fn delete_script(&self, script: &ScriptRecord) -> Result<(), PortError>;
 }
 
@@ -490,9 +502,7 @@ pub enum VjoyTarget {
 }
 
 /// vJoy axes (`@axes` in `VirtualJoystickTools`), in schema order.
-pub const VJOY_AXES: [&str; 8] = [
-    "x", "y", "z", "rx", "ry", "rz", "slider_1", "slider_2",
-];
+pub const VJOY_AXES: [&str; 8] = ["x", "y", "z", "rx", "ry", "rz", "slider_1", "slider_2"];
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct VjoyMappingRecord {

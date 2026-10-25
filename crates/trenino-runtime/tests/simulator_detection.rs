@@ -34,7 +34,7 @@ use trenino_runtime::resource::{LeaseKind, ResourceArbiter, ResourceConsumers, R
 use trenino_runtime::simulator::client::{SimulatorClient, SimulatorError, TimeoutProfile};
 use trenino_runtime::simulator::services::calibration as lever_calib;
 use trenino_runtime::simulator::services::calibration::{
-    CalibrationEvent, CalibrationStore, CalibrationStep, MappingEvent, MappingStep,
+    CalibrationEvent, CalibrationStep, CalibrationStore, MappingEvent, MappingStep,
     NotchDefinition, NotchKind, NotchMappingConfig,
 };
 use trenino_runtime::simulator::services::clock::{Clock, FakeClock};
@@ -118,11 +118,8 @@ impl FakeSim {
     }
 }
 
-fn handle_connection<F>(
-    stream: TcpStream,
-    handler: Arc<F>,
-    logged: Arc<Mutex<Vec<String>>>,
-) where
+fn handle_connection<F>(stream: TcpStream, handler: Arc<F>, logged: Arc<Mutex<Vec<String>>>)
+where
     F: Fn(FakeRequest) -> (u16, String),
 {
     let mut writer = match stream.try_clone() {
@@ -274,8 +271,8 @@ async fn assert_quiet(mut probe: impl FnMut()) {
 // ===========================================================================
 
 fn explorer_sim() -> FakeSim {
-    FakeSim::spawn(|request| {
-        match (request.method.as_str(), request.path.as_str()) {
+    FakeSim::spawn(
+        |request| match (request.method.as_str(), request.path.as_str()) {
             ("GET", "/list/CurrentDrivableActor") => ok(json!({
                 "Result": "Success",
                 "Nodes": ["Throttle(Lever)", "Horn", "Plain"]
@@ -293,8 +290,8 @@ fn explorer_sim() -> FakeSim {
                 "Nodes": ["InputValue"]
             })),
             _ => not_found(),
-        }
-    })
+        },
+    )
 }
 
 /// Mirrors `ControlDetector.list_controls/1`, `detect_lever/2` and
@@ -309,7 +306,11 @@ async fn exploration_lists_and_classifies_levers_and_buttons() {
     let controls = explorer::list_controls(&client).await.unwrap();
     assert_eq!(
         controls,
-        vec!["Throttle(Lever)".to_owned(), "Horn".to_owned(), "Plain".to_owned()]
+        vec![
+            "Throttle(Lever)".to_owned(),
+            "Horn".to_owned(),
+            "Plain".to_owned()
+        ]
     );
 
     let levers = explorer::detect_levers(&client).await.unwrap();
@@ -361,7 +362,9 @@ async fn suggestions_use_the_confidence_ladder_and_gate_low_confidence() {
 
     // No shared characters with the only lever -> jaro 0.0 -> below the gate.
     assert_eq!(
-        explorer::suggest_lever(&client, "Qqqqzz").await.unwrap_err(),
+        explorer::suggest_lever(&client, "Qqqqzz")
+            .await
+            .unwrap_err(),
         explorer::SuggestError::NoMatch
     );
 }
@@ -381,7 +384,12 @@ fn exploration_fuzzy_primitives_match_elixir() {
 
     assert_eq!(
         explorer::split_into_words("ThrottleLever_x (y)"),
-        vec!["throttle".to_owned(), "lever".to_owned(), "x".to_owned(), "y".to_owned()]
+        vec![
+            "throttle".to_owned(),
+            "lever".to_owned(),
+            "x".to_owned(),
+            "y".to_owned()
+        ]
     );
 
     assert_eq!(explorer::confidence("horn", "Horn"), 1.0);
@@ -671,9 +679,8 @@ async fn control_detection_keeps_polling_through_errors() {
     let clock = FakeClock::new();
     let arbiter = arbiter();
     // Fast profile: the failing 500s are not retried, like Req in the tests.
-    let client = Arc::new(
-        SimulatorClient::with_profile(sim.url(), "key", TimeoutProfile::Fast).unwrap(),
-    );
+    let client =
+        Arc::new(SimulatorClient::with_profile(sim.url(), "key", TimeoutProfile::Fast).unwrap());
     let mut session = control_detection::start_control_detection(
         client,
         &arbiter,
@@ -711,9 +718,8 @@ async fn control_detection_fails_when_discovery_fails() {
     let sim = control_detection_sim(&state);
     let clock = FakeClock::new();
     let arbiter = arbiter();
-    let client = Arc::new(
-        SimulatorClient::with_profile(sim.url(), "key", TimeoutProfile::Fast).unwrap(),
-    );
+    let client =
+        Arc::new(SimulatorClient::with_profile(sim.url(), "key", TimeoutProfile::Fast).unwrap());
     let mut session = control_detection::start_control_detection(
         client,
         &arbiter,
@@ -748,17 +754,15 @@ async fn control_detection_releases_its_lease_on_cancel_and_drop() {
     // Busy resource: the start fails synchronously with Busy.
     let held = arbiter.acquire(lease()).unwrap();
     let client = Arc::new(SimulatorClient::new(sim.url(), "key").unwrap());
-    assert!(
-        matches!(
-            control_detection::start_control_detection(
-                client,
-                &arbiter,
-                lease(),
-                Arc::new(clock.clone())
-            ),
-            Err(ResourceError::Busy)
-        )
-    );
+    assert!(matches!(
+        control_detection::start_control_detection(
+            client,
+            &arbiter,
+            lease(),
+            Arc::new(clock.clone())
+        ),
+        Err(ResourceError::Busy)
+    ));
     arbiter.release(held).unwrap();
 
     // Explicit cancel releases the lease and unsubscribes.
@@ -908,10 +912,14 @@ async fn lever_analysis_classifies_continuous_lever() {
     let sim = lever_analysis_sim(0.0, 1.0, |input| (input, input, 0));
     let client = SimulatorClient::new(sim.url(), "key").unwrap();
     let clock = FakeClock::new();
-    let result =
-        analyze_driven(&client, &clock, "CurrentDrivableActor/Throttle", &fast_options())
-            .await
-            .unwrap();
+    let result = analyze_driven(
+        &client,
+        &clock,
+        "CurrentDrivableActor/Throttle",
+        &fast_options(),
+    )
+    .await
+    .unwrap();
     assert_eq!(result.lever_type, LeverType::Continuous);
     assert!(!result.all_outputs_integers);
     assert!(result.unique_output_count >= 20);
@@ -970,9 +978,14 @@ async fn lever_analysis_reports_insufficient_samples() {
     let client = SimulatorClient::with_profile(&url, "key", TimeoutProfile::Fast).unwrap();
     let clock = FakeClock::new();
     assert_eq!(
-        analyze_driven(&client, &clock, "CurrentDrivableActor/TestLever", &fast_options())
-            .await
-            .unwrap_err(),
+        analyze_driven(
+            &client,
+            &clock,
+            "CurrentDrivableActor/TestLever",
+            &fast_options()
+        )
+        .await
+        .unwrap_err(),
         AnalysisFailure::InsufficientSamples
     );
 }
@@ -993,9 +1006,14 @@ async fn lever_quick_check_classifies_and_surfaces_sample_failures() {
     let client = SimulatorClient::new(sim.url(), "key").unwrap();
     let clock: Arc<dyn Clock> = Arc::new(FakeClock::new());
     assert_eq!(
-        lever_analysis::quick_check(&client, &clock, "CurrentDrivableActor/Reverser", Duration::ZERO)
-            .await
-            .unwrap(),
+        lever_analysis::quick_check(
+            &client,
+            &clock,
+            "CurrentDrivableActor/Reverser",
+            Duration::ZERO
+        )
+        .await
+        .unwrap(),
         QuickCheck::Discrete
     );
     assert_eq!(sim.request_count(), 10);
@@ -1014,9 +1032,14 @@ async fn lever_quick_check_classifies_and_surfaces_sample_failures() {
     });
     let client = SimulatorClient::new(sim.url(), "key").unwrap();
     assert_eq!(
-        lever_analysis::quick_check(&client, &clock, "CurrentDrivableActor/Throttle", Duration::ZERO)
-            .await
-            .unwrap(),
+        lever_analysis::quick_check(
+            &client,
+            &clock,
+            "CurrentDrivableActor/Throttle",
+            Duration::ZERO
+        )
+        .await
+        .unwrap(),
         QuickCheck::Continuous
     );
 
@@ -1031,9 +1054,14 @@ async fn lever_quick_check_classifies_and_surfaces_sample_failures() {
     });
     let client = SimulatorClient::new(sim.url(), "key").unwrap();
     assert_eq!(
-        lever_analysis::quick_check(&client, &clock, "CurrentDrivableActor/Reverser", Duration::ZERO)
-            .await
-            .unwrap_err(),
+        lever_analysis::quick_check(
+            &client,
+            &clock,
+            "CurrentDrivableActor/Reverser",
+            Duration::ZERO
+        )
+        .await
+        .unwrap_err(),
         QuickCheckError::SampleFailed
     );
     assert_eq!(sim.request_count(), 10);
@@ -1110,7 +1138,11 @@ async fn train_detection_disconnect_without_train_deactivates_immediately() {
     let clock = FakeClock::new();
     let (monitor, mut events) = train_detection::TrainDetectionMonitor::start(
         Arc::new(clock.clone()),
-        Arc::new(FakeProfiles(profiles(&[("7", "Class 142", &["RVM_PBO_Class142"])]))),
+        Arc::new(FakeProfiles(profiles(&[(
+            "7",
+            "Class 142",
+            &["RVM_PBO_Class142"],
+        )]))),
     );
 
     monitor.disconnected().await.unwrap();
@@ -1202,7 +1234,11 @@ async fn train_detection_polls_every_five_seconds() {
     let clock = FakeClock::new();
     let (monitor, mut events) = train_detection::TrainDetectionMonitor::start(
         Arc::new(clock.clone()),
-        Arc::new(FakeProfiles(profiles(&[("7", "Class 142", &["RVM_PBO_Class142"])]))),
+        Arc::new(FakeProfiles(profiles(&[(
+            "7",
+            "Class 142",
+            &["RVM_PBO_Class142"],
+        )]))),
     );
     let client = Arc::new(SimulatorClient::new(sim.url(), "key").unwrap());
     monitor.connected(client).await.unwrap();
@@ -1280,7 +1316,11 @@ async fn train_detection_grace_probes_then_expires_after_thirty_seconds() {
     let clock = FakeClock::new();
     let (monitor, mut events) = train_detection::TrainDetectionMonitor::start(
         Arc::new(clock.clone()),
-        Arc::new(FakeProfiles(profiles(&[("7", "Class 142", &["RVM_PBO_Class142"])]))),
+        Arc::new(FakeProfiles(profiles(&[(
+            "7",
+            "Class 142",
+            &["RVM_PBO_Class142"],
+        )]))),
     );
     let client = Arc::new(SimulatorClient::new(sim.url(), "key").unwrap());
     monitor.connected(client).await.unwrap();
@@ -1291,7 +1331,13 @@ async fn train_detection_grace_probes_then_expires_after_thirty_seconds() {
 
     // Disconnect: grace starts instead of deactivation.
     monitor.disconnected().await.unwrap();
-    assert_quiet(|| assert!(events.try_recv().is_err(), "no train_changed while in grace")).await;
+    assert_quiet(|| {
+        assert!(
+            events.try_recv().is_err(),
+            "no train_changed while in grace"
+        )
+    })
+    .await;
 
     // Five successful 200ms grace probes keep the train alive.
     let mut polls = 1_u64;
@@ -1305,8 +1351,13 @@ async fn train_detection_grace_probes_then_expires_after_thirty_seconds() {
         .await;
         settle().await;
     }
-    assert_quiet(|| assert!(events.try_recv().is_err(), "successful probes keep the profile"))
-        .await;
+    assert_quiet(|| {
+        assert!(
+            events.try_recv().is_err(),
+            "successful probes keep the profile"
+        )
+    })
+    .await;
     let successful_polls = polls;
 
     // The simulator goes away: probes fail until 30s pass without contact.
@@ -1349,7 +1400,11 @@ async fn train_detection_reconnect_exits_grace_without_losing_the_train() {
     let clock = FakeClock::new();
     let (monitor, mut events) = train_detection::TrainDetectionMonitor::start(
         Arc::new(clock.clone()),
-        Arc::new(FakeProfiles(profiles(&[("7", "Class 142", &["RVM_PBO_Class142"])]))),
+        Arc::new(FakeProfiles(profiles(&[(
+            "7",
+            "Class 142",
+            &["RVM_PBO_Class142"],
+        )]))),
     );
     let client = Arc::new(SimulatorClient::new(sim.url(), "key").unwrap());
     monitor.connected(client.clone()).await.unwrap();
@@ -1407,7 +1462,10 @@ fn lever_calibration_sim(state: &Arc<Mutex<CalibrationSimState>>) -> FakeSim {
     FakeSim::spawn(move |request| {
         let mut state = state.lock().unwrap();
         let set = state.set_milli / 1000.0;
-        match (request.method.as_str(), request.path.split('?').next().unwrap_or("")) {
+        match (
+            request.method.as_str(),
+            request.path.split('?').next().unwrap_or(""),
+        ) {
             ("PATCH", "/set/Throttle.Value") => {
                 state.set_milli = request.set_value() * 1000.0;
                 ok(json!({"Result": "Success"}))
@@ -1508,7 +1566,12 @@ impl CalibrationStore for FakeStore {
         &self,
         lever_config_id: i64,
     ) -> Result<Option<lever_calib::MappingCheckpoint>, lever_calib::CalibrationStoreError> {
-        Ok(self.checkpoints.lock().unwrap().get(&lever_config_id).cloned())
+        Ok(self
+            .checkpoints
+            .lock()
+            .unwrap()
+            .get(&lever_config_id)
+            .cloned())
     }
 }
 
@@ -1851,7 +1914,10 @@ async fn notch_mapping_walks_captures_preview_and_saves() {
     monitor.capture_range().await.unwrap();
     let state = mapping_state_event(&mut events).await;
     assert_eq!(state.current_step, MappingStep::Notch(1));
-    assert_eq!(state.captured_ranges[0], Some(lever_calib::SampleRange { min: 100, max: 200 }));
+    assert_eq!(
+        state.captured_ranges[0],
+        Some(lever_calib::SampleRange { min: 100, max: 200 })
+    );
     // Checkpoint committed on capture.
     assert_eq!(
         store.checkpoints.lock().unwrap().get(&42),
@@ -1874,14 +1940,20 @@ async fn notch_mapping_walks_captures_preview_and_saves() {
 
     // Single-point capture for gate notches (min == max).
     let state = capture_notch(&monitor, &mut events, &[500, 500, 500]).await;
-    assert_eq!(state.captured_ranges[1], Some(lever_calib::SampleRange { min: 400, max: 400 }));
+    assert_eq!(
+        state.captured_ranges[1],
+        Some(lever_calib::SampleRange { min: 400, max: 400 })
+    );
 
     // Back to edit an earlier notch ("can go back to edit previous notch");
     // committed ranges survive the navigation.
     monitor.go_to_notch(0).await.unwrap();
     let state = mapping_state_event(&mut events).await;
     assert_eq!(state.current_step, MappingStep::Notch(0));
-    assert!(state.captured_ranges[0].is_some(), "committed ranges survive");
+    assert!(
+        state.captured_ranges[0].is_some(),
+        "committed ranges survive"
+    );
 
     // Re-capture notch 0, then walk forward through the remaining notches:
     // the wizard always advances one notch per capture, ending at preview.
@@ -1907,10 +1979,12 @@ async fn notch_mapping_walks_captures_preview_and_saves() {
         assert!((update.input_min - min).abs() < 1e-12);
         assert!((update.input_max - max).abs() < 1e-12);
     }
-    let saves = store.range_saves.lock().unwrap();
-    assert_eq!(saves.len(), 1);
-    assert_eq!(saves[0].0, 42);
-    assert!(!saves[0].2);
+    {
+        let saves = store.range_saves.lock().unwrap();
+        assert_eq!(saves.len(), 1);
+        assert_eq!(saves[0].0, 42);
+        assert!(!saves[0].2);
+    }
 
     // The save publishes step_changed (saving, complete) and then the
     // mapping_result broadcast; drain the intermediate step events.
@@ -1987,7 +2061,10 @@ async fn notch_mapping_auto_detects_inversion() {
     let store = Arc::new(FakeStore::default());
     let arbiter = arbiter();
     // Notch 0 sits high in sim range, notch 1 low: inverted layout (M9-A).
-    let config = mapping_config(wizard_notches(&[(Some(0.8), Some(1.0)), (Some(0.0), Some(0.2))]));
+    let config = mapping_config(wizard_notches(&[
+        (Some(0.8), Some(1.0)),
+        (Some(0.0), Some(0.2)),
+    ]));
     let (monitor, mut events) =
         lever_calib::start_notch_mapping(&arbiter, lease(), config, store.clone()).unwrap();
     let _ = mapping_state_event(&mut events).await;
@@ -2041,7 +2118,10 @@ async fn notch_mapping_checkpoints_persist_and_resume_after_cancel() {
     let (monitor, mut events) =
         lever_calib::start_notch_mapping(&arbiter, lease(), config, store.clone()).unwrap();
     let started = mapping_state_event(&mut events).await;
-    assert_eq!(started.captured_ranges[0], Some(lever_calib::SampleRange { min: 100, max: 200 }));
+    assert_eq!(
+        started.captured_ranges[0],
+        Some(lever_calib::SampleRange { min: 100, max: 200 })
+    );
 
     monitor.start_mapping().await.unwrap();
     let state = mapping_state_event(&mut events).await;

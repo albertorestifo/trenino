@@ -10,9 +10,9 @@
 //!   target shape before writing; one mapping per input updates in place;
 //! - `(device, axis)` and `(device, button)` targets are unique per the schema
 //!   partial indexes — surfaced as `StorageError::Conflict`;
-//! - a mapping is rejected while an *enabled* simulator binding exists for the
-//! input unless `replace` removes every enabled binding in the same
-//! transaction (Elixir `:destination_conflict` / `replace?`);
+//! - a mapping is rejected while an *enabled* simulator binding exists for
+//!   the input unless `replace` removes every enabled binding in the same
+//!   transaction (Elixir `:destination_conflict` / `replace?`);
 //! - `list` orders by device, target type, axis, button.
 
 use std::collections::BTreeSet;
@@ -20,7 +20,9 @@ use std::collections::BTreeSet;
 use rusqlite::{params, Connection, OptionalExtension, Transaction};
 use trenino_core::{EntityId, OperationId};
 
-use crate::storage::{domain_tx, topic_metadata, Database, InputKind, Mutation, RuntimeMetadata, StorageError};
+use crate::storage::{
+    domain_tx, topic_metadata, Database, InputKind, Mutation, RuntimeMetadata, StorageError,
+};
 
 /// The one topic all vJoy mutations commit under; each committed mutation
 /// bumps exactly one revision.
@@ -249,11 +251,9 @@ fn parse_selection(value: &str) -> Result<Vec<u8>, StorageError> {
         if part.is_empty() {
             continue;
         }
-        let device: u32 = part
-            .parse()
-            .map_err(|_| StorageError::InvalidLegacyData {
-                detail: format!("{SELECTED_DEVICES_KEY} holds a non-numeric device id"),
-            })?;
+        let device: u32 = part.parse().map_err(|_| StorageError::InvalidLegacyData {
+            detail: format!("{SELECTED_DEVICES_KEY} holds a non-numeric device id"),
+        })?;
         if !(MIN_DEVICE_INDEX as u32..=MAX_DEVICE_INDEX as u32).contains(&device) {
             return Err(StorageError::InvalidLegacyData {
                 detail: format!("{SELECTED_DEVICES_KEY} holds device id {device} outside 1..=16"),
@@ -300,7 +300,9 @@ fn validate_selection(devices: &[u8]) -> Result<Vec<u8>, VjoyStoreError> {
         unique.insert(*device);
     }
     if unique.is_empty() {
-        return Err(VjoyStoreError::Invalid("selected device set must not be empty"));
+        return Err(VjoyStoreError::Invalid(
+            "selected device set must not be empty",
+        ));
     }
     Ok(unique.into_iter().collect())
 }
@@ -337,28 +339,41 @@ fn mapping_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<MappingTuple> {
 }
 
 fn hydrate_mapping(
-    (id, input_id, device_index, target_type, axis, button, inverted, input_type, pin, device, name): MappingTuple,
+    (
+        id,
+        input_id,
+        device_index,
+        target_type,
+        axis,
+        button,
+        inverted,
+        input_type,
+        pin,
+        device,
+        name,
+    ): MappingTuple,
 ) -> Result<MappingRecord, StorageError> {
-    let target = match (target_type.as_str(), axis.as_deref(), button) {
-        ("axis", Some(name), None) => Target::Axis(
-            VjoyAxis::parse(name).ok_or_else(|| StorageError::InvalidLegacyData {
-                detail: format!("mapping {id} holds unknown axis {name:?}"),
-            })?,
-        ),
-        ("button", None, Some(button)) => {
-            if !(1..=MAX_BUTTON as i64).contains(&button) {
-                return Err(StorageError::InvalidLegacyData {
-                    detail: format!("mapping {id} holds button {button} outside 1..=32"),
-                });
+    let target =
+        match (target_type.as_str(), axis.as_deref(), button) {
+            ("axis", Some(name), None) => Target::Axis(VjoyAxis::parse(name).ok_or_else(|| {
+                StorageError::InvalidLegacyData {
+                    detail: format!("mapping {id} holds unknown axis {name:?}"),
+                }
+            })?),
+            ("button", None, Some(button)) => {
+                if !(1..=MAX_BUTTON as i64).contains(&button) {
+                    return Err(StorageError::InvalidLegacyData {
+                        detail: format!("mapping {id} holds button {button} outside 1..=32"),
+                    });
+                }
+                Target::Button(button as u8)
             }
-            Target::Button(button as u8)
-        }
-        _ => {
-            return Err(StorageError::InvalidLegacyData {
-                detail: format!("mapping {id} has an invalid target shape"),
-            })
-        }
-    };
+            _ => {
+                return Err(StorageError::InvalidLegacyData {
+                    detail: format!("mapping {id} has an invalid target shape"),
+                })
+            }
+        };
     Ok(MappingRecord {
         id: EntityId(id),
         input_id: EntityId(input_id),
@@ -648,8 +663,7 @@ impl Database {
     ) -> Result<Mutation<MappingRecord>, StorageError> {
         self.domain_call("vjoy_delete_mapping", move |c| {
             domain_tx(c, VJOY_TOPIC, operation_id, |tx| {
-                let record =
-                    get_mapping(tx, id)?.ok_or(VjoyStoreError::NotFound.into_storage())?;
+                let record = get_mapping(tx, id)?.ok_or(VjoyStoreError::NotFound.into_storage())?;
                 tx.execute("DELETE FROM virtual_joystick_mappings WHERE id=?1", [id.0])?;
                 Ok(record)
             })

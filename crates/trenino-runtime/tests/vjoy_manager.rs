@@ -280,7 +280,12 @@ fn mapping_crud_lists_ordered_and_joins_input() {
         .id;
 
     let axis = db
-        .vjoy_put_mapping(OperationId(23), analog, axis_draft(VjoyAxis::Slider1), false)
+        .vjoy_put_mapping(
+            OperationId(23),
+            analog,
+            axis_draft(VjoyAxis::Slider1),
+            false,
+        )
         .unwrap();
     assert_eq!(axis.record.device_index, 1);
     assert_eq!(axis.record.target, Target::Axis(VjoyAxis::Slider1));
@@ -466,7 +471,12 @@ fn mapping_target_uniqueness_per_device() {
 #[test]
 fn mapping_missing_input_rejected() {
     let (_dir, db) = database();
-    match db.vjoy_put_mapping(OperationId(70), EntityId(999), axis_draft(VjoyAxis::X), false) {
+    match db.vjoy_put_mapping(
+        OperationId(70),
+        EntityId(999),
+        axis_draft(VjoyAxis::X),
+        false,
+    ) {
         Err(StorageError::NotFound) => {}
         other => panic!("expected not found, got {other:?}"),
     }
@@ -477,7 +487,8 @@ fn mapping_missing_input_rejected() {
 /// directly (the bindings repository track owns the typed API).
 fn seed_enabled_binding(path: &Path, sql: &str) {
     let conn = Connection::open(path).unwrap();
-    conn.busy_timeout(std::time::Duration::from_secs(5)).unwrap();
+    conn.busy_timeout(std::time::Duration::from_secs(5))
+        .unwrap();
     conn.execute_batch(sql).unwrap();
 }
 
@@ -897,10 +908,7 @@ fn missing_device_reaches_needs_setup_and_retry_recover() {
     assert!(matches!(error, VjoyError::DeviceMissing(1)));
     assert_eq!(manager.status(), VjoyStatus::NeedsSetup);
     assert!(!db.vjoy_configuration().unwrap().enabled);
-    assert!(matches!(
-        manager.retry(),
-        Err(VjoyError::DeviceMissing(1))
-    ));
+    assert!(matches!(manager.retry(), Err(VjoyError::DeviceMissing(1))));
 
     fake.lock().unwrap().set_device(1, FakeDevice::default());
     manager.retry().unwrap();
@@ -1045,7 +1053,10 @@ fn selection_changes_refused_while_active() {
         ))
     ));
     manager.disable().unwrap();
-    assert_eq!(manager.set_selection(OperationId(96), &[4]).unwrap(), vec![4]);
+    assert_eq!(
+        manager.set_selection(OperationId(96), &[4]).unwrap(),
+        vec![4]
+    );
     manager.enable().unwrap();
     assert_eq!(acquired(&fake), vec![4]);
 }

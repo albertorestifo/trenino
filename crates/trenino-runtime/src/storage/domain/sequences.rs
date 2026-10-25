@@ -101,7 +101,9 @@ impl Database {
         operation_id: OperationId,
         id: EntityId,
     ) -> DbResult<Mutation<SequenceRecord>> {
-        self.domain_call("delete_sequence", move |c| delete_sequence(c, operation_id, id))
+        self.domain_call("delete_sequence", move |c| {
+            delete_sequence(c, operation_id, id)
+        })
     }
 
     /// Atomic full replace of a sequence's commands with 0-indexed positions
@@ -158,7 +160,9 @@ fn validate_command(draft: &SequenceCommandDraft) -> DbResult<()> {
         return Err(invalid("sequence command endpoint is required".into()));
     }
     if draft.value.is_nan() || draft.value.is_infinite() {
-        return Err(invalid("sequence command value must be a finite number".into()));
+        return Err(invalid(
+            "sequence command value must be a finite number".into(),
+        ));
     }
     if !(0..=60_000).contains(&draft.delay_ms) {
         return Err(invalid(
@@ -216,9 +220,8 @@ fn get_sequence(c: &SqliteConnection, id: EntityId) -> DbResult<Option<SequenceR
 }
 
 fn list_sequences(c: &SqliteConnection, train_id: EntityId) -> DbResult<Vec<SequenceRecord>> {
-    let mut statement = c.prepare(
-        "SELECT id,train_id,name FROM sequences WHERE train_id=?1 ORDER BY name, id",
-    )?;
+    let mut statement =
+        c.prepare("SELECT id,train_id,name FROM sequences WHERE train_id=?1 ORDER BY name, id")?;
     let rows = statement.query_map([train_id.0], sequence_row)?;
     let mut records = Vec::new();
     for row in rows {
@@ -238,7 +241,10 @@ fn command_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<SequenceCommandRecor
     })
 }
 
-fn sequence_commands(c: &SqliteConnection, sequence_id: EntityId) -> DbResult<Vec<SequenceCommandRecord>> {
+fn sequence_commands(
+    c: &SqliteConnection,
+    sequence_id: EntityId,
+) -> DbResult<Vec<SequenceCommandRecord>> {
     let mut statement = c.prepare(
         "SELECT id,sequence_id,position,endpoint,value,delay_ms FROM sequence_commands WHERE sequence_id=?1 ORDER BY position",
     )?;
@@ -340,12 +346,7 @@ fn set_sequence_commands(
         )?;
         let mut records = Vec::with_capacity(drafts.len());
         for (position, draft) in drafts.iter().enumerate() {
-            records.push(insert_command(
-                tx,
-                sequence_id,
-                position as i64,
-                draft,
-            )?);
+            records.push(insert_command(tx, sequence_id, position as i64, draft)?);
         }
         Ok(records)
     })

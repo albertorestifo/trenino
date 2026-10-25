@@ -8,12 +8,12 @@
 //! discrete/continuous/hybrid levers and produces notch/level candidates.
 //! `quick_check` samples the five strategic positions for a fast verdict.
 
+use crate::resource::{LeaseKind, ResourceArbiter, ResourceError};
+use crate::simulator::client::{SimulatorClient, SimulatorError};
 use std::sync::Arc;
 use std::time::Duration;
 use trenino_core::calibration::analysis::{analyze_samples, AnalysisError, AnalysisResult, Sample};
 use trenino_core::rounding::round_elixir;
-use crate::resource::{LeaseKind, ResourceArbiter, ResourceError};
-use crate::simulator::client::{SimulatorClient, SimulatorError};
 
 use super::clock::Clock;
 use super::session::{spawn_leased_session, SessionHandle};
@@ -122,15 +122,18 @@ async fn sweep_lever(
     let output_endpoint = format!("{control_path}.Function.GetCurrentOutputValue");
     let notch_endpoint = format!("{control_path}.Function.GetCurrentNotchIndex");
 
-    initialize_lever_position(client, clock, &value_endpoint, options.settling_time, min_input)
-        .await;
+    initialize_lever_position(
+        client,
+        clock,
+        &value_endpoint,
+        options.settling_time,
+        min_input,
+    )
+    .await;
 
     let mut samples = Vec::new();
     for set_input in input_values {
-        let Ok(_) = client
-            .set(&value_endpoint, &json_number(set_input))
-            .await
-        else {
+        let Ok(_) = client.set(&value_endpoint, &json_number(set_input)).await else {
             // Failed positions are skipped, matching Enum.reduce_while's continue.
             continue;
         };
@@ -230,10 +233,7 @@ pub async fn quick_check(
     for input in test_points {
         let outcome = async {
             client
-                .set(
-                    &format!("{control_path}.InputValue"),
-                    &json_number(input),
-                )
+                .set(&format!("{control_path}.InputValue"), &json_number(input))
                 .await?;
             if !delay.is_zero() {
                 clock.sleep(delay).await;

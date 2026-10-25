@@ -35,9 +35,11 @@ pub(crate) fn domain_tx<T>(
     let record = f(&tx)?;
     let key = metadata_key(topic)?;
     let current = read_u64(&tx, &key, 0)?;
-    let revision = current.checked_add(1).ok_or_else(|| StorageError::InvalidLegacyData {
-        detail: format!("{topic} topic revision counter is exhausted"),
-    })?;
+    let revision = current
+        .checked_add(1)
+        .ok_or_else(|| StorageError::InvalidLegacyData {
+            detail: format!("{topic} topic revision counter is exhausted"),
+        })?;
     tx.execute(
         "INSERT INTO app_settings(key,value) VALUES(?1,?2) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
         (&key, revision.to_string()),

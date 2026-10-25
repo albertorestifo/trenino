@@ -6,8 +6,8 @@
 //! and suggests controls for an element name using the same confidence ladder
 //! (exact 1.0, contained 0.85/0.75, word-match blend, Jaro fallback, > 0.3 gate).
 
-use serde_json::Value;
 use crate::simulator::client::{SimulatorClient, SimulatorError};
+use serde_json::Value;
 
 pub const ROOT_PATH: &str = "CurrentDrivableActor";
 
@@ -138,7 +138,10 @@ pub async fn suggest_lever(
     element_name: &str,
 ) -> Result<LeverSuggestion, SuggestError> {
     let levers = detect_levers(client).await?;
-    let best = best_match(element_name, levers.iter().map(|lever| (lever.name.as_str(), lever)));
+    let best = best_match(
+        element_name,
+        levers.iter().map(|lever| (lever.name.as_str(), lever)),
+    );
     match best {
         Some((lever, confidence)) if confidence > 0.3 => Ok(LeverSuggestion {
             lever: lever.clone(),

@@ -8,13 +8,13 @@
 //! probed every 200ms with the fast client. Successful probes extend grace and
 //! never change the detected profile; expiry deactivates the train.
 
+use crate::simulator::client::{SimulatorClient, SimulatorError};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::{mpsc, oneshot, Mutex};
 use trenino_core::train::identifier::{
     match_identifier, normalize_object_class, IdentifierMatch, TrainProfile,
 };
-use crate::simulator::client::{SimulatorClient, SimulatorError};
 
 use super::clock::Clock;
 
@@ -281,8 +281,7 @@ fn handle_identifier_detected(
                     train: train.clone(),
                 },
             );
-            if state.active_train.as_ref().map(|active| active.id) != train.as_ref().map(|t| t.id)
-            {
+            if state.active_train.as_ref().map(|active| active.id) != train.as_ref().map(|t| t.id) {
                 publish(events, TrainDetectionEvent::TrainChanged(train.clone()));
             }
             state.current_identifier = Some(identifier);

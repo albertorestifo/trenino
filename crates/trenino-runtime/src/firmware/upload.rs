@@ -431,13 +431,17 @@ pub enum UploadCancelError {
     NotFound,
 }
 
-/// Optional sinks hooked into the manager: the PubSub-equivalent event sink
-/// and the post-flash reconnect hook (the Elixir connection layer triggers an
+/// PubSub-equivalent upload event sink.
+pub type UploadEventSink = Arc<dyn Fn(&UploadEvent) + Send + Sync>;
+/// Post-flash reconnect hook (the Elixir connection layer triggers an
 /// immediate scan when upload access is released).
+pub type ReconnectHook = Arc<dyn Fn(&str) + Send + Sync>;
+
+/// Optional sinks hooked into the manager: the PubSub-equivalent event sink
 #[derive(Default)]
 pub struct UploadHooks {
-    pub on_event: Option<Arc<dyn Fn(&UploadEvent) + Send + Sync>>,
-    pub reconnect: Option<Arc<dyn Fn(&str) + Send + Sync>>,
+    pub on_event: Option<UploadEventSink>,
+    pub reconnect: Option<ReconnectHook>,
 }
 
 /// The shared avrdude child slot. The worker polls the child through it; the
@@ -511,7 +515,10 @@ impl OutputBuffer {
     }
 
     fn snapshot(&self) -> String {
-        self.text.lock().expect("avrdude output lock poisoned").clone()
+        self.text
+            .lock()
+            .expect("avrdude output lock poisoned")
+            .clone()
     }
 }
 
@@ -557,10 +564,7 @@ fn parse_progress_fragment(fragment: &str) -> Option<(u32, String)> {
             while cursor < bytes.len() && bytes[cursor].is_ascii_digit() {
                 cursor += 1;
             }
-            if cursor == digits_start
-                || cursor >= bytes.len()
-                || bytes[cursor] != b'%'
-            {
+            if cursor == digits_start || cursor >= bytes.len() || bytes[cursor] != b'%' {
                 continue;
             }
             let Ok(percent) = fragment[digits_start..cursor].parse::<u32>() else {
@@ -609,11 +613,7 @@ fn drain_readers(done: &mpsc::Receiver<()>) {
     }
 }
 
-fn emit_progress(
-    buffer: &OutputBuffer,
-    parsed_offset: &mut usize,
-    progress: &dyn Fn(u32, &str),
-) {
+fn emit_progress(buffer: &OutputBuffer, parsed_offset: &mut usize, progress: &dyn Fn(u32, &str)) {
     let (fresh, offset) = buffer.advance(*parsed_offset);
     *parsed_offset = offset;
     for fragment in fresh.split('\n') {
@@ -773,11 +773,7 @@ fn attempt_upload(
 
 /// Sleep in cancellation-sized slices. Returns `false` when a cancellation
 /// was observed before the full delay elapsed.
-fn sleep_cancelable(
-    total: Duration,
-    poll_interval: Duration,
-    cancel: &UploadCancelHandle,
-) -> bool {
+fn sleep_cancelable(total: Duration, poll_interval: Duration, cancel: &UploadCancelHandle) -> bool {
     let deadline = Instant::now() + total;
     loop {
         if cancel.is_cancelled() {
@@ -822,7 +818,11 @@ fn maybe_trigger_bootloader(
         // the original port instead of failing the upload.
         return TouchOutcome::SamePort;
     };
-    if !sleep_cancelable(timings.bootloader_initial_wait, timings.poll_interval, cancel) {
+    if !sleep_cancelable(
+        timings.bootloader_initial_wait,
+        timings.poll_interval,
+        cancel,
+    ) {
         drop(handle);
         return TouchOutcome::Cancelled;
     }
@@ -851,7 +851,11 @@ fn maybe_trigger_bootloader(
         if Instant::now() >= deadline {
             return TouchOutcome::BootloaderPortNotFound;
         }
-        if !sleep_cancelable(timings.bootloader_poll_interval, timings.poll_interval, cancel) {
+        if !sleep_cancelable(
+            timings.bootloader_poll_interval,
+            timings.poll_interval,
+            cancel,
+        ) {
             return TouchOutcome::Cancelled;
         }
     }
@@ -943,7 +947,13 @@ pub fn run_device_upload(
         progress,
     };
     // `Uploader.upload_with_retries/6`.
-    match attempt_upload(&context, upload.config, &upload_port, upload.config.speed, &slot) {
+    match attempt_upload(
+        &context,
+        upload.config,
+        &upload_port,
+        upload.config.speed,
+        &slot,
+    ) {
         Attempt::Success(output) => UploadRunResult::Success {
             output,
             duration_ms: duration_ms(),
@@ -969,8 +979,13 @@ pub fn run_device_upload(
                     duration_ms: duration_ms(),
                 };
             }
-            match attempt_upload(&context, upload.config, &upload_port, upload.config.speed, &slot)
-            {
+            match attempt_upload(
+                &context,
+                upload.config,
+                &upload_port,
+                upload.config.speed,
+                &slot,
+            ) {
                 Attempt::Success(output) => UploadRunResult::Success {
                     output,
                     duration_ms: duration_ms(),
@@ -1045,8 +1060,8 @@ struct ManagerShared {
     tooling: UploadTooling,
     timings: UploadTimings,
     history: Arc<dyn UploadHistoryPort>,
-    on_event: Option<Arc<dyn Fn(&UploadEvent) + Send + Sync>>,
-    reconnect: Option<Arc<dyn Fn(&str) + Send + Sync>>,
+    on_event: Option<UploadEventSink>,
+    reconnect: Option<ReconnectHook>,
 }
 
 impl ManagerShared {
@@ -1161,7 +1176,9 @@ fn finalize_upload(
             ..
         } => {
             let duration_ms = duration_since(info.started_at);
-            let _ = shared.history.record_cancelled(&info.upload_id, duration_ms);
+            let _ = shared
+                .history
+                .record_cancelled(&info.upload_id, duration_ms);
             if cancel.kind() == Some(CancelKind::Timeout) {
                 shared.emit(cancelled_event());
                 let message = UploadFailure::Timeout.friendly_message();
@@ -1212,11 +1229,7 @@ fn finalize_upload(
                 duration_ms,
             }
         }
-        UploadRunResult::Failure {
-            reason,
-            output,
-            ..
-        } => {
+        UploadRunResult::Failure { reason, output, .. } => {
             let duration_ms = duration_since(info.started_at);
             let _ = shared.history.record_failed(
                 &info.upload_id,
@@ -1479,7 +1492,14 @@ impl UploadManager {
             thread::Builder::new()
                 .name(format!("firmware-upload-{upload_id}"))
                 .spawn(move || {
-                    run_worker(shared, watcher, in_flight, upload_config, environment, hex_path);
+                    run_worker(
+                        shared,
+                        watcher,
+                        in_flight,
+                        upload_config,
+                        environment,
+                        hex_path,
+                    );
                 })
         };
         let worker = match worker {
@@ -1536,8 +1556,7 @@ impl UploadManager {
         };
         in_flight.cancel.request(CancelKind::User);
         in_flight.child.kill_child();
-        let deadline =
-            Instant::now() + self.shared.timings.upload_timeout + Duration::from_secs(5);
+        let deadline = Instant::now() + self.shared.timings.upload_timeout + Duration::from_secs(5);
         let mut state = self
             .watcher
             .state
@@ -1573,11 +1592,7 @@ impl UploadManager {
 
     /// Block until the given upload reaches a terminal outcome (or `timeout`
     /// elapses). Only the most recent terminal outcome is retained.
-    pub fn wait_for_completion(
-        &self,
-        upload_id: &str,
-        timeout: Duration,
-    ) -> Option<UploadOutcome> {
+    pub fn wait_for_completion(&self, upload_id: &str, timeout: Duration) -> Option<UploadOutcome> {
         let deadline = Instant::now() + timeout;
         let mut state = self
             .watcher

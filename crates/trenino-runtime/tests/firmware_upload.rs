@@ -28,7 +28,7 @@ use trenino_core::firmware::{Programmer, UploadConfig};
 use trenino_core::EntityId;
 use trenino_runtime::firmware::{
     parse_error_output, retryable_baud_rates, DeviceUpload, UploadCancelHandle, UploadEvent,
-    UploadFailure, UploadHooks, UploadHistoryPort, UploadManager, UploadRequest, UploadRunResult,
+    UploadFailure, UploadHistoryPort, UploadHooks, UploadManager, UploadRequest, UploadRunResult,
     UploadStartError, UploadStartRecord, UploadStatus, UploadTimings, UploadTooling,
 };
 use trenino_runtime::hardware::transport::{SerialIo, SerialTransport};
@@ -289,8 +289,6 @@ fn blocking_script(dir: &TempDir, pid_file: &Path) -> PathBuf {
     write_executable(dir, "avrdude-block", &body)
 }
 
-
-
 fn uno_config() -> UploadConfig {
     UploadConfig {
         protocol: Programmer::Arduino,
@@ -325,16 +323,28 @@ fn fast_timings() -> UploadTimings {
     }
 }
 
-fn run_direct(
-    transport: &FakeSerial,
-    tooling: &UploadTooling,
-    timings: &UploadTimings,
-    port: &str,
-    environment: &str,
-    hex_path: &Path,
-    config: &UploadConfig,
-    progress: &dyn Fn(u32, &str),
-) -> UploadRunResult {
+struct DirectCase<'a> {
+    transport: &'a FakeSerial,
+    tooling: &'a UploadTooling,
+    timings: &'a UploadTimings,
+    port: &'a str,
+    environment: &'a str,
+    hex_path: &'a Path,
+    config: &'a UploadConfig,
+    progress: &'a (dyn Fn(u32, &str) + 'a),
+}
+
+fn run_direct(case: DirectCase<'_>) -> UploadRunResult {
+    let DirectCase {
+        transport,
+        tooling,
+        timings,
+        port,
+        environment,
+        hex_path,
+        config,
+        progress,
+    } = case;
     trenino_runtime::firmware::run_device_upload(
         transport,
         tooling,
@@ -376,17 +386,19 @@ fn process_alive(pid: u32) -> bool {
         .success()
 }
 
-fn manager_fixture(
-    avrdude: PathBuf,
-    timings: UploadTimings,
-    transport: FakeSerial,
-) -> (
+type ManagerFixture = (
     UploadManager,
     Arc<ResourceArbiter>,
     Arc<HistoryFake>,
     Arc<EventLog>,
     Arc<Mutex<Vec<String>>>,
-) {
+);
+
+fn manager_fixture(
+    avrdude: PathBuf,
+    timings: UploadTimings,
+    transport: FakeSerial,
+) -> ManagerFixture {
     let arbiter = Arc::new(ResourceArbiter::new(Arc::new(ConsumerLog::default())));
     let history = Arc::new(HistoryFake::default());
     let events = Arc::new(EventLog::default());
@@ -501,7 +513,10 @@ fn retryable_baud_rates_match_the_oracle() {
         retryable_baud_rates(&Programmer::Arduino, 57_600),
         vec![115_200]
     );
-    assert_eq!(retryable_baud_rates(&Programmer::Avrisp, 115_200), Vec::<u32>::new());
+    assert_eq!(
+        retryable_baud_rates(&Programmer::Avrisp, 115_200),
+        Vec::<u32>::new()
+    );
     assert_eq!(
         retryable_baud_rates(&Programmer::Arduino, 9_600),
         vec![57_600, 115_200]
@@ -542,19 +557,19 @@ fn successful_upload_returns_output_and_duration() {
     let dir = TempDir::new().unwrap();
     let avrdude = write_executable(&dir, "avrdude-ok", SUCCESS_BODY);
     let hex = hex_file(&dir);
-    let result = run_direct(
-        &FakeSerial::default(),
-        &UploadTooling {
+    let result = run_direct(DirectCase {
+        transport: &FakeSerial::default(),
+        tooling: &UploadTooling {
             avrdude_path: avrdude,
             avrdude_conf: None,
         },
-        &fast_timings(),
-        "COM3",
-        "uno",
-        &hex,
-        &uno_config(),
-        &no_progress,
-    );
+        timings: &fast_timings(),
+        port: "COM3",
+        environment: "uno",
+        hex_path: &hex,
+        config: &uno_config(),
+        progress: &no_progress,
+    });
     let UploadRunResult::Success {
         output,
         duration_ms,
@@ -575,19 +590,19 @@ fn avrdude_invocation_arguments_match_build_args() {
     let conf = dir.path().join("avrdude.conf");
     std::fs::write(&conf, "").unwrap();
     let hex = hex_file(&dir);
-    let result = run_direct(
-        &FakeSerial::default(),
-        &UploadTooling {
+    let result = run_direct(DirectCase {
+        transport: &FakeSerial::default(),
+        tooling: &UploadTooling {
             avrdude_path: avrdude,
             avrdude_conf: Some(conf.clone()),
         },
-        &fast_timings(),
-        "COM5",
-        "nanoatmega328",
-        &hex,
-        &nano_config(),
-        &no_progress,
-    );
+        timings: &fast_timings(),
+        port: "COM5",
+        environment: "nanoatmega328",
+        hex_path: &hex,
+        config: &nano_config(),
+        progress: &no_progress,
+    });
     let UploadRunResult::Success { output, .. } = result else {
         panic!("expected success, got {result:?}");
     };
@@ -612,19 +627,19 @@ fn wrong_board_type_fails_immediately() {
     let dir = TempDir::new().unwrap();
     let avrdude = write_executable(&dir, "avrdude-sig", SIGNATURE_MISMATCH_BODY);
     let hex = hex_file(&dir);
-    let result = run_direct(
-        &FakeSerial::default(),
-        &UploadTooling {
+    let result = run_direct(DirectCase {
+        transport: &FakeSerial::default(),
+        tooling: &UploadTooling {
             avrdude_path: avrdude,
             avrdude_conf: None,
         },
-        &fast_timings(),
-        "COM3",
-        "uno",
-        &hex,
-        &uno_config(),
-        &no_progress,
-    );
+        timings: &fast_timings(),
+        port: "COM3",
+        environment: "uno",
+        hex_path: &hex,
+        config: &uno_config(),
+        progress: &no_progress,
+    });
     assert_eq!(
         result,
         UploadRunResult::Failure {
@@ -653,25 +668,20 @@ fn permission_denied_fails_immediately_without_retry() {
     let counter = dir.path().join("counter");
     let avrdude = counter_script(&dir, &counter, "permission denied accessing /dev/ttyUSB0");
     let hex = hex_file(&dir);
-    let result = run_direct(
-        &FakeSerial::default(),
-        &UploadTooling {
+    let result = run_direct(DirectCase {
+        transport: &FakeSerial::default(),
+        tooling: &UploadTooling {
             avrdude_path: avrdude,
             avrdude_conf: None,
         },
-        &fast_timings(),
-        "COM3",
-        "uno",
-        &hex,
-        &uno_config(),
-        &no_progress,
-    );
-    let UploadRunResult::Failure {
-        reason,
-        output,
-        ..
-    } = result
-    else {
+        timings: &fast_timings(),
+        port: "COM3",
+        environment: "uno",
+        hex_path: &hex,
+        config: &uno_config(),
+        progress: &no_progress,
+    });
+    let UploadRunResult::Failure { reason, output, .. } = result else {
         panic!("expected failure, got {result:?}");
     };
     assert_eq!(reason, UploadFailure::PermissionDenied);
@@ -686,19 +696,19 @@ fn verification_failed_fails_immediately() {
     let dir = TempDir::new().unwrap();
     let avrdude = write_executable(&dir, "avrdude-verify", VERIFICATION_ERROR_BODY);
     let hex = hex_file(&dir);
-    let result = run_direct(
-        &FakeSerial::default(),
-        &UploadTooling {
+    let result = run_direct(DirectCase {
+        transport: &FakeSerial::default(),
+        tooling: &UploadTooling {
             avrdude_path: avrdude,
             avrdude_conf: None,
         },
-        &fast_timings(),
-        "COM3",
-        "uno",
-        &hex,
-        &uno_config(),
-        &no_progress,
-    );
+        timings: &fast_timings(),
+        port: "COM3",
+        environment: "uno",
+        hex_path: &hex,
+        config: &uno_config(),
+        progress: &no_progress,
+    });
     let UploadRunResult::Failure { reason, .. } = result else {
         panic!("expected failure, got {result:?}");
     };
@@ -712,25 +722,20 @@ fn missing_hex_file_fails_with_hex_file_not_found() {
     let dir = TempDir::new().unwrap();
     let avrdude = write_executable(&dir, "avrdude-ok", SUCCESS_BODY);
     let missing = dir.path().join("nonexistent.hex");
-    let result = run_direct(
-        &FakeSerial::default(),
-        &UploadTooling {
+    let result = run_direct(DirectCase {
+        transport: &FakeSerial::default(),
+        tooling: &UploadTooling {
             avrdude_path: avrdude,
             avrdude_conf: None,
         },
-        &fast_timings(),
-        "COM3",
-        "uno",
-        &missing,
-        &uno_config(),
-        &no_progress,
-    );
-    let UploadRunResult::Failure {
-        reason,
-        output,
-        ..
-    } = result
-    else {
+        timings: &fast_timings(),
+        port: "COM3",
+        environment: "uno",
+        hex_path: &missing,
+        config: &uno_config(),
+        progress: &no_progress,
+    });
+    let UploadRunResult::Failure { reason, output, .. } = result else {
         panic!("expected failure, got {result:?}");
     };
     assert_eq!(reason, UploadFailure::HexFileNotFound);
@@ -750,26 +755,24 @@ fn unsupported_programmer_fails_with_unknown_device() {
         speed: 115_200,
         requires_1200bps_touch: false,
     };
-    let result = run_direct(
-        &FakeSerial::default(),
-        &UploadTooling {
+    let result = run_direct(DirectCase {
+        transport: &FakeSerial::default(),
+        tooling: &UploadTooling {
             avrdude_path: avrdude,
             avrdude_conf: None,
         },
-        &fast_timings(),
-        "COM3",
-        "totally_unknown_board",
-        &hex,
-        &config,
-        &no_progress,
-    );
+        timings: &fast_timings(),
+        port: "COM3",
+        environment: "totally_unknown_board",
+        hex_path: &hex,
+        config: &config,
+        progress: &no_progress,
+    });
     assert_eq!(
         result,
         UploadRunResult::Failure {
             reason: UploadFailure::UnknownDevice,
-            output: Some(
-                "Unknown device environment: totally_unknown_board".to_string()
-            ),
+            output: Some("Unknown device environment: totally_unknown_board".to_string()),
             duration_ms: result_duration(&result),
         }
     );
@@ -782,19 +785,19 @@ fn missing_or_relative_avrdude_path_fails_closed() {
     let dir = TempDir::new().unwrap();
     let hex = hex_file(&dir);
     for path in [dir.path().join("missing-avrdude"), PathBuf::from("avrdude")] {
-        let result = run_direct(
-            &FakeSerial::default(),
-            &UploadTooling {
+        let result = run_direct(DirectCase {
+            transport: &FakeSerial::default(),
+            tooling: &UploadTooling {
                 avrdude_path: path,
                 avrdude_conf: None,
             },
-            &fast_timings(),
-            "COM3",
-            "uno",
-            &hex,
-            &uno_config(),
-            &no_progress,
-        );
+            timings: &fast_timings(),
+            port: "COM3",
+            environment: "uno",
+            hex_path: &hex,
+            config: &uno_config(),
+            progress: &no_progress,
+        });
         assert_eq!(
             result,
             UploadRunResult::Failure {
@@ -814,19 +817,24 @@ fn old_bootloader_nano_retries_at_alternate_baud() {
     let avrdude = write_executable(&dir, "avrdude-baud", BAUD_AWARE_BODY);
     let hex = hex_file(&dir);
     let progress_messages = Mutex::new(Vec::new());
-    let result = run_direct(
-        &FakeSerial::default(),
-        &UploadTooling {
+    let result = run_direct(DirectCase {
+        transport: &FakeSerial::default(),
+        tooling: &UploadTooling {
             avrdude_path: avrdude,
             avrdude_conf: None,
         },
-        &fast_timings(),
-        "COM3",
-        "nanoatmega328",
-        &hex,
-        &nano_config(),
-        &|percent, message| progress_messages.lock().unwrap().push((percent, message.to_string())),
-    );
+        timings: &fast_timings(),
+        port: "COM3",
+        environment: "nanoatmega328",
+        hex_path: &hex,
+        config: &nano_config(),
+        progress: &|percent, message| {
+            progress_messages
+                .lock()
+                .unwrap()
+                .push((percent, message.to_string()))
+        },
+    });
     let UploadRunResult::Success { output, .. } = result else {
         panic!("expected success, got {result:?}");
     };
@@ -835,8 +843,7 @@ fn old_bootloader_nano_retries_at_alternate_baud() {
         .lock()
         .unwrap()
         .iter()
-        .any(|(percent, message)| *percent == 0
-            && message == "Retrying at 57600 baud..."));
+        .any(|(percent, message)| *percent == 0 && message == "Retrying at 57600 baud..."));
 }
 
 // Mirrors upload_flow_test.exs "returns :bootloader_not_responding when all
@@ -845,31 +852,22 @@ fn old_bootloader_nano_retries_at_alternate_baud() {
 fn exhausted_baud_retries_report_first_output() {
     let dir = TempDir::new().unwrap();
     let counter = dir.path().join("counter");
-    let avrdude = counter_script(
-        &dir,
-        &counter,
-        "stk500_getsync(): not in sync: resp=0x00",
-    );
+    let avrdude = counter_script(&dir, &counter, "stk500_getsync(): not in sync: resp=0x00");
     let hex = hex_file(&dir);
-    let result = run_direct(
-        &FakeSerial::default(),
-        &UploadTooling {
+    let result = run_direct(DirectCase {
+        transport: &FakeSerial::default(),
+        tooling: &UploadTooling {
             avrdude_path: avrdude,
             avrdude_conf: None,
         },
-        &fast_timings(),
-        "COM3",
-        "nanoatmega328",
-        &hex,
-        &nano_config(),
-        &no_progress,
-    );
-    let UploadRunResult::Failure {
-        reason,
-        output,
-        ..
-    } = result
-    else {
+        timings: &fast_timings(),
+        port: "COM3",
+        environment: "nanoatmega328",
+        hex_path: &hex,
+        config: &nano_config(),
+        progress: &no_progress,
+    });
+    let UploadRunResult::Failure { reason, output, .. } = result else {
         panic!("expected failure, got {result:?}");
     };
     assert_eq!(reason, UploadFailure::BootloaderNotResponding);
@@ -893,25 +891,25 @@ fn port_not_found_retries_once_then_reports_first_output() {
     );
     let hex = hex_file(&dir);
     let progress_messages = Mutex::new(Vec::new());
-    let result = run_direct(
-        &FakeSerial::default(),
-        &UploadTooling {
+    let result = run_direct(DirectCase {
+        transport: &FakeSerial::default(),
+        tooling: &UploadTooling {
             avrdude_path: avrdude,
             avrdude_conf: None,
         },
-        &fast_timings(),
-        "COM3",
-        "uno",
-        &hex,
-        &uno_config(),
-        &|percent, message| progress_messages.lock().unwrap().push((percent, message.to_string())),
-    );
-    let UploadRunResult::Failure {
-        reason,
-        output,
-        ..
-    } = result
-    else {
+        timings: &fast_timings(),
+        port: "COM3",
+        environment: "uno",
+        hex_path: &hex,
+        config: &uno_config(),
+        progress: &|percent, message| {
+            progress_messages
+                .lock()
+                .unwrap()
+                .push((percent, message.to_string()))
+        },
+    });
+    let UploadRunResult::Failure { reason, output, .. } = result else {
         panic!("expected failure, got {result:?}");
     };
     assert_eq!(reason, UploadFailure::PortNotFound);
@@ -922,8 +920,7 @@ fn port_not_found_retries_once_then_reports_first_output() {
         .lock()
         .unwrap()
         .iter()
-        .any(|(percent, message)| *percent == 0
-            && message == "Port not found, retrying..."));
+        .any(|(percent, message)| *percent == 0 && message == "Port not found, retrying..."));
 }
 // Mirrors upload_flow_test.exs "1200bps touch + bootloader port polling" —
 // the Windows scenario where the bootloader COM port takes three polls.
@@ -938,19 +935,19 @@ fn bootloader_port_appearing_after_three_polls_is_used() {
         Vec::new(),
         vec!["COM5".to_string(), "COM6".to_string()],
     ]);
-    let result = run_direct(
-        &transport,
-        &UploadTooling {
+    let result = run_direct(DirectCase {
+        transport: &transport,
+        tooling: &UploadTooling {
             avrdude_path: avrdude,
             avrdude_conf: None,
         },
-        &fast_timings(),
-        "COM5",
-        "micro",
-        &hex,
-        &micro_config(),
-        &no_progress,
-    );
+        timings: &fast_timings(),
+        port: "COM5",
+        environment: "micro",
+        hex_path: &hex,
+        config: &micro_config(),
+        progress: &no_progress,
+    });
     let UploadRunResult::Success { output, .. } = result else {
         panic!("expected success, got {result:?}");
     };
@@ -974,19 +971,19 @@ fn multiple_new_bootloader_ports_use_the_maximum() {
         vec!["COM5".to_string()],
         vec!["COM5".to_string(), "COM6".to_string(), "COM7".to_string()],
     ]);
-    let result = run_direct(
-        &transport,
-        &UploadTooling {
+    let result = run_direct(DirectCase {
+        transport: &transport,
+        tooling: &UploadTooling {
             avrdude_path: avrdude,
             avrdude_conf: None,
         },
-        &fast_timings(),
-        "COM5",
-        "micro",
-        &hex,
-        &micro_config(),
-        &no_progress,
-    );
+        timings: &fast_timings(),
+        port: "COM5",
+        environment: "micro",
+        hex_path: &hex,
+        config: &micro_config(),
+        progress: &no_progress,
+    });
     let UploadRunResult::Success { output, .. } = result else {
         panic!("expected success, got {result:?}");
     };
@@ -1001,23 +998,26 @@ fn original_port_still_available_is_reused() {
     let hex = hex_file(&dir);
     let transport =
         FakeSerial::with_sequence(vec![vec!["COM5".to_string()], vec!["COM5".to_string()]]);
-    let result = run_direct(
-        &transport,
-        &UploadTooling {
+    let result = run_direct(DirectCase {
+        transport: &transport,
+        tooling: &UploadTooling {
             avrdude_path: avrdude,
             avrdude_conf: None,
         },
-        &fast_timings(),
-        "COM5",
-        "micro",
-        &hex,
-        &micro_config(),
-        &no_progress,
-    );
+        timings: &fast_timings(),
+        port: "COM5",
+        environment: "micro",
+        hex_path: &hex,
+        config: &micro_config(),
+        progress: &no_progress,
+    });
     let UploadRunResult::Success { output, .. } = result else {
         panic!("expected success, got {result:?}");
     };
-    assert!(output.contains("-P COM5"), "original port not used: {output}");
+    assert!(
+        output.contains("-P COM5"),
+        "original port not used: {output}"
+    );
 }
 
 // Mirrors the {:error, :bootloader_port_not_found} deadline branch.
@@ -1026,23 +1026,20 @@ fn boot_port_that_never_returns_fails_with_bootloader_port_not_found() {
     let dir = TempDir::new().unwrap();
     let avrdude = write_executable(&dir, "avrdude-ok", SUCCESS_BODY);
     let hex = hex_file(&dir);
-    let transport = FakeSerial::with_sequence(vec![
-        vec!["COM5".to_string()],
-        Vec::<String>::new(),
-    ]);
-    let result = run_direct(
-        &transport,
-        &UploadTooling {
+    let transport = FakeSerial::with_sequence(vec![vec!["COM5".to_string()], Vec::<String>::new()]);
+    let result = run_direct(DirectCase {
+        transport: &transport,
+        tooling: &UploadTooling {
             avrdude_path: avrdude,
             avrdude_conf: None,
         },
-        &fast_timings(),
-        "COM5",
-        "micro",
-        &hex,
-        &micro_config(),
-        &no_progress,
-    );
+        timings: &fast_timings(),
+        port: "COM5",
+        environment: "micro",
+        hex_path: &hex,
+        config: &micro_config(),
+        progress: &no_progress,
+    });
     assert_eq!(
         result,
         UploadRunResult::Failure {
@@ -1062,23 +1059,26 @@ fn failed_touch_open_falls_back_to_the_original_port() {
     let hex = hex_file(&dir);
     let transport = FakeSerial::with_sequence(vec![vec!["COM5".to_string()]]);
     transport.fail_open.store(true, Ordering::SeqCst);
-    let result = run_direct(
-        &transport,
-        &UploadTooling {
+    let result = run_direct(DirectCase {
+        transport: &transport,
+        tooling: &UploadTooling {
             avrdude_path: avrdude,
             avrdude_conf: None,
         },
-        &fast_timings(),
-        "COM5",
-        "micro",
-        &hex,
-        &micro_config(),
-        &no_progress,
-    );
+        timings: &fast_timings(),
+        port: "COM5",
+        environment: "micro",
+        hex_path: &hex,
+        config: &micro_config(),
+        progress: &no_progress,
+    });
     let UploadRunResult::Success { output, .. } = result else {
         panic!("expected success, got {result:?}");
     };
-    assert!(output.contains("-P COM5"), "original port not used: {output}");
+    assert!(
+        output.contains("-P COM5"),
+        "original port not used: {output}"
+    );
     // The touch was attempted at 1200 baud even though it failed.
     assert_eq!(
         transport.opens.lock().unwrap().clone(),
@@ -1099,26 +1099,21 @@ fn collect_timeout_appends_notice_and_classifies_as_timeout() {
         ..fast_timings()
     };
     let start = Instant::now();
-    let result = run_direct(
-        &FakeSerial::default(),
-        &UploadTooling {
+    let result = run_direct(DirectCase {
+        transport: &FakeSerial::default(),
+        tooling: &UploadTooling {
             avrdude_path: avrdude,
             avrdude_conf: None,
         },
-        &timings,
-        "COM3",
-        "uno",
-        &hex,
-        &uno_config(),
-        &no_progress,
-    );
+        timings: &timings,
+        port: "COM3",
+        environment: "uno",
+        hex_path: &hex,
+        config: &uno_config(),
+        progress: &no_progress,
+    });
     assert!(start.elapsed() < Duration::from_secs(5));
-    let UploadRunResult::Failure {
-        reason,
-        output,
-        ..
-    } = result
-    else {
+    let UploadRunResult::Failure { reason, output, .. } = result else {
         panic!("expected failure, got {result:?}");
     };
     assert_eq!(reason, UploadFailure::Timeout);
@@ -1126,7 +1121,11 @@ fn collect_timeout_appends_notice_and_classifies_as_timeout() {
         .as_deref()
         .unwrap()
         .contains("\n[Timeout: avrdude did not respond within 2 minutes]"));
-    let pid: u32 = std::fs::read_to_string(&pid_file).unwrap().trim().parse().unwrap();
+    let pid: u32 = std::fs::read_to_string(&pid_file)
+        .unwrap()
+        .trim()
+        .parse()
+        .unwrap();
     assert!(!process_alive(pid), "timed-out avrdude must be killed");
 }
 
@@ -1138,19 +1137,24 @@ fn progress_lines_map_to_operation_messages() {
     let avrdude = write_executable(&dir, "avrdude-ok", SUCCESS_BODY);
     let hex = hex_file(&dir);
     let progress = Mutex::new(Vec::new());
-    let result = run_direct(
-        &FakeSerial::default(),
-        &UploadTooling {
+    let result = run_direct(DirectCase {
+        transport: &FakeSerial::default(),
+        tooling: &UploadTooling {
             avrdude_path: avrdude,
             avrdude_conf: None,
         },
-        &fast_timings(),
-        "COM3",
-        "uno",
-        &hex,
-        &uno_config(),
-        &|percent, message| progress.lock().unwrap().push((percent, message.to_string())),
-    );
+        timings: &fast_timings(),
+        port: "COM3",
+        environment: "uno",
+        hex_path: &hex,
+        config: &uno_config(),
+        progress: &|percent, message| {
+            progress
+                .lock()
+                .unwrap()
+                .push((percent, message.to_string()))
+        },
+    });
     assert!(matches!(result, UploadRunResult::Success { .. }));
     let progress = progress.into_inner().unwrap();
     assert!(progress.contains(&(42, "Reading device...".to_string())));
@@ -1170,19 +1174,19 @@ fn avrdude_output_capture_is_bounded() {
         max_output_bytes: 1024,
         ..fast_timings()
     };
-    let result = run_direct(
-        &FakeSerial::default(),
-        &UploadTooling {
+    let result = run_direct(DirectCase {
+        transport: &FakeSerial::default(),
+        tooling: &UploadTooling {
             avrdude_path: avrdude,
             avrdude_conf: None,
         },
-        &timings,
-        "COM3",
-        "uno",
-        &hex,
-        &uno_config(),
-        &no_progress,
-    );
+        timings: &timings,
+        port: "COM3",
+        environment: "uno",
+        hex_path: &hex,
+        config: &uno_config(),
+        progress: &no_progress,
+    });
     let UploadRunResult::Success { output, .. } = result else {
         panic!("expected success, got {result:?}");
     };
@@ -1201,11 +1205,8 @@ fn manager_happy_path_records_history_events_and_reconnects() {
     let dir = TempDir::new().unwrap();
     let avrdude = write_executable(&dir, "avrdude-ok", SUCCESS_BODY);
     let hex = hex_file(&dir);
-    let (manager, arbiter, history, events, reconnect) = manager_fixture(
-        avrdude,
-        fast_timings(),
-        FakeSerial::default(),
-    );
+    let (manager, arbiter, history, events, reconnect) =
+        manager_fixture(avrdude, fast_timings(), FakeSerial::default());
     let upload_id = manager
         .start_upload(upload_request("/dev/ttyUSB0", &hex, &uno_config()))
         .unwrap();
@@ -1271,11 +1272,8 @@ fn manager_rejects_second_upload_while_one_is_running() {
     let pid_file = dir.path().join("pid");
     let avrdude = blocking_script(&dir, &pid_file);
     let hex = hex_file(&dir);
-    let (manager, _arbiter, _history, _events, _reconnect) = manager_fixture(
-        avrdude,
-        fast_timings(),
-        FakeSerial::default(),
-    );
+    let (manager, _arbiter, _history, _events, _reconnect) =
+        manager_fixture(avrdude, fast_timings(), FakeSerial::default());
     let first = manager
         .start_upload(upload_request("/dev/ttyUSB0", &hex, &uno_config()))
         .unwrap();
@@ -1293,11 +1291,8 @@ fn manager_rejects_missing_firmware_file_before_any_side_effect() {
     let dir = TempDir::new().unwrap();
     let avrdude = write_executable(&dir, "avrdude-ok", SUCCESS_BODY);
     let missing = dir.path().join("not-downloaded.hex");
-    let (manager, arbiter, history, events, _reconnect) = manager_fixture(
-        avrdude,
-        fast_timings(),
-        FakeSerial::default(),
-    );
+    let (manager, arbiter, history, events, _reconnect) =
+        manager_fixture(avrdude, fast_timings(), FakeSerial::default());
     assert_eq!(
         manager.start_upload(upload_request("/dev/ttyUSB0", &missing, &uno_config())),
         Err(UploadStartError::FirmwareNotDownloaded)
@@ -1315,20 +1310,22 @@ fn cancel_mid_run_kills_child_releases_lease_and_records_history() {
     let pid_file = dir.path().join("pid");
     let avrdude = blocking_script(&dir, &pid_file);
     let hex = hex_file(&dir);
-    let (manager, arbiter, history, events, _reconnect) = manager_fixture(
-        avrdude,
-        fast_timings(),
-        FakeSerial::default(),
-    );
+    let (manager, arbiter, history, events, _reconnect) =
+        manager_fixture(avrdude, fast_timings(), FakeSerial::default());
     let upload_id = manager
         .start_upload(upload_request("/dev/ttyUSB0", &hex, &uno_config()))
         .unwrap();
-    let pid: u32 = wait_for_file(&pid_file, Duration::from_secs(5)).parse().unwrap();
+    let pid: u32 = wait_for_file(&pid_file, Duration::from_secs(5))
+        .parse()
+        .unwrap();
     assert!(process_alive(pid));
 
     manager.cancel_upload(&upload_id).unwrap();
 
-    assert!(!process_alive(pid), "avrdude child must be killed and reaped");
+    assert!(
+        !process_alive(pid),
+        "avrdude child must be killed and reaped"
+    );
     assert!(!arbiter.is_suspended(), "port reservation must be released");
     assert!(manager.current_upload().is_none());
     let outcome = manager
@@ -1371,11 +1368,8 @@ fn cancel_of_unknown_or_finished_upload_is_not_found() {
     let pid_file = dir.path().join("pid");
     let avrdude = blocking_script(&dir, &pid_file);
     let hex = hex_file(&dir);
-    let (manager, _arbiter, _history, _events, _reconnect) = manager_fixture(
-        avrdude,
-        fast_timings(),
-        FakeSerial::default(),
-    );
+    let (manager, _arbiter, _history, _events, _reconnect) =
+        manager_fixture(avrdude, fast_timings(), FakeSerial::default());
     let upload_id = manager
         .start_upload(upload_request("/dev/ttyUSB0", &hex, &uno_config()))
         .unwrap();
@@ -1400,15 +1394,14 @@ fn watchdog_timeout_cancels_child_and_broadcasts_timeout() {
         upload_timeout: Duration::from_millis(5_000),
         ..fast_timings()
     };
-    let (manager, arbiter, history, events, _reconnect) = manager_fixture(
-        avrdude,
-        timings,
-        FakeSerial::default(),
-    );
+    let (manager, arbiter, history, events, _reconnect) =
+        manager_fixture(avrdude, timings, FakeSerial::default());
     let upload_id = manager
         .start_upload(upload_request("/dev/ttyUSB0", &hex, &uno_config()))
         .unwrap();
-    let pid: u32 = wait_for_file(&pid_file, Duration::from_secs(5)).parse().unwrap();
+    let pid: u32 = wait_for_file(&pid_file, Duration::from_secs(5))
+        .parse()
+        .unwrap();
     let outcome = manager
         .wait_for_completion(&upload_id, Duration::from_secs(10))
         .expect("timeout should terminate the upload");
@@ -1456,11 +1449,8 @@ fn lease_contention_fails_closed_without_side_effects() {
     let dir = TempDir::new().unwrap();
     let avrdude = write_executable(&dir, "avrdude-ok", SUCCESS_BODY);
     let hex = hex_file(&dir);
-    let (manager, arbiter, history, events, _reconnect) = manager_fixture(
-        avrdude,
-        fast_timings(),
-        FakeSerial::default(),
-    );
+    let (manager, arbiter, history, events, _reconnect) =
+        manager_fixture(avrdude, fast_timings(), FakeSerial::default());
     let calibration = arbiter
         .acquire(LeaseKind::Calibration {
             port: "COM9".to_string(),
@@ -1548,11 +1538,8 @@ fn crashed_worker_records_failure_and_recovers() {
     let hex = hex_file(&dir);
     let transport = FakeSerial::default();
     transport.panic_on_enumerate.store(true, Ordering::SeqCst);
-    let (manager, arbiter, history, events, _reconnect) = manager_fixture(
-        avrdude.clone(),
-        fast_timings(),
-        transport.clone(),
-    );
+    let (manager, arbiter, history, events, _reconnect) =
+        manager_fixture(avrdude.clone(), fast_timings(), transport.clone());
     let upload_id = manager
         .start_upload(upload_request("/dev/ttyUSB0", &hex, &micro_config()))
         .unwrap();
@@ -1565,7 +1552,10 @@ fn crashed_worker_records_failure_and_recovers() {
         outcome.message.as_deref(),
         Some("Upload task crashed unexpectedly")
     );
-    assert!(!arbiter.is_suspended(), "lease must be released after a crash");
+    assert!(
+        !arbiter.is_suspended(),
+        "lease must be released after a crash"
+    );
 
     let calls = history.calls.lock().unwrap().clone();
     let HistoryCall::Failed {
@@ -1576,7 +1566,10 @@ fn crashed_worker_records_failure_and_recovers() {
     else {
         panic!("expected failure record, got {calls:?}");
     };
-    assert!(error_message.starts_with("Task crashed: "), "{error_message}");
+    assert!(
+        error_message.starts_with("Task crashed: "),
+        "{error_message}"
+    );
     assert!(output.is_none());
 
     assert_eq!(
@@ -1607,15 +1600,14 @@ fn dropping_manager_mid_upload_reaps_child_and_lease() {
     let pid_file = dir.path().join("pid");
     let avrdude = blocking_script(&dir, &pid_file);
     let hex = hex_file(&dir);
-    let (manager, arbiter, history, _events, _reconnect) = manager_fixture(
-        avrdude,
-        fast_timings(),
-        FakeSerial::default(),
-    );
+    let (manager, arbiter, history, _events, _reconnect) =
+        manager_fixture(avrdude, fast_timings(), FakeSerial::default());
     let upload_id = manager
         .start_upload(upload_request("/dev/ttyUSB0", &hex, &uno_config()))
         .unwrap();
-    let pid: u32 = wait_for_file(&pid_file, Duration::from_secs(5)).parse().unwrap();
+    let pid: u32 = wait_for_file(&pid_file, Duration::from_secs(5))
+        .parse()
+        .unwrap();
     drop(manager);
     assert!(!process_alive(pid), "drop must kill and reap the child");
     assert!(!arbiter.is_suspended(), "drop must release the port lease");
@@ -1633,11 +1625,8 @@ fn manager_records_failure_output_and_duration() {
     let dir = TempDir::new().unwrap();
     let avrdude = write_executable(&dir, "avrdude-sig", SIGNATURE_MISMATCH_BODY);
     let hex = hex_file(&dir);
-    let (manager, arbiter, history, events, _reconnect) = manager_fixture(
-        avrdude,
-        fast_timings(),
-        FakeSerial::default(),
-    );
+    let (manager, arbiter, history, events, _reconnect) =
+        manager_fixture(avrdude, fast_timings(), FakeSerial::default());
     let upload_id = manager
         .start_upload(upload_request("/dev/ttyUSB0", &hex, &uno_config()))
         .unwrap();
@@ -1672,4 +1661,3 @@ fn manager_records_failure_output_and_duration() {
         }
     );
 }
-

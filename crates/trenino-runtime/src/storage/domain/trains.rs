@@ -310,7 +310,6 @@ fn timestamp() -> String {
     )
 }
 
-
 // ---------------------------------------------------------------------------
 // Row readers
 // ---------------------------------------------------------------------------
@@ -320,8 +319,13 @@ fn notch_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<NotchRecord> {
         id: EntityId(row.get(0)?),
         lever_config_id: EntityId(row.get(1)?),
         index: row.get(2)?,
-        kind: NotchKind::parse(&row.get::<_, String>(3)?)
-            .map_err(|_| rusqlite::Error::FromSqlConversionFailure(3, rusqlite::types::Type::Text, "unknown notch type".into()))?,
+        kind: NotchKind::parse(&row.get::<_, String>(3)?).map_err(|_| {
+            rusqlite::Error::FromSqlConversionFailure(
+                3,
+                rusqlite::types::Type::Text,
+                "unknown notch type".into(),
+            )
+        })?,
         value: row.get(4)?,
         min_value: row.get(5)?,
         max_value: row.get(6)?,
@@ -353,7 +357,10 @@ fn get_notch(c: &Connection, id: EntityId) -> DbResult<Option<NotchRecord>> {
         .map_err(StorageError::from)
 }
 
-fn lever_config_row(c: &Connection, row: &rusqlite::Row<'_>) -> rusqlite::Result<LeverConfigRecord> {
+fn lever_config_row(
+    c: &Connection,
+    row: &rusqlite::Row<'_>,
+) -> rusqlite::Result<LeverConfigRecord> {
     let id = EntityId(row.get(0)?);
     let lever_type = row
         .get::<_, Option<String>>(7)?
@@ -379,7 +386,11 @@ fn lever_config_row(c: &Connection, row: &rusqlite::Row<'_>) -> rusqlite::Result
         inverted: row.get::<_, i64>(8)? != 0,
         calibrated_at: row.get(9)?,
         notches: notches_for_config(c, id).map_err(|e| {
-            rusqlite::Error::FromSqlConversionFailure(9, rusqlite::types::Type::Null, format!("notches: {e:?}").into())
+            rusqlite::Error::FromSqlConversionFailure(
+                9,
+                rusqlite::types::Type::Null,
+                format!("notches: {e:?}").into(),
+            )
         })?,
     })
 }
@@ -387,9 +398,7 @@ fn lever_config_row(c: &Connection, row: &rusqlite::Row<'_>) -> rusqlite::Result
 const LEVER_CONFIG_COLUMNS: &str = "id,element_id,min_endpoint,max_endpoint,value_endpoint,notch_count_endpoint,notch_index_endpoint,lever_type,inverted,calibrated_at";
 
 fn get_lever_config_by_id(c: &Connection, id: EntityId) -> DbResult<Option<LeverConfigRecord>> {
-    let sql = format!(
-        "SELECT {LEVER_CONFIG_COLUMNS} FROM train_lever_configs WHERE id=?1"
-    );
+    let sql = format!("SELECT {LEVER_CONFIG_COLUMNS} FROM train_lever_configs WHERE id=?1");
     c.query_row(&sql, [id.0], |row| lever_config_row(c, row))
         .optional()
         .map_err(StorageError::from)
@@ -400,9 +409,7 @@ fn get_lever_config_for_element(
     c: &Connection,
     element: EntityId,
 ) -> DbResult<Option<LeverConfigRecord>> {
-    let sql = format!(
-        "SELECT {LEVER_CONFIG_COLUMNS} FROM train_lever_configs WHERE element_id=?1"
-    );
+    let sql = format!("SELECT {LEVER_CONFIG_COLUMNS} FROM train_lever_configs WHERE element_id=?1");
     c.query_row(&sql, [element.0], |row| lever_config_row(c, row))
         .optional()
         .map_err(StorageError::from)
@@ -411,10 +418,19 @@ fn get_lever_config_for_element(
 fn element_row(c: &Connection, row: &rusqlite::Row<'_>) -> rusqlite::Result<ElementRecord> {
     let id = EntityId(row.get(0)?);
     let kind = ElementKind::parse(&row.get::<_, String>(2)?).map_err(|_| {
-        rusqlite::Error::FromSqlConversionFailure(2, rusqlite::types::Type::Text, "unknown element type".into())
+        rusqlite::Error::FromSqlConversionFailure(
+            2,
+            rusqlite::types::Type::Text,
+            "unknown element type".into(),
+        )
     })?;
-    let lever_config = get_lever_config_for_element(c, id)
-        .map_err(|_| rusqlite::Error::FromSqlConversionFailure(2, rusqlite::types::Type::Null, "lever_config".into()))?;
+    let lever_config = get_lever_config_for_element(c, id).map_err(|_| {
+        rusqlite::Error::FromSqlConversionFailure(
+            2,
+            rusqlite::types::Type::Null,
+            "lever_config".into(),
+        )
+    })?;
     Ok(ElementRecord {
         id,
         train_id: EntityId(row.get(1)?),
@@ -444,9 +460,8 @@ fn get_element_row(c: &Connection, id: EntityId) -> DbResult<Option<ElementRecor
 }
 
 fn identifiers_for_train(c: &Connection, train: EntityId) -> DbResult<Vec<String>> {
-    let mut q = c.prepare(
-        "SELECT identifier FROM train_identifiers WHERE train_id=?1 ORDER BY id",
-    )?;
+    let mut q =
+        c.prepare("SELECT identifier FROM train_identifiers WHERE train_id=?1 ORDER BY id")?;
     let rows = q.query_map([train.0], |r| r.get(0))?;
     rows.collect::<Result<Vec<_>, _>>()
         .map_err(StorageError::from)
@@ -459,10 +474,18 @@ fn train_row(c: &Connection, row: &rusqlite::Row<'_>) -> rusqlite::Result<TrainR
         name: row.get(1)?,
         description: row.get(2)?,
         identifiers: identifiers_for_train(c, id).map_err(|_| {
-            rusqlite::Error::FromSqlConversionFailure(2, rusqlite::types::Type::Null, "identifiers".into())
+            rusqlite::Error::FromSqlConversionFailure(
+                2,
+                rusqlite::types::Type::Null,
+                "identifiers".into(),
+            )
         })?,
         elements: elements_for_train(c, id).map_err(|_| {
-            rusqlite::Error::FromSqlConversionFailure(2, rusqlite::types::Type::Null, "elements".into())
+            rusqlite::Error::FromSqlConversionFailure(
+                2,
+                rusqlite::types::Type::Null,
+                "elements".into(),
+            )
         })?,
     })
 }
@@ -516,16 +539,12 @@ fn validate_identifier_collection(
     exclude_train: Option<EntityId>,
 ) -> DbResult<()> {
     if identifiers.is_empty() {
-        return Err(invalid(
-            "identifiers must have at least one identifier",
-        ));
+        return Err(invalid("identifiers must have at least one identifier"));
     }
     let mut seen = std::collections::HashSet::new();
     for identifier in identifiers {
         if !seen.insert(identifier.as_str()) {
-            return Err(invalid(
-                "identifiers must be unique within a train profile",
-            ));
+            return Err(invalid("identifiers must be unique within a train profile"));
         }
         if identifier_taken(c, identifier, exclude_train)? {
             return Err(taken(format!(
@@ -573,9 +592,8 @@ fn validate_lever_config_fields(
     Ok(())
 }
 
-/// Ports `Notch.changeset/2`'s validations over the merged field values.
-fn validate_notch_fields(
-    _index: i64,
+/// The merged field values `Notch.changeset/2` validates.
+struct NotchFields {
     kind: NotchKind,
     value: Option<f64>,
     min_value: Option<f64>,
@@ -584,7 +602,20 @@ fn validate_notch_fields(
     input_max: Option<f64>,
     sim_input_min: Option<f64>,
     sim_input_max: Option<f64>,
-) -> DbResult<()> {
+}
+
+/// Ports `Notch.changeset/2`'s validations over the merged field values.
+fn validate_notch_fields(fields: &NotchFields) -> DbResult<()> {
+    let NotchFields {
+        kind,
+        value,
+        min_value,
+        max_value,
+        input_min,
+        input_max,
+        sim_input_min,
+        sim_input_max,
+    } = *fields;
     match kind {
         NotchKind::Gate => {
             if value.is_none() {
@@ -654,17 +685,16 @@ fn round_notch_draft(mut draft: NotchDraft) -> NotchDraft {
 }
 
 fn validate_notch_draft(draft: &NotchDraft) -> DbResult<()> {
-    validate_notch_fields(
-        draft.index,
-        draft.kind,
-        draft.value,
-        draft.min_value,
-        draft.max_value,
-        draft.input_min,
-        draft.input_max,
-        draft.sim_input_min,
-        draft.sim_input_max,
-    )
+    validate_notch_fields(&NotchFields {
+        kind: draft.kind,
+        value: draft.value,
+        min_value: draft.min_value,
+        max_value: draft.max_value,
+        input_min: draft.input_min,
+        input_max: draft.input_max,
+        sim_input_min: draft.sim_input_min,
+        sim_input_max: draft.sim_input_max,
+    })
 }
 
 fn insert_notch(
@@ -687,8 +717,7 @@ fn insert_notch(
         "INSERT INTO train_lever_notches(lever_config_id,\"index\",type,value,min_value,max_value,description,input_min,input_max,sim_input_min,sim_input_max,inserted_at,updated_at) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?12)",
         params![config.0, index, draft.kind.as_db(), draft.value, draft.min_value, draft.max_value, draft.description, draft.input_min, draft.input_max, draft.sim_input_min, draft.sim_input_max, now],
     )?;
-    get_notch(c, EntityId(c.last_insert_rowid()))?
-        .ok_or(StorageError::NotFound)
+    get_notch(c, EntityId(c.last_insert_rowid()))?.ok_or(StorageError::NotFound)
 }
 
 fn notch_index_taken(
@@ -783,10 +812,7 @@ fn update_train(
             let identifiers = normalize_identifiers(raw);
             // Ecto `on_replace: :delete` — the collection is fully replaced.
             validate_identifier_collection(tx, &identifiers, Some(id))?;
-            tx.execute(
-                "DELETE FROM train_identifiers WHERE train_id=?1",
-                [id.0],
-            )?;
+            tx.execute("DELETE FROM train_identifiers WHERE train_id=?1", [id.0])?;
             for identifier in &identifiers {
                 tx.execute(
                     "INSERT INTO train_identifiers(train_id,identifier,inserted_at,updated_at) VALUES(?1,?2,?3,?3)",
@@ -901,8 +927,7 @@ fn create_lever_config(
             "INSERT INTO train_lever_configs(element_id,min_endpoint,max_endpoint,value_endpoint,notch_count_endpoint,notch_index_endpoint,lever_type,inverted,inserted_at,updated_at) VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?9)",
             params![element.0, draft.min_endpoint, draft.max_endpoint, draft.value_endpoint, draft.notch_count_endpoint, draft.notch_index_endpoint, draft.lever_type.map(LeverType::as_db), draft.inverted as i64, now],
         )?;
-        get_lever_config_by_id(tx, EntityId(tx.last_insert_rowid()))?
-            .ok_or(StorageError::NotFound)
+        get_lever_config_by_id(tx, EntityId(tx.last_insert_rowid()))?.ok_or(StorageError::NotFound)
     })
 }
 
@@ -917,10 +942,12 @@ fn update_lever_config(
         let min_endpoint = patch.min_endpoint.unwrap_or(current.min_endpoint);
         let max_endpoint = patch.max_endpoint.unwrap_or(current.max_endpoint);
         let value_endpoint = patch.value_endpoint.unwrap_or(current.value_endpoint);
-        let notch_count_endpoint =
-            patch.notch_count_endpoint.unwrap_or(current.notch_count_endpoint);
-        let notch_index_endpoint =
-            patch.notch_index_endpoint.unwrap_or(current.notch_index_endpoint);
+        let notch_count_endpoint = patch
+            .notch_count_endpoint
+            .unwrap_or(current.notch_count_endpoint);
+        let notch_index_endpoint = patch
+            .notch_index_endpoint
+            .unwrap_or(current.notch_index_endpoint);
         let lever_type = patch.lever_type.unwrap_or(current.lever_type);
         let inverted = patch.inverted.unwrap_or(current.inverted);
         let calibrated_at = patch.calibrated_at.unwrap_or(current.calibrated_at);
@@ -995,10 +1022,12 @@ fn update_lever_config_with_analysis(
         let min_endpoint = patch.min_endpoint.unwrap_or(current.min_endpoint);
         let max_endpoint = patch.max_endpoint.unwrap_or(current.max_endpoint);
         let value_endpoint = patch.value_endpoint.unwrap_or(current.value_endpoint);
-        let notch_count_endpoint =
-            patch.notch_count_endpoint.unwrap_or(current.notch_count_endpoint);
-        let notch_index_endpoint =
-            patch.notch_index_endpoint.unwrap_or(current.notch_index_endpoint);
+        let notch_count_endpoint = patch
+            .notch_count_endpoint
+            .unwrap_or(current.notch_count_endpoint);
+        let notch_index_endpoint = patch
+            .notch_index_endpoint
+            .unwrap_or(current.notch_index_endpoint);
         let inverted = patch.inverted.unwrap_or(current.inverted);
         let calibrated_at = patch.calibrated_at.unwrap_or(current.calibrated_at);
         validate_lever_config_fields(
@@ -1081,12 +1110,24 @@ fn update_notch(
         let max_value = patch.max_value.unwrap_or(current.max_value).map(round2);
         let input_min = patch.input_min.unwrap_or(current.input_min).map(round2);
         let input_max = patch.input_max.unwrap_or(current.input_max).map(round2);
-        let sim_input_min = patch.sim_input_min.unwrap_or(current.sim_input_min).map(round2);
-        let sim_input_max = patch.sim_input_max.unwrap_or(current.sim_input_max).map(round2);
-        validate_notch_fields(
-            index, kind, value, min_value, max_value, input_min, input_max, sim_input_min,
+        let sim_input_min = patch
+            .sim_input_min
+            .unwrap_or(current.sim_input_min)
+            .map(round2);
+        let sim_input_max = patch
+            .sim_input_max
+            .unwrap_or(current.sim_input_max)
+            .map(round2);
+        validate_notch_fields(&NotchFields {
+            kind,
+            value,
+            min_value,
+            max_value,
+            input_min,
+            input_max,
+            sim_input_min,
             sim_input_max,
-        )?;
+        })?;
         if notch_index_taken(tx, current.lever_config_id, index, id)? {
             return Err(taken("notch index has already been taken"));
         }
@@ -1198,7 +1239,13 @@ fn update_notch_input_ranges(
                 .ok_or_else(|| invalid(format!("notch {} not found", update.notch_id.0)))?;
             let input_min = round2(update.input_min);
             let input_max = round2(update.input_max);
-            validate_range_pair("input_min", "input_max", Some(input_min), Some(input_max), true)?;
+            validate_range_pair(
+                "input_min",
+                "input_max",
+                Some(input_min),
+                Some(input_max),
+                true,
+            )?;
             tx.execute(
                 "UPDATE train_lever_notches SET input_min=?1,input_max=?2,updated_at=?3 WHERE id=?4",
                 params![input_min, input_max, timestamp(), update.notch_id.0],
@@ -1271,10 +1318,7 @@ fn auto_distribute_input_ranges(
 
 /// Ports `validate_notch_ranges/1` (read-only): checks the notch input ranges
 /// cover 0.0-1.0 with no gaps larger than the 0.001 epsilon.
-fn validate_notch_ranges(
-    c: &Connection,
-    config: EntityId,
-) -> DbResult<Option<RangesValidation>> {
+fn validate_notch_ranges(c: &Connection, config: EntityId) -> DbResult<Option<RangesValidation>> {
     let Some(record) = get_lever_config_by_id(c, config)? else {
         return Ok(None);
     };

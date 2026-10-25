@@ -309,10 +309,7 @@ impl Database {
     }
 
     /// `Firmware.get_upload_history/1` (lookup by `upload_id`).
-    pub fn get_upload_history(
-        &self,
-        upload_id: &str,
-    ) -> DbResult<Option<UploadHistoryRecord>> {
+    pub fn get_upload_history(&self, upload_id: &str) -> DbResult<Option<UploadHistoryRecord>> {
         let upload_id = upload_id.to_owned();
         let raw = self.firmware_call("get_upload_history", move |c| {
             c.query_row(
@@ -328,10 +325,7 @@ impl Database {
 
     /// `Firmware.list_upload_history/1`: newest `started_at` first (ties by
     /// id), `None` limit falls back to the Elixir default of 50.
-    pub fn list_upload_history(
-        &self,
-        limit: Option<u32>,
-    ) -> DbResult<Vec<UploadHistoryRecord>> {
+    pub fn list_upload_history(&self, limit: Option<u32>) -> DbResult<Vec<UploadHistoryRecord>> {
         let limit = i64::from(limit.unwrap_or(UPLOAD_HISTORY_DEFAULT_LIMIT as u32));
         self.firmware_call("list_upload_history", move |c| {
             let mut q = c.prepare(
@@ -596,8 +590,13 @@ impl Database {
 }
 
 enum Finish {
-    Completed { avrdude_output: Option<String> },
-    Failed { error_message: String, avrdude_output: Option<String> },
+    Completed {
+        avrdude_output: Option<String>,
+    },
+    Failed {
+        error_message: String,
+        avrdude_output: Option<String>,
+    },
     Cancelled,
 }
 
@@ -753,7 +752,9 @@ fn create_release(
     operation_id: OperationId,
     draft: FirmwareReleaseDraft,
 ) -> DbResult<Mutation<FirmwareReleaseRecord>> {
-    domain_tx(c, TOPIC, operation_id, move |tx| insert_release_row(tx, &draft))
+    domain_tx(c, TOPIC, operation_id, move |tx| {
+        insert_release_row(tx, &draft)
+    })
 }
 
 fn file_row(row: &rusqlite::Row<'_>) -> rusqlite::Result<FirmwareFileRecord> {

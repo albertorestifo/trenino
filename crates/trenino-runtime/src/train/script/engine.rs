@@ -200,7 +200,8 @@ impl Vm {
             max_log_message_bytes: limits.max_log_message_bytes,
         };
 
-        lua.set_memory_limit(limits.memory_bytes).map_err(setup_error)?;
+        lua.set_memory_limit(limits.memory_bytes)
+            .map_err(setup_error)?;
 
         install_sandbox(&lua, &ctx)?;
         install_api(&lua, &ctx)?;
@@ -243,14 +244,20 @@ impl Vm {
 
         // Compile and run top-level code under the compile deadline
         // (script_engine.ex `new/1` runs the chunk eagerly).
-        hook.deadline.set(Some(Instant::now() + limits.compile_wall));
+        hook.deadline
+            .set(Some(Instant::now() + limits.compile_wall));
         hook.instructions.set(0);
         marker.replace(None);
         let loaded = lua.load(code).set_name("script").exec();
         hook.deadline.set(None);
         loaded.map_err(|e| map_error(e, &marker))?;
 
-        Ok(Vm { lua, hook, effects, marker })
+        Ok(Vm {
+            lua,
+            hook,
+            effects,
+            marker,
+        })
     }
 
     /// Run `on_change(event)` and return the chronological effects.
@@ -413,7 +420,9 @@ fn to_lua_value(lua: &Lua, value: &ScriptValue) -> Result<Value, ScriptError> {
         ScriptValue::Boolean(b) => Value::Boolean(*b),
         ScriptValue::Integer(i) => Value::Integer(*i),
         ScriptValue::Float(f) => Value::Number(*f),
-        ScriptValue::String(s) => Value::String(lua.create_string(s.as_bytes()).map_err(setup_error)?),
+        ScriptValue::String(s) => {
+            Value::String(lua.create_string(s.as_bytes()).map_err(setup_error)?)
+        }
         ScriptValue::Opaque => Value::Nil,
     })
 }
@@ -506,7 +515,6 @@ fn truncate_utf8(message: &mut String, max_bytes: usize) {
 
 const RNG_INITIAL_SEED: u64 = 0x9E37_79B9_7F4A_7C15;
 
-
 impl fmt::Debug for ScriptVm {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("ScriptVm")
@@ -536,7 +544,16 @@ fn rng_next(cell: &Cell<u64>) -> u64 {
 /// install list (string, math, table, utf8, os, debug — no coroutine).
 fn install_sandbox(lua: &Lua, ctx: &Ctx) -> Result<(), ScriptError> {
     let globals = lua.globals();
-    for name in ["coroutine", "io", "file", "package", "load", "loadfile", "dofile", "require"] {
+    for name in [
+        "coroutine",
+        "io",
+        "file",
+        "package",
+        "load",
+        "loadfile",
+        "dofile",
+        "require",
+    ] {
         globals.raw_set(name, Value::Nil).map_err(setup_error)?;
     }
 
@@ -596,13 +613,13 @@ fn install_sandbox(lua: &Lua, ctx: &Ctx) -> Result<(), ScriptError> {
         })
         .map_err(setup_error)?;
     let upvalueid = lua
-        .create_function(|_, _: MultiValue| {
-            Ok(MultiValue::from_vec(vec![Value::Nil]))
-        })
+        .create_function(|_, _: MultiValue| Ok(MultiValue::from_vec(vec![Value::Nil])))
         .map_err(setup_error)?;
     trimmed.raw_set("sethook", sethook).map_err(setup_error)?;
     trimmed.raw_set("gethook", gethook).map_err(setup_error)?;
-    trimmed.raw_set("upvalueid", upvalueid).map_err(setup_error)?;
+    trimmed
+        .raw_set("upvalueid", upvalueid)
+        .map_err(setup_error)?;
     globals.raw_set("debug", trimmed).map_err(setup_error)?;
 
     // math.random/randomseed: replaced with a per-VM deterministic PRNG.
@@ -667,7 +684,8 @@ fn install_sandbox(lua: &Lua, ctx: &Ctx) -> Result<(), ScriptError> {
         })
         .map_err(setup_error)?;
     math.raw_set("random", random).map_err(setup_error)?;
-    math.raw_set("randomseed", randomseed).map_err(setup_error)?;
+    math.raw_set("randomseed", randomseed)
+        .map_err(setup_error)?;
 
     // print: collector override (script_engine.ex `setup_print/1`).
     let print_ctx = ctx.clone();
@@ -734,7 +752,10 @@ fn install_api(lua: &Lua, ctx: &Ctx) -> Result<(), ScriptError> {
                     let on = lua_truthy(&values[1]);
                     record(
                         &output_ctx,
-                        ScriptEffect::OutputSet { output_id: id.trunc() as i64, on },
+                        ScriptEffect::OutputSet {
+                            output_id: id.trunc() as i64,
+                            on,
+                        },
                     )?;
                     return Ok(MultiValue::from_vec(vec![Value::Boolean(true)]));
                 }
@@ -789,7 +810,9 @@ fn install_api(lua: &Lua, ctx: &Ctx) -> Result<(), ScriptError> {
                     if ms > 0.0 {
                         record(
                             &schedule_ctx,
-                            ScriptEffect::Schedule { ms: (ms.trunc() as i64).max(0) as u64 },
+                            ScriptEffect::Schedule {
+                                ms: (ms.trunc() as i64).max(0) as u64,
+                            },
                         )?;
                         return Ok(MultiValue::from_vec(vec![Value::Boolean(true)]));
                     }
@@ -797,9 +820,9 @@ fn install_api(lua: &Lua, ctx: &Ctx) -> Result<(), ScriptError> {
             }
             Ok(MultiValue::from_vec(vec![
                 Value::Nil,
-                Value::String(lua.create_string(
-                    "usage: schedule(milliseconds) where milliseconds > 0",
-                )?),
+                Value::String(
+                    lua.create_string("usage: schedule(milliseconds) where milliseconds > 0")?,
+                ),
             ]))
         })
         .map_err(setup_error)?;

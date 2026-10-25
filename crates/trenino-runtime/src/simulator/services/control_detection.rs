@@ -10,12 +10,12 @@
 //! cancellation and when the listener disappears — always unsubscribing and
 //! releasing its resource-arbiter lease.
 
+use crate::resource::{LeaseKind, ResourceArbiter, ResourceError};
+use crate::simulator::client::{SimulatorClient, SimulatorError};
+use serde_json::Value;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
-use serde_json::Value;
-use crate::resource::{LeaseKind, ResourceArbiter, ResourceError};
-use crate::simulator::client::{SimulatorClient, SimulatorError};
 
 use super::clock::Clock;
 use super::explorer::ROOT_PATH;
@@ -129,9 +129,7 @@ async fn detect(
     }
 }
 
-async fn discover_input_endpoints(
-    client: &SimulatorClient,
-) -> Result<Vec<String>, SimulatorError> {
+async fn discover_input_endpoints(client: &SimulatorClient) -> Result<Vec<String>, SimulatorError> {
     // Iterative pre-order DFS equivalent to the Elixir recursion: a node's own
     // writable InputValue endpoint precedes its children's, and a failed
     // child listing contributes nothing.

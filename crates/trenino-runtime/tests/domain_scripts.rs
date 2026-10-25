@@ -5,8 +5,8 @@
 use rusqlite::Connection;
 use tempfile::tempdir;
 use trenino_core::{EntityId, OperationId};
-use trenino_runtime::storage::{Database, MutationOutcome, StorageError};
 use trenino_runtime::storage::scripts::{ScriptDraft, ScriptPatch, Triggers};
+use trenino_runtime::storage::{Database, MutationOutcome, StorageError};
 
 fn database() -> (tempfile::TempDir, Database, std::path::PathBuf) {
     let dir = tempdir().unwrap();
@@ -49,9 +49,16 @@ fn list_scripts_empty_when_none() {
 fn list_scripts_ordered_by_name() {
     let (_dir, db, path) = database();
     let train = seed_train(&path, "Test Train");
-    db.create_script(OperationId(1), train, draft("Zebra")).unwrap();
-    db.create_script(OperationId(2), train, draft("Alpha")).unwrap();
-    let names: Vec<String> = db.list_scripts(train).unwrap().into_iter().map(|s| s.name).collect();
+    db.create_script(OperationId(1), train, draft("Zebra"))
+        .unwrap();
+    db.create_script(OperationId(2), train, draft("Alpha"))
+        .unwrap();
+    let names: Vec<String> = db
+        .list_scripts(train)
+        .unwrap()
+        .into_iter()
+        .map(|s| s.name)
+        .collect();
     assert_eq!(names, ["Alpha", "Zebra"]);
 }
 
@@ -60,7 +67,8 @@ fn list_scripts_ordered_by_name() {
 fn list_enabled_scripts_filters_disabled() {
     let (_dir, db, path) = database();
     let train = seed_train(&path, "Test Train");
-    db.create_script(OperationId(1), train, draft("Enabled")).unwrap();
+    db.create_script(OperationId(1), train, draft("Enabled"))
+        .unwrap();
     let mut disabled = draft("Disabled");
     disabled.enabled = false;
     db.create_script(OperationId(2), train, disabled).unwrap();
@@ -78,7 +86,10 @@ fn list_enabled_scripts_filters_disabled() {
 fn get_script_or_not_found() {
     let (_dir, db, path) = database();
     let train = seed_train(&path, "Test Train");
-    let created = db.create_script(OperationId(1), train, draft("Test")).unwrap().record;
+    let created = db
+        .create_script(OperationId(1), train, draft("Test"))
+        .unwrap()
+        .record;
     assert_eq!(db.get_script(created.id).unwrap().unwrap().name, "Test");
     assert!(db.get_script(EntityId(-1)).unwrap().is_none());
 }
@@ -104,11 +115,15 @@ fn create_script_with_triggers_and_validations() {
         db.create_script(
             OperationId(3),
             train,
-            ScriptDraft { code: String::new(), ..draft("Empty") }
+            ScriptDraft {
+                code: String::new(),
+                ..draft("Empty")
+            }
         ),
         Err(StorageError::Constraint { .. })
     ));
-    db.create_script(OperationId(4), train, draft("My Script")).unwrap_err();
+    db.create_script(OperationId(4), train, draft("My Script"))
+        .unwrap_err();
     assert!(matches!(
         db.create_script(OperationId(5), train, draft("My Script")),
         Err(StorageError::Conflict { .. })
@@ -133,7 +148,10 @@ fn create_script_rejects_unknown_train_and_tracks_revision() {
 fn update_script_fields() {
     let (_dir, db, path) = database();
     let train = seed_train(&path, "Test Train");
-    let script = db.create_script(OperationId(1), train, draft("Old")).unwrap().record;
+    let script = db
+        .create_script(OperationId(1), train, draft("Old"))
+        .unwrap()
+        .record;
     let updated = db
         .update_script(
             OperationId(2),
@@ -152,7 +170,14 @@ fn update_script_fields() {
     assert_eq!(updated.triggers, ["A.InputValue", "B.InputValue"]);
     // Untouched fields survive a partial patch.
     let renamed_only = db
-        .update_script(OperationId(3), script.id, ScriptPatch { name: Some("Newer".into()), ..Default::default() })
+        .update_script(
+            OperationId(3),
+            script.id,
+            ScriptPatch {
+                name: Some("Newer".into()),
+                ..Default::default()
+            },
+        )
         .unwrap()
         .record;
     assert_eq!(renamed_only.name, "Newer");
@@ -162,7 +187,10 @@ fn update_script_fields() {
         db.update_script(
             OperationId(4),
             script.id,
-            ScriptPatch { name: Some("".into()), ..Default::default() }
+            ScriptPatch {
+                name: Some("".into()),
+                ..Default::default()
+            }
         ),
         Err(StorageError::Constraint { .. })
     ));
@@ -177,7 +205,10 @@ fn update_script_fields() {
 fn delete_script_removes_row() {
     let (_dir, db, path) = database();
     let train = seed_train(&path, "Test Train");
-    let script = db.create_script(OperationId(1), train, draft("ToDelete")).unwrap().record;
+    let script = db
+        .create_script(OperationId(1), train, draft("ToDelete"))
+        .unwrap()
+        .record;
     db.delete_script(OperationId(2), script.id).unwrap();
     assert!(db.get_script(script.id).unwrap().is_none());
     assert!(matches!(
@@ -204,7 +235,11 @@ fn triggers_golden_json_round_trip() {
         .record;
     let connection = Connection::open(&path).unwrap();
     let raw: String = connection
-        .query_row("SELECT triggers FROM scripts WHERE id=?1", [script.id.0], |r| r.get(0))
+        .query_row(
+            "SELECT triggers FROM scripts WHERE id=?1",
+            [script.id.0],
+            |r| r.get(0),
+        )
         .unwrap();
     // Jason.encode!(["CurrentDrivableActor/Throttle.InputValue",
     // "CurrentDrivableActor/Function.HUD_GetSpeed"]) in Elixir produces:
@@ -228,7 +263,10 @@ fn triggers_golden_json_round_trip() {
 fn script_defaults_and_train_cascade() {
     let (_dir, db, path) = database();
     let train = seed_train(&path, "Test Train");
-    let script = db.create_script(OperationId(1), train, draft("Defaults")).unwrap().record;
+    let script = db
+        .create_script(OperationId(1), train, draft("Defaults"))
+        .unwrap()
+        .record;
     assert!(script.enabled);
     assert!(script.triggers.is_empty());
     let connection = Connection::open(&path).unwrap();

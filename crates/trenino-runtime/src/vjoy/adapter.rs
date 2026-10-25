@@ -178,7 +178,10 @@ pub enum AdapterEvent {
     Acquire(u8),
     /// The neutral report applied to `device`; `center` is the
     /// [`neutral_axis_value`] computed from the scripted range.
-    Neutralize { device: u8, center: i32 },
+    Neutralize {
+        device: u8,
+        center: i32,
+    },
     Release(u8),
 }
 
@@ -308,9 +311,7 @@ impl VjoyAdapter for FakeVjoyAdapter {
             return Err(VjoyError::AcquireFailed(device, detail.clone()));
         }
         match state.status {
-            VjoyDeviceStatus::Busy | VjoyDeviceStatus::Owned => {
-                Err(VjoyError::DeviceBusy(device))
-            }
+            VjoyDeviceStatus::Busy | VjoyDeviceStatus::Owned => Err(VjoyError::DeviceBusy(device)),
             VjoyDeviceStatus::Missing => Err(VjoyError::DeviceMissing(device)),
             VjoyDeviceStatus::Free | VjoyDeviceStatus::Unknown => {
                 self.acquired.insert(device);
@@ -326,7 +327,8 @@ impl VjoyAdapter for FakeVjoyAdapter {
             .map(|state| state.axis_range)
             .unwrap_or((0, 32767));
         let center = neutral_axis_value(min, max);
-        self.events.push(AdapterEvent::Neutralize { device, center });
+        self.events
+            .push(AdapterEvent::Neutralize { device, center });
         if self.acquired.contains(&device) {
             Ok(())
         } else {

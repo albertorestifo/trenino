@@ -100,7 +100,10 @@ impl TrainsPort for FakeTrains {
     }
 
     fn delete_element(&self, element: &ElementRecord) -> Result<(), PortError> {
-        self.elements.lock().unwrap().retain(|candidate| candidate.id != element.id);
+        self.elements
+            .lock()
+            .unwrap()
+            .retain(|candidate| candidate.id != element.id);
         if let Ok(mut detail) = self.detail.lock() {
             if let Some(detail) = detail.as_mut() {
                 detail
@@ -1105,9 +1108,8 @@ impl SseClient {
         let headers = head
             .lines()
             .filter_map(|line| {
-                line.split_once(": ").map(|(key, value)| {
-                    (key.to_ascii_lowercase(), value.trim().to_string())
-                })
+                line.split_once(": ")
+                    .map(|(key, value)| (key.to_ascii_lowercase(), value.trim().to_string()))
             })
             .collect::<HashMap<_, _>>();
         let status = head
@@ -1135,7 +1137,8 @@ impl SseClient {
         if read == 0 {
             panic!("SSE stream ended unexpectedly");
         }
-        self.buffer.push_str(&String::from_utf8_lossy(&chunk[..read]));
+        self.buffer
+            .push_str(&String::from_utf8_lossy(&chunk[..read]));
     }
 
     fn read_until(&mut self, marker: &str) -> String {
@@ -1297,8 +1300,14 @@ fn tools_list_definitions_have_required_fields() {
     let response = rpc(&fixture, "tools/list", json!({}));
     for tool in response["result"]["tools"].as_array().unwrap() {
         assert!(tool["name"].is_string(), "name missing in {tool}");
-        assert!(tool["description"].is_string(), "description missing in {tool}");
-        assert!(tool["inputSchema"].is_object(), "inputSchema missing in {tool}");
+        assert!(
+            tool["description"].is_string(),
+            "description missing in {tool}"
+        );
+        assert!(
+            tool["inputSchema"].is_object(),
+            "inputSchema missing in {tool}"
+        );
     }
 }
 
@@ -1610,7 +1619,12 @@ fn element_tools_crud_and_errors() {
 
     // Missing required argument (Elixir raises FunctionClauseError → 500;
     // Rust returns a tool error — documented deviation).
-    let error = call(&fixture, "create_element", json!({"train_id": 3, "name": "x"})).unwrap_err();
+    let error = call(
+        &fixture,
+        "create_element",
+        json!({"train_id": 3, "name": "x"}),
+    )
+    .unwrap_err();
     assert!(error.contains("Missing required argument: type"), "{error}");
 
     let error = call(
@@ -1726,7 +1740,10 @@ fn i2c_address_rejection_cases() {
             json!({"device_id": 1, "module_chip": "ht16k33", "i2c_address": bad}),
         )
         .unwrap_err();
-        assert_eq!(error, "Invalid i2c_address: use decimal (112) or hex (0x70)");
+        assert_eq!(
+            error,
+            "Invalid i2c_address: use decimal (112) or hex (0x70)"
+        );
     }
 
     // Validation passthrough ("Validation failed: ...").
@@ -1831,7 +1848,10 @@ fn button_binding_tools_crud_and_conflict() {
     assert_eq!(created["button_binding"]["on_value"], 1.0);
 
     let fetched = call(&fixture, "get_button_binding", json!({"element_id": 11})).unwrap();
-    assert_eq!(fetched["button_binding"]["id"], created["button_binding"]["id"]);
+    assert_eq!(
+        fetched["button_binding"]["id"],
+        created["button_binding"]["id"]
+    );
 
     let updated = call(
         &fixture,
@@ -1989,7 +2009,10 @@ fn sequence_create_accepts_json_string_commands_and_empty_commands() {
     )
     .unwrap();
     assert_eq!(created["sequence"]["commands"].as_array().unwrap().len(), 1);
-    assert_eq!(created["sequence"]["commands"][0]["endpoint"], "A.InputValue");
+    assert_eq!(
+        created["sequence"]["commands"][0]["endpoint"],
+        "A.InputValue"
+    );
 
     let created = call(
         &fixture,
@@ -2023,7 +2046,12 @@ fn sequence_tools_update_delete_and_errors() {
     .unwrap();
     let id = created["sequence"]["id"].as_i64().unwrap();
 
-    let updated = call(&fixture, "update_sequence", json!({"id": id, "name": "New Name"})).unwrap();
+    let updated = call(
+        &fixture,
+        "update_sequence",
+        json!({"id": id, "name": "New Name"}),
+    )
+    .unwrap();
     assert_eq!(updated["sequence"]["name"], "New Name");
     assert_eq!(updated["sequence"]["commands"].as_array().unwrap().len(), 2);
 
@@ -2043,10 +2071,14 @@ fn sequence_tools_update_delete_and_errors() {
     let error = call(&fixture, "update_sequence", json!({"id": 999})).unwrap_err();
     assert_eq!(error, "Sequence not found with id 999");
 
-    let error = call(&fixture, "create_sequence", json!({"train_id": 3, "name": ""})).unwrap_err();
+    let error = call(
+        &fixture,
+        "create_sequence",
+        json!({"train_id": 3, "name": ""}),
+    )
+    .unwrap_err();
     assert_eq!(error, "Validation failed: name can't be blank");
 }
-
 
 #[test]
 fn sequence_set_commands_failure_phrase() {
@@ -2060,8 +2092,7 @@ fn sequence_set_commands_failure_phrase() {
     )
     .unwrap();
     let id = created["sequence"]["id"].as_i64().unwrap();
-    *fixture.sequences.commands_error.lock().unwrap() =
-        Some(PortError::Failed("boom".into()));
+    *fixture.sequences.commands_error.lock().unwrap() = Some(PortError::Failed("boom".into()));
     let error = call(
         &fixture,
         "update_sequence",
@@ -2124,7 +2155,12 @@ fn script_tools_crud() {
     let fetched = call(&fixture, "get_script", json!({"id": id})).unwrap();
     assert_eq!(fetched["script"]["code"], "return 1");
 
-    let updated = call(&fixture, "update_script", json!({"id": id, "name": "New Name"})).unwrap();
+    let updated = call(
+        &fixture,
+        "update_script",
+        json!({"id": id, "name": "New Name"}),
+    )
+    .unwrap();
     assert_eq!(updated["script"]["name"], "New Name");
     assert_eq!(updated["script"]["code"], "return 1");
     let updated = call(
@@ -2219,8 +2255,12 @@ fn simulator_tools_report_not_connected_and_pass_through() {
 fn detection_tool_detected_and_timeout_payloads() {
     // Mirrors: detection_tools_test.exs
     let fixture = fixture();
-    fixture.detection.scripted.lock().unwrap().push_back(
-        DetectionOutcome::Detected(DetectedInput {
+    fixture
+        .detection
+        .scripted
+        .lock()
+        .unwrap()
+        .push_back(DetectionOutcome::Detected(DetectedInput {
             input_id: 7,
             pin: 3,
             input_type: InputType::Analog,
@@ -2228,8 +2268,7 @@ fn detection_tool_detected_and_timeout_payloads() {
             device_id: 1,
             device_name: "Arduino".to_string(),
             value: 128,
-        }),
-    );
+        }));
 
     let detected = call(
         &fixture,
@@ -2275,7 +2314,12 @@ fn detection_tool_detected_and_timeout_payloads() {
             device_name: "Arduino".to_string(),
             value: 1,
         }));
-    call(&fixture, "detect_hardware_input", json!({"prompt": "Press a button"})).unwrap();
+    call(
+        &fixture,
+        "detect_hardware_input",
+        json!({"prompt": "Press a button"}),
+    )
+    .unwrap();
     {
         let requests = fixture.detection.requests.lock().unwrap();
         assert_eq!(requests[1].kind, DetectionKind::Any);
@@ -2292,7 +2336,10 @@ fn detection_tool_detected_and_timeout_payloads() {
     assert_eq!(timed_out, json!({"detected": false, "reason": "timeout"}));
 
     let error = call(&fixture, "detect_hardware_input", json!({})).unwrap_err();
-    assert!(error.contains("Missing required argument: prompt"), "{error}");
+    assert!(
+        error.contains("Missing required argument: prompt"),
+        "{error}"
+    );
 }
 
 // ---------------------------------------------------------------------------
@@ -2323,7 +2370,10 @@ fn vjoy_status_and_reason_shapes() {
 
     *fixture.vjoy.status.lock().unwrap() = VjoyStatusDetails {
         status: VjoyStatus::Degraded,
-        reason: Some(VjoyReason::CodeWithDetails("acquire_failed".into(), "%{} bridge".into())),
+        reason: Some(VjoyReason::CodeWithDetails(
+            "acquire_failed".into(),
+            "%{} bridge".into(),
+        )),
     };
     let status = call(&fixture, "get_virtual_joystick_status", json!({})).unwrap();
     assert_eq!(
@@ -2409,7 +2459,10 @@ fn vjoy_mapping_tools_and_structural_errors() {
         json!({"id": 1}),
     )
     .unwrap();
-    assert_eq!(missing, json!({"status": "error", "reason": {"code": "not_found"}}));
+    assert_eq!(
+        missing,
+        json!({"status": "error", "reason": {"code": "not_found"}})
+    );
 
     fixture
         .vjoy
@@ -2417,9 +2470,9 @@ fn vjoy_mapping_tools_and_structural_errors() {
         .lock()
         .unwrap()
         .replace(VjoyPutError::Validation(vec![(
-        "target_type".to_string(),
-        vec!["must target an axis".to_string()],
-    )]));
+            "target_type".to_string(),
+            vec!["must target an axis".to_string()],
+        )]));
     let validation = call(
         &fixture,
         "map_virtual_joystick_button",
@@ -2483,29 +2536,122 @@ fn vjoy_argument_validation_rejects_without_raising() {
     // out-of-range, and extra mapping arguments without raising".
     let fixture = fixture();
     let cases = [
-        ("map_virtual_joystick_axis", json!({"axis": "x"}), "input_id", "is required"),
-        ("map_virtual_joystick_axis", json!({"input_id": "1", "axis": "x"}), "input_id", "must be an integer"),
-        ("map_virtual_joystick_axis", json!({"input_id": 1, "axis": "pov"}), "axis", "must be a supported axis"),
-        ("map_virtual_joystick_axis", json!({"input_id": 1, "axis": "x", "device_index": 2}), "device_index", "must be the integer 1"),
-        ("map_virtual_joystick_axis", json!({"input_id": 1, "axis": "x", "device_index": 1.0}), "device_index", "must be the integer 1"),
-        ("map_virtual_joystick_axis", json!({"input_id": 1, "axis": "x", "inverted": 1}), "inverted", "must be a boolean"),
-        ("map_virtual_joystick_axis", json!({"input_id": 1, "axis": "x", "replace": "true"}), "replace", "must be a boolean"),
-        ("map_virtual_joystick_axis", json!({"input_id": 1, "axis": "x", "command": "cmd"}), "command", "is not allowed"),
-        ("map_virtual_joystick_button", json!({"button": 1}), "input_id", "is required"),
-        ("map_virtual_joystick_button", json!({"input_id": 1, "button": 0}), "button", "must be an integer from 1 to 32"),
-        ("map_virtual_joystick_button", json!({"input_id": 1, "button": 33}), "button", "must be an integer from 1 to 32"),
-        ("map_virtual_joystick_button", json!({"input_id": 1, "button": 1.0}), "button", "must be an integer from 1 to 32"),
-        ("map_virtual_joystick_button", json!({"input_id": 1, "button": 1, "device_index": 1.0}), "device_index", "must be the integer 1"),
-        ("map_virtual_joystick_button", json!({"input_id": 1, "button": 1, "replace": "false"}), "replace", "must be a boolean"),
-        ("map_virtual_joystick_button", json!({"input_id": 1, "button": 1, "extra": true}), "extra", "is not allowed"),
-        ("delete_virtual_joystick_mapping", json!({}), "id", "is required"),
-        ("delete_virtual_joystick_mapping", json!({"id": "1"}), "id", "must be an integer"),
-        ("delete_virtual_joystick_mapping", json!({"id": 1, "extra": true}), "extra", "is not allowed"),
+        (
+            "map_virtual_joystick_axis",
+            json!({"axis": "x"}),
+            "input_id",
+            "is required",
+        ),
+        (
+            "map_virtual_joystick_axis",
+            json!({"input_id": "1", "axis": "x"}),
+            "input_id",
+            "must be an integer",
+        ),
+        (
+            "map_virtual_joystick_axis",
+            json!({"input_id": 1, "axis": "pov"}),
+            "axis",
+            "must be a supported axis",
+        ),
+        (
+            "map_virtual_joystick_axis",
+            json!({"input_id": 1, "axis": "x", "device_index": 2}),
+            "device_index",
+            "must be the integer 1",
+        ),
+        (
+            "map_virtual_joystick_axis",
+            json!({"input_id": 1, "axis": "x", "device_index": 1.0}),
+            "device_index",
+            "must be the integer 1",
+        ),
+        (
+            "map_virtual_joystick_axis",
+            json!({"input_id": 1, "axis": "x", "inverted": 1}),
+            "inverted",
+            "must be a boolean",
+        ),
+        (
+            "map_virtual_joystick_axis",
+            json!({"input_id": 1, "axis": "x", "replace": "true"}),
+            "replace",
+            "must be a boolean",
+        ),
+        (
+            "map_virtual_joystick_axis",
+            json!({"input_id": 1, "axis": "x", "command": "cmd"}),
+            "command",
+            "is not allowed",
+        ),
+        (
+            "map_virtual_joystick_button",
+            json!({"button": 1}),
+            "input_id",
+            "is required",
+        ),
+        (
+            "map_virtual_joystick_button",
+            json!({"input_id": 1, "button": 0}),
+            "button",
+            "must be an integer from 1 to 32",
+        ),
+        (
+            "map_virtual_joystick_button",
+            json!({"input_id": 1, "button": 33}),
+            "button",
+            "must be an integer from 1 to 32",
+        ),
+        (
+            "map_virtual_joystick_button",
+            json!({"input_id": 1, "button": 1.0}),
+            "button",
+            "must be an integer from 1 to 32",
+        ),
+        (
+            "map_virtual_joystick_button",
+            json!({"input_id": 1, "button": 1, "device_index": 1.0}),
+            "device_index",
+            "must be the integer 1",
+        ),
+        (
+            "map_virtual_joystick_button",
+            json!({"input_id": 1, "button": 1, "replace": "false"}),
+            "replace",
+            "must be a boolean",
+        ),
+        (
+            "map_virtual_joystick_button",
+            json!({"input_id": 1, "button": 1, "extra": true}),
+            "extra",
+            "is not allowed",
+        ),
+        (
+            "delete_virtual_joystick_mapping",
+            json!({}),
+            "id",
+            "is required",
+        ),
+        (
+            "delete_virtual_joystick_mapping",
+            json!({"id": "1"}),
+            "id",
+            "must be an integer",
+        ),
+        (
+            "delete_virtual_joystick_mapping",
+            json!({"id": 1, "extra": true}),
+            "extra",
+            "is not allowed",
+        ),
     ];
     for (tool, arguments, field, message) in cases {
         let outcome = call(&fixture, tool, arguments.clone()).unwrap();
         assert_eq!(outcome["status"], "error", "{tool} {arguments}");
-        assert_eq!(outcome["reason"]["code"], "validation_failed", "{tool} {arguments}");
+        assert_eq!(
+            outcome["reason"]["code"], "validation_failed",
+            "{tool} {arguments}"
+        );
         let errors = outcome["reason"]["errors"].as_array().unwrap();
         assert!(
             errors
@@ -2559,10 +2705,18 @@ fn sse_sends_endpoint_event_and_delivers_messages() {
 
     let (mut client, status, headers) = SseClient::connect(port);
     assert_eq!(status, 200);
-    assert_eq!(headers.get("content-type").map(String::as_str), Some("text/event-stream"));
-    assert_eq!(headers.get("cache-control").map(String::as_str), Some("no-cache"));
     assert_eq!(
-        headers.get("access-control-allow-origin").map(String::as_str),
+        headers.get("content-type").map(String::as_str),
+        Some("text/event-stream")
+    );
+    assert_eq!(
+        headers.get("cache-control").map(String::as_str),
+        Some("no-cache")
+    );
+    assert_eq!(
+        headers
+            .get("access-control-allow-origin")
+            .map(String::as_str),
         Some("*")
     );
 
@@ -2598,7 +2752,11 @@ fn messages_endpoint_status_errors() {
     let fixture = fixture();
     let (_server, port) = start_server(&fixture);
 
-    let response = post_json(port, "/mcp/messages", r#"{"jsonrpc": "2.0", "method": "ping", "id": 1}"#);
+    let response = post_json(
+        port,
+        "/mcp/messages",
+        r#"{"jsonrpc": "2.0", "method": "ping", "id": 1}"#,
+    );
     assert_eq!(response.status, 400);
     assert!(response.body.contains("session_id"), "{}", response.body);
 
@@ -2608,7 +2766,11 @@ fn messages_endpoint_status_errors() {
         r#"{"jsonrpc": "2.0", "method": "ping", "id": 1}"#,
     );
     assert_eq!(response.status, 404);
-    assert!(response.body.contains("Session not found"), "{}", response.body);
+    assert!(
+        response.body.contains("Session not found"),
+        "{}",
+        response.body
+    );
 }
 
 #[test]
@@ -2650,7 +2812,10 @@ fn tools_list_and_call_flow_over_http() {
     let (_, data) = client.next_event();
     let message: Value = serde_json::from_str(&data).unwrap();
     let text = message["result"]["content"][0]["text"].as_str().unwrap();
-    assert_eq!(serde_json::from_str::<Value>(text).unwrap(), json!({"trains": []}));
+    assert_eq!(
+        serde_json::from_str::<Value>(text).unwrap(),
+        json!({"trains": []})
+    );
 }
 
 #[test]
@@ -2682,8 +2847,16 @@ fn concurrent_sessions_are_independent() {
     let (mut second, _, _) = SseClient::connect(port);
     let (_, first_endpoint) = first.next_event();
     let (_, second_endpoint) = second.next_event();
-    let first_id = first_endpoint.split("session_id=").nth(1).unwrap().to_string();
-    let second_id = second_endpoint.split("session_id=").nth(1).unwrap().to_string();
+    let first_id = first_endpoint
+        .split("session_id=")
+        .nth(1)
+        .unwrap()
+        .to_string();
+    let second_id = second_endpoint
+        .split("session_id=")
+        .nth(1)
+        .unwrap()
+        .to_string();
     assert_ne!(first_id, second_id);
 
     post_json(
@@ -2806,7 +2979,10 @@ fn busy_port_is_degraded_not_fatal_and_retryable() {
         }
         other => panic!("expected degraded, got {other:?}"),
     }
-    assert!(matches!(server_b.status(), McpServerStatus::Degraded { .. }));
+    assert!(matches!(
+        server_b.status(),
+        McpServerStatus::Degraded { .. }
+    ));
 
     // Double start while already attempting is rejected as a programming
     // error only after a successful bind — a degraded server may retry.
@@ -2861,7 +3037,10 @@ fn stop_ends_sse_streams_and_releases_the_port() {
 
     server.stop().unwrap();
     // The SSE stream terminates (EOF, not timeout).
-    client.stream.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
+    client
+        .stream
+        .set_read_timeout(Some(Duration::from_secs(5)))
+        .unwrap();
     let mut sink = Vec::new();
     let ended = client.stream.read_to_end(&mut sink);
     assert!(ended.is_ok(), "SSE stream should close cleanly");

@@ -42,10 +42,8 @@
 //! notification channel; per-topic revision accounting here is the Rust
 //! structuring of that behavior). The database worker is the single writer, so
 //! Ecto's `mode: :immediate` serialization is structural here.
+use super::super::{Connection, Database, DbResult, Mutation, Request, SchemaMode, StorageError};
 use super::domain_tx;
-use super::super::{
-    Connection, Database, DbResult, Mutation, Request, SchemaMode, StorageError,
-};
 use rusqlite::{params, OptionalExtension, Transaction};
 use std::sync::mpsc;
 use trenino_core::{EntityId, OperationId};
@@ -353,7 +351,10 @@ impl Database {
     }
 
     /// `Trenino.Train.get_binding/1`: the one binding of a lever config.
-    pub fn get_lever_binding(&self, lever_config_id: EntityId) -> DbResult<Option<LeverBindingRecord>> {
+    pub fn get_lever_binding(
+        &self,
+        lever_config_id: EntityId,
+    ) -> DbResult<Option<LeverBindingRecord>> {
         self.bindings_call("get_lever_binding", move |c| {
             lever_binding_row(c, lever_config_id)
         })
@@ -366,7 +367,12 @@ impl Database {
         lever_config_id: EntityId,
         input_id: EntityId,
     ) -> DbResult<Mutation<LeverBindingRecord>> {
-        self.bind_lever_input_with(operation_id, lever_config_id, input_id, BindOptions::default())
+        self.bind_lever_input_with(
+            operation_id,
+            lever_config_id,
+            input_id,
+            BindOptions::default(),
+        )
     }
 
     /// `Trenino.Train.bind_input/3`: creates the binding or rebinds the lever
@@ -381,7 +387,7 @@ impl Database {
         self.bindings_call("bind_lever_input", move |c| {
             domain_tx(c, TOPIC, operation_id, move |tx| {
                 let existing = lever_binding_row(tx, lever_config_id)?;
-                let enabled = existing.as_ref().map_or(true, |row| row.enabled);
+                let enabled = existing.as_ref().is_none_or(|row| row.enabled);
                 apply_destination_exclusivity(tx, input_id, enabled, opts.replace)?;
                 let now = timestamp();
                 match existing {
@@ -414,7 +420,10 @@ impl Database {
             domain_tx(c, TOPIC, operation_id, move |tx| {
                 let record =
                     lever_binding_row(tx, lever_config_id)?.ok_or(StorageError::NotFound)?;
-                tx.execute("DELETE FROM lever_input_bindings WHERE id=?1", [record.id.0])?;
+                tx.execute(
+                    "DELETE FROM lever_input_bindings WHERE id=?1",
+                    [record.id.0],
+                )?;
                 Ok(record)
             })
         })
@@ -427,7 +436,12 @@ impl Database {
         lever_config_id: EntityId,
         enabled: bool,
     ) -> DbResult<Mutation<LeverBindingRecord>> {
-        self.set_lever_binding_enabled_with(operation_id, lever_config_id, enabled, BindOptions::default())
+        self.set_lever_binding_enabled_with(
+            operation_id,
+            lever_config_id,
+            enabled,
+            BindOptions::default(),
+        )
     }
 
     /// `Trenino.Train.set_binding_enabled/3`: enabling a binding whose input
@@ -455,7 +469,10 @@ impl Database {
 
     /// `Trenino.Train.list_bindings_for_train/1`: bindings whose lever config
     /// belongs to an element of the train.
-    pub fn list_lever_bindings_for_train(&self, train_id: EntityId) -> DbResult<Vec<LeverBindingRecord>> {
+    pub fn list_lever_bindings_for_train(
+        &self,
+        train_id: EntityId,
+    ) -> DbResult<Vec<LeverBindingRecord>> {
         self.bindings_call("list_lever_bindings_for_train", move |c| {
             let mut statement = c.prepare(
                 "SELECT b.id,b.lever_config_id,b.input_id,b.enabled
@@ -479,7 +496,10 @@ impl Database {
     }
 
     /// `Trenino.Train.get_button_binding/1`: the one binding of an element.
-    pub fn get_button_binding(&self, element_id: EntityId) -> DbResult<Option<ButtonBindingRecord>> {
+    pub fn get_button_binding(
+        &self,
+        element_id: EntityId,
+    ) -> DbResult<Option<ButtonBindingRecord>> {
         self.bindings_call("get_button_binding", move |c| {
             button_binding_row_by_element(c, element_id)
         })
@@ -493,7 +513,13 @@ impl Database {
         input_id: EntityId,
         draft: ButtonBindingDraft,
     ) -> DbResult<Mutation<ButtonBindingRecord>> {
-        self.create_button_binding_with(operation_id, element_id, input_id, draft, BindOptions::default())
+        self.create_button_binding_with(
+            operation_id,
+            element_id,
+            input_id,
+            draft,
+            BindOptions::default(),
+        )
     }
 
     /// `Trenino.Train.create_button_binding/4`: creating an enabled binding
@@ -539,7 +565,8 @@ impl Database {
     ) -> DbResult<Mutation<ButtonBindingRecord>> {
         self.bindings_call("update_button_binding", move |c| {
             domain_tx(c, TOPIC, operation_id, move |tx| {
-                let current = button_binding_row_by_id(tx, binding_id)?.ok_or(StorageError::NotFound)?;
+                let current =
+                    button_binding_row_by_id(tx, binding_id)?.ok_or(StorageError::NotFound)?;
                 let record = merge_button_patch(current, &patch)?;
                 validate_button_binding(&record)?;
                 apply_destination_exclusivity(tx, record.input_id, record.enabled, opts.replace)?;
@@ -559,7 +586,10 @@ impl Database {
             domain_tx(c, TOPIC, operation_id, move |tx| {
                 let record =
                     button_binding_row_by_element(tx, element_id)?.ok_or(StorageError::NotFound)?;
-                tx.execute("DELETE FROM button_input_bindings WHERE id=?1", [record.id.0])?;
+                tx.execute(
+                    "DELETE FROM button_input_bindings WHERE id=?1",
+                    [record.id.0],
+                )?;
                 Ok(record)
             })
         })
@@ -572,7 +602,12 @@ impl Database {
         element_id: EntityId,
         enabled: bool,
     ) -> DbResult<Mutation<ButtonBindingRecord>> {
-        self.set_button_binding_enabled_with(operation_id, element_id, enabled, BindOptions::default())
+        self.set_button_binding_enabled_with(
+            operation_id,
+            element_id,
+            enabled,
+            BindOptions::default(),
+        )
     }
 
     /// `Trenino.Train.set_button_binding_enabled/3`: enabling a binding whose
@@ -599,7 +634,10 @@ impl Database {
     }
 
     /// `Trenino.Train.list_button_bindings_for_train/1`.
-    pub fn list_button_bindings_for_train(&self, train_id: EntityId) -> DbResult<Vec<ButtonBindingRecord>> {
+    pub fn list_button_bindings_for_train(
+        &self,
+        train_id: EntityId,
+    ) -> DbResult<Vec<ButtonBindingRecord>> {
         self.bindings_call("list_button_bindings_for_train", move |c| {
             let mut statement = c.prepare(
                 "SELECT b.id,b.element_id,b.input_id,b.endpoint,b.on_value,b.off_value,b.enabled,b.mode,b.hardware_type,b.repeat_interval_ms,b.keystroke,b.on_sequence_id,b.off_sequence_id
@@ -621,7 +659,10 @@ impl Database {
 
     /// `Trenino.Train.list_enabled_output_bindings/1` (no ordering, mirroring
     /// the Elixir query).
-    pub fn list_enabled_output_bindings(&self, train_id: EntityId) -> DbResult<Vec<OutputBindingRecord>> {
+    pub fn list_enabled_output_bindings(
+        &self,
+        train_id: EntityId,
+    ) -> DbResult<Vec<OutputBindingRecord>> {
         self.output_bindings_where(train_id, "", true)
     }
 
@@ -646,7 +687,10 @@ impl Database {
     }
 
     /// `Trenino.Train.get_output_binding/1`.
-    pub fn get_output_binding(&self, binding_id: EntityId) -> DbResult<Option<OutputBindingRecord>> {
+    pub fn get_output_binding(
+        &self,
+        binding_id: EntityId,
+    ) -> DbResult<Option<OutputBindingRecord>> {
         self.bindings_call("get_output_binding", move |c| {
             output_binding_row(c, binding_id)
         })
@@ -733,7 +777,10 @@ impl Database {
         self.bindings_call("delete_output_binding", move |c| {
             domain_tx(c, TOPIC, operation_id, move |tx| {
                 let record = output_binding_row(tx, binding_id)?.ok_or(StorageError::NotFound)?;
-                tx.execute("DELETE FROM train_output_bindings WHERE id=?1", [record.id.0])?;
+                tx.execute(
+                    "DELETE FROM train_output_bindings WHERE id=?1",
+                    [record.id.0],
+                )?;
                 Ok(record)
             })
         })
@@ -745,7 +792,10 @@ impl Database {
     }
 
     /// `Trenino.Train.list_enabled_display_bindings/1`, ordered by name.
-    pub fn list_enabled_display_bindings(&self, train_id: EntityId) -> DbResult<Vec<DisplayBindingRecord>> {
+    pub fn list_enabled_display_bindings(
+        &self,
+        train_id: EntityId,
+    ) -> DbResult<Vec<DisplayBindingRecord>> {
         self.display_bindings_where(train_id, "ORDER BY name", true)
     }
 
@@ -770,7 +820,10 @@ impl Database {
     }
 
     /// `Trenino.Train.get_display_binding/1`.
-    pub fn get_display_binding(&self, binding_id: EntityId) -> DbResult<Option<DisplayBindingRecord>> {
+    pub fn get_display_binding(
+        &self,
+        binding_id: EntityId,
+    ) -> DbResult<Option<DisplayBindingRecord>> {
         self.bindings_call("get_display_binding", move |c| {
             display_binding_row(c, binding_id)
         })
@@ -839,7 +892,10 @@ impl Database {
         self.bindings_call("delete_display_binding", move |c| {
             domain_tx(c, TOPIC, operation_id, move |tx| {
                 let record = display_binding_row(tx, binding_id)?.ok_or(StorageError::NotFound)?;
-                tx.execute("DELETE FROM train_display_bindings WHERE id=?1", [record.id.0])?;
+                tx.execute(
+                    "DELETE FROM train_display_bindings WHERE id=?1",
+                    [record.id.0],
+                )?;
                 Ok(record)
             })
         })
@@ -873,12 +929,16 @@ fn apply_destination_exclusivity(
         .optional()?;
     match claimed {
         Some(mapping_id) if replace => {
-            tx.execute("DELETE FROM virtual_joystick_mappings WHERE id=?1", [mapping_id])?;
+            tx.execute(
+                "DELETE FROM virtual_joystick_mappings WHERE id=?1",
+                [mapping_id],
+            )?;
             Ok(())
         }
         Some(_) => Err(StorageError::Conflict {
-            detail: "destination conflict: input is already mapped to a virtual joystick destination"
-                .into(),
+            detail:
+                "destination conflict: input is already mapped to a virtual joystick destination"
+                    .into(),
         }),
         None => Ok(()),
     }
@@ -936,7 +996,9 @@ fn merge_button_patch(
         enabled: patch.enabled.unwrap_or(current.enabled),
         mode: patch.mode.unwrap_or(current.mode),
         hardware_type: patch.hardware_type.unwrap_or(current.hardware_type),
-        repeat_interval_ms: patch.repeat_interval_ms.unwrap_or(current.repeat_interval_ms),
+        repeat_interval_ms: patch
+            .repeat_interval_ms
+            .unwrap_or(current.repeat_interval_ms),
         keystroke: patch.keystroke.clone().unwrap_or(current.keystroke),
         on_sequence_id: patch.on_sequence_id.unwrap_or(current.on_sequence_id),
         off_sequence_id: patch.off_sequence_id.unwrap_or(current.off_sequence_id),
@@ -971,7 +1033,9 @@ fn validate_button_binding(record: &ButtonBindingRecord) -> DbResult<()> {
         && record.hardware_type == ButtonHardwareType::Momentary
         && record.off_sequence_id.is_some()
     {
-        return Err(invalid("off_sequence_id is only valid for latching hardware"));
+        return Err(invalid(
+            "off_sequence_id is only valid for latching hardware",
+        ));
     }
     if record.repeat_interval_ms <= 0 {
         return Err(invalid("repeat_interval_ms must be greater than 0"));
@@ -1038,13 +1102,8 @@ fn button_binding_parse(raw: ButtonBindingRaw) -> DbResult<ButtonBindingRecord> 
 
 const BUTTON_BINDING_COLUMNS: &str = "id,element_id,input_id,endpoint,on_value,off_value,enabled,mode,hardware_type,repeat_interval_ms,keystroke,on_sequence_id,off_sequence_id";
 
-fn button_binding_row_by_id(
-    c: &Connection,
-    id: EntityId,
-) -> DbResult<Option<ButtonBindingRecord>> {
-    let sql = format!(
-        "SELECT {BUTTON_BINDING_COLUMNS} FROM button_input_bindings WHERE id=?1"
-    );
+fn button_binding_row_by_id(c: &Connection, id: EntityId) -> DbResult<Option<ButtonBindingRecord>> {
+    let sql = format!("SELECT {BUTTON_BINDING_COLUMNS} FROM button_input_bindings WHERE id=?1");
     let raw = c
         .query_row(&sql, [id.0], button_binding_raw_row)
         .optional()?;
@@ -1055,9 +1114,8 @@ fn button_binding_row_by_element(
     c: &Connection,
     element_id: EntityId,
 ) -> DbResult<Option<ButtonBindingRecord>> {
-    let sql = format!(
-        "SELECT {BUTTON_BINDING_COLUMNS} FROM button_input_bindings WHERE element_id=?1"
-    );
+    let sql =
+        format!("SELECT {BUTTON_BINDING_COLUMNS} FROM button_input_bindings WHERE element_id=?1");
     let raw = c
         .query_row(&sql, [element_id.0], button_binding_raw_row)
         .optional()?;
@@ -1203,10 +1261,7 @@ fn output_binding_parse(raw: OutputBindingRaw) -> DbResult<OutputBindingRecord> 
     })
 }
 
-fn output_binding_row(
-    c: &Connection,
-    id: EntityId,
-) -> DbResult<Option<OutputBindingRecord>> {
+fn output_binding_row(c: &Connection, id: EntityId) -> DbResult<Option<OutputBindingRecord>> {
     let raw = c
         .query_row(
             "SELECT id,train_id,name,output_type,output_id,endpoint,operator,value_a,value_b,enabled FROM train_output_bindings WHERE id=?1",
@@ -1271,7 +1326,11 @@ fn validate_display_binding(record: &DisplayBindingRecord) -> DbResult<()> {
     if record.format_string.trim().is_empty() {
         return Err(invalid("format_string can't be blank"));
     }
-    if record.name.as_ref().is_some_and(|n| n.chars().count() > 100) {
+    if record
+        .name
+        .as_ref()
+        .is_some_and(|n| n.chars().count() > 100)
+    {
         return Err(invalid("name should be at most 100 characters"));
     }
     if record.format_string.chars().count() > 200 {
@@ -1349,10 +1408,7 @@ fn display_binding_parse(raw: DisplayBindingRaw) -> DbResult<DisplayBindingRecor
     })
 }
 
-fn display_binding_row(
-    c: &Connection,
-    id: EntityId,
-) -> DbResult<Option<DisplayBindingRecord>> {
+fn display_binding_row(c: &Connection, id: EntityId) -> DbResult<Option<DisplayBindingRecord>> {
     let raw = c
         .query_row(
             "SELECT id,train_id,i2c_module_id,name,endpoint,format_string,enabled,script_id FROM train_display_bindings WHERE id=?1",
@@ -1404,7 +1460,7 @@ fn update_display_binding_row(tx: &Transaction<'_>, record: &DisplayBindingRecor
 /// Ecto treats `nil` and whitespace-only strings as missing for
 /// `validate_required/3`.
 fn is_blank(value: Option<&str>) -> bool {
-    value.map_or(true, |v| v.trim().is_empty())
+    value.is_none_or(|v| v.trim().is_empty())
 }
 
 /// Rounds user-supplied floats to two decimals with Elixir's `Float.round/2`
@@ -1417,12 +1473,16 @@ fn round2(value: f64) -> DbResult<f64> {
 
 /// Changeset-style validation failure carrying the Ecto error text.
 fn invalid(detail: impl Into<String>) -> StorageError {
-    StorageError::Constraint { detail: detail.into() }
+    StorageError::Constraint {
+        detail: detail.into(),
+    }
 }
 
 /// Stored row could not be decoded into the typed record.
 fn corrupt(detail: impl Into<String>) -> StorageError {
-    StorageError::InvalidLegacyData { detail: detail.into() }
+    StorageError::InvalidLegacyData {
+        detail: detail.into(),
+    }
 }
 
 /// UTC timestamp matching the `strftime('%Y-%m-%dT%H:%M:%SZ','now')` format

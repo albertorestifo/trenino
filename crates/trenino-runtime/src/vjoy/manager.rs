@@ -14,7 +14,7 @@ use crate::resource::ResourceArbiter;
 use crate::storage::Database;
 
 use super::adapter::{
-    DeviceDescriptor, REQUIRED_DESCRIPTOR, VjoyAdapter, VjoyDeviceStatus, VjoyError,
+    DeviceDescriptor, VjoyAdapter, VjoyDeviceStatus, VjoyError, REQUIRED_DESCRIPTOR,
 };
 use super::store::{MappingDraft, MappingRecord};
 

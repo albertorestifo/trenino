@@ -96,8 +96,8 @@ impl VjoyAdapter for WindowsVjoyAdapter {
 
     fn driver_available(&mut self) -> Result<(), VjoyError> {
         if self.sdk.is_none() {
-            let sdk = VJoy::from_dll_location_without_acquiring(&self.dll_path)
-                .map_err(map_error)?;
+            let sdk =
+                VJoy::from_dll_location_without_acquiring(&self.dll_path).map_err(map_error)?;
             self.sdk = Some(sdk);
         }
         match self.sdk.as_ref().expect("sdk loaded above").is_enabled() {
@@ -135,7 +135,9 @@ impl VjoyAdapter for WindowsVjoyAdapter {
             axes: u32::try_from(inspected.num_axes()).unwrap_or(u32::MAX),
             buttons: u32::try_from(inspected.num_buttons()).unwrap_or(u32::MAX),
             povs: u32::try_from(inspected.num_hats()).unwrap_or(u32::MAX),
-            force_feedback: sdk.has_force_feedback(device_id(device)).map_err(map_error)?,
+            force_feedback: sdk
+                .has_force_feedback(device_id(device))
+                .map_err(map_error)?,
         })
     }
 

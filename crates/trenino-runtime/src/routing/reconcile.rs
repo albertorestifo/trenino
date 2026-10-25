@@ -120,15 +120,24 @@ pub trait RoutingDestination: Send + Sync + 'static {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum DegradedReason {
     /// An old destination refused to release; replacements stay inactive.
-    ReleaseFailed { destination: DestinationId, error: String },
+    ReleaseFailed {
+        destination: DestinationId,
+        error: String,
+    },
     /// A destination failed to activate after the release barrier passed.
-    ActivationFailed { destination: DestinationId, error: String },
+    ActivationFailed {
+        destination: DestinationId,
+        error: String,
+    },
     /// Activation is gated by an active calibration/firmware lease.
     ArbitrationSuspended,
     /// Desired routing names a destination with no registered driver.
     DestinationUnavailable { destination: DestinationId },
     /// Shutdown could not release an engaged destination.
-    ShutdownReleaseFailed { destination: DestinationId, error: String },
+    ShutdownReleaseFailed {
+        destination: DestinationId,
+        error: String,
+    },
 }
 
 impl DegradedReason {
@@ -181,7 +190,10 @@ pub struct RoutingSnapshot {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum RoutingError {
     /// A revision that would rewind or rewrite committed intent.
-    StaleRevision { current: Revision, attempted: Revision },
+    StaleRevision {
+        current: Revision,
+        attempted: Revision,
+    },
     /// Malformed desired routing (e.g. a destination listed twice).
     InvalidDesired(String),
     /// Another reconciliation is in flight; retry after it finishes.
@@ -194,9 +206,15 @@ pub enum RoutingError {
     /// Admission is closed; the service is shut down.
     Shutdown,
     /// The release barrier failed; the desired revision is saved but inactive.
-    ReleaseFailed { destination: DestinationId, error: String },
+    ReleaseFailed {
+        destination: DestinationId,
+        error: String,
+    },
     /// A destination failed to activate; the desired revision stays degraded.
-    ActivationFailed { destination: DestinationId, error: String },
+    ActivationFailed {
+        destination: DestinationId,
+        error: String,
+    },
     /// Desired routing names a destination with no registered driver.
     DestinationUnavailable { destination: DestinationId },
     /// Activation is gated by an active calibration/firmware lease.
@@ -254,10 +272,7 @@ impl RoutingService {
         destination: DestinationId,
         driver: Arc<dyn RoutingDestination>,
     ) {
-        self.drivers
-            .lock()
-            .expect(LOCK)
-            .insert(destination, driver);
+        self.drivers.lock().expect(LOCK).insert(destination, driver);
     }
 
     /// Atomically commit a new desired routing revision. This only records
@@ -267,7 +282,9 @@ impl RoutingService {
         for plan in &mut desired.plans {
             plan.routes.sort();
         }
-        desired.plans.sort_by(|a, b| a.destination.cmp(&b.destination));
+        desired
+            .plans
+            .sort_by(|a, b| a.destination.cmp(&b.destination));
         for pair in desired.plans.windows(2) {
             if pair[0].destination == pair[1].destination {
                 return Err(RoutingError::InvalidDesired(format!(
@@ -411,7 +428,10 @@ impl RoutingService {
                     .into_iter()
                     .next()
                     .expect("release failure list is non-empty");
-                return self.finish_with(state, Err(RoutingError::ReleaseFailed { destination, error }));
+                return self.finish_with(
+                    state,
+                    Err(RoutingError::ReleaseFailed { destination, error }),
+                );
             }
         }
 
@@ -475,14 +495,12 @@ impl RoutingService {
                 destination: id.clone(),
             })
             .collect();
-        degraded.extend(
-            activation_failures
-                .iter()
-                .map(|(id, error)| DegradedReason::ActivationFailed {
-                    destination: id.clone(),
-                    error: error.clone(),
-                }),
-        );
+        degraded.extend(activation_failures.iter().map(|(id, error)| {
+            DegradedReason::ActivationFailed {
+                destination: id.clone(),
+                error: error.clone(),
+            }
+        }));
         state.degraded = degraded;
         let result = if let Some(destination) = unavailable.into_iter().next() {
             Err(RoutingError::DestinationUnavailable { destination })

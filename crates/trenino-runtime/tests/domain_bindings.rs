@@ -6,6 +6,7 @@
 //!   `output_binding_context_test.exs`
 //! - `test/trenino/train/display_formatter_test.exs` (format validation)
 //! - `test/trenino/virtual_joystick_test.exs` "exclusive input destinations"
+//!
 //! Each test cites the mirrored Elixir test in a comment. Fixtures use a
 //! disposable tempfile database; trains/elements/lever configs/sequences/
 //! scripts and vJoy mapping rows are seeded through a second connection
@@ -18,7 +19,7 @@ use trenino_runtime::storage::bindings::{
     OutputBindingPatch, OutputType,
 };
 use trenino_runtime::storage::{
-    Database, DeviceDraft, DisplayType, I2cModuleDraft, Ht16k33Params, InputDraft, InputKind,
+    Database, DeviceDraft, DisplayType, Ht16k33Params, I2cModuleDraft, InputDraft, InputKind,
     OutputDraft, StorageError,
 };
 
@@ -101,7 +102,9 @@ impl Fixtures {
     }
 
     fn row_exists(&self, sql: &str, id: EntityId) -> bool {
-        self.conn().query_row(sql, [id.0], |row| row.get::<_, i64>(0)).is_ok()
+        self.conn()
+            .query_row(sql, [id.0], |row| row.get::<_, i64>(0))
+            .is_ok()
     }
 
     fn delete(&self, table: &str, id: EntityId) {
@@ -130,7 +133,13 @@ fn new_device(db: &Database, op: &mut u128) -> EntityId {
     device.record.id
 }
 
-fn new_input(db: &Database, op: &mut u128, device: EntityId, pin: i32, kind: InputKind) -> EntityId {
+fn new_input(
+    db: &Database,
+    op: &mut u128,
+    device: EntityId,
+    pin: i32,
+    kind: InputKind,
+) -> EntityId {
     let input = db
         .create_input(
             OperationId(*op),
@@ -291,9 +300,7 @@ fn lever_binding_foreign_key_errors_keep_revision() {
         Err(StorageError::ForeignKey { .. })
     ));
 
-    let bound = db
-        .bind_lever_input(OperationId(op), config, input)
-        .unwrap();
+    let bound = db.bind_lever_input(OperationId(op), config, input).unwrap();
     assert_eq!(bound.receipt.metadata.revision, 1);
 }
 
@@ -331,8 +338,14 @@ fn lever_binding_mapped_input_conflicts_unless_replaced() {
         .unwrap();
     assert_eq!(bound.record.input_id, mapped_input);
     // The conflicting mapping is deleted; the unrelated one is preserved.
-    assert!(!fx.row_exists("SELECT id FROM virtual_joystick_mappings WHERE id=?1", mapping));
-    assert!(fx.row_exists("SELECT id FROM virtual_joystick_mappings WHERE id=?1", unrelated_mapping));
+    assert!(!fx.row_exists(
+        "SELECT id FROM virtual_joystick_mappings WHERE id=?1",
+        mapping
+    ));
+    assert!(fx.row_exists(
+        "SELECT id FROM virtual_joystick_mappings WHERE id=?1",
+        unrelated_mapping
+    ));
 }
 
 /// Mirrors virtual_joystick_test.exs l.368-391 "enabling an inactive lever
@@ -367,7 +380,10 @@ fn lever_binding_enable_mapped_input_requires_replacement() {
         )
         .unwrap();
     assert!(enabled.record.enabled);
-    assert!(!fx.row_exists("SELECT id FROM virtual_joystick_mappings WHERE id=?1", mapping));
+    assert!(!fx.row_exists(
+        "SELECT id FROM virtual_joystick_mappings WHERE id=?1",
+        mapping
+    ));
 }
 
 /// Mirrors the `if enabled?` guard of `persist_binding/4` (train.ex l.915-919):
@@ -383,17 +399,23 @@ fn lever_binding_disabled_rebind_to_mapped_input_is_allowed() {
     let element = fx.element(train, "lever", "Throttle");
     let config = fx.lever_config(element);
 
-    db.bind_lever_input(OperationId(op), config, input1).unwrap();
+    db.bind_lever_input(OperationId(op), config, input1)
+        .unwrap();
     op += 1;
     db.set_lever_binding_enabled(OperationId(op), config, false)
         .unwrap();
     op += 1;
 
     let mapping = fx.vjoy_axis_mapping(input2, "x");
-    let rebound = db.bind_lever_input(OperationId(op), config, input2).unwrap();
+    let rebound = db
+        .bind_lever_input(OperationId(op), config, input2)
+        .unwrap();
     assert_eq!(rebound.record.input_id, input2);
     assert!(!rebound.record.enabled);
-    assert!(fx.row_exists("SELECT id FROM virtual_joystick_mappings WHERE id=?1", mapping));
+    assert!(fx.row_exists(
+        "SELECT id FROM virtual_joystick_mappings WHERE id=?1",
+        mapping
+    ));
 }
 
 /// Mirrors train.ex `list_bindings_for_train/1` (join through lever configs
@@ -426,7 +448,10 @@ fn lever_bindings_list_for_train_scopes_by_train() {
     let ids: Vec<EntityId> = first_train.iter().map(|b| b.lever_config_id).collect();
     assert_eq!(ids, vec![c1, c2]);
     assert_eq!(db.list_lever_bindings_for_train(train2).unwrap().len(), 1);
-    assert!(db.list_lever_bindings_for_train(empty_train).unwrap().is_empty());
+    assert!(db
+        .list_lever_bindings_for_train(empty_train)
+        .unwrap()
+        .is_empty());
 }
 
 // =====================
@@ -460,7 +485,10 @@ fn button_binding_create_defaults_custom_values_and_rounding() {
     let record = &created.record;
     assert_eq!(record.element_id, element);
     assert_eq!(record.input_id, input);
-    assert_eq!(record.endpoint.as_deref(), Some("CurrentDrivableActor/Horn.InputValue"));
+    assert_eq!(
+        record.endpoint.as_deref(),
+        Some("CurrentDrivableActor/Horn.InputValue")
+    );
     assert_eq!(record.on_value, 1.0);
     assert_eq!(record.off_value, 0.0);
     assert!(record.enabled);
@@ -684,7 +712,10 @@ fn button_binding_mode_and_sequence_validation() {
             },
         )
         .unwrap_err();
-    assert_eq!(constraint_detail(error), "repeat_interval_ms must be greater than 0");
+    assert_eq!(
+        constraint_detail(error),
+        "repeat_interval_ms must be greater than 0"
+    );
     let error = db
         .create_button_binding(
             OperationId(op),
@@ -734,7 +765,10 @@ fn button_binding_unique_element_and_shared_input() {
         OperationId(op),
         horn,
         input,
-        ButtonBindingDraft { endpoint: Some("Horn.InputValue".into()), ..Default::default() },
+        ButtonBindingDraft {
+            endpoint: Some("Horn.InputValue".into()),
+            ..Default::default()
+        },
     )
     .unwrap();
     op += 1;
@@ -745,7 +779,10 @@ fn button_binding_unique_element_and_shared_input() {
             OperationId(op),
             horn,
             input2,
-            ButtonBindingDraft { endpoint: Some("Horn.InputValue".into()), ..Default::default() },
+            ButtonBindingDraft {
+                endpoint: Some("Horn.InputValue".into()),
+                ..Default::default()
+            },
         ),
         Err(StorageError::Conflict { .. })
     ));
@@ -755,7 +792,10 @@ fn button_binding_unique_element_and_shared_input() {
         OperationId(op),
         bell,
         input,
-        ButtonBindingDraft { endpoint: Some("Bell.InputValue".into()), ..Default::default() },
+        ButtonBindingDraft {
+            endpoint: Some("Bell.InputValue".into()),
+            ..Default::default()
+        },
     )
     .unwrap();
 }
@@ -777,7 +817,10 @@ fn button_binding_update_fields_and_validation() {
             OperationId(op),
             horn,
             input,
-            ButtonBindingDraft { endpoint: Some("Horn.InputValue".into()), ..Default::default() },
+            ButtonBindingDraft {
+                endpoint: Some("Horn.InputValue".into()),
+                ..Default::default()
+            },
         )
         .unwrap()
         .record;
@@ -796,7 +839,10 @@ fn button_binding_update_fields_and_validation() {
         )
         .unwrap();
     op += 1;
-    assert_eq!(updated.record.endpoint.as_deref(), Some("CurrentDrivableActor/Bell.InputValue"));
+    assert_eq!(
+        updated.record.endpoint.as_deref(),
+        Some("CurrentDrivableActor/Bell.InputValue")
+    );
     assert_eq!(updated.record.on_value, 5.0);
     assert_eq!(updated.record.off_value, -5.0);
     assert!(updated.record.enabled);
@@ -805,7 +851,10 @@ fn button_binding_update_fields_and_validation() {
         .update_button_binding(
             OperationId(op),
             created.id,
-            ButtonBindingPatch { enabled: Some(false), ..Default::default() },
+            ButtonBindingPatch {
+                enabled: Some(false),
+                ..Default::default()
+            },
         )
         .unwrap();
     op += 1;
@@ -815,7 +864,10 @@ fn button_binding_update_fields_and_validation() {
         .update_button_binding(
             OperationId(op),
             created.id,
-            ButtonBindingPatch { input_id: Some(input2), ..Default::default() },
+            ButtonBindingPatch {
+                input_id: Some(input2),
+                ..Default::default()
+            },
         )
         .unwrap();
     op += 1;
@@ -826,7 +878,10 @@ fn button_binding_update_fields_and_validation() {
         .update_button_binding(
             OperationId(op),
             created.id,
-            ButtonBindingPatch { endpoint: Some(None), ..Default::default() },
+            ButtonBindingPatch {
+                endpoint: Some(None),
+                ..Default::default()
+            },
         )
         .unwrap_err();
     assert_eq!(constraint_detail(error), "endpoint can't be blank");
@@ -856,7 +911,10 @@ fn button_binding_delete_and_enabled_toggle() {
         OperationId(op),
         horn,
         input,
-        ButtonBindingDraft { endpoint: Some("Horn.InputValue".into()), ..Default::default() },
+        ButtonBindingDraft {
+            endpoint: Some("Horn.InputValue".into()),
+            ..Default::default()
+        },
     )
     .unwrap();
     op += 1;
@@ -904,14 +962,20 @@ fn button_binding_cascades_on_element_and_input_delete() {
         OperationId(op),
         horn,
         input,
-        ButtonBindingDraft { endpoint: Some("Horn.InputValue".into()), ..Default::default() },
+        ButtonBindingDraft {
+            endpoint: Some("Horn.InputValue".into()),
+            ..Default::default()
+        },
     )
     .unwrap();
     db.create_button_binding(
         OperationId(op),
         bell,
         input2,
-        ButtonBindingDraft { endpoint: Some("Bell.InputValue".into()), ..Default::default() },
+        ButtonBindingDraft {
+            endpoint: Some("Bell.InputValue".into()),
+            ..Default::default()
+        },
     )
     .unwrap();
 
@@ -991,7 +1055,10 @@ fn button_binding_vjoy_destination_rules() {
             OperationId(op),
             horn,
             mapped_input,
-            ButtonBindingDraft { endpoint: Some("Horn.InputValue".into()), ..Default::default() },
+            ButtonBindingDraft {
+                endpoint: Some("Horn.InputValue".into()),
+                ..Default::default()
+            },
         ),
         Err(StorageError::Conflict { .. })
     ));
@@ -999,13 +1066,22 @@ fn button_binding_vjoy_destination_rules() {
         OperationId(op),
         horn,
         mapped_input,
-        ButtonBindingDraft { endpoint: Some("Horn.InputValue".into()), ..Default::default() },
+        ButtonBindingDraft {
+            endpoint: Some("Horn.InputValue".into()),
+            ..Default::default()
+        },
         BindOptions { replace: true },
     )
     .unwrap();
     op += 1;
-    assert!(!fx.row_exists("SELECT id FROM virtual_joystick_mappings WHERE id=?1", mapping));
-    assert!(fx.row_exists("SELECT id FROM virtual_joystick_mappings WHERE id=?1", unrelated_mapping));
+    assert!(!fx.row_exists(
+        "SELECT id FROM virtual_joystick_mappings WHERE id=?1",
+        mapping
+    ));
+    assert!(fx.row_exists(
+        "SELECT id FROM virtual_joystick_mappings WHERE id=?1",
+        unrelated_mapping
+    ));
 
     // Rebinding to a mapped input conflicts without replacement.
     let mapped2 = fx.vjoy_axis_mapping(current_input, "z");
@@ -1014,7 +1090,10 @@ fn button_binding_vjoy_destination_rules() {
         db.update_button_binding(
             OperationId(op),
             existing.id,
-            ButtonBindingPatch { input_id: Some(current_input), ..Default::default() },
+            ButtonBindingPatch {
+                input_id: Some(current_input),
+                ..Default::default()
+            },
         ),
         Err(StorageError::Conflict { .. })
     ));
@@ -1022,13 +1101,19 @@ fn button_binding_vjoy_destination_rules() {
         .update_button_binding_with(
             OperationId(op),
             existing.id,
-            ButtonBindingPatch { input_id: Some(current_input), ..Default::default() },
+            ButtonBindingPatch {
+                input_id: Some(current_input),
+                ..Default::default()
+            },
             BindOptions { replace: true },
         )
         .unwrap();
     op += 1;
     assert_eq!(rebound.record.input_id, current_input);
-    assert!(!fx.row_exists("SELECT id FROM virtual_joystick_mappings WHERE id=?1", mapped2));
+    assert!(!fx.row_exists(
+        "SELECT id FROM virtual_joystick_mappings WHERE id=?1",
+        mapped2
+    ));
 
     // An invalid replacement attempt keeps the mapping (transaction rollback).
     let mapping3 = fx.vjoy_axis_mapping(spare_input, "rx");
@@ -1042,7 +1127,10 @@ fn button_binding_vjoy_destination_rules() {
         )
         .unwrap_err();
     assert_eq!(constraint_detail(error), "endpoint can't be blank");
-    assert!(fx.row_exists("SELECT id FROM virtual_joystick_mappings WHERE id=?1", mapping3));
+    assert!(fx.row_exists(
+        "SELECT id FROM virtual_joystick_mappings WHERE id=?1",
+        mapping3
+    ));
     assert!(db.get_button_binding(bell).unwrap().is_none());
 
     // A disabled binding bypasses the check; enabling it conflicts until replaced.
@@ -1059,7 +1147,10 @@ fn button_binding_vjoy_destination_rules() {
     )
     .unwrap();
     op += 1;
-    assert!(fx.row_exists("SELECT id FROM virtual_joystick_mappings WHERE id=?1", mapping4));
+    assert!(fx.row_exists(
+        "SELECT id FROM virtual_joystick_mappings WHERE id=?1",
+        mapping4
+    ));
     assert!(matches!(
         db.set_button_binding_enabled(OperationId(op), bell, true),
         Err(StorageError::Conflict { .. })
@@ -1069,7 +1160,10 @@ fn button_binding_vjoy_destination_rules() {
         .set_button_binding_enabled_with(OperationId(op), bell, true, BindOptions { replace: true })
         .unwrap();
     assert!(enabled.record.enabled);
-    assert!(!fx.row_exists("SELECT id FROM virtual_joystick_mappings WHERE id=?1", mapping4));
+    assert!(!fx.row_exists(
+        "SELECT id FROM virtual_joystick_mappings WHERE id=?1",
+        mapping4
+    ));
 }
 
 /// Mirrors train_test.exs l.902-991 (list_button_bindings_for_train).
@@ -1092,21 +1186,30 @@ fn button_bindings_list_for_train_scopes_by_train() {
         OperationId(op),
         horn,
         input1,
-        ButtonBindingDraft { endpoint: Some("Horn.InputValue".into()), ..Default::default() },
+        ButtonBindingDraft {
+            endpoint: Some("Horn.InputValue".into()),
+            ..Default::default()
+        },
     )
     .unwrap();
     db.create_button_binding(
         OperationId(op),
         bell,
         input1,
-        ButtonBindingDraft { endpoint: Some("Bell.InputValue".into()), ..Default::default() },
+        ButtonBindingDraft {
+            endpoint: Some("Bell.InputValue".into()),
+            ..Default::default()
+        },
     )
     .unwrap();
     db.create_button_binding(
         OperationId(op),
         other_horn,
         input3,
-        ButtonBindingDraft { endpoint: Some("Horn.InputValue".into()), ..Default::default() },
+        ButtonBindingDraft {
+            endpoint: Some("Horn.InputValue".into()),
+            ..Default::default()
+        },
     )
     .unwrap();
 
@@ -1199,7 +1302,10 @@ fn output_binding_crud_roundtrip() {
         .update_output_binding(
             OperationId(op),
             created.record.id,
-            OutputBindingPatch { enabled: Some(false), ..Default::default() },
+            OutputBindingPatch {
+                enabled: Some(false),
+                ..Default::default()
+            },
         )
         .unwrap();
     op += 1;
@@ -1208,12 +1314,16 @@ fn output_binding_crud_roundtrip() {
         .update_output_binding(
             OperationId(op),
             created.record.id,
-            OutputBindingPatch { enabled: Some(true), ..Default::default() },
+            OutputBindingPatch {
+                enabled: Some(true),
+                ..Default::default()
+            },
         )
         .unwrap();
     assert!(enabled.record.enabled);
 
-    db.delete_output_binding(OperationId(op), created.record.id).unwrap();
+    db.delete_output_binding(OperationId(op), created.record.id)
+        .unwrap();
     assert!(db.get_output_binding(created.record.id).unwrap().is_none());
     assert!(matches!(
         db.delete_output_binding(OperationId(op), created.record.id),
@@ -1233,7 +1343,13 @@ fn output_binding_validation() {
     let output3 = new_output(&db, &mut op, device, 15);
     let train = fx.train("Class 66");
 
-    fn draft(output: EntityId, name: &str, endpoint: &str, operator: OutputBindingOperator, value_a: Option<f64>) -> OutputBindingDraft {
+    fn draft(
+        output: EntityId,
+        name: &str,
+        endpoint: &str,
+        operator: OutputBindingOperator,
+        value_a: Option<f64>,
+    ) -> OutputBindingDraft {
         OutputBindingDraft {
             name: name.into(),
             output_id: output,
@@ -1248,7 +1364,11 @@ fn output_binding_validation() {
 
     // Numeric operators require value_a (l.244-257).
     let error = db
-        .create_output_binding(OperationId(op), train, draft(output, "Test", "Speed", OutputBindingOperator::Gt, None))
+        .create_output_binding(
+            OperationId(op),
+            train,
+            draft(output, "Test", "Speed", OutputBindingOperator::Gt, None),
+        )
         .unwrap_err();
     assert_eq!(constraint_detail(error), "value_a can't be blank");
 
@@ -1288,23 +1408,44 @@ fn output_binding_validation() {
 
     // Blank name and endpoint behave like missing (l.199-227).
     let error = db
-        .create_output_binding(OperationId(op), train, draft(output, "   ", "Speed", OutputBindingOperator::Gt, Some(1.0)))
+        .create_output_binding(
+            OperationId(op),
+            train,
+            draft(output, "   ", "Speed", OutputBindingOperator::Gt, Some(1.0)),
+        )
         .unwrap_err();
     assert_eq!(constraint_detail(error), "name can't be blank");
     let error = db
-        .create_output_binding(OperationId(op), train, draft(output, "Test", "  ", OutputBindingOperator::Gt, Some(1.0)))
+        .create_output_binding(
+            OperationId(op),
+            train,
+            draft(output, "Test", "  ", OutputBindingOperator::Gt, Some(1.0)),
+        )
         .unwrap_err();
     assert_eq!(constraint_detail(error), "endpoint can't be blank");
 
     // Updating to between without value_b fails on the effective record.
     let created = db
-        .create_output_binding(OperationId(op), train, draft(output3, "Guard", "Speed", OutputBindingOperator::Gt, Some(10.0)))
+        .create_output_binding(
+            OperationId(op),
+            train,
+            draft(
+                output3,
+                "Guard",
+                "Speed",
+                OutputBindingOperator::Gt,
+                Some(10.0),
+            ),
+        )
         .unwrap();
     let error = db
         .update_output_binding(
             OperationId(op),
             created.record.id,
-            OutputBindingPatch { operator: Some(OutputBindingOperator::Between), ..Default::default() },
+            OutputBindingPatch {
+                operator: Some(OutputBindingOperator::Between),
+                ..Default::default()
+            },
         )
         .unwrap_err();
     assert_eq!(constraint_detail(error), "value_b can't be blank");
@@ -1331,20 +1472,25 @@ fn output_binding_unique_train_output_pair() {
         value_b: None,
         enabled: None,
     };
-    db.create_output_binding(OperationId(op), train, draft()).unwrap();
+    db.create_output_binding(OperationId(op), train, draft())
+        .unwrap();
     op += 1;
 
     let error = db
         .create_output_binding(
             OperationId(op),
             train,
-            OutputBindingDraft { name: "Different Name".into(), ..draft() },
+            OutputBindingDraft {
+                name: "Different Name".into(),
+                ..draft()
+            },
         )
         .unwrap_err();
     let detail = conflict(&error);
     assert!(detail.contains("UNIQUE") || detail.contains("unique"));
 
-    db.create_output_binding(OperationId(op), other_train, draft()).unwrap();
+    db.create_output_binding(OperationId(op), other_train, draft())
+        .unwrap();
 }
 
 /// Mirrors output_binding_test.exs l.334-372: cascades on train and output
@@ -1379,8 +1525,12 @@ fn output_binding_cascades_and_foreign_keys() {
         Err(StorageError::ForeignKey { .. })
     ));
 
-    let a = db.create_output_binding(OperationId(op), train, draft(output)).unwrap();
-    let b = db.create_output_binding(OperationId(op), train2, draft(output2)).unwrap();
+    let a = db
+        .create_output_binding(OperationId(op), train, draft(output))
+        .unwrap();
+    let b = db
+        .create_output_binding(OperationId(op), train2, draft(output2))
+        .unwrap();
 
     // Deleting the train cascades the binding away.
     fx.delete("trains", train);
@@ -1416,10 +1566,18 @@ fn output_binding_list_order_and_enabled_filter() {
         value_b: None,
         enabled,
     };
-    db.create_output_binding(OperationId(op), train, draft("Zebra", output1, None)).unwrap();
-    db.create_output_binding(OperationId(op), train, draft("Alpha", output2, None)).unwrap();
-    db.create_output_binding(OperationId(op), train, draft("Disabled", output3, Some(false))).unwrap();
-    db.create_output_binding(OperationId(op), other_train, draft("Other", output1, None)).unwrap();
+    db.create_output_binding(OperationId(op), train, draft("Zebra", output1, None))
+        .unwrap();
+    db.create_output_binding(OperationId(op), train, draft("Alpha", output2, None))
+        .unwrap();
+    db.create_output_binding(
+        OperationId(op),
+        train,
+        draft("Disabled", output3, Some(false)),
+    )
+    .unwrap();
+    db.create_output_binding(OperationId(op), other_train, draft("Other", output1, None))
+        .unwrap();
 
     let names: Vec<String> = db
         .list_output_bindings(train)
@@ -1500,14 +1658,18 @@ fn display_binding_crud_roundtrip() {
         .update_display_binding(
             OperationId(op),
             created.record.id,
-            DisplayBindingPatch { enabled: Some(false), ..Default::default() },
+            DisplayBindingPatch {
+                enabled: Some(false),
+                ..Default::default()
+            },
         )
         .unwrap();
     assert!(!disabled.record.enabled);
     assert!(db.list_enabled_display_bindings(train).unwrap().is_empty());
     assert_eq!(db.list_display_bindings(train).unwrap().len(), 1);
 
-    db.delete_display_binding(OperationId(op), created.record.id).unwrap();
+    db.delete_display_binding(OperationId(op), created.record.id)
+        .unwrap();
     assert!(db.get_display_binding(created.record.id).unwrap().is_none());
     assert!(matches!(
         db.delete_display_binding(OperationId(op), created.record.id),
@@ -1539,12 +1701,19 @@ fn display_binding_format_validation() {
         )
     };
 
-    for format in ["literal", "{value}", "{value:.0f}", "{value:.10f}", "V:{value:.1f}"] {
+    for format in [
+        "literal",
+        "{value}",
+        "{value:.0f}",
+        "{value:.10f}",
+        "V:{value:.1f}",
+    ] {
         // The (train, module) pair is unique, so delete between iterations.
         let created = create(op, Some(format.into())).unwrap();
         op += 1;
         assert_eq!(created.record.format_string, format);
-        db.delete_display_binding(OperationId(op), created.record.id).unwrap();
+        db.delete_display_binding(OperationId(op), created.record.id)
+            .unwrap();
         op += 1;
     }
 
@@ -1581,7 +1750,10 @@ fn display_binding_format_validation() {
         .unwrap_err();
     assert_eq!(constraint_detail(error), "endpoint can't be blank");
     let error = create(op, Some("{".repeat(201))).unwrap_err();
-    assert_eq!(constraint_detail(error), "format_string should be at most 200 characters");
+    assert_eq!(
+        constraint_detail(error),
+        "format_string should be at most 200 characters"
+    );
     let error = db
         .create_display_binding(
             OperationId(op),
@@ -1595,7 +1767,10 @@ fn display_binding_format_validation() {
             },
         )
         .unwrap_err();
-    assert_eq!(constraint_detail(error), "name should be at most 100 characters");
+    assert_eq!(
+        constraint_detail(error),
+        "name should be at most 100 characters"
+    );
 }
 
 /// Mirrors the unique (train_id, i2c_module_id) index and the
@@ -1626,16 +1801,19 @@ fn display_binding_uniqueness_and_foreign_keys() {
         Err(StorageError::ForeignKey { .. })
     ));
 
-    db.create_display_binding(OperationId(op), train, draft(module)).unwrap();
+    db.create_display_binding(OperationId(op), train, draft(module))
+        .unwrap();
     op += 1;
     // Same train + module is unique; another train may reuse the module.
     assert!(matches!(
         db.create_display_binding(OperationId(op), train, draft(module)),
         Err(StorageError::Conflict { .. })
     ));
-    db.create_display_binding(OperationId(op), other_train, draft(module)).unwrap();
+    db.create_display_binding(OperationId(op), other_train, draft(module))
+        .unwrap();
     // A second module on the same train is fine.
-    db.create_display_binding(OperationId(op), train, draft(module2)).unwrap();
+    db.create_display_binding(OperationId(op), train, draft(module2))
+        .unwrap();
 }
 
 /// Mirrors the ON DELETE behavior of the display binding foreign keys:
@@ -1734,7 +1912,10 @@ fn binding_mutations_share_one_topic_revision() {
             OperationId(op),
             button_element,
             button_input,
-            ButtonBindingDraft { endpoint: Some("Horn.InputValue".into()), ..Default::default() },
+            ButtonBindingDraft {
+                endpoint: Some("Horn.InputValue".into()),
+                ..Default::default()
+            },
         )
         .unwrap();
     assert_eq!(button.receipt.metadata.revision, 2);

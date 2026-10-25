@@ -14,15 +14,15 @@
 //! cancellation discards uncommitted samples without rolling back checkpoints
 //! that were already committed.
 
+use crate::resource::{LeaseKind, ResourceArbiter, ResourceError};
+use crate::simulator::client::{SimulatorClient, SimulatorError};
+use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use std::sync::Arc;
 use std::time::Duration;
-use serde_json::Value;
-use serde::{Deserialize, Serialize};
 use tokio::sync::{mpsc, oneshot, Mutex};
 use trenino_core::hardware::calibration::{normalize, total_travel, Calibration};
 use trenino_core::rounding::round_elixir;
-use crate::resource::{LeaseKind, ResourceArbiter, ResourceError};
-use crate::simulator::client::{SimulatorClient, SimulatorError};
 
 use super::clock::Clock;
 use super::session::{spawn_leased_session, SessionHandle};
@@ -164,9 +164,7 @@ pub fn start_lever_calibration(
     spawn_leased_session(
         arbiter,
         lease,
-        |progress| async move {
-            calibrate(&client, &clock, &endpoints, &store, &progress).await
-        },
+        |progress| async move { calibrate(&client, &clock, &endpoints, &store, &progress).await },
         || async {},
     )
 }
@@ -206,9 +204,9 @@ async fn run_calibration(
     let (min_value, max_value, notch_count) = match init {
         Ok(values) => values,
         Err(reason) => {
-            return Err(CalibrationEvent::Result(Err(CalibrationFailure::Simulator(
-                reason,
-            ))))
+            return Err(CalibrationEvent::Result(Err(
+                CalibrationFailure::Simulator(reason),
+            )))
         }
     };
     let mut sweep = SweepState {
@@ -246,16 +244,16 @@ async fn run_calibration(
         .set(&endpoints.value_endpoint, &Value::from(min_value))
         .await
     {
-        return Err(CalibrationEvent::Result(Err(CalibrationFailure::Simulator(
-            reason,
-        ))));
+        return Err(CalibrationEvent::Result(Err(
+            CalibrationFailure::Simulator(reason),
+        )));
     }
     sweep.current_notch_index = match client.get_int(&endpoints.notch_index_endpoint).await {
         Ok(index) => index,
         Err(reason) => {
-            return Err(CalibrationEvent::Result(Err(CalibrationFailure::Simulator(
-                reason,
-            ))))
+            return Err(CalibrationEvent::Result(Err(
+                CalibrationFailure::Simulator(reason),
+            )))
         }
     };
     publish_calibration_progress(
@@ -273,14 +271,16 @@ async fn run_calibration(
         sweep = match calibrate_step(client, clock, endpoints, sweep, next_value, progress).await {
             Ok(sweep) => sweep,
             Err(reason) => {
-                return Err(CalibrationEvent::Result(Err(CalibrationFailure::Simulator(
-                    reason,
-                ))))
+                return Err(CalibrationEvent::Result(Err(
+                    CalibrationFailure::Simulator(reason),
+                )))
             }
         };
     }
     // finalize_notches/1: the last notch ends at the maximum value.
-    sweep.notches.push(build_notch_from_state(&sweep, sweep.max_value));
+    sweep
+        .notches
+        .push(build_notch_from_state(&sweep, sweep.max_value));
     finish_calibration(endpoints.lever_config_id, &sweep.notches, store).await
 }
 
@@ -527,29 +527,29 @@ pub struct NotchMappingMonitor {
 
 impl NotchMappingMonitor {
     pub async fn start_mapping(&self) -> Result<(), MappingError> {
-        self.call(|reply| MappingCommand::StartMapping(reply)).await
+        self.call(MappingCommand::StartMapping).await
     }
     pub async fn start_capturing(&self) -> Result<(), MappingError> {
-        self.call(|reply| MappingCommand::StartCapturing(reply)).await
+        self.call(MappingCommand::StartCapturing).await
     }
     pub async fn stop_capturing(&self) -> Result<(), MappingError> {
-        self.call(|reply| MappingCommand::StopCapturing(reply)).await
+        self.call(MappingCommand::StopCapturing).await
     }
     pub async fn reset_samples(&self) -> Result<(), MappingError> {
-        self.call(|reply| MappingCommand::ResetSamples(reply)).await
+        self.call(MappingCommand::ResetSamples).await
     }
     pub async fn capture_range(&self) -> Result<(), MappingError> {
-        self.call(|reply| MappingCommand::CaptureRange(reply)).await
+        self.call(MappingCommand::CaptureRange).await
     }
     pub async fn go_to_notch(&self, index: usize) -> Result<(), MappingError> {
         self.call(move |reply| MappingCommand::GoToNotch(index, reply))
             .await
     }
     pub async fn go_to_preview(&self) -> Result<(), MappingError> {
-        self.call(|reply| MappingCommand::GoToPreview(reply)).await
+        self.call(MappingCommand::GoToPreview).await
     }
     pub async fn save_mapping(&self) -> Result<CompletedMapping, MappingError> {
-        self.call(|reply| MappingCommand::SaveMapping(reply)).await
+        self.call(MappingCommand::SaveMapping).await
     }
     pub async fn input_sample(&self, pin: u8, raw_value: i32) {
         let _ = self
@@ -580,7 +580,9 @@ impl NotchMappingMonitor {
             .send(build(reply))
             .await
             .map_err(|_| MappingError::InvalidStep)?;
-        reply_receiver.await.unwrap_or(Err(MappingError::InvalidStep))
+        reply_receiver
+            .await
+            .unwrap_or(Err(MappingError::InvalidStep))
     }
 }
 
@@ -704,11 +706,7 @@ pub fn start_notch_mapping(
                     let _ = reply.send(result);
                 }
                 MappingCommand::GoToPreview(reply) => {
-                    let result = if state
-                        .captured_ranges
-                        .iter()
-                        .all(|range| range.is_some())
-                    {
+                    let result = if state.captured_ranges.iter().all(|range| range.is_some()) {
                         state.current_step = MappingStep::Preview;
                         publish(&events, MappingEvent::StepChanged(public_state(&state)));
                         Ok(())
@@ -722,7 +720,8 @@ pub fn start_notch_mapping(
                     let _ = reply.send(result);
                 }
                 MappingCommand::InputSample { pin, raw_value } => {
-                    if pin == state.config.pin && matches!(state.current_step, MappingStep::Notch(_))
+                    if pin == state.config.pin
+                        && matches!(state.current_step, MappingStep::Notch(_))
                     {
                         let calibrated = i64::from(normalize(raw_value, &state.config.calibration));
                         update_mapping_sample(&mut state, calibrated);
@@ -834,8 +833,16 @@ fn update_mapping_sample(state: &mut MappingState, calibrated: i64) {
     if state.is_capturing {
         state.current_samples.push(calibrated);
         state.current_value = Some(calibrated);
-        state.current_min = Some(state.current_min.map_or(calibrated, |min| min.min(calibrated)));
-        state.current_max = Some(state.current_max.map_or(calibrated, |max| max.max(calibrated)));
+        state.current_min = Some(
+            state
+                .current_min
+                .map_or(calibrated, |min| min.min(calibrated)),
+        );
+        state.current_max = Some(
+            state
+                .current_max
+                .map_or(calibrated, |max| max.max(calibrated)),
+        );
     } else {
         state.current_value = Some(calibrated);
     }
@@ -856,8 +863,9 @@ fn detect_inversion(notches: &[NotchDefinition], captured: &[Option<SampleRange>
     }
     let hardware_center =
         |pair: &(&NotchDefinition, &SampleRange)| (pair.1.min + pair.1.max) as f64 / 2.0;
-    let sim_center =
-        |notch: &NotchDefinition| (notch.sim_input_min.unwrap() + notch.sim_input_max.unwrap()) / 2.0;
+    let sim_center = |notch: &NotchDefinition| {
+        (notch.sim_input_min.unwrap() + notch.sim_input_max.unwrap()) / 2.0
+    };
     // First extreme wins ties, like Enum.min_by/Enum.max_by.
     let mut first = &valid[0];
     for pair in &valid[1..] {

@@ -6,11 +6,11 @@
 //! listener. This mirrors the Elixir GenServer `terminate/2` guarantees without
 //! requiring a UI subscriber to drive cleanup.
 
+use crate::resource::{LeaseKind, ResourceArbiter, ResourceError};
 use std::future::Future;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::{mpsc, watch, Mutex};
-use crate::resource::{LeaseKind, ResourceArbiter, ResourceError};
 
 pub type Cancel = watch::Sender<bool>;
 

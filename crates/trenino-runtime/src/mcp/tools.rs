@@ -16,8 +16,8 @@ use crate::mcp::ports::{
     BindingOperator, ButtonBindingAttrs, ButtonBindingRecord, ButtonMode, DetectionKind,
     DetectionOutcome, DetectionRequest, DisplayBindingAttrs, ElementType, HardwareType,
     I2cModuleAttrs, I2cModuleChanges, OutputBindingAttrs, PortError, Ports, ScriptAttrs,
-    SequenceCommandDraft, SequenceRecord, VjoyCommand, VjoyMappingDraft, VjoyPutError,
-    VjoyReason, VjoyStatusDetails, VjoyTarget, VJOY_AXES,
+    SequenceCommandDraft, SequenceRecord, VjoyCommand, VjoyMappingDraft, VjoyPutError, VjoyReason,
+    VjoyStatusDetails, VjoyTarget, VJOY_AXES,
 };
 use serde_json::{json, Map, Value};
 
@@ -103,11 +103,7 @@ fn opt_i64(arguments: &Value, key: &str) -> Result<Option<i64>, String> {
 
 fn opt_f64(arguments: &Value, key: &str) -> Result<Option<f64>, String> {
     raw(arguments, key)
-        .map(|value| {
-            value
-                .as_f64()
-                .ok_or_else(|| invalid_type(key))
-        })
+        .map(|value| value.as_f64().ok_or_else(|| invalid_type(key)))
         .transpose()
 }
 
@@ -119,7 +115,12 @@ fn opt_bool(arguments: &Value, key: &str) -> Result<Option<bool>, String> {
 
 fn opt_str(arguments: &Value, key: &str) -> Result<Option<String>, String> {
     raw(arguments, key)
-        .map(|value| value.as_str().map(str::to_owned).ok_or_else(|| invalid_type(key)))
+        .map(|value| {
+            value
+                .as_str()
+                .map(str::to_owned)
+                .ok_or_else(|| invalid_type(key))
+        })
         .transpose()
 }
 
@@ -541,10 +542,7 @@ mod element {
         match name {
             "list_elements" => {
                 let train_id = req_i64(arguments, "train_id")?;
-                let elements = ports
-                    .trains
-                    .list_elements(train_id)
-                    .map_err(port_error)?;
+                let elements = ports.trains.list_elements(train_id).map_err(port_error)?;
                 Ok(json!({
                     "elements": elements.iter().map(serialize_element).collect::<Vec<_>>()
                 }))
@@ -595,7 +593,7 @@ mod element {
 
 mod device {
     use super::*;
-    use crate::mcp::ports::{I2cModuleRecord, I2cModuleParams};
+    use crate::mcp::ports::{I2cModuleParams, I2cModuleRecord};
 
     pub const TOOL_NAMES: [&str; 7] = [
         "list_devices",
@@ -955,7 +953,9 @@ mod output_binding {
 
     fn build_attrs(arguments: &Value) -> Result<OutputBindingAttrs, String> {
         let operator = match raw(arguments, "operator") {
-            Some(value) => Some(parse_operator(value.as_str().ok_or_else(|| invalid_type("operator"))?)?),
+            Some(value) => Some(parse_operator(
+                value.as_str().ok_or_else(|| invalid_type("operator"))?,
+            )?),
             None => None,
         };
         Ok(OutputBindingAttrs {
@@ -1154,7 +1154,9 @@ mod button_binding {
 
     fn build_attrs(arguments: &Value) -> Result<ButtonBindingAttrs, String> {
         let mode = match raw(arguments, "mode") {
-            Some(value) => Some(parse_mode(value.as_str().ok_or_else(|| invalid_type("mode"))?)?),
+            Some(value) => Some(parse_mode(
+                value.as_str().ok_or_else(|| invalid_type("mode"))?,
+            )?),
             None => None,
         };
         let hardware_type = match raw(arguments, "hardware_type") {
@@ -1191,7 +1193,9 @@ mod button_binding {
             "get_button_binding" => {
                 let element_id = req_i64(arguments, "element_id")?;
                 match ports.bindings.get_button_binding(element_id) {
-                    Ok(binding) => Ok(json!({"button_binding": serialize_button_binding(&binding)})),
+                    Ok(binding) => {
+                        Ok(json!({"button_binding": serialize_button_binding(&binding)}))
+                    }
                     Err(error) => Err(not_found(error, || {
                         format!("No button binding found for element {element_id}")
                     })),
@@ -1333,10 +1337,8 @@ mod sequence {
     /// defaults delay_ms to 0.
     fn build_command_attrs(commands: &Value) -> Result<Vec<SequenceCommandDraft>, String> {
         let commands = match commands {
-            Value::String(text) => {
-                serde_json::from_str::<Value>(text)
-                    .map_err(|_| "Failed to set commands: invalid JSON commands string".to_string())?
-            }
+            Value::String(text) => serde_json::from_str::<Value>(text)
+                .map_err(|_| "Failed to set commands: invalid JSON commands string".to_string())?,
             other => other.clone(),
         };
         let Some(items) = commands.as_array() else {
@@ -1389,10 +1391,10 @@ mod sequence {
             "create_sequence" => {
                 let train_id = req_i64(arguments, "train_id")?;
                 let sequence_name = req_str(arguments, "name")?;
-                let sequence = match ports.sequences.create_sequence(
-                    train_id,
-                    Some(sequence_name.to_string()),
-                ) {
+                let sequence = match ports
+                    .sequences
+                    .create_sequence(train_id, Some(sequence_name.to_string()))
+                {
                     Ok(sequence) => sequence,
                     Err(PortError::Validation(errors)) => {
                         return Err(format_changeset_errors(&errors))
@@ -1435,15 +1437,16 @@ mod sequence {
                 let sequence = match ports.sequences.get_sequence(id) {
                     Ok(sequence) => sequence,
                     Err(error) => {
-                        return Err(not_found(error, || format!("Sequence not found with id {id}")))
+                        return Err(not_found(error, || {
+                            format!("Sequence not found with id {id}")
+                        }))
                     }
                 };
                 if let Some(name) = raw(arguments, "name") {
                     let name = name.as_str().ok_or_else(|| invalid_type("name"))?;
-                    if let Err(PortError::Validation(errors)) =
-                        ports
-                            .sequences
-                            .update_sequence_name(&sequence, Some(name.to_string()))
+                    if let Err(PortError::Validation(errors)) = ports
+                        .sequences
+                        .update_sequence_name(&sequence, Some(name.to_string()))
                     {
                         return Err(format_changeset_errors(&errors));
                     }
@@ -1616,7 +1619,9 @@ mod script {
                 let id = req_i64(arguments, "id")?;
                 match ports.scripts.get_script(id) {
                     Ok(script) => Ok(json!({"script": serialize_script_full(&script)})),
-                    Err(error) => Err(not_found(error, || format!("Script not found with id {id}"))),
+                    Err(error) => Err(not_found(error, || {
+                        format!("Script not found with id {id}")
+                    })),
                 }
             }
             "create_script" => {
@@ -1641,7 +1646,9 @@ mod script {
                             .map(|updated| json!({"script": serialize_script_full(&updated)}))
                             .map_err(port_error)
                     }
-                    Err(error) => Err(not_found(error, || format!("Script not found with id {id}"))),
+                    Err(error) => Err(not_found(error, || {
+                        format!("Script not found with id {id}")
+                    })),
                 }
             }
             _ => {
@@ -1652,7 +1659,9 @@ mod script {
                         .delete_script(&script)
                         .map_err(port_error)
                         .map(|_| json!({"deleted": true, "id": id})),
-                    Err(error) => Err(not_found(error, || format!("Script not found with id {id}"))),
+                    Err(error) => Err(not_found(error, || {
+                        format!("Script not found with id {id}")
+                    })),
                 }
             }
         }
@@ -1693,9 +1702,7 @@ mod detection {
 
     pub fn execute(ports: &Ports, _name: &str, arguments: &Value) -> Result<Value, String> {
         let prompt = req_str(arguments, "prompt")?;
-        let kind = parse_input_type(
-            raw(arguments, "input_type").and_then(Value::as_str),
-        );
+        let kind = parse_input_type(raw(arguments, "input_type").and_then(Value::as_str));
         let timeout_ms = opt_i64(arguments, "timeout_ms")?.unwrap_or(DEFAULT_TIMEOUT_MS);
         let request = DetectionRequest {
             prompt: prompt.to_string(),
@@ -1950,7 +1957,8 @@ mod vjoy {
             },
             ToolDef {
                 name: "map_virtual_joystick_button",
-                description: "Create or update a button input mapping to a virtual joystick button.",
+                description:
+                    "Create or update a button input mapping to a virtual joystick button.",
                 input_schema: button_schema(),
             },
             ToolDef {
@@ -1980,7 +1988,8 @@ mod vjoy {
             },
             ToolDef {
                 name: "check_virtual_joystick_installation",
-                description: "Recheck the vJoy installation after the user completes driver repair.",
+                description:
+                    "Recheck the vJoy installation after the user completes driver repair.",
                 input_schema: empty_schema(),
             },
         ]
@@ -1995,7 +2004,10 @@ mod vjoy {
         optional: &[&str],
     ) -> Result<(), ValidationErrors> {
         let Some(map) = arguments.as_object() else {
-            return Err(vec![("arguments".to_string(), "must be an object".to_string())]);
+            return Err(vec![(
+                "arguments".to_string(),
+                "must be an object".to_string(),
+            )]);
         };
         let mut errors: ValidationErrors = vec![];
         for field in required {
@@ -2109,37 +2121,98 @@ mod vjoy {
         }
         match name {
             "map_virtual_joystick_axis" => {
-                validate_object(arguments, &["input_id", "axis"], &["device_index", "inverted", "replace"])?;
+                validate_object(
+                    arguments,
+                    &["input_id", "axis"],
+                    &["device_index", "inverted", "replace"],
+                )?;
                 let errors = vec![];
-                let errors = require_integer(errors, arguments, "input_id", |_| true, "must be an integer");
-                let errors = require_value(errors, arguments, "axis", is_supported_axis, "must be a supported axis");
-                let errors = require_integer(errors, arguments, "device_index", |n| n == 1, "must be the integer 1");
-                let errors = require_value(errors, arguments, "inverted", Value::is_boolean, "must be a boolean");
-                let errors = require_value(errors, arguments, "replace", Value::is_boolean, "must be a boolean");
+                let errors = require_integer(
+                    errors,
+                    arguments,
+                    "input_id",
+                    |_| true,
+                    "must be an integer",
+                );
+                let errors = require_value(
+                    errors,
+                    arguments,
+                    "axis",
+                    is_supported_axis,
+                    "must be a supported axis",
+                );
+                let errors = require_integer(
+                    errors,
+                    arguments,
+                    "device_index",
+                    |n| n == 1,
+                    "must be the integer 1",
+                );
+                let errors = require_value(
+                    errors,
+                    arguments,
+                    "inverted",
+                    Value::is_boolean,
+                    "must be a boolean",
+                );
+                let errors = require_value(
+                    errors,
+                    arguments,
+                    "replace",
+                    Value::is_boolean,
+                    "must be a boolean",
+                );
                 outcome(errors)
             }
             "map_virtual_joystick_button" => {
-                validate_object(arguments, &["input_id", "button"], &["device_index", "replace"])?;
+                validate_object(
+                    arguments,
+                    &["input_id", "button"],
+                    &["device_index", "replace"],
+                )?;
                 let errors = vec![];
-                let errors = require_integer(errors, arguments, "input_id", |_| true, "must be an integer");
-                let errors = require_integer(errors, arguments, "button", |n| (1..=32).contains(&n), "must be an integer from 1 to 32");
-                let errors = require_integer(errors, arguments, "device_index", |n| n == 1, "must be the integer 1");
-                let errors = require_value(errors, arguments, "replace", Value::is_boolean, "must be a boolean");
+                let errors = require_integer(
+                    errors,
+                    arguments,
+                    "input_id",
+                    |_| true,
+                    "must be an integer",
+                );
+                let errors = require_integer(
+                    errors,
+                    arguments,
+                    "button",
+                    |n| (1..=32).contains(&n),
+                    "must be an integer from 1 to 32",
+                );
+                let errors = require_integer(
+                    errors,
+                    arguments,
+                    "device_index",
+                    |n| n == 1,
+                    "must be the integer 1",
+                );
+                let errors = require_value(
+                    errors,
+                    arguments,
+                    "replace",
+                    Value::is_boolean,
+                    "must be a boolean",
+                );
                 outcome(errors)
             }
             _ => {
                 validate_object(arguments, &["id"], &[])?;
                 let errors = vec![];
-                let errors = require_integer(errors, arguments, "id", |_| true, "must be an integer");
+                let errors =
+                    require_integer(errors, arguments, "id", |_| true, "must be an integer");
                 outcome(errors)
             }
         }
     }
 
     fn is_supported_axis(value: &Value) -> bool {
-        value
-            .as_str()
-            .is_some_and(|axis| VJOY_AXES.contains(&axis))
+        value.as_str().is_some_and(|axis| VJOY_AXES.contains(&axis))
     }
 
     fn outcome(errors: ValidationErrors) -> Result<(), ValidationErrors> {
