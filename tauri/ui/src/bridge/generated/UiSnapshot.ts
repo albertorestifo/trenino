@@ -8,7 +8,8 @@ export type UiSnapshot<T> = {
     | "trains"
     | "bindings"
     | "scripts"
-    | "firmware";
+    | "firmware"
+    | "vjoy";
   revision: string;
   value: T;
 };

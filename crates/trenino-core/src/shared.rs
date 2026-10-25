@@ -61,6 +61,7 @@ pub enum Topic {
     Bindings,
     Scripts,
     Firmware,
+    Vjoy,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
