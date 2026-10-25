@@ -469,14 +469,17 @@ Based on analysis of 5 different trains (UK, German, US passenger and freight), 
 
 ### Code Example
 
-```elixir
-def detect_control_type(endpoints) do
-  cond do
-    Enum.any?(endpoints, &(&1["Name"] == "Function.GetNotchCount")) -> :lever
-    Enum.any?(endpoints, &(&1["Name"] == "Property.bDefaultToPressed")) -> :button
-    true -> :unknown
-  end
-end
+```rust
+// Mirrors crates/trenino-runtime/src/simulator/services/explorer.rs
+fn detect_control_type(endpoints: &[String]) -> ControlType {
+    if endpoints.iter().any(|e| e.contains("Function.GetNotchCount")) {
+        ControlType::Lever
+    } else if endpoints.iter().any(|e| e.contains("Property.bDefaultToPressed")) {
+        ControlType::Button
+    } else {
+        ControlType::Unknown
+    }
+}
 ```
 
 ### Common Lever Names by Function

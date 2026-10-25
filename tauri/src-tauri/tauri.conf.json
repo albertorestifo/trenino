@@ -4,7 +4,7 @@
   "version": "0.8.0",
   "identifier": "dev.restifo.tws-io",
   "build": {
-    "frontendDist": "../src"
+    "frontendDist": "../ui/dist"
   },
   "app": {
     "withGlobalTauri": true,
@@ -24,7 +24,6 @@
       "icons/icon.ico"
     ],
     "externalBin": [
-      "binaries/trenino_backend",
       "binaries/avrdude",
       "binaries/keystroke"
     ],

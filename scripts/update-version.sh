@@ -29,27 +29,19 @@ echo "Updating all files to version $VERSION"
 # Update files using perl for cross-platform in-place editing
 # perl -pi -e works the same on macOS and Linux
 
-# 1. Update mix.exs
-echo "  - mix.exs"
-perl -pi -e "s/version: \"[0-9]+\.[0-9]+\.[0-9]+\"/version: \"$VERSION\"/" mix.exs
-
-# 2. Update tauri/src-tauri/tauri.conf.json
+# 1. Update tauri/src-tauri/tauri.conf.json
 echo "  - tauri/src-tauri/tauri.conf.json"
 perl -pi -e "s/\"version\": \"[0-9]+\.[0-9]+\.[0-9]+\"/\"version\": \"$VERSION\"/" tauri/src-tauri/tauri.conf.json
 
-# 3. Update tauri/src-tauri/Cargo.toml (only the package version line)
+# 2. Update tauri/src-tauri/Cargo.toml (only the package version line)
 echo "  - tauri/src-tauri/Cargo.toml"
 perl -pi -e "s/^version = \"[0-9]+\.[0-9]+\.[0-9]+\"/version = \"$VERSION\"/" tauri/src-tauri/Cargo.toml
 
-# 4. Update tauri/package.json
+# 3. Update tauri/package.json
 echo "  - tauri/package.json"
 perl -pi -e "s/\"version\": \"[0-9]+\.[0-9]+\.[0-9]+\"/\"version\": \"$VERSION\"/" tauri/package.json
 
-# 5. Update tauri/src-tauri/splash.html
-echo "  - tauri/src-tauri/splash.html"
-perl -pi -e "s/>v[0-9]+\.[0-9]+\.[0-9]+</>v$VERSION</" tauri/src-tauri/splash.html
-
-# 6. Update Cargo.lock if cargo is available
+# 4. Update Cargo.lock if cargo is available
 if command -v cargo &> /dev/null && [ -f "tauri/src-tauri/Cargo.lock" ]; then
   echo "  - tauri/src-tauri/Cargo.lock (via cargo update)"
   (cd tauri/src-tauri && cargo update --package trenino 2>/dev/null) || true

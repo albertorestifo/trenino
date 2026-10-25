@@ -1,6 +1,8 @@
 # Architecture Overview
 
-Trenino is built with Elixir and Phoenix LiveView, providing real-time hardware-to-simulator communication with a responsive web interface.
+Trenino is built with Rust: a Tokio-based runtime (`crates/trenino-core`,
+`crates/trenino-runtime`) behind a Tauri/Svelte desktop UI (`tauri/`),
+providing real-time hardware-to-simulator communication.
 
 ## System Components
 
@@ -9,120 +11,135 @@ Trenino is built with Elixir and Phoenix LiveView, providing real-time hardware-
 │                             Trenino                                     │
 │                                                                         │
 │  ┌──────────────┐    ┌──────────────┐    ┌──────────────────────────┐  │
-│  │   Hardware   │    │   Phoenix    │    │     Train Sim World      │  │
-│  │   Devices    │◄──►│   LiveView   │◄──►│    External Interface    │  │
-│  │  (USB/UART)  │    │     UI       │    │         API              │  │
-│  └──────────────┘    └──────────────┘    └──────────────────────────┘  │
-│         │                   │                        │                  │
-│         ▼                   ▼                        ▼                  │
+│  │   Hardware   │    │  Tauri/Svelte│    │     Train Sim World      │  │
+│  │   Devices    │◄──►│  Desktop UI  │◄──►│    External Interface    │  │
+│  │  (USB/UART)  │    │  (IPC bridge)│    │         API              │  │
+│  └──────────────┘    └──────┬───────┘    └──────────────────────────┘  │
+│         │                  │                        │                   │
+│         ▼                  ▼                        ▼                   │
 │  ┌──────────────┐    ┌──────────────┐    ┌──────────────────────────┐  │
-│  │    Serial    │    │    Ecto      │    │       Simulator          │  │
-│  │  Connection  │    │   SQLite     │    │       Connection         │  │
-│  │   GenServer  │    │  Database    │    │        GenServer         │  │
-│  └──────────────┘    └──────────────┘    └──────────────────────────┘  │
-│                                                                         │
+│  │    Serial    │    │  AppServices │    │       Simulator          │  │
+│  │  transport + │    │  + UI change │    │  connection owner +      │  │
+│  │   protocol   │    │   events     │    │    HTTP client           │  │
+│  └──────┬───────┘    └──────┬───────┘    └────────────┬─────────────┘  │
+│         └────────────┬─────┴──────────────────────────┘                │
+│                      ▼                                                 │
+│              ┌──────────────┐                                          │
+│              │    SQLite    │                                          │
+│              │   Database   │                                          │
+│              └──────────────┘                                          │
 └─────────────────────────────────────────────────────────────────────────┘
 ```
 
 ## Core Domains
 
-### Hardware Domain (`lib/trenino/hardware/`)
+### Hardware Domain (`crates/trenino-core/src/hardware/`, `crates/trenino-runtime/src/hardware/`)
 
 Manages physical device connections, input calibration, and I2C peripherals.
 
-- **Device** - Configuration schema with unique `config_id`
-- **Input** - Pin definitions (analog/digital) with sensitivity
-- **I2cModule** - Schema for I2C-attached display modules (HT16K33 chip) with polymorphic params
-- **HT16K33** - Segment encoder and display driver for HT16K33 LED displays
-- **ConfigurationManager** - GenServer broadcasting input value changes
+- **protocol** — Binary message codec (`Message` enum, `encode_message`/
+  `decode_message`) shared by runtime and tests
+- **calibration** — Raw-value normalization (`normalize`, `total_travel`) and
+  notch analysis
+- **ht16k33** - Segment encoder and display driver for HT16K33 LED displays
+- **runtime hardware service** - Serial transport, device discovery,
+  configuration plans, calibration sessions, and input value broadcasting
 
-### Firmware Domain (`lib/trenino/firmware/`)
+### Firmware Domain (`crates/trenino-runtime/src/firmware/`)
 
 Manages firmware releases, device definitions, and firmware uploads.
 
-- **DeviceRegistry** - GenServer maintaining ETS cache of available devices
+- **repository / catalog** - Cache of available devices
   - Loads device list from firmware release manifests (release.json)
   - Merges dynamic device data with static hardware configurations
   - Provides fast lookups for device configuration (MCU, programmer, baud rate)
   - Falls back to hardcoded devices if no manifest available
-- **FirmwareRelease** - GitHub release metadata with optional manifest
-- **FirmwareFile** - Individual firmware binaries per device environment
-- **Downloader** - Fetches releases and triggers registry reload
-- **Uploader** - Flashes firmware to devices using avrdude
+- **http / downloads** - Fetches releases and triggers catalog reload
+- **owner** - Owns uploads: flashes firmware to devices using avrdude with an
+  exclusive serial-port lease and retryable cleanup
+- **updates** - Automatic firmware checks with persisted notices
 
-### Train Domain (`lib/trenino/train/`)
+### Train Domain (`crates/trenino-core/src/train/`, `crates/trenino-runtime/src/train/`)
 
 Handles train configurations and input-to-lever mappings.
 
-- **Train** - Train configuration with one or more equivalent identifier prefixes
-- **TrainIdentifier** - Globally unique prefix owned by exactly one train profile
-- **Element** - Cab elements (levers, buttons)
-- **LeverConfig** - API endpoints and notch definitions
-- **LeverInputBinding** - Maps hardware inputs to levers
-- **LeverMapper** - Converts hardware values to simulator values
-- **LeverController** - GenServer that sends values to simulator
-- **Detection** - GenServer polling simulator for active train with two-layer defense (ObjectClass + ProviderName fallback)
-- **Script** - Lua scripts for train automation with configurable triggers
-- **ScriptEngine** - Sandboxed Lua execution environment with Trenino API bindings (`api`, `output`, `display`, `schedule`, `state`)
-- **ScriptRunner** - GenServer managing script lifecycle and execution
-- **DisplayBinding** - Maps a simulator endpoint to an I2C display module with a format string
-- **DisplayFormatter** - Evaluates format strings (`{value}`, `{value:.Nf}`) against runtime values
-- **DisplayController** - GenServer that polls simulator subscriptions and writes formatted values to I2C displays
+- **identifier** - Train configurations with one or more equivalent identifier
+  prefixes; each globally unique prefix is owned by exactly one train profile
+- **lever** - `LeverConfig`, `Notch` (gate/linear) and `map_input`
+- **buttons / output / display** - Button bindings, LED/output bindings, and
+  display bindings (a simulator endpoint mapped to an I2C module with a format
+  string such as `{value}` or `{value:.Nf}`)
+- **service** - Train repository operations
+- **detection** - Polls the simulator for the active train with two-layer
+  defense (ObjectClass + ProviderName fallback)
+- **lever_controller / button_controller / output_controller /
+  display_controller** - Map hardware values to simulator values, drive
+  outputs, and poll simulator subscriptions to write formatted values to I2C
+  displays
+- **script** - Sandboxed Lua execution environment with Trenino API bindings
+  (`api`, `output`, `display`, `schedule`, `state`) and a runner managing
+  script lifecycle and triggers (manual, on_train_active, on_input_change)
+- **sequence** - Command sequences with per-step values and delays
 
-### Simulator Domain (`lib/trenino/simulator/`)
+### Simulator Domain (`crates/trenino-runtime/src/simulator/`)
 
 Communicates with Train Sim World's External Interface API.
 
-- **Client** - HTTP client for TSW API
-- **Connection** - GenServer managing connection health
-- **AutoConfig** - Windows auto-detection of API key from `CommAPIKey.txt`
+- **client** - HTTP client for the TSW API (default `http://localhost:31270`)
+- **connection / connection_owner** - Connection health and client handout
+- **subscriptions / writer** - Endpoint subscriptions and coalesced writes
+- **services** - Train detection, interactive control detection, lever
+  analysis, guided calibration, endpoint explorer/suggestions
 
-### Virtual Joystick Domain (`lib/trenino/virtual_joystick/`)
+### Virtual Joystick Domain (`crates/trenino-runtime/src/vjoy/`, `tauri/virtual_joystick/`)
 
 Provides a standalone Windows DirectInput destination backed by vJoy device 1.
 
-- **Manager** owns lifecycle reconciliation, mappings, cached hardware state,
+- **manager** owns lifecycle reconciliation, mappings, cached hardware state,
   safe defaults, bridge restart/backoff, and the public runtime state machine.
-- **Bridge** owns a persistent external process through an Erlang Port, enforces
-  bounded JSON Lines framing, correlates acknowledgements, and coalesces newer
+- The **bridge** owns a persistent sidecar child process, enforces bounded
+  JSON Lines framing, correlates acknowledgements, and coalesces newer
   updates for an in-flight control.
-- **Configurator** performs fixed elevated create/delete commands, waits for
+- **configurator** performs fixed elevated create/delete commands, waits for
   Windows enumeration, validates the exact eight-axis/32-button descriptor, and
   records device ownership only after confirmed creation.
-- **Mapper** converts existing calibrated analog values to the axis range
+- **mapper** converts existing calibrated analog values to the axis range
   reported by vJoy, with clamping and optional inversion.
 
-Every physical input is routed to exactly one destination. Context-level SQLite
-immediate transactions perform explicit replacement between simulator/API and
-virtual joystick mappings so UI and MCP callers cannot bypass exclusivity.
+Every physical input is routed to exactly one destination. Storage-layer
+transactions perform explicit replacement between simulator/API and virtual
+joystick mappings so UI and MCP callers cannot bypass exclusivity.
 
-### MCP Domain (`lib/trenino/mcp/`)
+### MCP Domain (`crates/trenino-runtime/src/mcp/`)
 
 Model Context Protocol server for AI-powered configuration.
 
-- **Server** - MCP server implementation with SSE transport at `/mcp/sse`
-- **ToolRegistry** - Registry of available MCP tools organized by category
-- **Tools** - 47 tools across 11 categories:
-  - **SimulatorTools** - Browse endpoints, read/write simulator values
-  - **TrainTools** - List trains and get configurations
-  - **ElementTools** - Manage train buttons and levers
-  - **DeviceTools** - List devices, inputs, outputs, and I2C modules; CRUD for I2C modules
-  - **DetectionTools** - Interactive hardware input detection (prompts the user via a UI modal)
-  - **OutputBindingTools** - CRUD operations for output bindings
-  - **ButtonBindingTools** - CRUD operations for button bindings
-  - **SequenceTools** - CRUD operations for command sequences
-  - **ScriptTools** - CRUD operations for Lua scripts
-  - **DisplayBindingTools** - CRUD operations for display bindings
-  - **VirtualJoystickTools** - status, mapping, lifecycle, cleanup, and
-    installation-check operations for the standalone joystick destination
+- **server** - JSON-RPC 2.0 dispatch with an SSE/POST HTTP transport
+  (`GET /mcp/sse`, `POST /mcp/messages?session_id=...`) bound to `127.0.0.1:4000`
+  by default (`TRENINO_MCP_PORT` override), with a degraded-not-fatal lifecycle
+- **tools** - 47 tools across 11 categories:
+  - **simulator** - Browse endpoints, read/write simulator values
+  - **train** - List trains and get configurations
+  - **element** - Manage train buttons and levers
+  - **device** - List devices, inputs, outputs, and I2C modules; CRUD for I2C modules
+  - **output_binding** - CRUD operations for output bindings
+  - **button_binding** - CRUD operations for button bindings
+  - **sequence** - CRUD operations for command sequences
+  - **script** - CRUD operations for Lua scripts
+  - **detection** - Interactive hardware input detection (prompts the user via a UI modal)
+  - **display_binding** - CRUD operations for display bindings
+  - **vjoy** - status, mapping, lifecycle, cleanup, and installation-check
+    operations for the standalone joystick destination
+- **ports / storage_ports** - The storage-backed trait ports every tool talks to
+- A legacy JSON HTTP API (`http_api.rs`) shares the same ports and database owner
 
-### Serial Domain (`lib/trenino/serial/`)
+### Serial Domain (`crates/trenino-core/src/hardware/protocol/`)
 
 Low-level USB/UART communication with hardware devices.
 
-- **Connection** - GenServer managing device connections
-- **Discovery** - Auto-discovers connected devices
-- **Protocol** - Binary message encoding/decoding
+- **codec** - Binary message encoding/decoding (`Message` enum)
+- Runtime **hardware::transport** - Device connections and framing
+- Runtime **hardware::discovery** - Auto-discovers connected devices
 
 ## Data Flow
 
@@ -144,16 +161,16 @@ Low-level USB/UART communication with hardware devices.
 
 1. **Raw Input** - Hardware sends 16-bit ADC value (0-1023)
 2. **Normalization** - Calibration data converts to 0.0-1.0
-3. **Notch Mapping** - LeverMapper finds notch and interpolates
-4. **API Call** - LeverController sends the latest value to the simulator
+3. **Notch Mapping** - `map_input` finds the notch and interpolates
+4. **API Call** - The lever controller sends the latest value to the simulator
 
 ### Hardware Input to Virtual Joystick
 
 ```text
-ConfigurationManager input event
+hardware service input event
   -> exclusive destination lookup
-  -> VirtualJoystick.Manager
-  -> VirtualJoystick.Bridge (persistent Port)
+  -> vjoy::Manager
+  -> bridge (persistent sidecar process)
   -> virtual_joystick.exe
   -> trusted absolute vJoyInterface.dll
   -> vJoy device 1 complete report
@@ -171,40 +188,45 @@ without creating, deleting, or stealing it.
 ```
 ┌────────────┐     ┌────────────┐     ┌────────────┐
 │ Simulator  │     │ Detection  │     │   Train    │
-│    API     │────►│  GenServer │────►│  Context   │
-│ /Formation │     │ (15s poll) │     │  Lookup    │
-└────────────┘     └────────────┘     └────────────┘
+│    API     │────►│  Service   │────►│  Lookup    │
+│ /Formation │     │ (5s poll)  │     │            │
+└────────────┘     └─────┬──────┘     └────────────┘
                          │
                          ▼
                    ┌────────────┐
-                   │  PubSub    │
-                   │ Broadcast  │
+                   │  trains    │
+                   │  snapshot  │
                    └────────────┘
 ```
 
-## GenServer Supervision Tree
+## Runtime Services
 
-```
-Application
-├── Trenino.Repo (Ecto)
-├── TreninoWeb.Endpoint (Phoenix)
-├── Trenino.Firmware.DeviceRegistry (device definitions cache)
-├── Trenino.Serial.Connection (device management)
-├── Trenino.Simulator.Connection (API health)
-├── Trenino.Train.Detection (train polling with two-layer defense)
-├── Trenino.Train.LeverController (hardware value → simulator mapping)
-├── Trenino.Train.ButtonController (button input to simulator)
-├── Trenino.Train.OutputController (LED/output bindings)
-├── Trenino.Train.DisplayController (I2C display bindings, 200ms poll)
-├── Trenino.Train.ScriptRunner (Lua script execution)
-├── Trenino.Hardware.ConfigurationManager (input broadcasts)
-├── Trenino.VirtualJoystick.Manager (Windows vJoy lifecycle and routing)
-└── Calibration Supervisors
-    ├── Trenino.Hardware.Calibration.SessionSupervisor
-    └── Trenino.Train.Calibration.SessionSupervisor
-```
+Services are Tokio tasks composed in
+`crates/trenino-runtime/src/composition/` and exposed through `app.rs`
+(`AppServices`) repositories:
+
+- Simulator connection owner (API health)
+- Train detection (train polling with two-layer defense)
+- Lever controller (hardware value → simulator mapping)
+- Button controller (button input to simulator/keyboard/sequences)
+- Output controller (LED/output bindings)
+- Display controller (I2C display bindings, 200ms poll)
+- Script runner (Lua script execution)
+- Hardware service (device management and input broadcasts)
+- vJoy manager (Windows vJoy lifecycle and routing)
+- Firmware owner (catalog, downloads, uploads)
+- Hardware and train calibration sessions (generation-fenced)
+- MCP server and legacy JSON HTTP API
+
+A `ResourceArbiter` (`resource.rs`) grants exclusive leases — serial ports,
+detection sessions, calibration — so UI, MCP and HTTP callers cannot double-own
+hardware. `lifecycle.rs` coordinates shutdown with the database closed last.
 
 ## Database Schema
+
+The full schema lives in
+`crates/trenino-runtime/src/storage/schema/rust-full-v2.sql`; databases from
+older releases are migrated by `storage/migration.rs`.
 
 ```
 devices                    trains
@@ -217,8 +239,8 @@ devices                    trains
 │   ├── sensitivity        │   └── lever_config
 │   └── calibration        │       ├── endpoints
 │       ├── min_value      │       ├── notches[]
-│       └── max_value      │       │   ├── value
-└── i2c_modules[]          │       │   ├── type
+│       └── max_value      │       │   ├── kind (gate/linear)
+└── i2c_modules[]          │       │   ├── sim_input_min/max
     ├── module_chip        │       │   └── input_min/max
     ├── i2c_address        │       └── input_binding
     ├── name               │           └── input_id
@@ -251,18 +273,20 @@ being assigned to multiple profiles.
 
 ### Serial Protocol (Device ↔ Trenino)
 
-Binary protocol with message types:
+Binary protocol with message types (`Message` in
+`crates/trenino-core/src/hardware/protocol/codec.rs`):
 
 | Type | Name | Direction | Description |
 |------|------|-----------|-------------|
 | 0x00 | IdentityRequest | App → Device | Request device info |
-| 0x01 | IdentityResponse | Device → App | Device signature |
-| 0x02 | Configure | App → Device | Send input config and I2C module definitions |
+| 0x01 | IdentityResponse | Device → App | Device signature (version, config id) |
+| 0x02 | Configure* | App → Device | Send input/output/I2C config in parts (subtype: analog, button, matrix, HT16K33) |
 | 0x03 | ConfigurationStored | Device → App | Config acknowledged |
 | 0x04 | ConfigurationError | Device → App | Config rejected |
 | 0x05 | InputValue | Device → App | Real-time input data |
 | 0x06 | Heartbeat | Both | Keep-alive |
 | 0x07 | SetOutput | App → Device | Set digital output pin on/off |
+| 0x08 | RetryCalibration | App → Device | Ask device to retry calibration for a pin |
 | 0x0D | WriteSegments | App → Device | Write segment bytes to an I2C display |
 | 0x0E | SetModuleBrightness | App → Device | Set I2C display brightness (0–15) |
 | 0x0F | ModuleError | Device → App | I2C module error report |
@@ -291,17 +315,27 @@ SSE (Server-Sent Events) transport implementing Model Context Protocol:
 
 | Endpoint | Description |
 |----------|-------------|
-| `/mcp/sse` | SSE endpoint for MCP server |
+| `GET /mcp/sse` | SSE endpoint for MCP server |
+| `POST /mcp/messages?session_id=...` | JSON-RPC 2.0 messages |
 
-Supports 37 tools across 10 categories for AI-powered train configuration. See [MCP Setup Guide](../docs/mcp-setup.md) for details.
+Bound to `127.0.0.1:4000` by default (`TRENINO_MCP_PORT` override). Supports
+47 tools across 11 categories for AI-powered train configuration. See [MCP
+Setup Guide](mcp-setup.md) for details.
 
-## Event Broadcasting (PubSub)
+## UI Change Events
 
-| Topic | Events | Description |
-|-------|--------|-------------|
-| `device_updates` | Connection changes | Device plugged/unplugged |
-| `train:detection` | Train detected | Active train changed |
-| `simulator:connection` | Status changes | API connection health |
-| `serial:messages:{port}` | Input values | Per-port message stream |
-| `hardware:input_values:{port}` | Input value updates | Per-port hardware input stream (used by InputDetectionSession) |
-| `mcp:detection` | Detection requests/completions | Coordinates MCP detection tools with the UI modal overlay |
+The Svelte UI subscribes to committed snapshots through the typed IPC bridge
+(`tauri/ui/src/bridge/`). The Tauri shell (`tauri/src-tauri/src/rust_ui.rs`)
+publishes changes as Tauri events:
+
+| Event | Payload | Description |
+|-------|---------|-------------|
+| `ui://change/settings` | Settings snapshot | Simulator URL/key, consent |
+| `ui://change/hardware` | Hardware snapshot | Device plugged/unplugged, configuration |
+| `ui://change/trains` | Trains snapshot | Active train changed, train edits |
+| `ui://change/bindings` | Bindings snapshot | Lever/button/output/display bindings |
+| `ui://change/scripts` | Scripts snapshot | Lua script edits and run state |
+| `ui://change/firmware` | Firmware snapshot | Catalog, downloads, notices |
+| `ui://change/vjoy` | vJoy snapshot | Joystick mappings and lifecycle |
+| `ui://hardware/input` | Input value view | Per-port hardware input stream |
+| `ui://hardware/detection` | Detection events | Coordinates MCP detection tools with the UI modal overlay |

@@ -32,6 +32,14 @@ Release target: **0.8.0**.
 - Updated the Tauri stack, Req, Sentry and Burrito; aligned local/CI Zig to 0.16.0 and migrated Req pool timeout configuration. Windows desktop builds now require Windows 10 or 11.
 - **Breaking HTTP and MCP train contract** — train payloads now expose a sorted `identifiers` array and no longer include the singular `identifier` field
 
+### Removed
+
+- **Elixir implementation removed** (2026-10-25) — the Rust desktop runtime
+  (`crates/trenino-core`, `crates/trenino-runtime`, `tauri/`) reached verified
+  feature parity with the former Elixir/Phoenix backend, which has been deleted
+  along with its Mix tooling, tests and Burrito packaging. CI now runs only the
+  Rust and UI gates in `.github/workflows/rust-parity.yml`.
+
 ### Fixed
 
 - Lever writes recover after failed tasks and pause after connection failures instead of retrying continuously.

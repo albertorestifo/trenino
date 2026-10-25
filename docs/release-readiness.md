@@ -6,16 +6,17 @@ identifiers and Train Sim World 7 support. It changes HTTP/MCP train payloads fr
 
 ## Verification before publishing
 
-Run `mix precommit` and
-`cargo test --manifest-path tauri/virtual_joystick/Cargo.toml`.
-Run `mix hex.audit` after resolving dependencies. The October 23 dependency update
-resolved the reported advisories with compatible releases, including Bandit 1.13.1,
-Mint 1.11.0 and Phoenix LiveView 1.2.13. This does not replace application testing.
-Package information is maintained on [Hex](https://hex.pm/packages/bandit),
-[Mint's package page](https://hex.pm/packages/mint), and
-[LiveView's package page](https://hex.pm/packages/phoenix_live_view).
+Run the Rust and UI gates and the native sidecar tests:
 
-Check that Mix, Tauri configuration, Cargo package/lockfile, npm package/lockfile
+```bash
+cargo fmt --all --check
+cargo clippy --workspace --all-targets -- -D warnings
+cargo test --workspace -- --test-threads=1
+npm --prefix tauri/ui run check && npm --prefix tauri/ui test && npm --prefix tauri/ui run build
+cargo test --manifest-path tauri/virtual_joystick/Cargo.toml
+```
+
+Check that the Tauri configuration, Cargo package/lockfile, npm package/lockfile
 and splash screen all identify the application as 0.8.0. Keep the changelog
 unreleased until a release is actually published.
 

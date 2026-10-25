@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Control Auto-Suggestion feature automatically detects and suggests Train Sim World 6 API controls that match train element names. This reduces manual configuration by intelligently matching user-created elements (like "Throttle" or "Horn") to the corresponding API controls in the currently loaded train.
+The Control Auto-Suggestion feature automatically detects and suggests Train Sim World API controls that match train element names. This reduces manual configuration by intelligently matching user-created elements (like "Throttle" or "Horn") to the corresponding API controls in the currently loaded train.
 
 ## Architecture
 
@@ -10,16 +10,16 @@ The Control Auto-Suggestion feature automatically detects and suggests Train Sim
 
 ```
 ┌─────────────────────────────────────┐
-│   TrainEditLive (Phoenix LiveView)  │
+│   Desktop UI (Svelte, tauri/ui)     │
 │  - Configures train elements        │
-│  - Opens configuration modals       │
+│  - Guided setup flows               │
 └─────────────┬───────────────────────┘
               │
-              │ 1. User clicks "Configure"
-              │    on element named "Throttle"
+              │ 1. User names an element
+              │    "Throttle" while configuring
               ▼
 ┌─────────────────────────────────────┐
-│   ControlDetector Module            │
+│   Explorer Service (Rust runtime)   │
 │  - Fetches controls from TSW API    │
 │  - Classifies as lever or button    │
 │  - Matches using fuzzy logic        │
@@ -28,7 +28,7 @@ The Control Auto-Suggestion feature automatically detects and suggests Train Sim
               │ 2. Queries CurrentDrivableActor
               ▼
 ┌─────────────────────────────────────┐
-│   TSW API (via Client)              │
+│   TSW API (via SimulatorClient)     │
 │  - Returns available controls       │
 │  - Provides endpoint information    │
 └─────────────────────────────────────┘
@@ -36,15 +36,14 @@ The Control Auto-Suggestion feature automatically detects and suggests Train Sim
 
 ### Key Modules
 
-1. **Trenino.Simulator.ControlDetector** (`lib/trenino/simulator/control_detector.ex`)
+1. **`simulator::services::explorer`** (`crates/trenino-runtime/src/simulator/services/explorer.rs`)
    - Core detection and matching logic
-   - Communicates with TSW API via Client
+   - Communicates with the TSW API via `SimulatorClient`
    - Implements fuzzy string matching
 
-2. **TreninoWeb.TrainEditLive** (`lib/trenino_web/live/train_edit_live.ex`)
-   - UI integration
-   - Event handlers for applying suggestions
-   - Modal components with suggestion UI
+2. **Desktop UI** (`tauri/ui/`)
+   - Train editor pages and guided setup wizards
+   - Apply suggestions through the typed bridge (`src/bridge/`)
 
 ## Detection Logic
 
@@ -86,9 +85,12 @@ The matching algorithm uses multiple heuristics to calculate confidence scores:
 | Common word matches | 0.5-0.9 | "Train Brake" ~ "TrainBrake" |
 | Jaro distance fallback | 0.0-1.0 | Fuzzy string similarity |
 
+Ties keep the first candidate, like the original `Enum.max_by/2` behavior.
+
 ### Confidence Threshold
 
-Suggestions are only shown if confidence > 0.3 (30% match).
+Suggestions are only returned if confidence > 0.3 (30% match); otherwise the
+result is `SuggestError::NoMatch`.
 
 ### Name Pattern Examples
 
@@ -131,153 +133,120 @@ Based on analysis of 5 different trains:
 ### Lever Configuration
 
 1. User creates an element named "Throttle" (type: lever)
-2. User clicks "Configure" on the element
-3. Modal opens with lever configuration form
-4. If simulator is connected:
-   - `ControlDetector.suggest_lever("Throttle")` is called
-   - If match found, suggestion box appears at top of modal
-   - Shows control name and confidence percentage
-   - User can click "Apply Suggestion" to auto-fill all fields
-5. User can still manually configure if they prefer
+2. If the simulator is connected, `suggest_lever` finds the best-matching
+   control and its endpoints
+3. The guided lever setup applies the endpoints (and, for notch layout, the
+   suggested notches produced by lever analysis)
+4. User can still manually configure if they prefer
 
 ### Button Configuration
 
 1. User creates an element named "Horn" (type: button)
-2. User clicks "Configure" on the element
-3. Modal opens with button configuration form
-4. If simulator is connected:
-   - `ControlDetector.suggest_button("Horn")` is called
-   - If match found, suggestion box appears at top of modal
-   - Shows control name and confidence percentage
-   - User can click "Apply Suggestion" to auto-fill endpoint field
-5. User can still manually configure if they prefer
-
-## UI Components
-
-### Suggestion Box (Lever)
-
-```heex
-<div class="p-4 bg-success/10 border border-success/30 rounded-lg">
-  <div class="flex items-start justify-between gap-3">
-    <div class="flex-1">
-      <div class="flex items-center gap-2 mb-2">
-        <.icon name="hero-light-bulb" class="w-5 h-5 text-success" />
-        <h3 class="font-semibold text-success">Suggested Control Found</h3>
-        <span class="badge badge-sm badge-success">85% match</span>
-      </div>
-      <p class="text-sm text-base-content/70 mb-2">
-        Found control: <span class="font-mono text-sm">Throttle(Lever)</span>
-      </p>
-      <button type="button" phx-click="apply_lever_suggestion" class="btn btn-success btn-sm">
-        <.icon name="hero-arrow-down-tray" class="w-4 h-4" />
-        Apply Suggestion
-      </button>
-    </div>
-  </div>
-</div>
-```
-
-### Suggestion Box (Button)
-
-Similar UI, but applies to button endpoint field only.
+2. If the simulator is connected, `suggest_button` finds the best-matching
+   control and its `InputValue` endpoint
+3. User can still manually configure if they prefer
 
 ## API Reference
 
-### `ControlDetector.suggest_lever/1`
+All functions live in `crates/trenino-runtime/src/simulator/services/explorer.rs`.
+
+### `explorer::suggest_lever`
 
 Suggests a lever control matching the given element name.
 
-```elixir
-@spec suggest_lever(String.t()) :: {:ok, lever_suggestion()} | {:error, term()}
+```rust
+pub async fn suggest_lever(
+    client: &SimulatorClient,
+    element_name: &str,
+) -> Result<LeverSuggestion, SuggestError>;
 
-# Example
-{:ok, %{
-  control_name: "Throttle(Lever)",
-  min_endpoint: "CurrentDrivableActor/Throttle(Lever).Function.GetMinimumInputValue",
-  max_endpoint: "CurrentDrivableActor/Throttle(Lever).Function.GetMaximumInputValue",
-  value_endpoint: "CurrentDrivableActor/Throttle(Lever).InputValue",
-  notch_count_endpoint: "CurrentDrivableActor/Throttle(Lever).Function.GetNotchCount",
-  notch_index_endpoint: "CurrentDrivableActor/Throttle(Lever).Function.GetCurrentNotchIndex",
-  confidence: 0.85
-}}
+// Example result
+LeverSuggestion {
+    lever: LeverControl {
+        name: "Throttle(Lever)".into(),
+        min_endpoint: "CurrentDrivableActor/Throttle(Lever).Function.GetMinimumInputValue".into(),
+        max_endpoint: "CurrentDrivableActor/Throttle(Lever).Function.GetMaximumInputValue".into(),
+        value_endpoint: "CurrentDrivableActor/Throttle(Lever).InputValue".into(),
+        notch_count_endpoint: "CurrentDrivableActor/Throttle(Lever).Function.GetNotchCount".into(),
+        notch_index_endpoint: "CurrentDrivableActor/Throttle(Lever).Function.GetCurrentNotchIndex".into(),
+    },
+    confidence: 0.85,
+}
 ```
 
 **Returns:**
-- `{:ok, suggestion}` - Match found with confidence > 0.3
-- `{:error, :not_connected}` - Simulator not connected
-- `{:error, :no_match}` - No matching control found
+- `Ok(suggestion)` - Match found with confidence > 0.3
+- `Err(SuggestError::Simulator(..))` - Simulator unreachable or API error
+- `Err(SuggestError::NoMatch)` - No matching control found
 
-### `ControlDetector.suggest_button/1`
+### `explorer::suggest_button`
 
 Suggests a button control matching the given element name.
 
-```elixir
-@spec suggest_button(String.t()) :: {:ok, button_suggestion()} | {:error, term()}
+```rust
+pub async fn suggest_button(
+    client: &SimulatorClient,
+    element_name: &str,
+) -> Result<ButtonSuggestion, SuggestError>;
 
-# Example
-{:ok, %{
-  control_name: "Horn",
-  endpoint: "CurrentDrivableActor/Horn.InputValue",
-  confidence: 1.0
-}}
+// Example result
+ButtonSuggestion {
+    button: ButtonControl {
+        name: "Horn".into(),
+        endpoint: "CurrentDrivableActor/Horn.InputValue".into(),
+    },
+    confidence: 1.0,
+}
 ```
 
 **Returns:**
-- `{:ok, suggestion}` - Match found with confidence > 0.3
-- `{:error, :not_connected}` - Simulator not connected
-- `{:error, :no_match}` - No matching control found
+- `Ok(suggestion)` - Match found with confidence > 0.3
+- `Err(SuggestError::Simulator(..))` - Simulator unreachable or API error
+- `Err(SuggestError::NoMatch)` - No matching control found
+
+### Related helpers
+
+- `explorer::list_controls(client)` - Binary control names under `CurrentDrivableActor`
+- `explorer::detect_levers(client)` / `detect_buttons(client)` - Full classified lists
+- `explorer::resolve_lever_endpoints(client, path)` - Resolve one selected control
+  (used by guided simulator sessions) using the same notch-count classification
 
 ## Testing
 
-### Unit Tests
+Integration tests live in `crates/trenino-runtime/tests/simulator_detection.rs`,
+exercising `list_controls`, `detect_levers`, `detect_buttons` and both
+`suggest_*` functions against a fake simulator:
 
-Located in `test/trenino/simulator/control_detector_test.exs`
-
-Run tests:
 ```bash
-mix test test/trenino/simulator/control_detector_test.exs
-```
-
-### Integration Tests
-
-Integration tests require a running TSW6 instance with API enabled. Tag with `@tag :integration`.
-
-Run integration tests only:
-```bash
-mix test --only integration
-```
-
-Skip integration tests:
-```bash
-mix test --exclude integration
+cargo test -p trenino-runtime --test simulator_detection
 ```
 
 ### Manual Testing
 
-1. Start TSW6 with API enabled
+1. Start TSW with API enabled
 2. Load a train (e.g., any locomotive)
 3. In the app, create a new train configuration
 4. Add elements with common names: "Throttle", "Reverser", "Horn", "Train Brake"
-5. Click "Configure" on each element
-6. Verify suggestions appear with appropriate confidence scores
-7. Click "Apply Suggestion" and verify fields are populated correctly
-8. Save configuration and test in simulator
+5. Verify the guided flows resolve the expected endpoints
+6. Save configuration and test in simulator
 
 ## Performance Considerations
 
 ### API Calls
 
-The detector makes the following API calls when suggesting:
-1. `list(client, "CurrentDrivableActor")` - Lists all controls (~50-200 controls)
-2. For each control: `list(client, path)` - Lists endpoints (~5-10 per control)
+The explorer makes the following API calls when suggesting:
+1. `client.list(Some("CurrentDrivableActor"))` - Lists all controls (~50-200 controls)
+2. For each control: `client.list(Some(path))` - Lists endpoints (~5-10 per control)
 
 **Total calls:** O(n) where n = number of controls
 
-**Optimization:** Results are computed on-demand only when opening configuration modals.
+**Optimization:** Results are computed on demand; `resolve_lever_endpoints`
+avoids relisting every control when the user has already picked one.
 
 ### Caching
 
-Currently, no caching is implemented. Each modal open triggers fresh API calls. Future enhancements could:
+Currently, no caching is implemented. Each suggestion run triggers fresh API
+calls. Future enhancements could:
 - Cache control list for current train
 - Invalidate cache when train changes
 - Pre-fetch on train activation
@@ -286,9 +255,10 @@ Currently, no caching is implemented. Each modal open triggers fresh API calls. 
 
 The system gracefully handles errors:
 
-1. **Simulator not connected** - No suggestion shown, user can still manually configure
-2. **API timeout** - Returns `{:error, :not_connected}`, no suggestion shown
-3. **No matching control** - Returns `{:error, :no_match}`, no suggestion shown
+1. **Simulator not connected** - Caller gets `SuggestError::Simulator(..)`; the UI
+   falls back to manual configuration
+2. **API timeout** - Reported as `SuggestError::Simulator(..)`
+3. **No matching control** - `SuggestError::NoMatch`
 4. **Invalid control structure** - Silently skipped during detection
 
 ## Future Enhancements
@@ -300,43 +270,18 @@ The system gracefully handles errors:
 5. **Alias Support** - Allow users to define custom name mappings
 6. **Multi-language Support** - Handle control names in different languages
 
-## Implementation Notes
-
-### Type Safety
-
-Following project guidelines, the code uses proper struct matching:
-
-```elixir
-defp get_client do
-  case Connection.get_status() do
-    %{status: :connected, client: client} when not is_nil(client) ->
-      {:ok, client}
-    _ ->
-      {:error, :not_connected}
-  end
-end
-```
-
-### Float Precision
-
-Not applicable to this feature (handles strings/atoms only).
-
-### Error Propagation
-
-Uses `{:ok, result} | {:error, reason}` tuples consistently throughout.
-
 ## Troubleshooting
 
 ### Suggestion not appearing
 
 **Possible causes:**
-1. Simulator not connected - Check connection status in nav bar
+1. Simulator not connected - Check connection status in the app
 2. No matching control in current train - Try different element name
 3. Confidence too low (<30%) - Element name too generic or typo
 
 **Solutions:**
 - Verify simulator connection
-- Check TSW6 API is enabled
+- Check the TSW API is enabled
 - Try more specific element names ("Throttle" vs "Lever 1")
 
 ### Wrong control suggested
@@ -350,19 +295,8 @@ Uses `{:ok, result} | {:error, reason}` tuples consistently throughout.
 - Use more specific element names
 - Check confidence score - low scores indicate uncertain match
 
-### Apply button doesn't work
-
-**Possible causes:**
-1. JavaScript error in browser
-2. Network issue
-
-**Solutions:**
-- Check browser console for errors
-- Refresh page
-- Manually copy/paste suggested control name
-
 ## Related Documentation
 
-- [TSW6 API Documentation](TSW_API_GUIDE.md)
-- [Simulator Client Module](../lib/trenino/simulator/client.ex)
+- [TSW API Documentation](TSW_API_GUIDE.md)
+- Simulator client (`crates/trenino-runtime/src/simulator/client.rs`)
 - [Train Configuration Guide](train-configuration.md)

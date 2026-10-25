@@ -2,85 +2,123 @@
 
 ## Project Overview
 
-Trenino is a Phoenix/LiveView web app (+ Tauri desktop wrapper) that bridges custom hardware
-controllers to Train Sim World via a local MCP server. Key subsystems:
+Trenino is a Rust desktop application that bridges custom hardware controllers to
+Train Sim World via a local MCP server. A Tokio-based runtime provides the backend;
+a Tauri/Svelte shell provides the desktop UI. Key subsystems:
 
-- `lib/trenino/hardware/` — serial port + hardware I/O
-- `lib/trenino/simulator/` — Train Sim World simulator client
-- `lib/trenino/train/` — domain logic (scripts, sequences, bindings, calibration)
-- `lib/trenino/mcp/` — MCP server + tool registry
-- `lib/trenino_web/` — Phoenix LiveView UI
+- `crates/trenino-core/` — shared domain types and wire contracts: serial protocol
+  codec, calibration math, train/lever/notch model, HT16K33 display driver,
+  simulator types, decimal rounding helpers
+- `crates/trenino-runtime/` — services: hardware sessions and serial transport,
+  firmware catalog/download/upload, train controllers (lever/button/output/display),
+  simulator connection and detection, Lua script runner, Windows vJoy, SQLite
+  storage, MCP server, legacy JSON HTTP API, production composition
+- `tauri/src-tauri/` — Tauri shell: `rust-ui` IPC commands, updater, sidecar wiring
+- `tauri/ui/` — Svelte/TypeScript desktop frontend (typed bridge in `src/bridge/`)
+- `tauri/keystroke/`, `tauri/virtual_joystick/` — native sidecars (keyboard input,
+  Windows vJoy feeder)
 
 ## Commands
 
 ```bash
-mix precommit   # compile (warnings-as-errors) + credo strict + full test suite — run before committing
-mix test        # run tests (auto-creates and migrates test DB)
-mix setup       # first-time setup: deps + DB + assets
+# Rust gates (same as .github/workflows/rust-parity.yml)
+cargo fmt --all --check
+cargo clippy --workspace --all-targets -- -D warnings
+cargo test --workspace -- --test-threads=1
+
+# Desktop UI gates
+npm --prefix tauri/ui ci
+npm --prefix tauri/ui run check && npm --prefix tauri/ui test
+npm --prefix tauri/ui run build
+
+# Run the desktop app locally (build UI assets first)
+npm --prefix tauri/ui run build
+cargo run --manifest-path tauri/src-tauri/Cargo.toml --features rust-ui
+
+# Package an installer
+./scripts/build-rust-desktop.sh
 ```
 
 ## Skills
 
 Project skills live in `.claude/skills/`. Invoke them by name when relevant:
 
-- `/phoenix-liveview` — Phoenix v1.8, LiveView, Ecto, HEEx, forms, streams, Tailwind v4
-- `/elixir-patterns` — Elixir core idioms, OTP, GenServer, Mix
-- `/mimic-testing` — Mimic mocking library setup and patterns
 - `/trenino-mcp` — MCP server interaction and tool usage
 - `/train-setup` — Train configuration workflow
+- `/lua-scripting` — Lua scripting API for train automation
 
 ## MCP Tools
 
-Tool modules live in `lib/trenino/mcp/tools/`. When adding or removing a tool:
+MCP tool handlers live in `crates/trenino-runtime/src/mcp/tools.rs`, grouped into
+category modules (`simulator`, `train`, `element`, `device`, `output_binding`,
+`button_binding`, `sequence`, `script`, `detection`, `display_binding`, `vjoy`).
+Each module exposes a `TOOL_NAMES` constant and a `tools()` constructor; the
+registry currently serves 47 tools over the SSE/POST HTTP transport
+(`GET /mcp/sse`, `POST /mcp/messages?session_id=...`, bound to `127.0.0.1:4000`
+by default). When adding or removing a tool:
 
-1. Add the module to `lib/trenino/mcp/tool_registry.ex` (`@tool_modules` list)
-2. Update the hardcoded tool count in **all three** of these test files:
-   - `test/trenino/mcp/tool_registry_test.exs`
-   - `test/trenino/mcp/server_test.exs`
-   - `test/trenino_web/controllers/mcp/mcp_controller_test.exs`
+1. Update the category module's `TOOL_NAMES` and `tools()` in
+   `crates/trenino-runtime/src/mcp/tools.rs`
+2. Update any tool-count assertions in the runtime MCP tests
+   (`crates/trenino-runtime/tests/mcp_server.rs` and related suites)
 
-Use `SequenceTools` (`lib/trenino/mcp/tools/sequence_tools.ex`) as the canonical CRUD pattern.
-Context functions live in `lib/trenino/train.ex` — check there before writing new tool logic.
+Use the `sequence` module as the canonical CRUD pattern. Tool logic does not touch
+the database directly: it goes through the ports in
+`crates/trenino-runtime/src/mcp/ports.rs` (storage-backed by
+`storage_ports.rs`) — check there before writing new tool logic.
 
-## Elixir Coding Guidelines
+## Rust Coding Guidelines
 
 ### Type Safety
 
-Always pattern match on struct type in function arguments:
-
-```elixir
-# Good
-def process(%MyStruct{} = struct), do: ...
-
-# Bad
-def process(struct), do: ...
-```
-
-Prefer structs over untyped maps. When maps are necessary, document shape via typespecs:
-
-```elixir
-@type options :: %{port: integer(), timeout: integer()}
-@spec connect(options()) :: :ok
-```
+Model domain data as strongly-typed structs and enums (see `crates/trenino-core`),
+not untyped maps. When JSON is unavoidable (MCP, HTTP API, IPC), derive `Serialize`
+/ `Deserialize` on dedicated wire types.
 
 ### Float Value Precision
 
-Round float values to 2 decimal places for simulator inputs/outputs, calibration values, notch values, and any user-facing float data:
+Round float values to 2 decimal places for simulator inputs/outputs, calibration
+values, notch values, and any user-facing float data. Use the shared helper, which
+rounds the exact binary value with ties away from zero:
 
-```elixir
-value = Float.round(raw_value, 2)
+```rust
+use trenino_core::rounding::round_elixir;
+
+let value = round_elixir(raw_value, 2).ok_or(MyError::NonFinite)?;
 ```
 
-Apply in: simulator client reads, calibration recording, notch value storage, UI display.
+Do not use the `(x * 100.0).round() / 100.0` idiom: it rounds the intermediate
+product to another binary float and moves values such as `2.675` across the
+decimal midpoint. For fixed-width display strings use
+`trenino_core::rounding::format_elixir_decimal`.
+
+Apply in: simulator client reads, calibration recording, notch value storage,
+UI display.
 
 ### Protocol Messages
 
-Handle atom-to-integer conversion in encode/decode functions using binary pattern matching — keep the struct API using atoms, the wire format using integers:
+Keep the Rust API using enum variants and the wire format using integers.
+Convert in encode/decode with byte-pattern matching
+(`crates/trenino-core/src/hardware/protocol/codec.rs`):
 
-```elixir
-def encode(%MyMessage{type: :analog}), do: {:ok, <<0x01, 0x00>>}
-def encode(%MyMessage{type: :digital}), do: {:ok, <<0x01, 0x01>>}
+```rust
+pub fn encode_message(m: &Message) -> Result<Vec<u8>, ProtocolError> {
+    let mut out = Vec::new();
+    match m {
+        Message::SetOutput { pin, high } => {
+            out.extend([0x07, *pin, u8::from(*high)]);
+        }
+        // ...
+    }
+    Ok(out)
+}
 
-def decode(<<0x01, 0x00>>), do: {:ok, %MyMessage{type: :analog}}
-def decode(<<0x01, 0x01>>), do: {:ok, %MyMessage{type: :digital}}
+pub fn decode_message(bytes: &[u8]) -> Result<Message, ProtocolError> {
+    match bytes.first() {
+        Some(0x00) => /* IdentityRequest */,
+        Some(0x01) => /* IdentityResponse */,
+        // ...
+        _ => Err(ProtocolError::UnknownMessageType(type_byte)),
+    }
+}
 ```

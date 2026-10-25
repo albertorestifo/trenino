@@ -94,14 +94,35 @@ All boards can be flashed directly from Trenino.
 
 ## Development
 
+Trenino is a Rust application: a Tokio-based runtime (`crates/`) behind a
+Tauri/Svelte desktop UI (`tauri/`).
+
 ```bash
 git clone https://github.com/albertorestifo/trenino.git
 cd trenino
-mix setup
-mix phx.server
+
+# Prerequisites: Rust 1.91.1 (rustup) and Node.js 22
+npm --prefix tauri/ui ci
+npm --prefix tauri/ui run build
+
+cargo run --manifest-path tauri/src-tauri/Cargo.toml --features rust-ui
 ```
 
-Visit [localhost:4000](http://localhost:4000). See the [docs](docs/) folder for architecture and development guides.
+The last command builds and launches the desktop app (a native window — no
+browser URL) with the Rust runtime. There is no hot-reload wiring: rebuild the
+UI (`npm --prefix tauri/ui run build`) and relaunch to pick up frontend changes.
+`npm --prefix tauri/ui run dev` only serves the UI in a browser without Tauri
+IPC.
+
+```bash
+# Tests and lints
+cargo test --workspace
+npm --prefix tauri/ui run check && npm --prefix tauri/ui test
+```
+
+To package an installer, run `./scripts/build-rust-desktop.sh`. See the
+[docs](docs/) folder — especially the [Development Guide](docs/development.md) —
+for architecture, hardware setup and detailed guides.
 
 ## License
 

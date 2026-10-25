@@ -1,4 +1,8 @@
 # Rust parity completion
+> **2026-10-25 note:** After this handoff's verification, the retained Elixir
+> implementation was removed from the repository. Trenino is now Rust-only
+> (`crates/` + `tauri/`); references below to the Elixir source as a behavioral
+> oracle are historical. See `docs/development.md` for the current workflow.
 
 Continuation of the OMP migration on `codex/rust-rewrite`, starting at `3ff7d38`. This report supersedes the open-work inventory in the October 24 handoff. Prior sibling worktrees were preserved and their unfinished implementation recovered into this checkout.
 

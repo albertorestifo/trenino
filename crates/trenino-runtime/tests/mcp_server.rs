@@ -1693,6 +1693,21 @@ fn i2c_module_tools_crud_and_address_parsing() {
     .unwrap();
     assert_eq!(created["i2c_module"]["i2c_address"], 112);
     assert_eq!(created["i2c_module"]["i2c_address_display"], "112 (0x70)");
+
+    // Alpha hex digits must render uppercase, matching the Elixir oracle.
+    let created = call(
+        &fixture,
+        "create_i2c_module",
+        json!({"device_id": 1, "module_chip": "ht16k33", "i2c_address": "0xAB", "name": "Brake"}),
+    )
+    .unwrap();
+    assert_eq!(created["i2c_module"]["i2c_address_display"], "171 (0xAB)");
+    let created_id = created["i2c_module"]["id"].as_i64().unwrap();
+    assert!(
+        call(&fixture, "delete_i2c_module", json!({"id": created_id})).unwrap()["deleted"]
+            .as_bool()
+            .unwrap()
+    );
     assert_eq!(created["i2c_module"]["device_name"], "Main device");
     assert_eq!(created["i2c_module"]["brightness"], 8);
     assert_eq!(created["i2c_module"]["num_digits"], 4);

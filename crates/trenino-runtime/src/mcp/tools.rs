@@ -799,7 +799,7 @@ mod device {
 
     /// `I2cModule.format_i2c_address/1`.
     fn format_i2c_address(address: i64) -> String {
-        format!("{address} (0x{:02x})", address)
+        format!("{address} (0x{:02X})", address)
     }
 
     fn serialize_i2c_module(module: &I2cModuleRecord) -> Value {

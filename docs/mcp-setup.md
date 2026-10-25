@@ -17,7 +17,7 @@ Trenino includes a built-in MCP (Model Context Protocol) server that lets you us
 
 ### Requirements
 
-- Trenino running on your machine (`http://localhost:4000`)
+- Trenino running on your machine (the desktop app hosts the MCP server on `127.0.0.1:4000` by default; override with `TRENINO_MCP_PORT`)
 - [Claude Desktop](https://claude.ai/download) or [Claude Code](https://docs.anthropic.com/en/docs/claude-code)
 
 ### Claude Desktop
@@ -105,7 +105,7 @@ Claude will:
 
 ## Available Tools
 
-Claude has access to 37 tools for interacting with Trenino:
+Claude has access to 47 tools for interacting with Trenino:
 
 | Category | Tools |
 |----------|-------|
@@ -117,12 +117,12 @@ Claude has access to 37 tools for interacting with Trenino:
 | Output Bindings | List, create, update, delete |
 | Button Bindings | Get, create, update, delete |
 | Sequences | List, create, update, delete |
-| Scripts | List, get, create, update, delete Lua scripts |
 | Display Bindings | List, create, update, delete display bindings |
+| Virtual Joystick | Status, mapping, lifecycle, cleanup, installation checks |
 
 ## Tips
 
-- **Start Trenino first** — the MCP server is part of Trenino's web server. Claude can only connect when Trenino is running.
+- **Start Trenino first** — the MCP server is part of the Trenino desktop app. Claude can only connect when Trenino is running.
 - **Have the game running** — simulator tools need Train Sim World running with the External Interface API enabled.
 - **Let Claude detect your inputs** — rather than looking up input IDs manually, let Claude prompt you to press the button or move the lever you want to bind. A modal will appear in the Trenino UI.
 - **Ask Claude to explore** — if you're not sure what endpoints a train has, ask Claude to browse the simulator API tree.

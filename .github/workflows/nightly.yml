@@ -13,14 +13,6 @@ concurrency:
   group: nightly-build
   cancel-in-progress: true
 
-env:
-  ELIXIR_VERSION: "1.19"
-  # Pin to exact version available on Beam Machine (Burrito's ERTS source).
-  # Beam Machine may lag behind the latest OTP patch releases.
-  OTP_VERSION: "28.4"
-  MIX_ENV: prod
-  AVRDUDE_VERSION: "8.1"
-
 jobs:
   check-changes:
     name: Check for Changes
@@ -63,74 +55,6 @@ jobs:
             echo "Changes detected, building"
             echo "should_build=true" >> $GITHUB_OUTPUT
           fi
-
-  build-elixir:
-    name: Build Elixir (${{ matrix.target }})
-    needs: [check-changes]
-    if: needs.check-changes.outputs.should_build == 'true'
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: windows-2022
-            target: windows_x86_64
-            binary_name: trenino_desktop_windows_x86_64.exe
-            tauri_target: x86_64-pc-windows-msvc
-
-          - os: ubuntu-22.04
-            target: linux_x86_64
-            binary_name: trenino_desktop_linux_x86_64
-            tauri_target: x86_64-unknown-linux-gnu
-
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v7
-
-      - name: Setup Elixir
-        uses: erlef/setup-beam@v1
-        with:
-          elixir-version: ${{ env.ELIXIR_VERSION }}
-          otp-version: ${{ env.OTP_VERSION }}
-          version-type: strict
-
-      - name: Install Windows build dependencies
-        if: runner.os == 'Windows'
-        run: choco install 7zip -y
-
-      - name: Set up Burrito prerequisites
-        uses: ./.github/actions/setup-burrito
-
-      - name: Cache Mix dependencies
-        uses: actions/cache@v6
-        with:
-          path: deps
-          key: ${{ runner.os }}-deps-${{ hashFiles('**/mix.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-deps-
-
-      - name: Install dependencies
-        run: mix deps.get --only prod
-
-      - name: Build assets
-        run: mix assets.deploy
-
-      - name: Workaround circuits_uart Makefile location for Burrito
-        if: runner.os == 'Linux'
-        run: ln -sf src/Makefile deps/circuits_uart/Makefile
-
-      - name: Build Elixir release
-        run: mix release trenino_desktop
-        env:
-          BURRITO_TARGET: ${{ matrix.target }}
-          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
-
-      - name: Upload Elixir binary
-        uses: actions/upload-artifact@v7
-        with:
-          name: elixir-${{ matrix.target }}
-          path: burrito_out/${{ matrix.binary_name }}
-          retention-days: 7
 
   build-keystroke:
     name: Build Keystroke (${{ matrix.target }})
@@ -305,7 +229,7 @@ jobs:
 
   build-tauri:
     name: Build Tauri (${{ matrix.target }})
-    needs: [check-changes, build-elixir, build-keystroke, build-virtual-joystick, download-avrdude, download-vcredist]
+    needs: [check-changes, build-keystroke, build-virtual-joystick, download-avrdude, download-vcredist]
     if: needs.check-changes.outputs.should_build == 'true'
     runs-on: ${{ matrix.os }}
     strategy:
@@ -315,18 +239,14 @@ jobs:
           - os: windows-2022
             target: windows_x86_64
             artifact_name: Trenino-nightly-windows-x86_64
-            elixir_binary: trenino_desktop_windows_x86_64.exe
             tauri_target: x86_64-pc-windows-msvc
             tauri_args: ""
-            avrdude_ext: ".exe"
 
           - os: ubuntu-22.04
             target: linux_x86_64
             artifact_name: Trenino-nightly-linux-x86_64
-            elixir_binary: trenino_desktop_linux_x86_64
             tauri_target: x86_64-unknown-linux-gnu
             tauri_args: "--bundles appimage"
-            avrdude_ext: ""
 
     steps:
       - name: Harden Runner
@@ -337,29 +257,27 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v7
 
-      - name: Download Elixir binary
-        uses: actions/download-artifact@v8
-        with:
-          name: elixir-${{ matrix.target }}
-          path: tauri/src-tauri/binaries
-
       - name: Download avrdude
+        if: runner.os == 'Linux'
         uses: actions/download-artifact@v8
         with:
           name: avrdude-${{ matrix.target }}
           path: tauri/src-tauri/binaries/avrdude-download
 
-      - name: Download keystroke
-        uses: actions/download-artifact@v8
-        with:
-          name: keystroke-${{ matrix.target }}
-          path: tauri/src-tauri/binaries/keystroke-download
+      - name: Prepare avrdude binary (Unix)
+        if: runner.os == 'Linux'
+        run: |
+          mv "tauri/src-tauri/binaries/avrdude-download/avrdude-binary" \
+             "tauri/src-tauri/binaries/avrdude-${{ matrix.tauri_target }}"
+          chmod +x "tauri/src-tauri/binaries/avrdude-${{ matrix.tauri_target }}"
 
-      - name: Download virtual joystick
-        uses: actions/download-artifact@v8
-        with:
-          name: virtual-joystick-${{ matrix.target }}
-          path: tauri/src-tauri/binaries/virtual-joystick-download
+          if [ -f "tauri/src-tauri/binaries/avrdude-download/avrdude.conf" ]; then
+            cp "tauri/src-tauri/binaries/avrdude-download/avrdude.conf" \
+               "tauri/src-tauri/binaries/"
+          fi
+
+          rm -rf "tauri/src-tauri/binaries/avrdude-download"
+          ls -la tauri/src-tauri/binaries/
 
       - name: Download VC++ Redistributable
         if: runner.os == 'Windows'
@@ -373,79 +291,14 @@ jobs:
         shell: pwsh
         run: choco install innoextract --version 1.9 -y --no-progress
 
-      - name: Stage verified vJoy resources
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: ./scripts/stage-vjoy-resources.ps1
-
-      - name: Prepare binaries (Windows)
+      - name: Locate Windows libclang for the vendored vJoy bindings
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          # Prepare Elixir backend binary
-          Move-Item -Path "tauri/src-tauri/binaries/${{ matrix.elixir_binary }}" `
-                    -Destination "tauri/src-tauri/binaries/trenino_backend-${{ matrix.tauri_target }}.exe"
-
-          # Prepare avrdude binary
-          Move-Item -Path "tauri/src-tauri/binaries/avrdude-download/avrdude-binary" `
-                    -Destination "tauri/src-tauri/binaries/avrdude-${{ matrix.tauri_target }}.exe"
-
-          # Copy avrdude.conf if it exists
-          if (Test-Path "tauri/src-tauri/binaries/avrdude-download/avrdude.conf") {
-            Copy-Item -Path "tauri/src-tauri/binaries/avrdude-download/avrdude.conf" `
-                      -Destination "tauri/src-tauri/binaries/"
-          }
-
-          # Prepare keystroke binary
-          Move-Item -Path "tauri/src-tauri/binaries/keystroke-download/keystroke.exe" `
-                    -Destination "tauri/src-tauri/binaries/keystroke-${{ matrix.tauri_target }}.exe"
-
-          # Prepare virtual joystick binary
-          Move-Item -Path "tauri/src-tauri/binaries/virtual-joystick-download/virtual_joystick.exe" `
-                    -Destination "tauri/src-tauri/binaries/virtual_joystick-${{ matrix.tauri_target }}.exe"
-
-          # Clean up download folders
-          Remove-Item -Recurse -Force "tauri/src-tauri/binaries/avrdude-download"
-          Remove-Item -Recurse -Force "tauri/src-tauri/binaries/keystroke-download"
-          Remove-Item -Recurse -Force "tauri/src-tauri/binaries/virtual-joystick-download"
-
-          Get-ChildItem tauri/src-tauri/binaries/
-
-      - name: Prepare binaries (Unix)
-        if: runner.os != 'Windows'
-        run: |
-          # Prepare Elixir backend binary
-          mv "tauri/src-tauri/binaries/${{ matrix.elixir_binary }}" \
-             "tauri/src-tauri/binaries/trenino_backend-${{ matrix.tauri_target }}"
-          chmod +x "tauri/src-tauri/binaries/trenino_backend-${{ matrix.tauri_target }}"
-
-          # Prepare avrdude binary
-          mv "tauri/src-tauri/binaries/avrdude-download/avrdude-binary" \
-             "tauri/src-tauri/binaries/avrdude-${{ matrix.tauri_target }}"
-          chmod +x "tauri/src-tauri/binaries/avrdude-${{ matrix.tauri_target }}"
-
-          # Copy avrdude.conf if it exists
-          if [ -f "tauri/src-tauri/binaries/avrdude-download/avrdude.conf" ]; then
-            cp "tauri/src-tauri/binaries/avrdude-download/avrdude.conf" \
-               "tauri/src-tauri/binaries/"
-          fi
-
-          # Prepare keystroke binary
-          mv "tauri/src-tauri/binaries/keystroke-download/keystroke" \
-             "tauri/src-tauri/binaries/keystroke-${{ matrix.tauri_target }}"
-          chmod +x "tauri/src-tauri/binaries/keystroke-${{ matrix.tauri_target }}"
-
-          # Prepare virtual joystick binary
-          mv "tauri/src-tauri/binaries/virtual-joystick-download/virtual_joystick" \
-             "tauri/src-tauri/binaries/virtual_joystick-${{ matrix.tauri_target }}"
-          chmod +x "tauri/src-tauri/binaries/virtual_joystick-${{ matrix.tauri_target }}"
-
-          # Clean up download folders
-          rm -rf "tauri/src-tauri/binaries/avrdude-download"
-          rm -rf "tauri/src-tauri/binaries/keystroke-download"
-          rm -rf "tauri/src-tauri/binaries/virtual-joystick-download"
-
-          ls -la tauri/src-tauri/binaries/
+          $locations = @('C:\Program Files\LLVM\bin', 'C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools\Llvm\x64\bin')
+          $clang = $locations | Where-Object { Test-Path (Join-Path $_ 'libclang.dll') } | Select-Object -First 1
+          if (-not $clang) { throw 'A real libclang.dll is required for vendored vJoy bindings.' }
+          "LIBCLANG_PATH=$clang" >> $env:GITHUB_ENV
 
       - name: Install Linux system dependencies
         if: runner.os == 'Linux'
@@ -459,12 +312,6 @@ jobs:
             librsvg2-dev \
             patchelf \
             libxdo-dev
-
-      - name: Create placeholder for Windows-only resources
-        if: runner.os == 'Linux'
-        run: |
-          mkdir -p tauri/src-tauri/resources
-          touch tauri/src-tauri/resources/vc_redist.x64.exe
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
@@ -481,18 +328,11 @@ jobs:
         with:
           node-version: 20
           cache: 'npm'
-          cache-dependency-path: tauri/package-lock.json
+          cache-dependency-path: tauri/ui/package-lock.json
 
-      - name: Install frontend dependencies
-        working-directory: tauri
-        run: npm install
-
-      - name: Build Tauri app
-        uses: tauri-apps/tauri-action@v1
-        with:
-          projectPath: tauri
-          tauriScript: npx tauri
-          args: ${{ matrix.tauri_args }}
+      - name: Build Rust desktop package
+        shell: bash
+        run: ./scripts/build-rust-desktop.sh ${{ matrix.tauri_args }}
 
       - name: Prepare clearly named Windows downloads
         if: runner.os == 'Windows'

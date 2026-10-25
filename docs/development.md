@@ -6,23 +6,56 @@ Guide for developers contributing to Trenino.
 
 ### Prerequisites
 
-- Elixir 1.20
-- Erlang/OTP 29
-- SQLite3
+- Rust toolchain 1.91.1 (rustup; includes clippy + rustfmt)
+- Node.js 22 — Svelte desktop UI in `tauri/ui`
+
+## Development Commands
+
+```bash
+# Format, lint and tests (same gates as .github/workflows/rust-parity.yml)
+cargo fmt --all --check
+cargo clippy --workspace --all-targets -- -D warnings
+cargo test --workspace -- --test-threads=1
+
+# Desktop UI
+npm --prefix tauri/ui ci
+npm --prefix tauri/ui run check
+npm --prefix tauri/ui test
+npm --prefix tauri/ui run build
+
+# Desktop shell (Tauri commands + updater)
+cargo fmt --manifest-path tauri/src-tauri/Cargo.toml --check
+cargo test --manifest-path tauri/src-tauri/Cargo.toml --features "rust-ui desktop-updater" -- --test-threads=1
+cargo check --manifest-path tauri/src-tauri/Cargo.toml --features "rust-ui desktop-updater"
+```
+
+Run the desktop app locally:
+
+```bash
+npm --prefix tauri/ui run build
+cargo run --manifest-path tauri/src-tauri/Cargo.toml --features rust-ui
+```
+
+There is no hot-reload wiring (no `devUrl` in the Tauri configs): rebuild the
+UI and relaunch to pick up frontend changes. `npm --prefix tauri/ui run dev`
+serves the UI in a browser without Tauri IPC.
+
+On Windows, vendored vJoy bindings require `LIBCLANG_PATH` (see
+Windows Virtual Joystick Development below).
 
 ### Optional: Keystroke Simulation Support
 
-To use the keystroke button binding mode during development, you need to build the keystroke utility:
+The keystroke button binding mode uses a small Rust sidecar that simulates
+keyboard input. On Windows it uses the `SendInput` API; on Linux it uses
+`xdotool` (requires `libxdo-dev`). Build it with:
 
 ```bash
-# Requires Rust toolchain (https://rustup.rs/)
-mix keystroke
+cargo build --manifest-path tauri/keystroke/Cargo.toml --release
 ```
 
-This builds a small Rust executable that simulates keyboard input. On Windows it uses the `SendInput` API; on Linux it uses `xdotool` (requires `libxdo-dev`). The `Trenino.Keyboard` module automatically finds it:
-
-- **Windows**: `tauri/keystroke/target/release/keystroke.exe`
-- **Linux/macOS**: `tauri/keystroke/target/release/keystroke`
+Debug builds of the runtime discover the sidecar automatically at
+`tauri/keystroke/target/{release,debug}` (or an avrdude/keystroke on `PATH`);
+release builds only use trusted configured or bundled app-resource paths.
 
 **Linux prerequisite:**
 ```bash
@@ -30,9 +63,9 @@ sudo apt-get install libxdo-dev
 ```
 
 Verify it's working:
-```elixir
-iex> Trenino.Keyboard.available?()
-true
+
+```bash
+./tauri/keystroke/target/release/keystroke tap A
 ```
 
 ### Optional: Firmware Upload Support
@@ -66,12 +99,10 @@ The Windows build uses `vjoy-sys` to generate bindings and requires the LLVM
 that DLL before invoking Cargo if bindgen cannot locate it. This is a build-time
 prerequisite; the packaged application does not require LLVM or libclang.
 
-The native feeder is a standalone Rust crate. Build or test it without starting
-Phoenix:
+The native feeder is a standalone Rust crate:
 
 ```bash
-mix virtual_joystick
-mix virtual_joystick --debug
+cargo run --manifest-path tauri/virtual_joystick/Cargo.toml
 cargo test --manifest-path tauri/virtual_joystick/Cargo.toml
 ```
 
@@ -81,295 +112,236 @@ restore bare-name DLL loading or accept executable/DLL paths from UI or MCP
 input. Non-Windows builds compile the unsupported adapter but do not bundle the
 Windows sidecar or vJoy resources.
 
-Tests that install/remove the driver or create real Windows devices must use the
-`@tag :windows_vjoy_integration` convention and run only on the disposable,
-elevated Windows VM:
-
-```bash
-mix test --only windows_vjoy_integration
-```
-
-Ordinary hosted CI must remain non-mutating. Its Windows packaging job verifies
-downloads and Authenticode, builds both native crates and the Tauri/NSIS package,
-inspects the packaged layout, and performs a sidecar handshake without
-installing the driver.
-
-### Using mise (Recommended)
-
-The project includes `.mise.toml` for version management:
-
-```bash
-mise install
-mise exec -- mix deps.get
-mise exec -- mix ecto.setup
-mise exec -- mix phx.server
-```
-
-### Standard Setup
-
-```bash
-mix deps.get
-mix ecto.setup
-mix phx.server
-```
+Tests that install/remove the driver or create real Windows devices run only on
+the disposable, elevated Windows VM. Ordinary hosted CI must remain
+non-mutating: its Windows packaging job verifies downloads and Authenticode,
+builds both native crates and the Tauri/NSIS package, inspects the packaged
+layout, and performs a sidecar handshake without installing the driver.
 
 ## Project Structure
 
 ```
-lib/
-├── trenino/                    # Core business logic
-│   ├── application.ex         # OTP application
-│   ├── repo.ex                # Ecto repository
-│   ├── hardware.ex            # Hardware context
-│   ├── train.ex               # Train context
-│   ├── simulator.ex           # Simulator context
-│   ├── hardware/              # Hardware domain modules
-│   ├── train/                 # Train domain modules
-│   ├── simulator/             # Simulator domain modules
-│   ├── serial/                # Serial communication
-│   └── mcp/                   # MCP server and tools
+crates/
+├── trenino-core/              # Shared domain types and wire contracts
+│   └── src/
+│       ├── hardware/          # Serial protocol codec, calibration, HT16K33
+│       ├── train/             # Lever/notch model, buttons, display, outputs
+│       ├── calibration/       # Notch analysis
+│       ├── rounding.rs        # Exact decimal rounding helpers
+│       └── simulator.rs       # Simulator client types
 │
-├── trenino_web/                # Web layer
-│   ├── router.ex              # Routes
-│   ├── endpoint.ex            # Phoenix endpoint
-│   ├── live/                  # LiveView modules
-│   └── controllers/           # Traditional controllers
-│
-priv/
-├── repo/migrations/           # Database migrations
-└── static/                    # Static assets
+└── trenino-runtime/           # Tokio services
+    └── src/
+        ├── app.rs             # Application-facing repositories + UI snapshots
+        ├── composition/       # Production service composition and adapters
+        ├── hardware/          # Device service, discovery, transport, sessions
+        ├── firmware/          # Catalog, downloads, upload, owner, updates
+        ├── train/             # Detection, lever/button/output/display
+        │                      # controllers, script runner, sequences
+        ├── simulator/         # Client, connection owner, subscriptions,
+        │                      # detection/analysis/explorer services
+        ├── vjoy/              # Windows vJoy manager, configurator, mapper
+        ├── storage/           # SQLite database, schema, domain stores
+        ├── mcp/               # MCP server, 47-tool registry, ports
+        ├── http_api.rs        # Legacy JSON HTTP API
+        ├── keyboard.rs        # Keystroke sidecar backend
+        ├── resource.rs        # Resource arbiter (exclusive leases)
+        ├── routing/           # Input resolver and mapping reconciliation
+        └── lifecycle.rs       # Coordinated shutdown
 
-test/                          # Test files
+tauri/
+├── src-tauri/                 # Tauri shell (rust-ui IPC commands, updater, sidecars)
+├── ui/                        # Svelte/TypeScript desktop frontend
+├── keystroke/                 # Keyboard input sidecar (Rust)
+└── virtual_joystick/          # Windows vJoy feeder sidecar (Rust)
 ```
 
 ## Coding Guidelines
 
 ### Type Safety
 
-Always pattern match on structs in function arguments:
-
-```elixir
-# Good
-def process(%MyStruct{} = struct) do
-  # ...
-end
-
-# Bad
-def process(struct) do
-  # ...
-end
-```
+Model domain data as strongly-typed structs and enums (`crates/trenino-core`),
+not untyped maps. When JSON is unavoidable (MCP, HTTP API, IPC), derive
+`Serialize`/`Deserialize` on dedicated wire types.
 
 ### Float Precision
 
-Round float values to 2 decimal places for hardware/calibration values:
+Round float values to 2 decimal places for hardware/calibration values using the
+exact-decimal helper in `crates/trenino-core/src/rounding.rs`:
 
-```elixir
-# Good
-value = Float.round(raw_value, 2)
+```rust
+// Good
+use trenino_core::rounding::round_elixir;
+let value = round_elixir(raw_value, 2).ok_or(MyError::NonFinite)?;
 
-# Bad - may have precision artifacts
-value = raw_value  # -0.20000000298023224
+// Bad — rounds the intermediate product to another binary float and can
+// move values such as 2.675 across the decimal midpoint
+let value = (raw_value * 100.0).round() / 100.0;
 ```
 
 ### Protocol Messages
 
-Handle atom-to-integer conversion in encode/decode functions:
+Keep the Rust API using enum variants and the wire format using integers;
+convert in encode/decode with byte-pattern matching in
+`crates/trenino-core/src/hardware/protocol/codec.rs`:
 
-```elixir
-# Good - atom in struct, conversion in encode/decode
-defmodule MyMessage do
-  defstruct [:type]  # type is :analog or :digital
+```rust
+// Good — enum in the API, integer on the wire
+pub enum Message {
+    SetOutput { pin: u8, high: bool },
+    // ...
+}
 
-  def encode(%__MODULE__{type: :analog}), do: {:ok, <<0x00>>}
-  def encode(%__MODULE__{type: :digital}), do: {:ok, <<0x01>>}
-end
+pub fn encode_message(m: &Message) -> Result<Vec<u8>, ProtocolError> {
+    let mut out = Vec::new();
+    match m {
+        Message::SetOutput { pin, high } => out.extend([0x07, *pin, u8::from(*high)]),
+        // ...
+    }
+    Ok(out)
+}
 ```
 
 ## Running Tests
 
 ```bash
-# Run all tests
-mix test
+# Whole workspace (integration suites live in crates/trenino-runtime/tests/)
+cargo test --workspace -- --test-threads=1
 
-# Run specific test file
-mix test test/trenino/train_test.exs
+# A single suite
+cargo test -p trenino-runtime --test simulator_detection
 
-# Run with coverage
-mix test --cover
+# Desktop UI
+npm --prefix tauri/ui test
+
+# Windows vJoy feeder
+cargo test --manifest-path tauri/virtual_joystick/Cargo.toml
 ```
 
-### Test Environment
-
-Tests run with GenServers disabled (no real hardware/simulator connections). Mock modules using Mimic:
-
-```elixir
-use Mimic
-
-setup :verify_on_exit!
-
-test "my test" do
-  expect(Trenino.Simulator.Client, :get, fn _path -> {:ok, %{}} end)
-  # ...
-end
-```
+Integration suites run against fake services (no real hardware, serial ports or
+simulator); a `fixtures/` directory supplies canned databases and responses.
+Real serial firmware flashing and Windows driver mutation are separate,
+equipment-gated acceptance checks (see
+`docs/handoffs/2026-10-25-rust-parity/README.md`).
 
 ## Database
 
-### Creating Migrations
+Trenino stores everything in a single SQLite database owned by the runtime
+(`crates/trenino-runtime/src/storage/`).
 
-```bash
-mix ecto.gen.migration add_my_table
-```
+- The full Rust schema is `crates/trenino-runtime/src/storage/schema/rust-full-v2.sql`.
+- Databases created by older releases are recognized read-only and upgraded
+  explicitly via the `migrate_legacy` path, which validates the legacy schema,
+  takes a backup, and applies the transformation in one transaction.
 
-### Running Migrations
-
-```bash
-mix ecto.migrate
-```
-
-### Reset Database
-
-```bash
-mix ecto.reset
-```
+There are no runtime migrations to run by hand; schema changes ship as new
+schema versions handled in `storage/migration.rs`.
 
 ## Code Quality
 
-### Formatting
-
 ```bash
-mix format
+cargo fmt --all --check
+cargo clippy --workspace --all-targets -- -D warnings
 ```
 
-### Dialyzer (Static Analysis)
+## Architecture
 
-```bash
-mix dialyzer
-```
+### Runtime services
 
-### Pre-commit Hook
+Long-running work runs as Tokio tasks/services composed in
+`crates/trenino-runtime/src/composition/`:
 
-Run all checks:
+- Simulator connection owner — API health and client handout
+- Train detection — active train polling with two-layer defense
+  (ObjectClass + ProviderName fallback)
+- Lever/button/output/display controllers — input-to-simulator mapping,
+  LED/output bindings, I2C display polling
+- Script runner — sandboxed Lua execution and lifecycle management
+- Hardware service — serial transport, device discovery, input broadcasting
+- Firmware owner — catalog, downloads, uploads, exclusive serial handoff
+- vJoy manager — Windows virtual joystick lifecycle and routing
 
-```bash
-mix precommit
-```
+A `ResourceArbiter` grants exclusive leases (serial ports, detection sessions,
+calibration) so UI, MCP and HTTP callers cannot double-own hardware.
+`lifecycle.rs` coordinates shutdown with the database closed last.
 
-## Architecture Decisions
+### UI snapshots and change events
 
-### GenServer Services
-
-Long-running processes are implemented as GenServers:
-
-- `Firmware.DeviceRegistry` - Device configuration cache with ETS
-- `Serial.Connection` - Device connections
-- `Simulator.Connection` - API health monitoring
-- `Train.Detection` - Active train polling with two-layer defense
-- `Train.LeverController` - Input-to-simulator mapping
-- `Train.DisplayController` - I2C display bindings and polling
-- `Train.ScriptRunner` - Lua script execution and lifecycle management
-- `Hardware.ConfigurationManager` - Input value broadcasting
-
-### PubSub Events
-
-Components communicate via Phoenix.PubSub:
-
-```elixir
-# Subscribe
-Phoenix.PubSub.subscribe(Trenino.PubSub, "topic")
-
-# Broadcast
-Phoenix.PubSub.broadcast(Trenino.PubSub, "topic", {:event, data})
-```
-
-### Contexts
-
-Business logic is organized into contexts:
-
-- `Trenino.Hardware` - Device and input management
-- `Trenino.Train` - Train configuration, bindings, and scripting
-- `Trenino.Simulator` - TSW API communication
-- `Trenino.Firmware` - Firmware releases and device registry
-- `Trenino.MCP` - Model Context Protocol server and tools
+The Svelte UI never talks to services directly. `app.rs` exposes
+repository methods that return committed `UiSnapshot` values, and the Tauri
+shell (`tauri/src-tauri/src/rust_ui.rs`) publishes changes as
+`ui://change/{topic}` events (`settings`, `hardware`, `trains`, `bindings`,
+`scripts`, `firmware`, `vjoy`) plus `ui://hardware/input` and
+`ui://hardware/detection` streams. The frontend subscribes through the typed
+bridge in `tauri/ui/src/bridge/`.
 
 ## Adding New Features
 
 ### New Input Type
 
-1. Add type to `Input` schema
-2. Update `Configure` message encoding
-3. Add UI support in configuration editor
+1. Add the variant to the configure message(s) in
+   `crates/trenino-core/src/hardware/protocol/codec.rs`
+2. Extend the hardware configuration plan/repository in
+   `crates/trenino-runtime/src/hardware/`
+3. Add UI support in the configuration editor (`tauri/ui/`)
 4. Update calibration if needed
 
 ### New Element Type
 
-1. Add type to `Element` schema
-2. Create config schema (like `LeverConfig`)
-3. Add UI components for configuration
-4. Implement value mapping logic
+1. Add the type to the element model in `crates/trenino-core/src/train/`
+2. Create a config struct (like the lever `LeverConfig`)
+3. Add UI components for configuration (`tauri/ui/`)
+4. Implement value mapping logic in the runtime controllers
 
 ### New Protocol Message
 
-1. Create module in `lib/trenino/serial/protocol/`
-2. Implement `Trenino.Serial.Protocol.Message` behaviour
-3. Register in message type registry
-4. Handle in `Serial.Connection`
+1. Add the variant to `Message` in
+   `crates/trenino-core/src/hardware/protocol/codec.rs`
+2. Extend `encode_message`/`decode_message` with its integer type byte
+3. Handle it in the runtime hardware transport
+   (`crates/trenino-runtime/src/hardware/transport.rs`)
 
 ## Debugging
 
-### LiveView Inspector
-
-Phoenix LiveDashboard available at `/dev/dashboard`
-
 ### API Explorer
 
-Built-in API explorer in train configuration UI for testing simulator endpoints.
+Built-in API explorer in the train configuration UI for testing simulator
+endpoints.
 
-### Serial Debug
+### IPC events
 
-Enable verbose serial logging:
+The desktop UI's live state (hardware inputs, detection requests, topic
+changes) is visible on the `ui://…` Tauri events; instrument listeners in
+`tauri/ui/src/bridge/` when debugging stale-UI issues.
 
-```elixir
-# In config/dev.exs
-config :trenino, :serial_debug, true
-```
+### Focused tests
+
+Each runtime subsystem has an integration suite in
+`crates/trenino-runtime/tests/` (for example `simulator_detection.rs`,
+`hardware_runtime.rs`, `vjoy_manager.rs`); run the relevant one directly while
+iterating.
 
 ## Building the Desktop App
 
-The desktop application is built using Tauri with a Burrito-packaged Elixir backend. The app bundles avrdude for firmware upload functionality.
-
-### Building for macOS (Local Development)
-
-Pre-built releases are provided for Windows and Linux. To build for macOS (Apple Silicon) locally:
-
-#### Prerequisites
-
-- [mise](https://mise.jdx.dev/) - for managing tool versions
-- xz - install with `brew install xz`
-- curl - for downloading avrdude (usually pre-installed)
-
-#### Build
+Build the desktop bundle with:
 
 ```bash
-# Install dependencies via mise
-mise install
-
-# Run the build script
-./scripts/build-macos.sh
+./scripts/build-rust-desktop.sh
 ```
 
-The build script will:
-1. Build the Elixir backend with Burrito
-2. Download avrdude for macOS ARM64
-3. Build the Tauri application with all binaries bundled
+The script wraps `scripts/build-desktop.sh` with `TRENINO_BUILD_RUST=1` and
+refuses to package if the required avrdude binary/config is missing (no
+placeholder helper is staged). It uses `tauri/src-tauri/tauri.rust.conf.json`
+(Windows: `tauri.rust.windows.conf.json`) and the `rust-ui desktop-updater`
+features.
 
-The built `.dmg` and `.app` will be in `tauri/src-tauri/target/aarch64-apple-darwin/release/bundle/`.
+Pre-built releases are provided for Windows and Linux; macOS packages can be
+built from an Apple Silicon checkout with the same script. Build artifacts land
+under `tauri/src-tauri/target/`.
 
 ### Bundled Components
 
 The desktop app bundles:
-- **trenino_backend** - The Elixir application (Burrito release)
 - **avrdude** - AVR programmer for firmware uploads
 - **avrdude.conf** - Configuration file for avrdude
 - **keystroke** - Keyboard input simulator for keystroke button bindings
@@ -403,33 +375,3 @@ Trenino owns the driver and a healthy API probe reports zero devices, interactiv
 uninstall asks the user and defaults to retaining the potentially shared driver;
 silent uninstall always retains it. Missing, disabled, incompatible, or otherwise
 ambiguous driver state is retained with an installer log entry.
-
-## Deployment
-
-### Production Build
-
-```bash
-MIX_ENV=prod mix release
-```
-
-### Running in Production
-
-```bash
-_build/prod/rel/trenino/bin/trenino start
-```
-
-### Configuration
-
-Set environment variables:
-
-```bash
-SECRET_KEY_BASE=<generated-key>
-DATABASE_PATH=/path/to/database.db
-PHX_HOST=localhost
-PORT=4000
-
-# Optional: Better Stack error tracking (via Sentry SDK)
-# If set, errors and log messages at :error level are forwarded to Better Stack.
-# Set this during the release build in CI or at runtime before starting the server.
-SENTRY_DSN=<your-sentry-dsn>
-```

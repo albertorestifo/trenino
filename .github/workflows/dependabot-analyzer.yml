@@ -51,11 +51,11 @@ jobs:
                - Package name
                - Old version and new version
                - Update type (major/minor/patch)
-               - Ecosystem (from branch name or file paths: mix.lock = Elixir, Cargo.lock = Rust, etc.)
+               - Ecosystem (from branch name or file paths: Cargo.lock = Rust, package-lock.json = npm, etc.)
 
             3. **Search for package usage** in the codebase:
-               - For Elixir packages: search for the module name in lib/ (e.g., `circuits_uart` → search for `Circuits.UART`)
-               - For Rust packages: search for `use <package>` or `<package>::` in tauri/src-tauri/
+               - For Rust packages: search for `use <package>` or `<package>::` in crates/ and tauri/src-tauri/
+               - For npm packages: search for imports in tauri/ui/src/
                - For GitHub Actions: search in .github/workflows/
 
             4. **Fetch the changelog** if available in the PR body (look for [Release notes] or [Changelog] links)

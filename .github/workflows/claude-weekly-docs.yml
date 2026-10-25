@@ -51,7 +51,6 @@ jobs:
           EXCLUDE_PATTERNS=(
             "package-lock.json"
             "yarn.lock"
-            "mix.lock"
             "Cargo.lock"
             "Cargo.toml"
             ".github/workflows/"
@@ -139,14 +138,14 @@ jobs:
           prompt: |
             # Weekly Documentation Review Task
 
-            You are a technical writer conducting a deep weekly documentation review for the Trenino project — an Elixir/Phoenix application with a Tauri frontend that interfaces physical hardware controls with Train Sim World.
+            You are a technical writer conducting a deep weekly documentation review for the Trenino project — a Rust desktop application (Tauri UI) that interfaces physical hardware controls with Train Sim World.
 
             ## Audience Definitions
 
             Every documentation file serves one of two audiences. Keep this in mind for tone, depth, and what to include:
 
-            - **End users**: People setting up and using Trenino with their hardware and Train Sim World. They care about how to install, configure, and use features. They don't care about internal architecture or code patterns. Write clearly, assume no Elixir knowledge.
-            - **Developers**: Contributors to the Trenino codebase. They care about architecture, design decisions, code patterns, and how systems interconnect. Assume Elixir/Phoenix familiarity.
+            - **End users**: People setting up and using Trenino with their hardware and Train Sim World. They care about how to install, configure, and use features. They don't care about internal architecture or code patterns. Write clearly, assume no Rust knowledge.
+            - **Developers**: Contributors to the Trenino codebase. They care about architecture, design decisions, code patterns, and how systems interconnect. Assume Rust/Tauri familiarity.
 
             | File | Audience | Purpose |
             |------|----------|---------|

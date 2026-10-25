@@ -202,4 +202,4 @@ remove it from Windows.
 
 ## For Developers
 
-If you want to contribute to Trenino or run it from source, see the [Development Guide](development.md). You'll need Elixir 1.20, Erlang/OTP 29, and Node.js.
+If you want to contribute to Trenino or run it from source, see the [Development Guide](development.md). You'll need Rust 1.91.1 and Node.js 22.

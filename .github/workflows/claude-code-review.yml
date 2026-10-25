@@ -43,11 +43,10 @@ jobs:
 
             Start with: `gh pr diff ${{ github.event.pull_request.number }}` and `gh pr view ${{ github.event.pull_request.number }}`
 
-            This is an Elixir/Phoenix project. Apply the project coding guidelines:
-            - Struct arguments must be pattern matched: `def fn(%MyStruct{} = s)`
-            - Float values must be rounded to 2 decimal places (`Float.round(v, 2)`)
-            - Protocol message encode/decode must use atom-based structs (no integer type fields)
-            - Avoid untyped maps; prefer structs or documented map types
+            This is a Rust workspace (core crates plus a Tauri desktop app). Apply the project coding guidelines:
+            - Pattern match on concrete struct types; avoid untyped maps where a struct fits
+            - Float values must be rounded to 2 decimal places for simulator inputs/outputs and user-facing data
+            - Code must stay rustfmt-clean and clippy-clean (`cargo clippy --workspace --all-targets -- -D warnings`)
 
             Focus on:
             1. **Correctness** — bugs, wrong logic, edge cases not handled
