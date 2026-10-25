@@ -141,7 +141,7 @@ Rust: `crates/trenino-runtime/src/train/**`, `simulator/services/{calibration,tr
 | retry ladder `[200,400,800]` ms, tokens, reconnect-fresh-budget, disconnect parking | `RETRY_DELAYS` const + same mechanics | `control_dispatch.rs` (cited lines verified) ↔ `lever_controller_test.exs` | PARITY (constants verified equal) |
 | write timeout model (Req receive 10 s / pool 1 s) | total deadline 10 s + queue-admission 5 s/500 ms | client-level tests | DOCUMENTED-DIVERGENCE — `controls-report.md` |
 | button controller: simple dedup (`last_sent_values`), momentary Interacting ordering + request-paced repeat (no interval — quirk preserved), `derive_interacting_endpoint/1`, sequence mode (ordered+delays, failure continues, momentary-cancel, latching off-sequence, nil/empty skip, repress cancel) | `train/button_controller.rs` + `core/train/buttons.rs::transition` | `control_dispatch.rs` (cites `button_controller_test.exs:379-463,466-527,529-651,587-604,653-684,686-716,718-753,755-786,788-828` — verified) ↔ `button_controller_test.exs` | PARITY |
-| latching release cancels active sequence first (`button_controller.ex:492-494`) | `buttons.rs:155-169` — cancellation emitted for momentary only; latching w/ empty off-sequence emits no cancel | probed in `controls-supervisor-report.md` P2 #3; current tests cover non-empty paths | PARTIAL — supervisor finding; verify fixed state before closing (test `sequence_latching_release_starts_off_sequence` covers non-empty off-seq only) |
+| latching release cancels active sequence first (`button_controller.ex:492-494` `cancel_active_button/2` before every sequence release) | `buttons.rs:155-160` — `CancelActive` emitted whenever `state.active`, including latching w/ empty off-sequence | `sequence_latching_release_starts_off_sequence`, `sequence_release_cancels_momentary_hardware_mid_delay` ↔ same oracle lines | PARITY — `controls-supervisor-report.md` P2 #3 closed in current source (verified: unconditional `CancelActive` before `StartSequence`) |
 | momentary with `endpoint: nil` | `unwrap_or_default()` → sends to `""` path (client rejects) vs Elixir explicit `nil` branch | none | PARTIAL (micro-edge, unpinned both sides) |
 | sequence executor (`execute_sequence_commands/3`, monitor, stale `sequence_complete` ignore) | **two executors**: `train/sequence.rs::SequenceExecutor` (tested) AND `button_controller.rs::spawn_sequence` (wired) | `output_display.rs` 7 sequence tests ↔ `button_controller_test.exs:788-828` | PARTIAL — `SequenceExecutor` is unwired duplicate; button path is live |
 | output controller: 200 ms poll, sub IDs 1000+, one sub per endpoint, dedup, predicate+fallback-false, NodeValid/empty/fetch-error untouched, no reconnect reaction | `train/output_controller.rs` + `core/output.rs::evaluate_output`/`subscription_reading` | `output_display.rs` (7+ tests) ↔ `output_controller_test.exs` "evaluate_condition/2" matrix | PARITY (endpoint order lexicographic vs Elixir small-map term order — documented inline) |
@@ -378,8 +378,8 @@ behavior (or notes the oracle absence).
 26. Micro-divergences untested on either side: 403 body dropped in `SimulatorError::InvalidKey`;
     momentary `endpoint: nil` → empty-path send (`button_controller.rs:594,676`);
     `serverInfo.version` source sync; api-key empty-string filtering; `TriggersType.load`
-    non-string-array fallback; `latching release with empty off-sequence` cancellation
-    (supervisor finding — confirm closed).
+    non-string-array fallback. (The latching-release `CancelActive` supervisor finding was
+    re-checked and is closed — see §4 row.)
 27. Elixir-oracle gaps (flagged, nothing to fix in Rust): no Elixir tests exist for
     `control_detector.ex`, `keyboard.ex`, `app_version.ex`, the hardware calibration `Session`
     GenServer, or client 403/5xx mapping.

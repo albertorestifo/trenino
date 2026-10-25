@@ -366,7 +366,10 @@ fn wait_for_file(path: &Path, timeout: Duration) -> String {
     let deadline = Instant::now() + timeout;
     loop {
         if let Ok(content) = std::fs::read_to_string(path) {
-            return content.trim().to_string();
+            let trimmed = content.trim();
+            if !trimmed.is_empty() {
+                return trimmed.to_string();
+            }
         }
         assert!(
             Instant::now() < deadline,
