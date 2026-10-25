@@ -2,5 +2,6 @@
 //! and the SSE/POST HTTP transport (`GET /mcp/sse`,
 //! `POST /mcp/messages?session_id=...`) with a degraded-not-fatal lifecycle.
 pub mod ports;
+pub mod storage_ports;
 pub mod server;
 pub mod tools;
