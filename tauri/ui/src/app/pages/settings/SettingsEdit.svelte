@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { UiBridge } from '../../../bridge/client';
   import type { SettingsView } from '../../../bridge/generated';
+  import { setThemePreference, THEME_STORAGE_KEY, normalizeThemePreference, type ThemePreference } from '../../theme';
 
   let {
     bridge,
@@ -17,6 +18,11 @@
   let url = $state('');
   let apiKey = $state('');
   let keySavedLocally = $state(false);
+  // Mirrors the `phx:set-theme` window event: same store key, same data-theme attribute.
+  let themePreference = $state<ThemePreference>(normalizeThemePreference(
+    typeof localStorage === 'undefined' ? null : localStorage.getItem(THEME_STORAGE_KEY),
+  ));
+
   const keyConfigured = $derived(settings?.simulator.api_key_configured === true || keySavedLocally);
   let urlError = $state('');
   let saving = $state(false);
@@ -101,13 +107,35 @@
 
 <header class="mb-10"><h1 class="text-2xl font-semibold">Settings</h1></header>
 
+<section aria-labelledby="theme-title">
+  <h2 id="theme-title" class="mb-5 text-base font-semibold">Theme</h2>
+  <div class="flex flex-wrap gap-6">
+    {#each [{ value: 'system', label: 'System' }, { value: 'light', label: 'Light' }, { value: 'dark', label: 'Dark' }] as option (option.value)}
+      <label class="flex cursor-pointer items-center gap-2 text-sm">
+        <input
+          type="radio"
+          name="theme-preference"
+          class="radio radio-primary radio-sm"
+          value={option.value}
+          data-testid={`theme-${option.value}`}
+          checked={themePreference === option.value}
+          onchange={() => (themePreference = setThemePreference(option.value, localStorage, document.documentElement))}
+        />
+        <span>{option.label}</span>
+      </label>
+    {/each}
+  </div>
+</section>
+
+<div class="my-10 border-t border-base-300"></div>
+
 <section aria-labelledby="reporting-title">
   <h2 id="reporting-title" class="mb-5 text-base font-semibold">Error Reporting</h2>
   <label class="flex cursor-pointer items-start justify-between gap-6">
     <div>
       <div class="font-medium">Share anonymous error reports</div>
-      <p class="mt-1 text-sm text-base-content/70">Crash reports are sent to help fix bugs. No personal data is included.</p>
-      <a class="mt-3 inline-block text-sm text-base-content/60 underline underline-offset-2" href="#/consent">Review consent details</a>
+      <p class="mt-1 text-sm text-muted">Crash reports are sent to help fix bugs. No personal data is included.</p>
+      <a class="mt-3 inline-block text-sm text-muted underline underline-offset-2" href="#/consent">Review consent details</a>
       {#if consentError}<p role="alert" class="mt-2 text-sm text-error">{consentError}</p>{/if}
     </div>
     <input
@@ -145,7 +173,7 @@
       {#if keyConfigured}
         <div class="mb-3 flex items-center gap-2 rounded border border-base-300 bg-base-200 px-3 py-2 text-sm">
           <span aria-hidden="true">✓</span>
-          <span class="text-base-content/70">A key is saved. Enter a new key below to replace it.</span>
+          <span class="text-muted">A key is saved. Enter a new key below to replace it.</span>
         </div>
       {:else}
         <div class="alert alert-warning mb-3 px-3 py-2 text-sm">
@@ -153,7 +181,7 @@
         </div>
       {/if}
       <input id="simulator_api_key" type="password" bind:value={apiKey} placeholder="Leave blank to keep current value" class="input input-bordered w-full font-mono" />
-      <div class="mt-1.5 text-xs text-base-content/70">
+      <div class="mt-1.5 text-xs text-muted">
         Copy the key from
         <span class="break-all font-mono">Documents\My Games\TrainSimWorld7\Saved\Config\CommAPIKey.txt</span>
         (or <span class="font-mono">TrainSimWorld6</span>) on the PC running Train Sim World and paste it here.

@@ -126,6 +126,27 @@
   let firmwareCheckPending = $state(false);
   let firmwareDismissPending = $state(false);
   let firmwareSequence = 0;
+  let hardwareDetectionPrompt = $state<string | null>(null);
+  let activatingTrainId = $state<string | null>(null);
+  let activateTrainError = $state('');
+
+  async function activateTrain(trainId: string) {
+    if (activatingTrainId !== null) return;
+    activatingTrainId = trainId;
+    activateTrainError = '';
+    const result = await api().activateTrain(trainId);
+    if (!mounted) return;
+    activatingTrainId = null;
+    if (!result.ok) {
+      activateTrainError = result.error ?? 'Failed to activate the train.';
+      return;
+    }
+    await refreshSimulator();
+    if (route.page === 'trains') {
+      const updated = await safeRequest(api().getTrains());
+      if (mounted && updated.ok) trains = updated.value;
+    }
+  }
 
   async function refreshFirmwareUpdate() {
     if (firmwareDismissPending) return;
@@ -279,6 +300,9 @@
       const key = portKey(event.port, event.port_generation, event.config_id);
       hardwareInputValues = { ...hardwareInputValues, [key]: { ...hardwareInputValues[key], [event.pin]: event.value } };
     });
+    const stopDetection = api().onHardwareDetection((event) => {
+      hardwareDetectionPrompt = event.prompt;
+    });
     const inventoryTimer = setInterval(() => { if (gateStatus === 'ready') void refreshPorts(); }, 2000);
     const simulatorTimer = setInterval(() => { if (gateStatus === 'ready') void refreshSimulator(); }, 2000);
     const firmwareTimer = setInterval(() => { if (gateStatus === 'ready') void refreshFirmwareUpdate(); }, 2000);
@@ -290,6 +314,7 @@
       firmwareSequence += 1;
       unsubscribeHardware?.();
       stopInput();
+      stopDetection();
       clearInterval(inventoryTimer);
       clearInterval(simulatorTimer);
       clearInterval(firmwareTimer);
@@ -344,24 +369,24 @@
       <div class="card-body items-center text-center">
         <div class="mb-2 rounded-full bg-primary/10 p-3 text-3xl text-primary" aria-hidden="true">◈</div>
         <h1 id="consent-title" class="card-title text-lg">Help improve Trenino</h1>
-        <p class="text-sm text-base-content/70">Share anonymous error reports so bugs can be found and fixed faster. No personal data, no usage tracking — only crash reports.</p>
+        <p class="text-sm text-muted">Share anonymous error reports so bugs can be found and fixed faster. No personal data, no usage tracking — only crash reports.</p>
         {#if consentError}<p role="alert" class="mt-3 text-sm text-error">{consentError}</p>{/if}
         <div class="mt-4 flex w-full flex-col gap-2">
           <button class="btn btn-primary w-full" disabled={consentPending} onclick={() => void setConsent('enabled')}>Share error reports</button>
           <button class="btn btn-ghost w-full" disabled={consentPending} onclick={() => void setConsent('disabled')}>No thanks</button>
         </div>
-        <a class="mt-3 text-sm text-base-content/60 underline" href="#/settings">Back to Settings</a>
+        <a class="mt-3 text-sm text-muted underline" href="#/settings">Back to Settings</a>
       </div>
     </section>
   </main>
 {:else if gateStatus === 'checking'}
-  <main class="consent-layout" role="status"><section class="card w-full max-w-md bg-base-100 shadow-xl"><div class="card-body items-center text-center"><h1 class="card-title text-lg">Checking consent preference</h1><p class="text-sm text-base-content/70">Trenino is checking your saved privacy choice before opening the app.</p></div></section></main>
+  <main class="consent-layout" role="status"><section class="card w-full max-w-md bg-base-100 shadow-xl"><div class="card-body items-center text-center"><h1 class="card-title text-lg">Checking consent preference</h1><p class="text-sm text-muted">Trenino is checking your saved privacy choice before opening the app.</p></div></section></main>
 {:else if gateStatus === 'unavailable'}
   <main class="consent-layout">
-    <section class="card w-full max-w-md bg-base-100 shadow-xl"><div class="card-body items-center text-center"><h1 class="card-title text-lg">Consent status unavailable</h1><p class="text-sm text-base-content/70">Trenino cannot verify your saved privacy choice, so the rest of the app is paused.</p><p role="alert" class="text-sm text-error">{gateError}</p><button class="btn btn-primary w-full" onclick={() => void updateRoute()}>Retry consent check</button><a class="text-sm text-base-content/60 underline" href="#/consent">Open consent choices</a></div></section>
+    <section class="card w-full max-w-md bg-base-100 shadow-xl"><div class="card-body items-center text-center"><h1 class="card-title text-lg">Consent status unavailable</h1><p class="text-sm text-muted">Trenino cannot verify your saved privacy choice, so the rest of the app is paused.</p><p role="alert" class="text-sm text-error">{gateError}</p><button class="btn btn-primary w-full" onclick={() => void updateRoute()}>Retry consent check</button><a class="text-sm text-muted underline" href="#/consent">Open consent choices</a></div></section>
   </main>
 {:else if gateStatus === 'needs-consent'}
-  <main class="consent-layout" role="status"><section class="card w-full max-w-md bg-base-100 shadow-xl"><div class="card-body items-center text-center"><h1 class="card-title text-lg">Opening consent choices</h1><p class="text-sm text-base-content/70">Choose whether Trenino may share anonymous error reports.</p></div></section></main>
+  <main class="consent-layout" role="status"><section class="card w-full max-w-md bg-base-100 shadow-xl"><div class="card-body items-center text-center"><h1 class="card-title text-lg">Opening consent choices</h1><p class="text-sm text-muted">Choose whether Trenino may share anonymous error reports.</p></div></section></main>
 {:else}
   <div class="min-h-screen bg-base-200 text-base-content">
     <Navigation {route} connectedCount={activeConfigurationCount} simulatorStatus={simulatorStatus} simulatorError={simulatorError} retryPending={simulatorRetryPending} onRetry={() => void retrySimulator()}
@@ -380,7 +405,7 @@
       {:else if route.page === 'configurations'}
         <div class="mx-auto max-w-2xl">
           <header class="mb-8 flex items-center justify-between gap-4">
-            <div><h1 class="text-2xl font-semibold">Configurations</h1><p class="mt-1 text-sm text-base-content/70">Manage device configurations</p></div>
+            <div><h1 class="text-2xl font-semibold">Configurations</h1><p class="mt-1 text-sm text-muted">Manage device configurations</p></div>
             <a class="btn btn-primary" href="#/configurations/new">＋ New Configuration</a>
           </header>
           <section class="mb-6 rounded-xl border border-base-300 bg-base-100 p-4" aria-labelledby="device-connections-title">
@@ -389,10 +414,10 @@
               <button type="button" class="btn btn-outline btn-sm" disabled={scanPending} onclick={() => void scanDevices()} data-testid="scan-devices">{scanPending ? 'Scanning…' : 'Scan devices'}</button>
             </div>
             {#if serialError}<p class="mt-3 text-sm text-error" role="alert">{serialError}</p>{/if}
-            {#if serialPorts.length === 0}<p class="mt-2 text-sm text-base-content/60">No serial ports found. Connect a device, then scan again.</p>{/if}
+            {#if serialPorts.length === 0}<p class="mt-2 text-sm text-muted">No serial ports found. Connect a device, then scan again.</p>{/if}
             {#each serialPorts as entry (entry.port)}
               <div class="mt-3 flex items-center justify-between gap-3 text-sm" data-testid="serial-port">
-                <div><span class="font-mono">{entry.port}</span> <span class="text-base-content/60">{entry.status === 'connected' ? `Connected${entry.config_id === null ? '' : ` · Config ${entry.config_id}`}` : 'Available'}</span></div>
+                <div><span class="font-mono">{entry.port}</span> <span class="text-muted">{entry.status === 'connected' ? `Connected${entry.config_id === null ? '' : ` · Config ${entry.config_id}`}` : 'Available'}</span></div>
                 {#if entry.status === 'connected'}<button type="button" class="btn btn-ghost btn-xs" disabled={disconnectPending === entry.port} onclick={() => void disconnectPort(entry)}>Disconnect</button>{/if}
               </div>
             {/each}
@@ -402,9 +427,9 @@
             {#if configurations.value.length === 0}<EmptyState heading="No Configurations" description="Create a configuration to set up inputs for your TSW devices." />
             {:else}<div class="space-y-4">{#each configurations.value as config (config.config_id)}
               <div class="list-card block" class:active-card={!!connectedFor(config.config_id)}>
-                <div class="flex items-start justify-between gap-3"><div><a class="font-medium hover:underline" href={routeHref(`/configurations/${config.config_id}`)}>{config.name}</a>{#if config.description}<p class="mt-1 text-sm text-base-content/70">{config.description}</p>{/if}<p class="mt-2 text-xs text-base-content/60"><span class="font-mono">ID: {config.config_id}</span> · {config.input_count} inputs</p></div><span>{connectedFor(config.config_id) ? 'Active' : ''}</span></div>
+                <div class="flex items-start justify-between gap-3"><div><a class="font-medium hover:underline" href={routeHref(`/configurations/${config.config_id}`)}>{config.name}</a>{#if config.description}<p class="mt-1 text-sm text-muted">{config.description}</p>{/if}<p class="mt-2 text-xs text-muted"><span class="font-mono">ID: {config.config_id}</span> · {config.input_count} inputs</p></div><span>{connectedFor(config.config_id) ? 'Active' : ''}</span></div>
                 <div class="mt-3 flex flex-wrap items-center gap-2">
-                  <label class="text-xs text-base-content/70" for="apply-port-{config.config_id}">Device port</label>
+                  <label class="text-xs text-muted" for="apply-port-{config.config_id}">Device port</label>
                   <select id="apply-port-{config.config_id}" class="select select-bordered select-sm" value={selectedPorts[config.config_id]?.port ?? ''} onchange={(event) => selectApplyPort(config.config_id, event.currentTarget.value)} data-testid="apply-port">
                     <option value="">Select connected device</option>
                     {#each serialPorts.filter((entry) => entry.status === 'connected' && entry.generation !== null) as port (port.port)}<option value={port.port}>{port.port}</option>{/each}
@@ -420,12 +445,19 @@
         </div>
       {:else if route.page === 'trains'}
         <div class="mx-auto max-w-2xl">
-          <header class="mb-8 flex items-center justify-between gap-4"><div><h1 class="text-2xl font-semibold">Trains</h1><p class="mt-1 text-sm text-base-content/70">Manage train configurations</p></div><a class="btn btn-primary" href="#/trains/new">＋ New Train</a></header>
-          {#if simulatorStatus?.detected_identifier}<p class="mb-5 text-sm text-base-content/70">Simulator train ID: <span class="font-mono break-all">{simulatorStatus.detected_identifier}</span></p>{/if}
+          <header class="mb-8 flex items-center justify-between gap-4"><div><h1 class="text-2xl font-semibold">Trains</h1><p class="mt-1 text-sm text-muted">Manage train configurations</p></div><a class="btn btn-primary" href="#/trains/new">＋ New Train</a></header>
+          {#if simulatorStatus?.detected_identifier}<p class="mb-5 text-sm text-muted">Simulator train ID: <span class="font-mono break-all">{simulatorStatus.detected_identifier}</span></p>{/if}
           {#if trainsError}<Unavailable message={trainsError} />
           {:else if trains}
             {#if trains.value.length === 0}<EmptyState heading="No Train Configurations" description="Create a train configuration to set up controls for your simulator trains." />
-            {:else}<div class="space-y-4">{#each trains.value as train (train.id)}<a class:active-card={simulatorStatus?.active_train_id === train.id} class="list-card" href={routeHref(`/trains/${train.id}`)}><div><h2 class="font-medium">{train.name}</h2>{#if train.description}<p class="mt-1 text-sm text-base-content/70">{train.description}</p>{/if}<p class="mt-2 text-xs text-base-content/60">{train.identifiers.join(', ')} · {train.element_count} elements</p></div><span>{simulatorStatus?.active_train_id === train.id ? 'Active' : '›'}</span></a>{/each}</div>{/if}
+            {:else}<div class="space-y-4">{#each trains.value as train (train.id)}<div class:active-card={simulatorStatus?.active_train_id === train.id} class="list-card"><div class="flex items-start justify-between gap-3"><div><a class="font-medium hover:underline" href={routeHref(`/trains/${train.id}`)}>{train.name}</a>{#if train.description}<p class="mt-1 text-sm text-muted">{train.description}</p>{/if}<p class="mt-2 text-xs text-muted">{train.identifiers.join(', ')} · {train.element_count} elements</p></div><span>{simulatorStatus?.active_train_id === train.id ? 'Active' : ''}</span></div>
+              {#if simulatorStatus?.active_train_id !== train.id}
+                <div class="mt-3 flex flex-wrap items-center gap-2">
+                  <button type="button" class="btn btn-outline btn-sm" disabled={activatingTrainId !== null} onclick={() => void activateTrain(train.id)} data-testid="set-active-train">{activatingTrainId === train.id ? 'Activating…' : 'Set Active'}</button>
+                  {#if activateTrainError}<p class="text-sm text-error" role="alert">{activateTrainError}</p>{/if}
+                </div>
+              {/if}
+            </div>{/each}</div>{/if}
           {:else}<Unavailable message="Loading saved train configurations…" />{/if}
         </div>
       {:else if route.page === 'configuration' || route.page === 'configuration-new'}
@@ -451,6 +483,17 @@
         <div class="mx-auto max-w-2xl"><header class="mb-8"><h1 class="text-2xl font-semibold">{title(route.page)}</h1></header><Unavailable message={unavailableMessage(route)} /></div>
       {/if}
     </main>
+    {#if hardwareDetectionPrompt !== null}
+      <div class="fixed inset-0 z-50 grid place-items-center bg-black/50 px-4" role="dialog" aria-modal="true" aria-labelledby="hardware-detection-title">
+        <div class="w-full max-w-md rounded-xl bg-base-100 p-6 shadow-xl">
+          <h2 id="hardware-detection-title" class="text-lg font-semibold">Hardware detection</h2>
+          <p class="mt-3 text-sm">{hardwareDetectionPrompt}</p>
+          <div class="mt-6 flex justify-end">
+            <button type="button" class="btn btn-ghost btn-sm" onclick={() => (hardwareDetectionPrompt = null)} aria-label="Hide detection prompt">Hide</button>
+          </div>
+        </div>
+      </div>
+    {/if}
   </div>
 {/if}
 

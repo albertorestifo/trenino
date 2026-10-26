@@ -1236,3 +1236,61 @@ async fn stalled_button_write_times_out_shutdown_then_retry_joins_worker() {
     harness.service.shutdown().await.unwrap();
     harness.service.shutdown().await.unwrap();
 }
+
+/// Manual activation ("Set Active", docs/train-configuration.md:158): goes
+/// through the same desired/active revision path as detection — the desired
+/// revision is committed, reconcile activates the bindings, and the
+/// generation fences are untouched. An unknown train id is an error.
+#[tokio::test]
+async fn manual_activation_commits_desired_revision_and_activates_bindings() {
+    use trenino_runtime::train::detection::TrainConfigError;
+    use trenino_runtime::train::service::ManualActivationError;
+
+    let sim = ScriptedSim::spawn();
+    let harness = harness(sim.clone());
+    harness.config.commit(
+        profile(7, "Class 142", &["RVM_PBO_Class142"]),
+        Some(snapshot(7)),
+    );
+    connect(&harness);
+    harness
+        .service
+        .simulator_connected(client(&sim))
+        .await
+        .unwrap();
+
+    // Unknown train: error, no desired revision committed.
+    let error = harness
+        .service
+        .activate_train(EntityId(999))
+        .await
+        .unwrap_err();
+    assert!(matches!(
+        error,
+        ManualActivationError::Train(TrainConfigError::NotFound(id)) if id == EntityId(999)
+    ));
+    assert_eq!(harness.routing.snapshot().desired_revision, None);
+
+    let activation = harness.service.activate_train(EntityId(7)).await.unwrap();
+    assert_eq!(activation.train_id, EntityId(7));
+    assert!(activation.desired_revision.is_some());
+
+    // The routing converges: desired == active, bindings loaded.
+    yield_until(|| {
+        let snapshot = harness.service.snapshot();
+        (snapshot.active_train_id == Some(EntityId(7)) && snapshot.active_revision.is_some())
+            .then_some(())
+    })
+    .await;
+    let snapshot = harness.service.snapshot();
+    assert_eq!(snapshot.active_train_id, Some(EntityId(7)));
+    assert_eq!(snapshot.desired_revision, snapshot.active_revision);
+    assert!(harness.routing.degraded_reasons().is_empty());
+
+    // The lever controller is live: an input sample reaches the simulator.
+    lever_input(&harness, 500);
+    yield_until(|| (!sim.set_values().is_empty()).then_some(())).await;
+    assert_eq!(sim.set_values()[0], (THROTTLE.to_owned(), 0.5));
+
+    harness.service.shutdown().await.unwrap();
+}

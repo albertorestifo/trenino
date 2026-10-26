@@ -2186,3 +2186,123 @@ async fn notch_mapping_releases_lease_on_cancel_and_drop() {
     drop(monitor);
     yield_until(|| (!arbiter.is_suspended()).then_some(())).await;
 }
+
+// ---------------------------------------------------------------------------
+// SuggestService: name-based control suggestion over the connected client
+// ---------------------------------------------------------------------------
+
+fn suggest_service(
+    sim_status: trenino_runtime::simulator::connection::SimulatorStatus,
+    client: Option<Arc<SimulatorClient>>,
+) -> trenino_runtime::simulator::services::suggest::SuggestService {
+    use trenino_runtime::simulator::connection_owner::StatusSnapshot;
+    use trenino_runtime::simulator::services::suggest::SuggestService;
+
+    let (tx, rx) = tokio::sync::watch::channel(StatusSnapshot {
+        status: sim_status,
+        last_error: None,
+        info: None,
+        health_failures: 0,
+        client,
+    });
+    drop(tx);
+    SuggestService::new(rx)
+}
+
+#[tokio::test]
+async fn suggest_service_matches_controls_with_confidence() {
+    use trenino_runtime::simulator::connection::SimulatorStatus;
+
+    let sim = explorer_sim();
+    let client = Arc::new(SimulatorClient::new(sim.url(), "key").unwrap());
+    let service = suggest_service(SimulatorStatus::Connected, Some(client));
+
+    let lever = service.suggest_lever("Throttle").await.unwrap().unwrap();
+    assert_eq!(lever.control_path, "Throttle(Lever)");
+    assert_eq!(
+        lever.value_endpoint,
+        "CurrentDrivableActor/Throttle(Lever).InputValue"
+    );
+    assert_eq!(
+        lever.min_endpoint,
+        "CurrentDrivableActor/Throttle(Lever).Function.GetMinimumInputValue"
+    );
+    assert_eq!(
+        lever.max_endpoint,
+        "CurrentDrivableActor/Throttle(Lever).Function.GetMaximumInputValue"
+    );
+    assert_eq!(
+        lever.notch_count_endpoint,
+        "CurrentDrivableActor/Throttle(Lever).Function.GetNotchCount"
+    );
+    assert_eq!(
+        lever.notch_index_endpoint,
+        "CurrentDrivableActor/Throttle(Lever).Function.GetCurrentNotchIndex"
+    );
+    assert_eq!(lever.confidence, 0.85);
+
+    let button = service.suggest_button("Horn").await.unwrap().unwrap();
+    assert_eq!(button.control_path, "Horn");
+    assert_eq!(button.endpoint, "CurrentDrivableActor/Horn.InputValue");
+    assert_eq!(button.confidence, 1.0);
+}
+
+#[tokio::test]
+async fn suggest_service_returns_none_below_the_confidence_gate() {
+    use trenino_runtime::simulator::connection::SimulatorStatus;
+
+    let sim = explorer_sim();
+    let client = Arc::new(SimulatorClient::new(sim.url(), "key").unwrap());
+    let service = suggest_service(SimulatorStatus::Connected, Some(client));
+
+    assert_eq!(service.suggest_lever("Qqqqzz").await.unwrap(), None);
+}
+
+#[tokio::test]
+async fn suggest_service_requires_a_connected_simulator() {
+    use trenino_runtime::simulator::connection::SimulatorStatus;
+    use trenino_runtime::simulator::services::suggest::SuggestServiceError;
+
+    let service = suggest_service(SimulatorStatus::Disconnected, None);
+    assert_eq!(
+        service.suggest_lever("Throttle").await.unwrap_err(),
+        SuggestServiceError::NotConnected
+    );
+    assert_eq!(
+        service.suggest_button("Horn").await.unwrap_err(),
+        SuggestServiceError::NotConnected
+    );
+}
+
+/// The button auto-fill contract (configuration_wizard_component.ex:97-137):
+/// the detected change carries the exact on/off values (on = current, off =
+/// previous) rounded to 2 decimals for the wizard.
+#[tokio::test]
+async fn control_detection_reports_previous_and_current_values_rounded() {
+    let state = Arc::new(Mutex::new(ControlSimState {
+        horn: 0.987654,
+        ..ControlSimState::default()
+    }));
+    let sim = control_detection_sim(&state);
+    let clock = FakeClock::new();
+    let arbiter = arbiter();
+    let mut session = start_detection(&sim, &arbiter, &clock).await;
+    baseline_taken(&state).await;
+
+    state.lock().unwrap().horn = 0.123456;
+
+    let event = next_event(&clock, Duration::from_millis(50), session.events()).await;
+    match event {
+        DetectionEvent::Completed(DetectionOutcome::Detected { changes, ambiguous }) => {
+            assert!(!ambiguous);
+            assert_eq!(changes.len(), 1);
+            assert_eq!(changes[0].control_name, "Horn");
+            assert_eq!(changes[0].previous_value, 0.99);
+            assert_eq!(changes[0].current_value, 0.12);
+        }
+        other => panic!("expected detection, got {other:?}"),
+    }
+
+    session.cancel().await.unwrap();
+    yield_until(|| (!arbiter.is_suspended()).then_some(())).await;
+}

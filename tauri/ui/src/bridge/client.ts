@@ -180,6 +180,30 @@ export type VjoyMappingDraft = {
   inverted: boolean;
 };
 
+/** Live vJoy recovery status (`ui_vjoy_status`). */
+export type VjoyStatusView = { state: 'on' | 'off' | 'needs_setup' | 'needs_cleanup' | 'error'; reason: string | null };
+
+/** Result of a vJoy recovery action (`ui_vjoy_remove_leftover` / `ui_vjoy_repair`). */
+export type VjoyActionResult = { ok: boolean; error?: string };
+
+/** Result of manually activating a train (`ui_activate_train`). */
+export type ActivateTrainResult = { ok: boolean; error?: string };
+
+/** Name-based lever endpoint suggestion (`ui_suggest_lever`). */
+export type LeverSuggestion = {
+  controlPath: string;
+  endpoints: { value: string; min: string; max: string; notchCount: string; notchIndex: string };
+  confidence: number;
+};
+export type LeverSuggestionResult = { match: LeverSuggestion | null; error?: string };
+
+/** Name-based button endpoint suggestion (`ui_suggest_button`). */
+export type ButtonSuggestion = { controlPath: string; endpoint: string; confidence: number };
+export type ButtonSuggestionResult = { match: ButtonSuggestion | null; error?: string };
+
+/** Payload of the `ui://hardware/detection` event (non-null prompt while a detection session runs). */
+export type HardwareDetectionEvent = { prompt: string | null };
+
 export interface UiBridge {
   getSettings(): Promise<Result<UiSnapshot<SettingsView>>>;
   getConfigurations(): Promise<Result<UiSnapshot<ConfigurationSummaryView[]>>>;
@@ -259,7 +283,11 @@ export interface UiBridge {
   setSimulatorUrl(value: string): Promise<Result<UiSnapshot<SettingsView>>>;
   setApiKey(value: string): Promise<Result<UiSnapshot<SettingsView>>>;
   testSimulator(): Promise<Result<boolean>>;
+  activateTrain(trainId: string): Promise<ActivateTrainResult>;
+  suggestLever(elementName: string): Promise<LeverSuggestionResult>;
+  suggestButton(elementName: string): Promise<ButtonSuggestionResult>;
   onHardwareInput(handler: (event: HardwareInputEvent) => void): Unsubscribe;
+  onHardwareDetection(handler: (event: HardwareDetectionEvent) => void): Unsubscribe;
   serialPorts(): Promise<Result<SerialPortView[]>>;
   scanDevices(): Promise<Result<boolean>>;
   beginApplyConfiguration(deviceId: string, port: string, generation: number): Promise<Result<ConfigurationOperation>>;
@@ -295,6 +323,9 @@ export interface UiBridge {
   setVjoySelection(devices: number[]): Promise<Result<UiSnapshot<VjoyView>>>;
   putVjoyMapping(inputId: string, draft: VjoyMappingDraft, replace: boolean): Promise<Result<UiSnapshot<VjoyView>>>;
   deleteVjoyMapping(id: string): Promise<Result<UiSnapshot<VjoyView>>>;
+  getVjoyStatus(): Promise<Result<VjoyStatusView>>;
+  removeVjoyLeftover(): Promise<Result<VjoyActionResult>>;
+  repairVjoy(): Promise<Result<VjoyActionResult>>;
 
   // ---- Wave-2 UI track B: firmware page ---------------------------------------
   getFirmware(): Promise<Result<UiSnapshot<FirmwareView>>>;
@@ -447,6 +478,36 @@ export function createBridge(ipc: IpcTransport): UiBridge {
     setSimulatorUrl: (value) => command('ui_set_simulator_url', { value }),
     setApiKey: (value) => command('ui_set_api_key', { value }),
     testSimulator: () => command('ui_test_simulator'),
+    async activateTrain(trainId) {
+      if (!ipc.isDesktop()) return { ok: false, error: unavailable('Open Trenino from the desktop app to connect to Rust services.').message };
+      try {
+        const value = (await ipc.invoke('ui_activate_train', { trainId })) as ActivateTrainResult | null;
+        if (value && typeof value.ok === 'boolean') return value;
+        return { ok: false, error: 'Unexpected response from the Rust service.' };
+      } catch (error) {
+        return { ok: false, error: normalizeIpcFailure(error).message };
+      }
+    },
+    async suggestLever(elementName) {
+      if (!ipc.isDesktop()) return { match: null };
+      try {
+        const value = (await ipc.invoke('ui_suggest_lever', { elementName })) as LeverSuggestionResult | null;
+        if (value && (value.match === null || plainRecord(value.match))) return value;
+        return { match: null };
+      } catch {
+        return { match: null };
+      }
+    },
+    async suggestButton(elementName) {
+      if (!ipc.isDesktop()) return { match: null };
+      try {
+        const value = (await ipc.invoke('ui_suggest_button', { elementName })) as ButtonSuggestionResult | null;
+        if (value && (value.match === null || plainRecord(value.match))) return value;
+        return { match: null };
+      } catch {
+        return { match: null };
+      }
+    },
     serialPorts: () => command('ui_serial_ports'),
     scanDevices: () => command('ui_scan_devices'),
     beginApplyConfiguration: (device_id, port, generation) => command('ui_begin_apply_configuration', { device_id, port, generation }),
@@ -480,7 +541,30 @@ export function createBridge(ipc: IpcTransport): UiBridge {
         stop = undefined;
       };
     },
-
+    onHardwareDetection(handler: (event: HardwareDetectionEvent) => void): Unsubscribe {
+      if (!ipc.isDesktop()) return () => {};
+      let stop: Unlisten | undefined;
+      let active = true;
+      void ipc
+        .listen('ui://hardware/detection', (payload) => {
+          if (active && plainRecord(payload) && (typeof payload.prompt === 'string' || payload.prompt === null)) {
+            handler({ prompt: payload.prompt });
+          }
+        })
+        .then((unlisten) => {
+          if (active) {
+            stop = unlisten;
+          } else {
+            unlisten();
+          }
+        })
+        .catch(() => undefined);
+      return () => {
+        active = false;
+        stop?.();
+        stop = undefined;
+      };
+    },
     // ---- Wave-2 UI track B: sequences ------------------------------------------
     createSequence: (trainId, name) => command('ui_create_sequence', { train_id: trainId, name }),
     updateSequence: (id, name) => command('ui_update_sequence', { id, name }),
@@ -504,6 +588,9 @@ export function createBridge(ipc: IpcTransport): UiBridge {
     setVjoySelection: (devices) => command('ui_set_vjoy_selection', { devices }),
     putVjoyMapping: (inputId, draft, replace) => command('ui_put_vjoy_mapping', { input_id: inputId, ...draft, replace }),
     deleteVjoyMapping: (id) => command('ui_delete_vjoy_mapping', { id }),
+    getVjoyStatus: () => command('ui_vjoy_status'),
+    removeVjoyLeftover: () => command('ui_vjoy_remove_leftover'),
+    repairVjoy: () => command('ui_vjoy_repair'),
 
     // ---- Wave-2 UI track B: firmware page ---------------------------------------
     getFirmware: () => command('ui_get_firmware'),

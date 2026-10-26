@@ -134,7 +134,7 @@ RUST_BUNDLE_CONFIG="tauri.rust.conf.json"
 if [ "$PLATFORM" = "x86_64-pc-windows-msvc" ]; then
     RUST_BUNDLE_CONFIG="tauri.rust.windows.conf.json"
 fi
-TRENINO_RUST_BUNDLE=1 npx tauri build --features "rust-ui desktop-updater" --config "src-tauri/$RUST_BUNDLE_CONFIG" "$@"
+TRENINO_RUST_BUNDLE=1 npx tauri build --features "rust-ui" --config "src-tauri/$RUST_BUNDLE_CONFIG" "$@"
 
 echo "==> Build complete!"
 echo "Output: $TAURI_DIR/target/release/bundle/"

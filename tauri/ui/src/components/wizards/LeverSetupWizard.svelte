@@ -41,6 +41,23 @@
   let dismissing = $state(false);
   let suggestedLeverType = $state<'discrete' | 'continuous' | 'hybrid' | null>(null);
   let endpointEditRevision = 0;
+  let endpointSuggestion = $state<{ controlPath: string; confidence: number } | null>(null);
+
+  async function suggestEndpoints(initial: { min: string; max: string; value: string; notchCount: string; notchIndex: string }, revision: number) {
+    const result = await bridge.suggestLever(element.name);
+    if (!alive || endpointEditRevision !== revision) return;
+    const match = result.match;
+    if (!match) return;
+    endpoints = {
+      min: endpoints.min === initial.min ? match.endpoints.min : endpoints.min,
+      max: endpoints.max === initial.max ? match.endpoints.max : endpoints.max,
+      value: endpoints.value === initial.value ? match.endpoints.value : endpoints.value,
+      notchCount: endpoints.notchCount === initial.notchCount ? match.endpoints.notchCount : endpoints.notchCount,
+      notchIndex: endpoints.notchIndex === initial.notchIndex ? match.endpoints.notchIndex : endpoints.notchIndex,
+    };
+    endpointEditRevision += 1;
+    endpointSuggestion = { controlPath: match.controlPath, confidence: match.confidence };
+  }
   let sweepDraftSignature: string | null = null;
   let alive = true;
   onDestroy(() => { alive = false; });
@@ -96,6 +113,8 @@
       simMax: notch.sim_input_max === null ? '' : String(notch.sim_input_max),
     }));
     notchCount = notchRows.length > 0 ? String(notchRows.length) : '4';
+    endpointSuggestion = null;
+    void suggestEndpoints({ ...endpoints }, endpointEditRevision);
   });
   const notchCountValid = $derived(/^\d+$/.test(notchCount.trim()) && Number.parseInt(notchCount.trim(), 10) > 0);
 
@@ -472,7 +491,7 @@
     <div class="p-6" data-testid="lever-step-input">
       <div class="max-w-lg mx-auto">
         <h3 class="text-lg font-semibold mb-2">Select Hardware Input</h3>
-        <p class="text-sm text-base-content/60 mb-4">
+        <p class="text-sm text-muted mb-4">
           Choose a calibrated lever to control this element. Only calibrated analog inputs are shown.
         </p>
 
@@ -503,7 +522,7 @@
                 />
                 <div class="flex-1">
                   <div class="font-medium">{input.name || 'Unnamed Input'}</div>
-                  <div class="text-sm text-base-content/60">
+                  <div class="text-sm text-muted">
                     {input.device_name} · Pin {input.pin ?? '—'}
                     {#if input.calibration}<span class="text-success">— Calibrated</span>{/if}
                   </div>
@@ -518,7 +537,7 @@
     <div class="p-6" data-testid="lever-step-endpoints">
       <div class="max-w-lg mx-auto">
         <h3 class="text-lg font-semibold mb-2">Find in Simulator</h3>
-        <p class="text-sm text-base-content/60 mb-4">
+        <p class="text-sm text-muted mb-4">
           Copy the lever's control endpoints from the simulator API (for example
           <span class="font-mono">CurrentDrivableActor/MasterController.InputValue</span>).
         </p>
@@ -526,6 +545,12 @@
           <GuidedSimulatorSession bind:this={guidedSession} {bridge} mode="detection" onUse={useGuidedResult} onClose={() => (guidedMode = null)} />
         {:else}
           <button type="button" class="btn btn-outline btn-sm mb-4" onclick={() => (guidedMode = 'detection')} data-testid="detect-simulator-lever">Auto-detect lever control</button>
+        {/if}
+        {#if endpointSuggestion}
+          <div class="alert alert-info mb-4" role="status" data-testid="lever-endpoint-suggestion">
+            <p class="text-sm flex-1">Suggested “{endpointSuggestion.controlPath}” · {Math.round(endpointSuggestion.confidence * 100)}% confidence — review before saving</p>
+            <button type="button" class="btn btn-ghost btn-xs" aria-label="Dismiss suggestion" onclick={() => (endpointSuggestion = null)}>Dismiss</button>
+          </div>
         {/if}
         <div class="space-y-3">
           <label class="block">
@@ -565,7 +590,7 @@
           </label>
           <EndpointBrowser {bridge} label="Browse value" onSelect={(path) => { endpoints.value = path; endpointEditRevision += 1; }} />
           <label class="block">
-            <span class="text-sm font-medium">Notch count endpoint <span class="font-normal text-base-content/50">(optional)</span></span>
+            <span class="text-sm font-medium">Notch count endpoint <span class="font-normal text-muted">(optional)</span></span>
             <input
               type="text"
               class="input input-bordered w-full font-mono text-sm mt-1"
@@ -576,7 +601,7 @@
           </label>
           <EndpointBrowser {bridge} label="Browse notch count" onSelect={(path) => { endpoints.notchCount = path; endpointEditRevision += 1; }} />
           <label class="block">
-            <span class="text-sm font-medium">Notch index endpoint <span class="font-normal text-base-content/50">(optional)</span></span>
+            <span class="text-sm font-medium">Notch index endpoint <span class="font-normal text-muted">(optional)</span></span>
             <input
               type="text"
               class="input input-bordered w-full font-mono text-sm mt-1"
@@ -593,7 +618,7 @@
     <div class="p-6" data-testid="lever-step-notches">
       <div class="max-w-2xl mx-auto">
         <h3 class="text-lg font-semibold mb-2">Define Notches</h3>
-        <p class="text-sm text-base-content/60 mb-4">
+        <p class="text-sm text-muted mb-4">
           Describe the lever's notches. Gate notches snap into place; linear notches cover a range.
           Simulator ranges are optional and power automatic inversion detection.
         </p>
@@ -629,7 +654,7 @@
             <tbody>
               {#each notchRows as row, index (index)}
                 <tr>
-                  <td class="text-base-content/50">{index + 1}</td>
+                  <td class="text-muted">{index + 1}</td>
                   <td>
                     <select
                       class="select select-bordered select-sm"
@@ -659,7 +684,7 @@
                         bind:value={row.simMin}
                         aria-label="Notch {index + 1} simulator minimum"
                       />
-                      <span class="text-base-content/50">–</span>
+                      <span class="text-muted">–</span>
                       <input
                         type="number"
                         step="0.01"
@@ -680,7 +705,7 @@
     <div class="p-6" data-testid="lever-step-mapping">
       <div class="max-w-2xl mx-auto">
         <h3 class="text-lg font-semibold mb-2">Map Hardware Positions</h3>
-        <p class="text-sm text-base-content/60 mb-4">
+        <p class="text-sm text-muted mb-4">
           Move your physical lever to capture the range for each notch.
           Lever direction will be automatically detected when you save.
         </p>
@@ -690,7 +715,7 @@
             <div class="flex items-center justify-between mb-4">
               <div>
                 <h4 class="font-semibold">Notch {mappingIndex + 1} of {notchRows.length}</h4>
-                <p class="text-sm text-base-content/60">
+                <p class="text-sm text-muted">
                   {notchRows[mappingIndex]?.description || `Notch ${mappingIndex}`}
                   — {notchRows[mappingIndex]?.kind === 'gate'
                     ? 'Wiggle the lever within this position'
@@ -707,18 +732,18 @@
                 <div class="grid grid-cols-3 gap-4 text-center">
                   <div>
                     <div class="text-2xl font-mono font-bold text-info" data-testid="capture-min">{currentMin ?? '—'}</div>
-                    <div class="text-xs text-base-content/60">Min</div>
+                    <div class="text-xs text-muted">Min</div>
                   </div>
                   <div>
                     <div class="text-3xl font-mono font-bold text-primary" data-testid="capture-current">{currentValue ?? '—'}</div>
-                    <div class="text-xs text-base-content/60">Current</div>
+                    <div class="text-xs text-muted">Current</div>
                   </div>
                   <div>
                     <div class="text-2xl font-mono font-bold text-info" data-testid="capture-max">{currentMax ?? '—'}</div>
-                    <div class="text-xs text-base-content/60">Max</div>
+                    <div class="text-xs text-muted">Max</div>
                   </div>
                 </div>
-                <p class="text-center text-sm text-base-content/60" data-testid="capture-sample-count">
+                <p class="text-center text-sm text-muted" data-testid="capture-sample-count">
                   {sampleCount} samples collected (at least {minSampleCount ?? '…'} needed)
                 </p>
                 <div class="flex justify-center gap-2">
@@ -763,7 +788,7 @@
     <div class="p-6" data-testid="lever-step-preview">
       <div class="max-w-2xl mx-auto">
         <h3 class="text-lg font-semibold mb-2">Preview</h3>
-        <p class="text-sm text-base-content/60 mb-4">
+        <p class="text-sm text-muted mb-4">
           Review the captured ranges before saving them to the lever.
         </p>
         <div class="overflow-x-auto">
@@ -780,7 +805,7 @@
               {#each notchRows as row, index (index)}
                 {@const range = previewRanges?.[index]}
                 <tr>
-                  <td class="text-base-content/50">{index + 1}</td>
+                  <td class="text-muted">{index + 1}</td>
                   <td>
                     <span class="badge badge-sm {row.kind === 'gate' ? 'badge-warning' : 'badge-info'}">
                       {row.kind === 'gate' ? 'Gate' : 'Linear'}
@@ -818,7 +843,7 @@
           </div>
         {/if}
         {#if savedInverted}
-          <p class="text-sm text-base-content/60 mt-4">Lever direction detected as inverted and saved.</p>
+          <p class="text-sm text-muted mt-4">Lever direction detected as inverted and saved.</p>
         {/if}
       </div>
     </div>

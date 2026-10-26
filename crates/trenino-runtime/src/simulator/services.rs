@@ -14,4 +14,5 @@ pub mod control_detection;
 pub mod explorer;
 pub mod lever_analysis;
 pub mod session;
+pub mod suggest;
 pub mod train_detection;

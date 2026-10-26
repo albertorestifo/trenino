@@ -53,6 +53,21 @@
   let dismissing = $state(false);
   let replaceBinding = $state(false);
   let initializedBindingId: string | null | undefined;
+  let endpointSuggestion = $state<{ controlPath: string; confidence: number } | null>(null);
+  let valuesSuggested = $state(false);
+  let initialEndpoint = '';
+  let initialOnValue = '1';
+  let initialOffValue = '0';
+  let suggestRevision = 0;
+
+  async function suggestEndpoint(initial: string, revision: number) {
+    const result = await bridge.suggestButton(element.name);
+    if (revision !== suggestRevision) return;
+    const match = result.match;
+    if (!match) return;
+    if (endpoint === initial) endpoint = match.endpoint;
+    endpointSuggestion = { controlPath: match.controlPath, confidence: match.confidence };
+  }
 
   async function dismissWizard() {
     if (dismissing) return;
@@ -82,6 +97,13 @@
     offSequenceId = binding?.off_sequence_id || '';
     keystroke = binding?.keystroke ?? '';
     selectedInputId = binding?.input_id ?? null;
+    endpointSuggestion = null;
+    valuesSuggested = false;
+    initialEndpoint = endpoint;
+    initialOnValue = onValue;
+    initialOffValue = offValue;
+    suggestRevision += 1;
+    void suggestEndpoint(endpoint, suggestRevision);
   });
 
   const selectedInput = $derived(buttonInputs.find((input) => input.id === selectedInputId) ?? null);
@@ -111,7 +133,15 @@
   }
 
   function useDetectedSimulator(change: DetectedControlChange | null) {
-    if (change) endpoint = change.endpoint;
+    if (change) {
+      endpoint = change.endpoint;
+      endpointSuggestion = null;
+      if (typeof change.current_value === 'number' && typeof change.previous_value === 'number') {
+        if (onValue === initialOnValue) onValue = change.current_value.toFixed(2);
+        if (offValue === initialOffValue) offValue = change.previous_value.toFixed(2);
+        if (onValue !== initialOnValue || offValue !== initialOffValue) valuesSuggested = true;
+      }
+    }
     detectingSimulator = false;
   }
 
@@ -228,7 +258,7 @@
             data-testid="choose-simulator-binding"
           >
             <h4 class="font-medium">Simulator Control</h4>
-            <p class="text-sm text-base-content/60">Control a function via the simulator API</p>
+            <p class="text-sm text-muted">Control a function via the simulator API</p>
           </button>
           <button
             type="button"
@@ -237,7 +267,7 @@
             data-testid="choose-sequence-binding"
           >
             <h4 class="font-medium">Trigger Sequence</h4>
-            <p class="text-sm text-base-content/60">Execute a sequence of commands</p>
+            <p class="text-sm text-muted">Execute a sequence of commands</p>
           </button>
           <button
             type="button"
@@ -246,7 +276,7 @@
             data-testid="choose-keystroke-binding"
           >
             <h4 class="font-medium">Keyboard Key</h4>
-            <p class="text-sm text-base-content/60">Simulate a keyboard press</p>
+            <p class="text-sm text-muted">Simulate a keyboard press</p>
           </button>
         </div>
       </div>
@@ -255,7 +285,7 @@
     <div class="p-6" data-testid="button-step-endpoint">
       <div class="max-w-lg mx-auto">
         <h3 class="text-lg font-semibold mb-2">Find in Simulator</h3>
-        <p class="text-sm text-base-content/60 mb-4">
+        <p class="text-sm text-muted mb-4">
           Copy the control endpoint from the simulator API (for example
           <span class="font-mono">CurrentDrivableActor/Horn.Active</span>).
         </p>
@@ -270,6 +300,12 @@
           />
         </label>
         <EndpointBrowser {bridge} onSelect={(path) => (endpoint = path)} />
+        {#if endpointSuggestion}
+          <div class="alert alert-info mt-2" role="status" data-testid="button-endpoint-suggestion">
+            <p class="text-sm flex-1">Suggested “{endpointSuggestion.controlPath}” · {Math.round(endpointSuggestion.confidence * 100)}% confidence — review before saving</p>
+            <button type="button" class="btn btn-ghost btn-xs" aria-label="Dismiss suggestion" onclick={() => (endpointSuggestion = null)}>Dismiss</button>
+          </div>
+        {/if}
         {#if detectingSimulator}
           <GuidedSimulatorSession bind:this={guidedSession} {bridge} mode="detection" onUse={(_snapshot, change) => useDetectedSimulator(change)} onClose={() => (detectingSimulator = false)} />
         {:else}
@@ -291,7 +327,7 @@
 
         {#if buttonInputs.length === 0}
           <div class="bg-base-200 rounded-lg p-4">
-            <p class="text-sm text-base-content/60 italic">
+            <p class="text-sm text-muted italic">
               No button inputs configured. Add button inputs in device settings first.
             </p>
           </div>
@@ -301,7 +337,7 @@
               <span class="loading loading-dots loading-md text-primary"></span>
               <div>
                 <p class="font-medium text-primary">Waiting for button press...</p>
-                <p class="text-xs text-base-content/60">Press a button on your hardware device</p>
+                <p class="text-xs text-muted">Press a button on your hardware device</p>
               </div>
             </div>
             <button type="button" class="btn btn-ghost btn-xs mt-2" onclick={() => (detectingButton = false)} data-testid="cancel-button-detection">
@@ -312,8 +348,8 @@
           <div class="bg-base-200 rounded-lg p-4">
             <div class="flex items-center justify-between">
               <div>
-                <p class="text-sm text-base-content/70">No button selected</p>
-                <p class="text-xs text-base-content/50">Press "Detect" and then press a button on your device</p>
+                <p class="text-sm text-muted">No button selected</p>
+                <p class="text-xs text-muted">Press "Detect" and then press a button on your device</p>
               </div>
               <button type="button" class="btn btn-primary btn-sm" onclick={() => (detectingButton = true)} data-testid="start-button-detection">
                 Detect
@@ -326,7 +362,7 @@
               <div class="flex items-center gap-3">
                 <div>
                   <p class="font-medium">{selectedInput.name || `Button ${selectedInput.pin}`}</p>
-                  <p class="text-xs text-base-content/60">{selectedInput.device_name} - Pin {selectedInput.pin ?? '—'}</p>
+                  <p class="text-xs text-muted">{selectedInput.device_name} - Pin {selectedInput.pin ?? '—'}</p>
                 </div>
               </div>
               <div class="flex gap-2">
@@ -364,7 +400,7 @@
               <option value="momentary">Momentary (spring-loaded)</option>
               <option value="latching">Latching (toggle switch)</option>
             </select>
-            <p class="text-xs text-base-content/50 mt-1">
+            <p class="text-xs text-muted mt-1">
               {hardwareType === 'momentary'
                 ? 'Button returns when released (like a keyboard key or doorbell)'
                 : 'Toggle switch that stays in position (like a light switch)'}
@@ -388,7 +424,7 @@
                     <option value={sequence.id}>{sequence.name} ({sequence.commands.length} commands)</option>
                   {/each}
                 </select>
-                <p class="text-xs text-base-content/50 mt-1">Sequence to execute when button is pressed</p>
+                <p class="text-xs text-muted mt-1">Sequence to execute when button is pressed</p>
               </div>
               {#if hardwareType === 'latching'}
                 <div>
@@ -399,7 +435,7 @@
                       <option value={sequence.id}>{sequence.name} ({sequence.commands.length} commands)</option>
                     {/each}
                   </select>
-                  <p class="text-xs text-base-content/50 mt-1">Sequence to execute when toggle is turned off</p>
+                  <p class="text-xs text-muted mt-1">Sequence to execute when toggle is turned off</p>
                 </div>
               {/if}
               {#if onSequenceId === '' && offSequenceId === ''}
@@ -417,7 +453,7 @@
                 <option value="sequence">Sequence (execute commands)</option>
                 <option value="keystroke">Keystroke (keyboard key)</option>
               </select>
-              <p class="text-xs text-base-content/50 mt-1">
+              <p class="text-xs text-muted mt-1">
                 {#if bindingMode === 'simple'}
                   Sends ON when pressed, OFF when released. Use for: lights, doors, switches
                 {:else if bindingMode === 'momentary'}
@@ -435,7 +471,7 @@
                 <option value="momentary">Momentary (spring-loaded)</option>
                 <option value="latching">Latching (toggle switch)</option>
               </select>
-              <p class="text-xs text-base-content/50 mt-1">
+              <p class="text-xs text-muted mt-1">
                 {hardwareType === 'momentary'
                   ? 'Button returns when released (like a keyboard key or doorbell)'
                   : 'Toggle switch that stays in position (like a light switch)'}
@@ -453,7 +489,7 @@
                 >
                   <div class="flex flex-col items-center gap-2">
                     <p class="font-medium text-primary">Press any key combination...</p>
-                    <p class="text-xs text-base-content/60">e.g., W, Ctrl+S, Shift+F1</p>
+                    <p class="text-xs text-muted">e.g., W, Ctrl+S, Shift+F1</p>
                   </div>
                   <button type="button" class="btn btn-ghost btn-xs mt-3" onclick={() => (capturingKeystroke = false)}>
                     Cancel
@@ -463,8 +499,8 @@
                 <div class="bg-base-200 rounded-lg p-4">
                   <div class="flex items-center justify-between">
                     <div>
-                      <p class="text-sm text-base-content/70">No keystroke configured</p>
-                      <p class="text-xs text-base-content/50">Click "Capture" and press the key combination</p>
+                      <p class="text-sm text-muted">No keystroke configured</p>
+                      <p class="text-xs text-muted">Click "Capture" and press the key combination</p>
                     </div>
                     <button type="button" class="btn btn-primary btn-sm" onclick={() => (capturingKeystroke = true)} data-testid="start-keystroke-capture">
                       Capture
@@ -476,7 +512,7 @@
                   <div class="flex items-center justify-between">
                     <div>
                       <p class="font-medium font-mono text-lg">{keystroke}</p>
-                      <p class="text-xs text-base-content/60">Key will be held while button is pressed</p>
+                      <p class="text-xs text-muted">Key will be held while button is pressed</p>
                     </div>
                     <div class="flex gap-2">
                       <button type="button" class="btn btn-ghost btn-sm" onclick={() => (capturingKeystroke = true)}>Change</button>
@@ -492,13 +528,16 @@
               <div class="grid grid-cols-2 gap-4">
                 <div>
                   <label class="label" for="button-on-value"><span class="label-text">ON Value</span></label>
-                  <input id="button-on-value" type="number" step="0.1" class="input input-bordered w-full" bind:value={onValue} data-testid="button-on-value" />
+                  <input id="button-on-value" type="number" step="0.1" class="input input-bordered w-full" bind:value={onValue} oninput={() => (valuesSuggested = false)} data-testid="button-on-value" />
                 </div>
                 <div>
                   <label class="label" for="button-off-value"><span class="label-text">OFF Value</span></label>
-                  <input id="button-off-value" type="number" step="0.1" class="input input-bordered w-full" bind:value={offValue} data-testid="button-off-value" />
+                  <input id="button-off-value" type="number" step="0.1" class="input input-bordered w-full" bind:value={offValue} oninput={() => (valuesSuggested = false)} data-testid="button-off-value" />
                 </div>
               </div>
+              {#if valuesSuggested}
+                <p class="mt-2 text-xs text-muted" role="status" data-testid="button-values-suggested">Suggested from observed values</p>
+              {/if}
               {#if bindingMode === 'momentary'}
                 <div class="mt-3">
                   <label class="label" for="button-repeat-interval"><span class="label-text">Repeat interval (ms)</span></label>

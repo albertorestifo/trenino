@@ -22,7 +22,7 @@
             'w-6 h-6 rounded-full flex items-center justify-center text-xs font-medium transition-colors',
             index === current && 'bg-primary text-primary-content',
             index !== current && index < completed && 'bg-success text-success-content',
-            index !== current && index >= completed && 'bg-base-300 text-base-content/50',
+            index !== current && index >= completed && 'bg-base-300 text-muted',
           ]}
         >
           {#if index !== current && index < completed}
@@ -36,7 +36,7 @@
             'text-xs whitespace-nowrap',
             index === current && 'font-medium',
             index !== current && index < completed && 'text-success',
-            index !== current && index >= completed && 'text-base-content/50',
+            index !== current && index >= completed && 'text-muted',
           ]}
         >
           {label}

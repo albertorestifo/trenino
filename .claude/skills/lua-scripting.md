@@ -29,7 +29,7 @@ end
 | Function | Description |
 |----------|-------------|
 | `api.get(path)` | Read a simulator API endpoint. Returns `value, err`. |
-| `api.set(path, value)` | Write a value to a simulator API endpoint. Returns `ok, err`. |
+| `api.set(path, value)` | Write a value to a simulator API endpoint. Records the write and returns `true`; argument failures raise a Lua error. |
 | `output.set(id, on)` | Set a hardware output. `id` is the database output ID (integer), `on` is boolean. |
 | `schedule(ms)` | Schedule `on_change` to fire again after `ms` milliseconds with source `"scheduled"`. |
 | `print(...)` | Log a message to the script console. Multiple args are tab-separated. |

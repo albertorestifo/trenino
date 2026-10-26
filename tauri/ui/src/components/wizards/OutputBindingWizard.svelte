@@ -162,7 +162,7 @@
     <div class="p-6" data-testid="output-step-endpoint">
       <div class="max-w-lg mx-auto">
         <h3 class="text-lg font-semibold mb-2">Endpoint</h3>
-        <p class="text-sm text-base-content/60 mb-4">
+        <p class="text-sm text-muted mb-4">
           Copy the endpoint this output should watch from the simulator API (for example
           <span class="font-mono">CurrentDrivableActor/Speedometer.Speed</span>).
         </p>
@@ -183,7 +183,7 @@
     <div class="p-6" data-testid="output-step-output">
       <div class="text-center mb-6">
         <h3 class="text-xl font-semibold mb-2">Select Output</h3>
-        <p class="text-base-content/60">Choose which hardware output to control</p>
+        <p class="text-muted">Choose which hardware output to control</p>
       </div>
 
       {#if hardware.outputs.length === 0}
@@ -206,7 +206,7 @@
               data-testid="output-option"
             >
               <p class="font-medium">{output.name || `Output ${output.pin}`}</p>
-              <p class="text-xs text-base-content/60">{output.device_name} - Pin {output.pin}</p>
+              <p class="text-xs text-muted">{output.device_name} - Pin {output.pin}</p>
             </button>
           {/each}
         </div>
@@ -216,7 +216,7 @@
     <div class="p-6" data-testid="output-step-type">
       <div class="text-center mb-6">
         <h3 class="text-xl font-semibold mb-2">Select Output Type</h3>
-        <p class="text-base-content/60">Choose how the output should behave</p>
+        <p class="text-muted">Choose how the output should behave</p>
       </div>
       <button
         type="button"
@@ -231,12 +231,12 @@
         data-testid="output-type-led"
       >
         <h4 class="font-semibold text-lg">LED (On/Off)</h4>
-        <p class="text-base-content/60 mt-1">
+        <p class="text-muted mt-1">
           Digital output that turns on when condition is met, off otherwise.
           Ideal for indicator lights, warning LEDs, and status displays.
         </p>
       </button>
-      <div class="text-center text-sm text-base-content/50 mt-4">
+      <div class="text-center text-sm text-muted mt-4">
         For I2C display outputs, use Display Bindings instead
       </div>
     </div>
@@ -246,12 +246,12 @@
         <h3 class="font-semibold mb-2">Summary</h3>
         <div class="bg-base-200 rounded-lg p-4 space-y-2 text-sm">
           <div class="flex justify-between gap-3">
-            <span class="text-base-content/60">Endpoint:</span>
+            <span class="text-muted">Endpoint:</span>
             <span class="font-mono break-all">{endpoint}</span>
           </div>
           {#if selectedOutput}
             <div class="flex justify-between gap-3">
-              <span class="text-base-content/60">Output:</span>
+              <span class="text-muted">Output:</span>
               <span>{selectedOutput.name || `Output ${selectedOutput.pin}`} ({selectedOutput.device_name})</span>
             </div>
           {/if}
@@ -269,14 +269,14 @@
             placeholder="e.g., Speed Warning LED"
             data-testid="output-binding-name"
           />
-          <p class="text-xs text-base-content/50 mt-1">A descriptive name for this output binding</p>
+          <p class="text-xs text-muted mt-1">A descriptive name for this output binding</p>
         </div>
 
         <div>
           <label class="label" for="output-operator"><span class="label-text font-medium">Condition</span></label>
-          <p class="text-sm text-base-content/60 mb-3">Output turns ON when the API value meets this condition</p>
+          <p class="text-sm text-muted mb-3">Output turns ON when the API value meets this condition</p>
           <div class="flex items-center gap-3">
-            <span class="text-base-content/70">Value</span>
+            <span class="text-muted">Value</span>
             <select id="output-operator" class="select select-bordered" bind:value={operator} data-testid="output-operator">
               <optgroup label="Boolean">
                 <option value="eq_true">= true</option>
@@ -297,7 +297,7 @@
               {#if operator === 'between'}
                 <div class="flex items-center gap-2">
                   <input type="number" step="0.01" class="input input-bordered w-32" bind:value={valueA} placeholder="min" aria-label="Minimum threshold" data-testid="output-value-a" />
-                  <span class="text-base-content/70">and</span>
+                  <span class="text-muted">and</span>
                   <input type="number" step="0.01" class="input input-bordered w-32" bind:value={valueB} placeholder="max" aria-label="Maximum threshold" data-testid="output-value-b" />
                 </div>
               {:else}
@@ -313,7 +313,7 @@
           <div class="flex items-start gap-2">
             <div class="text-sm">
               <p class="font-medium text-info">Preview</p>
-              <p class="text-base-content/70 mt-1" data-testid="output-condition-preview">{conditionPreview}</p>
+              <p class="text-muted mt-1" data-testid="output-condition-preview">{conditionPreview}</p>
             </div>
           </div>
         </div>

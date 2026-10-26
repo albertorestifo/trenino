@@ -9,7 +9,7 @@
 
 use std::io::{Read, Write};
 use std::net::{SocketAddr, TcpStream};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use serde_json::{json, Value};
@@ -897,4 +897,131 @@ fn detection_reports_timeout_over_http() {
     );
     assert!(!error);
     assert_eq!(payload, json!({"detected": false, "reason": "timeout"}));
+}
+
+// ---------------------------------------------------------------------------
+// Simulator path normalization + vJoy lifecycle routing
+// ---------------------------------------------------------------------------
+
+struct ConnectedSimulator {
+    calls: Mutex<Vec<Option<String>>>,
+}
+
+impl trenino_runtime::mcp::ports::SimulatorPort for ConnectedSimulator {
+    fn is_connected(&self) -> bool {
+        true
+    }
+
+    fn list_endpoints(&self, path: Option<&str>) -> Result<Value, String> {
+        self.calls.lock().unwrap().push(path.map(str::to_owned));
+        Ok(json!({"Nodes": ["CurrentDrivableActor"], "Endpoints": []}))
+    }
+
+    fn get_value(&self, _path: &str) -> Result<Value, String> {
+        Ok(json!(0.0))
+    }
+
+    fn set_value(&self, _path: &str, _value: &Value) -> Result<Value, String> {
+        Ok(json!({"status": "ok"}))
+    }
+}
+
+#[test]
+fn list_simulator_endpoints_empty_path_browses_root() {
+    let dir = tempdir().unwrap();
+    let db = Arc::new(Database::open_full(dir.path().join("mcp.db")).unwrap());
+    db.allocate_epoch().unwrap();
+    let simulator = Arc::new(ConnectedSimulator {
+        calls: Mutex::new(vec![]),
+    });
+    let ports: Ports = StoragePorts::new(db)
+        .with_simulator(simulator.clone())
+        .into_ports();
+    let server = Arc::new(McpServer::new(Arc::new(ports), None));
+    let address = match server.start(SocketAddr::from(([127, 0, 0, 1], 0))).unwrap() {
+        McpServerStatus::Running { address } => address,
+        other => panic!("expected running server, got {other:?}"),
+    };
+    let mut session = connect(address.port());
+
+    // `{"path": ""}` must browse the root exactly like an omitted path.
+    let (error, payload) = session.call(1, "list_simulator_endpoints", json!({"path": ""}));
+    assert!(!error);
+    assert_eq!(
+        payload,
+        json!({"Nodes": ["CurrentDrivableActor"], "Endpoints": []})
+    );
+    assert_eq!(simulator.calls.lock().unwrap().as_slice(), &[None]);
+
+    let (error, payload) = session.call(2, "list_simulator_endpoints", json!({}));
+    assert!(!error);
+    assert_eq!(
+        payload,
+        json!({"Nodes": ["CurrentDrivableActor"], "Endpoints": []})
+    );
+    assert_eq!(simulator.calls.lock().unwrap().as_slice(), &[None, None]);
+}
+
+#[test]
+fn vjoy_cleanup_and_repair_route_to_the_manager_over_http() {
+    use trenino_runtime::resource::{ResourceArbiter, ResourceConsumers};
+    use trenino_runtime::vjoy::{FakeVjoyAdapter, VjoyManager};
+
+    struct NoopConsumers;
+    impl ResourceConsumers for NoopConsumers {
+        fn suspend_actuation(&self, _port: &str) -> Result<(), String> {
+            Ok(())
+        }
+        fn cancel_calibration(&self, _port: &str) -> Result<(), String> {
+            Ok(())
+        }
+        fn source_lost(&self, _port: &str, _generation: u64) -> Result<(), String> {
+            Ok(())
+        }
+        fn resume_after_fresh_sample(&self, _port: &str) -> Result<(), String> {
+            Ok(())
+        }
+    }
+
+    let dir = tempdir().unwrap();
+    let db = Database::open_full(dir.path().join("mcp.db")).unwrap();
+    db.allocate_epoch().unwrap();
+    let adapter = Arc::new(Mutex::new(FakeVjoyAdapter::new()));
+    // Enable the fake configurator so cleanup actually deletes the owned
+    // device; otherwise cleanup_selected is a no-op and needs_cleanup persists.
+    adapter.lock().unwrap().set_configurator_enabled(true);
+    let manager = VjoyManager::new(
+        db.clone(),
+        Arc::new(ResourceArbiter::new(Arc::new(NoopConsumers))),
+        adapter,
+    );
+    let ports: Ports = StoragePorts::new(Arc::new(db))
+        .with_vjoy_runtime(Arc::new(manager))
+        .into_ports();
+    let server = Arc::new(McpServer::new(Arc::new(ports), None));
+    let address = match server.start(SocketAddr::from(([127, 0, 0, 1], 0))).unwrap() {
+        McpServerStatus::Running { address } => address,
+        other => panic!("expected running server, got {other:?}"),
+    };
+    let mut session = connect(address.port());
+
+    // The fake adapter starts with a Trenino-owned device 1 and the default
+    // selection is [1], so a fresh manager begins in needs_cleanup: routing
+    // must reach the manager and perform the real cleanup (accepted), and a
+    // repeat call must then hit the manager's invalid-state fence instead of
+    // the old `runtime_unavailable` stub.
+    let (error, payload) = session.call(1, "cleanup_virtual_joystick", json!({}));
+    assert!(!error);
+    assert_eq!(payload["status"], "accepted");
+
+    let (error, payload) = session.call(2, "cleanup_virtual_joystick", json!({}));
+    assert!(!error);
+    assert_eq!(payload["status"], "error");
+    assert_eq!(payload["reason"]["code"], "invalid_state");
+
+    // repair requires the error state; after cleanup the manager is off.
+    let (error, payload) = session.call(3, "check_virtual_joystick_installation", json!({}));
+    assert!(!error);
+    assert_eq!(payload["status"], "error");
+    assert_eq!(payload["reason"]["code"], "invalid_state");
 }

@@ -308,7 +308,7 @@
   <header class="mb-8 flex flex-wrap items-center justify-between gap-4">
     <div>
       <h1 class="text-2xl font-semibold">Firmware</h1>
-      <p class="text-sm text-base-content/70 mt-1">Download and upload firmware to your devices</p>
+      <p class="text-sm text-muted mt-1">Download and upload firmware to your devices</p>
     </div>
     <button type="button" class="btn btn-primary" disabled={isChecking} onclick={() => void checkUpdates()} data-testid="check-updates">
       {isChecking ? 'Checking...' : 'Check for Updates'}
@@ -326,9 +326,9 @@
   {/if}
 
   {#if updateStatus?.checked_at_ms && !latestCheck}
-    <p class="text-sm text-base-content/70 mb-8" data-testid="latest-update-check">Last checked {new Date(updateStatus.checked_at_ms).toLocaleString()}</p>
+    <p class="text-sm text-muted mb-8" data-testid="latest-update-check">Last checked {new Date(updateStatus.checked_at_ms).toLocaleString()}</p>
   {:else if latestCheck}
-    <div class="text-sm text-base-content/70 mb-8" data-testid="latest-update-check">
+    <div class="text-sm text-muted mb-8" data-testid="latest-update-check">
       Last checked {formatTime(latestCheck.checked_at)}:
       {#if latestCheck.error_message}
         <span class="text-error">{latestCheck.error_message}</span>
@@ -348,7 +348,7 @@
     <div class="flex flex-col items-center justify-center py-20 text-center">
       <span class="text-6xl text-base-content/20" aria-hidden="true">▤</span>
       <h2 class="mt-6 text-xl font-semibold">No Firmware Releases</h2>
-      <p class="mt-2 text-base-content/70 max-w-sm">
+      <p class="mt-2 text-muted max-w-sm">
         {isChecking
           ? 'Checking for updates...'
           : "Click 'Check for Updates' to fetch available firmware versions from GitHub."}
@@ -359,7 +359,7 @@
       <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
         <h2 id="releases-title" class="text-lg font-medium">Available Releases</h2>
         <label class="flex items-center gap-2 text-sm">
-          <span class="text-base-content/70">Environment</span>
+          <span class="text-muted">Environment</span>
           <select class="select select-bordered select-sm" bind:value={environmentFilter} data-testid="environment-filter">
             <option value="">All environments</option>
             {#each environments as environment (environment)}
@@ -370,22 +370,22 @@
       </div>
       <div class="space-y-4">
         {#if latestRelease}
-          <div class="border-2 border-primary/30 bg-base-200/80 shadow-lg shadow-primary/5 rounded-xl p-6" data-testid="release-card">
+          <div class="border border-base-300 bg-base-200/80 rounded-xl p-6" data-testid="release-card">
             <div class="flex items-start justify-between gap-4">
               <div>
                 <div class="flex items-center gap-2 flex-wrap">
-                  <h3 class="font-medium">v{latestRelease.version}</h3>
+                  <h3 class="font-mono font-medium">v{latestRelease.version}</h3>
                   <span class="badge badge-ghost badge-sm">{latestRelease.tag_name}</span>
                   <span class="badge badge-success badge-sm">Latest</span>
                 </div>
                 {#if latestRelease.published_at}
-                  <p class="text-xs text-base-content/60 mt-1">Released {formatPublishedAt(latestRelease.published_at)}</p>
+                  <p class="text-xs text-muted mt-1">Released {formatPublishedAt(latestRelease.published_at)}</p>
                 {/if}
                 <ul class="mt-3 space-y-2">
                   {#each releaseFiles(latestRelease) as file (file.id)}
                     <li class="text-sm flex flex-wrap items-center gap-2">
                       <span class="badge badge-ghost badge-sm">{file.environment ?? file.board_type}</span>
-                      <span class="text-base-content/60">{formatBytes(file.file_size)}</span>
+                      <span class="text-muted">{formatBytes(file.file_size)}</span>
                       <button
                         type="button"
                         class="btn btn-outline btn-xs"
@@ -420,7 +420,7 @@
         {#if olderReleases.length > 0}
           <button
             type="button"
-            class="btn btn-ghost btn-sm w-full justify-start text-base-content/70 hover:text-base-content"
+            class="btn btn-ghost btn-sm w-full justify-start text-muted hover:text-base-content"
             onclick={() => (showOlderReleases = !showOlderReleases)}
             data-testid="toggle-older-releases"
           >
@@ -437,13 +437,13 @@
                         <span class="badge badge-ghost badge-sm">{release.tag_name}</span>
                       </div>
                       {#if release.published_at}
-                        <p class="text-xs text-base-content/60 mt-1">Released {formatPublishedAt(release.published_at)}</p>
+                        <p class="text-xs text-muted mt-1">Released {formatPublishedAt(release.published_at)}</p>
                       {/if}
                       <ul class="mt-3 space-y-2">
                         {#each releaseFiles(release) as file (file.id)}
                           <li class="text-sm flex flex-wrap items-center gap-2">
                             <span class="badge badge-ghost badge-sm">{file.environment ?? file.board_type}</span>
-                            <span class="text-base-content/60">{formatBytes(file.file_size)}</span>
+                            <span class="text-muted">{formatBytes(file.file_size)}</span>
                             <button
                               type="button"
                               class="btn btn-outline btn-xs"
@@ -502,7 +502,7 @@
                   <td>{entry.board_type}</td>
                   <td><span class="badge badge-sm {badge.variant}">{badge.label}</span></td>
                   <td>{entry.duration_ms !== null && entry.duration_ms > 0 ? `${entry.duration_ms}ms` : '-'}</td>
-                  <td class="text-xs text-base-content/60">{formatTime(entry.started_at)}</td>
+                  <td class="text-xs text-muted">{formatTime(entry.started_at)}</td>
                 </tr>
               {/each}
             </tbody>
@@ -529,8 +529,8 @@
       {/if}
 
       <h3 id="upload-modal-title" class="font-bold text-lg">Upload Firmware</h3>
-      <p class="text-sm text-base-content/70 mt-1">
-        Version: <span class="font-semibold">v{uploadRelease.version}</span>
+      <p class="text-sm text-muted mt-1">
+        Version: <span class="font-mono font-semibold">v{uploadRelease.version}</span>
       </p>
 
       {#if uploadPhase === 'idle' || uploadPhase === 'done'}
@@ -549,7 +549,7 @@
                 {/if}
               {/each}
             </select>
-            <span class="text-xs text-base-content/60">Make sure this matches your physical board</span>
+            <span class="text-xs text-muted">Make sure this matches your physical board</span>
           </label>
 
           <label class="block">
@@ -563,14 +563,14 @@
                 <option value={entry.port}>{entry.port} ({entry.status})</option>
               {/each}
             </select>
-            <span class="text-xs text-base-content/60">Select the physical board to update, including boards awaiting their first configuration.</span>
+            <span class="text-xs text-muted">Select the physical board to update, including boards awaiting their first configuration.</span>
           </label>
           <button type="button" class="btn btn-ghost btn-sm" onclick={() => void refreshPorts?.()}>Refresh ports</button>
 
           <div class="alert alert-warning">
             <div class="text-sm">
               <p class="font-medium">Do not disconnect the device during upload</p>
-              <p class="text-base-content/70">Interrupting the upload may corrupt the firmware.</p>
+              <p class="text-muted">Interrupting the upload may corrupt the firmware.</p>
             </div>
           </div>
         </div>
@@ -578,12 +578,12 @@
         <div class="mt-4 space-y-4">
           <div class="text-center py-4">
             <span class="text-5xl text-primary inline-block animate-pulse" aria-hidden="true">▤</span>
-            <p class="mt-2 text-sm text-base-content/70" data-testid="upload-status">
+            <p class="mt-2 text-sm text-muted" data-testid="upload-status">
               {uploadPhase === 'downloading' ? 'Downloading firmware...' : 'Uploading…'}
             </p>
           </div>
           <progress class="progress progress-primary w-full" max="100" aria-label="Upload progress"></progress>
-          <p class="text-center text-xs text-base-content/60">
+          <p class="text-center text-xs text-muted">
             Uploading to <span class="font-mono">{uploadPort}</span> - Do not disconnect
           </p>
         </div>

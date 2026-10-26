@@ -35,17 +35,17 @@
     <div class="mb-4 flex items-center justify-between">
       <div>
         <h2 id="matrix-test-title" class="text-xl font-semibold">Test Matrix</h2>
-        <p class="text-sm text-base-content/70">{rows.length} rows x {numCols} columns</p>
+        <p class="text-sm text-muted">{rows.length} rows x {numCols} columns</p>
       </div>
       <button type="button" class="btn btn-ghost btn-sm btn-circle" aria-label="Close" onclick={close}>✕</button>
     </div>
 
     <div class="mb-6">
       <div class="mb-2 flex items-center justify-between text-sm">
-        <span class="text-base-content/70">Progress</span>
+        <span class="text-muted">Progress</span>
         <span class="font-medium">
           {testedCount} / {totalButtons} buttons tested
-          <span class="text-base-content/50">({progressPercent}%)</span>
+          <span class="text-muted">({progressPercent}%)</span>
         </span>
       </div>
       <div class="h-2 w-full rounded-full bg-base-300">
@@ -60,14 +60,14 @@
             <tr>
               <th class="p-1"></th>
               {#each cols as col, colIndex}
-                <th class="p-1 text-center text-xs font-mono text-base-content/70">C{colIndex}<br /><span class="text-[10px]">({col.pin})</span></th>
+                <th class="p-1 text-center text-xs font-mono text-muted">C{colIndex}<br /><span class="text-[10px]">({col.pin})</span></th>
               {/each}
             </tr>
           </thead>
           <tbody>
             {#each rows as row, rowIndex}
               <tr>
-                <td class="p-1 pr-2 text-right text-xs font-mono text-base-content/70">R{rowIndex} <span class="text-[10px]">({row.pin})</span></td>
+                <td class="p-1 pr-2 text-right text-xs font-mono text-muted">R{rowIndex} <span class="text-[10px]">({row.pin})</span></td>
                 {#each cols as _, colIndex}
                   {@const pin = virtualPin(rowIndex, colIndex)}
                   {@const isPressed = pressed.has(pin)}
@@ -88,12 +88,12 @@
       </div>
     {:else}
       <div class="rounded-lg bg-base-200 p-8 text-center">
-        <p class="text-sm text-base-content/70">Matrix not configured</p>
-        <p class="text-xs text-base-content/50">Add row and column pins to use this feature</p>
+        <p class="text-sm text-muted">Matrix not configured</p>
+        <p class="text-xs text-muted">Add row and column pins to use this feature</p>
       </div>
     {/if}
 
-    <div class="mt-4 flex flex-wrap items-center gap-4 text-xs text-base-content/70">
+    <div class="mt-4 flex flex-wrap items-center gap-4 text-xs text-muted">
       <div class="flex items-center gap-2"><div class="h-4 w-4 rounded border border-base-300 bg-base-300"></div><span>Never pressed</span></div>
       <div class="flex items-center gap-2"><div class="h-4 w-4 rounded border border-primary bg-primary"></div><span>Currently pressed</span></div>
       <div class="flex items-center gap-2"><div class="h-4 w-4 rounded border border-success bg-success/20"></div><span>Tested</span></div>

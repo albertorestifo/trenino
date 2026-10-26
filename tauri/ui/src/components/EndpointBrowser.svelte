@@ -67,14 +67,14 @@
       <button type="button" class="btn btn-ghost btn-xs" onclick={() => void load(parentPath())} disabled={path === null || loading}>Back</button>
     </div>
     <input type="search" class="input input-bordered input-sm mt-2 w-full" placeholder="Filter this level" aria-label="Filter simulator endpoints" bind:value={search} />
-    {#if loading}<p role="status" class="mt-2 text-base-content/60">Loading simulator values…</p>{/if}
+    {#if loading}<p role="status" class="mt-2 text-muted">Loading simulator values…</p>{/if}
     {#if error}<p role="alert" class="mt-2 text-error">{error}</p>{/if}
     {#if !loading && !error}
-      {#if filtered.length === 0}<p class="mt-2 text-base-content/60">No endpoints at this level.</p>{/if}
+      {#if filtered.length === 0}<p class="mt-2 text-muted">No endpoints at this level.</p>{/if}
       <div class="mt-2 max-h-48 overflow-y-auto">
         {#each filtered as entry (entry.path)}
           <button type="button" class="flex w-full items-center justify-between rounded px-2 py-1 text-left hover:bg-base-200" onclick={() => void choose(entry)}>
-            <span class="truncate">{entry.name}</span><span class="ml-2 text-xs text-base-content/60">{entry.kind === 'node' ? 'Open' : 'Value'}</span>
+            <span class="truncate">{entry.name}</span><span class="ml-2 text-xs text-muted">{entry.kind === 'node' ? 'Open' : 'Value'}</span>
           </button>
         {/each}
       </div>
@@ -82,7 +82,7 @@
     {#if selected}
       <div class="mt-3 border-t border-base-300 pt-3">
         <p class="break-all font-mono text-xs">{selected.path}</p>
-        {#if !loading && !error}<p class="mt-1 break-all text-xs text-base-content/70" data-testid="simulator-value">Current value: {displayValue(value)}</p>{/if}
+        {#if !loading && !error}<p class="mt-1 break-all text-xs text-muted" data-testid="simulator-value">Current value: {displayValue(value)}</p>{/if}
         <button type="button" class="btn btn-primary btn-sm mt-2" disabled={loading || !!error} onclick={() => { onSelect(selected!.path); close(); }} data-testid="use-simulator-endpoint">Use endpoint</button>
       </div>
     {/if}

@@ -24,10 +24,6 @@
 //!   [`NoDetection`] which reports a timeout immediately (the interactive
 //!   `InputDetectionSession` needs the hardware runtime from the controllers
 //!   wave; the response payload shape is identical, only the wait is skipped)
-//!
-//! The Rust `VjoyManager` does not yet port `remove_leftover`/`repair`; a
-//! manager-backed [`VjoyRuntime`] reports those two commands as
-//! `runtime_unavailable`.
 
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
@@ -1340,11 +1336,8 @@ impl<A: crate::vjoy::VjoyAdapter> VjoyRuntime for crate::vjoy::VjoyManager<A> {
             VjoyCommand::Enable => VjoyManager::enable(self),
             VjoyCommand::Disable => VjoyManager::disable(self),
             VjoyCommand::Retry => VjoyManager::retry(self),
-            // The manager wave has not ported the leftover-removal and
-            // installation-recheck transitions yet.
-            VjoyCommand::RemoveLeftover | VjoyCommand::Repair => {
-                return Err(VjoyReason::Code("runtime_unavailable".to_string()))
-            }
+            VjoyCommand::RemoveLeftover => VjoyManager::remove_leftover(self),
+            VjoyCommand::Repair => VjoyManager::repair(self),
         };
         result.map_err(vjoy_error_reason)
     }

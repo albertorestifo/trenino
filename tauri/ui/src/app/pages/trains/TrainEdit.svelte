@@ -28,6 +28,16 @@
   let notFound = $state(false);
   let flash = $state('');
   let flashError = $state('');
+  let activatePending = $state(false);
+
+  async function activateTrain() {
+    if (!trainId || isActive || activatePending) return;
+    activatePending = true;
+    flashError = '';
+    const result = await bridge.activateTrain(trainId);
+    activatePending = false;
+    if (!result.ok) flashError = result.error ?? 'Failed to activate the train.';
+  }
   let hardwareError = $state('');
 
   let train = $state<TrainDetailView | null>(null);
@@ -414,12 +424,12 @@
         </div>
         <div class="mt-3">
           <h2 class="text-sm font-medium mb-2">Train Identifiers</h2>
-          <p id="train-identifiers-hint" class="text-xs text-base-content/60 mb-3">
+          <p id="train-identifiers-hint" class="text-xs text-muted mb-3">
             Use the simulator train ID shown on the Trains page, or connect to use it here. Each entry matches any train ID that starts with that text. Keep the full ID for one variant, or shorten the end to match several variants.
           </p>
           {#if currentIdentifier}
             <div class="mb-3 space-y-2">
-              <p class="text-xs text-base-content/60">
+              <p class="text-xs text-muted">
                 {activityKnown ? 'Current' : 'Last known'} simulator train ID:
                 <span class="font-mono break-all">{currentIdentifier}</span>
               </p>
@@ -469,6 +479,10 @@
             <span class="badge badge-success badge-sm gap-1">
               <span class="w-1.5 h-1.5 rounded-full bg-success-content animate-pulse"></span> Active
             </span>
+          {:else if !newMode && trainId}
+            <button type="button" class="btn btn-outline btn-sm" disabled={activatePending} onclick={() => void activateTrain()} data-testid="set-active-train">
+              {activatePending ? 'Activating…' : 'Set Active'}
+            </button>
           {/if}
           <button type="submit" class="btn btn-primary btn-sm ml-auto" disabled={savePending} data-testid="save-train">
             {newMode ? 'Create Train' : 'Save'}
@@ -495,7 +509,7 @@
           </div>
 
           {#if train.elements.length === 0}
-            <div class="py-3 text-sm text-base-content/60">
+            <div class="py-3 text-sm text-muted">
               <p>No elements configured</p>
               <p class="text-xs mt-1">Add elements to control train functions</p>
             </div>
@@ -567,7 +581,7 @@
                 + Add display binding
               </button>
             </div>
-            <div id="display-prerequisites" class="text-sm text-base-content/70 space-y-2">
+            <div id="display-prerequisites" class="text-sm text-muted space-y-2">
               {#if hardwareError}
                 <p role="alert">{hardwareError}</p>
               {/if}
@@ -576,7 +590,7 @@
               {/if}
             </div>
             {#if trainDisplayBindings.length === 0}
-              <p class="text-sm text-base-content/60 py-3">
+              <p class="text-sm text-muted py-3">
                 No display bindings configured. Show simulator values on your hardware displays.
               </p>
             {:else}
@@ -585,9 +599,9 @@
                   <li class="py-4 space-y-3">
                     <div class="min-w-0">
                       <p class="font-medium break-words">{binding.name || 'Display binding'}</p>
-                      <p class="text-xs text-base-content/60 mt-1 break-words">{displayLabel(binding.id, binding.i2c_module_id)}</p>
+                      <p class="text-xs text-muted mt-1 break-words">{displayLabel(binding.id, binding.i2c_module_id)}</p>
                       <p class="font-mono text-xs break-all mt-2">{binding.endpoint}</p>
-                      <p class="font-mono text-xs text-base-content/60 mt-1">{binding.format_string}</p>
+                      <p class="font-mono text-xs text-muted mt-1">{binding.format_string}</p>
                     </div>
                     <div class="flex flex-wrap gap-2">
                       <button
@@ -629,10 +643,10 @@
               </button>
             </div>
             {#if hardware.outputs.length === 0}
-              <p class="text-sm text-base-content/70">No outputs configured. Add outputs to a device first.</p>
+              <p class="text-sm text-muted">No outputs configured. Add outputs to a device first.</p>
             {/if}
             {#if trainOutputBindings.length === 0}
-              <div class="py-3 text-sm text-base-content/60">
+              <div class="py-3 text-sm text-muted">
                 <p>No output bindings configured</p>
                 <p class="text-xs mt-1">Bind outputs to API values to control LEDs based on simulator data</p>
               </div>
@@ -656,7 +670,7 @@
                         <td class="text-sm"><span class="font-mono">{conditionText(binding)}</span></td>
                         <td class="text-sm">
                           <span class="badge badge-info badge-sm">{binding.output_type}</span>
-                          <span class="text-base-content/60 ml-1">{outputLabel(binding)}</span>
+                          <span class="text-muted ml-1">{outputLabel(binding)}</span>
                         </td>
                         <td>
                           <div class="flex gap-1">
@@ -707,7 +721,7 @@
           </div>
 
           {#if trainScripts.length === 0}
-            <div class="py-3 text-sm text-base-content/60">
+            <div class="py-3 text-sm text-muted">
               <p>No scripts configured</p>
               <p class="text-xs mt-1">Add Lua scripts to automate actions based on simulator data</p>
             </div>
@@ -726,7 +740,7 @@
                   {#each trainScripts as script (script.id)}
                     <tr class="hover:bg-base-200/50">
                       <td class="font-medium">{script.name}</td>
-                      <td class="text-sm text-base-content/60">
+                      <td class="text-sm text-muted">
                         {script.triggers.length} trigger{script.triggers.length !== 1 ? 's' : ''}
                       </td>
                       <td>
@@ -771,9 +785,9 @@
         </div>
       </section>
 
-      <div class="border border-error/30 rounded-xl p-4 sm:p-6 mt-8">
+      <div class="border border-error/30 bg-error/5 rounded-xl p-4 sm:p-6 mt-8">
         <h2 class="text-base font-semibold text-error">Danger zone</h2>
-        <p class="text-sm text-base-content/60 mt-1">
+        <p class="text-sm text-muted mt-1">
           Permanently remove this train and all associated elements and calibration data
         </p>
         <button
@@ -827,7 +841,7 @@
               <option value="lever">Lever</option>
               <option value="button">Button</option>
             </select>
-            <p class="text-xs text-base-content/50 mt-1">Lever for analog inputs, Button for digital inputs</p>
+            <p class="text-xs text-muted mt-1">Lever for analog inputs, Button for digital inputs</p>
           </div>
         </div>
         <div class="flex justify-end gap-2 mt-6">

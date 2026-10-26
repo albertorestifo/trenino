@@ -168,11 +168,11 @@
     <p role="alert" class="text-sm text-error mb-3">{error}</p>
   {/if}
   {#if testMessage}
-    <p role="status" class="text-sm text-base-content/70 mb-3" data-testid="sequence-test-message">{testMessage}</p>
+    <p role="status" class="text-sm text-muted mb-3" data-testid="sequence-test-message">{testMessage}</p>
   {/if}
 
   {#if sequences.length === 0}
-    <p class="text-sm text-base-content/60 py-3">
+    <p class="text-sm text-muted py-3">
       No sequences defined. Execute multiple commands from a single button press.
     </p>
   {:else}
@@ -191,13 +191,13 @@
             <tr class="hover:bg-base-200/50">
               <td class="font-medium">{sequence.name}</td>
               <td>
-                <span class="text-sm text-base-content/60">
+                <span class="text-sm text-muted">
                   {commandCount} command{commandCount !== 1 ? 's' : ''}
                 </span>
                 {#if testingId === sequence.id}
                   <span class="ml-2 loading loading-spinner loading-xs text-primary" aria-label="Testing"></span>
                   {#if testingStep >= 0}
-                    <span class="ml-1 text-xs text-base-content/60" data-testid="sequence-test-progress">
+                    <span class="ml-1 text-xs text-muted" data-testid="sequence-test-progress">
                       Step {Math.min(testingStep + 1, commandCount)} of {commandCount}
                     </span>
                   {/if}
@@ -273,7 +273,7 @@
       <div class="relative bg-base-100 rounded-xl shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col">
         <div class="p-6 border-b border-base-300">
           <h2 id="edit-sequence-title" class="text-lg font-semibold">{editing.name}</h2>
-          <p class="text-sm text-base-content/60">
+          <p class="text-sm text-muted">
             Commands execute in order. Delay specifies wait time after each command.
           </p>
         </div>
@@ -283,7 +283,7 @@
               <div class="bg-base-200/50 rounded-lg p-4">
                 <div class="flex items-start gap-3">
                   <div class="flex-none w-8 pt-2 text-center">
-                    <span class="text-sm font-semibold text-base-content/50">{index + 1}</span>
+                    <span class="text-sm font-semibold text-muted">{index + 1}</span>
                   </div>
                   <div class="flex-1 grid grid-cols-3 gap-3">
                     <div class="col-span-2">

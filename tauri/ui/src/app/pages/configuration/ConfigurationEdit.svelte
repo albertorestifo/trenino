@@ -418,14 +418,14 @@
 </script>
 
 <div class="mx-auto max-w-2xl">
-  <nav class="mb-4 text-sm text-base-content/60" aria-label="Breadcrumb">
+  <nav class="mb-4 text-sm text-muted" aria-label="Breadcrumb">
     <a href="#/" class="underline underline-offset-2">Configurations</a>
     <span aria-hidden="true"> / </span>
     <span>{mode === 'new' ? 'New Configuration' : draftName || 'Configuration'}</span>
   </nav>
 
   {#if loading}
-    <p role="status" class="text-sm text-base-content/70">Loading configuration…</p>
+    <p role="status" class="text-sm text-muted">Loading configuration…</p>
   {:else if loadError}
     <p role="alert" class="text-sm text-error">{loadError}</p>
     <a class="btn btn-ghost btn-sm mt-3" href="#/">Back to Configurations</a>
@@ -459,7 +459,7 @@
           ></textarea>
         </div>
         <div class="mt-4 flex items-center gap-3">
-          {#if detail}<span class="font-mono text-xs text-base-content/50">ID: {detail.config_id}</span>{/if}
+          {#if detail}<span class="font-mono text-xs text-muted">ID: {detail.config_id}</span>{/if}
           {#if activePort}<span class="badge badge-success badge-sm gap-1"><span class="h-1.5 w-1.5 animate-pulse rounded-full bg-success-content"></span> Active</span>{/if}
         </div>
       </form>
@@ -473,7 +473,7 @@
           <button type="button" class="btn btn-outline btn-sm" onclick={openInputModal}>＋ Add Input</button>
         </div>
         {#if detail.inputs.length === 0}
-          <p class="text-sm text-base-content/60">No inputs configured. Add your first input to get started.</p>
+          <p class="text-sm text-muted">No inputs configured. Add your first input to get started.</p>
         {:else}
           <div class="overflow-x-auto">
             <table class="table table-sm bg-base-100 rounded-lg">
@@ -491,13 +491,13 @@
                         placeholder="Unnamed"
                         onchange={(event) => void renameInput(input, event.currentTarget.value)}
                         aria-label="Input name for pin {input.pin ?? ''}"
-                        class="input input-ghost input-xs w-full max-w-32 placeholder:italic placeholder:text-base-content/50"
+                        class="input input-ghost input-xs w-full max-w-32 placeholder:italic placeholder:text-muted"
                       />
                     </td>
                     <td><span class="badge badge-sm capitalize" class:badge-info={input.kind === 'analog'} class:badge-warning={input.kind === 'button'}>{input.kind}</span></td>
                     <td class="min-w-24">
                       {#if !activePort}
-                        <span class="text-sm italic text-base-content/50">N/A</span>
+                        <span class="text-sm italic text-muted">N/A</span>
                       {:else if input.pin !== null && input.pin in inputValues}
                         {@const raw = inputValues[input.pin]}
                         {#if input.kind === 'button'}
@@ -505,10 +505,10 @@
                         {:else}
                           <span class="font-mono tabular-nums">
                             <span class="text-xs text-base-content/40">{raw}</span>
-                            {#if input.calibration}<span class="text-xs text-base-content/40">/</span><span>{calibratedValues[input.id] ?? '—'}</span>{:else}<span class="ml-1 text-xs italic text-base-content/50">(uncalibrated)</span>{/if}
+                            {#if input.calibration}<span class="text-xs text-base-content/40">/</span><span>{calibratedValues[input.id] ?? '—'}</span>{:else}<span class="ml-1 text-xs italic text-muted">(uncalibrated)</span>{/if}
                           </span>
                         {/if}
-                      {:else}<span class="text-base-content/50">—</span>{/if}
+                      {:else}<span class="text-muted">—</span>{/if}
                     </td>
                     <td class="flex gap-1">
                       {#if activePort && input.kind === 'analog'}
@@ -540,7 +540,7 @@
           >＋ Add Matrix</button>
         </div>
         {#if detail.matrices.length === 0}
-          <p class="text-sm text-base-content/60">No matrices configured. Add a button matrix for multiple buttons using fewer pins.</p>
+          <p class="text-sm text-muted">No matrices configured. Add a button matrix for multiple buttons using fewer pins.</p>
         {:else}
           <div class="overflow-x-auto">
             <table class="table table-sm bg-base-100 rounded-lg">
@@ -571,7 +571,7 @@
           <button type="button" class="btn btn-outline btn-sm" onclick={() => { outputForm = { pin: '', name: '' }; outputErrors = {}; outputModalOpen = true; }}>＋ Add Output</button>
         </div>
         {#if detail.outputs.length === 0}
-          <p class="text-sm text-base-content/60">No outputs configured. Add LEDs or indicators to control.</p>
+          <p class="text-sm text-muted">No outputs configured. Add LEDs or indicators to control.</p>
         {:else}
           <div class="overflow-x-auto">
             <table class="table table-sm bg-base-100 rounded-lg">
@@ -587,7 +587,7 @@
                         placeholder="Unnamed"
                         onchange={(event) => void renameOutput(output, event.currentTarget.value)}
                         aria-label="Output name for pin {output.pin}"
-                        class="input input-ghost input-xs w-full max-w-40 placeholder:italic placeholder:text-base-content/50"
+                        class="input input-ghost input-xs w-full max-w-40 placeholder:italic placeholder:text-muted"
                       />
                     </td>
                     <td><div class="flex gap-1"><button type="button" class="btn btn-outline btn-xs" disabled={!activePort || activeGeneration === null || hardwareTestPending === output.id} onclick={() => void setOutput(output, true)} aria-label="Turn output {output.pin} on">On</button><button type="button" class="btn btn-outline btn-xs" disabled={!activePort || activeGeneration === null || hardwareTestPending === output.id} onclick={() => void setOutput(output, false)} aria-label="Turn output {output.pin} off">Off</button></div></td>
@@ -608,7 +608,7 @@
           <button type="button" class="btn btn-outline btn-sm" onclick={() => { i2cEditing = null; i2cModalOpen = true; }}>＋ Add display</button>
         </div>
         {#if detail.i2c_modules.length === 0}
-          <p class="text-sm text-base-content/60">No displays configured. Add a display to show simulator values.</p>
+          <p class="text-sm text-muted">No displays configured. Add a display to show simulator values.</p>
         {:else}
           <div class="overflow-x-auto">
             <table class="table table-sm bg-base-100 rounded-lg">
@@ -639,7 +639,7 @@
       {#if mode === 'existing'}
         <div class="mt-6 rounded-xl border border-error/30 bg-error/5 p-6">
           <h3 class="text-base font-semibold text-error">Danger Zone</h3>
-          <p class="mt-1 text-sm text-base-content/70">Permanently remove this configuration and all associated data</p>
+          <p class="mt-1 text-sm text-muted">Permanently remove this configuration and all associated data</p>
           <button type="button" class="btn btn-error btn-sm mt-3" disabled={activePort !== null} title={activePort ? 'Cannot delete while configuration is active on a device' : undefined} onclick={() => { deleteError = ''; deleteModalOpen = true; }}>Delete Configuration</button>
         </div>
       {/if}
@@ -698,7 +698,7 @@
       <h2 class="mb-4 text-xl font-semibold">Add Matrix</h2>
       <form id="add-matrix-form" onsubmit={(event) => void addMatrix(event)} class="space-y-4" novalidate>
         <div class="rounded-lg bg-base-200 p-4">
-          <p class="mb-3 text-sm text-base-content/70">Enter GPIO pin numbers for rows and columns, separated by commas.</p>
+          <p class="mb-3 text-sm text-muted">Enter GPIO pin numbers for rows and columns, separated by commas.</p>
           <div class="space-y-3">
             <div>
               <label class="label py-1" for="matrix-row-pins"><span class="label-text text-sm">Row Pins</span></label>
@@ -724,13 +724,13 @@
                 <thead>
                   <tr>
                     <th class="p-1"></th>
-                    {#each parsedColPins as colPin, colIndex}<th class="p-1 text-center font-mono text-base-content/70">C{colIndex}<br /><span class="text-[10px]">({colPin})</span></th>{/each}
+                    {#each parsedColPins as colPin, colIndex}<th class="p-1 text-center font-mono text-muted">C{colIndex}<br /><span class="text-[10px]">({colPin})</span></th>{/each}
                   </tr>
                 </thead>
                 <tbody>
                   {#each parsedRowPins as rowPin, rowIndex}
                     <tr>
-                      <td class="p-1 font-mono text-base-content/70">R{rowIndex} <span class="text-[10px]">({rowPin})</span></td>
+                      <td class="p-1 font-mono text-muted">R{rowIndex} <span class="text-[10px]">({rowPin})</span></td>
                       {#each parsedColPins as _, colIndex}
                         <td class="p-1"><div class="flex h-6 w-8 items-center justify-center rounded bg-base-300 font-mono text-[10px]">{128 + rowIndex * parsedColPins.length + colIndex}</div></td>
                       {/each}
@@ -739,7 +739,7 @@
                 </tbody>
               </table>
             </div>
-            <p class="mt-2 text-[10px] text-base-content/50">Virtual pin = 128 + (row x cols + col)</p>
+            <p class="mt-2 text-[10px] text-muted">Virtual pin = 128 + (row x cols + col)</p>
           </div>
         {/if}
         <div class="mt-6 flex justify-end gap-2">
@@ -793,7 +793,7 @@
       {#if activePort}
         <div class="alert alert-warning mb-4"><span class="text-sm">This configuration is currently active on a connected device.</span></div>
       {/if}
-      <p class="mb-6 text-sm text-base-content/70">
+      <p class="mb-6 text-sm text-muted">
         Are you sure you want to delete "<span class="font-medium">{draftName}</span>"? This will permanently delete the configuration and all its inputs and calibration data.
       </p>
       {#if deleteError}<p role="alert" class="mb-4 text-sm text-error">{deleteError}</p>{/if}

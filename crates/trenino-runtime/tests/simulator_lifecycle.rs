@@ -628,7 +628,7 @@ async fn recv_from_thread<T: Send + 'static>(
 #[tokio::test]
 async fn subscription_service_creates_once_for_shared_endpoint_and_unsubscribes_after_last_lease() {
     use trenino_runtime::simulator::subscriptions::SubscriptionService;
-    let (url, observed) = fake_server_many(2, r#"{"Result":"Success"}"#);
+    let (url, observed) = fake_server_many(3, r#"{"Result":"Success"}"#);
     let client = std::sync::Arc::new(SimulatorClient::new(&url, "key").unwrap());
     let service = SubscriptionService::new(client, 999);
     let first = service
@@ -640,6 +640,12 @@ async fn subscription_service_creates_once_for_shared_endpoint_and_unsubscribes_
         .await
         .unwrap();
     assert_eq!(first.endpoints["A.B"], second.endpoints["A.B"]);
+    // Startup cleanup: a best-effort DELETE precedes the POST.
+    let pre_cleanup = observed
+        .recv_timeout(Duration::from_secs(2))
+        .unwrap()
+        .to_ascii_lowercase();
+    assert!(pre_cleanup.starts_with("delete /subscription?subscription=1000 "));
     let created = observed
         .recv_timeout(Duration::from_secs(2))
         .unwrap()
@@ -660,6 +666,7 @@ async fn cancelled_subscription_acquire_rolls_back_and_removes_orphan_lease() {
     use trenino_runtime::simulator::subscriptions::SubscriptionService;
     let (gate_tx, gate_rx) = mpsc::channel();
     let (url, observed) = scripted_server(vec![
+        (200, r#"{"Result":"Success"}"#, None),
         (200, r#"{"Result":"Success"}"#, Some(gate_rx)),
         (200, r#"{"Result":"Success"}"#, None),
     ]);
@@ -674,6 +681,12 @@ async fn cancelled_subscription_acquire_rolls_back_and_removes_orphan_lease() {
             .acquire("abandoned", 1, vec!["A".into()])
             .await
     });
+    // Startup cleanup DELETE goes out first, then the gated POST.
+    let pre_cleanup = recv_from_thread(observed.clone()).await;
+    assert!(pre_cleanup
+        .0
+        .to_ascii_lowercase()
+        .starts_with("delete /subscription?"));
     let request = recv_from_thread(observed.clone()).await;
     assert!(request
         .0
@@ -698,6 +711,8 @@ async fn cancelled_multi_id_cleanup_retains_each_id_until_success() {
     let (url, observed) = scripted_server(vec![
         (200, r#"{"Result":"Success"}"#, None),
         (200, r#"{"Result":"Success"}"#, None),
+        (200, r#"{"Result":"Success"}"#, None),
+        (200, r#"{"Result":"Success"}"#, None),
         (200, r#"{"Result":"Success"}"#, Some(first_gate_rx)),
         (200, r#"{"Result":"Success"}"#, Some(second_gate_rx)),
     ]);
@@ -712,8 +727,10 @@ async fn cancelled_multi_id_cleanup_retains_each_id_until_success() {
         .unwrap();
     let release_service = service.clone();
     let release = tokio::spawn(async move { release_service.release(lease).await });
-    let _ = recv_from_thread(observed.clone()).await;
-    let _ = recv_from_thread(observed.clone()).await;
+    // Startup-cleanup DELETEs and the two POSTs all precede the release.
+    for _ in 0..4 {
+        let _ = recv_from_thread(observed.clone()).await;
+    }
     let first_delete = recv_from_thread(observed.clone()).await;
     assert!(first_delete
         .0
@@ -737,6 +754,8 @@ async fn partial_subscribe_failure_cleans_created_and_ambiguous_ids() {
     use trenino_runtime::simulator::subscriptions::SubscriptionService;
     let (url, observed) = scripted_server(vec![
         (200, r#"{"Result":"Success"}"#, None),
+        (200, r#"{"Result":"Success"}"#, None),
+        (200, r#"{"Result":"Success"}"#, None),
         (500, "failed", None),
         (200, r#"{"Result":"Success"}"#, None),
         (200, r#"{"Result":"Success"}"#, None),
@@ -751,7 +770,7 @@ async fn partial_subscribe_failure_cleans_created_and_ambiguous_ids() {
         .is_err());
     assert_eq!(service.lease_count().await, 0);
     assert_eq!(service.pending_cleanup_count().await, 0);
-    let requests: Vec<_> = (0..4)
+    let requests: Vec<_> = (0..6)
         .map(|_| {
             observed
                 .recv_timeout(Duration::from_secs(2))
@@ -760,8 +779,13 @@ async fn partial_subscribe_failure_cleans_created_and_ambiguous_ids() {
                 .to_ascii_lowercase()
         })
         .collect();
-    assert!(requests[2].starts_with("delete /subscription?"));
-    assert!(requests[3].starts_with("delete /subscription?"));
+    // Startup cleanup: best-effort DELETEs precede the POSTs.
+    assert!(requests[0].starts_with("delete /subscription?"));
+    assert!(requests[1].starts_with("delete /subscription?"));
+    assert!(requests[2].starts_with("post /subscription/a?"));
+    assert!(requests[3].starts_with("post /subscription/b?"));
+    assert!(requests[4].starts_with("delete /subscription?"));
+    assert!(requests[5].starts_with("delete /subscription?"));
     service.shutdown().await.unwrap();
 }
 
@@ -769,6 +793,7 @@ async fn partial_subscribe_failure_cleans_created_and_ambiguous_ids() {
 async fn failed_unsubscribe_is_explicitly_retryable_without_new_consumers() {
     use trenino_runtime::simulator::subscriptions::SubscriptionService;
     let (url, observed) = scripted_server(vec![
+        (200, r#"{"Result":"Success"}"#, None),
         (200, r#"{"Result":"Success"}"#, None),
         (503, "try later", None),
         (200, r#"{"Result":"Success"}"#, None),
@@ -785,6 +810,7 @@ async fn failed_unsubscribe_is_explicitly_retryable_without_new_consumers() {
     let _ = observed.recv_timeout(Duration::from_secs(1)).unwrap();
     let _ = observed.recv_timeout(Duration::from_secs(1)).unwrap();
     let _ = observed.recv_timeout(Duration::from_secs(1)).unwrap();
+    let _ = observed.recv_timeout(Duration::from_secs(1)).unwrap();
     service.shutdown().await.unwrap();
 }
 
@@ -794,7 +820,10 @@ async fn saturated_subscription_shutdown_returns_without_waiting_for_an_unreques
         SubscriptionService, SubscriptionServiceError,
     };
     let (gate_tx, gate_rx) = mpsc::channel();
-    let (url, observed) = fake_server(200, r#"{"Result":"Success"}"#, Some(gate_rx));
+    let (url, observed) = scripted_server(vec![
+        (200, r#"{"Result":"Success"}"#, None),
+        (200, r#"{"Result":"Success"}"#, Some(gate_rx)),
+    ]);
     let service = std::sync::Arc::new(SubscriptionService::new(
         std::sync::Arc::new(
             SimulatorClient::with_profile(&url, "key", TimeoutProfile::Fast).unwrap(),
@@ -808,8 +837,15 @@ async fn saturated_subscription_shutdown_returns_without_waiting_for_an_unreques
             .acquire("owner", 1, vec!["A".into()])
             .await
     });
+    // Startup-cleanup DELETE first, then the gated POST.
+    assert!(recv_from_thread(observed.clone())
+        .await
+        .0
+        .to_ascii_lowercase()
+        .starts_with("delete /subscription?"));
     assert!(recv_from_thread(observed)
         .await
+        .0
         .to_ascii_lowercase()
         .starts_with("post /subscription/a?"));
 
@@ -866,4 +902,104 @@ fn keyboard_parser_preserves_aliases_and_modifier_press_reverse_release_order() 
             KeyAction::Release(Key::Meta)
         ]
     );
+}
+
+// ---------------------------------------------------------------------------
+// Subscription startup cleanup (docs/TSW_API_GUIDE.md)
+// ---------------------------------------------------------------------------
+
+/// Stateful fake TSW subscription endpoint: POSTs append Entries, DELETEs
+/// remove every Entry for the id, GET /subscription reports the live Entries.
+/// Pre-seeded with a leftover entry so startup cleanup is observable.
+fn stateful_subscription_server(preseeded: &[(i64, &str)]) -> String {
+    use std::collections::HashMap;
+    use std::sync::{Arc, Mutex};
+
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let address = listener.local_addr().unwrap();
+    let entries: Arc<Mutex<HashMap<i64, Vec<String>>>> = Arc::new(Mutex::new(
+        preseeded
+            .iter()
+            .map(|(id, path)| (*id, vec![path.to_string()]))
+            .collect(),
+    ));
+    thread::spawn(move || loop {
+        let Ok((mut stream, _)) = listener.accept() else {
+            return;
+        };
+        let mut request = [0_u8; 8192];
+        let size = stream.read(&mut request).unwrap_or(0);
+        let request = String::from_utf8_lossy(&request[..size]).to_string();
+        let request_line = request.lines().next().unwrap_or_default();
+        let body = {
+            let mut entries = entries.lock().unwrap();
+            let parts: Vec<&str> = request_line.split_whitespace().collect();
+            let method = parts.first().copied().unwrap_or_default();
+            let target = parts.get(1).copied().unwrap_or_default();
+            let id: Option<i64> = target
+                .split('?')
+                .nth(1)
+                .and_then(|query| query.strip_prefix("Subscription="))
+                .and_then(|rest| rest.split('&').next())
+                .and_then(|value| value.parse().ok());
+            match (method.to_ascii_uppercase().as_str(), id) {
+                ("DELETE", Some(id)) => {
+                    entries.remove(&id);
+                    r#"{"Result":"Success"}"#.to_string()
+                }
+                ("POST", Some(id)) => {
+                    let path = target
+                        .strip_prefix("/subscription/")
+                        .and_then(|rest| rest.split('?').next())
+                        .unwrap_or_default()
+                        .to_string();
+                    entries.entry(id).or_default().push(path);
+                    r#"{"Result":"Success"}"#.to_string()
+                }
+                ("GET", Some(id)) => {
+                    let list: Vec<String> = entries
+                        .get(&id)
+                        .cloned()
+                        .unwrap_or_default()
+                        .iter()
+                        .map(|path| format!(r#"{{"Path":"{path}","Value":"0"}}"#))
+                        .collect();
+                    format!(r#"{{"Entries":[{}]}}"#, list.join(","))
+                }
+                _ => r#"{"Result":"Success"}"#.to_string(),
+            }
+        };
+        let response = format!(
+            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+            body.len()
+        );
+        let _ = stream.write_all(response.as_bytes());
+    });
+    format!("http://{address}")
+}
+
+#[tokio::test]
+async fn acquire_clears_leftover_entries_before_subscribing() {
+    use trenino_runtime::simulator::subscriptions::SubscriptionService;
+
+    // A leftover entry on id 1000 from a previous app run inside the same
+    // live TSW session must not survive the fresh acquire.
+    let url = stateful_subscription_server(&[(1000, "Stale.Leftover")]);
+    let client = std::sync::Arc::new(SimulatorClient::new(&url, "key").unwrap());
+    let lease = SubscriptionService::new(client.clone(), 999)
+        .acquire("owner", 1, vec!["Fresh.Endpoint".into()])
+        .await
+        .unwrap();
+
+    let response = client
+        .get_subscription(lease.endpoints["Fresh.Endpoint"])
+        .await
+        .unwrap();
+    let paths: Vec<&str> = response["Entries"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|entry| entry["Path"].as_str())
+        .collect();
+    assert_eq!(paths, vec!["Fresh.Endpoint"]);
 }

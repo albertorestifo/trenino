@@ -180,7 +180,7 @@
     {#if snapshot?.state === 'timed_out'}<p class="mt-3">No control changed before the detection timeout.</p>{/if}
     {#if snapshot?.state === 'failed'}
       <p class="mt-3 text-error">{snapshot.message ?? 'The simulator session failed.'}</p>
-      {#if snapshot.cleanup_pending}<p class="mt-1 text-base-content/60">Cleanup is pending. Try again will release this session before starting another.</p>{/if}
+      {#if snapshot.cleanup_pending}<p class="mt-1 text-muted">Cleanup is pending. Try again will release this session before starting another.</p>{/if}
     {/if}
     <button type="button" class="btn btn-primary btn-sm mt-3" onclick={beginStart} data-testid="start-guided-session">
       {snapshot ? 'Try again' : mode === 'detection' ? 'Start detection' : mode === 'analysis' ? 'Start analysis' : 'Start sweep'}
@@ -201,7 +201,7 @@
       {#each snapshot.changes as change, index (change.endpoint)}
         <label class="flex items-center gap-2 rounded border border-base-300 p-2">
           <input type="radio" name="detected-control" checked={selectedIndex === index} onchange={() => (selectedIndex = index)} />
-          <span class="min-w-0"><span class="font-medium">{change.control_name}</span><span class="block break-all font-mono text-xs text-base-content/60">{change.endpoint}</span></span>
+          <span class="min-w-0"><span class="font-medium">{change.control_name}</span><span class="block break-all font-mono text-xs text-muted">{change.endpoint}</span></span>
         </label>
       {/each}
     </div>
@@ -209,10 +209,10 @@
   {:else if snapshot.state === 'complete'}
     {#if mode === 'analysis' && snapshot.analysis}
       <p class="mt-3">Rust detected a {snapshot.analysis.lever_type} lever with {snapshot.analysis.suggested_notches.length} suggested notches.</p>
-      {#if snapshot.analysis.suggested_notches.length === 0}<p class="mt-1 text-base-content/60">Define notches manually to continue.</p>{/if}
+      {#if snapshot.analysis.suggested_notches.length === 0}<p class="mt-1 text-muted">Define notches manually to continue.</p>{/if}
     {:else if mode === 'calibration' && snapshot.calibration}
       <p class="mt-3">Rust found {snapshot.calibration.notches.length} notches. Review them before saving.</p>
-      {#if snapshot.calibration.notches.length === 0}<p class="mt-1 text-base-content/60">Define notches manually to continue.</p>{/if}
+      {#if snapshot.calibration.notches.length === 0}<p class="mt-1 text-muted">Define notches manually to continue.</p>{/if}
     {/if}
     <button type="button" class="btn btn-primary btn-sm mt-3" disabled={mode === 'analysis' ? !snapshot.analysis?.suggested_notches.length : !snapshot.calibration?.notches.length} onclick={() => onUse(snapshot!, null)} data-testid="use-guided-result">Use suggested notches</button>
   {/if}

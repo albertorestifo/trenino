@@ -379,6 +379,12 @@ async fn acquire(
     endpoints: Vec<String>,
 ) -> Result<SubscriptionLease, SubscriptionServiceError> {
     let (lease, new) = registry.acquire_with_new(owner, generation, endpoints)?;
+    for (_endpoint, id) in &new {
+        // Startup cleanup (docs/TSW_API_GUIDE.md): best-effort DELETE before
+        // the POST so an app restart inside one live TSW session does not
+        // leave duplicate Entries on the simulator side.
+        let _ = client.unsubscribe(*id).await;
+    }
     for (endpoint, id) in new {
         if let Err(error) = client.subscribe(&endpoint, id).await {
             if let Ok(ids) = registry.release(lease.clone()) {

@@ -10,6 +10,7 @@ use trenino_runtime::{
         services::{
             calibration::LeverEndpointSet,
             explorer::{self, LeverControl},
+            suggest::{self, ButtonSuggestionView, LeverSuggestionView, SuggestService},
         },
     },
 };
@@ -110,6 +111,145 @@ pub(super) async fn ui_resolve_lever_endpoints(
         failure(SessionError::InvalidInput(
             "selected control is not a lever".into(),
         ))
+    })
+}
+
+/// Payload contract for `ui_suggest_lever` / `ui_suggest_button`
+/// (`LeverSuggestionResult` / `ButtonSuggestionResult` in `client.ts`). The
+/// binding wizards treat a null match as "no suggestion" and stay silent, so
+/// every failure mode — including a missing simulator connection — is
+/// reported in-band instead of rejecting the IPC promise.
+#[derive(Serialize)]
+pub(super) struct SuggestionResultView<T> {
+    #[serde(rename = "match")]
+    matched: Option<T>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    error: Option<String>,
+}
+
+impl<T> SuggestionResultView<T> {
+    fn matched(view: T) -> Self {
+        Self {
+            matched: Some(view),
+            error: None,
+        }
+    }
+    fn empty() -> Self {
+        Self {
+            matched: None,
+            error: None,
+        }
+    }
+    fn failure(error: impl std::fmt::Display) -> Self {
+        Self {
+            matched: None,
+            error: Some(error.to_string()),
+        }
+    }
+}
+
+/// Lever match as consumed by the frontend: nested `endpoints` object with
+/// camelCase field names.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct LeverMatchView {
+    control_path: String,
+    endpoints: LeverEndpointsView,
+    confidence: f64,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct LeverEndpointsView {
+    value: String,
+    min: String,
+    max: String,
+    notch_count: String,
+    notch_index: String,
+}
+
+impl From<LeverSuggestionView> for LeverMatchView {
+    fn from(view: LeverSuggestionView) -> Self {
+        Self {
+            control_path: view.control_path,
+            endpoints: LeverEndpointsView {
+                value: view.value_endpoint,
+                min: view.min_endpoint,
+                max: view.max_endpoint,
+                notch_count: view.notch_count_endpoint,
+                notch_index: view.notch_index_endpoint,
+            },
+            confidence: view.confidence,
+        }
+    }
+}
+
+/// Button match as consumed by the frontend (camelCase field names).
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(super) struct ButtonMatchView {
+    control_path: String,
+    endpoint: String,
+    confidence: f64,
+}
+
+impl From<ButtonSuggestionView> for ButtonMatchView {
+    fn from(view: ButtonSuggestionView) -> Self {
+        Self {
+            control_path: view.control_path,
+            endpoint: view.endpoint,
+            confidence: view.confidence,
+        }
+    }
+}
+
+fn suggest_service(
+    state: &State<'_, RustAppState>,
+) -> Result<SuggestService, suggest::SuggestServiceError> {
+    state
+        .controls
+        .lock()
+        .ok()
+        .and_then(|runtime| {
+            runtime
+                .as_ref()
+                .map(|runtime| runtime.simulator.status.clone())
+        })
+        .map(SuggestService::new)
+        .ok_or(suggest::SuggestServiceError::NotConnected)
+}
+
+/// Name-based lever suggestion. The frontend invokes with a camelCase
+/// `elementName` key, so this command keeps the Tauri default casing instead
+/// of the `rename_all = "snake_case"` used above.
+#[tauri::command]
+pub(super) async fn ui_suggest_lever(
+    state: State<'_, RustAppState>,
+    element_name: String,
+) -> Result<SuggestionResultView<LeverMatchView>, UiFailure> {
+    Ok(match suggest_service(&state) {
+        Err(error) => SuggestionResultView::failure(error),
+        Ok(service) => match service.suggest_lever(&element_name).await {
+            Ok(Some(view)) => SuggestionResultView::matched(LeverMatchView::from(view)),
+            Ok(None) => SuggestionResultView::empty(),
+            Err(error) => SuggestionResultView::failure(error),
+        },
+    })
+}
+
+/// Name-based button suggestion; same camelCase `elementName` invocation.
+#[tauri::command]
+pub(super) async fn ui_suggest_button(
+    state: State<'_, RustAppState>,
+    element_name: String,
+) -> Result<SuggestionResultView<ButtonMatchView>, UiFailure> {
+    Ok(match suggest_service(&state) {
+        Err(error) => SuggestionResultView::failure(error),
+        Ok(service) => match service.suggest_button(&element_name).await {
+            Ok(Some(view)) => SuggestionResultView::matched(ButtonMatchView::from(view)),
+            Ok(None) => SuggestionResultView::empty(),
+            Err(error) => SuggestionResultView::failure(error),
+        },
     })
 }
 

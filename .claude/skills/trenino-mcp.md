@@ -20,7 +20,7 @@ Trenino's MCP server runs at `http://localhost:4000/mcp/sse` using SSE transport
 ### Element Tools
 - `list_elements(train_id)` — List elements (levers and buttons) for a train.
 - `create_element(train_id, name, type)` — Create a new element. Type: "lever" or "button".
-- `delete_element(element_id)` — Delete an element and its bindings.
+- `delete_element(id)` — Delete an element and its bindings.
 
 ### Device Tools
 - `list_devices` — List connected hardware devices.

@@ -160,7 +160,7 @@
           data-testid="display-module-option"
         >
           <span class="block font-medium break-words">{module.name || 'Display'}</span>
-          <span class="block text-xs text-base-content/60 break-words">
+          <span class="block text-xs text-muted break-words">
             {module.device_name}
             {#if module.num_digits !== null}· {module.num_digits} digits{/if}
             · <span class="font-mono">{formatI2cAddress(module.i2c_address)}</span>
@@ -172,7 +172,7 @@
     <div class="p-6" data-testid="display-step-endpoint">
       <div class="max-w-lg mx-auto">
         <h3 class="text-lg font-semibold mb-2">Simulator value</h3>
-        <p class="text-sm text-base-content/60 mb-4">
+        <p class="text-sm text-muted mb-4">
           Copy the value endpoint from the simulator API (for example
           <span class="font-mono">CurrentDrivableActor/Speedometer.Speed</span>).
         </p>
@@ -194,12 +194,12 @@
       <dl class="text-sm space-y-2">
         {#if selectedModule}
           <div>
-            <dt class="text-base-content/60">Display</dt>
+            <dt class="text-muted">Display</dt>
             <dd class="break-words">{selectedModule.name || 'Display'} ({selectedModule.device_name})</dd>
           </div>
         {/if}
         <div>
-          <dt class="text-base-content/60">Simulator value</dt>
+          <dt class="text-muted">Simulator value</dt>
           <dd class="font-mono text-xs break-all">{endpoint || '—'}</dd>
         </div>
       </dl>
@@ -249,7 +249,7 @@
                 data-testid="display-custom-format"
               />
             </label>
-            <p id="display-format-hint" class="text-xs text-base-content/60">
+            <p id="display-format-hint" class="text-xs text-muted">
               Use {'{value}'} for the raw value or {'{value:.2f}'} for two decimals (0–10 supported).
             </p>
           </div>
@@ -258,7 +258,7 @@
           <p id="display-format-error" role="alert" class="text-sm text-error">{formatError}</p>
         {/if}
         <div class="bg-base-200 rounded-lg p-4" aria-live="polite">
-          <p class="text-xs text-base-content/60 mb-2">Preview · sample value 42.5</p>
+          <p class="text-xs text-muted mb-2">Preview · sample value 42.5</p>
           <output id="display-format-preview" class="font-mono text-2xl break-all" data-testid="display-format-preview">{preview}</output>
           {#if previewOverflow}
             <p class="mt-2 text-sm">

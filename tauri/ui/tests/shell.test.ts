@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/svelte';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/svelte';
 import { describe, expect, it, vi } from 'vitest';
 import App from '../src/app/App.svelte';
 import type { UiBridge } from '../src/bridge/client';
@@ -15,6 +15,7 @@ function fakeBridge(consent: 'unset' | 'disabled' = 'disabled'): UiBridge {
     retrySimulator: vi.fn(async () => ({ ok: true as const, value: true })),
     firmwareUpdateStatus: vi.fn(async () => ({ ok: true as const, value: { checking: false, checked_at_ms: null, found_updates: false, latest_version: null, error_message: null, notice: null } })),
     onHardwareInput: vi.fn(() => () => {}),
+    onHardwareDetection: vi.fn(() => () => {}),
     subscribe: vi.fn(async () => () => {}),
   } as unknown as UiBridge;
 }
@@ -46,12 +47,12 @@ describe('shell', () => {
       : { ok: true as const, value: { status: 'connected', last_error: null, active_train_id: '20', detected_identifier: 'UNKNOWN/Vehicle' } });
     location.hash = '#/trains';
     render(App, { props: { bridge: api } });
-    const first = await screen.findByRole('link', { name: /First train/ });
-    const second = await screen.findByRole('link', { name: /Second train/ });
+    const first = (await screen.findByRole('link', { name: /First train/ })).closest('.list-card') as HTMLElement;
+    const second = (await screen.findByRole('link', { name: /Second train/ })).closest('.list-card') as HTMLElement;
     await waitFor(() => expect(second).toHaveClass('active-card'));
     expect(first).not.toHaveClass('active-card');
-    expect(second).toHaveTextContent('Active');
-    expect(first).not.toHaveTextContent('Active');
+    expect(within(second).getByText('Active')).toBeInTheDocument();
+    expect(within(first).queryByText('Active')).not.toBeInTheDocument();
     expect(screen.getByText('UNKNOWN/Vehicle')).toBeInTheDocument();
     statusReadFails = true;
     window.dispatchEvent(new Event('hashchange'));

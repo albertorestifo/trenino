@@ -127,7 +127,7 @@
     <div class="mb-6 flex items-center justify-between">
       <div>
         <h2 id="calibration-title" class="text-xl font-semibold">Calibrate Input</h2>
-        <p class="text-sm text-base-content/70">Pin {input.pin ?? '—'}{input.name ? ` · ${input.name}` : ''}</p>
+        <p class="text-sm text-muted">Pin {input.pin ?? '—'}{input.name ? ` · ${input.name}` : ''}</p>
       </div>
       <button type="button" class="btn btn-ghost btn-sm btn-circle" aria-label="Close" disabled={cancelling} onclick={cancel}>✕</button>
     </div>
@@ -135,12 +135,12 @@
     {#if starting}
       <div class="flex flex-col items-center justify-center py-12" role="status">
         <span class="loading loading-spinner loading-lg text-primary"></span>
-        <p class="mt-4 text-base-content/70">Starting calibration session…</p>
+        <p class="mt-4 text-muted">Starting calibration session…</p>
       </div>
     {:else if result}
       <div class="space-y-4 text-center">
         <h3 class="text-lg font-semibold">Calibration Complete!</h3>
-        <p class="text-base-content/70">The input has been calibrated successfully.</p>
+        <p class="text-muted">The input has been calibrated successfully.</p>
         <dl class="rounded-lg bg-base-200 p-4 text-left text-sm">
           <div class="flex justify-between"><dt>Minimum</dt><dd class="font-mono">{result.min_value ?? '—'}</dd></div>
           <div class="flex justify-between"><dt>Maximum</dt><dd class="font-mono">{result.max_value ?? '—'}</dd></div>
@@ -152,7 +152,7 @@
     {:else if failed}
       <div class="space-y-4 text-center">
         <h3 class="text-lg font-semibold text-error">Calibration Failed</h3>
-        <p role="alert" class="text-sm text-base-content/70">{error}</p>
+        <p role="alert" class="text-sm text-muted">{error}</p>
         <button type="button" class="btn" onclick={close}>Close</button>
       </div>
     {:else}
@@ -173,8 +173,8 @@
       <div class="space-y-6">
         <div class="text-center">
           <h3 class="mb-2 text-lg font-semibold">{STEPS[step]}</h3>
-          <p class="text-base-content/70">{STEP_TITLES[step]}</p>
-          <p class="mt-2 text-xs text-base-content/50">Step {step + 1} of {STEPS.length}</p>
+          <p class="text-muted">{STEP_TITLES[step]}</p>
+          <p class="mt-2 text-xs text-muted">Step {step + 1} of {STEPS.length}</p>
         </div>
         {#if error}<p role="alert" class="text-sm text-error">{error}</p>{/if}
         <div class="flex justify-between gap-4 border-t border-base-300 pt-4">

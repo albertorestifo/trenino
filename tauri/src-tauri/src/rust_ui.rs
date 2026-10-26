@@ -772,6 +772,7 @@ pub(crate) fn run() {
             ui_create_train,
             ui_update_train,
             ui_delete_train,
+            ui_activate_train,
             ui_create_element,
             ui_delete_element,
             ui_create_lever,
@@ -811,6 +812,8 @@ pub(crate) fn run() {
             runtime_sessions::ui_lever_calibration_status,
             runtime_sessions::ui_cancel_lever_calibration,
             runtime_sessions::ui_resolve_lever_endpoints,
+            runtime_sessions::ui_suggest_lever,
+            runtime_sessions::ui_suggest_button,
             runtime_hardware::ui_serial_ports,
             runtime_hardware::ui_scan_devices,
             runtime_hardware::ui_disconnect_device,
@@ -840,6 +843,9 @@ pub(crate) fn run() {
             ui_set_vjoy_selection,
             ui_put_vjoy_mapping,
             ui_delete_vjoy_mapping,
+            ui_vjoy_status,
+            ui_vjoy_remove_leftover,
+            ui_vjoy_repair,
             ui_check_firmware_updates,
             runtime_firmware::ui_firmware_update_status,
             runtime_firmware::ui_dismiss_firmware_update,
@@ -2528,6 +2534,62 @@ async fn ui_delete_train<R: tauri::Runtime>(
     Ok(outcome.result)
 }
 
+/// Payload contract for `ui_activate_train` (`ActivateTrainResult` in
+/// `client.ts`): the trains page renders `error` inline, so activation
+/// failures are reported in-band instead of rejecting the IPC promise.
+#[derive(Serialize)]
+struct TrainActivationView {
+    ok: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    error: Option<String>,
+}
+
+fn activation_failure_message(
+    error: &trenino_runtime::train::service::ManualActivationError,
+) -> String {
+    use trenino_runtime::train::{detection::TrainConfigError, service::ManualActivationError};
+    match error {
+        ManualActivationError::Closed => "The train service is shutting down.".into(),
+        ManualActivationError::Train(TrainConfigError::NotFound(_)) => {
+            "The train could not be found. It may have been deleted.".into()
+        }
+        other => other.to_string(),
+    }
+}
+
+/// Manual activation of one train profile. The frontend invokes with a
+/// camelCase `trainId` key, so this command keeps the Tauri default casing
+/// instead of the `rename_all = "snake_case"` used by most commands.
+#[tauri::command]
+async fn ui_activate_train(
+    state: State<'_, RustAppState>,
+    train_id: String,
+) -> Result<TrainActivationView, UiFailure> {
+    let id = parse_entity_id("train_id", &train_id)?;
+    let runtime = state
+        .controls
+        .lock()
+        .map_err(|_| UiFailure::from(unavailable("The train service is unavailable.")))?
+        .as_ref()
+        .filter(|runtime| runtime.is_running())
+        .cloned()
+        .ok_or_else(|| {
+            UiFailure::from(unavailable(
+                "The train service is not running. Try again when the control runtime is running.",
+            ))
+        })?;
+    match runtime.train.activate_train(id).await {
+        Ok(_) => Ok(TrainActivationView {
+            ok: true,
+            error: None,
+        }),
+        Err(error) => Ok(TrainActivationView {
+            ok: false,
+            error: Some(activation_failure_message(&error)),
+        }),
+    }
+}
+
 publishing_command!(ui_create_element(app, state, train_id: String, kind: String, name: String) -> UiSnapshot<trenino_core::ui::TrainDetailView>, Topic::Trains,
 |services: Arc<AppServices>, train_id: String, kind: String, name: String| {
     let train_id = parse_entity_id("train_id", &train_id).map_err(to_app_failure)?;
@@ -3017,6 +3079,104 @@ publishing_command!(ui_delete_vjoy_mapping(app, state, id: String) -> UiSnapshot
 |services: Arc<AppServices>, id: String| {
     services.delete_vjoy_mapping_entry(parse_entity_id("id", &id).map_err(to_app_failure)?)
 });
+
+/// Payload contract for `ui_vjoy_status` (`VjoyStatusView` in `client.ts`).
+/// The manager's public lifecycle status maps onto the five recovery states
+/// the virtual joystick page understands, exhaustively:
+/// - `Active` -> `"on"` (enabled and healthy)
+/// - `Enabling` -> `"on"` (requested; the acquire transition is in progress)
+/// - `Off` | `Disabling` -> `"off"` (nothing acquired, or release in progress)
+/// - `Unsupported` -> `"off"` (this platform cannot host vJoy; no adapter
+///   call ever happens, so there is nothing to recover)
+/// - `NeedsSetup` -> `"needs_setup"` (saved enabled but a selected device is
+///   absent from the driver)
+/// - `NeedsCleanup` -> `"needs_cleanup"` (saved off but a Trenino-owned
+///   device remains)
+/// - `Degraded` | `Error` -> `"error"` (the last reason string rides along)
+#[derive(Serialize)]
+struct VjoyStatusView {
+    state: &'static str,
+    reason: Option<String>,
+}
+
+/// Payload contract for `ui_vjoy_remove_leftover` / `ui_vjoy_repair`
+/// (`VjoyActionResult` in `client.ts`): recovery failures (invalid state,
+/// foreign device refusal, UAC cancel, busy driver) are reported in-band
+/// with the manager's reason instead of rejecting the IPC promise.
+#[derive(Serialize)]
+struct VjoyActionView {
+    ok: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    error: Option<String>,
+}
+
+fn vjoy_status_view(
+    manager: &trenino_runtime::vjoy::VjoyManager<PlatformVjoyAdapter>,
+) -> VjoyStatusView {
+    use trenino_runtime::vjoy::VjoyStatus;
+    let (status, reason) = manager.status_details();
+    VjoyStatusView {
+        state: match status {
+            VjoyStatus::Active | VjoyStatus::Enabling => "on",
+            VjoyStatus::Off | VjoyStatus::Disabling | VjoyStatus::Unsupported => "off",
+            VjoyStatus::NeedsSetup => "needs_setup",
+            VjoyStatus::NeedsCleanup => "needs_cleanup",
+            VjoyStatus::Degraded | VjoyStatus::Error => "error",
+        },
+        reason: reason.map(|error| error.to_string()),
+    }
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn ui_vjoy_status(state: State<'_, RustAppState>) -> Result<VjoyStatusView, UiFailure> {
+    let manager = state.vjoy_manager()?;
+    Ok(vjoy_status_view(manager.as_ref()))
+}
+
+/// Runs one recovery action on the manager and republishes the persisted vJoy
+/// view so subscribed windows refresh alongside the page's status poll.
+async fn vjoy_recovery_action<R: tauri::Runtime>(
+    app: AppHandle<R>,
+    state: State<'_, RustAppState>,
+    action: impl FnOnce(
+        &trenino_runtime::vjoy::VjoyManager<PlatformVjoyAdapter>,
+    ) -> Result<(), trenino_runtime::vjoy::VjoyError>,
+) -> Result<VjoyActionView, UiFailure> {
+    let manager = state.vjoy_manager()?;
+    if let Err(error) = action(manager.as_ref()) {
+        return Ok(VjoyActionView {
+            ok: false,
+            error: Some(error.to_string()),
+        });
+    }
+    let _publication = state.publication.lock().await;
+    let services = state.services()?;
+    let snapshot = tauri::async_runtime::spawn_blocking(move || services.get_vjoy_snapshot())
+        .await
+        .map_err(|_| UiFailure::from(AppError::internal("vjoy task failed")))?
+        .map_err(UiFailure::from)?;
+    publish_change(&app, Topic::Vjoy, &snapshot);
+    Ok(VjoyActionView {
+        ok: true,
+        error: None,
+    })
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn ui_vjoy_remove_leftover<R: tauri::Runtime>(
+    app: AppHandle<R>,
+    state: State<'_, RustAppState>,
+) -> Result<VjoyActionView, UiFailure> {
+    vjoy_recovery_action(app, state, |manager| manager.remove_leftover()).await
+}
+
+#[tauri::command(rename_all = "snake_case")]
+async fn ui_vjoy_repair<R: tauri::Runtime>(
+    app: AppHandle<R>,
+    state: State<'_, RustAppState>,
+) -> Result<VjoyActionView, UiFailure> {
+    vjoy_recovery_action(app, state, |manager| manager.repair()).await
+}
 
 // ---- Firmware ------------------------------------------------------------------
 
@@ -3891,6 +4051,191 @@ mod preview_invoke_tests {
         assert_eq!(
             condition["valid"], true,
             "the optional snake_case threshold must reach Rust validation"
+        );
+    }
+}
+
+#[cfg(test)]
+mod recovery_invoke_tests {
+    use super::*;
+    use serde_json::json;
+
+    #[cfg(not(windows))]
+    struct NoopResourceConsumers;
+    #[cfg(not(windows))]
+    impl trenino_runtime::resource::ResourceConsumers for NoopResourceConsumers {
+        fn suspend_actuation(&self, _: &str) -> Result<(), String> {
+            Ok(())
+        }
+        fn cancel_calibration(&self, _: &str) -> Result<(), String> {
+            Ok(())
+        }
+        fn source_lost(&self, _: &str, _: u64) -> Result<(), String> {
+            Ok(())
+        }
+        fn resume_after_fresh_sample(&self, _: &str) -> Result<(), String> {
+            Ok(())
+        }
+    }
+
+    #[cfg(not(windows))]
+    fn install_unsupported_vjoy(
+        state: &RustAppState,
+        database: &std::sync::Arc<trenino_runtime::storage::Database>,
+    ) {
+        let manager = Arc::new(trenino_runtime::vjoy::VjoyManager::new(
+            (**database).clone(),
+            Arc::new(trenino_runtime::resource::ResourceArbiter::new(Arc::new(
+                NoopResourceConsumers,
+            ))),
+            UnsupportedVjoyAdapter,
+        ));
+        *state.vjoy.lock().unwrap() = Some(Arc::new(VjoyRuntime {
+            manager,
+            stop: std::sync::mpsc::channel().0,
+            host: Mutex::new(None),
+        }));
+    }
+
+    type MockWindow = tauri::WebviewWindow<tauri::test::MockRuntime>;
+
+    fn recovery_webview(state: RustAppState) -> MockWindow {
+        let app = tauri::test::mock_builder()
+            .manage(state)
+            .invoke_handler(tauri::generate_handler![
+                ui_activate_train,
+                runtime_sessions::ui_suggest_lever,
+                runtime_sessions::ui_suggest_button,
+                ui_vjoy_status,
+                ui_vjoy_remove_leftover,
+                ui_vjoy_repair,
+            ])
+            .build(tauri::test::mock_context(tauri::test::noop_assets()))
+            .unwrap();
+        tauri::WebviewWindowBuilder::new(&app, "main", Default::default())
+            .build()
+            .unwrap()
+    }
+
+    fn send(
+        webview: &MockWindow,
+        cmd: &str,
+        body: serde_json::Value,
+    ) -> Result<serde_json::Value, serde_json::Value> {
+        tauri::test::get_ipc_response(
+            webview,
+            tauri::webview::InvokeRequest {
+                cmd: cmd.into(),
+                callback: tauri::ipc::CallbackFn(0),
+                error: tauri::ipc::CallbackFn(1),
+                url: if cfg!(windows) {
+                    "http://tauri.localhost"
+                } else {
+                    "tauri://localhost"
+                }
+                .parse()
+                .unwrap(),
+                body: tauri::ipc::InvokeBody::Json(body),
+                headers: Default::default(),
+                invoke_key: tauri::test::INVOKE_KEY.into(),
+            },
+        )
+        .map(|body| body.deserialize::<serde_json::Value>().unwrap())
+    }
+
+    fn installed_state(directory: &std::path::Path, db_name: &str) -> RustAppState {
+        let state = RustAppState::empty();
+        state
+            .install(AppServices::open_full(directory.join(db_name), None).unwrap())
+            .unwrap();
+        state
+    }
+
+    #[test]
+    fn recovery_commands_accept_the_frontend_camel_case_payloads() {
+        let directory = tempfile::tempdir().unwrap();
+        let webview = recovery_webview(installed_state(directory.path(), "recovery-invoke.sqlite"));
+
+        // The frontend sends a camelCase `trainId`; the command must accept it
+        // and surface the missing runtime as an unavailable failure.
+        let error = send(&webview, "ui_activate_train", json!({"trainId":"5"})).unwrap_err();
+        assert_eq!(error["code"], "unavailable");
+        // snake_case keys never reach the handler: argument parsing rejects them.
+        let error = send(&webview, "ui_activate_train", json!({"train_id":"5"})).unwrap_err();
+        assert!(
+            error.get("code").is_none(),
+            "snake_case train id must be rejected: {error}"
+        );
+
+        // Suggestions never reject the promise: without a simulator connection
+        // they answer with an in-band null match plus the not-connected reason.
+        let lever = send(
+            &webview,
+            "ui_suggest_lever",
+            json!({"elementName":"Throttle"}),
+        )
+        .unwrap();
+        assert!(lever["match"].is_null());
+        assert!(
+            lever["error"].as_str().unwrap().contains("not connected"),
+            "{lever}"
+        );
+        let button = send(&webview, "ui_suggest_button", json!({"elementName":"Horn"})).unwrap();
+        assert!(button["match"].is_null());
+        assert!(
+            button["error"].as_str().unwrap().contains("not connected"),
+            "{button}"
+        );
+        let error = send(
+            &webview,
+            "ui_suggest_lever",
+            json!({"element_name":"Throttle"}),
+        )
+        .unwrap_err();
+        assert!(
+            error.get("code").is_none(),
+            "snake_case element name must be rejected: {error}"
+        );
+
+        // Without an installed manager the status command reports unavailability.
+        let error = send(&webview, "ui_vjoy_status", json!({})).unwrap_err();
+        assert_eq!(error["code"], "unavailable");
+    }
+
+    #[cfg(not(windows))]
+    #[test]
+    fn unsupported_vjoy_manager_reports_off_and_in_band_recovery_failures() {
+        let directory = tempfile::tempdir().unwrap();
+        let state = RustAppState::empty();
+        let services =
+            AppServices::open_full(directory.path().join("vjoy-recovery.sqlite"), None).unwrap();
+        let database = services.database();
+        state.install(services).unwrap();
+        install_unsupported_vjoy(&state, &database);
+        let webview = recovery_webview(state);
+
+        // The unsupported-platform manager maps to `off` without a reason.
+        let status = send(&webview, "ui_vjoy_status", json!({})).unwrap();
+        assert_eq!(status["state"], "off");
+        assert!(status["reason"].is_null());
+        // Recovery commands are in-band failures carrying the manager's reason.
+        let leftover = send(&webview, "ui_vjoy_remove_leftover", json!({})).unwrap();
+        assert_eq!(leftover["ok"], false);
+        assert!(
+            leftover["error"]
+                .as_str()
+                .unwrap()
+                .contains("needs_cleanup"),
+            "{leftover}"
+        );
+        let repair = send(&webview, "ui_vjoy_repair", json!({})).unwrap();
+        assert_eq!(repair["ok"], false);
+        assert!(
+            repair["error"]
+                .as_str()
+                .unwrap()
+                .contains("repair requires error"),
+            "{repair}"
         );
     }
 }

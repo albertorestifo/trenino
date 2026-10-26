@@ -19,7 +19,7 @@ Ask the user which train they want to configure. If the simulator is running:
 - Read the `ObjectClass` endpoint to get the train identifier
 - The identifier is a prefix (e.g., "RVM_LIRREX_M9" matches "RVM_LIRREX_M9-A", "RVM_LIRREX_M9-B")
 
-Check if the train already exists with `list_trains`. If not, use the REST API or ask the user to create it in the UI.
+Check if the train already exists with `list_trains`. If not, ask the user to create it in the UI (there is no train-creation REST or MCP endpoint).
 
 ### 2. Discover Available Controls
 

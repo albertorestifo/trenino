@@ -6,7 +6,6 @@
 !define VJOY_VERSION "2.2.2.0"
 !define VJOY_UNINSTALL_KEY "SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{8E31F76F-74C3-47F1-9550-E041EEDC5FBB}_is1"
 !define TRENINO_REGISTRY_KEY "SOFTWARE\Trenino"
-!define VJOY_DEVICE_MARKER "VJoyDevice1CreatedByTrenino"
 
 !macro NSIS_HOOK_POSTINSTALL
   SetRegView 64
@@ -89,27 +88,27 @@
 !macroend
 
 !macro NSIS_HOOK_PREUNINSTALL
-  SetRegView 64
-  ; Delete device 1 only when its complete capability report matches Trenino's
-  ; fixed descriptor: exactly X/Y/Z/Rx/Ry/Rz/Sl0/Sl1, 32 buttons and no POV/FFB.
+  ; Delete each owned device (the configurator writes VJoyDevice1..16 markers)
+  ; only when its complete capability report matches Trenino's fixed
+  ; descriptor: exactly X/Y/Z/Rx/Ry/Rz/Sl0/Sl1, 32 buttons and no POV/FFB.
   ; The comparison is normalized by PowerShell before checking the literal line.
-  ReadRegDWORD $4 HKCU "${TRENINO_REGISTRY_KEY}" "${VJOY_DEVICE_MARKER}"
-  ${If} $4 == 1
-    nsExec::ExecToStack 'powershell.exe -NoProfile -NonInteractive -Command "$$r=& $\"$INSTDIR\resources\vJoyConfig.exe$\" -t 1 -c 2>$$null; $$n=($$r -join $\" $\" -replace $\"\s+$\",$\" $\" ).Trim(); if ($$n -eq $\"vJoyConfig 1 -f -a X Y Z Rx Ry Rz Sl0 Sl1 -b 32$\") { exit 0 } else { exit 1 }"'
-    Pop $0
-    Pop $1
-    ${If} $0 == 0
-      DetailPrint "Owned device 1 matches Trenino's descriptor; removing it."
-      ExecWait '"$INSTDIR\resources\vJoyConfig.exe" -d 1' $2
-      ${If} $2 == 0
-        DeleteRegValue HKCU "${TRENINO_REGISTRY_KEY}" "${VJOY_DEVICE_MARKER}"
+  ${For} $7 1 16
+    ReadRegDWORD $4 HKCU "${TRENINO_REGISTRY_KEY}" "VJoyDevice$7CreatedByTrenino"
+    ${If} $4 == 1
+      nsExec::ExecToStack 'powershell.exe -NoProfile -NonInteractive -Command "$$r=& $\"$INSTDIR\resources\vJoyConfig.exe$\" -t $7 -c 2>$$null; $$n=($$r -join $\" $\" -replace $\"\s+$\",$\" $\" ).Trim(); if ($$n -eq $\"vJoyConfig $7 -f -a X Y Z Rx Ry Rz Sl0 Sl1 -b 32$\") { exit 0 } else { exit 1 }"'
+      Pop $0
+      Pop $1
+      ${If} $0 == 0
+        DetailPrint "Owned device $7 matches Trenino's descriptor; removing it."
+        ExecWait '"$INSTDIR\resources\vJoyConfig.exe" -d $7' $2
+        ${If} $2 == 0
+          DeleteRegValue HKCU "${TRENINO_REGISTRY_KEY}" "VJoyDevice$7CreatedByTrenino"
+        ${EndIf}
+      ${Else}
+        DetailPrint "Owned device $7 marker exists but descriptor differs or is absent; leaving device state unchanged."
       ${EndIf}
-    ${Else}
-      DetailPrint "Owned device marker exists but descriptor differs or is absent; leaving device state unchanged."
     ${EndIf}
-  ${Else}
-    DetailPrint "No Trenino device ownership marker; device 1 will not be removed."
-  ${EndIf}
+  ${Next}
 
   ReadRegDWORD $0 HKLM "${TRENINO_REGISTRY_KEY}" "VJoyInstalledByTrenino"
   ${If} $0 == 1

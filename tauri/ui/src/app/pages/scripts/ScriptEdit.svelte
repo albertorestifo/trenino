@@ -219,7 +219,7 @@ end`;
 
         {#if !newMode}
           <label class="label cursor-pointer gap-2">
-            <span class="text-sm font-medium {enabled ? 'text-success' : 'text-base-content/50'}">
+            <span class="text-sm font-medium {enabled ? 'text-success' : 'text-muted'}">
               {enabled ? 'Enabled' : 'Disabled'}
             </span>
             <input
@@ -243,7 +243,7 @@ end`;
       </div>
 
       <div class="bg-base-200/50 rounded-xl p-4 mb-4">
-        <h3 class="text-sm font-semibold text-base-content/70 mb-2">Lua Code</h3>
+        <h3 class="text-sm font-semibold text-muted mb-2">Lua Code</h3>
         <label class="sr-only" for="script-code">Lua code</label>
         <textarea
           id="script-code"
@@ -257,7 +257,7 @@ end`;
     </form>
 
     <div class="bg-base-200/50 rounded-xl p-4 mb-4">
-      <h3 class="text-sm font-semibold text-base-content/70 mb-3">
+      <h3 class="text-sm font-semibold text-muted mb-3">
         Triggers
         <span class="text-xs font-normal text-base-content/40 ml-1">
           Simulator endpoints that fire on_change when their value changes
@@ -313,7 +313,7 @@ end`;
     {#if !newMode}
       <div class="bg-base-200/50 rounded-xl p-4 mb-4">
         <div class="flex items-center justify-between mb-2">
-          <h3 class="text-sm font-semibold text-base-content/70">Console</h3>
+          <h3 class="text-sm font-semibold text-muted">Console</h3>
           <button type="button" class="btn btn-ghost btn-xs" disabled={logPending} onclick={() => void refreshLog()} data-testid="refresh-script-log">Refresh</button>
         </div>
         <div id="script-console" class="font-mono text-xs leading-relaxed p-3 rounded-lg bg-base-300 text-base-content/80 h-40 overflow-y-auto">
@@ -328,7 +328,7 @@ end`;
 
     <div class="bg-base-200/50 rounded-xl p-4 mb-4">
       <button type="button" class="flex items-center justify-between w-full" onclick={() => (showOutputs = !showOutputs)} aria-expanded={showOutputs} data-testid="toggle-outputs">
-        <h3 class="text-sm font-semibold text-base-content/70">
+        <h3 class="text-sm font-semibold text-muted">
           Hardware Outputs Reference
           <span class="text-xs font-normal text-base-content/40 ml-1">Use output.set(id, true/false) in your script</span>
         </h3>
@@ -356,7 +356,7 @@ end`;
                       <td class="font-mono">{output.id}</td>
                       <td>{output.name || '-'}</td>
                       <td class="font-mono">{output.pin}</td>
-                      <td class="text-base-content/60">{output.device_name}</td>
+                      <td class="text-muted">{output.device_name}</td>
                     </tr>
                   {/each}
                 </tbody>

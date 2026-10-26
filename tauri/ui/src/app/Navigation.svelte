@@ -16,6 +16,7 @@
     { href: '#/', label: 'Devices', active: (path: string) => path === '/' || path.startsWith('/configurations') },
     { href: '#/trains', label: 'Trains', active: (path: string) => path.startsWith('/trains') },
     { href: '#/virtual-joystick', label: 'Joystick', active: (path: string) => path.startsWith('/virtual-joystick') },
+    { href: '#/firmware', label: 'Firmware', active: (path: string) => path.startsWith('/firmware') },
   ];
 
   function closeMenu(restoreFocus = false) {
@@ -44,13 +45,13 @@
       <a href="#/settings" class="nav-utility" aria-label="Settings" title="Settings"><span aria-hidden="true">⚙</span><span class="hidden text-sm font-medium sm:inline">Settings</span></a>
       <div class="relative">
         <button bind:this={menuButton} class="nav-utility" aria-label="Connected devices" aria-expanded={open} aria-haspopup="menu" onclick={() => (open = !open)}>
-          <span class="h-2 w-2 rounded-full {connectedCount > 0 ? 'bg-success animate-pulse' : 'bg-base-content/30'}" aria-hidden="true"></span>
+          <span class="h-2 w-2 rounded-full {connectedCount > 0 ? 'bg-success' : 'bg-base-content/20'}" aria-hidden="true"></span>
           <span class="hidden text-sm font-medium sm:inline">{connectedCount > 0 ? `${connectedCount} device${connectedCount === 1 ? '' : 's'} active` : 'No device connected'}</span>
           <span aria-hidden="true">⌄</span>
         </button>
         {#if open}
           <div class="device-menu" role="menu" aria-label="Connected devices">
-            <p class="text-sm text-base-content/70">{connectedCount > 0 ? `${connectedCount} active configuration${connectedCount === 1 ? '' : 's'} on connected devices.` : 'No configuration is active on a connected device.'}</p>
+            <p class="text-sm text-muted">{connectedCount > 0 ? `${connectedCount} active configuration${connectedCount === 1 ? '' : 's'} on connected devices.` : 'No configuration is active on a connected device.'}</p>
             <button type="button" class="btn btn-ghost btn-sm mt-3 w-full" role="menuitem" disabled={firmwareCheckPending || firmwareUpdateStatus?.checking} onclick={onFirmwareCheck} aria-label="Check for firmware updates">
               {firmwareCheckPending || firmwareUpdateStatus?.checking ? 'Checking firmware…' : 'Check for firmware updates'}
             </button>
@@ -84,7 +85,7 @@
     </div>
   {/if}
   {#if route.page !== 'joystick'}
-    <div class="flex flex-wrap items-center justify-center gap-x-3 border-t border-base-300 px-4 py-1.5 text-center text-xs text-base-content/70 {simulatorStatus?.status === 'connected' && !simulatorError ? 'bg-success/10' : 'bg-warning/10'}" role="status" aria-live="polite" data-testid="simulator-status">
+    <div class="flex flex-wrap items-center justify-center gap-x-3 border-t border-base-300 px-4 py-1.5 text-center text-xs text-muted {simulatorStatus?.status === 'connected' && !simulatorError ? 'bg-success/10' : 'bg-warning/10'}" role="status" aria-live="polite" data-testid="simulator-status">
       {#if simulatorError}{simulatorError}
       {:else if !simulatorStatus}Checking simulator status…
       {:else if simulatorStatus?.status === 'connected'}Simulator connected{simulatorStatus.detected_identifier ? ` · ${simulatorStatus.detected_identifier}` : ''}

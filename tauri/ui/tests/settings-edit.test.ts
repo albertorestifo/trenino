@@ -86,4 +86,18 @@ describe('settings edit page', () => {
     await waitFor(() => expect(failing).toHaveBeenCalledWith('disabled'));
     expect(await screen.findByText('The Rust desktop service is not available.')).toBeInTheDocument();
   });
+
+  it('persists the theme preference through the shared theme store', async () => {
+    window.localStorage.removeItem('phx:theme');
+    render(SettingsEdit, { props: { bridge: settingsBridge(), settings: settingsView(), onConsent: vi.fn() } });
+    expect(screen.getByTestId('theme-system')).toBeChecked();
+
+    await fireEvent.click(screen.getByTestId('theme-dark'));
+    expect(window.localStorage.getItem('phx:theme')).toBe('dark');
+    expect(document.documentElement.dataset.theme).toBe('dark');
+
+    await fireEvent.click(screen.getByTestId('theme-system'));
+    expect(window.localStorage.getItem('phx:theme')).toBeNull();
+    expect(document.documentElement.hasAttribute('data-theme')).toBe(false);
+  });
 });

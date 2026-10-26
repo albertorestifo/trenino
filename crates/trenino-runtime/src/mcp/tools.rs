@@ -372,6 +372,7 @@ mod simulator {
         match name {
             "list_simulator_endpoints" => {
                 let path = opt_str(arguments, "path")?;
+                let path = path.filter(|path| !path.is_empty());
                 with_client(ports, |port| port.list_endpoints(path.as_deref()))
             }
             "get_simulator_value" => {

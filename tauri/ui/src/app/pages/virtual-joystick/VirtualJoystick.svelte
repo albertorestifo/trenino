@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import type { VjoyMappingView, VjoyView } from '../../../bridge/generated';
-  import type { UiBridge } from '../../../bridge/client';
+  import type { UiBridge, VjoyStatusView } from '../../../bridge/client';
   import type { HardwareCatalog, HardwareInputOption } from '../../hardware';
   import { collectHardware, EMPTY_HARDWARE_CATALOG } from '../../hardware';
 
@@ -45,6 +45,11 @@
   let formButton = $state('1');
   let formInverted = $state(false);
   let preview = $state<string | null>(null);
+  let vjoyState = $state<VjoyStatusView>({ state: 'off', reason: null });
+  let recoveryPending = $state(false);
+  let recoveryNotice = $state('');
+  let recoveryError = $state('');
+
   let previewHint = $state('Choose a hardware input to preview it.');
   let previewRequest = 0;
 
@@ -97,6 +102,7 @@
       hardware = collected.catalog;
       hardwareError = collected.error ?? '';
       loading = false;
+      void refreshVjoyStatus();
       const unsubscribeVjoy = await bridge.subscribe<VjoyView>(
         'vjoy',
         (snapshot) => {
@@ -162,6 +168,7 @@
       vjoy = result.value.value;
     } finally {
       transitioning = null;
+      void refreshVjoyStatus();
     }
   }
 
@@ -180,6 +187,73 @@
       vjoy = result.value.value;
     } finally {
       transitioning = null;
+      void refreshVjoyStatus();
+    }
+  }
+
+  async function refreshVjoyStatus() {
+    const result = await bridge.getVjoyStatus();
+    if (result.ok) vjoyState = result.value;
+    else vjoyState = { state: 'error', reason: result.error.message };
+  }
+
+  async function retryVjoyEnable() {
+    recoveryPending = true;
+    recoveryNotice = '';
+    recoveryError = '';
+    try {
+      const result = await bridge.vjoyEnable();
+      if (!result.ok) {
+        recoveryError = result.error.message;
+        return;
+      }
+      vjoy = result.value.value;
+      recoveryNotice = 'vJoy mode enabled.';
+    } finally {
+      recoveryPending = false;
+      void refreshVjoyStatus();
+    }
+  }
+
+  async function removeLeftoverDevice() {
+    recoveryPending = true;
+    recoveryNotice = '';
+    recoveryError = '';
+    try {
+      const result = await bridge.removeVjoyLeftover();
+      if (!result.ok) {
+        recoveryError = result.error.message;
+        return;
+      }
+      if (!result.value.ok) {
+        recoveryError = result.value.error ?? 'The leftover device could not be removed.';
+        return;
+      }
+      recoveryNotice = 'Leftover device removed.';
+    } finally {
+      recoveryPending = false;
+      void refreshVjoyStatus();
+    }
+  }
+
+  async function repairInstallation() {
+    recoveryPending = true;
+    recoveryNotice = '';
+    recoveryError = '';
+    try {
+      const result = await bridge.repairVjoy();
+      if (!result.ok) {
+        recoveryError = result.error.message;
+        return;
+      }
+      if (!result.value.ok) {
+        recoveryError = result.value.error ?? 'The vJoy installation could not be repaired.';
+        return;
+      }
+      recoveryNotice = 'vJoy installation checked.';
+    } finally {
+      recoveryPending = false;
+      void refreshVjoyStatus();
     }
   }
 
@@ -193,6 +267,7 @@
       return;
     }
     vjoy = result.value.value;
+    void refreshVjoyStatus();
   }
 
   function openForm(kind: 'axis' | 'button', mapping: VjoyMappingView | null) {
@@ -312,7 +387,7 @@
 <div class="mx-auto max-w-2xl">
   <header class="mb-8">
     <h1 class="text-2xl font-semibold">Virtual joystick</h1>
-    <p class="mt-2 max-w-prose text-sm text-base-content/70">
+    <p class="mt-2 max-w-prose text-sm text-muted">
       Send selected hardware controls to games as one standard Windows joystick.
     </p>
   </header>
@@ -325,11 +400,11 @@
     <section class="rounded-xl border border-base-300 bg-base-200/50 p-5">
       <div class="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <p class="text-xs uppercase tracking-wide text-base-content/60">Status</p>
+          <p class="text-xs uppercase tracking-wide text-muted">Status</p>
           <p data-testid="virtual-joystick-status" aria-live="polite" class="mt-1 text-lg font-semibold">
             {statusUi.label}
           </p>
-          <p class="mt-1 text-sm text-base-content/70">{statusUi.help}</p>
+          <p class="mt-1 text-sm text-muted">{statusUi.help}</p>
         </div>
         <button
           type="button"
@@ -346,11 +421,44 @@
           {statusUi.recovery}
         </button>
       {/if}
+      {#if vjoyState.state === 'needs_setup' || vjoyState.state === 'needs_cleanup' || vjoyState.state === 'error'}
+        <div class="mt-4 space-y-3 rounded-lg border border-base-300 bg-base-100 p-4" data-testid="vjoy-recovery">
+          {#if vjoyState.state === 'needs_setup'}
+            <p class="text-sm text-muted">
+              vJoy device missing — the saved mode is enabled but the device is absent.
+            </p>
+            <button type="button" data-testid="vjoy-retry" class="btn btn-outline btn-sm" disabled={recoveryPending} onclick={() => void retryVjoyEnable()}>
+              Retry
+            </button>
+          {:else if vjoyState.state === 'needs_cleanup'}
+            <p class="text-sm text-muted">Leftover device</p>
+            <button type="button" data-testid="vjoy-remove-leftover" class="btn btn-outline btn-sm" disabled={recoveryPending} onclick={() => void removeLeftoverDevice()}>
+              Remove leftover device
+            </button>
+          {:else if vjoyState.state === 'error'}
+            <p class="text-sm text-muted">{vjoyState.reason ?? 'vJoy is in an unexpected state.'}</p>
+            <div class="flex flex-wrap gap-2">
+              <button type="button" data-testid="vjoy-repair" class="btn btn-outline btn-sm" disabled={recoveryPending} onclick={() => void repairInstallation()}>
+                Check installation
+              </button>
+              <button type="button" data-testid="vjoy-check-configuration" class="btn btn-outline btn-sm" disabled={recoveryPending} onclick={() => void refreshVjoyStatus()}>
+                Check configuration
+              </button>
+            </div>
+          {/if}
+          {#if recoveryNotice}
+            <p role="status" class="text-sm">{recoveryNotice}</p>
+          {/if}
+          {#if recoveryError}
+            <p role="alert" class="text-sm text-error">{recoveryError}</p>
+          {/if}
+        </div>
+      {/if}
     </section>
 
     <section class="mt-6 rounded-xl border border-base-300 bg-base-200/50 p-5" aria-labelledby="vjoy-devices-title">
       <h2 id="vjoy-devices-title" class="text-base font-semibold">Joystick devices</h2>
-      <p class="mt-1 text-sm text-base-content/70">
+      <p class="mt-1 text-sm text-muted">
         Choose which vJoy devices the mappings below target.
       </p>
       <div class="mt-3 flex flex-wrap gap-3">
@@ -369,7 +477,7 @@
       </div>
     </section>
 
-    <p id="offline-mapping-help" class="mt-4 text-sm text-base-content/70">
+    <p id="offline-mapping-help" class="mt-4 text-sm text-muted">
       You can configure mappings with hardware disconnected and the joystick off.
       Train Sim World is not needed for joystick mode.
     </p>
@@ -397,7 +505,7 @@
           Add mapping
         </button>
       </div>
-      <p id="mapping-capacity" class="mt-2 text-sm text-base-content/70">
+      <p id="mapping-capacity" class="mt-2 text-sm text-muted">
         {axisMappings.length} of 8 axes · {buttonMappings.length} of 32 buttons assigned
       </p>
       {#if showMappingChoices}
@@ -412,7 +520,7 @@
         </div>
       {/if}
       {#if vjoy.mappings.length === 0 && !showUnusedTargets}
-        <p class="mt-5 text-sm text-base-content/70">No mappings yet. Add an axis for a lever or a button for a switch.</p>
+        <p class="mt-5 text-sm text-muted">No mappings yet. Add an axis for a lever or a button for a switch.</p>
       {/if}
 
       {#if showUnusedTargets || axisMappings.length > 0}
@@ -449,7 +557,7 @@
                       </button>
                     </span>
                   {:else}
-                    <span class="text-sm text-base-content/50">Not assigned</span>
+                    <span class="text-sm text-muted">Not assigned</span>
                   {/if}
                 </div>
               {/if}
@@ -490,7 +598,7 @@
                       </button>
                     </span>
                   {:else}
-                    <span class="text-sm text-base-content/50">Not assigned</span>
+                    <span class="text-sm text-muted">Not assigned</span>
                   {/if}
                 </div>
               {/if}
@@ -532,7 +640,7 @@
         }}
       >
         {#if compatibleInputs.length === 0}
-          <p class="text-sm text-base-content/70">
+          <p class="text-sm text-muted">
             {mappingKind === 'axis' ? 'No analog inputs are configured yet.' : 'No button inputs are configured yet.'}
             <a href="#/" class="underline underline-offset-2">Set up hardware inputs</a>
           </p>
@@ -584,7 +692,7 @@
             </select>
           </label>
         {/if}
-        <p data-testid="input-preview" class="text-sm text-base-content/70">
+        <p data-testid="input-preview" class="text-sm text-muted">
           Live input: {preview ?? previewHint}
         </p>
         <div class="flex justify-end gap-2 pt-2">

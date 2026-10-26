@@ -77,7 +77,7 @@
     {#if nameError}<p role="alert" class="mt-1 text-xs text-error">{nameError}</p>{/if}
   </div>
 
-  <p class="text-xs text-base-content/60">Uses an HT16K33 display driver.</p>
+  <p class="text-xs text-muted">Uses an HT16K33 display driver.</p>
 
   <div>
     <label class="label pb-1.5" for="display-type"><span class="label-text">Display type</span></label>
@@ -99,7 +99,7 @@
       class:input-error={addressError !== ''}
     />
     {#if addressError}<p role="alert" class="mt-1 text-xs text-error">{addressError}</p>{/if}
-    <p id="display-address-hint" class="mt-1 text-xs text-base-content/60">
+    <p id="display-address-hint" class="mt-1 text-xs text-muted">
       Find this on the display board or its wiring guide. Enter decimal (112) or hex (0x70).
     </p>
   </div>
@@ -123,7 +123,7 @@
         <label class="label pb-1.5" for="display-minimum"><span class="label-text">Minimum value</span></label>
         <input id="display-minimum" type="text" inputmode="decimal" class="input input-bordered w-full" class:input-error={minimumError !== ''} bind:value={minimumInput} aria-describedby="display-minimum-hint" />
         {#if minimumError}<p role="alert" class="mt-1 text-xs text-error">{minimumError}</p>{/if}
-        <p id="display-minimum-hint" class="mt-1 text-xs text-base-content/60">Values below this limit are shown at the limit. Leave blank for no limit.</p>
+        <p id="display-minimum-hint" class="mt-1 text-xs text-muted">Values below this limit are shown at the limit. Leave blank for no limit.</p>
       </div>
       <label class="flex items-center gap-2"><input type="checkbox" class="checkbox checkbox-sm" bind:checked={alignRight} />Right-align value</label>
       <label class="flex items-center gap-2"><input type="checkbox" class="checkbox checkbox-sm" bind:checked={hasDot} />Display has a decimal point</label>

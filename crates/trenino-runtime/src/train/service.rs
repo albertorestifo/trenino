@@ -80,6 +80,49 @@ pub enum TrainEvent {
     ButtonStateChanged(ButtonStateChange),
 }
 
+/// Successful manual activation ("Set Active"): the generation committed by
+/// this activation and the resulting desired routing revision.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ManualActivation {
+    pub train_id: EntityId,
+    pub generation: u64,
+    pub desired_revision: Option<Revision>,
+}
+
+/// Manual activation failures: the service is shutting down, or the train
+/// configuration could not be read (unknown train, storage error).
+#[derive(Clone, Debug, PartialEq)]
+pub enum ManualActivationError {
+    Closed,
+    Train(TrainConfigError),
+}
+
+impl std::fmt::Display for ManualActivationError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Closed => write!(f, "train service is shutting down"),
+            Self::Train(error) => write!(f, "{error}"),
+        }
+    }
+}
+
+impl std::error::Error for ManualActivationError {}
+
+impl From<QueueError> for ManualActivationError {
+    fn from(error: QueueError) -> Self {
+        match error {
+            QueueError::Closed => Self::Closed,
+            _ => Self::Train(TrainConfigError::Storage(format!("{error:?}"))),
+        }
+    }
+}
+
+impl From<TrainConfigError> for ManualActivationError {
+    fn from(error: TrainConfigError) -> Self {
+        Self::Train(error)
+    }
+}
+
 struct ServiceState {
     generation: u64,
     last_revision: Option<Revision>,
@@ -196,9 +239,11 @@ pub struct TrainServiceHandle {
     detection: Arc<TrainDetectionShared>,
     lever: LeverController,
     buttons: ButtonController,
+    source: Arc<dyn TrainConfigSource>,
     routing: Arc<RoutingService>,
     destination: Arc<TswDestination>,
     state: Arc<Mutex<ServiceState>>,
+    events: tokio::sync::mpsc::Sender<TrainEvent>,
     lifecycle: Arc<ServiceLifecycle>,
 }
 
@@ -256,7 +301,7 @@ impl TrainServiceHandle {
             connection_lost: false,
         }));
         let detection_pump = tokio::spawn(pump(
-            source,
+            source.clone(),
             routing.clone(),
             destination.clone(),
             state.clone(),
@@ -281,9 +326,11 @@ impl TrainServiceHandle {
                 }),
                 lever,
                 buttons,
+                source,
                 routing,
                 destination,
                 state,
+                events,
                 lifecycle: Arc::new(ServiceLifecycle {
                     stopping: AtomicBool::new(false),
                     shutdown: tokio::sync::Mutex::new(ServiceShutdownState {
@@ -303,6 +350,35 @@ impl TrainServiceHandle {
         &self.lever
     }
 
+    /// Manual activation ("Set Active"): records the desired revision and
+    /// triggers the same reconcile the detector uses — the generation fences
+    /// in the routing service and TSW destination are never bypassed.
+    /// Fails when the train does not exist.
+    pub async fn activate_train(
+        &self,
+        train_id: EntityId,
+    ) -> Result<ManualActivation, ManualActivationError> {
+        self.ensure_open()?;
+        let snapshot = snapshot_train(&self.source, train_id).await?;
+        commit_and_reconcile(
+            &self.routing,
+            &self.destination,
+            &self.state,
+            &self.events,
+            train_id,
+            snapshot,
+        )
+        .await;
+        let (generation, desired_revision) = {
+            let state = self.state.lock().expect("train service poisoned");
+            (state.generation, self.routing.desired_revision())
+        };
+        Ok(ManualActivation {
+            train_id,
+            generation,
+            desired_revision,
+        })
+    }
     pub fn buttons(&self) -> &ButtonController {
         &self.buttons
     }

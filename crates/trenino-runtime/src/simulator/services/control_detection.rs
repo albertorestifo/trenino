@@ -245,6 +245,11 @@ fn number(value: &Value) -> Option<f64> {
     }
 }
 
+/// Round to 2 decimals (repo rule for user/simulator-facing floats).
+fn round2(value: f64) -> f64 {
+    (value * 100.0).round() / 100.0
+}
+
 fn detect_changes(entries: &[Value], baseline: &HashMap<String, f64>) -> Vec<DetectedChange> {
     entries
         .iter()
@@ -256,8 +261,10 @@ fn detect_changes(entries: &[Value], baseline: &HashMap<String, f64>) -> Vec<Det
                 Some(DetectedChange {
                     endpoint: path.clone(),
                     control_name: control_name(&path),
-                    previous_value: previous,
-                    current_value: current,
+                    // User-facing values: the wizard auto-fills button on/off
+                    // from these (on = current, off = previous).
+                    previous_value: round2(previous),
+                    current_value: round2(current),
                 })
             } else {
                 None
