@@ -389,7 +389,7 @@ fn validate_device_id(device_id: u32) -> Result<(), Error> {
     }
 }
 
-trait DeviceSdk {
+trait DeviceSdk: Send {
     fn is_enabled(&self) -> bool;
     fn device_status(&self, device_id: u32) -> VjdStat;
     fn acquire_device(&self, device_id: u32) -> Result<(), Error>;
@@ -710,12 +710,17 @@ impl Drop for VJoy {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::cell::RefCell;
     use std::collections::{HashSet, VecDeque};
-    use std::rc::Rc;
+    use std::sync::{Arc, Mutex};
+
+    #[test]
+    fn controller_can_move_to_the_runtime_worker() {
+        fn assert_send<T: Send>() {}
+        assert_send::<VJoy>();
+    }
 
     #[derive(Clone)]
-    struct FakeDeviceSdk(Rc<RefCell<FakeState>>);
+    struct FakeDeviceSdk(Arc<Mutex<FakeState>>);
 
     struct FakeState {
         button_count: i32,
@@ -736,7 +741,7 @@ mod tests {
 
     impl Default for FakeDeviceSdk {
         fn default() -> Self {
-            Self(Rc::new(RefCell::new(FakeState {
+            Self(Arc::new(Mutex::new(FakeState {
                 button_count: 32,
                 missing_axes: HashSet::new(),
                 extra_axes: HashSet::new(),
@@ -761,11 +766,11 @@ mod tests {
         }
 
         fn device_status(&self, _device_id: u32) -> VjdStat {
-            self.0.borrow().acquire_status
+            self.0.lock().unwrap().acquire_status
         }
 
         fn acquire_device(&self, device_id: u32) -> Result<(), Error> {
-            let mut state = self.0.borrow_mut();
+            let mut state = self.0.lock().unwrap();
             state.events.push(format!("acquire:{device_id}"));
             if !state.acquire_result {
                 return Err(Error::Ffi(FFIError::DeviceCouldNotBeAcquired(
@@ -778,17 +783,17 @@ mod tests {
         }
 
         fn relinquish_device(&self, device_id: u32) {
-            let mut state = self.0.borrow_mut();
+            let mut state = self.0.lock().unwrap();
             state.events.push(format!("relinquish:{device_id}"));
             state.relinquished.push(device_id);
         }
 
         fn button_count(&self, _device_id: u32) -> i32 {
-            self.0.borrow().button_count
+            self.0.lock().unwrap().button_count
         }
 
         fn axis_exists(&self, device_id: u32, hid_usage: u32) -> bool {
-            let state = self.0.borrow();
+            let state = self.0.lock().unwrap();
             let acquired = state.acquired.contains(&device_id);
             if state.missing_axes.contains(&hid_usage) {
                 return false;
@@ -802,15 +807,15 @@ mod tests {
         }
 
         fn discrete_pov_count(&self, _device_id: u32) -> i32 {
-            self.0.borrow().discrete_povs
+            self.0.lock().unwrap().discrete_povs
         }
 
         fn continuous_pov_count(&self, _device_id: u32) -> i32 {
-            self.0.borrow().continuous_povs
+            self.0.lock().unwrap().continuous_povs
         }
 
         fn has_force_feedback(&self, _device_id: u32) -> bool {
-            self.0.borrow().force_feedback
+            self.0.lock().unwrap().force_feedback
         }
 
         fn axis_range(&self, _device_id: u32, _axis_id: u32) -> Result<(i32, i32), Error> {
@@ -822,7 +827,7 @@ mod tests {
             device_id: u32,
             data: &mut JOYSTICK_POSITION,
         ) -> Result<(), Error> {
-            let mut state = self.0.borrow_mut();
+            let mut state = self.0.lock().unwrap();
             state.events.push(format!("update:{device_id}"));
             if !state.update_results.pop_front().unwrap_or(true) {
                 return Err(Error::Ffi(FFIError::DeviceDataCouldNotBeUpdated(
@@ -851,7 +856,10 @@ mod tests {
         let mut update = vjoy.get_device_state(16).unwrap();
         update.set_button(32, ButtonState::Pressed).unwrap();
         vjoy.update_device_state(&update).unwrap();
-        assert_eq!(sdk.0.borrow().published_reports.last().unwrap().0, 16);
+        assert_eq!(
+            sdk.0.lock().unwrap().published_reports.last().unwrap().0,
+            16
+        );
 
         vjoy.relinquish_device(9);
         assert!(matches!(
@@ -859,20 +867,23 @@ mod tests {
             Err(Error::App(AppError::DeviceNotFound(9)))
         ));
         assert_eq!(vjoy.get_device_state(16).unwrap().id(), 16);
-        assert_eq!(sdk.0.borrow().relinquished, [9]);
+        assert_eq!(sdk.0.lock().unwrap().relinquished, [9]);
     }
 
     #[test]
     fn incompatible_descriptor_is_rejected_before_any_acquire() {
         for usage in UNSUPPORTED_EXTRA_HID_AXES {
             let (mut vjoy, sdk) = fake_vjoy();
-            sdk.0.borrow_mut().extra_axes.insert(usage);
+            sdk.0.lock().unwrap().extra_axes.insert(usage);
             assert!(matches!(
                 vjoy.acquire_device(9),
                 Err(Error::App(AppError::DeviceConfigurationIncompatible(9, _)))
             ));
-            assert!(sdk.0.borrow().acquired.is_empty(), "usage {usage:#x}");
-            assert!(sdk.0.borrow().published_reports.is_empty());
+            assert!(
+                sdk.0.lock().unwrap().acquired.is_empty(),
+                "usage {usage:#x}"
+            );
+            assert!(sdk.0.lock().unwrap().published_reports.is_empty());
         }
     }
 
@@ -889,9 +900,9 @@ mod tests {
         ];
         for configure in configurations {
             let (mut vjoy, sdk) = fake_vjoy();
-            configure(&mut sdk.0.borrow_mut());
+            configure(&mut sdk.0.lock().unwrap());
             assert!(vjoy.acquire_device(12).is_err());
-            assert!(sdk.0.borrow().acquired.is_empty());
+            assert!(sdk.0.lock().unwrap().acquired.is_empty());
         }
     }
 
@@ -902,8 +913,8 @@ mod tests {
             (0, -2, "GetVJDContPovNumber"),
         ] {
             let (mut vjoy, sdk) = fake_vjoy();
-            sdk.0.borrow_mut().discrete_povs = discrete;
-            sdk.0.borrow_mut().continuous_povs = continuous;
+            sdk.0.lock().unwrap().discrete_povs = discrete;
+            sdk.0.lock().unwrap().continuous_povs = continuous;
             assert!(matches!(
                 vjoy.acquire_device(5),
                 Err(Error::Ffi(FFIError::DeviceConfigurationQueryFailed(
@@ -912,23 +923,23 @@ mod tests {
                     count
                 ))) if error_operation == operation && count < 0
             ));
-            assert!(sdk.0.borrow().acquired.is_empty());
+            assert!(sdk.0.lock().unwrap().acquired.is_empty());
         }
     }
 
     #[test]
     fn descriptor_is_rechecked_after_acquire_and_released_if_it_changed() {
         let (mut vjoy, sdk) = fake_vjoy();
-        sdk.0.borrow_mut().extra_axis_after_acquire = Some(0x38);
+        sdk.0.lock().unwrap().extra_axis_after_acquire = Some(0x38);
 
         assert!(matches!(
             vjoy.acquire_device(9),
             Err(Error::App(AppError::DeviceConfigurationIncompatible(9, _)))
         ));
-        assert_eq!(sdk.0.borrow().acquired, [9]);
-        assert_eq!(sdk.0.borrow().relinquished, [9]);
+        assert_eq!(sdk.0.lock().unwrap().acquired, [9]);
+        assert_eq!(sdk.0.lock().unwrap().relinquished, [9]);
         assert_eq!(
-            sdk.0.borrow().events,
+            sdk.0.lock().unwrap().events,
             ["acquire:9", "update:9", "relinquish:9"]
         );
         assert!(vjoy.devices().next().is_none());
@@ -937,15 +948,15 @@ mod tests {
     #[test]
     fn acquire_race_does_not_cache_or_relinquish_a_device_owned_elsewhere() {
         let (mut vjoy, sdk) = fake_vjoy();
-        sdk.0.borrow_mut().acquire_result = false;
+        sdk.0.lock().unwrap().acquire_result = false;
 
         assert!(matches!(
             vjoy.acquire_device(16),
             Err(Error::Ffi(FFIError::DeviceCouldNotBeAcquired(16, _)))
         ));
         assert!(vjoy.devices().next().is_none());
-        assert_eq!(sdk.0.borrow().relinquished, []);
-        assert_eq!(sdk.0.borrow().events.last().unwrap(), "acquire:16");
+        assert_eq!(sdk.0.lock().unwrap().relinquished, []);
+        assert_eq!(sdk.0.lock().unwrap().events.last().unwrap(), "acquire:16");
     }
 
     #[test]
@@ -954,7 +965,7 @@ mod tests {
         vjoy.acquire_device(9).unwrap();
         let mut desired = vjoy.get_device_state(9).unwrap();
         desired.set_button(32, ButtonState::Pressed).unwrap();
-        sdk.0.borrow_mut().update_results.extend([false, true]);
+        sdk.0.lock().unwrap().update_results.extend([false, true]);
 
         assert!(vjoy.update_device_state(&desired).is_err());
         assert_eq!(
