@@ -68,6 +68,10 @@ Claude will walk you through it interactively:
 4. Create the binding with the right mode and values
 5. Repeat for LEDs, sequences, and other controls
 
+> **Note**: MCP has no interactive control-detection tool. Claude discovers
+> endpoints with `list_simulator_endpoints` and verifies values with
+> `get_simulator_value`; interactive control detection is a desktop-UI feature.
+
 ### Setting Up Output Bindings (LEDs)
 
 > "Set up my red LED to turn on when the emergency brake is active."
@@ -118,6 +122,7 @@ Claude has access to 47 tools for interacting with Trenino:
 | Button Bindings | Get, create, update, delete |
 | Sequences | List, create, update, delete |
 | Display Bindings | List, create, update, delete display bindings |
+| Scripts | List, get, create, update, delete |
 | Virtual Joystick | Status, mapping, lifecycle, cleanup, installation checks |
 
 ## Tips

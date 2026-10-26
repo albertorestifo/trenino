@@ -146,12 +146,12 @@ Before binding:
 
 When you load a train in the simulator:
 
-1. Trenino polls the simulator every 15 seconds
+1. Trenino polls the simulator every 5 seconds
 2. Detects the current formation's identifier
 3. Matches against stored train configurations
 4. Activates bindings for the matched train
 
-Detection uses a two-layer strategy: it first checks `ObjectClass` from `CurrentDrivableActor`, then falls back to `ProviderName`. This makes detection reliable even for freight trains where the locomotive and wagons have different class prefixes.
+Detection derives the identifier from the current formation: it reads `CurrentFormation.DrivableIndex` and takes the `ObjectClass` at that index, falling back to `CurrentFormation/0.ObjectClass` when the drivable index is absent or unreadable. Using the drivable index matters because the vehicle you are driving is not always formation index 0 (for example, a consist where the driven locomotive is coupled behind other vehicles).
 
 ### Manual Train Activation
 

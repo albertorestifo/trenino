@@ -70,8 +70,10 @@ Handles train configurations and input-to-lever mappings.
   display bindings (a simulator endpoint mapped to an I2C module with a format
   string such as `{value}` or `{value:.Nf}`)
 - **service** - Train repository operations
-- **detection** - Polls the simulator for the active train with two-layer
-  defense (ObjectClass + ProviderName fallback)
+- **detection** - Polls the simulator for the active train: reads
+  `CurrentFormation.DrivableIndex` and the `ObjectClass` at that index,
+  falling back to `CurrentFormation/0.ObjectClass` when the drivable index
+  is absent or unreadable
 - **lever_controller / button_controller / output_controller /
   display_controller** - Map hardware values to simulator values, drive
   outputs, and poll simulator subscriptions to write formatted values to I2C
@@ -217,9 +219,11 @@ Services are Tokio tasks composed in
 - Hardware and train calibration sessions (generation-fenced)
 - MCP server and legacy JSON HTTP API
 
-A `ResourceArbiter` (`resource.rs`) grants exclusive leases — serial ports,
-detection sessions, calibration — so UI, MCP and HTTP callers cannot double-own
-hardware. `lifecycle.rs` coordinates shutdown with the database closed last.
+A `ResourceArbiter` (`resource.rs`) grants exclusive leases — serial-port
+calibration and firmware sessions — so UI, MCP and HTTP callers cannot
+double-own hardware; concurrent detection is fenced by generation counters
+inside the hardware service rather than by arbiter leases. `lifecycle.rs`
+coordinates shutdown with the database closed last.
 
 ## Database Schema
 

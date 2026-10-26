@@ -2,9 +2,9 @@
 name: Trenino
 description: Bridge your custom hardware to Train Sim World
 colors:
-  electric-indigo: "oklch(58% 0.233 277.117)"
-  electric-indigo-content: "oklch(96% 0.018 272.314)"
-  copper-signal: "oklch(70% 0.213 47.604)"
+  electric-indigo: "oklch(56% 0.233 277.117)"
+  electric-indigo-content: "oklch(98% 0.005 272.314)"
+  copper-signal: "oklch(56% 0.19 47.604)"
   copper-signal-content: "oklch(98% 0.016 73.684)"
   surface-dark: "oklch(30.33% 0.016 252.42)"
   surface-dark-sunken: "oklch(25.26% 0.014 253.1)"
@@ -15,10 +15,16 @@ colors:
   surface-light-border: "oklch(92% 0.004 286.32)"
   text-on-light: "oklch(21% 0.006 285.885)"
   muted-slate: "oklch(37% 0.044 257.287)"
-  signal-green: "oklch(60% 0.118 184.704)"
-  signal-amber: "oklch(66% 0.179 58.318)"
-  signal-red: "oklch(58% 0.253 17.585)"
-  signal-blue: "oklch(58% 0.158 241.966)"
+  signal-green-dark: "oklch(60% 0.118 184.704)"
+  signal-green-light: "oklch(53% 0.12 182.504)"
+  signal-amber-dark: "oklch(66% 0.179 58.318)"
+  signal-amber-light: "oklch(52% 0.15 58.318)"
+  signal-red-dark: "oklch(70% 0.18 17)"
+  signal-red-light: "oklch(55% 0.22 17.585)"
+  signal-red-content-dark: "oklch(20% 0.02 17.6)"
+  signal-red-content-light: "oklch(96% 0.015 12.422)"
+  signal-blue-dark: "oklch(58% 0.158 241.966)"
+  signal-blue-light: "oklch(52% 0.19 259.815)"
 typography:
   display:
     fontFamily: "system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif"
@@ -86,8 +92,8 @@ components:
     rounded: "{rounded.sm}"
     padding: "8px 16px"
   button-error:
-    backgroundColor: "{colors.signal-red}"
-    textColor: "oklch(96% 0.015 12.422)"
+    backgroundColor: "{colors.signal-red-light}"
+    textColor: "{colors.signal-red-content-light}"
     rounded: "{rounded.sm}"
     padding: "8px 16px"
   input:
@@ -130,8 +136,8 @@ A dual-theme system with distinct primaries. Semantic colors (signal-green, sign
 
 ### Primary
 
-- **Electric Indigo** (oklch(58% 0.233 277.117)): The dark theme's action color. Used on primary buttons, active navigation tabs, and focused interactive elements. Vibrant enough to read against dark surfaces without glowing. Never used decoratively.
-- **Copper Signal** (oklch(70% 0.213 47.604)): The light theme's action color. A warm, direct orange that reads as energetic but not aggressive. Same semantic role as Electric Indigo; same usage rules.
+- **Electric Indigo** (oklch(56% 0.233 277.117)): The dark theme's action color. Used on primary buttons, active navigation tabs, and focused interactive elements. Vibrant enough to read against dark surfaces without glowing. Never used decoratively.
+- **Copper Signal** (oklch(56% 0.19 47.604)): The light theme's action color. A warm burnt-copper orange that reads as energetic but not aggressive. Same semantic role as Electric Indigo; same usage rules. Darkened from a lighter copper so near-white button text reaches WCAG AA (4.7:1).
 
 ### Secondary
 
@@ -152,12 +158,14 @@ None. The system avoids a third accent to maintain restraint. Semantic signals h
 - **Cool Border** (oklch(92% 0.004 286.32)): Light theme borders and structural edges.
 - **Near-black on Light** (oklch(21% 0.006 285.885)): Primary text on light.
 
-### Semantic (Shared Across Themes)
+### Semantic (Theme-Tuned per Theme)
 
-- **Signal Green** (oklch(60% 0.118 184.704)): Connected, active, successful. Used on status dots, active badges, success alerts.
-- **Signal Amber** (oklch(66% 0.179 58.318)): Warning, degraded, or transitional state. Used on status dots, warning alerts, disabled-reason text.
-- **Signal Red** (oklch(58% 0.253 17.585)): Error, failed, destructive. Used on status dots, error alerts, danger zone actions.
-- **Signal Blue** (oklch(58% 0.158 241.966)): Informational, discovering, in-progress. Used on connecting status dots, info alerts, update banners.
+Semantic colors are theme-tuned so every text pairing reaches WCAG AA (≥4.5:1). In each theme the signal color pairs with its near-white `-content` token at full contrast; dark-theme Signal Red is light enough (70% lightness) to serve as `text-error` on base-100/base-200 surfaces (4.6:1 / 5.5:1), and its dark `-content` keeps red surfaces AA (6.3:1).
+
+- **Signal Green** (dark oklch(60% 0.118 184.704) / light oklch(53% 0.12 182.504)): Connected, active, successful. Used on status dots, active badges, success alerts.
+- **Signal Amber** (dark oklch(66% 0.179 58.318) / light oklch(52% 0.15 58.318)): Warning, degraded, or transitional state. Used on status dots, warning alerts, disabled-reason text.
+- **Signal Red** (dark oklch(70% 0.18 17) / light oklch(55% 0.22 17.585)): Error, failed, destructive. Used on status dots, error alerts, danger zone actions.
+- **Signal Blue** (dark oklch(58% 0.158 241.966) / light oklch(52% 0.19 259.815)): Informational, discovering, in-progress. Used on connecting status dots, info alerts, update banners.
 
 ### Named Rules
 
@@ -174,11 +182,12 @@ None. The system avoids a third accent to maintain restraint. Semantic signals h
 
 ### Hierarchy
 
-- **Display** (600 weight, 1.5rem / 24px, lh 1.3): Page titles and wizard headings. Appears at most once per screen.
-- **Headline** (600 weight, 1.25rem / 20px, lh 1.4): Section titles within complex edit pages. Used sparingly.
+- **Display** (600 weight, 1.5rem / 24px, lh 1.3): Page titles (`text-2xl font-semibold`). Appears at most once per screen.
+- **Headline** (600 weight, 1.25rem / 20px, lh 1.4): Reserved for prominent sub-areas (e.g. the Mappings heading). Used sparingly.
+- **Section Heading** (600 weight, 1rem / 16px): Section and card headings as implemented (`text-base font-semibold`).
 - **Title** (600 weight, 1.125rem / 18px, lh 1.5): Card headings, modal titles, and navigation-level labels.
 - **Body** (400 weight, 0.875rem / 14px, lh 1.6): All descriptive text, form labels, table content, alert messages.
-- **Label** (400 weight, 0.75rem / 12px, lh 1.5): Secondary metadata, helper text, timestamps, empty-state sublines. Always in a muted color (base-content at 50–70% opacity).
+- **Label** (400 weight, 0.75rem / 12px, lh 1.5): Secondary metadata, helper text, timestamps, empty-state sublines. Always in a muted color (secondary/muted text uses the `.text-muted` token — a solid ≥4.5:1 gray in the light theme and 70% base-content in the dark theme).
 - **Mono** (400 weight, 0.75rem / 12px, lh 1.5): Port names, firmware versions, hardware identifiers, and any value that is machine-generated rather than human-authored.
 
 ### Named Rules
@@ -216,18 +225,18 @@ Tactile and direct. Substantial padding, squared corners (4px radius), confident
 
 ### Inputs / Fields
 
-Structured inside a `fieldset` wrapper with a `label` above. The label is a small, muted span. Error messages appear below with a red exclamation icon inline.
+Labels sit above inputs (no `fieldset` wrapper); errors render below in red, without an inline icon. Focus and states use daisyUI defaults; the script code editor is the one exception, keeping `outline-none` in favor of its container styling.
 
 - **Style:** `surface-dark-sunken` background (in dark), `surface-light-raised` (in light). 4px radius. 1.5px border in base-300 color. Full-width by default.
-- **Focus:** Border shifts to primary color. No glow, no shadow. The border change alone is the signal.
-- **Error state:** Border and icon shift to Signal Red. Error text appears below in `text-xs text-error` with heroicon exclamation-circle inline.
+- **Focus:** daisyUI focus defaults. The code editor uses its container border and keeps `outline-none`.
+- **Error state:** Error text appears below the input in `text-xs text-error`, no icon.
 - **Disabled:** 40% opacity, no cursor. No special styling needed beyond that.
 - **Monospace hint:** If a field accepts a hardware identifier or port name, apply `font-mono` to the input itself so the value renders in mono as the user types.
 
 ### Cards / Containers
 
-- **List Card** (signature component): Used in train and device list views. Rectangular block with 12px radius (`rounded-xl`), 1px base-300 border, base-200/50 background. Hover reveals solid base-200 fill. The active state uses a 2px success-colored border and a faint success/5 background tint. The card title animates to primary on hover (`group-hover:text-primary`). Chevron right icon in the trailing position.
-- **Modal:** Fixed overlay with 50% black scrim. Content panel is base-100, 12px radius, `shadow-xl`. Max width 28rem (max-w-md). Internal padding 24px.
+- **List Card** (signature component): Used in train and device list views. Rectangular block with 12px radius (`rounded-xl`), 1px base-300 border, base-200/50 background. Hover reveals solid base-200 fill. The active state uses a 2px success-colored border and a faint success/5 background tint. The card title underlines on hover (no color change). Chevron right icon in the trailing position.
+- **Modal:** Fixed overlay with 50% black scrim. Content panel is base-100, 12px radius, `shadow-xl`. Normal modals are max width 28rem (max-w-md) with 24px internal padding (`p-6`). Wizard modals span max-w-4xl.
 - **Danger Zone:** Not a card. A section within an edit page, separated by a top border in base-300. The action area inside has a 30% opacity error-colored border and 5% error tint background — enough to register "destructive territory" without alarming.
 - **Empty State Panel:** base-100 background, 8px radius, 32px internal padding, centered. Icon at 30% opacity. Message in body, sub-message in label. No border.
 
@@ -238,15 +247,15 @@ Sticky full-width top bar on base-100 with a 1px base-300 bottom border; its pad
 - **Tab style:** Inactive: base-content/70 text, transparent background, hover reveals base-200 tint. Active: primary-color background, primary-content text. 8px radius. No underlines, no side borders.
 - **Control buttons** (Settings, Devices): base-200 background, hover reveals base-300. Icon + label (hidden on mobile). A 2×2 status dot precedes the icon to show live state. 8px radius.
 - **Status dots:** 8×8px circle (w-2 h-2). Signal Green for connected, Signal Blue with animate-pulse for connecting/discovering, Signal Amber for degraded, Signal Red for failed, base-content/20 for idle/unknown.
-- **Device Dropdown:** Absolute panel below the Devices button. base-100 background, 12px radius, shadow-xl, 1px base-300 border. Scrollable device list with 4px hover tint on each row.
+- **Device Dropdown:** Absolute panel below the Devices button. base-100 background, 12px radius, shadow-xl, 1px base-300 border. It shows a connected-device count summary plus a firmware-check action; per-device rows live on the Configurations page.
 
 ### Breadcrumbs
 
-Slim secondary bar directly beneath the nav header. base-200/50 background, 1px base-300 bottom border. Small body text, chevron-right mini separators. Current page item is full-weight base-content; ancestor items are 70% opacity with hover transition to full.
+Plain breadcrumbs rendered inside the centered content column — no full-width secondary bar. Small body text, chevron-right mini separators. Current page item is full-weight base-content; ancestor items are 70% opacity with hover transition to full.
 
 ### Alerts / Flash
 
-DaisyUI `alert` component inside a `toast toast-top toast-end` container. Info alerts use Signal Blue; Error alerts use Signal Red. Both include a leading heroicon (information-circle or exclamation-circle), optional title in semibold, body text, and a dismiss button. Info alerts auto-dismiss after 5 seconds. Max width 24rem (max-w-96).
+Static inline daisyUI `alert` banners rendered in the page flow — no toasts, no auto-dismiss. Info alerts use Signal Blue; Error alerts use Signal Red. They appear at the point in the page where the message is relevant and remain until the state they describe changes.
 
 ### Status Badges
 
@@ -262,7 +271,7 @@ Small badges (`badge badge-sm`) used inline in card titles to show active state.
 - **Do** surface complex actions progressively — wizards for first-time setup, compact controls for experienced users once configuration is complete.
 - **Do** use large, clearly bordered interactive targets. Users may be cross-referencing wiring diagrams or have tools in hand. Precise taps should not be required.
 - **Do** use OKLCH for all new color values. Reduce chroma as lightness approaches 0 or 100 to avoid garish extremes.
-- **Do** constrain all page content to the centered max-w-2xl layout. The narrower column improves readability and makes the interface feel organized rather than sprawling. Full-width chrome (sticky navigation, notice and status bars) is exempt: it spans the window and frames the column.
+- **Do** constrain page content to the centered max-w-2xl layout. The narrower column improves readability and makes the interface feel organized rather than sprawling. The Firmware and Script pages are exempt and use max-w-4xl for their wider release lists and code surfaces. Full-width chrome (sticky navigation, notice and status bars) is exempt: it spans the window and frames the column.
 
 ### Don't:
 
@@ -274,5 +283,5 @@ Small badges (`badge badge-sm`) used inline in card titles to show active state.
 - **Don't** use neon accents, gradient overlays, glassmorphism, or any visual treatment associated with gaming-peripheral software. The dark theme is calm and instrumental, not a gaming rig screensaver.
 - **Don't** use side-stripe borders (border-left or border-right wider than 1px) as colored accents on cards or list items. Use full borders, background tints, or nothing.
 - **Don't** use gradient text (background-clip: text). Emphasis through weight or size only.
-- **Don't** add motion to layout properties. Status dot pulse (animate-pulse) is the only persistent animation. State transitions use opacity and transform only, ease-out, 150–300ms.
+- **Don't** add motion to layout properties. Status dot pulse (animate-pulse) is the only persistent animation. State transitions use opacity and transform only, ease-out, 150–300ms. When the OS requests reduced motion, a global `prefers-reduced-motion` media query collapses all animations and transitions to effectively instant.
 - **Don't** rely on color alone to convey state. Status dots and semantic colors are always paired with an icon or label. Users may be colorblind.

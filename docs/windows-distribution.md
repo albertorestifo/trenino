@@ -49,8 +49,8 @@ signing service is configured, and no release was published during setup.
 ## vJoy
 
 Ship `vJoyInstall.dll` beside `vJoyConfig.exe`; the helper imports it at load time.
-The runtime resolves helpers from the launcher's absolute `APP_PATH/resources`
-as well as bundled backend resources, preserving link/reparse-point checks.
+The runtime resolves helpers only from the launcher's absolute
+`APP_PATH/resources` directory, preserving link/reparse-point checks.
 The installer keeps unowned shared drivers intact and describes version/state
 mismatches without asserting that the installed driver is unsigned.
 

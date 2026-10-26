@@ -82,8 +82,13 @@ The matching algorithm uses multiple heuristics to calculate confidence scores:
 | Exact match (case-insensitive) | 1.0 | "throttle" = "throttle" |
 | Element name in control name | 0.85 | "throttle" in "Throttle(Lever)" |
 | Control name in element name | 0.75 | "Horn" in "Horn Button" |
-| Common word matches | 0.5-0.9 | "Train Brake" ~ "TrainBrake" |
+| Common word matches | `(min(0.5 + 0.2 × shared_words, 0.9) + Jaro) / 2` | "Train Brake" ~ "Train_Brake" (2 shared words: (0.9 + Jaro)/2) |
 | Jaro distance fallback | 0.0-1.0 | Fuzzy string similarity |
+
+Names are lowercased before tokenization, so the CamelCase splitting used
+elsewhere does not apply here — "TrainBrake" stays a single token. "Train
+Brake" vs "TrainBrake" therefore shares no words and resolves through the
+Jaro-distance rung alone (≈ 0.97).
 
 Ties keep the first candidate, like the original `Enum.max_by/2` behavior.
 

@@ -469,9 +469,15 @@ Based on analysis of 5 different trains (UK, German, US passenger and freight), 
 
 ### Code Example
 
+The detection heuristics mirror `detect_levers`/`detect_buttons` in
+`crates/trenino-runtime/src/simulator/services/explorer.rs`: a control with
+`Function.GetNotchCount` is classified as a lever, and one with
+`Property.bDefaultToPressed` as a button.
+
 ```rust
-// Mirrors crates/trenino-runtime/src/simulator/services/explorer.rs
-fn detect_control_type(endpoints: &[String]) -> ControlType {
+// Mirrors detect_levers/detect_buttons in
+// crates/trenino-runtime/src/simulator/services/explorer.rs
+fn classify_control(endpoints: &[String]) -> ControlType {
     if endpoints.iter().any(|e| e.contains("Function.GetNotchCount")) {
         ControlType::Lever
     } else if endpoints.iter().any(|e| e.contains("Property.bDefaultToPressed")) {

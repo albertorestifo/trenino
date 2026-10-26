@@ -21,7 +21,7 @@ The system handles the conversion from raw hardware sensor values (e.g., potenti
 
 2. Calibration (trenino_core::hardware::calibration::normalize)
    └─> Calibrated integer (0 to total_travel)
-   └─> Handles inversion, rollover, dead zones
+   └─> Handles inversion and rollover; dead zones are emergent (see note below)
 
 3. Normalization (lever controller, crates/trenino-runtime/src/train/lever_controller.rs)
    └─> Normalized float (0.0 to 1.0)
@@ -34,6 +34,12 @@ The system handles the conversion from raw hardware sensor values (e.g., potenti
 5. Simulator
    └─> Final value sent to train simulator
 ```
+
+Note on dead zones: calibration has no first-class dead-zone field. Dead zones
+emerge from three behaviors — out-of-range raw values are clamped to the
+calibrated span, rollover midpoints snap to the span's midpoint, and any
+normalized travel that falls outside every notch's input range is rejected
+with `NoNotch` rather than mapped.
 
 ### Example: Potentiometer with 800 Units of Travel
 
@@ -68,7 +74,7 @@ writer.set("Reverser.InputValue", simulator_value).await?;
 |-------|------|-------|---------|-------|
 | Raw ADC | Integer | 0-1023 (10-bit) | 512 | Hardware-dependent |
 | Calibrated | Integer | 0 to total_travel | 412 out of 800 | After calibration normalization |
-| Normalized | Float | 0.0 to 1.0 | 0.515 | Percentage of physical travel |
+| Normalized | Float | 0.0 to 1.0 | 0.51 | Percentage of physical travel (2dp rounding happens at this stage) |
 | Simulator | Float | Any range | -1.0 to 1.0 | Can be negative! |
 
 ## Why Use 0.0-1.0 Normalization?
@@ -201,6 +207,10 @@ let notches = vec![
 
 When the physical lever is anywhere in the 0.0-0.33 range, the simulator receives `-1.0`.
 
+Notch input ranges are half-open `[input_min, input_max)`: an input exactly
+equal to a notch's `input_max` belongs to the next notch. Only a notch whose
+`input_max` is exactly `1.0` also accepts input `1.0`.
+
 ### Linear Notch
 
 A continuous range where values are interpolated.
@@ -278,11 +288,21 @@ let config = LeverConfig {
 map_input(&config, 0.0)?;  // => -0.45
 
 // Physical lever at 50% (half brake)
-map_input(&config, 0.5)?;  // => -0.22
+map_input(&config, 0.5)?;  // => -0.23
 
 // Physical lever at 100% (brake released)
 map_input(&config, 1.0)?;  // => 0.0
 ```
+
+### Inverted Levers
+
+`inverted: true` does two things. First, it flips the normalized input:
+`map_input` uses `1.0 − input` (rounded to 2 decimals) before notch lookup.
+Second, when the notches themselves are laid out in reversed order — i.e. the
+notch with the smallest `input_min` has the largest simulator values
+(`reversed_layout`) — the intra-notch interpolation position is flipped too
+(`position = 1.0 − position`), so the simulator value still moves the way the
+physical lever does.
 
 ## Interactive Calibration Workflow
 
@@ -339,6 +359,12 @@ When a user binds a physical input to a lever, they need to map physical positio
      - Active notch: 1 (Power)
      - Simulator value: 0.63
    ```
+
+Note: the implemented wizard does not capture single boundary positions. For
+each notch it captures a min/max sample range (`SampleRange` in
+`crates/trenino-runtime/src/simulator/services/calibration.rs`) while the user
+holds the lever in that notch, and saves the boundaries as normalized values
+rounded to four decimals (`calibrated_to_normalized`).
 
 ### Implementation
 

@@ -17,7 +17,7 @@ for this feature and does not manage the vJoy driver lifecycle.
 
 Download the latest installer for your platform from the [Releases page](https://github.com/albertorestifo/trenino/releases):
 
-- **Windows**: Run the NSIS installer (`.exe`) or the MSI — the Visual C++ Redistributable is bundled, no separate install needed. To use virtual joystick mode, install with the NSIS `.exe`; the MSI does not execute Trenino's vJoy driver install, ownership, or shared-driver uninstall hooks.
+- **Windows**: Install with the NSIS installer (`.exe`) — its post-install hook executes the bundled Visual C++ Redistributable silently when it is not already present. The MSI ships the redistributable only as a passive resource and does not run the hook, so MSI users must provision prerequisites separately. To use virtual joystick mode, install with the NSIS `.exe`; the MSI does not execute Trenino's vJoy driver install, ownership, or shared-driver uninstall hooks either.
 - **Linux**: Download the `.AppImage`, then mark it executable and run it:
   ```bash
   chmod +x Trenino_*.AppImage
@@ -62,7 +62,7 @@ Once Trenino is running and your hardware is connected:
 2. In Trenino, click the **Settings** gear icon (⚙) in the navigation bar
 3. Under **Simulator Connection**, the default URL is `http://localhost:31270` — change it if your simulator is on a different machine
 4. **Windows**: if the API key is found in your Train Simulator folder it's used automatically; otherwise enter it manually in the **API Key** field
-5. Click **Save** and verify the connection status in the nav bar shows "Connected"
+5. Click **Save** and verify the nav bar shows "Simulator connected · <train id>" (the detected train's identifier) once a train is loaded
 
 ### Step 2: Create Hardware Configuration
 
@@ -108,8 +108,9 @@ Once Trenino is running and your hardware is connected:
 ## Windows Virtual Joystick Mode
 
 Virtual joystick mode lets Windows games see selected Trenino controls as one
-generic DirectInput joystick. The first release exposes device 1 with these
-fixed controls:
+generic DirectInput joystick. The app lets you explicitly select which vJoy
+device IDs to expose (1–16); each selected device provides these fixed
+controls:
 
 - Axes: X, Y, Z, Rx, Ry, Rz, Slider 1, and Slider 2
 - Buttons: 1 through 32

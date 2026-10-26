@@ -240,8 +240,8 @@ Long-running work runs as Tokio tasks/services composed in
 `crates/trenino-runtime/src/composition/`:
 
 - Simulator connection owner — API health and client handout
-- Train detection — active train polling with two-layer defense
-  (ObjectClass + ProviderName fallback)
+- Train detection — active train polling with two-layer identifier
+  derivation (CurrentFormation.DrivableIndex → ObjectClass, index-0 fallback)
 - Lever/button/output/display controllers — input-to-simulator mapping,
   LED/output bindings, I2C display polling
 - Script runner — sandboxed Lua execution and lifecycle management

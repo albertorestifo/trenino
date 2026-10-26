@@ -94,7 +94,7 @@ Use this when you need dynamic or script-computed content on a display. For simp
 
 ### `schedule(ms)`
 
-Schedule `on_change` to fire again after the given number of milliseconds. The event source will be `"scheduled"`. Only one timer per script can be active — calling `schedule` again replaces the previous timer.
+Schedule `on_change` to fire again after the given number of milliseconds. The event source will be `"scheduled"`. Only one timer per script can be active — calling `schedule` again replaces the previous timer. Delays are whole milliseconds: a delay of less than 1ms is rejected, logs an error to the script console, and cancels the pending timer.
 
 ```lua
 schedule(1000)  -- Fire on_change again in 1 second
@@ -215,4 +215,4 @@ end
 - **One timer per script** — calling `schedule()` replaces any pending timer.
 - **State is in-memory** — it survives across `on_change` calls but resets on script reload or app restart.
 - **Console limit** — the console keeps the last 100 log entries.
-- **Sandboxed environment** — `require`, `io`, `os`, `file`, and `package` are not available.
+- **Sandboxed environment** — `io`, `file`, `package`, `require`, `load`, `loadfile`, `dofile`, and `coroutine` are not available. From `os`, the dangerous functions (`exit`, `execute`, `getenv`, `remove`, `rename`, `tmpname`) are removed; `os.time`, `os.clock`, `os.date`, `os.difftime`, `os.setlocale`, plus the nonstandard `os.time_ms`/`os.time_us`, remain.
