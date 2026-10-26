@@ -58,6 +58,8 @@ pub(crate) struct RustAppState {
     /// Installed by the wave integrator via `install_mcp_server`.
     #[allow(dead_code)]
     mcp: Mutex<Option<Arc<trenino_runtime::mcp::server::McpServer>>>,
+    telemetry_gate: crate::telemetry::TelemetryGate,
+    telemetry_guard: Mutex<Option<sentry::ClientInitGuard>>,
 }
 
 impl RustAppState {
@@ -76,6 +78,8 @@ impl RustAppState {
             upload: Mutex::new(None),
             firmware: Mutex::new(None),
             mcp: Mutex::new(None),
+            telemetry_gate: crate::telemetry::TelemetryGate::from_consent(None),
+            telemetry_guard: Mutex::new(None),
         }
     }
 
@@ -637,8 +641,8 @@ async fn ui_list_trains(
 }
 
 #[tauri::command(rename_all = "snake_case")]
-async fn ui_set_consent(
-    app: AppHandle,
+async fn ui_set_consent<R: tauri::Runtime>(
+    app: AppHandle<R>,
     state: State<'_, RustAppState>,
     value: String,
 ) -> Result<UiSnapshot<SettingsView>, UiFailure> {
@@ -662,6 +666,7 @@ async fn ui_set_consent(
         .await
         .map_err(|_| UiFailure::from(AppError::internal("consent task failed")))?
         .map_err(UiFailure::from)?;
+    state.telemetry_gate.set_consent(enabled);
     publish_change(&app, Topic::Settings, &snapshot);
     Ok(snapshot)
 }
@@ -892,6 +897,24 @@ pub(crate) fn run() {
                 );
                 return Ok(());
             };
+            // Consent-gated error reporting: enable when a DSN is configured
+            // (SENTRY_DSN overrides the project default; empty disables);
+            // before_send drops every event unless consent is enabled.
+            if let Ok(snapshot) = services.get_settings() {
+                state.telemetry_gate.set_consent(
+                    matches!(
+                        snapshot.value.error_reporting,
+                        trenino_core::ui::ConsentState::Enabled
+                    ),
+                );
+            }
+            if let Some(dsn) = crate::telemetry::resolve_dsn() {
+                if let Some(guard) = crate::telemetry::init(&dsn, state.telemetry_gate.clone()) {
+                    if let Ok(mut slot) = state.telemetry_guard.lock() {
+                        *slot = Some(guard);
+                    }
+                }
+            }
             if let Err(error) = state.wire_runtime_services(app.handle(), &services) {
                 show_startup_failure(app.handle(), &error);
                 return Ok(());
@@ -918,6 +941,15 @@ pub(crate) fn run() {
                     || state.shutdown().is_err()
                 {
                     api.prevent_exit();
+                }
+            }
+        }
+        tauri::RunEvent::Exit => {
+            if let Some(state) = app_handle.try_state::<RustAppState>() {
+                if let Ok(mut guard) = state.telemetry_guard.lock() {
+                    // Tauri can exit the process without dropping managed state.
+                    // Explicitly drain Sentry after runtime shutdown has finished.
+                    drop(guard.take());
                 }
             }
         }
@@ -4258,5 +4290,69 @@ mod resume_fence_tests {
         })
         .unwrap();
         assert!(!suspended.lock().unwrap().contains("PORT"));
+    }
+}
+
+#[cfg(test)]
+mod telemetry_consent_tests {
+    use super::*;
+
+    #[test]
+    fn consent_command_updates_reporting_only_after_a_successful_save() {
+        let directory = tempfile::tempdir().unwrap();
+        let state = RustAppState::empty();
+        state
+            .install(AppServices::open_full(directory.path().join("consent.sqlite"), None).unwrap())
+            .unwrap();
+        let app = tauri::test::mock_builder()
+            .manage(state)
+            .invoke_handler(tauri::generate_handler![ui_set_consent])
+            .build(tauri::test::mock_context(tauri::test::noop_assets()))
+            .unwrap();
+        let webview = tauri::WebviewWindowBuilder::new(&app, "main", Default::default())
+            .build()
+            .unwrap();
+        let invoke = |value: &str| {
+            tauri::test::get_ipc_response(
+                &webview,
+                tauri::webview::InvokeRequest {
+                    cmd: "ui_set_consent".into(),
+                    callback: tauri::ipc::CallbackFn(0),
+                    error: tauri::ipc::CallbackFn(1),
+                    url: if cfg!(windows) {
+                        "http://tauri.localhost"
+                    } else {
+                        "tauri://localhost"
+                    }
+                    .parse()
+                    .unwrap(),
+                    body: tauri::ipc::InvokeBody::Json(serde_json::json!({"value": value})),
+                    headers: Default::default(),
+                    invoke_key: tauri::test::INVOKE_KEY.into(),
+                },
+            )
+        };
+        let state = app.state::<RustAppState>();
+        assert!(!state.telemetry_gate.allow());
+        assert!(invoke("enabled").is_ok());
+        assert!(state.telemetry_gate.allow());
+        assert!(invoke("invalid").is_err());
+        assert!(state.telemetry_gate.allow());
+        assert!(invoke("disabled").is_ok());
+        assert!(!state.telemetry_gate.allow());
+        assert!(matches!(
+            state
+                .services()
+                .unwrap()
+                .get_settings()
+                .unwrap()
+                .value
+                .error_reporting,
+            trenino_core::ui::ConsentState::Disabled
+        ));
+        // A failed persistence operation must never reopen the reporting gate.
+        state.services.lock().unwrap().take();
+        assert!(invoke("enabled").is_err());
+        assert!(!state.telemetry_gate.allow());
     }
 }

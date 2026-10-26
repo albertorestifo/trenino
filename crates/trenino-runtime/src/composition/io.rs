@@ -310,6 +310,9 @@ mod tests {
         }
     }
     fn serve(mut stream: TcpStream, requests: Arc<Mutex<Vec<String>>>, hold_get: Arc<AtomicBool>) {
+        // macOS can inherit the listener's nonblocking mode on accepted sockets.
+        // This fixture uses blocking BufRead below, so normalize it explicitly.
+        stream.set_nonblocking(false).unwrap();
         let mut reader = BufReader::new(stream.try_clone().unwrap());
         let mut first = String::new();
         reader.read_line(&mut first).unwrap();

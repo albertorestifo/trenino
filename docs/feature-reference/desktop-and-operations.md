@@ -40,6 +40,35 @@ Automatic key lookup runs only on Windows when there is no saved override. It re
 
 First-use consent blocks the default LiveView session until enabled or disabled is saved. HTTP APIs, MCP, health and shutdown have their own routes and do not pass through that gate. Declining still grants normal app access. When `SENTRY_DSN` exists, runtime config enables Sentry and an error-level logger handler with source/line/request metadata. `Settings.sentry_before_send` drops events unless consent is enabled; enabling does not turn on Sentry without a DSN. There is no automatic collection of all game/hardware telemetry described in this code.
 
+The Rust desktop shell now uses Sentry Rust SDK 0.49.3. It defaults to the project's
+public DSN; a runtime `SENTRY_DSN` overrides it, and an empty/whitespace override
+disables the client. An invalid DSN disables reporting without failing startup.
+Persisted consent is read before runtime services are wired; unset, declined or
+unreadable consent keeps the event gate closed. `ui_set_consent` changes the gate
+only after a successful settings write, so the next captured event reflects the
+saved preference without a restart. Events already queued while enabled can still
+finish sending after revocation.
+
+Only panic reports and error-level `log` records are captured automatically;
+lower-level logs are not retained as breadcrumbs. Default PII collection is off,
+and SDK machine contexts, logs, metrics, session tracking and tracing are not
+enabled. Reports contain error text, release/environment and stack traces; error
+messages and paths should therefore still avoid secrets. The guard lives until
+Tauri's final exit event and drains with a two-second timeout. The SDK panic hook
+also flushes before forwarding to the previous hook, including in abort builds;
+forced termination and native crashes are not guaranteed delivery.
+
+SDK tests replace the transport with an in-memory collector and cover consent
+changes, panic/error capture and logger flush. An IPC test checks successful,
+invalid and failed consent changes against the live gate. These tests do not
+verify ingestion or dashboard receipt. To verify delivery manually in a development
+build, enable error reporting, deliberately capture a test error or panic, and
+check the configured Sentry project's Issues view; remove the test trigger before
+shipping. Repeat with reporting disabled to verify that no new report is captured.
+
+Rust sources: [SDK initialization and tests](../../tauri/src-tauri/src/telemetry.rs),
+[consent command and shell lifecycle](../../tauri/src-tauri/src/rust_ui.rs).
+
 Evidence: [settings context](https://github.com/albertorestifo/trenino/blob/188f35e4108733358730e92ebd98f1912af5173a/lib/trenino/settings.ex), [setting schema](https://github.com/albertorestifo/trenino/blob/188f35e4108733358730e92ebd98f1912af5173a/lib/trenino/settings/setting.ex), [file discovery](https://github.com/albertorestifo/trenino/blob/188f35e4108733358730e92ebd98f1912af5173a/lib/trenino/settings/simulator.ex), [runtime config](https://github.com/albertorestifo/trenino/blob/188f35e4108733358730e92ebd98f1912af5173a/config/runtime.exs), [settings tests](https://github.com/albertorestifo/trenino/blob/188f35e4108733358730e92ebd98f1912af5173a/test/trenino/settings_test.exs), [key lookup tests](https://github.com/albertorestifo/trenino/blob/188f35e4108733358730e92ebd98f1912af5173a/test/trenino/settings/simulator_test.exs).
 
 ## Files, persistence and runtime environment

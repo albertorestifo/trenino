@@ -1,4 +1,5 @@
 mod rust_ui;
+mod telemetry;
 #[cfg(any(feature = "desktop-updater", test))]
 mod update_flow;
 #[cfg(feature = "desktop-updater")]
