@@ -256,7 +256,7 @@ export interface UiBridge {
   updateOutput(params: { id: string; pin: number; name?: string | null }): Promise<Result<UiSnapshot<DeviceDetailView>>>;
   deleteOutput(id: string): Promise<Result<UiSnapshot<DeviceDetailView>>>;
   createMatrix(params: { device_id: string; name: string; row_pins: number[]; col_pins: number[] }): Promise<Result<UiSnapshot<DeviceDetailView>>>;
-  updateMatrix(params: { id: string; row_pins: number[]; col_pins: number[] }): Promise<Result<UiSnapshot<DeviceDetailView>>>;
+  updateMatrix(params: { id: string; name?: string | null; row_pins: number[]; col_pins: number[] }): Promise<Result<UiSnapshot<DeviceDetailView>>>;
   deleteMatrix(id: string): Promise<Result<UiSnapshot<DeviceDetailView>>>;
   createI2cModule(params: { device_id: string; name?: string | null; module_chip: string; i2c_address: number; params?: Ht16k33ParamsView | null }): Promise<Result<UiSnapshot<DeviceDetailView>>>;
   updateI2cModule(params: { id: string; name?: string | null; module_chip: string; i2c_address: number; params?: Ht16k33ParamsView | null }): Promise<Result<UiSnapshot<DeviceDetailView>>>;

@@ -51,7 +51,6 @@ impl ConnectionState {
     pub fn disconnected(&mut self) {
         self.status = SimulatorStatus::Disconnected;
         self.info = None;
-        self.last_error = None;
         self.health_failures = 0;
     }
     pub fn needs_config(&mut self) {

@@ -1026,19 +1026,42 @@ impl AppServices {
     pub fn update_matrix(
         &self,
         matrix_id: EntityId,
+        name: Option<&str>,
         row_pins: Vec<i32>,
         col_pins: Vec<i32>,
     ) -> Result<UiSnapshot<DeviceDetailView>, AppError> {
+        if let Some(name) = name {
+            validate_name(name, "name")?;
+        }
         let _guard = self.begin_operation()?;
-        let device_id = self
+        let stored = self
             .db
             .get_matrix(matrix_id)
             .map_err(to_app_error)?
-            .ok_or_else(not_found("matrix"))?
-            .device_id;
-        self.db
-            .replace_matrix_children(self.next_operation(), matrix_id, row_pins, col_pins)
-            .map_err(to_app_error)?;
+            .ok_or_else(not_found("matrix"))?;
+        let device_id = stored.device_id;
+        if let Some(name) = name.map(str::trim).filter(|n| !n.is_empty()) {
+            self.db
+                .rename_matrix(self.next_operation(), matrix_id, name)
+                .map_err(to_app_error)?;
+        }
+        let same_pins = stored
+            .row_pins
+            .iter()
+            .map(|p| p.pin)
+            .eq(row_pins.iter().copied())
+            && stored
+                .col_pins
+                .iter()
+                .map(|p| p.pin)
+                .eq(col_pins.iter().copied());
+        if !same_pins {
+            // HW-008: changed pin arrays keep the destructive recreate; a
+            // pin-identical update above only renamed and preserved children.
+            self.db
+                .replace_matrix_children(self.next_operation(), matrix_id, row_pins, col_pins)
+                .map_err(to_app_error)?;
+        }
         self.hardware_detail_unguarded(device_id)
     }
 

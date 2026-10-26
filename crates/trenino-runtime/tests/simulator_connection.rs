@@ -917,3 +917,18 @@ async fn disconnect_preempts_an_inflight_health_request() {
     );
     harness.owner.shutdown().await.unwrap();
 }
+
+/// Corpus connection table: a manual disconnect retains `last_error`, only
+/// connect/needs-config transitions clear it.
+#[test]
+fn manual_disconnect_retains_last_error() {
+    use trenino_runtime::simulator::connection::ConnectionState;
+    let mut state = ConnectionState::default();
+    state.failed_to_connect(ConnectionError::ConnectionFailed);
+    state.disconnected();
+    assert_eq!(state.status, SimulatorStatus::Disconnected);
+    assert_eq!(state.last_error, Some(ConnectionError::ConnectionFailed));
+    // Connecting again clears the retained error.
+    state.connected(serde_json::json!({}));
+    assert_eq!(state.last_error, None);
+}

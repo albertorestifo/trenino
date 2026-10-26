@@ -120,6 +120,6 @@ pub fn configuration_request(
         config_id,
         messages,
         mappings,
-        timeout: Duration::from_secs(5),
+        timeout: Duration::from_secs(10),
     })
 }

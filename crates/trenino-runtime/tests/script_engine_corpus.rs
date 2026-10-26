@@ -876,3 +876,23 @@ fn reserved_source_constants() {
     assert_eq!(SOURCE_MANUAL, "manual");
     assert_eq!(SOURCE_SCHEDULED, "scheduled");
 }
+
+// -- ScriptValue numeric equivalence at the change-detection gate -----------
+
+// Mirrors scripting-and-sequences.md: "Numeric integer/float equivalents
+// compare equal under !=", so a 1 <-> 1.0 flip must not re-fire triggers.
+#[test]
+fn script_value_integer_and_float_equivalents_compare_equal() {
+    assert_eq!(ScriptValue::Integer(1), ScriptValue::Float(1.0));
+    assert_eq!(ScriptValue::Float(1.0), ScriptValue::Integer(1));
+    assert_ne!(ScriptValue::Integer(1), ScriptValue::Float(1.5));
+    assert_ne!(ScriptValue::Float(1.5), ScriptValue::Integer(1));
+}
+
+// Strings never compare equal to numbers, even when their text matches.
+#[test]
+fn script_value_string_never_equals_number() {
+    assert_ne!(ScriptValue::String("1".into()), ScriptValue::Integer(1));
+    assert_ne!(ScriptValue::String("1.0".into()), ScriptValue::Float(1.0));
+    assert_ne!(ScriptValue::Integer(1), ScriptValue::String("1".into()));
+}

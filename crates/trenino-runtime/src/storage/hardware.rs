@@ -411,6 +411,18 @@ impl Database {
         })
     }
 
+    pub fn rename_matrix(
+        &self,
+        operation_id: OperationId,
+        id: EntityId,
+        name: &str,
+    ) -> DbResult<Mutation<MatrixRecord>> {
+        let name = name.to_owned();
+        self.hardware_call("rename_matrix", move |c| {
+            rename_matrix(c, operation_id, id, &name)
+        })
+    }
+
     pub fn delete_matrix(
         &self,
         operation_id: OperationId,
@@ -578,7 +590,7 @@ fn get_device(c: &Connection, id: EntityId) -> DbResult<Option<DeviceRecord>> {
 
 fn get_device_config(c: &Connection, id: ConfigId) -> DbResult<Option<DeviceRecord>> {
     c.query_row(
-        "SELECT id,name,description,config_id FROM devices WHERE config_id=?1",
+        "SELECT id,name,description,config_id FROM devices WHERE config_id=?1 ORDER BY id LIMIT 1",
         [id.get()],
         device_row,
     )
@@ -994,6 +1006,11 @@ fn validate_matrix(name: &str, rows: &[i32], cols: &[i32]) -> DbResult<()> {
             "matrix name must contain 1 to 100 characters".into(),
         ));
     }
+    if rows.is_empty() || cols.is_empty() {
+        return Err(invalid(
+            "matrix must have at least one row and one column".into(),
+        ));
+    }
     for pins in [rows, cols] {
         if pins.iter().any(|p| !(0..128).contains(p)) {
             return Err(invalid("matrix pins must be between 0 and 127".into()));
@@ -1080,6 +1097,28 @@ fn replace_matrix_children(
         )?;
         matrix = get_matrix(tx, id)?.ok_or(StorageError::NotFound)?;
         Ok(matrix)
+    })
+}
+
+/// HW-008: a name-only matrix update preserves children (pins, virtual
+/// inputs and their bindings) and touches only name/updated_at.
+fn rename_matrix(
+    c: &mut Connection,
+    op: OperationId,
+    id: EntityId,
+    name: &str,
+) -> DbResult<Mutation<MatrixRecord>> {
+    let name = name.to_owned();
+    hardware_tx(c, op, move |tx| {
+        let matrix = get_matrix(tx, id)?.ok_or(StorageError::NotFound)?;
+        let row_pins: Vec<i32> = matrix.row_pins.iter().map(|p| p.pin).collect();
+        let col_pins: Vec<i32> = matrix.col_pins.iter().map(|p| p.pin).collect();
+        validate_matrix(&name, &row_pins, &col_pins)?;
+        tx.execute(
+            "UPDATE device_matrices SET name=?1, updated_at=?2 WHERE id=?3",
+            params![name, timestamp(), id.0],
+        )?;
+        get_matrix(tx, id)?.ok_or(StorageError::NotFound)
     })
 }
 fn delete_matrix(

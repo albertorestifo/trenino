@@ -138,3 +138,46 @@ concurrently; three sequential full suites after it were green.
 Remaining acceptance beyond software parity (unchanged, needs equipment/OS):
 live TSW, physical boards/serial, Windows UAC/driver/installer/updater,
 real vJoy hardware, NSIS compile of the new 1..16 uninstall loop.
+
+## Feature-reference corpus verification (follow-up, same day)
+
+A remote commit added `docs/feature-reference/` — a 25-file source-grounded
+reference of the original Elixir app (the behavioral oracle for the rewrite).
+Eight read-only scouts verified the Rust implementation against it:
+hardware/serial, firmware, simulator/API/MCP, train controls, scripting,
+vJoy, platform/data-model, and all 15 rewrite contracts + journeys J-01..J-05.
+
+Verdict: no Critical regressions; journeys complete; every corpus-documented
+Elixir gap either fixed (input-disconnect neutralization, generation-fenced
+late completions, held-key release on train switch, output write suppression,
+updater interlock, script reload parity, wizard dead-ends, crash-safe firmware
+cache) or deliberately preserved with a code comment (momentary repeat
+interval, duplicate config_id ambiguity, matrix destructive resize).
+
+Fixed for oracle parity (tests added): apply-ACK deadline 10 s; discovery
+accepts stale-request-id IdentityResponse; matrix rename preserves children
+(name-only path, `ui_update_matrix` gained optional `name`); empty-dimension
+matrices rejected at storage; HT16K33 Configure decode symmetry; manual
+disconnect retains last_error; get_device_by_config_id deterministic
+(ORDER BY id); firmware check errors carry 'GitHub API error: {status}';
+list_devices MCP description accurate; ScriptValue integer/float equivalence
+at the trigger change-gate; vJoy enable-failure classification per corpus
+table (UAC-cancel → off/needs_setup; creation failure → needs_cleanup only
+for Trenino-OWNED compatible devices — foreign devices stay error, guarded by
+the pre-existing foreign-selection test); API key file read-error stops TSW6
+fallback.
+
+Accepted divergences (deliberate hardening, documented): stricter firmware
+manifest acceptance; MCP -32603 on join failure; stricter script POST
+validation; health-reason collapse (Ecto-specific distinctions); schedule(<1ms)
+rejection; unwired firmware check-interval override; missing unfiltered
+update_available helper (no caller).
+
+OPEN PRODUCT DECISION: the error-reporting consent toggle stores consent but
+no telemetry transport exists in the Rust app (Elixir wired Sentry). Opting in
+sends nothing — privacy-safe, but the settings copy promises crash reports.
+Decide: wire a reporter (new dependency + network egress) or keep the
+consent-gated no-op with honest copy.
+
+Gates after corpus fixes: workspace 857/0, src-tauri 40/0, both clippy
+-D warnings clean, svelte-check 0 errors, vitest 166/166.

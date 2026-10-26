@@ -389,6 +389,20 @@ fn simulator_key_discovery_prefers_manual_then_tsw7_then_tsw6() {
 }
 
 #[test]
+fn unreadable_tsw7_key_file_stops_resolution_without_tsw6_fallback() {
+    let dir = tempdir().unwrap();
+    let documents = dir.path().join("Documents");
+    let tsw6 = documents.join("My Games/TrainSimWorld6/Saved/Config/CommAPIKey.txt");
+    let tsw7 = documents.join("My Games/TrainSimWorld7/Saved/Config/CommAPIKey.txt");
+    std::fs::create_dir_all(tsw6.parent().unwrap()).unwrap();
+    std::fs::write(&tsw6, "six").unwrap();
+    // A TSW7 entry that exists but cannot be read as a file (here: a
+    // directory) stops resolution immediately — only absence falls through.
+    std::fs::create_dir_all(&tsw7).unwrap();
+    assert_eq!(resolve_api_key_file(&documents, None), None);
+}
+
+#[test]
 fn full_runtime_owns_database_path_for_its_lifetime() {
     let dir = tempdir().unwrap();
     let path = dir.path().join("owned.db");

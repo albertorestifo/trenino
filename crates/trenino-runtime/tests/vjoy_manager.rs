@@ -34,10 +34,11 @@ use tempfile::tempdir;
 use trenino_core::{ConfigId, EntityId, OperationId};
 use trenino_runtime::resource::{LeaseKind, ResourceArbiter, ResourceConsumers};
 use trenino_runtime::storage::{Database, DeviceDraft, InputDraft, InputKind, StorageError};
+use trenino_runtime::vjoy::configurator::ConfiguratorError;
 use trenino_runtime::vjoy::{
     neutral_axis_value, AdapterEvent, DeviceDescriptor, FakeDevice, FakeVjoyAdapter, MappingDraft,
-    Target, VjoyAxis, VjoyConfiguration, VjoyDeviceStatus, VjoyError, VjoyManager, VjoyStatus,
-    REQUIRED_DESCRIPTOR,
+    Target, VjoyAdapter, VjoyAxis, VjoyConfiguration, VjoyDeviceStatus, VjoyError, VjoyManager,
+    VjoyStatus, REQUIRED_DESCRIPTOR,
 };
 
 /// Loopback arbiter consumers: every callback succeeds so lease acquire/release
@@ -1270,4 +1271,141 @@ fn runtime_shutdown_retains_failed_neutralization_for_acknowledged_retry() {
     manager.release_runtime().unwrap();
     assert!(acquired(&fake).is_empty());
     assert!(db.vjoy_configuration().unwrap().enabled);
+}
+
+/// Test-only adapter wrapper: delegates every call to the shared fake but
+/// fails `configure_create` with a scripted error, standing in for the
+/// elevated configurator's UAC/process failures.
+struct FailingCreate {
+    inner: SharedFake,
+    error: VjoyError,
+}
+
+impl VjoyAdapter for FailingCreate {
+    fn supported(&self) -> bool {
+        self.inner.lock().unwrap().supported()
+    }
+    fn driver_available(&mut self) -> Result<(), VjoyError> {
+        self.inner.lock().unwrap().driver_available()
+    }
+    fn device_status(&mut self, device: u8) -> Result<VjoyDeviceStatus, VjoyError> {
+        self.inner.lock().unwrap().device_status(device)
+    }
+    fn descriptor(&mut self, device: u8) -> Result<DeviceDescriptor, VjoyError> {
+        self.inner.lock().unwrap().descriptor(device)
+    }
+    fn acquire_device(&mut self, device: u8) -> Result<(), VjoyError> {
+        self.inner.lock().unwrap().acquire_device(device)
+    }
+    fn neutralize_device(&mut self, device: u8) -> Result<(), VjoyError> {
+        self.inner.lock().unwrap().neutralize_device(device)
+    }
+    fn release_device(&mut self, device: u8) {
+        self.inner.lock().unwrap().release_device(device)
+    }
+    fn can_configure(&self) -> bool {
+        true
+    }
+    fn ownership_marker(&mut self, device: u8) -> Result<bool, VjoyError> {
+        self.inner.lock().unwrap().ownership_marker(device)
+    }
+    fn configure_create(&mut self, _device: u8) -> Result<(), VjoyError> {
+        Err(self.error.clone())
+    }
+}
+
+/// Corpus: UAC cancellation during enable from a previously-off preference
+/// returns to `off` without persisting activation.
+#[test]
+fn uac_cancellation_from_off_returns_to_off() {
+    let (_dir, db) = database();
+    let arbiter = arbiter();
+    let fake = fake();
+    fake.lock().unwrap().set_device(1, missing_device());
+    let manager = VjoyManager::new(
+        db.clone(),
+        arbiter,
+        FailingCreate {
+            inner: fake,
+            error: VjoyError::Configurator(ConfiguratorError::UacCancelled),
+        },
+    );
+    assert!(matches!(
+        manager.enable(),
+        Err(VjoyError::Configurator(ConfiguratorError::UacCancelled))
+    ));
+    assert_eq!(manager.status(), VjoyStatus::Off);
+    assert!(!db.vjoy_configuration().unwrap().enabled);
+}
+
+/// Corpus: UAC cancellation while the saved preference was enabled lands in
+/// `needs_setup` and keeps the persisted requested flag.
+#[test]
+fn uac_cancellation_with_saved_preference_lands_needs_setup() {
+    let (_dir, db) = database();
+    let arbiter = arbiter();
+    let fake = fake();
+    db.vjoy_confirm_enabled(OperationId(0), true).unwrap();
+    fake.lock().unwrap().set_device(1, missing_device());
+    let manager = VjoyManager::new(
+        db.clone(),
+        arbiter,
+        FailingCreate {
+            inner: fake,
+            error: VjoyError::Configurator(ConfiguratorError::UacCancelled),
+        },
+    );
+    // Startup reconciliation records the missing device without setup.
+    assert_eq!(manager.status(), VjoyStatus::NeedsSetup);
+    assert!(matches!(
+        manager.enable(),
+        Err(VjoyError::Configurator(ConfiguratorError::UacCancelled))
+    ));
+    assert_eq!(manager.status(), VjoyStatus::NeedsSetup);
+    assert!(db.vjoy_configuration().unwrap().enabled);
+}
+
+/// Corpus: a non-UAC creation failure with a compatible device still present
+/// becomes `needs_cleanup` (leftover); without one it stays `needs_setup`.
+#[test]
+fn creation_failure_splits_on_compatible_device_presence() {
+    let (_dir, db) = database();
+    let arbiter = arbiter();
+    let fake1 = fake();
+    fake1.lock().unwrap().set_device(1, missing_device());
+    db.vjoy_set_selected_devices(OperationId(0), &[1, 2])
+        .unwrap();
+    let manager = VjoyManager::new(
+        db.clone(),
+        arbiter.clone(),
+        FailingCreate {
+            inner: fake1.clone(),
+            error: VjoyError::Configurator(ConfiguratorError::ProcessExit(1)),
+        },
+    );
+    assert!(matches!(
+        manager.enable(),
+        Err(VjoyError::Configurator(ConfiguratorError::ProcessExit(1)))
+    ));
+    // Device 2 is free with the required descriptor → leftover cleanup.
+    assert_eq!(manager.status(), VjoyStatus::NeedsCleanup);
+    assert!(!db.vjoy_configuration().unwrap().enabled);
+
+    // Without any compatible device the same failure lands in needs_setup.
+    let (_dir2, db2) = database();
+    let fake2 = fake();
+    fake2.lock().unwrap().set_device(1, missing_device());
+    let manager2 = VjoyManager::new(
+        db2.clone(),
+        arbiter,
+        FailingCreate {
+            inner: fake2,
+            error: VjoyError::Configurator(ConfiguratorError::ProcessExit(1)),
+        },
+    );
+    assert!(matches!(
+        manager2.enable(),
+        Err(VjoyError::Configurator(ConfiguratorError::ProcessExit(1)))
+    ));
+    assert_eq!(manager2.status(), VjoyStatus::NeedsSetup);
 }

@@ -1047,9 +1047,26 @@ fn enable_locked<A: VjoyAdapter>(
     inner.reason = None;
 
     if let Err(error) = acquire_selection(inner, allow_setup) {
-        // Rollback already happened inside acquire_selection; classify status.
+        // Rollback already happened inside acquire_selection; classify status
+        // per the corpus enable-failure table: UAC cancellation returns to
+        // `off` when the saved preference was off, else `needs_setup`; other
+        // creation failures split on compatible-device presence.
         inner.status = match &error {
             VjoyError::DeviceMissing(_) => VjoyStatus::NeedsSetup,
+            VjoyError::Configurator(super::configurator::ConfiguratorError::UacCancelled) => {
+                if inner.requested {
+                    VjoyStatus::NeedsSetup
+                } else {
+                    VjoyStatus::Off
+                }
+            }
+            VjoyError::Configurator(_) => {
+                if compatible_device_present(inner) {
+                    VjoyStatus::NeedsCleanup
+                } else {
+                    VjoyStatus::NeedsSetup
+                }
+            }
             _ => VjoyStatus::Error,
         };
         inner.reason = Some(error.clone());
@@ -1208,6 +1225,28 @@ fn cleanup_selected<A: VjoyAdapter>(inner: &mut ManagerInner<A>) -> Result<(), V
         inner.adapter.configure_delete(device)?;
     }
     Ok(())
+}
+
+/// Whether any selected device is present with the required descriptor AND
+/// Trenino-owned (ours by acquisition or ownership marker) — the corpus
+/// "compatible device exists" probe used to split creation-failure outcomes
+/// between `needs_cleanup` and `needs_setup`. A foreign compatible device is
+/// NOT a leftover: cleanup would refuse it, so such failures stay `error`.
+fn compatible_device_present<A: VjoyAdapter>(inner: &mut ManagerInner<A>) -> bool {
+    inner.selection.iter().any(|&device| {
+        match inner.adapter.device_status(device) {
+            Ok(VjoyDeviceStatus::Owned) => {}
+            Ok(VjoyDeviceStatus::Free) => {
+                let owned = matches!(inner.adapter.ownership_marker(device), Ok(true))
+                    || matches!(inner.adapter.creation_confirmed_marker(device), Ok(true));
+                if !owned {
+                    return false;
+                }
+            }
+            _ => return false,
+        }
+        matches!(inner.adapter.descriptor(device), Ok(d) if d == REQUIRED_DESCRIPTOR)
+    })
 }
 
 /// Descriptor gate: facts must equal [`REQUIRED_DESCRIPTOR`] before any

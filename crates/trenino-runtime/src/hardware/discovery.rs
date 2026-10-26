@@ -140,6 +140,7 @@ where
                 Ok(count) => {
                     let packets = decoder.push(&buffer[..count]);
                     let mut identity = None;
+                    let mut stale_identity = None;
                     let mut after_identity = false;
                     let mut trailing_messages = Vec::new();
                     let mut protocol_errors = Vec::new();
@@ -163,16 +164,27 @@ where
                             }
                         };
                         if !after_identity {
-                            if matches!(message,
-                                Message::IdentityResponse { request_id: response_id, .. }
-                                    if response_id == request_id
-                            ) {
-                                identity = Some(message);
-                                after_identity = true;
+                            if let Message::IdentityResponse {
+                                request_id: response_id,
+                                ..
+                            } = &message
+                            {
+                                if *response_id == request_id {
+                                    identity = Some(message);
+                                    after_identity = true;
+                                } else {
+                                    // Firmware echoing a stale request id after a reset is
+                                    // still a valid IdentityResponse (HW-003): accept it as a
+                                    // fallback, preferring a matching id from the same batch.
+                                    stale_identity.get_or_insert(message);
+                                }
                             }
                         } else {
                             trailing_messages.push(message);
                         }
+                    }
+                    if identity.is_none() && stale_identity.is_some() {
+                        identity = stale_identity;
                     }
                     if let Some(identity) = identity {
                         return Ok(DiscoveryResult {

@@ -7,7 +7,9 @@ use std::{
 const DEFAULT_SIMULATOR_URL: &str = "http://localhost:31270";
 
 /// Resolve the legacy simulator key file. An explicit manual path takes
-/// precedence; otherwise TSW7 is preferred over TSW6 when both exist.
+/// precedence; otherwise TSW7 is preferred over TSW6, and only *absence*
+/// falls through to TSW6 — a TSW7 file that exists but cannot be read stops
+/// resolution immediately with no fallback.
 pub fn resolve_api_key_file(documents_dir: &Path, manual_path: Option<PathBuf>) -> Option<PathBuf> {
     if let Some(path) = manual_path {
         return Some(path);
@@ -20,7 +22,13 @@ pub fn resolve_api_key_file(documents_dir: &Path, manual_path: Option<PathBuf>) 
                 .join(edition)
                 .join("Saved/Config/CommAPIKey.txt")
         })
-        .find(|path| path.is_file())
+        .find(|path| match std::fs::read_to_string(path) {
+            Ok(_) => true,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => false,
+            // Unreadable (permissions, I/O): stop, do not fall back to TSW6.
+            Err(_) => true,
+        })
+        .filter(|path| path.is_file())
 }
 
 #[derive(Clone)]

@@ -2287,9 +2287,9 @@ publishing_command!(ui_create_matrix(app, state, device_id: String, name: String
     services.create_matrix(device_id, &name, row_pins, col_pins)
 });
 
-publishing_command!(ui_update_matrix(app, state, id: String, row_pins: Vec<i32>, col_pins: Vec<i32>) -> UiSnapshot<trenino_core::ui::DeviceDetailView>, Topic::Hardware,
-|services: Arc<AppServices>, id: String, row_pins: Vec<i32>, col_pins: Vec<i32>| {
-    services.update_matrix(parse_entity_id("id", &id).map_err(to_app_failure)?, row_pins, col_pins)
+publishing_command!(ui_update_matrix(app, state, id: String, name: Option<String>, row_pins: Vec<i32>, col_pins: Vec<i32>) -> UiSnapshot<trenino_core::ui::DeviceDetailView>, Topic::Hardware,
+|services: Arc<AppServices>, id: String, name: Option<String>, row_pins: Vec<i32>, col_pins: Vec<i32>| {
+    services.update_matrix(parse_entity_id("id", &id).map_err(to_app_failure)?, name.as_deref(), row_pins, col_pins)
 });
 
 publishing_command!(ui_delete_matrix(app, state, id: String) -> UiSnapshot<trenino_core::ui::DeviceDetailView>, Topic::Hardware,

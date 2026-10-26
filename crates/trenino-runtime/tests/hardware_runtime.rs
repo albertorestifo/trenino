@@ -179,7 +179,9 @@ impl SerialIo for DiscoveryPort {
 }
 
 #[test]
-fn discovery_retries_a_stale_identity_and_accepts_only_matching_request_id() {
+fn discovery_accepts_a_stale_request_id_identity_response() {
+    // HW-003: firmware echoing a stale request id after a reset is still a
+    // valid IdentityResponse and must pair on the first attempt.
     let mut serial = DiscoveryPort {
         reads: VecDeque::new(),
         writes: 0,
@@ -193,7 +195,7 @@ fn discovery_retries_a_stale_identity_and_accepts_only_matching_request_id() {
         },
     )
     .unwrap();
-    assert_eq!(serial.writes, 2);
+    assert_eq!(serial.writes, 1);
     assert!(matches!(
         found,
         Message::IdentityResponse {
@@ -201,6 +203,67 @@ fn discovery_retries_a_stale_identity_and_accepts_only_matching_request_id() {
             config_id: 0,
             ..
         }
+    ));
+}
+
+#[test]
+fn discovery_prefers_a_matching_request_id_over_a_stale_one() {
+    use std::sync::atomic::{AtomicU32, Ordering};
+    struct MatchingThenStale {
+        reads: VecDeque<Vec<u8>>,
+        written: AtomicU32,
+    }
+    impl SerialIo for MatchingThenStale {
+        fn read(&mut self, buffer: &mut [u8]) -> io::Result<usize> {
+            let bytes = self.reads.pop_front().ok_or(io::ErrorKind::TimedOut)?;
+            buffer[..bytes.len()].copy_from_slice(&bytes);
+            Ok(bytes.len())
+        }
+        fn write_all(&mut self, bytes: &[u8]) -> io::Result<()> {
+            let request =
+                decode_message(&FrameDecoder::default().push(bytes).remove(0).unwrap()).unwrap();
+            let Message::IdentityRequest { request_id } = request else {
+                panic!("identity request expected")
+            };
+            self.written.store(request_id, Ordering::SeqCst);
+            let frame = |id| {
+                FrameDecoder::encode_frame(
+                    &encode_message(&Message::IdentityResponse {
+                        request_id: id,
+                        major: 1,
+                        minor: 2,
+                        patch: 3,
+                        config_id: 0,
+                    })
+                    .unwrap(),
+                )
+            };
+            let mut batch = frame(request_id.wrapping_add(1));
+            batch.extend(frame(request_id));
+            self.reads.push_back(batch);
+            Ok(())
+        }
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
+        }
+    }
+    let mut serial = MatchingThenStale {
+        reads: VecDeque::new(),
+        written: AtomicU32::new(0),
+    };
+    let found = discover(
+        &mut serial,
+        DiscoveryTiming {
+            settle: Duration::ZERO,
+            read_timeout: Duration::from_millis(5),
+            attempts: 5,
+        },
+    )
+    .unwrap();
+    let expected = serial.written.load(Ordering::SeqCst);
+    assert!(matches!(
+        found,
+        Message::IdentityResponse { request_id, .. } if request_id == expected
     ));
 }
 

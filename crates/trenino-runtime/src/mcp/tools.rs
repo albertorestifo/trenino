@@ -610,7 +610,7 @@ mod device {
         vec![
             ToolDef {
                 name: "list_devices",
-                description: "List all connected hardware devices. Returns id, name, and connection status for each device.",
+                description: "List saved hardware configurations (not live connections) and their inputs/outputs/I2C modules. Returns id, name, and connection status for each device.",
                 input_schema: empty_schema(),
             },
             ToolDef {

@@ -163,10 +163,40 @@ fn hardware_detail_and_child_crud_round_trip() {
     assert_eq!(matrix.value.matrices.len(), 1);
     let matrix_id = matrix.value.matrices[0].id;
     let rematrix = services
-        .update_matrix(matrix_id, vec![2], vec![4, 5, 6])
+        .update_matrix(matrix_id, None, vec![2], vec![4, 5, 6])
         .expect("update matrix");
     assert_eq!(rematrix.value.matrices[0].row_pins.len(), 1);
     assert_eq!(rematrix.value.matrices[0].col_pins.len(), 3);
+    let resized_ids: Vec<_> = rematrix.value.matrices[0]
+        .buttons
+        .iter()
+        .map(|button| button.id)
+        .collect();
+
+    // HW-008: renaming with identical pin arrays preserves the virtual
+    // button inputs (and their ids) instead of recreating them.
+    let renamed = services
+        .update_matrix(matrix_id, Some("Renamed matrix"), vec![2], vec![4, 5, 6])
+        .expect("rename matrix");
+    assert_eq!(renamed.value.matrices[0].name, "Renamed matrix");
+    let preserved_ids: Vec<_> = renamed.value.matrices[0]
+        .buttons
+        .iter()
+        .map(|button| button.id)
+        .collect();
+    assert_eq!(preserved_ids, resized_ids);
+
+    // A pin change still recreates the grid with fresh virtual buttons.
+    let recreated = services
+        .update_matrix(matrix_id, None, vec![2, 3], vec![4, 5, 6])
+        .expect("resize matrix");
+    let fresh_ids: Vec<_> = recreated.value.matrices[0]
+        .buttons
+        .iter()
+        .map(|button| button.id)
+        .collect();
+    assert_ne!(fresh_ids, preserved_ids);
+    assert_eq!(recreated.value.matrices[0].buttons.len(), 6);
 
     let output = services
         .create_output(device, 7, Some("Speedo LED".into()))
@@ -1082,4 +1112,25 @@ fn busy_mcp_port_is_a_degraded_start_error_not_a_crash() {
         Err(error) => panic!("busy port must degrade, not fail: {error:?}"),
     }
     _first.stop().expect("stop first");
+}
+
+#[test]
+fn empty_matrix_dimensions_are_rejected_at_storage_time() {
+    let fixture = seed();
+    let services = &fixture.services;
+    let device = seed_device(services);
+
+    let failure = UiFailure::from(
+        services
+            .create_matrix(device, "Bad matrix", Vec::new(), vec![4, 5])
+            .expect_err("empty rows"),
+    );
+    assert_eq!(failure.code, "validation");
+
+    let failure = UiFailure::from(
+        services
+            .create_matrix(device, "Bad matrix", vec![2, 3], Vec::new())
+            .expect_err("empty cols"),
+    );
+    assert_eq!(failure.code, "validation");
 }

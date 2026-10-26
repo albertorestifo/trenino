@@ -383,7 +383,8 @@ async fn manifest_server_failure_aborts_refresh_without_fake_success() {
         FirmwareRequirement::parse(None).unwrap(),
     )
     .with_endpoint(catalog_server_error_http());
-    assert!(catalog.refresh().await.is_err());
+    let error = catalog.refresh().await.unwrap_err().to_string();
+    assert_eq!(error, "GitHub API error: 500");
     assert!(repo.list_releases().unwrap().is_empty());
 }
 

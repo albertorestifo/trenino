@@ -11,9 +11,10 @@
 use std::collections::BTreeMap;
 
 /// A Lua-representable value crossing the engine boundary. Integer and float
-/// stay distinct, mirroring both Lua 5.3 number subtypes and the Elixir
-/// oracle's distinct integer/float terms.
-#[derive(Clone, Debug, PartialEq)]
+/// compare numerically equivalent: the Elixir oracle's change-detection gate
+/// treats integer/float terms with the same value as equal under `!=`, so a
+/// `1` <-> `1.0` flip must not re-fire triggers.
+#[derive(Clone, Debug)]
 pub enum ScriptValue {
     Nil,
     Boolean(bool),
@@ -26,6 +27,22 @@ pub enum ScriptValue {
     /// Rust effect cannot embed Lua objects, so this marker preserves the
     /// "recorded, not rejected" behavior. See script-corpus.md.
     Opaque,
+}
+
+impl PartialEq for ScriptValue {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Nil, Self::Nil) | (Self::Opaque, Self::Opaque) => true,
+            (Self::Boolean(a), Self::Boolean(b)) => a == b,
+            (Self::Integer(a), Self::Integer(b)) => a == b,
+            (Self::Float(a), Self::Float(b)) => a == b,
+            (Self::String(a), Self::String(b)) => a == b,
+            (Self::Integer(a), Self::Float(b)) | (Self::Float(b), Self::Integer(a)) => {
+                *a as f64 == *b
+            }
+            _ => false,
+        }
+    }
 }
 
 /// The `on_change(event)` payload.

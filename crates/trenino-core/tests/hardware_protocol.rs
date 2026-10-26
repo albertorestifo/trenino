@@ -79,7 +79,19 @@ fn configure_payloads_roundtrip_and_reserved_types_rejected() {
     assert_eq!(encode_message(&m).unwrap(), bytes);
     assert_eq!(decode_message(&bytes).unwrap(), m);
     assert!(decode_message(&[9]).is_err());
-    assert!(decode_message(&[2, 0, 0, 0, 0, 1, 0, 4, 0x70, 8, 4]).is_err()); // firmware has no HT16K33 decode arm
+    let ht16k33 = Message::ConfigureHt16k33 {
+        config_id: 0,
+        total_parts: 1,
+        part_number: 0,
+        address: 0x70,
+        brightness: 8,
+        num_digits: 4,
+    };
+    let bytes = vec![2, 0, 0, 0, 0, 1, 0, 4, 0x70, 8, 4];
+    assert_eq!(encode_message(&ht16k33).unwrap(), bytes);
+    assert_eq!(decode_message(&bytes).unwrap(), ht16k33);
+    // Exact length is enforced for the HT16K33 subtype like the others.
+    assert!(decode_message(&[2, 0, 0, 0, 0, 1, 0, 4, 0x70, 8]).is_err());
 }
 
 #[test]

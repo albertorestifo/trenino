@@ -308,6 +308,17 @@ pub fn decode_message(b: &[u8]) -> Result<Message, ProtocolError> {
                         col_pins: x[9 + nr..].to_vec(),
                     }
                 }
+                4 => {
+                    need(10)?;
+                    ConfigureHt16k33 {
+                        config_id: id,
+                        total_parts: t,
+                        part_number: p,
+                        address: x[7],
+                        brightness: x[8],
+                        num_digits: x[9],
+                    }
+                }
                 _ => return Err(ProtocolError::InvalidMessage),
             }
         }

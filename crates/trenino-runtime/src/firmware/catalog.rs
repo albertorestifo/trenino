@@ -56,7 +56,7 @@ pub struct FirmwareSelection {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum CatalogError {
-    Http,
+    Http(Option<reqwest::StatusCode>),
     InvalidResponse,
     MissingManifest,
     InvalidManifest,
@@ -69,7 +69,8 @@ impl std::fmt::Display for CatalogError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Repository(_) => f.write_str("firmware catalog storage failed"),
-            Self::Http => f.write_str("could not retrieve firmware release information"),
+            Self::Http(None) => f.write_str("could not retrieve firmware release information"),
+            Self::Http(Some(status)) => write!(f, "GitHub API error: {}", status.as_u16()),
             Self::InvalidResponse => f.write_str("firmware release response was invalid"),
             Self::MissingManifest => f.write_str("release.json is missing"),
             Self::InvalidManifest => f.write_str("release manifest is invalid"),
@@ -129,12 +130,12 @@ impl<R: FirmwareRepository> FirmwareCatalog<R> {
             .github_headers(request)
             .send()
             .await
-            .map_err(|_| CatalogError::Http)?;
+            .map_err(|_| CatalogError::Http(None))?;
         if !permitted_url(response.url()) {
-            return Err(CatalogError::Http);
+            return Err(CatalogError::Http(None));
         }
         if !response.status().is_success() {
-            return Err(CatalogError::Http);
+            return Err(CatalogError::Http(Some(response.status())));
         }
         let body = read_limited(response, 16 * 1024 * 1024).await?;
         let releases: Vec<GithubRelease> =
@@ -305,15 +306,15 @@ async fn parse_release(
         .timeout(timeout)
         .send()
         .await
-        .map_err(|_| CatalogError::Http)?;
+        .map_err(|_| CatalogError::Http(None))?;
     if !permitted_url(manifest_response.url()) {
-        return Err(CatalogError::Http);
+        return Err(CatalogError::Http(None));
     }
     if matches!(manifest_response.status().as_u16(), 404 | 410) {
         return Err(CatalogError::MissingManifest);
     }
     if !manifest_response.status().is_success() {
-        return Err(CatalogError::Http);
+        return Err(CatalogError::Http(Some(manifest_response.status())));
     }
     let manifest_json = read_limited(manifest_response, 1024 * 1024).await?;
     let manifest_json =
@@ -376,7 +377,11 @@ async fn read_limited(
     max: usize,
 ) -> Result<Vec<u8>, CatalogError> {
     let mut body = Vec::new();
-    while let Some(chunk) = response.chunk().await.map_err(|_| CatalogError::Http)? {
+    while let Some(chunk) = response
+        .chunk()
+        .await
+        .map_err(|_| CatalogError::Http(None))?
+    {
         if body.len().saturating_add(chunk.len()) > max {
             return Err(CatalogError::InvalidResponse);
         }
