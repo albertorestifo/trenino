@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.8.2] - 2026-10-28
+
+### Fixed
+
+- Lever setup wizard no longer deadlocks on the Map Positions step: the notch
+  mapping session is now stopped when the wizard closes (after a successful
+  save or finish), leftover sessions from previous attempts are cleared and
+  retried on re-entry, and session lookups ignore dead processes so
+  stop-then-restart cannot observe a stale registration. Previously, any
+  completed mapping left an orphaned session that made the next configuration
+  attempt fail with "Failed to start mapping" and an endless loading spinner.
+
 ## [0.8.1] - 2026-10-28
 
 ### Fixed

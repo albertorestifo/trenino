@@ -120,8 +120,11 @@ defmodule Trenino.Train.Calibration.NotchMappingSession do
   """
   @spec whereis(integer()) :: pid() | nil
   def whereis(lever_config_id) do
+    # Registry unregistration lags process death: after a session is stopped,
+    # lookup can briefly return the dead pid. Treat dead pids as absent so
+    # stop-then-restart (e.g. wizard re-entry) can't observe a stale session.
     case Registry.lookup(Trenino.Registry, {__MODULE__, lever_config_id}) do
-      [{pid, _}] -> pid
+      [{pid, _}] -> if Process.alive?(pid), do: pid
       [] -> nil
     end
   end

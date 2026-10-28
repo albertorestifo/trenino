@@ -122,6 +122,7 @@ defmodule TreninoWeb.LeverSetupWizard do
     |> assign(:lever_type, get_existing_lever_type(existing_config))
     |> assign(:notches, get_existing_notches(existing_config))
     |> assign(:mapping_session_pid, nil)
+    |> assign(:mapping_lever_config_id, nil)
     |> assign(:mapping_state, nil)
     # Edit mode tracking
     |> assign(:editing_mode, editing_mode)
@@ -472,7 +473,9 @@ defmodule TreninoWeb.LeverSetupWizard do
     if socket.assigns.mapping_session_pid do
       case NotchMappingSession.save_mapping(socket.assigns.mapping_session_pid) do
         :ok ->
-          # Save succeeded, close the wizard
+          # Save succeeded, stop the session so it doesn't block future setups,
+          # then close the wizard
+          socket = stop_notch_mapping(socket)
           send(self(), {:lever_setup_complete, socket.assigns.element.id})
           {:noreply, socket}
 
@@ -486,6 +489,7 @@ defmodule TreninoWeb.LeverSetupWizard do
 
   @impl true
   def handle_event("finish", _params, socket) do
+    socket = stop_notch_mapping(socket)
     send(self(), {:lever_setup_complete, socket.assigns.element.id})
     {:noreply, socket}
   end
@@ -625,13 +629,14 @@ defmodule TreninoWeb.LeverSetupWizard do
       calibration: selected_input.calibration
     ]
 
-    case Train.start_notch_mapping(opts) do
+    case start_mapping_with_stale_cleanup(lever_config.id, opts) do
       {:ok, pid} ->
         NotchMappingSession.start_mapping(pid)
         state = NotchMappingSession.get_public_state(pid)
 
         socket
         |> assign(:mapping_session_pid, pid)
+        |> assign(:mapping_lever_config_id, lever_config.id)
         |> assign(:mapping_state, state)
 
       {:error, reason} ->
@@ -639,13 +644,29 @@ defmodule TreninoWeb.LeverSetupWizard do
     end
   end
 
+  # A stale mapping session (leftover from an earlier wizard attempt that was
+  # not closed cleanly, e.g. after navigation or a crash) blocks starting a new
+  # one for the same lever. Stop it and retry once.
+  defp start_mapping_with_stale_cleanup(lever_config_id, opts) do
+    case Train.start_notch_mapping(opts) do
+      {:error, :already_running} ->
+        Train.stop_notch_mapping(lever_config_id)
+        Train.start_notch_mapping(opts)
+
+      result ->
+        result
+    end
+  end
+
   defp stop_notch_mapping(socket) do
-    if socket.assigns.mapping_session_pid do
-      NotchMappingSession.cancel(socket.assigns.mapping_session_pid)
+    if lever_config_id = socket.assigns.mapping_lever_config_id do
+      # Synchronous stop so the session is gone before any subsequent start
+      Train.stop_notch_mapping(lever_config_id)
     end
 
     socket
     |> assign(:mapping_session_pid, nil)
+    |> assign(:mapping_lever_config_id, nil)
     |> assign(:mapping_state, nil)
   end
 
