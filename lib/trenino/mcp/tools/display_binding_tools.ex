@@ -31,6 +31,13 @@ defmodule Trenino.MCP.Tools.DisplayBindingTools do
             i2c_module_id: %{type: "integer"},
             endpoint: %{type: "string", description: "Simulator endpoint path"},
             format_string: %{type: "string", description: "e.g. '{value:.0f}' or '{value}'"},
+            unit: %{
+              type: "string",
+              enum: ["none", "kmh", "mph"],
+              description:
+                "Optional speed unit conversion applied to endpoints that report m/s. " <>
+                  "'none' (default) shows the raw value, 'kmh' converts to km/h, 'mph' to mph."
+            },
             enabled: %{type: "boolean"}
           },
           required: ["train_id", "i2c_module_id", "endpoint", "format_string"]
@@ -47,6 +54,11 @@ defmodule Trenino.MCP.Tools.DisplayBindingTools do
             i2c_module_id: %{type: "integer"},
             endpoint: %{type: "string"},
             format_string: %{type: "string"},
+            unit: %{
+              type: "string",
+              enum: ["none", "kmh", "mph"],
+              description: "Optional speed unit conversion applied to endpoints that report m/s."
+            },
             enabled: %{type: "boolean"}
           },
           required: ["id"]
@@ -118,7 +130,7 @@ defmodule Trenino.MCP.Tools.DisplayBindingTools do
 
   defp build_attrs(args) do
     args
-    |> Map.take(["name", "i2c_module_id", "endpoint", "format_string", "enabled"])
+    |> Map.take(["name", "i2c_module_id", "endpoint", "format_string", "unit", "enabled"])
     |> Enum.reduce(%{}, fn {k, v}, acc -> Map.put(acc, String.to_existing_atom(k), v) end)
   end
 
@@ -130,6 +142,7 @@ defmodule Trenino.MCP.Tools.DisplayBindingTools do
       name: b.name,
       endpoint: b.endpoint,
       format_string: b.format_string,
+      unit: b.unit,
       enabled: b.enabled
     }
   end

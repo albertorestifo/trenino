@@ -252,7 +252,8 @@ defmodule Trenino.Train.DisplayController do
 
   defp update_displays(state, entries, value) do
     Enum.reduce(entries, state, fn {id, info}, acc ->
-      clamped = clamp_to_min(value, info.binding.i2c_module.params)
+      converted = DisplayFormatter.convert(value, info.binding.unit)
+      clamped = clamp_to_min(converted, info.binding.i2c_module.params)
       text = DisplayFormatter.format(info.binding.format_string, clamped)
 
       update_display(acc, id, info, text)

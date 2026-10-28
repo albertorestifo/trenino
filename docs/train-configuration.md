@@ -203,9 +203,12 @@ Before creating display bindings:
    - **Name** — optional label (e.g., "Speed", "Brake Pressure")
    - **I2C Module** — select the display to write to
    - **Endpoint** — the simulator API path whose value you want to show (use the API Explorer to find paths)
+   - **Unit conversion** — optional speed conversion for endpoints that report m/s: choose **m/s → km/h** or **m/s → mph** to show the converted value; **None (as reported)** shows the raw value
    - **Decimal places** — how many fractional digits to show
    - **Custom format** — optional advanced formatting (see below)
 4. Save the binding
+
+The unit conversion is applied before formatting, so a format of `{value:.0f}` with **m/s → mph** shows whole mph. For other unit conversions or computed values, use a [Lua script](lua-scripting.md#displayseti2c_address-text) with `display.set()` instead.
 
 ### Format Strings
 

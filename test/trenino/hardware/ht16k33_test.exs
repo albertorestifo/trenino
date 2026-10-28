@@ -38,6 +38,27 @@ defmodule Trenino.Hardware.HT16K33Test do
       assert high == 0x00
     end
 
+    test "digit 0 encodes without middle vertical segments" do
+      <<low, high, _rest::binary>> = HT16K33.encode_string("0", params_14seg())
+      assert low == 0x3F
+      assert high == 0x00
+    end
+
+    test "digit 7 encodes without middle vertical segments" do
+      <<low, high, _rest::binary>> = HT16K33.encode_string("7", params_14seg())
+      assert low == 0x07
+      assert high == 0x00
+    end
+
+    test "all digits leave the high byte segments off" do
+      for digit <- 0..9 do
+        <<_low, high, _rest::binary>> =
+          HT16K33.encode_string(Integer.to_string(digit), params_14seg())
+
+        assert high == 0x00, "digit #{digit} unexpectedly lights high-byte segments"
+      end
+    end
+
     test "returns exactly num_digits * 2 bytes" do
       assert byte_size(HT16K33.encode_string("12", params_14seg(4))) == 8
       assert byte_size(HT16K33.encode_string("12345678", params_14seg(8))) == 16

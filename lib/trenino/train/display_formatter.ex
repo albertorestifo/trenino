@@ -7,6 +7,26 @@ defmodule Trenino.Train.DisplayFormatter do
   - `{value:.Nf}` — replaced with float formatted to N decimal places
   """
 
+  @mph_per_ms 2.23694
+  @kmh_per_ms 3.6
+
+  @doc """
+  Convert a speed reported in m/s to the display binding's target unit.
+
+  Supported units: `"none"` (no conversion), `"kmh"`, `"mph"`.
+  Non-numeric values pass through unchanged.
+  """
+  @spec convert(term(), String.t()) :: term()
+  def convert(value, unit)
+
+  def convert(value, "kmh") when is_number(value),
+    do: Float.round(value * @kmh_per_ms * 1.0, 2)
+
+  def convert(value, "mph") when is_number(value),
+    do: Float.round(value * @mph_per_ms * 1.0, 2)
+
+  def convert(value, _unit), do: value
+
   @doc "Validates value tokens; decimal precision must be between 0 and 10."
   @spec validate_format(String.t()) :: :ok | {:error, String.t()}
   def validate_format(format_string) when is_binary(format_string) do

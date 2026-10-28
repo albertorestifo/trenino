@@ -59,6 +59,7 @@ defmodule TreninoWeb.DisplayBindingWizard do
     |> assign(:format_string, format)
     |> assign(:format_mode, mode)
     |> assign(:decimals, decimals)
+    |> assign(:unit, (binding && binding.unit) || "none")
     |> assign(:name, (binding && binding.name) || "")
     |> assign(:save_error, nil)
     |> assign(:last_explorer_event, nil)
@@ -137,12 +138,13 @@ defmodule TreninoWeb.DisplayBindingWizard do
     |> assign(:format_mode, mode)
     |> assign(:decimals, decimals)
     |> assign(:format_string, format)
+    |> assign(:unit, Map.get(params, "unit", socket.assigns.unit))
     |> assign(:name, Map.get(params, "name", socket.assigns.name))
     |> assign(:save_error, nil)
   end
 
   defp save_binding(socket) do
-    params = Map.take(socket.assigns, [:endpoint, :format_string, :name])
+    params = Map.take(socket.assigns, [:endpoint, :format_string, :unit, :name])
     params = Map.put(params, :i2c_module_id, socket.assigns.selected_module_id)
 
     case socket.assigns.binding do
@@ -180,7 +182,13 @@ defmodule TreninoWeb.DisplayBindingWizard do
       end
 
     preview =
-      if is_nil(error), do: DisplayFormatter.format(assigns.format_string, 42.5), else: "—"
+      if is_nil(error),
+        do:
+          DisplayFormatter.format(
+            assigns.format_string,
+            DisplayFormatter.convert(42.5, assigns.unit)
+          ),
+        else: "—"
 
     overflow =
       selected && is_nil(error) &&
@@ -333,6 +341,18 @@ defmodule TreninoWeb.DisplayBindingWizard do
               value={@name}
               label="Name"
               placeholder="e.g. Train speed"
+            />
+            <.input
+              id="display-unit"
+              type="select"
+              name="unit"
+              label="Unit conversion"
+              value={@unit}
+              options={[
+                {"None (as reported)", "none"},
+                {"m/s → km/h", "kmh"},
+                {"m/s → mph", "mph"}
+              ]}
             />
             <.input
               id="display-decimals"

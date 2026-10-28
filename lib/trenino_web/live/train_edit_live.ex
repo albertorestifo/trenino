@@ -1774,7 +1774,11 @@ defmodule TreninoWeb.TrainEditLive do
                 else: "Display unavailable"}
             </p>
             <p class="font-mono text-xs break-all mt-2">{binding.endpoint}</p>
-            <p class="font-mono text-xs text-base-content/60 mt-1">{binding.format_string}</p>
+            <p class="font-mono text-xs text-base-content/60 mt-1">
+              {binding.format_string}
+              <span :if={binding.unit == "kmh"} class="badge badge-xs ml-1">m/s → km/h</span>
+              <span :if={binding.unit == "mph"} class="badge badge-xs ml-1">m/s → mph</span>
+            </p>
           </div>
           <div class="flex flex-wrap gap-2">
             <button

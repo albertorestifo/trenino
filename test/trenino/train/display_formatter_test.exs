@@ -76,4 +76,58 @@ defmodule Trenino.Train.DisplayFormatterTest do
       assert Keyword.has_key?(changeset.errors, :format_string)
     end
   end
+
+  describe "convert/2" do
+    test "none passes the value through" do
+      assert DisplayFormatter.convert(11.59, "none") == 11.59
+    end
+
+    test "converts m/s to km/h" do
+      assert DisplayFormatter.convert(10.0, "kmh") == 36.0
+    end
+
+    test "converts m/s to mph" do
+      assert DisplayFormatter.convert(44.704, "mph") == 100.0
+    end
+
+    test "rounds converted values to 2 decimals" do
+      assert DisplayFormatter.convert(11.590093612670898, "mph") == 25.93
+    end
+
+    test "non-numeric values pass through for any unit" do
+      assert DisplayFormatter.convert("STOP", "mph") == "STOP"
+      assert DisplayFormatter.convert(nil, "kmh") == nil
+    end
+  end
+
+  describe "binding changeset unit validation" do
+    test "accepts all supported units" do
+      for unit <- DisplayBinding.units() do
+        changeset =
+          DisplayBinding.changeset(%DisplayBinding{}, %{
+            train_id: 1,
+            i2c_module_id: 1,
+            endpoint: "Speed",
+            format_string: "{value}",
+            unit: unit
+          })
+
+        assert changeset.valid?, "expected unit #{unit} to be accepted"
+      end
+    end
+
+    test "rejects unsupported units" do
+      changeset =
+        DisplayBinding.changeset(%DisplayBinding{}, %{
+          train_id: 1,
+          i2c_module_id: 1,
+          endpoint: "Speed",
+          format_string: "{value}",
+          unit: "knots"
+        })
+
+      refute changeset.valid?
+      assert Keyword.has_key?(changeset.errors, :unit)
+    end
+  end
 end

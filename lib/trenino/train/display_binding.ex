@@ -7,6 +7,9 @@ defmodule Trenino.Train.DisplayBinding do
   - `{value}` — raw value as string
   - `{value:.Nf}` — float formatted to N decimal places
 
+  `unit` optionally converts a speed reported in m/s before formatting:
+  `"none"` (default, no conversion), `"kmh"`, or `"mph"`.
+
   `script_id` is a reserved nullable FK for future Lua scripting support. It is
   not cast in the current changeset; add `foreign_key_constraint(:script_id)` and
   include it in `cast/2` before using it.
@@ -14,6 +17,12 @@ defmodule Trenino.Train.DisplayBinding do
 
   use Ecto.Schema
   import Ecto.Changeset
+
+  @units ~w(none kmh mph)
+
+  @doc "Valid values for the `unit` field."
+  @spec units() :: [String.t()]
+  def units, do: @units
 
   alias Trenino.Hardware.I2cModule
   alias Trenino.Train.DisplayFormatter
@@ -26,6 +35,7 @@ defmodule Trenino.Train.DisplayBinding do
           name: String.t() | nil,
           endpoint: String.t() | nil,
           format_string: String.t(),
+          unit: String.t(),
           enabled: boolean(),
           script_id: integer() | nil,
           train: Train.t() | Ecto.Association.NotLoaded.t(),
@@ -38,6 +48,7 @@ defmodule Trenino.Train.DisplayBinding do
     field :name, :string
     field :endpoint, :string
     field :format_string, :string, default: "{value}"
+    field :unit, :string, default: "none"
     field :enabled, :boolean, default: true
     field :script_id, :integer
 
@@ -50,8 +61,9 @@ defmodule Trenino.Train.DisplayBinding do
   @spec changeset(t(), map()) :: Ecto.Changeset.t()
   def changeset(%__MODULE__{} = binding, attrs) do
     binding
-    |> cast(attrs, [:train_id, :i2c_module_id, :name, :endpoint, :format_string, :enabled])
+    |> cast(attrs, [:train_id, :i2c_module_id, :name, :endpoint, :format_string, :unit, :enabled])
     |> validate_required([:train_id, :i2c_module_id, :endpoint, :format_string])
+    |> validate_inclusion(:unit, @units)
     |> validate_length(:name, max: 100)
     |> validate_length(:format_string, min: 1, max: 200)
     |> validate_change(:format_string, fn :format_string, format ->

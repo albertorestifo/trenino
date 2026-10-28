@@ -6,6 +6,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- Display bindings support optional speed unit conversion (`m/s → km/h` or
+  `m/s → mph`) applied before formatting — also available as `unit` in the
+  `create_display_binding`/`update_display_binding` MCP tools.
+
+### Fixed
+
+- 14-segment display glyphs for `0` and `7` no longer light the middle
+  vertical segments.
+
 ## [0.8.2] - 2026-10-28
 
 ### Fixed
