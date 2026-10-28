@@ -124,7 +124,7 @@ pub fn run() {
             let backend_path = std::path::Path::new(&app_dir)
                 .join(format!("trenino_backend{}", std::env::consts::EXE_SUFFIX));
             let backend_cache_dir =
-                backend_cache::directory(&backend_path, &handle.path().app_cache_dir()?)?;
+                backend_cache::directory(&backend_path, &backend_cache::cache_root(&handle)?)?;
 
             let (mut rx, child) = match sidecar
                 // Burrito invokes Elixir's CLI, which otherwise exits after boot.

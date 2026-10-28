@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.8.1] - 2026-10-28
+
+### Fixed
+
+- Windows desktop startup honors `APPDATA`/`LOCALAPPDATA` environment overrides
+  when choosing the backend extraction cache, restoring the launcher-script
+  workaround for profiles with non-ASCII (e.g. Cyrillic) user directories;
+  Tauri's cache path always resolves the real profile folder, which the
+  bundled backend cannot boot from.
+
 ## [0.8.0] - 2026-10-25
 
 ### Added
