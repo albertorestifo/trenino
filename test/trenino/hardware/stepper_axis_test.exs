@@ -39,6 +39,19 @@ defmodule Trenino.Hardware.StepperAxisTest do
            }).valid?
   end
 
+  test "range errors identify the editable field" do
+    for {field, value} <- [
+          watchdog_ms: 99,
+          home_backoff: 1080,
+          shield_address: 95,
+          motor_port: 3,
+          home_direction: 0
+        ] do
+      cs = StepperAxis.changeset(%StepperAxis{device_id: 1}, %{field => value, :name => "Speed"})
+      assert Keyword.has_key?(cs.errors, field)
+    end
+  end
+
   test "motion edits clear commissioning; name edits preserve it" do
     axis = %StepperAxis{name: "Old", device_id: 1, commissioned: true}
     assert Ecto.Changeset.get_field(StepperAxis.changeset(axis, %{name: "New"}), :commissioned)

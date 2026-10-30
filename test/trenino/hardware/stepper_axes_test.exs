@@ -35,4 +35,25 @@ defmodule Trenino.Hardware.StepperAxesTest do
   test "foreign device rejected" do
     assert {:error, _} = Hardware.create_stepper_axis(-1, %{name: "Unknown"})
   end
+
+  test "a display cannot later claim the shield address" do
+    {:ok, device} = Hardware.create_device(%{name: "Shared bus"})
+    {:ok, _} = Hardware.create_stepper_axis(device.id, %{name: "Speed", shield_address: 112})
+
+    assert {:error, cs} =
+             Hardware.create_i2c_module(device.id, %{
+               module_chip: :ht16k33,
+               i2c_address: 112,
+               params: %{
+                 brightness: 8,
+                 num_digits: 4,
+                 display_type: :fourteen_segment,
+                 has_dot: false,
+                 align_right: true,
+                 min_value: 0.0
+               }
+             })
+
+    assert Keyword.has_key?(cs.errors, :i2c_address)
+  end
 end
