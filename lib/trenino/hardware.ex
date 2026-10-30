@@ -6,13 +6,173 @@ defmodule Trenino.Hardware do
   import Ecto.Query
 
   alias Trenino.Hardware.Calibration.{Calculator, SessionSupervisor}
-  alias Trenino.Hardware.{ConfigId, Device, I2cModule, Input, Matrix, Output}
+
+  alias Trenino.Hardware.{
+    ConfigId,
+    Device,
+    I2cModule,
+    Input,
+    Matrix,
+    Output,
+    StepperAxis,
+    StepperManager
+  }
+
   alias Trenino.Hardware.Input.Calibration
   alias Trenino.Hardware.Input.MatrixPin
   alias Trenino.Repo
   alias Trenino.Serial.Connection
   alias Trenino.Serial.Protocol.SetOutput
   alias Trenino.Serial.Protocol.WriteSegments
+
+  def list_stepper_axes(device_id),
+    do: Repo.all(from a in StepperAxis, where: a.device_id == ^device_id, order_by: a.axis_index)
+
+  def list_all_stepper_axes, do: Repo.all(StepperAxis) |> Repo.preload(:device)
+
+  def get_stepper_axis(id) when is_integer(id) and id > 0 do
+    case Repo.get(StepperAxis, id) do
+      nil -> {:error, :not_found}
+      axis -> {:ok, axis}
+    end
+  end
+
+  def get_stepper_axis(id) when is_binary(id) do
+    case Integer.parse(id) do
+      {n, ""} -> get_stepper_axis(n)
+      _ -> {:error, :not_found}
+    end
+  end
+
+  def get_stepper_axis(_), do: {:error, :not_found}
+
+  def create_stepper_axis(device_id, attrs),
+    do: save_stepper_axis(%StepperAxis{device_id: device_id}, attrs, :insert)
+
+  def update_stepper_axis(%StepperAxis{} = axis, attrs),
+    do: save_stepper_axis(axis, attrs, :update)
+
+  def update_stepper_shield_address(device_id, address)
+      when is_integer(address) and address in 96..119 do
+    Repo.transact(fn ->
+      axes = list_stepper_axes(device_id)
+
+      if Repo.exists?(
+           from m in I2cModule, where: m.device_id == ^device_id and m.i2c_address == ^address
+         ) do
+        {:error, :display_address_conflict}
+      else
+        Repo.update_all(from(a in StepperAxis, where: a.device_id == ^device_id),
+          set: [shield_address: address, commissioned: false]
+        )
+
+        Repo.update_all(
+          from(b in Trenino.Train.GaugeBinding,
+            where: b.stepper_axis_id in ^Enum.map(axes, & &1.id)
+          ),
+          set: [enabled: false]
+        )
+
+        {:ok, list_stepper_axes(device_id)}
+      end
+    end)
+    |> notify_gauge_configuration()
+  end
+
+  def delete_stepper_axis(%StepperAxis{} = axis) do
+    with :ok <- StepperManager.prepare_delete(axis.id),
+         {:ok, deleted} <- Repo.delete(axis) do
+      StepperManager.reconcile_device(axis.device_id)
+      notify_gauge_configuration({:ok, deleted})
+    end
+  end
+
+  defp save_stepper_axis(axis, attrs, operation) do
+    result =
+      Repo.transact(fn ->
+        cs = stepper_resource_changeset(axis, attrs)
+
+        case apply(Repo, operation, [cs]) do
+          {:ok, updated} ->
+            invalidate_gauge_calibration(axis, updated)
+            {:ok, updated}
+
+          error ->
+            error
+        end
+      end)
+
+    notify_gauge_configuration(result)
+  end
+
+  defp notify_gauge_configuration({:ok, _} = result) do
+    Phoenix.PubSub.broadcast(
+      Trenino.PubSub,
+      "train:gauges:configuration",
+      {:gauge_bindings_changed, :all}
+    )
+
+    result
+  end
+
+  defp notify_gauge_configuration(error), do: error
+
+  defp stepper_resource_changeset(axis, attrs) do
+    cs = StepperAxis.changeset(axis, attrs)
+
+    cs =
+      if axis.id && Ecto.Changeset.changed?(cs, :shield_address),
+        do:
+          Ecto.Changeset.add_error(
+            cs,
+            :shield_address,
+            "use Recommission shield address to change registered hardware"
+          ),
+        else: cs
+
+    cs =
+      if Repo.get(Device, axis.device_id),
+        do: cs,
+        else: Ecto.Changeset.add_error(cs, :device_id, "does not exist")
+
+    address = Ecto.Changeset.get_field(cs, :shield_address)
+    peers = list_stepper_axes(axis.device_id) |> Enum.reject(&(&1.id == axis.id))
+
+    cs =
+      if Enum.any?(peers, &(&1.shield_address != address)),
+        do:
+          Ecto.Changeset.add_error(
+            cs,
+            :shield_address,
+            "all axes must use the same shield address"
+          ),
+        else: cs
+
+    conflict =
+      is_integer(address) and
+        Repo.exists?(
+          from m in I2cModule,
+            where: m.device_id == ^axis.device_id and m.i2c_address == ^address
+        )
+
+    cs =
+      if conflict,
+        do: Ecto.Changeset.add_error(cs, :shield_address, "conflicts with a display address"),
+        else: cs
+
+    cs
+  end
+
+  defp invalidate_gauge_calibration(%StepperAxis{id: nil}, _), do: :ok
+
+  defp invalidate_gauge_calibration(old, updated) do
+    if old.mode != updated.mode or old.min_position != updated.min_position or
+         old.max_position != updated.max_position do
+      Repo.update_all(from(b in Trenino.Train.GaugeBinding, where: b.stepper_axis_id == ^old.id),
+        set: [enabled: false, calibration_valid: false]
+      )
+    end
+  end
 
   # Delegate configuration operations to ConfigurationManager
   defdelegate apply_configuration(port, device_id), to: Trenino.Hardware.ConfigurationManager
@@ -648,6 +808,7 @@ defmodule Trenino.Hardware do
   def create_i2c_module(device_id, attrs) do
     %I2cModule{device_id: device_id}
     |> I2cModule.changeset(attrs)
+    |> validate_stepper_display_conflict()
     |> Repo.insert()
   end
 
@@ -657,7 +818,22 @@ defmodule Trenino.Hardware do
   def update_i2c_module(%I2cModule{} = mod, attrs) do
     mod
     |> I2cModule.changeset(attrs)
+    |> validate_stepper_display_conflict()
     |> Repo.update()
+  end
+
+  defp validate_stepper_display_conflict(cs) do
+    device_id = Ecto.Changeset.get_field(cs, :device_id)
+    address = Ecto.Changeset.get_field(cs, :i2c_address)
+
+    if is_integer(address) and is_integer(device_id) and
+         Repo.exists?(
+           from a in StepperAxis,
+             where: a.device_id == ^device_id and a.shield_address == ^address
+         ),
+       do:
+         Ecto.Changeset.add_error(cs, :i2c_address, "conflicts with the stepper shield address"),
+       else: cs
   end
 
   @doc "Delete an i2c module."

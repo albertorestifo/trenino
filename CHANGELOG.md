@@ -11,11 +11,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Display bindings support optional speed unit conversion (`m/s → km/h` or
   `m/s → mph`) applied before formatting — also available as `unit` in the
   `create_display_binding`/`update_display_binding` MCP tools.
+- I2C display modules gain an **orientation** setting (`Normal`,
+  `Rotated 180°`, `Flipped horizontal`, `Flipped vertical`) for displays
+  mounted upside down or mirrored. Applied in software during segment
+  encoding, so it works for display bindings, Lua `display.set`, and the
+  display test — no firmware update needed. Also exposed as `orientation` in
+  the `create_i2c_module`/`update_i2c_module`/`list_i2c_modules` MCP tools.
 
 ### Fixed
 
 - 14-segment display glyphs for `0` and `7` no longer light the middle
   vertical segments.
+- MCP `create_i2c_module`/`update_i2c_module` silently dropped `brightness`
+  and `num_digits` (passed as top-level attrs instead of nested chip params);
+  they are now persisted, and chip params survive partial updates.
 
 ## [0.8.2] - 2026-10-28
 

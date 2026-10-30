@@ -26,6 +26,7 @@ defmodule Trenino.Train.Train do
     field :name, :string
     field :description, :string
     has_many :elements, Element
+    has_many :gauge_bindings, Trenino.Train.GaugeBinding
     has_many :identifiers, TrainIdentifier, on_replace: :delete
 
     timestamps(type: :utc_datetime)

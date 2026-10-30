@@ -6,6 +6,8 @@ defmodule TreninoWeb.ConfigurationEditLive do
   Configurations can be applied to any connected device.
   """
 
+  alias Trenino.Hardware.StepperManager
+
   use TreninoWeb, :live_view
 
   import TreninoWeb.NavComponents
@@ -113,6 +115,7 @@ defmodule TreninoWeb.ConfigurationEditLive do
      |> assign(:show_apply_modal, false)
      |> assign(:show_delete_modal, false)
      |> assign(:i2c_modules, [])
+     |> assign(:stepper_count, 0)
      |> assign(:i2c_modal_open, false)
      |> assign(:i2c_modal_module, nil)}
   end
@@ -121,6 +124,7 @@ defmodule TreninoWeb.ConfigurationEditLive do
     case Hardware.get_device_by_config_id(config_id) do
       {:ok, device} ->
         maybe_subscribe_on_connect(socket, config_id)
+        if connected?(socket), do: StepperManager.subscribe(device.id)
 
         {:ok, inputs} = Hardware.list_inputs(device.id)
         {:ok, matrices} = Hardware.list_matrices(device.id)
@@ -160,6 +164,7 @@ defmodule TreninoWeb.ConfigurationEditLive do
          |> assign(:show_apply_modal, false)
          |> assign(:show_delete_modal, false)
          |> assign(:i2c_modules, i2c_modules)
+         |> assign(:stepper_count, length(Hardware.list_stepper_axes(device.id)))
          |> assign(:i2c_modal_open, false)
          |> assign(:i2c_modal_module, nil)}
 
@@ -480,26 +485,36 @@ defmodule TreninoWeb.ConfigurationEditLive do
 
   @impl true
   def handle_event("apply_to_device", %{"port" => port}, socket) do
-    socket =
-      socket
-      |> assign(:applying, true)
-      |> assign(:show_apply_modal, false)
+    if Hardware.list_stepper_axes(socket.assigns.device.id) != [] and
+         not Map.get(socket.assigns, :stepper_registration_acknowledged, false) do
+      {:noreply,
+       put_flash(
+         socket,
+         :error,
+         "Acknowledge the shield registration order in Stepper axes before Apply."
+       )}
+    else
+      socket =
+        socket
+        |> assign(:applying, true)
+        |> assign(:show_apply_modal, false)
 
-    case Hardware.apply_configuration(port, socket.assigns.device.id) do
-      {:ok, _config_id} ->
-        {:noreply, socket}
+      case Hardware.apply_configuration(port, socket.assigns.device.id) do
+        {:ok, _config_id} ->
+          {:noreply, socket}
 
-      {:error, :no_inputs} ->
-        {:noreply,
-         socket
-         |> assign(:applying, false)
-         |> put_flash(:error, "Cannot apply empty configuration. Add at least one input.")}
+        {:error, :no_inputs} ->
+          {:noreply,
+           socket
+           |> assign(:applying, false)
+           |> put_flash(:error, "Cannot apply empty configuration. Add at least one input.")}
 
-      {:error, reason} ->
-        {:noreply,
-         socket
-         |> assign(:applying, false)
-         |> put_flash(:error, "Failed to apply: #{inspect(reason)}")}
+        {:error, reason} ->
+          {:noreply,
+           socket
+           |> assign(:applying, false)
+           |> put_flash(:error, "Failed to apply: #{inspect(reason)}")}
+      end
     end
   end
 
@@ -917,6 +932,25 @@ defmodule TreninoWeb.ConfigurationEditLive do
   end
 
   @impl true
+  def handle_info({:stepper_updated, device_id, snapshot}, socket) do
+    if socket.assigns.device.id == device_id do
+      send_update(TreninoWeb.StepperAxisFormComponent, id: "stepper-setup", snapshot: snapshot)
+    end
+
+    {:noreply, socket}
+  end
+
+  def handle_info({:stepper_axis_saved, _axis}, socket) do
+    {:noreply,
+     assign(socket, :stepper_count, length(Hardware.list_stepper_axes(socket.assigns.device.id)))}
+  end
+
+  def handle_info({:stepper_registration_acknowledged, id}, socket) do
+    if id == socket.assigns.device.id,
+      do: {:noreply, assign(socket, :stepper_registration_acknowledged, true)},
+      else: {:noreply, socket}
+  end
+
   def handle_info(_msg, socket), do: {:noreply, socket}
 
   defp display_test_texts(4), do: ["8888", "1234", "ABCD", "    "]
@@ -956,7 +990,8 @@ defmodule TreninoWeb.ConfigurationEditLive do
           active_port={@active_port}
           new_mode={@new_mode}
           can_apply={
-            (length(@inputs) > 0 or length(@matrices) > 0) and not Enum.empty?(@connected_devices)
+            (length(@inputs) > 0 or length(@matrices) > 0 or length(@i2c_modules) > 0 or
+               @stepper_count > 0) and not Enum.empty?(@connected_devices)
           }
           applying={@applying}
         />
@@ -992,6 +1027,13 @@ defmodule TreninoWeb.ConfigurationEditLive do
             active_port={@active_port}
           />
         </div>
+
+        <.live_component
+          :if={not @new_mode}
+          module={TreninoWeb.StepperAxisFormComponent}
+          id="stepper-setup"
+          device_id={@device.id}
+        />
 
         <.danger_zone
           :if={not @new_mode}

@@ -6,6 +6,8 @@ defmodule TreninoWeb.TrainEditLive do
   Allows managing train elements (levers, etc.) and their configurations.
   """
 
+  alias Trenino.Train.GaugeController
+
   use TreninoWeb, :live_view
 
   require Logger
@@ -136,6 +138,7 @@ defmodule TreninoWeb.TrainEditLive do
         sequences = TrainContext.list_sequences(train.id)
         output_bindings = TrainContext.list_output_bindings(train.id)
         display_bindings = TrainContext.list_display_bindings(train.id)
+        if connected?(socket), do: GaugeController.subscribe(train.id)
         scripts = TrainContext.list_scripts(train.id)
         available_outputs = load_available_outputs()
 
@@ -756,6 +759,11 @@ defmodule TreninoWeb.TrainEditLive do
 
   # API Explorer component events - forward to appropriate wizard
   @impl true
+  def handle_info({:api_explorer_select, "gauge:" <> _ = field, path}, socket) do
+    send_update(TreninoWeb.GaugeBindingWizard, id: "gauge-setup", explorer_event: {field, path})
+    {:noreply, socket}
+  end
+
   def handle_info({:api_explorer_select, field, path}, socket) do
     cond do
       socket.assigns.show_lever_setup_wizard ->
@@ -1144,6 +1152,11 @@ defmodule TreninoWeb.TrainEditLive do
   end
 
   @impl true
+  def handle_info({:gauge_binding_updated, id, status}, socket) do
+    send_update(TreninoWeb.GaugeBindingWizard, id: "gauge-setup", runtime_event: {id, status})
+    {:noreply, socket}
+  end
+
   def handle_info(_msg, socket), do: {:noreply, socket}
 
   # Private functions
@@ -1373,6 +1386,12 @@ defmodule TreninoWeb.TrainEditLive do
           aria-labelledby="displays-lights-title"
         >
           <h2 id="displays-lights-title" class="text-lg font-semibold mb-3">Displays &amp; lights</h2>
+          <.live_component
+            module={TreninoWeb.GaugeBindingWizard}
+            id="gauge-setup"
+            train_id={@train.id}
+            client={@nav_simulator_status.client}
+          />
           <div class="bg-base-200/50 rounded-xl p-4 sm:p-6 space-y-6">
             <.display_bindings_section
               display_bindings={@display_bindings}
