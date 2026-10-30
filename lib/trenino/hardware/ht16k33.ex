@@ -285,17 +285,27 @@ defmodule Trenino.Hardware.HT16K33 do
 
   The string is truncated if too long and padded with blanks if too short.
   Characters not in the font table render as blank (all segments off).
+
+  `params.orientation` re-orients the output for physically rotated or
+  mirrored displays: it remaps each digit's segment bits and, for
+  `:rotated_180` and `:flipped_horizontal`, reverses the digit order.
   """
   @spec encode_string(String.t(), Params.t()) :: binary()
   def encode_string(text, %Params{display_type: :fourteen_segment} = params)
       when is_binary(text) do
     aligned = maybe_align_right(text, params.num_digits, params.align_right, params.has_dot)
-    encode_14seg(aligned, params.num_digits)
+
+    aligned
+    |> encode_14seg(params.num_digits)
+    |> apply_orientation(params)
   end
 
   def encode_string(text, %Params{display_type: :seven_segment} = params) when is_binary(text) do
     aligned = maybe_align_right(text, params.num_digits, params.align_right, params.has_dot)
-    encode_7seg(aligned, params.num_digits, params.has_dot)
+
+    aligned
+    |> encode_7seg(params.num_digits, params.has_dot)
+    |> apply_orientation(params)
   end
 
   defp maybe_align_right(text, _num_digits, false, _has_dot), do: text
@@ -350,5 +360,68 @@ defmodule Trenino.Hardware.HT16K33 do
   defp accumulate_7seg_char(char, acc, remaining, _has_dot) do
     byte = Map.get(@seg7_table, char, @blank_7)
     {[byte | acc], remaining - 1}
+  end
+
+  # Orientation transforms: permute each digit's segment bits and, for
+  # rotated_180 / flipped_horizontal, reverse the digit order.
+  #
+  # 14-segment physical layout (Adafruit backpack wiring):
+  #   bit 0=A(top), 1=B(upper-right), 2=C(lower-right), 3=D(bottom),
+  #   4=E(lower-left), 5=F(upper-left), 6=G1(mid-left), 7=G2(mid-right),
+  #   8=H(diag upper-left), 9=I(center-top), 10=J(diag upper-right),
+  #   11=K(diag lower-right), 12=L(center-bottom), 13=M(diag lower-left), 14=DP
+  #
+  # 7-segment: bits 0-6 = segments A-G (same positions as above), bit 7 = DP.
+  #
+  # The decimal point bit is left untouched: it stays on its digit, which moves
+  # with the digit-order reversal.
+  @flip_vertical_14 [{0, 3}, {1, 2}, {4, 5}, {8, 13}, {9, 12}, {10, 11}]
+  @flip_horizontal_14 [{1, 5}, {2, 4}, {6, 7}, {8, 10}, {11, 13}]
+  @rotated_180_14 [{0, 3}, {1, 4}, {2, 5}, {6, 7}, {8, 11}, {9, 12}, {10, 13}]
+
+  @flip_vertical_7 [{0, 3}, {1, 2}, {4, 5}]
+  @flip_horizontal_7 [{1, 5}, {2, 4}]
+  @rotated_180_7 [{0, 3}, {1, 4}, {2, 5}]
+
+  defp apply_orientation(binary, %Params{orientation: :normal}), do: binary
+
+  defp apply_orientation(binary, %Params{} = params) do
+    chunk_size = if params.display_type == :fourteen_segment, do: 2, else: 1
+
+    digits =
+      for <<digit::binary-size(^chunk_size) <- binary>> do
+        permute_digit(digit, params.display_type, params.orientation)
+      end
+
+    digits =
+      if params.orientation in [:rotated_180, :flipped_horizontal],
+        do: Enum.reverse(digits),
+        else: digits
+
+    IO.iodata_to_binary(digits)
+  end
+
+  defp permute_digit(<<low, high>>, :fourteen_segment, orientation) do
+    permuted = permute_bits(low ||| high <<< 8, swaps(:fourteen_segment, orientation))
+    <<permuted &&& 0xFF, permuted >>> 8>>
+  end
+
+  defp permute_digit(<<byte>>, :seven_segment, orientation) do
+    <<permute_bits(byte, swaps(:seven_segment, orientation))>>
+  end
+
+  defp swaps(:fourteen_segment, :rotated_180), do: @rotated_180_14
+  defp swaps(:fourteen_segment, :flipped_horizontal), do: @flip_horizontal_14
+  defp swaps(:fourteen_segment, :flipped_vertical), do: @flip_vertical_14
+  defp swaps(:seven_segment, :rotated_180), do: @rotated_180_7
+  defp swaps(:seven_segment, :flipped_horizontal), do: @flip_horizontal_7
+  defp swaps(:seven_segment, :flipped_vertical), do: @flip_vertical_7
+
+  defp permute_bits(value, swaps) do
+    Enum.reduce(swaps, value, fn {a, b}, acc ->
+      bit_a = acc >>> a &&& 1
+      bit_b = acc >>> b &&& 1
+      (acc &&& bnot(1 <<< a) &&& bnot(1 <<< b)) ||| bit_a <<< b ||| bit_b <<< a
+    end)
   end
 end

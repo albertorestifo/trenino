@@ -4,8 +4,19 @@ defmodule Trenino.MCP.Tools.DeviceTools do
   """
 
   alias Trenino.Hardware
+  alias Trenino.Hardware.HT16K33.Params, as: HT16K33Params
   alias Trenino.Hardware.I2cModule
   alias Trenino.Repo
+
+  # Chip params accepted by create/update_i2c_module. display_type and has_dot
+  # are included because PolymorphicEmbed identifies the embed type by them.
+  @i2c_param_keys ~w(brightness num_digits display_type has_dot align_right min_value orientation)
+
+  defp i2c_param_overrides(args) do
+    args
+    |> Map.take(@i2c_param_keys)
+    |> Enum.reduce(%{}, fn {k, v}, acc -> Map.put(acc, String.to_existing_atom(k), v) end)
+  end
 
   def tools do
     [
@@ -50,7 +61,7 @@ defmodule Trenino.MCP.Tools.DeviceTools do
       %{
         name: "create_i2c_module",
         description:
-          "Add an I2C module to a device. i2c_address accepts decimal (112) or hex (0x70). module_chip must be 'ht16k33'. brightness 0–15. num_digits 4 or 8.",
+          "Add an I2C module to a device. i2c_address accepts decimal (112) or hex (0x70). module_chip must be 'ht16k33'. brightness 0–15. num_digits 4 or 8. orientation re-orients the display ('normal', 'rotated_180', 'flipped_horizontal', 'flipped_vertical').",
         input_schema: %{
           type: "object",
           properties: %{
@@ -62,21 +73,31 @@ defmodule Trenino.MCP.Tools.DeviceTools do
               description: "I2C address: decimal '112' or hex '0x70'"
             },
             brightness: %{type: "integer", description: "0–15"},
-            num_digits: %{type: "integer", enum: [4, 8]}
+            num_digits: %{type: "integer", enum: [4, 8]},
+            orientation: %{
+              type: "string",
+              enum: ["normal", "rotated_180", "flipped_horizontal", "flipped_vertical"],
+              description: "Display orientation for physically rotated/mirrored mounts"
+            }
           },
           required: ["device_id", "module_chip", "i2c_address"]
         }
       },
       %{
         name: "update_i2c_module",
-        description: "Update an I2C module's name, brightness, or num_digits.",
+        description: "Update an I2C module's name, brightness, num_digits, or orientation.",
         input_schema: %{
           type: "object",
           properties: %{
             id: %{type: "integer"},
             name: %{type: "string"},
             brightness: %{type: "integer", description: "0–15"},
-            num_digits: %{type: "integer", enum: [4, 8]}
+            num_digits: %{type: "integer", enum: [4, 8]},
+            orientation: %{
+              type: "string",
+              enum: ["normal", "rotated_180", "flipped_horizontal", "flipped_vertical"],
+              description: "Display orientation for physically rotated/mirrored mounts"
+            }
           },
           required: ["id"]
         }
@@ -151,10 +172,14 @@ defmodule Trenino.MCP.Tools.DeviceTools do
       {:ok, addr} ->
         attrs =
           args
-          |> Map.take(["name", "module_chip", "brightness", "num_digits"])
+          |> Map.take(["name", "module_chip"])
           |> Enum.reduce(%{i2c_address: addr}, fn {k, v}, acc ->
             Map.put(acc, String.to_existing_atom(k), v)
           end)
+          |> Map.put(
+            :params,
+            Map.merge(Map.from_struct(%HT16K33Params{}), i2c_param_overrides(args))
+          )
 
         case Hardware.create_i2c_module(device_id, attrs) do
           {:ok, mod} -> {:ok, %{i2c_module: serialize_i2c_module(Repo.preload(mod, :device))}}
@@ -170,8 +195,18 @@ defmodule Trenino.MCP.Tools.DeviceTools do
     case Hardware.get_i2c_module(id) do
       {:ok, mod} ->
         attrs =
-          Map.take(args, ["name", "brightness", "num_digits"])
+          args
+          |> Map.take(["name"])
           |> Enum.reduce(%{}, fn {k, v}, acc -> Map.put(acc, String.to_existing_atom(k), v) end)
+
+        overrides = i2c_param_overrides(args)
+
+        attrs =
+          if map_size(overrides) > 0 do
+            Map.put(attrs, :params, Map.merge(Map.from_struct(mod.params), overrides))
+          else
+            attrs
+          end
 
         case Hardware.update_i2c_module(mod, attrs) do
           {:ok, updated} ->
@@ -215,7 +250,8 @@ defmodule Trenino.MCP.Tools.DeviceTools do
       display_type: mod.params.display_type,
       has_dot: mod.params.has_dot,
       align_right: mod.params.align_right,
-      min_value: mod.params.min_value
+      min_value: mod.params.min_value,
+      orientation: mod.params.orientation
     }
   end
 

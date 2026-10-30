@@ -84,8 +84,14 @@ defmodule TreninoWeb.I2cModuleFormComponent do
         display_type: Map.get(raw, "display_type"),
         has_dot: Map.get(raw, "has_dot") == "true",
         align_right: Map.get(raw, "align_right") == "true",
-        min_value: normalize_minimum(Map.get(raw, "min_value", "0"))
+        min_value: normalize_minimum(Map.get(raw, "min_value", "0")),
+        orientation: Map.get(raw, "orientation")
       }
+      # Drop a missing orientation so updates keep the stored value instead of
+      # casting nil into a required field.
+      |> then(fn params ->
+        if params.orientation, do: params, else: Map.delete(params, :orientation)
+      end)
     }
   end
 
@@ -154,6 +160,23 @@ defmodule TreninoWeb.I2cModuleFormComponent do
             value={current_num_digits(@form)}
             options={[{"4 digits", 4}, {"8 digits", 8}]}
           />
+          <.input
+            id="display-orientation"
+            type="select"
+            name="i2c_module[orientation]"
+            label="Orientation"
+            value={current_orientation(@form)}
+            options={[
+              {"Normal", "normal"},
+              {"Rotated 180°", "rotated_180"},
+              {"Flipped horizontal", "flipped_horizontal"},
+              {"Flipped vertical", "flipped_vertical"}
+            ]}
+            aria-describedby="display-orientation-hint"
+          />
+          <p id="display-orientation-hint" class="text-xs text-base-content/60">
+            Use if the display is mounted upside down or mirrored.
+          </p>
           <details
             id="display-advanced"
             open={not @params_form.source.valid?}
@@ -234,6 +257,10 @@ defmodule TreninoWeb.I2cModuleFormComponent do
     do: form |> current_params() |> Map.get(:display_type) |> to_string()
 
   defp current_num_digits(form), do: form |> current_params() |> Map.get(:num_digits)
+
+  defp current_orientation(form),
+    do: form |> current_params() |> Map.get(:orientation) |> to_string()
+
   defp current_align_right(form), do: form |> current_params() |> Map.get(:align_right)
   defp current_has_dot(form), do: form |> current_params() |> Map.get(:has_dot)
 end
