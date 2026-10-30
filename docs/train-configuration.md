@@ -360,3 +360,7 @@ Common paths to explore:
 1. Re-run notch mapping wizard
 2. Verify notch boundaries don't overlap
 3. Check input calibration accuracy
+
+## Physical gauges
+
+The train editor's Gauges section configures continuous physical dials. See [Stepper gauges](stepper-gauges.md) for hardware registration, commissioning, calibration, reference loss, Class 323 starter and MCP control. Firmware 3.1.0 or newer is required.
