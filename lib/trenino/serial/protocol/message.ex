@@ -15,6 +15,8 @@ defmodule Trenino.Serial.Protocol.Message do
     RetryCalibration,
     SetModuleBrightness,
     SetOutput,
+    StepperCommand,
+    StepperStatus,
     WriteSegments
   }
 
@@ -51,6 +53,8 @@ defmodule Trenino.Serial.Protocol.Message do
   def decode(<<0x0D, rest::binary>>), do: WriteSegments.decode_body(rest)
   def decode(<<0x0E, rest::binary>>), do: SetModuleBrightness.decode_body(rest)
   def decode(<<0x0F, rest::binary>>), do: ModuleError.decode_body(rest)
+  def decode(<<0x10, rest::binary>>), do: StepperCommand.decode_body(rest)
+  def decode(<<0x11, rest::binary>>), do: StepperStatus.decode_body(rest)
   def decode(<<_unknown, _rest::binary>>), do: {:error, :unknown_message_type}
   def decode(<<>>), do: {:error, :insufficient_data}
   def decode(_), do: {:error, :invalid_input}
