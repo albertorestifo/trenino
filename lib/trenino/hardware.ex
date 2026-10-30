@@ -6,13 +6,69 @@ defmodule Trenino.Hardware do
   import Ecto.Query
 
   alias Trenino.Hardware.Calibration.{Calculator, SessionSupervisor}
-  alias Trenino.Hardware.{ConfigId, Device, I2cModule, Input, Matrix, Output}
+  alias Trenino.Hardware.{ConfigId, Device, I2cModule, Input, Matrix, Output, StepperAxis}
   alias Trenino.Hardware.Input.Calibration
   alias Trenino.Hardware.Input.MatrixPin
   alias Trenino.Repo
   alias Trenino.Serial.Connection
   alias Trenino.Serial.Protocol.SetOutput
   alias Trenino.Serial.Protocol.WriteSegments
+
+  def list_stepper_axes(device_id),
+    do: Repo.all(from a in StepperAxis, where: a.device_id == ^device_id, order_by: a.axis_index)
+
+  def list_all_stepper_axes, do: Repo.all(StepperAxis) |> Repo.preload(:device)
+
+  def get_stepper_axis(id) do
+    case Repo.get(StepperAxis, id) do
+      nil -> {:error, :not_found}
+      axis -> {:ok, axis}
+    end
+  end
+
+  def create_stepper_axis(device_id, attrs),
+    do: save_stepper_axis(%StepperAxis{device_id: device_id}, attrs, :insert)
+
+  def update_stepper_axis(%StepperAxis{} = axis, attrs),
+    do: save_stepper_axis(axis, attrs, :update)
+
+  def delete_stepper_axis(%StepperAxis{} = axis), do: Repo.delete(axis)
+
+  defp save_stepper_axis(axis, attrs, operation) do
+    Repo.transact(fn ->
+      cs = StepperAxis.changeset(axis, attrs)
+
+      cs =
+        if Repo.get(Device, axis.device_id),
+          do: cs,
+          else: Ecto.Changeset.add_error(cs, :device_id, "does not exist")
+
+      address = Ecto.Changeset.get_field(cs, :shield_address)
+      peers = list_stepper_axes(axis.device_id) |> Enum.reject(&(&1.id == axis.id))
+
+      cs =
+        if Enum.any?(peers, &(&1.shield_address != address)),
+          do:
+            Ecto.Changeset.add_error(
+              cs,
+              :shield_address,
+              "all axes must use the same shield address"
+            ),
+          else: cs
+
+      conflict =
+        Repo.exists?(
+          from m in I2cModule, where: m.device_id == ^axis.device_id and m.i2c_address == ^address
+        )
+
+      cs =
+        if conflict,
+          do: Ecto.Changeset.add_error(cs, :shield_address, "conflicts with a display address"),
+          else: cs
+
+      apply(Repo, operation, [cs])
+    end)
+  end
 
   # Delegate configuration operations to ConfigurationManager
   defdelegate apply_configuration(port, device_id), to: Trenino.Hardware.ConfigurationManager
