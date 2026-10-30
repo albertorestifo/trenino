@@ -22,6 +22,7 @@ Mimic.copy(Trenino.Serial.Discovery, type_check: true)
 Mimic.copy(Trenino.Firmware.Avrdude)
 Mimic.copy(Trenino.Firmware.AvrdudeRunner)
 Mimic.copy(Trenino.Serial.Connection)
+Mimic.copy(Trenino.Hardware.StepperManager, type_check: true)
 # Virtual joystick configuration tests inject their platform and system adapters
 # through application configuration so they never elevate or probe a real driver.
 

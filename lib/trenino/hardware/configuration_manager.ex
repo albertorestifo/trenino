@@ -17,6 +17,7 @@ defmodule Trenino.Hardware.ConfigurationManager do
   alias Trenino.Hardware
   alias Trenino.Hardware.I2cModule
   alias Trenino.Hardware.Input
+  alias Trenino.Hardware.StepperManager
   alias Trenino.Serial.Connection
 
   alias Trenino.Serial.Protocol.ConfigurationError
@@ -149,14 +150,34 @@ defmodule Trenino.Hardware.ConfigurationManager do
   @impl true
   def handle_info({:devices_updated, devices}, %State{} = state) do
     # Clear input values for disconnected devices
-    connected_ports = MapSet.new(devices, & &1.port)
+    connected_ports =
+      devices
+      |> Enum.filter(&(Map.get(&1, :status, :connected) == :connected))
+      |> MapSet.new(& &1.port)
 
     new_input_values =
       Map.filter(state.input_values, fn {port, _} ->
         MapSet.member?(connected_ports, port)
       end)
 
-    {:noreply, %{state | input_values: new_input_values}}
+    {active, disconnected} =
+      Enum.split_with(state.in_flight, fn {_, info} ->
+        MapSet.member?(connected_ports, info.port)
+      end)
+
+    Enum.each(disconnected, fn {_, info} ->
+      Process.cancel_timer(info.timer_ref)
+
+      StepperManager.finish_deployment(
+        info.port,
+        Map.get(info, :stepper_token),
+        {:error, :disconnected}
+      )
+
+      broadcast_config_event({:configuration_failed, info.port, info.device_id, :disconnected})
+    end)
+
+    {:noreply, %{state | input_values: new_input_values, in_flight: Map.new(active)}}
   end
 
   @impl true
@@ -168,7 +189,7 @@ defmodule Trenino.Hardware.ConfigurationManager do
       {nil, _} ->
         {:noreply, state}
 
-      {%{timer_ref: timer_ref, device_id: device_id}, new_in_flight} ->
+      {%{port: ^port, timer_ref: timer_ref, device_id: device_id} = info, new_in_flight} ->
         Process.cancel_timer(timer_ref)
 
         case Hardware.confirm_configuration(device_id, config_id) do
@@ -176,14 +197,24 @@ defmodule Trenino.Hardware.ConfigurationManager do
             Logger.info("Configuration #{config_id} successfully stored on device")
             # Update the device connection's config_id to match
             Connection.update_device_config_id(port, config_id)
+            StepperManager.finish_deployment(port, Map.get(info, :stepper_token), :ok)
             broadcast_config_event({:configuration_applied, port, device, config_id})
             {:noreply, %{state | in_flight: new_in_flight}}
 
           {:error, reason} ->
+            StepperManager.finish_deployment(
+              port,
+              Map.get(info, :stepper_token),
+              {:error, reason}
+            )
+
             Logger.error("Failed to update device with config_id: #{inspect(reason)}")
             broadcast_config_event({:configuration_failed, port, device_id, reason})
             {:noreply, %{state | in_flight: new_in_flight}}
         end
+
+      {_wrong_port, _} ->
+        {:noreply, state}
     end
   end
 
@@ -196,11 +227,21 @@ defmodule Trenino.Hardware.ConfigurationManager do
       {nil, _} ->
         {:noreply, state}
 
-      {%{timer_ref: timer_ref, device_id: device_id}, new_in_flight} ->
+      {%{port: ^port, timer_ref: timer_ref, device_id: device_id} = info, new_in_flight} ->
         Process.cancel_timer(timer_ref)
         Logger.error("Configuration #{config_id} rejected by device")
+
+        StepperManager.finish_deployment(
+          port,
+          Map.get(info, :stepper_token),
+          {:error, :device_rejected}
+        )
+
         broadcast_config_event({:configuration_failed, port, device_id, :device_rejected})
         {:noreply, %{state | in_flight: new_in_flight}}
+
+      {_wrong_port, _} ->
+        {:noreply, state}
     end
   end
 
@@ -242,8 +283,9 @@ defmodule Trenino.Hardware.ConfigurationManager do
       {nil, _} ->
         {:noreply, state}
 
-      {%{port: port, device_id: device_id}, new_in_flight} ->
+      {%{port: port, device_id: device_id} = info, new_in_flight} ->
         Logger.error("Configuration #{config_id} timed out")
+        StepperManager.finish_deployment(port, Map.get(info, :stepper_token), {:error, :timeout})
         broadcast_config_event({:configuration_failed, port, device_id, :timeout})
         {:noreply, %{state | in_flight: new_in_flight}}
     end
@@ -268,22 +310,64 @@ defmodule Trenino.Hardware.ConfigurationManager do
   end
 
   defp do_apply_configuration(port, device_id, %State{} = state) do
-    with {:ok, device} <- Hardware.get_device(device_id),
+    with false <- Enum.any?(state.in_flight, fn {_, info} -> info.port == port end),
+         {:ok, device} <- Hardware.get_device(device_id),
          {:ok, inputs} <- Hardware.list_inputs(device_id),
          {:ok, matrices} <- Hardware.list_matrices(device_id),
          i2c_modules = Hardware.list_i2c_modules(device_id),
-         :ok <- validate_configuration(inputs, matrices, i2c_modules),
+         :ok <- validate_configuration(port, device_id, inputs, matrices, i2c_modules),
          config_id = device.config_id,
-         :ok <- send_configuration_messages(port, config_id, inputs, matrices, i2c_modules) do
-      timer_ref = Process.send_after(self(), {:config_timeout, config_id}, @config_timeout_ms)
-      in_flight_info = %{port: port, timer_ref: timer_ref, device_id: device_id}
-      new_in_flight = Map.put(state.in_flight, config_id, in_flight_info)
-      {:ok, config_id, %{state | in_flight: new_in_flight}}
+         {:ok, token} <- StepperManager.begin_deployment(port) do
+      case send_configuration_messages(port, config_id, inputs, matrices, i2c_modules) do
+        :ok ->
+          timer_ref = Process.send_after(self(), {:config_timeout, config_id}, @config_timeout_ms)
+
+          in_flight_info = %{
+            port: port,
+            timer_ref: timer_ref,
+            device_id: device_id,
+            stepper_token: token
+          }
+
+          new_in_flight = Map.put(state.in_flight, config_id, in_flight_info)
+          {:ok, config_id, %{state | in_flight: new_in_flight}}
+
+        error ->
+          StepperManager.finish_deployment(port, token, error)
+          error
+      end
+    else
+      true -> {:error, :busy}
+      error -> error
     end
   end
 
-  defp validate_configuration([], [], []), do: {:error, :no_inputs}
-  defp validate_configuration(_inputs, _matrices, _i2c_modules), do: :ok
+  defp validate_configuration(port, device_id, [], [], []) do
+    case Hardware.list_stepper_axes(device_id) do
+      [] ->
+        {:error, :no_inputs}
+
+      _ ->
+        conn = Enum.find(Connection.connected_devices(), &(&1.port == port))
+
+        with %{device_version: version} <- conn,
+             {:ok, parsed} <- Version.parse(version),
+             true <- Version.compare(parsed, "3.1.0") != :lt and parsed.pre == [],
+             do: :ok,
+             else: (_ -> {:error, :firmware_update_required})
+    end
+  end
+
+  defp validate_configuration(_port, _device_id, _inputs, _matrices, _i2c_modules), do: :ok
+
+  defp send_configuration_messages(port, config_id, [], [], []) do
+    Connection.send_message(port, %Configure{
+      config_id: config_id,
+      total_parts: 0,
+      part_number: 0,
+      input_type: :empty
+    })
+  end
 
   defp send_configuration_messages(port, config_id, inputs, matrices, i2c_modules) do
     config_parts = build_config_parts(inputs, matrices, i2c_modules)

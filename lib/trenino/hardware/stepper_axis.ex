@@ -52,6 +52,7 @@ defmodule Trenino.Hardware.StepperAxis do
     |> validate_required([:name, :device_id, :axis_index] ++ @motion_fields)
     |> validate_length(:name, max: 100)
     |> validate_inclusion(:axis_index, [0, 1])
+    |> validate_ranges()
     |> validate_configuration()
     |> clear_commissioning()
     |> validate_startup()
@@ -65,7 +66,7 @@ defmodule Trenino.Hardware.StepperAxis do
     do: struct(StepperConfiguration, Map.take(Map.from_struct(axis), @motion_fields))
 
   def motion_changed?(%Ecto.Changeset{} = cs),
-    do: Enum.any?(@motion_fields, &Map.has_key?(cs.changes, &1))
+    do: Enum.any?([:axis_index | @motion_fields], &Map.has_key?(cs.changes, &1))
 
   def auto_home?(%__MODULE__{} = a),
     do:
@@ -107,6 +108,50 @@ defmodule Trenino.Hardware.StepperAxis do
     else
       cs
     end
+  end
+
+  defp validate_ranges(cs) do
+    cs =
+      Enum.reduce(
+        [
+          {:shield_address, 96, 119},
+          {:motor_port, 1, 2},
+          {:min_position, -1_000_000, 1_000_000},
+          {:max_position, -1_000_000, 1_000_000},
+          {:max_speed, 1, 200},
+          {:acceleration, 1, 10_000},
+          {:watchdog_ms, 100, 60_000},
+          {:home_steps, 1, 65_535},
+          {:home_speed, 1, 200},
+          {:home_timeout_ms, 1, 60_000},
+          {:home_backoff, 0, 65_534},
+          {:home_position, -1_000_000, 1_000_000}
+        ],
+        cs,
+        fn {field, low, high}, acc ->
+          validate_number(acc, field, greater_than_or_equal_to: low, less_than_or_equal_to: high)
+        end
+      )
+
+    cs |> validate_inclusion(:home_direction, [-1, 1]) |> validate_relationships()
+  end
+
+  defp validate_relationships(cs) do
+    c = apply_changes(cs)
+
+    Enum.reduce(
+      [
+        {:max_position, c.max_position > c.min_position, "must exceed minimum position"},
+        {:home_backoff, c.home_backoff < c.home_steps, "must be less than home sweep"},
+        {:home_speed, c.home_speed <= c.max_speed, "must not exceed maximum speed"},
+        {:home_position, c.home_position >= c.min_position and c.home_position <= c.max_position,
+         "must be inside soft limits"}
+      ],
+      cs,
+      fn {field, valid, message}, acc ->
+        if valid, do: acc, else: add_error(acc, field, message)
+      end
+    )
   end
 
   defp clear_commissioning(%Ecto.Changeset{data: %{commissioned: true}} = cs) do

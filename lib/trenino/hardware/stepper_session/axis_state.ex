@@ -8,6 +8,7 @@ defmodule Trenino.Hardware.StepperSession.AxisState do
     :desired_target,
     :last_target,
     :error,
+    :release_waiter,
     ready: false,
     reference_accepted: false,
     reference_poll: nil,

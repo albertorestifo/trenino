@@ -18,7 +18,8 @@ defmodule Trenino.Hardware.StepperSession.State do
     ack_timeout: 250,
     idle_poll: 1000,
     moving_poll: 250,
-    watchdog_interval: 250
+    watchdog_interval: 250,
+    watchdog_started: false
   ]
 
   @type t :: %__MODULE__{}

@@ -19,6 +19,7 @@ defmodule Trenino.Train do
     ButtonInputBinding,
     DisplayBinding,
     Element,
+    GaugeBinding,
     Identifier,
     LeverConfig,
     LeverController,
@@ -1418,4 +1419,62 @@ defmodule Trenino.Train do
   """
   @spec list_all_i2c_modules() :: [Trenino.Hardware.I2cModule.t()]
   def list_all_i2c_modules, do: Hardware.list_all_i2c_modules()
+
+  def list_gauge_bindings(train_id) do
+    Repo.all(
+      from b in GaugeBinding,
+        where: b.train_id == ^train_id,
+        order_by: b.name,
+        preload: [stepper_axis: :device]
+    )
+  end
+
+  def list_enabled_gauge_bindings(train_id),
+    do: Enum.filter(list_gauge_bindings(train_id), & &1.enabled)
+
+  def get_gauge_binding(id) when is_integer(id) and id > 0 do
+    case Repo.get(GaugeBinding, id) do
+      nil -> {:error, :not_found}
+      binding -> {:ok, Repo.preload(binding, stepper_axis: :device)}
+    end
+  end
+
+  def get_gauge_binding(_), do: {:error, :not_found}
+
+  def create_gauge_binding(train_id, attrs),
+    do: save_gauge_binding(%GaugeBinding{train_id: train_id}, attrs, :insert)
+
+  def update_gauge_binding(%GaugeBinding{} = binding, attrs),
+    do: save_gauge_binding(binding, attrs, :update)
+
+  def delete_gauge_binding(%GaugeBinding{} = binding),
+    do: Repo.delete(binding) |> notify_gauge_change()
+
+  defp save_gauge_binding(binding, attrs, operation) do
+    id =
+      Map.get(attrs, :stepper_axis_id, Map.get(attrs, "stepper_axis_id", binding.stepper_axis_id))
+
+    axis =
+      case Hardware.get_stepper_axis(id) do
+        {:ok, axis} -> axis
+        _ -> nil
+      end
+
+    binding
+    |> GaugeBinding.changeset(attrs, axis)
+    |> then(&apply(Repo, operation, [&1]))
+    |> notify_gauge_change()
+  end
+
+  defp notify_gauge_change({:ok, binding} = result) do
+    Phoenix.PubSub.broadcast(
+      Trenino.PubSub,
+      "train:gauges:configuration",
+      {:gauge_bindings_changed, binding.train_id}
+    )
+
+    result
+  end
+
+  defp notify_gauge_change(error), do: error
 end

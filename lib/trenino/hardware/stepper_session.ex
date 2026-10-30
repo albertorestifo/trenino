@@ -21,10 +21,19 @@ defmodule Trenino.Hardware.StepperSession do
     do: GenServer.call(pid, {:finish_deployment, token, result})
 
   def pause(pid, id, value), do: GenServer.call(pid, {:pause, id, value})
+  def release_for_delete(pid, id), do: GenServer.call(pid, {:release_for_delete, id}, 3000)
+  def reload_axes(pid, axes, token), do: GenServer.call(pid, {:reload_axes, axes, token})
+  def forget_driver(pid, token), do: GenServer.call(pid, {:forget_driver, token}, 3000)
 
   @impl true
   def init(opts) do
-    axes = Map.new(Keyword.fetch!(opts, :axes), &{&1.id, %AxisState{config: &1}})
+    paused = Keyword.get(opts, :paused_axes, MapSet.new())
+
+    axes =
+      Map.new(
+        Keyword.fetch!(opts, :axes),
+        &{&1.id, %AxisState{config: &1, paused: MapSet.member?(paused, &1.id)}}
+      )
 
     interval =
       axes |> Map.values() |> Enum.map(& &1.config.watchdog_ms) |> Enum.min(fn -> 1000 end)
@@ -54,6 +63,54 @@ defmodule Trenino.Hardware.StepperSession do
 
   @impl true
   def handle_call(:snapshot, _from, s), do: {:reply, s, s}
+
+  def handle_call(
+        {:reload_axes, axes, token},
+        _,
+        %State{lifecycle: :deploying, deployment_token: token} = s
+      )
+      when not is_nil(token) do
+    axes = Map.new(axes, &{&1.id, %AxisState{config: &1}})
+
+    interval =
+      axes |> Map.values() |> Enum.map(& &1.config.watchdog_ms) |> Enum.min(fn -> 1000 end)
+
+    {:reply, :ok, %{s | axes: axes, watchdog_interval: max(20, div(interval, 4))}}
+  end
+
+  def handle_call({:reload_axes, _, _}, _, s),
+    do: {:reply, {:error, :invalid_deployment_token}, s}
+
+  def handle_call(
+        {:forget_driver, token},
+        from,
+        %State{lifecycle: :deploying, deployment_token: token} = s
+      )
+      when not is_nil(token) do
+    {s, result} = issue(%{s | deployment_waiter: from}, nil, :forget_driver, %{})
+
+    case result do
+      {:ok, _} -> {:noreply, s}
+      error -> {:reply, error, %{s | deployment_waiter: nil}}
+    end
+  end
+
+  def handle_call({:forget_driver, _}, _, s), do: {:reply, {:error, :invalid_deployment_token}, s}
+
+  def handle_call({:release_for_delete, id}, from, s) do
+    case admit(s, id, :release, %{}) do
+      :ok ->
+        s = cancel_axis(s, id)
+        {s, result} = issue(s, id, :release, %{})
+
+        if match?({:ok, _}, result),
+          do: {:noreply, put_axis(s, id, %{s.axes[id] | release_waiter: from})},
+          else: {:reply, result, s}
+
+      error ->
+        {:reply, error, s}
+    end
+  end
 
   def handle_call({:pause, id, value}, _from, s) do
     case Map.fetch(s.axes, id) do
@@ -156,7 +213,8 @@ defmodule Trenino.Hardware.StepperSession do
          %AxisState{config: %{reference_strategy: :host_reference}} = a,
          :reference,
          params
-       ), do: position_valid(a, Map.get(params, :position))
+       ),
+       do: position_valid(a, Map.get(params, :position))
 
   defp admit_axis(%AxisState{config: %{reference_strategy: :internal_stop}}, :home, _), do: :ok
 
@@ -200,9 +258,7 @@ defmodule Trenino.Hardware.StepperSession do
   defp position_valid(_, _), do: {:error, :invalid_position}
 
   defp issue(%State{next_id: id} = s, _axis_id, _op, _params) when id >= 65_535 do
-    s = invalidate(s, :resetting)
-    {s, _} = issue(%{s | next_id: 1}, nil, :reset, %{})
-    {s, {:error, :reference_epoch_changed}}
+    {rollover(s), {:error, :reference_epoch_changed}}
   end
 
   defp issue(s, id, op, params) do
@@ -272,6 +328,7 @@ defmodule Trenino.Hardware.StepperSession do
 
   defp timeout(s, id) do
     a = s.axes[id]
+    if a.release_waiter, do: GenServer.reply(a.release_waiter, {:error, :outcome_unknown})
 
     s =
       put_axis(s, id, %{
@@ -280,6 +337,7 @@ defmodule Trenino.Hardware.StepperSession do
           ready: false,
           reference_accepted: false,
           desired_target: nil,
+          release_waiter: nil,
           error: :outcome_unknown
       })
 
@@ -298,12 +356,29 @@ defmodule Trenino.Hardware.StepperSession do
     if matches?(cmd, status), do: reset_ack(s, status), else: s
   end
 
+  defp receive_status(
+         %State{global_pending: %{command: %{operation: :forget_driver} = cmd}} = s,
+         status
+       ) do
+    if matches?(cmd, status) do
+      reply_driver_waiter(s.deployment_waiter, status.result)
+
+      %{s | global_pending: nil, deployment_waiter: nil}
+    else
+      s
+    end
+  end
+
   defp receive_status(s, status) do
     case Enum.find(s.axes, fn {_, a} -> a.config.axis_index == status.axis end) do
       nil -> s
       {id, a} -> axis_status(s, id, a, status)
     end
   end
+
+  defp reply_driver_waiter(nil, _), do: :ok
+  defp reply_driver_waiter(waiter, :ok), do: GenServer.reply(waiter, :ok)
+  defp reply_driver_waiter(waiter, result), do: GenServer.reply(waiter, {:error, result})
 
   defp capability_response(s, status) do
     if Enum.all?(s.axes, fn {_, a} ->
@@ -337,12 +412,11 @@ defmodule Trenino.Hardware.StepperSession do
   defp reset_ack(s, status), do: fault(s, {:reset_failed, status.result})
 
   defp configure_next(%State{queue: []} = s) do
-    schedule(s, :watchdog, s.watchdog_interval)
     %{s | lifecycle: :awaiting_reference}
   end
 
   defp configure_next(%State{queue: [id | rest]} = s) do
-    schedule(s, :watchdog, s.watchdog_interval)
+    s = start_watchdog(s)
 
     {s, _} =
       issue(%{s | queue: rest}, id, :configure, %{
@@ -376,6 +450,18 @@ defmodule Trenino.Hardware.StepperSession do
     cmd = a.pending.command
     a = %{a | pending: nil, status: status, updated_at: now()}
 
+    if a.release_waiter,
+      do:
+        GenServer.reply(
+          a.release_waiter,
+          if(status.result == :ok and not status.energized,
+            do: :ok,
+            else: {:error, :release_unconfirmed}
+          )
+        )
+
+    a = %{a | release_waiter: nil}
+
     case {status.result, cmd.operation} do
       {:ok, operation} -> accepted(s, id, a, cmd, operation)
       {error, :configure} -> fault(s, {:configure_failed, error})
@@ -396,6 +482,7 @@ defmodule Trenino.Hardware.StepperSession do
       put_axis(s, id, %{
         a
         | ready: a.ready and a.status.known and a.status.state == :idle,
+          reference_accepted: a.reference_accepted and a.status.known and a.status.state == :idle,
           desired_target: nil
       })
 
@@ -407,7 +494,8 @@ defmodule Trenino.Hardware.StepperSession do
   defp complete_reference(s, id, a, status) do
     ready =
       a.reference_accepted and status.result == :ok and status.configured and status.known and
-        status.state == :idle and a.config.idle_behavior == :hold
+        (status.state == :idle or (a.ready and status.state == :moving)) and
+        a.config.idle_behavior == :hold
 
     a = %{a | status: status, updated_at: now(), reference_poll: nil, ready: ready}
     s = put_axis(s, id, a)
@@ -426,6 +514,9 @@ defmodule Trenino.Hardware.StepperSession do
     cond do
       not status.configured ->
         fault(s, :unexpected_reset)
+
+      status.state == :homing and a.reference_accepted ->
+        put_axis(s, id, %{a | status: status, updated_at: now(), ready: false})
 
       not status.known ->
         put_axis(s, id, %{
@@ -456,11 +547,23 @@ defmodule Trenino.Hardware.StepperSession do
       request_id: s.next_id
     }
 
-    if s.next_id < 65_535 and transmit(s, cmd) == :ok do
-      put_axis(%{s | next_id: s.next_id + 1}, id, %{s.axes[id] | reference_poll: cmd.request_id})
-    else
-      fault(s, :status_poll_failed)
+    cond do
+      s.next_id >= 65_535 ->
+        rollover(s)
+
+      transmit(s, cmd) == :ok ->
+        put_axis(%{s | next_id: s.next_id + 1}, id, %{s.axes[id] | reference_poll: cmd.request_id})
+
+      true ->
+        fault(s, :status_poll_failed)
     end
+  end
+
+  defp rollover(s) do
+    s = invalidate(s, :resetting)
+    {s, _} = issue(%{s | next_id: 1}, nil, :reset, %{})
+    schedule(s, :poll, s.idle_poll)
+    s
   end
 
   defp dispatch_desired(s, id) do
@@ -483,8 +586,7 @@ defmodule Trenino.Hardware.StepperSession do
       s.axes[id]
       | pending: nil,
         desired_target: nil,
-        reference_poll: nil,
-        reference_accepted: false
+        reference_poll: nil
     })
   end
 
@@ -497,10 +599,25 @@ defmodule Trenino.Hardware.StepperSession do
 
   defp invalidate(s, lifecycle) do
     axes = Map.new(s.axes, fn {id, a} -> {id, %AxisState{config: a.config, paused: a.paused}} end)
-    %{s | axes: axes, lifecycle: lifecycle, global_pending: nil, timer_epoch: make_ref()}
+
+    %{
+      s
+      | axes: axes,
+        lifecycle: lifecycle,
+        global_pending: nil,
+        timer_epoch: make_ref(),
+        watchdog_started: false
+    }
   end
 
-  defp fault(s, error), do: %{invalidate(s, :fault) | error: error}
+  defp fault(s, error) do
+    reply_fault_waiter(s.deployment_waiter, error)
+    Enum.each(s.axes, fn {_, axis} -> reply_fault_waiter(axis.release_waiter, error) end)
+    %{invalidate(%{s | deployment_waiter: nil}, :fault) | error: error}
+  end
+
+  defp reply_fault_waiter(nil, _), do: :ok
+  defp reply_fault_waiter(waiter, error), do: GenServer.reply(waiter, {:error, error})
 
   defp probe(s) do
     s = invalidate(s, :probing)
@@ -511,6 +628,13 @@ defmodule Trenino.Hardware.StepperSession do
 
   defp schedule(s, kind, delay),
     do: Process.send_after(self(), {:tick, s.timer_epoch, kind}, delay)
+
+  defp start_watchdog(%State{watchdog_started: true} = s), do: s
+
+  defp start_watchdog(s) do
+    schedule(s, :watchdog, s.watchdog_interval)
+    %{s | watchdog_started: true}
+  end
 
   defp now, do: System.monotonic_time(:millisecond)
 
