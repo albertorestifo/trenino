@@ -15,7 +15,7 @@ defmodule Trenino.Serial.Protocol.Configure do
 
   @behaviour Message
 
-  @type input_type :: :analog | :button | :matrix | :ht16k33
+  @type input_type :: :analog | :button | :matrix | :ht16k33 | :empty
 
   @type t() :: %__MODULE__{
           config_id: integer(),
@@ -52,6 +52,12 @@ defmodule Trenino.Serial.Protocol.Configure do
 
   # Encode - Analog (input_type = 0x00)
   @impl Message
+  def encode(%__MODULE__{input_type: :empty, config_id: id, total_parts: 0, part_number: 0})
+      when is_integer(id) and id in 0..0xFFFFFFFF,
+      do: {:ok, <<2, id::little-32, 0, 0, 255>>}
+
+  def encode(%__MODULE__{input_type: :empty}), do: {:error, :invalid_empty_configuration}
+
   def encode(%__MODULE__{
         config_id: config_id,
         total_parts: total_parts,
@@ -117,6 +123,9 @@ defmodule Trenino.Serial.Protocol.Configure do
 
   # Decode body - Analog (input_type = 0x00)
   @impl Message
+  def decode_body(<<id::little-32, 0, 0, 255>>),
+    do: {:ok, %__MODULE__{config_id: id, total_parts: 0, part_number: 0, input_type: :empty}}
+
   def decode_body(
         <<config_id::little-32-unsigned, total_parts::8-unsigned, part_number::8-unsigned, 0x00,
           pin::8-unsigned, sensitivity::8-unsigned>>
