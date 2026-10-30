@@ -228,7 +228,8 @@ devices                    trains
         ├── display_type   │   ├── triggers
         ├── has_dot        │   └── enabled
         ├── align_right    └── display_bindings[]
-        └── min_value          ├── i2c_module_id (FK)
+        ├── min_value          ├── i2c_module_id (FK)
+        └── orientation
                                ├── endpoint
                                ├── format_string
                                └── enabled

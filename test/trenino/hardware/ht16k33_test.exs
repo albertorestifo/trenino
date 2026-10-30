@@ -195,6 +195,64 @@ defmodule Trenino.Hardware.HT16K33Test do
     end
   end
 
+  describe "encode_string/2 – orientation" do
+    test "rotated_180 reverses digit order and rotates each digit (14-segment)" do
+      params = %{params_14seg() | orientation: :rotated_180}
+      # "12" normal: [0x0006, 0x00DB, blank, blank]. Rotated: order reverses,
+      # '2' is rotation-symmetric, '1' (B,C) becomes E,F (0x0030).
+      assert HT16K33.encode_string("12", params) ==
+               <<0x00, 0x00, 0x00, 0x00, 0xDB, 0x00, 0x30, 0x00>>
+    end
+
+    test "rotated_180 reverses digit order and rotates each digit (7-segment)" do
+      params = %{params_7seg() | orientation: :rotated_180}
+      assert HT16K33.encode_string("12", params) == <<0x00, 0x00, 0x5B, 0x30>>
+    end
+
+    test "flipped_horizontal mirrors each digit and reverses order (14-segment)" do
+      params = %{params_14seg() | orientation: :flipped_horizontal}
+      # '2' mirrored is 0xED, '1' (B,C) mirrored is F,E (0x30); order reverses.
+      assert HT16K33.encode_string("12", params) ==
+               <<0x00, 0x00, 0x00, 0x00, 0xED, 0x00, 0x30, 0x00>>
+    end
+
+    test "flipped_vertical flips top/bottom and keeps digit order (14-segment)" do
+      params = %{params_14seg() | orientation: :flipped_vertical}
+      # '1' (B,C) maps to itself (C,B); '2' flipped vertically is 0xED.
+      assert HT16K33.encode_string("12", params) ==
+               <<0x06, 0x00, 0xED, 0x00, 0x00, 0x00, 0x00, 0x00>>
+    end
+
+    test "flipped_vertical flips top/bottom and keeps digit order (7-segment)" do
+      params = %{params_7seg() | orientation: :flipped_vertical}
+      assert HT16K33.encode_string("12", params) == <<0x06, 0x6D, 0x00, 0x00>>
+    end
+
+    test "diagonal segments rotate to the opposite corner (14-segment)" do
+      # 'Y' = H + J + L (0x1500); rotated 180 = K + M + I (0x2A00).
+      rotated = HT16K33.encode_string("Y", %{params_14seg(1) | orientation: :rotated_180})
+      normal = HT16K33.encode_string("Y", params_14seg(1))
+      assert normal == <<0x00, 0x15>>
+      assert rotated == <<0x00, 0x2A>>
+    end
+
+    test "rotationally symmetric glyphs are unchanged by rotated_180" do
+      # 'N' uses B, C, E, F + both diagonals on the top-left→bottom-right axis;
+      # rotating 180° maps it onto itself (single digit, so no order effect).
+      params = %{params_14seg(1) | orientation: :rotated_180}
+      assert HT16K33.encode_string("N", params) == HT16K33.encode_string("N", params_14seg(1))
+
+      params_7 = %{params_7seg(1) | orientation: :rotated_180}
+      assert HT16K33.encode_string("0", params_7) == HT16K33.encode_string("0", params_7seg(1))
+    end
+
+    test "decimal point travels with its digit under rotated_180" do
+      params = %{params_7seg(4, true) | orientation: :rotated_180}
+      # "1.2" encodes [1+DP, 2, blank, blank]; rotated: [blank, blank, 2, rot(1)+DP]
+      assert HT16K33.encode_string("1.2", params) == <<0x00, 0x00, 0x5B, 0x30 ||| 0x80>>
+    end
+  end
+
   describe "Params changeset" do
     test "valid 14-segment params" do
       cs =
@@ -266,6 +324,33 @@ defmodule Trenino.Hardware.HT16K33Test do
         })
 
       assert errors_on(cs).display_type != []
+    end
+
+    test "accepts a valid orientation" do
+      cs =
+        Params.changeset(%Params{}, %{
+          brightness: 8,
+          num_digits: 4,
+          display_type: :fourteen_segment,
+          has_dot: false,
+          orientation: "rotated_180"
+        })
+
+      assert cs.valid?
+      assert Ecto.Changeset.get_field(cs, :orientation) == :rotated_180
+    end
+
+    test "rejects invalid orientation" do
+      cs =
+        Params.changeset(%Params{}, %{
+          brightness: 8,
+          num_digits: 4,
+          display_type: :fourteen_segment,
+          has_dot: false,
+          orientation: "upside_down"
+        })
+
+      assert errors_on(cs).orientation != []
     end
   end
 

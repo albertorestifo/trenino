@@ -130,6 +130,7 @@ Most HT16K33 boards have solder jumpers to set the I2C address (default `0x70`; 
    - **Display Type** — `14-segment` (alphanumeric, default) or `7-segment` (numeric only)
    - **Advanced display settings: Brightness** — 0–100% slider (maps to hardware levels 0–15)
    - **Digits** — number of digits on the display: `4` or `8`
+   - **Orientation** — re-orients the output for physically rotated or mirrored mounts: `Normal`, `Rotated 180°`, `Flipped horizontal`, or `Flipped vertical`. Applied in software, so it works with every binding and Lua `display.set`
    - **Minimum value** — clamp values below this number to the chosen minimum before display (default `0`). Leave it blank to allow negative values without a lower limit. Useful when the simulator endpoint can return negative values — for example, a reverser reads -1.0 to 1.0, so setting minimum value to `0` prevents negative numbers appearing on the display
    - **Right-align** — align text to the right of the display (useful for numbers; enabled by default)
    - **Decimal point** — enable if your display has a dot segment between digits
