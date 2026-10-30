@@ -111,3 +111,7 @@ For commercial licensing, contact [alberto@restifo.dev](mailto:alberto@restifo.d
 ## Acknowledgment
 
 Inspired by [MobiFlight](https://www.mobiflight.com/en/index.html).
+
+### Physical stepper gauges
+
+Configure and commission generic electrical axes in the hardware editor, then bind measured dial calibrations to train telemetry. See [Stepper gauges](docs/stepper-gauges.md). Physical travel, wiring, homing and needle fit require real hardware verification.

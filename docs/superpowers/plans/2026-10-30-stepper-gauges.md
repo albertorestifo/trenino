@@ -148,7 +148,18 @@ Use separate source files for Session.State/struct helpers; don't add more neste
 - [ ] Start app in controlled environment with UART discovery stubbed/disabled and inspect actual hardware/train forms visually if feasible; do not let a UI smoke test touch the user's physical controller. Tests remain the verified minimum if no browser runtime available. Record physical hardware test unperformed distinctly from software pass.
 - [ ] Commit any final fixes with explicit paths. Report branch/worktree, tests and exact usable UI route/flow, plus human hardware checks still required. No push, merge, deployment or firmware flashing unless parent/user already authorized it separately.
 
+## Review refinements
+
+- Preserve full intermediate mapping precision; apply integer rounding only to the final transition target. Two-decimal display formatting must not change motion. User-entered calibration points retain the repository's domain convention.
+- Persist explicit calibration review separately from structural validity. Test that saving the editable starter leaves it disabled and visibly unreviewed, and that enabling it requires measured calibration review and commissioned hardware.
+- Regression coverage includes asynchronous Home progress, continuous retargeting while moving, stationary Stop reference retention, watchdog changes on configuration reload, runtime/saved configuration equality at commissioning, and request-ID rollover from both commands and status polling.
+
 ## Self-review and acceptance coverage
 
 Persistence/configuration: Tasks1–2,4; transport/lease/retries/faults:3–4; mapping/calibration/unit policies:5,8; simulator/train transitions:6; complete hardware UI:7; complete train UI:8; MCP/docs:9; full interaction evidence:10. Every Review Focus class has explicit tests above. Physical home direction, real travel/steps, winding order, stop contact, needle fit and endpoint units remain measured commissioning inputs—not software assumptions. The parent handles firmware publication; host implementation must verify final contract bytes before locking fixtures.
+
+
+## Implementation acceptance evidence
+
+Implemented protocol/persistence, per-port sessions and watchdogs, ownership/deployment barriers, calibrated mappings and asynchronous train telemetry, hardware commissioning UI, train calibration wizard, editable disabled presets, eleven MCP tools, and operating documentation. Integration tests exercise axis-only deployment identity, fresh reference/resume, real mapper/controller dispatch, opt-in asynchronous Home, address recommission, acknowledged online deletion, legacy input/display/two-axis barriers and shared faults. Additional regressions cover session death/orphan cleanup, MCP deduplication/expiry/limits, unapplied edits, slow HTTP/train changes, cleanup ordering/timeouts and stale behavior. Detailed design checkboxes remain the original review checklist rather than an assertion that every described permutation has a separate test. Final software verification evidence is recorded in the implementation handoff; physical motor validation remains unperformed.
 
