@@ -937,6 +937,15 @@ defmodule TreninoWeb.ConfigurationEditLive do
     {:noreply, assign(socket, stepper_count: length(axes), stepper_axes: axes)}
   end
 
+  def handle_info({:dial_calibration_saved, calibration}, socket) do
+    # Re-render the axis list so every axis card shows the saved dial status.
+    if Enum.any?(socket.assigns.stepper_axes, &(&1.id == calibration.stepper_axis_id)) do
+      send_update(TreninoWeb.StepperAxisFormComponent, id: "stepper-setup", dial_saved: true)
+    end
+
+    {:noreply, socket}
+  end
+
   def handle_info(_msg, socket), do: {:noreply, socket}
 
   defp display_test_texts(4), do: ["8888", "1234", "ABCD", "    "]

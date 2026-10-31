@@ -3,7 +3,7 @@ defmodule TreninoWeb.GaugeSetupTest do
   import Phoenix.LiveViewTest
   alias Trenino.{Hardware, Train}
 
-  test "offline gauge starter has editable endpoint and calibration and saves disabled", %{
+  test "offline gauge starter has an editable endpoint and saves disabled without a dial", %{
     conn: conn
   } do
     {:ok, device} = Hardware.create_device(%{name: "Panel"})
@@ -16,9 +16,8 @@ defmodule TreninoWeb.GaugeSetupTest do
     assert has_element?(view, "#gauge-bindings")
     view |> element("#gauge-add") |> render_click()
     view |> element("#gauge-class323") |> render_click()
-    assert has_element?(view, "#gauge-calibration-points")
-    assert has_element?(view, "button#gauge-claim[disabled]")
-    assert has_element?(view, "#gauge-claim-reason", "not connected")
+    refute has_element?(view, "#gauge-calibration-points")
+    assert has_element?(view, "#gauge-dial-status", "No dial calibration")
 
     view
     |> form("#gauge-binding-form",
@@ -26,19 +25,10 @@ defmodule TreninoWeb.GaugeSetupTest do
     )
     |> render_submit()
 
-    assert [
-             %{
-               id: binding_id,
-               enabled: false,
-               calibration_reviewed: false,
-               endpoint: "VerifiedSpeed",
-               input_unit: :mps,
-               output_unit: :mph
-             }
-           ] =
+    assert [%{id: binding_id, enabled: false, endpoint: "VerifiedSpeed", input_unit: :mps}] =
              Train.list_gauge_bindings(train.id)
 
-    assert render(view) =~ "Unverified points"
+    assert has_element?(view, "[id^=gauge-dial-]", "No dial calibration")
 
     send(
       view.pid,
@@ -52,6 +42,7 @@ defmodule TreninoWeb.GaugeSetupTest do
        }}
     )
 
+    _ = render(view)
     html = render(view)
     assert html =~ "Estimated target: 720 transitions"
     assert html =~ "Simulator data is stale"
@@ -67,33 +58,29 @@ defmodule TreninoWeb.GaugeSetupTest do
       {:ok, train} =
         Train.create_train(%{name: "T", identifiers: [%{identifier: "Class323_DMS_A"}]})
 
-      {:ok, view, _} = live(conn, ~p"/trains/#{train.id}")
-      view |> element("#gauge-add") |> render_click()
-      %{view: view, axis: axis, train: train}
+      %{conn: conn, axis: axis, train: train, device: device}
     end
 
-    test "steps are ordered and every disabled control says why", %{view: view} do
+    test "three steps, no calibration, every disabled control says why", %{
+      conn: conn,
+      train: train
+    } do
+      {:ok, view, _} = live(conn, ~p"/trains/#{train.id}")
+      view |> element("#gauge-add") |> render_click()
       html = render(view)
 
       positions =
-        for n <- [
-              "Hardware axis",
-              "Simulator endpoint and units",
-              "Measure the dial",
-              "Review the calibration",
-              "Save, then enable"
-            ],
+        for n <- ["Hardware axis", "Simulator endpoint and units", "Save, then enable"],
             do: :binary.match(html, n) |> elem(0)
 
       assert positions == Enum.sort(positions)
+      refute html =~ "Measure the dial"
+      refute html =~ "Review the calibration"
+      refute has_element?(view, "#gauge-claim")
+      refute has_element?(view, "input[name='gauge_binding[points][0][value]']")
 
-      {measure, _} = :binary.match(html, "Measure the dial")
-      {save, _} = :binary.match(html, "id=\"gauge-save\"")
-      assert measure < save
-
-      assert has_element?(view, "#gauge-claim-reason")
+      assert has_element?(view, "#gauge-dial-status a", "Calibrate the dial")
       assert has_element?(view, "#gauge-enable-reason", "commissioning")
-      assert has_element?(view, "#gauge-review-reason") == false
       assert has_element?(view, "#gauge-advanced input[name='gauge_binding[multiplier]']")
 
       refute has_element?(
@@ -106,21 +93,55 @@ defmodule TreninoWeb.GaugeSetupTest do
       refute render(view) =~ ">Mps<"
     end
 
-    test "preview and save work from one form without a saved binding", %{
-      view: view,
-      train: train
+    test "a calibrated, reviewed axis shows its dial and enabling stops asking for it", %{
+      conn: conn,
+      train: train,
+      axis: axis
     } do
-      view |> element("#gauge-class323") |> render_click()
+      {:ok, axis} = Hardware.commission_stepper_axis(axis)
+
+      {:ok, _} =
+        Hardware.save_dial_calibration(axis, %{
+          output_unit: :mph,
+          reviewed: true,
+          points: [%{value: 0, position: 0}, %{value: 100, position: 720}]
+        })
+
+      {:ok, view, _} = live(conn, ~p"/trains/#{train.id}")
+      view |> element("#gauge-add") |> render_click()
+      assert has_element?(view, "#gauge-dial-status", "Dial calibrated, shows mph")
+      # Default raw input cannot feed an mph dial: the unit step explains it.
+      assert has_element?(view, "#gauge-enable-reason", "units")
 
       view
-      |> form("#gauge-binding-form", gauge_binding: %{endpoint: "Speed", name: "S"})
-      |> render_submit(%{"intent" => "preview", "test_value" => "44.704"})
+      |> form("#gauge-binding-form", gauge_binding: %{input_unit: "mps"})
+      |> render_change()
 
-      assert has_element?(view, "#gauge-preview-result", "estimated target: 720")
-      assert Train.list_gauge_bindings(train.id) == []
+      refute has_element?(view, "#gauge-enable-reason")
+
+      view
+      |> form("#gauge-binding-form",
+        gauge_binding: %{name: "S", endpoint: "Speed", input_unit: "mps", enabled: "true"}
+      )
+      |> render_submit()
+
+      assert [%{enabled: true, input_unit: :mps}] = Train.list_gauge_bindings(train.id)
     end
 
-    test "numbers are rendered with a dot decimal separator", %{view: view} do
+    test "a commissioned axis without a dial says the dial is what is missing", %{
+      conn: conn,
+      train: train,
+      axis: axis
+    } do
+      {:ok, _} = Hardware.commission_stepper_axis(axis)
+      {:ok, view, _} = live(conn, ~p"/trains/#{train.id}")
+      view |> element("#gauge-add") |> render_click()
+      assert has_element?(view, "#gauge-enable-reason", "Calibrate and review the dial")
+    end
+
+    test "numbers are rendered with a dot decimal separator", %{conn: conn, train: train} do
+      {:ok, view, _} = live(conn, ~p"/trains/#{train.id}")
+      view |> element("#gauge-add") |> render_click()
       assert render(view) =~ ~s(value="1.0")
     end
   end

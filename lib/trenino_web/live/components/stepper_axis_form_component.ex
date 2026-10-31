@@ -345,6 +345,12 @@ defmodule TreninoWeb.StepperAxisFormComponent do
           snapshot={@snapshot}
           apply_needed={@apply_needed}
         />
+        <.live_component
+          module={TreninoWeb.DialCalibrationComponent}
+          id={"dial-calibration-#{axis.id}"}
+          axis={axis}
+          snapshot={@snapshot}
+        />
       </article>
     </section>
     """
