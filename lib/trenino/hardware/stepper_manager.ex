@@ -204,12 +204,9 @@ defmodule Trenino.Hardware.StepperManager do
   end
 
   def handle_call({:resume, id}, _, s) do
-    with nil <- Map.get(s.leases, id), {:ok, pid} <- axis_session(s, id) do
-      {:reply, StepperSession.pause(pid, id, false),
-       %{s | paused_axes: MapSet.delete(s.paused_axes, id)}}
-    else
-      %{} = lease -> {:reply, {:error, lease_refusal(lease, :resume)}, s}
-      error -> {:reply, error, s}
+    case Map.get(s.leases, id) do
+      nil -> {:reply, resume_axis(s, id), %{s | paused_axes: MapSet.delete(s.paused_axes, id)}}
+      lease -> {:reply, {:error, lease_refusal(lease, :resume)}, s}
     end
   end
 
@@ -537,11 +534,7 @@ defmodule Trenino.Hardware.StepperManager do
       session ->
         ids = Hardware.list_stepper_axes(session.device_id) |> Enum.map(& &1.id)
 
-        Enum.each(Map.take(s.leases, ids), fn {_, lease} ->
-          demonitor(lease.monitor)
-        end)
-
-        %{s | leases: Map.drop(s.leases, ids)}
+        revoke_leases(s, Map.take(s.leases, ids))
     end
   end
 
@@ -626,8 +619,17 @@ defmodule Trenino.Hardware.StepperManager do
         Map.get(lease, :epoch) != Map.get(snapshot, :timer_epoch)
       end)
 
-    Enum.each(stale, fn {_, lease} -> demonitor(lease.monitor) end)
-    %{s | leases: Map.drop(s.leases, Enum.map(stale, &elem(&1, 0)))}
+    revoke_leases(s, Map.new(stale))
+  end
+
+  # A revoked lease can no longer fire its owner-loss resume (the monitor is gone), so
+  # honour `resume_on_owner_loss` here, whether or not a session is still around.
+  defp revoke_leases(s, leases) do
+    Enum.reduce(leases, s, fn {id, lease}, acc ->
+      demonitor(lease.monitor)
+      acc = resume_after_owner_loss({id, lease}, acc)
+      %{acc | leases: Map.delete(acc.leases, id)}
+    end)
   end
 
   defp find_session(s, id) do
@@ -662,16 +664,28 @@ defmodule Trenino.Hardware.StepperManager do
   defp normalize_target_result(result), do: result
 
   defp resume_after_owner_loss({id, %{resume_on_owner_loss: true}}, s) do
-    with {:ok, %{commissioned: true}} <- Hardware.get_stepper_axis(id),
-         {:ok, pid} <- axis_session(s, id),
-         :ok <- StepperSession.pause(pid, id, false) do
-      %{s | paused_axes: MapSet.delete(s.paused_axes, id)}
-    else
-      _ -> s
+    case Hardware.get_stepper_axis(id) do
+      {:ok, %{commissioned: true}} ->
+        resume_axis(s, id)
+        %{s | paused_axes: MapSet.delete(s.paused_axes, id)}
+
+      _ ->
+        s
     end
   end
 
   defp resume_after_owner_loss(_lost_lease, s), do: s
+
+  # Without a session there is nothing to unpause: the manager's paused_axes is what a
+  # future session starts from, and the caller clears it.
+  defp resume_axis(s, id) do
+    case axis_session(s, id) do
+      {:ok, pid} -> StepperSession.pause(pid, id, false)
+      {:error, :disconnected} -> :ok
+    end
+  catch
+    :exit, _ -> :ok
+  end
 
   defp stop_axis(s, id) do
     with {:ok, pid} <- axis_session(s, id),

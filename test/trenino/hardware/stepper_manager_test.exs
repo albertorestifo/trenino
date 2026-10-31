@@ -249,6 +249,34 @@ defmodule Trenino.Hardware.StepperManagerTest do
     end
   end
 
+  describe "unplugged while paused" do
+    test "Resume with no session still clears the pause", ctx do
+      prepare(ctx)
+      assert {:ok, token} = StepperManager.claim_manual(ctx.axis.id, self())
+      :ok = StepperManager.release_manual(ctx.axis.id, token)
+      send(ctx.pid, {:devices_updated, []})
+      assert StepperManager.snapshot(ctx.device.id).lifecycle == :disconnected
+      assert MapSet.member?(:sys.get_state(ctx.pid).paused_axes, ctx.axis.id)
+
+      assert :ok = StepperManager.resume(ctx.axis.id)
+      refute MapSet.member?(:sys.get_state(ctx.pid).paused_axes, ctx.axis.id)
+      GenServer.stop(StepperManager)
+    end
+
+    test "unplug honours resume_on_owner_loss for a commissioned axis", ctx do
+      {:ok, _} = Hardware.commission_stepper_axis(ctx.axis)
+      prepare(ctx)
+
+      assert {:ok, _token} =
+               StepperManager.claim_manual(ctx.axis.id, self(), resume_on_owner_loss: true)
+
+      send(ctx.pid, {:devices_updated, []})
+      assert StepperManager.snapshot(ctx.device.id).lifecycle == :disconnected
+      refute MapSet.member?(:sys.get_state(ctx.pid).paused_axes, ctx.axis.id)
+      GenServer.stop(StepperManager)
+    end
+  end
+
   test "unapplied edits cannot be commissioned against a previous firmware configuration", ctx do
     prepare(ctx)
     assert {:ok, token} = StepperManager.claim_manual(ctx.axis.id, self())
