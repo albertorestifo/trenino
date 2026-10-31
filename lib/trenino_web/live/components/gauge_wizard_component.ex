@@ -168,6 +168,7 @@ defmodule TreninoWeb.GaugeWizardComponent do
     do: GaugeWizard.update(wizard, {:observed, Runner.observe(wizard)})
 
   defp notify({:update_axis, _}, {:ok, axis}), do: send(self(), {:stepper_axis_saved, axis})
+  defp notify({:update_axis, _, _}, {:ok, axis}), do: send(self(), {:stepper_axis_saved, axis})
   defp notify({:save_dial, _}, {:ok, cal}), do: send(self(), {:dial_calibration_saved, cal})
   defp notify(:complete_commissioning, {:ok, axis}), do: send(self(), {:stepper_axis_saved, axis})
   defp notify(_, _), do: :ok

@@ -180,9 +180,9 @@ defmodule Trenino.Hardware.GaugeWizardRunnerTest do
       wizard = open_and_claim(axis)
       previous = Map.take(axis, @home_keys)
       {:ok, attrs, _} = GaugeWizard.home_plan(axis, 680, 0, 400)
-      {:ok, tuned} = Hardware.update_stepper_axis(axis, attrs)
+      {:ok, tuned} = Hardware.update_stepper_axis(axis, attrs, keep_dial: true)
       home = %{previous: previous, backoff: 0, warnings: [], top: 680, phase: :first}
-      {%{wizard | axis: tuned, step: :home_nudge, home: home}, previous}
+      {%{wizard | axis: tuned, step: :home_nudge, home: home, home_provisional: true}, previous}
     end
 
     test "puts the previous settings back, sends them and releases the lease", %{axis: axis} do

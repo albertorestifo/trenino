@@ -358,7 +358,7 @@ defmodule Trenino.Hardware.StepperManager do
 
   def handle_info(_, s), do: {:noreply, s}
 
-  defp handle_down(monitor, pid, %{watched_owners: watched} = s)
+  defp handle_down(monitor, _pid, %{watched_owners: watched} = s)
        when is_map_key(watched, monitor) do
     {id, watched} = Map.pop(watched, monitor)
     s = %{s | watched_owners: watched}

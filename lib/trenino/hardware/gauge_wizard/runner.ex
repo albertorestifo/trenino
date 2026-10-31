@@ -35,9 +35,11 @@ defmodule Trenino.Hardware.GaugeWizard.Runner do
   defp execute({:command, op, params}, state),
     do: StepperManager.command(state.axis.id, op, params, state.token)
 
-  defp execute({:update_axis, attrs}, state) do
+  defp execute({:update_axis, attrs}, state), do: execute({:update_axis, attrs, []}, state)
+
+  defp execute({:update_axis, attrs, opts}, state) do
     with {:ok, axis} <- Hardware.get_stepper_axis(state.axis.id),
-         do: Hardware.update_stepper_axis(axis, attrs)
+         do: Hardware.update_stepper_axis(axis, attrs, opts)
   end
 
   defp execute({:save_dial, attrs}, state) do

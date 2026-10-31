@@ -113,7 +113,14 @@ defmodule Trenino.Hardware.DialCalibrationTest do
   end
 
   describe "fields that change what a stored position means" do
-    for {field, value} <- [reverse: true, home_position: 10, motor_port: 2, home_direction: 1] do
+    for {field, value} <- [
+          reverse: true,
+          home_position: 10,
+          motor_port: 2,
+          home_direction: 1,
+          home_backoff: 20,
+          reference_strategy: :internal_stop
+        ] do
       test "changing #{field} invalidates the dial and disables bindings" do
         axis = setup_axis()
         {:ok, _} = Hardware.save_dial_calibration(axis, %{points: @points, reviewed: true})
@@ -134,10 +141,20 @@ defmodule Trenino.Hardware.DialCalibrationTest do
       end
     end
 
-    test "tuning homing backoff or speed keeps the reviewed dial" do
+    test "homing speed and steps keep the reviewed dial" do
       axis = setup_axis()
       {:ok, _} = Hardware.save_dial_calibration(axis, %{points: @points, reviewed: true})
-      {:ok, _} = Hardware.update_stepper_axis(axis, %{home_backoff: 20, home_speed: 80})
+      {:ok, _} = Hardware.update_stepper_axis(axis, %{home_speed: 80, home_steps: 500})
+      assert {:ok, %{valid: true, reviewed: true}} = Hardware.get_dial_calibration(axis.id)
+    end
+
+    test "an explicit keep_dial option lets the wizard retune the home frame" do
+      axis = setup_axis()
+      {:ok, _} = Hardware.save_dial_calibration(axis, %{points: @points, reviewed: true})
+
+      {:ok, _} =
+        Hardware.update_stepper_axis(axis, %{home_backoff: 20, home_speed: 80}, keep_dial: true)
+
       assert {:ok, %{valid: true, reviewed: true}} = Hardware.get_dial_calibration(axis.id)
     end
   end

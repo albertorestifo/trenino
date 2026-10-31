@@ -24,7 +24,8 @@ defmodule Trenino.Hardware.GaugeWizard do
   ## Effects
 
   `:claim`, `:release`, `:resume`, `:recover`, `:apply`, `:complete_commissioning`,
-  `{:command, op, params}`, `{:update_axis, attrs}`, `{:save_dial, attrs}`.
+  `{:command, op, params}`, `{:update_axis, attrs}`, `{:update_axis, attrs, keep_dial: true}` (homing tuning, which
+  shifts the dial itself), `{:save_dial, attrs}`.
 
   Safety rules are kept by construction: nothing here moves a motor on its own, motion only
   follows an explicit user event, saving never moves, and commissioning is only ever
@@ -82,6 +83,7 @@ defmodule Trenino.Hardware.GaugeWizard do
             closed: false,
             leaving: nil,
             restored: false,
+            home_provisional: false,
             notice: nil,
             dial_reviewed: false
 
@@ -93,7 +95,7 @@ defmodule Trenino.Hardware.GaugeWizard do
     :home_backoff,
     :home_timeout_ms
   ]
-  @tuning_steps [:home_run, :home_nudge, :home_confirm]
+  @keep_dial [keep_dial: true]
   @jog_distance 20
   @fresh_ms 1500
   @home_speed 50
@@ -360,14 +362,16 @@ defmodule Trenino.Hardware.GaugeWizard do
   # even if a fault or disconnect already dropped the token. The token is kept until the
   # release has run, because the runner reads it from this state.
   #
-  # Closing in the middle of the homing tuning first puts the previous homing settings back
+  # Closing while the homing settings are provisional (from Start homing until the tuning is
+  # confirmed or cancelled, at whatever step the wizard is on) first puts the previous homing settings back
   # (as cancelling does) and sends them to the controller, so the gauge is not left sweeping
   # on provisional settings. Commissioning is never restored here: that needs a fresh
   # reference, so the user is told what is left to do.
-  defp close(%{step: step, home: %{previous: previous}, restored: false} = state)
-       when step in @tuning_steps do
+  defp close(%{home_provisional: true, home: %{previous: previous}, restored: false} = state) do
     stop = if state.token, do: [{:command, :stop, %{}}], else: []
-    {%{state | leaving: :restoring, pending: nil, error: nil}, stop ++ [{:update_axis, previous}]}
+
+    {%{state | leaving: :restoring, pending: nil, error: nil},
+     stop ++ [{:update_axis, previous, @keep_dial}]}
   end
 
   defp close(state), do: leave(state, state.axis.commissioned)
@@ -380,10 +384,10 @@ defmodule Trenino.Hardware.GaugeWizard do
     {%{state | closed: true, leaving: nil, pending: nil, error: nil}, effects}
   end
 
-  defp leave_result(%{leaving: :restoring} = state, {:update_axis, _}, {:ok, axis}),
+  defp leave_result(%{leaving: :restoring} = state, {:update_axis, _, _}, {:ok, axis}),
     do: {%{state | axis: axis, restored: true, leaving: :applying}, [:apply]}
 
-  defp leave_result(%{leaving: :restoring} = state, {:update_axis, _}, error),
+  defp leave_result(%{leaving: :restoring} = state, {:update_axis, _, _}, error),
     do: {%{state | leaving: nil, error: {:leave_failed, reason(error)}}, []}
 
   defp leave_result(%{leaving: :applying} = state, :apply, {:ok, _}),
@@ -510,13 +514,14 @@ defmodule Trenino.Hardware.GaugeWizard do
   defp handle(%{step: :homing_offer} = state, :start_homing) do
     top = top_position(state)
     previous = Map.take(state.axis, @home_keys)
-    first_sweep(state, %{backoff: 0, warnings: [], top: top, phase: :first, previous: previous})
+    home = %{backoff: 0, warnings: [], top: top, phase: :first, previous: previous}
+    first_sweep(%{state | home_provisional: true}, home)
   end
 
   # Leaves the tuning and puts back the settings the axis had before it started.
   defp handle(%{step: step, home: %{previous: previous}} = state, :cancel_homing)
        when step in [:home_run, :home_nudge, :home_confirm],
-       do: reconfigure(state, previous, :finish, nil)
+       do: reconfigure(state, previous, :finish, nil, @keep_dial)
 
   defp handle(%{step: :home_nudge} = state, :finish_nudging) do
     obs = state.obs
@@ -525,7 +530,13 @@ defmodule Trenino.Hardware.GaugeWizard do
          {:ok, backoff} <-
            backoff_from_nudge(state.home.backoff, state.axis.home_position, obs.position),
          {:ok, attrs, _} <- home_plan(state.axis, state.home.top, backoff, 0) do
-      reconfigure(%{state | home: %{state.home | backoff: backoff}}, attrs, :home_run, :second)
+      reconfigure(
+        %{state | home: %{state.home | backoff: backoff}},
+        attrs,
+        :home_run,
+        :second,
+        @keep_dial
+      )
     else
       {:error, reason} -> {%{state | error: reason}, []}
       _ -> {%{state | error: :needs_fresh_stationary_position}, []}
@@ -594,7 +605,13 @@ defmodule Trenino.Hardware.GaugeWizard do
   defp first_sweep(state, home) do
     case home_plan(state.axis, home.top, home.backoff, @provisional_stop) do
       {:ok, attrs, warnings} ->
-        reconfigure(%{state | home: %{home | warnings: warnings}}, attrs, :home_run, :first)
+        reconfigure(
+          %{state | home: %{home | warnings: warnings}},
+          attrs,
+          :home_run,
+          :first,
+          @keep_dial
+        )
 
       {:error, reason} ->
         {%{state | error: reason}, []}
@@ -634,6 +651,9 @@ defmodule Trenino.Hardware.GaugeWizard do
 
   defp result(state, {:command, _, _}, error),
     do: {%{state | pending: nil, error: reason(error)}, []}
+
+  defp result(state, {:update_axis, attrs, _opts}, result),
+    do: result(state, {:update_axis, attrs}, result)
 
   defp result(state, {:update_axis, %{startup_reference: _}}, {:ok, axis}),
     do: {%{state | axis: axis, step: :done}, []}
@@ -816,6 +836,7 @@ defmodule Trenino.Hardware.GaugeWizard do
   defp apply_done(%{after_apply: {step, detail}} = state) do
     home = if step == :home_run, do: %{state.home | phase: detail}, else: state.home
     state = %{state | after_apply: nil, token: nil, claiming: false, home: home, step: step}
+    state = if step == :finish, do: %{state | home_provisional: false}, else: state
     claim(state)
   end
 
@@ -845,6 +866,7 @@ defmodule Trenino.Hardware.GaugeWizard do
     if state.obs.position == target, do: {state, []}, else: move(state, target)
   end
 
+  defp enter(state, :finish), do: {%{state | step: :finish, home_provisional: false}, []}
   defp enter(state, step), do: {%{state | step: step}, []}
 
   defp move(state, target),
@@ -1020,9 +1042,10 @@ defmodule Trenino.Hardware.GaugeWizard do
   # Changing a motion setting needs Apply, and Apply drops the reference, so the user is
   # sent back to realign (or home) before the interrupted step resumes. For `:align`,
   # `detail` is the step to return to afterwards.
-  defp reconfigure(state, attrs, next, detail) do
+  defp reconfigure(state, attrs, next, detail, opts \\ []) do
     return_to = if next == :align, do: detail
-    {%{state | after_apply: {next, detail}, return_to: return_to}, [{:update_axis, attrs}]}
+    effect = if opts == [], do: {:update_axis, attrs}, else: {:update_axis, attrs, opts}
+    {%{state | after_apply: {next, detail}, return_to: return_to}, [effect]}
   end
 
   # ---------------------------------------------------------------- prerequisites

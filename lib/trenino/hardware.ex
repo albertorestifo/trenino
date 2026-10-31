@@ -101,8 +101,17 @@ defmodule Trenino.Hardware do
   def create_stepper_axis(device_id, attrs),
     do: save_stepper_axis(%StepperAxis{device_id: device_id}, attrs, :insert)
 
-  def update_stepper_axis(%StepperAxis{} = axis, attrs),
-    do: save_stepper_axis(axis, attrs, :update)
+  @doc """
+  Updates a stepper axis.
+
+  Changing anything that moves the physical needle for a stored dial position (including
+  the home frame: `home_backoff` and `reference_strategy`) invalidates the dial. The gauge
+  wizard's homing tuning shifts the dial itself and passes `keep_dial: true` to skip that.
+  """
+  @spec update_stepper_axis(StepperAxis.t(), map(), keyword()) ::
+          {:ok, StepperAxis.t()} | {:error, Ecto.Changeset.t()}
+  def update_stepper_axis(%StepperAxis{} = axis, attrs, opts \\ []),
+    do: save_stepper_axis(axis, attrs, :update, & &1, opts)
 
   @doc """
   Marks an axis commissioned. Internal: callable only after StepperManager has verified a
@@ -190,14 +199,16 @@ defmodule Trenino.Hardware do
     end
   end
 
-  defp save_stepper_axis(axis, attrs, operation, finalize \\ & &1) do
+  defp save_stepper_axis(axis, attrs, operation, finalize \\ & &1, opts \\ []) do
     result =
       Repo.transact(fn ->
         cs = axis |> stepper_resource_changeset(attrs) |> finalize.()
 
         case apply(Repo, operation, [cs]) do
           {:ok, updated} ->
-            invalidate_gauge_calibration(axis, updated)
+            unless Keyword.get(opts, :keep_dial, false),
+              do: invalidate_gauge_calibration(axis, updated)
+
             {:ok, updated}
 
           error ->
@@ -267,11 +278,22 @@ defmodule Trenino.Hardware do
   end
 
   # Dial points store absolute positions, so anything that changes which physical needle
-  # angle a position denotes makes the dial untrustworthy. Homing backoff/speed are not
-  # listed: the wizard tunes backoff precisely to keep dial 0 at position 0. The soft limits
-  # are not listed either: they do not move the needle, so they only matter when a saved
-  # point ends up outside them.
-  @dial_meaning_fields [:mode, :reverse, :home_position, :home_direction, :motor_port]
+  # angle a position denotes makes the dial untrustworthy. That includes the home frame:
+  # `home_backoff` and `reference_strategy` decide where the needle sits after Home, and the
+  # gauge wizard (which retunes them deliberately) opts out with `keep_dial: true`.
+  # `home_speed`/`home_steps` are not listed: the frame is the stop plus the backoff, so they
+  # only matter if the sweep stops short of the stop, which cannot be known here (the wizard
+  # warns with :sweep_too_small). The soft limits are not listed either: they do not move the
+  # needle, so they only matter when a saved point ends up outside them.
+  @dial_meaning_fields [
+    :mode,
+    :reverse,
+    :home_position,
+    :home_direction,
+    :motor_port,
+    :home_backoff,
+    :reference_strategy
+  ]
 
   defp invalidate_gauge_calibration(%StepperAxis{id: nil}, _), do: :ok
 

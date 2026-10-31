@@ -72,6 +72,8 @@ defmodule Trenino.Hardware.GaugeWizardTest do
     def run(:apply, s),
       do: {{:ok, 1}, %{s | applied?: true, ready: false, lease?: false, log: [:apply | s.log]}}
 
+    def run({:update_axis, attrs, _opts}, s), do: run({:update_axis, attrs}, s)
+
     def run({:update_axis, attrs} = effect, s) do
       axis = struct(s.axis, attrs)
       motion? = Enum.any?(Map.keys(attrs), &(&1 not in [:name, :startup_reference]))
@@ -854,10 +856,34 @@ defmodule Trenino.Hardware.GaugeWizardTest do
       refute :complete_commissioning in log
     end
 
+    test "closing after a failed Apply on Start homing still puts the previous settings back" do
+      {w, _} = to_homing_offer()
+      {w, [{:update_axis, _, _} = tune]} = GaugeWizard.update(w, :start_homing)
+      {w, [:apply]} = GaugeWizard.update(w, {:result, tune, {:ok, w.axis}})
+      {w, []} = GaugeWizard.update(w, {:result, :apply, {:error, :device_not_connected}})
+      assert w.step == :applying
+
+      {_, effects} = GaugeWizard.update(w, :close)
+      assert Enum.any?(effects, &match?({:update_axis, _, [keep_dial: true]}, &1))
+    end
+
+    test "closing at align after reference loss during the tuning restores the settings" do
+      {w, _} = to_homing_offer() |> send_event(:start_homing)
+      w = %{w | step: :align, return_to: :home_nudge}
+
+      {_, effects} = GaugeWizard.update(w, :close)
+      assert Enum.any?(effects, &match?({:update_axis, _, [keep_dial: true]}, &1))
+    end
+
+    test "homing tuning updates opt out of dial invalidation explicitly" do
+      {w, _} = to_homing_offer()
+      assert {_, [{:update_axis, _, [keep_dial: true]}]} = GaugeWizard.update(w, :start_homing)
+    end
+
     test "a restore that cannot be sent still lets the user leave, with a notice" do
       {w, _} = to_homing_offer() |> send_event(:start_homing)
       {w, effects} = GaugeWizard.update(w, :close)
-      assert [{:command, :stop, %{}}, {:update_axis, _} = restore] = effects
+      assert [{:command, :stop, %{}}, {:update_axis, _, _} = restore] = effects
       refute w.closed
       {w, [:apply]} = GaugeWizard.update(w, {:result, restore, {:ok, w.axis}})
       {w, [:release]} = GaugeWizard.update(w, {:result, :apply, {:error, :device_not_connected}})
@@ -871,7 +897,7 @@ defmodule Trenino.Hardware.GaugeWizardTest do
       {w, []} = GaugeWizard.update(w, {:result, restore, {:error, :boom}})
       refute w.closed
       assert {:leave_failed, :boom} = w.error
-      assert {%{closed: false}, [_, {:update_axis, _}]} = GaugeWizard.update(w, :close)
+      assert {%{closed: false}, [_, {:update_axis, _, _}]} = GaugeWizard.update(w, :close)
     end
 
     test "a failed release after the restore does not restore a second time" do
