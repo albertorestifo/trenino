@@ -17,7 +17,7 @@ defmodule Trenino.MCP.Tools.GaugeBindingTools do
         %{
           name: name,
           description:
-            "Train gauge binding: which simulator value drives a stepper axis. Disabled by default; enabling requires a commissioned hold axis whose dial is calibrated and reviewed (see get_dial_calibration / update_dial_calibration: the dial belongs to the axis, not the train). input_unit is what the simulator reports (raw/mps/kmh/mph); raw only fits a raw dial. Preview never moves. Select a verified endpoint and value key; never guess units.",
+            "Train gauge binding: which simulator value drives a stepper axis. Disabled by default; enabling requires a commissioned hold axis whose dial is calibrated and reviewed (see get_dial_calibration / update_dial_calibration: the dial belongs to the axis, not the train). input_unit is what the simulator reports (raw/mps/kmh/mph); raw only fits a raw dial. Preview never moves. inactive_behavior can only be hold (the needle stops where it is when the train or data goes inactive); release is rejected. Select a verified endpoint and value key; never guess units.",
           input_schema: %{type: "object", required: required, properties: properties()}
         }
       end

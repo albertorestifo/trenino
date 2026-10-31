@@ -119,4 +119,23 @@ defmodule Trenino.MCP.Tools.StepperToolsTest do
 
     assert text =~ "mode"
   end
+
+  test "tool schemas advertise only the inputs each tool accepts" do
+    tools = Map.new(StepperTools.tools(), &{&1.name, &1})
+    control = tools["control_stepper_axis"].input_schema.properties
+
+    assert Map.has_key?(control, :acknowledged)
+    assert Map.keys(tools["list_stepper_axes"].input_schema.properties) == [:device_id]
+    refute Map.has_key?(tools["update_stepper_axis"].input_schema.properties, :operation)
+
+    for {_, tool} <- tools do
+      refute Map.has_key?(tool.input_schema.properties, :inserted_at)
+      refute Map.has_key?(tool.input_schema.properties, :updated_at)
+    end
+
+    refute tools["control_stepper_axis"].description =~ "Mutations require unique operation_token"
+
+    assert tools["control_stepper_axis"].description =~
+             "except claim, renew, release_lease and resume"
+  end
 end

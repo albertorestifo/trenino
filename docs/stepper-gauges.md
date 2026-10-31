@@ -123,6 +123,17 @@ explicitly opt into Home on connect, causing one bounded movement on each genuin
 new UART connection after acknowledged setup. Train activation, form save, legacy
 Apply, host/session restart, recovery and duplicate device events do not authorize
 a fresh automatic Home. An uncertain Home outcome remains blocked for recovery.
+The Home is a one-shot latch: starting an Apply (deployment) or any session fault
+consumes it, and paused or leased axes are never homed automatically.
+
+Request IDs are 16-bit and shared by a session. The firmware sources available to
+this project (v3.0.0) contain no stepper protocol, so nothing guarantees that an ID can
+be reused without an intervening Reset. Before the counter would wrap, the session
+therefore performs an acknowledged Reset and reconfigure, which discards every
+reference (a gauge needs a reference again after roughly 65,000 requests, typically
+hours of driving). Once setup completes the manager re-homes the axes that qualify for
+Home on connect, so those gauges recover on their own; others stay awaiting reference.
+Wrapping without a Reset is only acceptable once firmware is shown to allow it.
 
 ## Dial calibration (per axis)
 
@@ -206,7 +217,9 @@ state (train, simulator connected, cleaning, retries, last error), and the MCP t
 failure for each gauge, so a gauge that is not moving can be diagnosed.
 
 Invalid/stale simulator data retains the last target only until stale timeout.
-Inactive hold sends Stop, inactive release sends Release. Train changes and
+Inactive always sends Stop (the needle holds). The former inactive `release` option
+can no longer be chosen; stored values behave as hold, because Release discards the
+reference and would strand the gauge. Train changes and
 simulator loss apply the outgoing policy and discard previous samples. Recovery
 requires acknowledged reset/configure and fresh reference; only fresh simulator
 data may drive again.
@@ -219,18 +232,26 @@ tools provide list/create/update/delete and pure preview (no points: a binding o
 chooses its speed source), and `get_dial_calibration` / `update_dial_calibration` read and
 write the per-axis dial. Shared contexts enforce
 the same validation as UI. Runtime control claims a 60-second opaque lease,
-renewed only explicitly. Every mutation supplies an operation token. Identical
+renewed only explicitly. Every `control_stepper_axis` motion or recovery operation (everything except `claim`,
+`renew`, `release_lease` and `resume`) supplies an operation token. Identical
 token/arguments reuse admission instead of restarting motion; changed content
 rejects. Up to 100 records are retained for the lease lifetime, then new operations
-reject until a new lease. Expiry Stops and leaves automatic control paused, except that an accepted
+reject until a new lease (Stop and Release are always accepted; refusals are not recorded,
+so a retry with the same token runs again). Expiry Stops and leaves automatic control paused, except that an accepted
 move or home always finishes: if the lease expires while the axis is moving or homing,
 the Stop and cleanup are deferred until it is stationary (bounded at five minutes), and
 in the meantime the holder can still renew, stop or release the lease while other
-commands are refused. Explicit Stop, fault, host loss and loss of the MCP process or
-connection still stop motion immediately. Status reports each axis's `lease`
+commands are refused. Explicit Stop, fault and host loss still stop motion immediately. Losing the MCP
+process or connection does **not** stop motion by itself: the lease has no monitor,
+so the axis keeps its state until the lease expires (at most 60 seconds, plus any
+deferral while an accepted move or home finishes), and then Stop runs. Status reports each axis's `lease`
 (`owner`, `expires_in_ms`, `finishing_motion`) or null. A refused claim or resume names
 the holder (MCP session with time left, or the Trenino UI) and what to do about it.
 Status distinguishes pending acceptance from completion.
+
+Deleting an axis stays possible while its session is faulted, unsupported, still
+starting or the axis was never applied: the Release is skipped, and dropping the
+session stops KeepAlive so the firmware's host-loss behaviour takes over.
 
 ## Physical acceptance
 

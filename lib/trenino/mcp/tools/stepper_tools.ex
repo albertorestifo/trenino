@@ -17,52 +17,57 @@ defmodule Trenino.MCP.Tools.StepperTools do
     "enable" => :enable,
     "jog" => :jog
   }
+  @config_fields StepperAxis.__schema__(:fields) --
+                   [:id, :device_id, :commissioned, :inserted_at, :updated_at]
+  @control_fields [
+    :id,
+    :operation,
+    :lease_token,
+    :operation_token,
+    :position,
+    :delta,
+    :address,
+    :acknowledged
+  ]
   @next_steps "Saved only; the device is unchanged and nothing moved. Call apply_stepper_configuration, then re-align the needle by hand and re-assign the reference."
   @after_apply "Apply is asynchronous: poll get_stepper_axis_status until the lifecycle is awaiting_reference, then claim, align by hand and reference."
 
   def tools do
     [
-      tool("list_stepper_axes", ["device_id"]),
-      tool("get_stepper_axis_status", ["id"]),
-      tool("create_stepper_axis", ["device_id", "name"]),
-      tool("update_stepper_axis", ["id"]),
-      tool("delete_stepper_axis", ["id"]),
-      tool("apply_stepper_configuration", ["device_id"]),
-      tool("control_stepper_axis", ["id", "operation"])
+      tool("list_stepper_axes", ["device_id"], [:device_id]),
+      tool("get_stepper_axis_status", ["id"], [:id]),
+      tool("create_stepper_axis", ["device_id", "name"], [:device_id | @config_fields]),
+      tool("update_stepper_axis", ["id"], [:id | @config_fields]),
+      tool("delete_stepper_axis", ["id"], [:id]),
+      tool("apply_stepper_configuration", ["device_id"], [:device_id]),
+      tool("control_stepper_axis", ["id", "operation"], @control_fields)
     ]
   end
 
-  defp tool(name, required) do
-    fields =
-      Map.new(StepperAxis.__schema__(:fields) -- [:commissioned], fn key ->
-        {key, property(key)}
-      end)
-
-    properties =
-      Map.merge(fields, %{
-        device_id: %{type: "integer"},
-        id: %{type: "integer"},
-        operation: %{
-          type: "string",
-          enum:
-            ~w(claim renew release_lease resume recover recommission_address complete_commissioning home reference move_to stop release enable jog)
-        },
-        lease_token: %{type: "string"},
-        operation_token: %{type: "string"},
-        position: %{type: "integer"},
-        delta: %{type: "integer"},
-        address: %{type: "integer", minimum: 96, maximum: 119}
-      })
+  defp tool(name, required, property_keys) do
+    properties = Map.new(property_keys, &{&1, property(&1)})
 
     %{
       name: name,
       description:
-        "Configurable generic stepper axis. Defaults already match an X27.168 six-state motor on shield port 1 / 0x60, so create needs only device_id and name. CRUD never moves and does NOT reach the device: after create/update call apply_stepper_configuration (also never moves), then claim, reference, jog, complete_commissioning. Flipping `reverse` is a single update_stepper_axis; afterwards apply, re-align the needle and re-assign the reference. apply_stepper_configuration is never blocked; when the panel has a display at 0x70 the result carries a `warning` (unplug that display, apply with the shield alone, reconnect, apply again) - relay it to the user. Firmware >=3.1.0. Control requires explicit claim; 60-second lease renews only explicitly. An accepted move or home always finishes: if the lease expires meanwhile, expiry (and its Stop) waits until the axis is stationary, and only renew/stop/release_lease work in between. Status reports `lease` {owner, expires_in_ms, finishing_motion} per axis, or null. A refused claim/resume says who holds the lease and what to do. Mutations require unique operation_token; identical retries reuse admission, not motion. Home completion is assumed, never sensed. Release loses reference. ALLCALL 0x70 registration requires shield alone.",
+        "Configurable generic stepper axis. Defaults already match an X27.168 six-state motor on shield port 1 / 0x60, so create needs only device_id and name. CRUD never moves and does NOT reach the device: after create/update call apply_stepper_configuration (also never moves), then claim, reference, jog, complete_commissioning. Flipping `reverse` is a single update_stepper_axis; afterwards apply, re-align the needle and re-assign the reference. apply_stepper_configuration is never blocked; when the panel has a display at 0x70 the result carries a `warning` (unplug that display, apply with the shield alone, reconnect, apply again) - relay it to the user. Firmware >=3.1.0. Control requires explicit claim; 60-second lease renews only explicitly. An accepted move or home always finishes: if the lease expires meanwhile, expiry (and its Stop) waits until the axis is stationary, and only renew/stop/release_lease work in between. Status reports `lease` {owner, expires_in_ms, finishing_motion} per axis, or null. A refused claim/resume says who holds the lease and what to do. Every control_stepper_axis operation except claim, renew, release_lease and resume requires an operation_token that is unique per intended action; identical retries (same token and arguments) reuse the first outcome and do not move again, and only successful outcomes are remembered. Stop and release always go through, even past the 100 recorded operations per lease. recommission_address additionally needs `acknowledged: true` (the user confirmed the shield-only registration procedure). Home completion is assumed, never sensed. Release loses reference. ALLCALL 0x70 registration requires shield alone.",
       input_schema: %{type: "object", properties: properties, required: required}
     }
   end
 
-  defp property(key) when key in [:reverse, :commissioned], do: %{type: "boolean"}
+  defp property(key) when key in [:reverse, :commissioned, :acknowledged],
+    do: %{type: "boolean"}
+
+  defp property(:operation) do
+    %{
+      type: "string",
+      enum:
+        ~w(claim renew release_lease resume recover recommission_address complete_commissioning home reference move_to stop release enable jog)
+    }
+  end
+
+  defp property(key) when key in [:lease_token, :operation_token], do: %{type: "string"}
+  defp property(:address), do: %{type: "integer", minimum: 96, maximum: 119}
 
   defp property(key)
        when key in [
