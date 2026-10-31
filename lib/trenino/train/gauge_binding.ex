@@ -59,6 +59,7 @@ defmodule Trenino.Train.GaugeBinding do
       greater_than_or_equal_to: 500,
       less_than_or_equal_to: 60_000
     )
+    |> validate_change(:inactive_behavior, &validate_inactive_behavior/2)
     |> validate_units(calibration(axis))
     |> disable_on_axis_change()
     |> validate_enabled(axis)
@@ -66,6 +67,13 @@ defmodule Trenino.Train.GaugeBinding do
     |> foreign_key_constraint(:stepper_axis_id)
     |> unique_constraint([:train_id, :stepper_axis_id])
   end
+
+  # `:release` de-energizes the axis and discards its reference, stranding the gauge. Rows
+  # already holding it keep loading and behave like `:hold`; it cannot be newly chosen.
+  defp validate_inactive_behavior(:inactive_behavior, :release),
+    do: [inactive_behavior: "release is no longer supported; gauges hold their position"]
+
+  defp validate_inactive_behavior(_, _), do: []
 
   @doc "The axis's dial calibration, or `nil` when none is recorded or it is not loaded."
   @spec calibration(StepperAxis.t() | nil) :: DialCalibration.t() | nil

@@ -398,12 +398,6 @@ defmodule TreninoWeb.GaugeBindingWizard do
                 label="Out of range"
                 options={[{"Clamp to the ends", :clamp}, {"Reject the value", :reject}]}
               />
-              <.input
-                field={@form[:inactive_behavior]}
-                type="select"
-                label="When inactive or stale"
-                options={[{"Hold position", :hold}, {"Release motor", :release}]}
-              />
             </div>
             <.input
               field={@form[:absolute_value]}

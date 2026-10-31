@@ -37,6 +37,14 @@ defmodule Trenino.Train.GaugeBindingTest do
     assert changeset(attrs(), axis(nil)).valid?
   end
 
+  test "release can no longer be chosen, but a stored release row still updates" do
+    refute changeset(attrs(%{inactive_behavior: :release}), axis(nil)).valid?
+    assert changeset(attrs(%{inactive_behavior: :hold}), axis(nil)).valid?
+
+    stored = %GaugeBinding{train_id: 1, inactive_behavior: :release}
+    assert GaugeBinding.changeset(stored, attrs(%{name: "Renamed"}), axis(nil)).valid?
+  end
+
   test "raw input only fits a raw dial" do
     mph = %DialCalibration{valid: true, reviewed: true, output_unit: :mph}
     refute changeset(attrs(%{input_unit: :raw}), axis(mph)).valid?
