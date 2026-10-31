@@ -224,6 +224,10 @@ defmodule Trenino.Hardware.StepperSession do
   defp admit_axis(_, op, _) when op in [:enable, :get_status], do: :ok
   defp admit_axis(_, _, _), do: {:error, :invalid_operation}
 
+  defp admit_target(%State{lifecycle: lifecycle}, _, _)
+       when lifecycle in [:deploying, :probing, :resetting, :configuring, :fault, :unsupported],
+       do: {:error, lifecycle}
+
   defp admit_target(s, id, target) do
     case Map.get(s.axes, id) do
       nil -> {:error, :not_found}

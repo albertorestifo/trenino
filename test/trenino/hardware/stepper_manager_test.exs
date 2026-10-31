@@ -252,6 +252,62 @@ defmodule Trenino.Hardware.StepperManagerTest do
     GenServer.stop(replacement)
   end
 
+  test "fault revokes the lease; recover reconfigures with a clean error and no replayed motion",
+       ctx do
+    prepare(ctx)
+    assert {:ok, token} = StepperManager.claim_manual(ctx.axis.id, self())
+    assert_receive {:sent, %StepperCommand{operation: :stop} = stop}
+    publish(ctx, status(stop))
+    Process.sleep(5)
+    assert {:ok, _} = StepperManager.command(ctx.axis.id, :reference, %{position: 0}, token)
+    assert_receive {:sent, %StepperCommand{operation: :reference} = reference}
+    publish(ctx, %{status(reference) | known: true, energized: true})
+
+    publish(ctx, %{
+      status(%{reference | operation: :get_status, request_id: 0})
+      | fault: :driver_i2c,
+        state: :fault
+    })
+
+    Process.sleep(10)
+    snapshot = StepperManager.snapshot(ctx.device.id)
+    assert snapshot.lifecycle == :fault
+    assert snapshot.error == :driver_i2c
+
+    assert {:error, :invalid_lease} =
+             StepperManager.command(ctx.axis.id, :move_to, %{position: 10}, token)
+
+    # manual pause outlives the revoked lease until an explicit Resume
+    assert {:error, :manual_pause} = StepperManager.set_target(ctx.axis.id, 10, 1)
+
+    # recover replaces the session; resume is blocked until reference is re-established
+    flush_sent()
+    assert :ok = StepperManager.recover(ctx.device.id)
+
+    for operation <- [:get_status, :reset, :configure] do
+      assert_receive {:sent, %StepperCommand{operation: ^operation} = cmd}
+      publish(ctx, status(cmd))
+      Process.sleep(5)
+    end
+
+    recovered = StepperManager.snapshot(ctx.device.id)
+    assert recovered.lifecycle == :awaiting_reference
+    assert recovered.error == nil
+    assert recovered.axes[ctx.axis.id].error == nil
+    refute recovered.axes[ctx.axis.id].ready
+    refute_receive {:sent, %StepperCommand{operation: :move_to}}, 50
+    refute_receive {:sent, %StepperCommand{operation: :home}}, 10
+    GenServer.stop(StepperManager)
+  end
+
+  defp flush_sent do
+    receive do
+      {:sent, _} -> flush_sent()
+    after
+      0 -> :ok
+    end
+  end
+
   defp prepare(ctx) do
     send(ctx.pid, {:devices_updated, [ctx.conn]})
 
