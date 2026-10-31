@@ -78,7 +78,9 @@ defmodule TreninoWeb.StepperSetupTest do
       view |> element("#stepper-add") |> render_click()
       view |> form("#stepper-axis-form", stepper_axis: %{name: "Speed"}) |> render_submit()
 
-      assert has_element?(view, "#apply-needed-banner", "Apply needed")
+      # Never confirmed on a device: unknown, so the banner must not claim a difference.
+      assert has_element?(view, "#apply-needed-banner", "Not confirmed on the device")
+      refute has_element?(view, "#apply-needed-banner", "Saved changes are not on the device")
       assert has_element?(view, "#apply-unavailable-reason", "no device is connected")
 
       fingerprint =
@@ -89,7 +91,7 @@ defmodule TreninoWeb.StepperSetupTest do
       refute has_element?(view, "#apply-needed-banner")
 
       view |> element("button[phx-click=flip_direction]") |> render_click()
-      assert has_element?(view, "#apply-needed-banner")
+      assert has_element?(view, "#apply-needed-banner", "Apply needed")
     end
 
     test "fingerprint ignores names", %{conn: _} do

@@ -979,6 +979,7 @@ defmodule TreninoWeb.ConfigurationEditLive do
       |> assign(:connected_devices, connected_devices)
       |> assign(:has_parts, has_parts?(assigns))
       |> assign(:apply_needed, apply_needed?(assigns))
+      |> assign(:apply_unknown, apply_unknown?(assigns))
 
     ~H"""
     <.breadcrumb items={[
@@ -997,6 +998,7 @@ defmodule TreninoWeb.ConfigurationEditLive do
           has_parts={@has_parts}
           device_connected={not Enum.empty?(@connected_devices)}
           apply_needed={@apply_needed}
+          apply_unknown={@apply_unknown}
           applying={@applying}
         />
 
@@ -1135,9 +1137,15 @@ defmodule TreninoWeb.ConfigurationEditLive do
 
   # The device only learns the configuration on Apply, so compare what is saved now
   # against the fingerprint recorded when the device last confirmed one.
-  defp apply_needed?(%{new_mode: true}), do: false
+  defp apply_needed?(assigns), do: config_status(assigns) in [:unapplied, :unknown]
 
-  defp apply_needed?(assigns) do
+  # With no recorded fingerprint (older or never-applied configuration) we cannot tell
+  # whether the device matches, so the banner says so instead of claiming a difference.
+  defp apply_unknown?(assigns), do: config_status(assigns) == :unknown
+
+  defp config_status(%{new_mode: true}), do: :applied
+
+  defp config_status(assigns) do
     current =
       Hardware.config_fingerprint(
         assigns.inputs,
@@ -1146,8 +1154,10 @@ defmodule TreninoWeb.ConfigurationEditLive do
         assigns.stepper_axes
       )
 
-    Hardware.config_unapplied?(assigns.device, current) and
-      (has_parts?(assigns) or assigns.device.applied_fingerprint != nil)
+    case Hardware.config_status(assigns.device, current) do
+      :unknown -> if has_parts?(assigns), do: :unknown, else: :applied
+      status -> status
+    end
   end
 
   # Components
@@ -1160,6 +1170,7 @@ defmodule TreninoWeb.ConfigurationEditLive do
   attr :has_parts, :boolean, required: true
   attr :device_connected, :boolean, required: true
   attr :apply_needed, :boolean, required: true
+  attr :apply_unknown, :boolean, default: false
   attr :applying, :boolean, required: true
 
   defp device_header(assigns) do
@@ -1222,10 +1233,18 @@ defmodule TreninoWeb.ConfigurationEditLive do
         role="status"
         class="mt-4 rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm"
       >
-        <strong>Apply needed.</strong>
-        Saved changes are not on the device yet. {if @can_apply,
-          do: "Click Apply to Device to send them.",
-          else: "Connect the device, then click Apply to Device."}
+        <%= if @apply_unknown do %>
+          <strong>Not confirmed on the device.</strong>
+          Trenino has no record of this configuration being applied, so it cannot tell whether
+          the device matches. {if @can_apply,
+            do: "Click Apply to Device to be sure.",
+            else: "Connect the device, then click Apply to Device to be sure."}
+        <% else %>
+          <strong>Apply needed.</strong>
+          Saved changes are not on the device yet. {if @can_apply,
+            do: "Click Apply to Device to send them.",
+            else: "Connect the device, then click Apply to Device."}
+        <% end %>
       </div>
     </header>
     """

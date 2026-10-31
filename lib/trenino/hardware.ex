@@ -487,21 +487,34 @@ defmodule Trenino.Hardware do
     term = {
       inputs |> Enum.map(&{&1.pin, &1.input_type, &1.sensitivity, &1.debounce}) |> Enum.sort(),
       matrices |> Enum.map(&matrix_pins/1) |> Enum.sort(),
-      i2c_modules |> Enum.map(&{&1.module_chip, &1.i2c_address, &1.params}) |> Enum.sort(),
+      i2c_modules |> Enum.map(&i2c_wire_config/1) |> Enum.sort(),
       stepper_axes
       |> Enum.map(&{&1.axis_index, StepperAxis.to_protocol_config(&1)})
       |> Enum.sort()
     }
 
-    :crypto.hash(:sha256, :erlang.term_to_binary(term)) |> Base.encode16(case: :lower)
+    :crypto.hash(:sha256, :erlang.term_to_binary(term, [:deterministic]))
+    |> Base.encode16(case: :lower)
   end
+
+  # Mirrors ConfigurationManager.build_configure_message/4: only these reach the device.
+  # The other display params (orientation, dot, alignment, min value) are applied in software.
+  defp i2c_wire_config(%{module_chip: :ht16k33, i2c_address: address, params: params}),
+    do: {:ht16k33, address, params.brightness, params.num_digits}
 
   defp matrix_pins(matrix),
     do: {Enum.map(matrix.row_pins, & &1.pin), Enum.map(matrix.col_pins, & &1.pin)}
 
-  @doc "True when the saved configuration differs from what the device last confirmed."
-  @spec config_unapplied?(Device.t(), String.t()) :: boolean()
-  def config_unapplied?(%Device{applied_fingerprint: applied}, current), do: applied != current
+  @doc """
+  Whether the saved configuration matches what the device last confirmed.
+
+  `:unknown` when the device never recorded a fingerprint (created before fingerprints
+  existed, or never applied): there is nothing to compare against, so no claim is made.
+  """
+  @spec config_status(Device.t(), String.t()) :: :applied | :unapplied | :unknown
+  def config_status(%Device{applied_fingerprint: nil}, _current), do: :unknown
+  def config_status(%Device{applied_fingerprint: current}, current), do: :applied
+  def config_status(%Device{}, _current), do: :unapplied
 
   @doc """
   Generate a unique random configuration ID.
