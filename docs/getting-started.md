@@ -105,6 +105,36 @@ Once Trenino is running and your hardware is connected:
 2. Watch the lever respond in Train Sim World
 3. Adjust calibration or notch mapping if needed
 
+## Set Up a Physical Gauge (Speedometer)
+
+If your panel has a stepper motor driving a needle, Trenino can walk you through the
+whole setup, including the dial marks, without knowing any of the settings in advance.
+For wiring and background see [Physical stepper gauges](stepper-gauges.md).
+
+1. Open your configuration, find **Stepper axes**, and add the axis with **Quick setup:
+   X27.168 motor**. Save it, then click **Apply to Device**.
+2. On the axis card click **Guided gauge setup**.
+3. **Check**: the wizard confirms the controller is connected, the settings are on it
+   and the motor is wired. It sends the settings if they are not. If you have a display
+   at address 0x70, it repeats the warning about registering the shield first.
+4. **Direction**: turn the needle by hand onto the 0 mark and press *The needle is on 0*.
+   Trenino nudges it up a little. If it did not go up the dial, say so: Trenino flips the
+   direction and sends it to the controller, and you line the needle up on 0 again.
+5. **Dial**: enter the lowest and highest dial value and its unit (for example 0 to 100
+   mph). Trenino moves the needle to evenly spaced marks; nudge it until it sits exactly
+   on the mark and capture what the dial reads. Later marks start closer to the right
+   place because Trenino learns the dial's scale from the first one.
+6. **Verify**: the needle returns to 0 and you confirm it is exactly on the mark (this
+   catches skipped steps), then it goes to a mark in between.
+7. **Automatic zeroing** (optional, recommended): the needle sweeps into its end stop to
+   find zero by itself. Trenino lengthens the sweep if needed, you nudge the needle onto
+   0 once, and Trenino remembers the distance.
+8. **Finish**: confirm the gauge works, give it a name, and the wizard shows the trains
+   that already use it. Add the gauge to a train from **Trains > Gauges > Add gauge**.
+
+A **Stop** button is visible whenever the needle moves. Closing the wizard at any point
+stops the gauge and gives control back; steps that were already saved stay saved.
+
 ## Windows Virtual Joystick Mode
 
 Virtual joystick mode lets Windows games see selected Trenino controls as one

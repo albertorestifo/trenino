@@ -22,6 +22,58 @@ Repeat after EEPROM erase, address change or shield replacement. Software cannot
 safely discover an unknown responder by probing writes. Ordinary resource
 conflicts never automatically ForgetDriver.
 
+## Guided gauge setup
+
+The quickest route to a working speedometer is **Guided gauge setup** on the axis card
+(**Stepper axes** on the configuration page). It chains the manual steps below into one
+flow and needs no knowledge of the parameters. It uses the same operations as the manual
+controls (`StepperManager` claim/command/release, `Hardware.save_dial_calibration`,
+`complete_commissioning`) and adds no protocol or firmware changes. Every safety rule
+still holds: nothing moves on open or save, motion only follows a button that says it will
+move, and commissioning is recorded only through `complete_commissioning`.
+
+1. **Check.** Device connected, firmware supported, saved settings applied (a **Send
+   settings** button applies them), idle hold on, and a wiring confirmation. The 0x70
+   display warning is repeated. Continue takes manual control behind the scenes; the
+   wizard never uses the word lease. A UI hold has no timer (it is tied to the open page),
+   so there is nothing to renew; if the manager revokes it (for example after Apply) the
+   wizard takes it again by itself.
+2. **Direction.** Align the needle on 0 by hand, **The needle is on 0** (assigns the
+   reference), jog +20, and ask whether it moved up the dial. If not, `reverse` is
+   flipped, the settings are applied and the user realigns (Apply drops the reference),
+   then the check repeats.
+3. **Dial.** Lowest/highest value, unit and mark count (default 5). The first mark is
+   estimated from the axis travel spread over the dial, later marks from the slope of the
+   last two points (estimates land within about 2 percent). Each mark is a move to the
+   estimate, optional nudges (kept inside the soft limits) and a capture of the reading
+   against a fresh stationary position, then the dial is saved unreviewed. Only if the top
+   mark cannot be reached is `max_position` extended (with Apply and realignment).
+4. **Verify.** The needle returns to 0 and the user confirms it is exactly on the mark
+   (a lost-step check; a miss offers realigning or measuring again), then a mark between
+   two measured points is checked and the dial is saved reviewed.
+5. **Automatic zeroing (optional).** Switches to internal stop, keeps home speed 50, and
+   sets the sweep to cover the top of the dial (or the soft limit) plus the backoff and a
+   margin, and a timeout above `ceil(1000 * (steps + backoff) / speed) + 500`. A sweep that
+   was too short is called out and lengthened. After Apply and Home the user nudges the
+   needle up onto 0; the new `home_backoff` is the previous backoff plus the nudge
+   distance (for example 10 + 253 = 263). After a second Apply and Home the user
+   confirms it lands on 0 (otherwise nudge again).
+6. **Finish.** `complete_commissioning`, optional `home_on_connect`, a name field, the
+   trains with a gauge binding on the axis (with a link to add one), then closing the
+   wizard releases manual control and resumes train control for a commissioned axis.
+
+Waits follow real status, never sleeps: a move finishes when the device reports the
+axis stationary at the target, a Home when it was seen homing and is stationary and
+referenced again. A **Stop** button shows during any motion. A fault, or a device that
+disconnects, pauses the wizard with a plain next action (Recover, or plug it back in);
+after recovery the user realigns the needle and the wizard resumes at the same step
+with measured marks kept. Closing midway stops the axis, hands control back and keeps
+only clearly saved steps (axis settings, the dial). The state machine lives in
+`Trenino.Hardware.GaugeWizard` (pure, tested without hardware); effects are run by
+`Trenino.Hardware.GaugeWizard.Runner` and the page is `TreninoWeb.GaugeWizardComponent`.
+Closing the browser tab or navigating away drops manual control (the manager stops the
+axis) but does not resume train control; press Resume train control in the axis controls.
+
 ## Configure and commission
 
 1. In Hardware configurations, select a panel and open **Stepper axes**. Click
