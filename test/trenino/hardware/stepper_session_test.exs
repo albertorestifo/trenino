@@ -127,6 +127,46 @@ defmodule Trenino.Hardware.StepperSessionTest do
     assert StepperSession.snapshot(pid).lifecycle == :fault
   end
 
+  test "deployment can begin again after a failed Reset fault", %{pid: pid} do
+    setup_axis(pid)
+    owner = self()
+    spawn(fn -> send(owner, {:first, StepperSession.begin_deployment(pid)}) end)
+    assert_receive {:sent, %StepperCommand{operation: :reset} = reset}
+    reply(pid, reset, %{result: :io_error, fault: :driver_i2c})
+    assert_receive {:first, {:error, {:reset_failed, :io_error}}}, 100
+    refute StepperSession.snapshot(pid).deployment_token
+
+    waiter = Task.async(fn -> StepperSession.begin_deployment(pid) end)
+    assert_receive {:sent, %StepperCommand{operation: :reset} = reset2}, 100
+    reply(pid, reset2)
+    assert {:ok, _token} = Task.await(waiter)
+  end
+
+  test "a fault mid-deployment invalidates the old token for a new deployment", %{pid: pid} do
+    setup_axis(pid)
+    waiter = Task.async(fn -> StepperSession.begin_deployment(pid) end)
+    assert_receive {:sent, %StepperCommand{operation: :reset} = reset}
+    reply(pid, reset)
+    assert {:ok, old} = Task.await(waiter)
+
+    # forget_driver is never acknowledged, so the ack timeout faults the session
+    assert {:error, :outcome_unknown} = StepperSession.forget_driver(pid, old)
+    assert StepperSession.snapshot(pid).lifecycle == :fault
+
+    waiter = Task.async(fn -> StepperSession.begin_deployment(pid) end)
+    assert_receive {:sent, %StepperCommand{operation: :reset} = reset2}, 100
+    reply(pid, reset2)
+    assert {:ok, new} = Task.await(waiter)
+    refute new == old
+
+    assert {:error, :stale_token} = StepperSession.finish_deployment(pid, old, :ok)
+    assert {:error, :invalid_deployment_token} = StepperSession.forget_driver(pid, old)
+    snapshot = StepperSession.snapshot(pid)
+    assert snapshot.deployment_token == new
+    assert snapshot.lifecycle == :deploying
+    assert :ok = StepperSession.finish_deployment(pid, new, :ok)
+  end
+
   test "I2C fault during deletion Release replies instead of orphaning caller", %{pid: pid} do
     setup_axis(pid)
     owner = self()

@@ -613,7 +613,7 @@ defmodule Trenino.Hardware.StepperSession do
   defp fault(s, error) do
     reply_fault_waiter(s.deployment_waiter, error)
     Enum.each(s.axes, fn {_, axis} -> reply_fault_waiter(axis.release_waiter, error) end)
-    %{invalidate(%{s | deployment_waiter: nil}, :fault) | error: error}
+    %{invalidate(%{s | deployment_waiter: nil, deployment_token: nil}, :fault) | error: error}
   end
 
   defp reply_fault_waiter(nil, _), do: :ok
