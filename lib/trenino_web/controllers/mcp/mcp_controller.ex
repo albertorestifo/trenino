@@ -24,7 +24,6 @@ defmodule TreninoWeb.MCP.MCPController do
       |> put_resp_header("content-type", "text/event-stream")
       |> put_resp_header("cache-control", "no-cache")
       |> put_resp_header("connection", "keep-alive")
-      |> put_resp_header("access-control-allow-origin", "*")
       |> send_chunked(200)
 
     messages_url = url(conn, ~p"/mcp/messages?session_id=#{session_id}")
