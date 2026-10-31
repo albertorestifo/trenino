@@ -1,26 +1,13 @@
 defmodule TreninoWeb.GaugeBindingWizard do
   @moduledoc "Human-field gauge binding and calibration workflow, usable offline."
   use TreninoWeb, :live_component
+  alias Phoenix.HTML.Form
   alias Trenino.Hardware
   alias Trenino.Hardware.StepperManager
   alias Trenino.Train
-  alias Trenino.Train.{GaugeBinding, GaugeMapper, GaugePresets}
-  alias TreninoWeb.GaugeFeedback
+  alias Trenino.Train.{Detection, GaugeBinding, GaugeMapper, GaugePresets}
+  alias TreninoWeb.{GaugeFeedback, GaugeGuidance}
 
-  @fields [
-    name: "Name",
-    endpoint: "Simulator endpoint (verify units)",
-    value_key: "Value key (blank requires one numeric value)",
-    multiplier: "Multiplier",
-    offset: "Offset",
-    stale_after_ms: "Sample stale after (ms)"
-  ]
-  @selects [
-    input_unit: {"Input unit", [:raw, :mps, :kmh, :mph]},
-    output_unit: {"Dial unit", [:raw, :mps, :kmh, :mph]},
-    out_of_range: {"Out of range", [:clamp, :reject]},
-    inactive_behavior: {"When inactive or stale", [:hold, :release]}
-  ]
   @impl true
   def update(%{runtime_event: {id, status}}, socket) do
     {:ok, assign(socket, :runtime, Map.put(socket.assigns.runtime, id, status))}
@@ -47,13 +34,13 @@ defmodule TreninoWeb.GaugeBindingWizard do
       |> assign_new(:token_axis, fn -> nil end)
       |> assign_new(:explorer_open, fn -> false end)
       |> assign_new(:runtime, fn -> %{} end)
+      |> assign_new(:test_value, fn -> "0" end)
+      |> assign_new(:capture_value, fn -> "0" end)
 
     {:ok,
      assign(socket,
        axes: Hardware.list_all_stepper_axes(),
-       bindings: Train.list_gauge_bindings(socket.assigns.train_id),
-       fields: @fields,
-       selects: @selects
+       bindings: Train.list_gauge_bindings(socket.assigns.train_id)
      )}
   end
 
@@ -61,6 +48,7 @@ defmodule TreninoWeb.GaugeBindingWizard do
   def handle_event(event, _, %{assigns: %{editing: nil}} = socket)
       when event in [
              "save",
+             "submit",
              "validate",
              "preview",
              "preset",
@@ -96,8 +84,31 @@ defmodule TreninoWeb.GaugeBindingWizard do
     end
   end
 
-  def handle_event("validate", %{"gauge_binding" => params}, socket) when is_map(params),
-    do: {:noreply, change(socket, params)}
+  def handle_event("validate", %{"gauge_binding" => params} = all, socket) when is_map(params) do
+    socket =
+      assign(socket,
+        test_value: Map.get(all, "test_value", socket.assigns.test_value),
+        capture_value: Map.get(all, "capture_value", socket.assigns.capture_value)
+      )
+
+    {:noreply, change(socket, params)}
+  end
+
+  # Typing in the embedded API explorer search box also bubbles a form change.
+  def handle_event("validate", _, socket), do: {:noreply, socket}
+
+  def handle_event("submit", %{"intent" => intent} = all, socket)
+      when intent in ["preview", "test"] do
+    socket = socket |> sync_form(all) |> assign(test_value: all["test_value"] || "0")
+    handle_event("preview", %{"value" => all["test_value"], "action" => intent}, socket)
+  end
+
+  def handle_event("submit", %{"intent" => "capture"} = all, socket) do
+    socket = socket |> sync_form(all) |> assign(capture_value: all["capture_value"] || "0")
+    handle_event("capture", %{"value" => all["capture_value"]}, socket)
+  end
+
+  def handle_event("submit", params, socket), do: handle_event("save", params, socket)
 
   def handle_event("save", %{"gauge_binding" => params}, socket) when is_map(params) do
     b = socket.assigns.editing
@@ -235,6 +246,11 @@ defmodule TreninoWeb.GaugeBindingWizard do
     do:
       {:noreply, assign(socket, :message, "Enter valid configuration values before continuing.")}
 
+  defp sync_form(socket, %{"gauge_binding" => params}) when is_map(params),
+    do: change(socket, params)
+
+  defp sync_form(socket, _), do: socket
+
   defp parse_index(value) when is_binary(value), do: Integer.parse(value)
   defp parse_index(_), do: :error
 
@@ -323,13 +339,135 @@ defmodule TreninoWeb.GaugeBindingWizard do
     |> Map.put("points", Enum.map(b.points, &(Map.from_struct(&1) |> stringify())))
   end
 
+  @unit_options [
+    {"Raw (no conversion)", :raw},
+    {"m/s", :mps},
+    {"km/h", :kmh},
+    {"mph", :mph}
+  ]
+
+  defp measure_reasons(nil, _snapshot, _token, _token_axis) do
+    reason = "Choose a hardware axis in step 1."
+    %{claim: reason, move: reason, capture: reason}
+  end
+
+  defp measure_reasons(axis, snapshot, token, token_axis) do
+    runtime = snapshot.axes[axis.id]
+    held? = token != nil and token_axis == axis.id
+
+    if snapshot.lifecycle == :disconnected do
+      reason =
+        "The device is not connected. Connect it and Apply the saved axis configuration first."
+
+      %{claim: reason, move: reason, capture: reason}
+    else
+      %{
+        claim: nil,
+        move: if(held?, do: reference_reason(runtime), else: "Take manual control first."),
+        capture: if(held?, do: capture_reason(runtime), else: "Take manual control first.")
+      }
+    end
+  end
+
+  defp reference_reason(%{ready: true}), do: nil
+
+  defp reference_reason(_),
+    do:
+      "The axis has no reference yet. Set it under Hardware commissioning (Stepper axes), then come back."
+
+  defp capture_reason(runtime) do
+    cond do
+      reason = reference_reason(runtime) ->
+        reason
+
+      runtime.status == nil or runtime.status.state != :idle ->
+        "Wait for the needle to stop. Capture needs a fresh, stationary position."
+
+      true ->
+        nil
+    end
+  end
+
+  defp review_reason(form, axis) do
+    cond do
+      form[:points].errors != [] -> "Fix the calibration points in step 3 first."
+      is_nil(axis) -> "Choose a hardware axis in step 1."
+      true -> nil
+    end
+  end
+
+  defp enable_reason(form, axis) do
+    cond do
+      is_nil(axis) ->
+        "Choose a hardware axis in step 1."
+
+      not axis.commissioned ->
+        "Complete physical commissioning of this axis first (Stepper axes in Hardware configurations)."
+
+      axis.idle_behavior != :hold ->
+        "Continuous gauges need the axis idle behavior set to hold."
+
+      not checked?(form[:calibration_reviewed]) ->
+        "Review the calibration in step 4 first."
+
+      true ->
+        nil
+    end
+  end
+
+  defp checked?(field), do: Form.normalize_value("checkbox", field.value)
+
+  defp detected_identifier do
+    Detection.get_current_identifier()
+  catch
+    :exit, _ -> nil
+  end
+
+  defp binding_blocker(binding, client) do
+    snapshot = StepperManager.snapshot(binding.stepper_axis.device_id)
+    GaugeGuidance.blocker(binding, snapshot, client != nil)
+  end
+
+  attr :number, :integer, required: true
+  attr :title, :string, required: true
+  slot :inner_block, required: true
+
+  defp step(assigns) do
+    ~H"""
+    <section class="rounded-lg border border-base-300 p-4 space-y-3">
+      <h3 class="font-semibold flex items-center gap-2">
+        <span class="badge badge-sm badge-neutral">{@number}</span>{@title}
+      </h3>
+      {render_slot(@inner_block)}
+    </section>
+    """
+  end
+
+  attr :id, :string, required: true
+  attr :reason, :string, default: nil
+
+  defp why_disabled(assigns) do
+    ~H"""
+    <p :if={@reason} id={@id} class="text-xs text-warning">Unavailable: {@reason}</p>
+    """
+  end
+
   @impl true
   def render(assigns) do
     axis =
       Enum.find(assigns.axes, &(to_string(&1.id) == to_string(assigns.params["stepper_axis_id"])))
 
-    connected = axis && StepperManager.snapshot(axis.device_id).lifecycle != :disconnected
-    assigns = assign(assigns, :axis_connected, connected == true)
+    snapshot =
+      if axis,
+        do: StepperManager.snapshot(axis.device_id),
+        else: %{lifecycle: :disconnected, axes: %{}}
+
+    assigns =
+      assigns
+      |> assign(:axis, axis)
+      |> assign(:reasons, measure_reasons(axis, snapshot, assigns.token, assigns.token_axis))
+      |> assign(:unit_options, @unit_options)
+      |> assign(:train_hint, train_hint(assigns))
 
     ~H"""
     <section id="gauge-bindings" class="bg-base-200/50 rounded-xl p-6 mt-6 space-y-4">
@@ -346,164 +484,259 @@ defmodule TreninoWeb.GaugeBindingWizard do
       <p :if={@axes == []}>
         Create a stepper axis in <.link navigate={~p"/"} class="link">Hardware configurations</.link>, Apply it and commission the physical dial.
       </p>
-      <p :if={@message} role="status" class="text-sm">{@message}</p>
+      <p :if={@message && is_nil(@form)} role="status" class="text-sm">{@message}</p>
       <div :if={@form} class="space-y-4">
-        <button
-          id="gauge-class323"
-          type="button"
-          phx-click="preset"
-          phx-target={@myself}
-          class="btn btn-sm"
-        >Class 323 speedometer starter</button>
-        <p class="text-xs text-warning">
-          Unverified estimate: 0–100 mph / approximately 240° / 720 transitions. Verify units and measure every dial; no endpoint is guessed and control stays disabled.
+        <p class="text-sm">
+          Work through the steps in order. Nothing here moves hardware until you take manual
+          control and press Move; saving never moves it.
         </p>
         <.form
           for={@form}
           id="gauge-binding-form"
           phx-change="validate"
-          phx-submit="save"
+          phx-submit="submit"
           phx-target={@myself}
-          class="space-y-3"
+          class="space-y-4"
         >
-          <.input
-            field={@form[:stepper_axis_id]}
-            type="select"
-            label="Hardware axis"
-            options={Enum.map(@axes, &{"#{&1.device.name} · #{&1.name}", &1.id})}
-          />
-          <.input
-            :for={{field, label} <- @fields}
-            field={@form[field]}
-            label={label}
-            type={if(field in [:multiplier, :offset, :stale_after_ms], do: "number", else: "text")}
-            step={if(field in [:multiplier, :offset], do: "0.01", else: "1")}
-          />
-          <.input
-            :for={{field, {label, values}} <- @selects}
-            field={@form[field]}
-            type="select"
-            label={label}
-            options={Enum.map(values, &{Phoenix.Naming.humanize(&1), &1})}
-          />
-          <.input
-            field={@form[:absolute_value]}
-            type="checkbox"
-            label="Use absolute input value (negative speed becomes positive)"
-          />
-          <div id="gauge-calibration-points" class="space-y-2">
-            <p class="font-medium">Measured calibration points: dial value → estimated transitions</p>
-            <p :for={{message, _} <- @form[:points].errors} class="text-error">{message}</p>
-            <.inputs_for :let={p} field={@form[:points]}>
-              <div class="grid grid-cols-2 gap-2 border border-base-300 p-2 rounded">
-                <.input field={p[:value]} type="number" step="0.01" label="Dial value" />
-                <.input field={p[:position]} type="number" label="Position (transitions)" />
-                <div class="col-span-2 flex gap-2">
-                  <button
-                    :for={{label, action} <- [{"↑", "up"}, {"↓", "down"}, {"Remove", "remove"}]}
-                    type="button"
-                    phx-click="point"
-                    phx-value-action={action}
-                    phx-value-index={p.index}
-                    phx-target={@myself}
-                    class="btn btn-xs"
-                  >{label}</button>
-                </div>
-              </div>
-            </.inputs_for>
+          <.step number={1} title="Hardware axis">
+            <.input
+              field={@form[:stepper_axis_id]}
+              type="select"
+              label="Hardware axis"
+              options={Enum.map(@axes, &{"#{&1.device.name} · #{&1.name}", &1.id})}
+            />
+          </.step>
+
+          <.step number={2} title="Simulator endpoint and units">
             <button
+              id="gauge-class323"
               type="button"
-              phx-click="point"
-              phx-value-action="add"
+              phx-click="preset"
               phx-target={@myself}
               class="btn btn-sm"
-            >Add measured point</button>
-          </div>
-          <.input
-            field={@form[:calibration_reviewed]}
-            type="checkbox"
-            label="I reviewed these measured points for this axis and stepping mode"
-          />
-          <.input
-            field={@form[:enabled]}
-            type="checkbox"
-            label="Enable continuous gauge (requires commissioned hold axis)"
-          />
-          <button type="submit" class="btn btn-primary">Save gauge</button><button
-            type="button"
-            phx-click="cancel"
-            phx-target={@myself}
-            class="btn btn-ghost"
-          >Cancel</button>
-        </.form>
-        <button
-          :if={@client}
-          type="button"
-          phx-click="explore"
-          phx-target={@myself}
-          class="btn btn-sm"
-        >Browse simulator API</button>
-        <.live_component
-          :if={@client && @explorer_open}
-          module={TreninoWeb.ApiExplorerComponent}
-          id="gauge-api-explorer"
-          client={@client}
-          field={@explorer_field}
-          mode={:none}
-          embedded={true}
-        />
-        <p :if={is_nil(@client)} class="text-sm">
-          Offline editing: enter the exact endpoint now, or connect the simulator to browse it.
-        </p>
-        <div id="gauge-preview" class="space-y-2 border-t border-base-300 pt-4">
-          <p>
-            Preview converts units → optional absolute value → multiplier → offset → piecewise interpolation. Preview never moves hardware.
-          </p>
-          <.form for={to_form(%{})} id="gauge-preview-form" phx-submit="preview" phx-target={@myself}>
-            <.input name="value" value="0" type="number" step="0.01" label="Simulator test value" />
-            <button name="action" value="preview" class="btn btn-sm">Preview only</button>
+            >Fill with Class 323 speedometer starter</button>
+            <p class="text-xs text-warning">
+              Starter values are an unverified estimate (0–100 mph, about 240°, 720 transitions). Verify units and measure every dial; no endpoint is guessed.
+            </p>
+            <.input field={@form[:name]} label="Name" />
+            <.input field={@form[:endpoint]} label="Simulator endpoint (verify units)" />
             <button
-              id="gauge-test-value"
-              name="action"
-              value="test"
+              :if={@client}
+              type="button"
+              phx-click="explore"
+              phx-target={@myself}
               class="btn btn-sm"
-              disabled={is_nil(@token) or not @axis_connected}
-            >Move to test value</button>
-          </.form>
-          <p :if={@preview}>
-            Converted value: {Float.round(@preview.value, 2)} · estimated target: {@preview.target} · clamped: {@preview.clamped}
-          </p>
-          <button
-            type="button"
-            phx-click="claim"
-            phx-target={@myself}
-            class="btn btn-sm"
-            disabled={not @axis_connected}
-          >Take manual control for test/capture</button>
-          <.form
-            for={to_form(%{})}
-            id="gauge-capture-position"
-            phx-submit="capture"
-            phx-target={@myself}
-          >
-            <.input
-              name="value"
-              value="0"
-              type="number"
-              step="0.01"
-              label="Actual dial reading to capture"
+            >Browse simulator API</button>
+            <.live_component
+              :if={@client && @explorer_open}
+              module={TreninoWeb.ApiExplorerComponent}
+              id="gauge-api-explorer"
+              client={@client}
+              field={@explorer_field}
+              mode={:none}
+              embedded={true}
             />
-            <button class="btn btn-sm" disabled={is_nil(@token) or not @axis_connected}>Capture stationary estimated position</button>
-          </.form>
-        </div>
+            <p :if={is_nil(@client)} class="text-sm">
+              Offline editing: enter the exact endpoint now, or connect the simulator to browse it.
+            </p>
+            <.input field={@form[:value_key]} label="Value key (blank requires one numeric value)" />
+            <div class="grid sm:grid-cols-2 gap-3">
+              <.input
+                field={@form[:input_unit]}
+                type="select"
+                label="Simulator reports in"
+                options={@unit_options}
+              />
+              <.input
+                field={@form[:output_unit]}
+                type="select"
+                label="Dial shows"
+                options={@unit_options}
+              />
+            </div>
+          </.step>
+
+          <.step number={3} title="Measure the dial">
+            <p class="text-sm">
+              Record 2–32 dial readings and the needle position for each. Preview never moves hardware.
+            </p>
+            <div id="gauge-calibration-points" class="space-y-2">
+              <p class="font-medium">Measured points: dial value → estimated transitions</p>
+              <p :for={{message, _} <- @form[:points].errors} class="text-error">{message}</p>
+              <.inputs_for :let={p} field={@form[:points]}>
+                <div class="grid grid-cols-2 gap-2 border border-base-300 p-2 rounded">
+                  <.input field={p[:value]} type="number" step="0.01" label="Dial value" />
+                  <.input field={p[:position]} type="number" label="Position (transitions)" />
+                  <div class="col-span-2 flex gap-2">
+                    <button
+                      :for={{label, action} <- [{"↑", "up"}, {"↓", "down"}, {"Remove", "remove"}]}
+                      type="button"
+                      phx-click="point"
+                      phx-value-action={action}
+                      phx-value-index={p.index}
+                      phx-target={@myself}
+                      class="btn btn-xs"
+                    >{label}</button>
+                  </div>
+                </div>
+              </.inputs_for>
+              <button
+                type="button"
+                phx-click="point"
+                phx-value-action="add"
+                phx-target={@myself}
+                class="btn btn-sm"
+              >Add measured point</button>
+            </div>
+            <div id="gauge-preview" class="space-y-2 border-t border-base-300 pt-3">
+              <.input
+                name="test_value"
+                id="gauge-test-input"
+                value={@test_value}
+                type="number"
+                step="0.01"
+                label="Simulator test value"
+              />
+              <button
+                id="gauge-preview-only"
+                type="submit"
+                name="intent"
+                value="preview"
+                class="btn btn-sm"
+              >Preview only</button>
+              <p :if={@preview} id="gauge-preview-result">
+                Converted value: {Float.round(@preview.value, 2)} · estimated target: {@preview.target} · clamped: {@preview.clamped}
+              </p>
+              <div class="flex flex-wrap items-center gap-2">
+                <button
+                  id="gauge-claim"
+                  type="button"
+                  phx-click="claim"
+                  phx-target={@myself}
+                  class="btn btn-sm"
+                  disabled={@reasons.claim != nil}
+                >Take manual control</button>
+                <button
+                  id="gauge-test-value"
+                  type="submit"
+                  name="intent"
+                  value="test"
+                  class="btn btn-sm"
+                  disabled={@reasons.move != nil}
+                >Move to test value</button>
+              </div>
+              <.why_disabled id="gauge-claim-reason" reason={@reasons.claim} />
+              <.why_disabled
+                :if={is_nil(@reasons.claim)}
+                id="gauge-test-reason"
+                reason={@reasons.move}
+              />
+              <.input
+                name="capture_value"
+                id="gauge-capture-input"
+                value={@capture_value}
+                type="number"
+                step="0.01"
+                label="Actual dial reading to capture"
+              />
+              <button
+                id="gauge-capture"
+                type="submit"
+                name="intent"
+                value="capture"
+                class="btn btn-sm"
+                disabled={@reasons.capture != nil}
+              >Capture stationary estimated position</button>
+              <.why_disabled
+                :if={is_nil(@reasons.claim)}
+                id="gauge-capture-reason"
+                reason={@reasons.capture}
+              />
+              <p :if={@message} role="status" class="text-sm">{@message}</p>
+            </div>
+          </.step>
+
+          <.step number={4} title="Review the calibration">
+            <.input
+              field={@form[:calibration_reviewed]}
+              type="checkbox"
+              label="I reviewed these measured points for this axis and stepping mode"
+              disabled={review_reason(@form, @axis) != nil}
+            />
+            <.why_disabled id="gauge-review-reason" reason={review_reason(@form, @axis)} />
+          </.step>
+
+          <.step number={5} title="Save, then enable">
+            <.input
+              field={@form[:enabled]}
+              type="checkbox"
+              label="Enable continuous gauge"
+              disabled={enable_reason(@form, @axis) != nil and not checked?(@form[:enabled])}
+            />
+            <.why_disabled
+              :if={not checked?(@form[:enabled])}
+              id="gauge-enable-reason"
+              reason={enable_reason(@form, @axis)}
+            />
+            <p class="text-xs">
+              Saving never moves the motor. If you cannot enable yet, save it disabled, finish commissioning, then use Enable on the saved gauge.
+            </p>
+            <button id="gauge-save" type="submit" name="intent" value="save" class="btn btn-primary">
+              {if checked?(@form[:enabled]),
+                do: "Save and enable gauge",
+                else: "Save gauge (disabled)"}
+            </button>
+            <button type="button" phx-click="cancel" phx-target={@myself} class="btn btn-ghost">
+              Cancel
+            </button>
+          </.step>
+
+          <details id="gauge-advanced" class="border border-base-300 rounded p-3">
+            <summary class="cursor-pointer">
+              Advanced (multiplier, offset, stale time, out of range)
+            </summary>
+            <div class="grid sm:grid-cols-2 gap-3 mt-3">
+              <.input field={@form[:multiplier]} type="number" step="0.01" label="Multiplier" />
+              <.input field={@form[:offset]} type="number" step="0.01" label="Offset" />
+              <.input
+                field={@form[:stale_after_ms]}
+                type="number"
+                step="1"
+                label="Sample stale after (ms)"
+              />
+              <.input
+                field={@form[:out_of_range]}
+                type="select"
+                label="Out of range"
+                options={[{"Clamp to the ends", :clamp}, {"Reject the value", :reject}]}
+              />
+              <.input
+                field={@form[:inactive_behavior]}
+                type="select"
+                label="When inactive or stale"
+                options={[{"Hold position", :hold}, {"Release motor", :release}]}
+              />
+            </div>
+            <.input
+              field={@form[:absolute_value]}
+              type="checkbox"
+              label="Use absolute input value (negative speed becomes positive)"
+            />
+          </details>
+        </.form>
       </div>
+      <p :if={@train_hint} id="gauge-train-hint" role="status" class="text-sm text-warning">
+        {@train_hint}
+      </p>
       <article
         :for={b <- @bindings}
         id={"gauge-binding-#{b.id}"}
         class="border border-base-300 rounded p-4 space-y-2"
       >
         <strong>{b.name}</strong><p class="text-sm">
-          {b.stepper_axis.device.name} · {b.stepper_axis.name} · {b.endpoint} · {b.input_unit} → {b.output_unit}
+          {b.stepper_axis.device.name} · {b.stepper_axis.name} · {b.endpoint} · {unit_label(
+            b.input_unit
+          )} → {unit_label(b.output_unit)}
         </p>
         <p>
           {if b.enabled, do: "Enabled", else: "Disabled"} · {if b.calibration_valid and
@@ -511,6 +744,14 @@ defmodule TreninoWeb.GaugeBindingWizard do
                                                                 do: "Reviewed calibration recorded",
                                                                 else:
                                                                   "Unverified points — calibration review required"}
+        </p>
+        <p
+          :if={blocker = binding_blocker(b, @client)}
+          id={"gauge-blocker-#{b.id}"}
+          role="status"
+          class="text-sm text-warning"
+        >
+          {blocker}
         </p>
         <p :if={@runtime[b.id]} class="text-sm">
           Latest sample: {GaugeFeedback.value(@runtime[b.id][:sample])} ·
@@ -540,5 +781,16 @@ defmodule TreninoWeb.GaugeBindingWizard do
       </article>
     </section>
     """
+  end
+
+  defp unit_label(unit), do: Enum.find_value(@unit_options, &(elem(&1, 1) == unit && elem(&1, 0)))
+
+  defp train_hint(%{bindings: []}), do: nil
+
+  defp train_hint(assigns) do
+    case Train.get_train(assigns.train_id, preload: [:identifiers]) do
+      {:ok, train} -> GaugeGuidance.train_hint(train, detected_identifier())
+      _ -> nil
+    end
   end
 end
