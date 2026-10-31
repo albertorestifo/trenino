@@ -201,6 +201,53 @@ defmodule Trenino.Hardware.StepperManagerTest do
     GenServer.stop(StepperManager)
   end
 
+  describe "manual owner loss" do
+    defp claim_from_dying_owner(ctx, opts) do
+      test_pid = self()
+
+      owner =
+        spawn(fn ->
+          send(test_pid, {:claimed, StepperManager.claim_manual(ctx.axis.id, self(), opts)})
+          Process.sleep(:infinity)
+        end)
+
+      assert_receive {:claimed, {:ok, _token}}, 500
+      assert MapSet.member?(:sys.get_state(ctx.pid).paused_axes, ctx.axis.id)
+      monitor = Process.monitor(owner)
+      Process.exit(owner, :kill)
+      assert_receive {:DOWN, ^monitor, :process, _, :killed}
+      state = :sys.get_state(ctx.pid)
+      assert state.leases == %{}
+      state
+    end
+
+    test "stays paused by default", ctx do
+      {:ok, _} = Hardware.commission_stepper_axis(ctx.axis)
+      prepare(ctx)
+      state = claim_from_dying_owner(ctx, [])
+      assert MapSet.member?(state.paused_axes, ctx.axis.id)
+      assert StepperManager.snapshot(ctx.device.id).axes[ctx.axis.id].paused
+      GenServer.stop(StepperManager)
+    end
+
+    test "resumes a commissioned axis when the owner asked for it", ctx do
+      {:ok, _} = Hardware.commission_stepper_axis(ctx.axis)
+      prepare(ctx)
+      state = claim_from_dying_owner(ctx, resume_on_owner_loss: true)
+      refute MapSet.member?(state.paused_axes, ctx.axis.id)
+      refute StepperManager.snapshot(ctx.device.id).axes[ctx.axis.id].paused
+      GenServer.stop(StepperManager)
+    end
+
+    test "never resumes an axis that is not commissioned", ctx do
+      prepare(ctx)
+      state = claim_from_dying_owner(ctx, resume_on_owner_loss: true)
+      assert MapSet.member?(state.paused_axes, ctx.axis.id)
+      assert StepperManager.snapshot(ctx.device.id).axes[ctx.axis.id].paused
+      GenServer.stop(StepperManager)
+    end
+  end
+
   test "unapplied edits cannot be commissioned against a previous firmware configuration", ctx do
     prepare(ctx)
     assert {:ok, token} = StepperManager.claim_manual(ctx.axis.id, self())

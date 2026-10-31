@@ -18,7 +18,8 @@ defmodule Trenino.Hardware.GaugeWizard.Runner do
   @spec run(GaugeWizard.effect(), GaugeWizard.t()) :: {:result, GaugeWizard.effect(), term()}
   def run(effect, %GaugeWizard{} = state), do: {:result, effect, execute(effect, state)}
 
-  defp execute(:claim, state), do: StepperManager.claim_manual(state.axis.id, self())
+  defp execute(:claim, state),
+    do: StepperManager.claim_manual(state.axis.id, self(), resume_on_owner_loss: true)
 
   defp execute(:release, %{token: token} = state),
     do: StepperManager.release_manual(state.axis.id, token)

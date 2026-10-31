@@ -16,7 +16,13 @@ defmodule Trenino.Hardware.StepperManager do
   def start_link(opts), do: GenServer.start_link(__MODULE__, opts, name: __MODULE__)
   def subscribe(id), do: Phoenix.PubSub.subscribe(Trenino.PubSub, "hardware:steppers:#{id}")
   def snapshot(id), do: call({:snapshot, id}, %{lifecycle: :disconnected, axes: %{}})
-  def claim_manual(id, owner), do: call({:claim, id, owner})
+
+  @doc """
+  Claims manual control for `owner`. Losing the owner stops the axis and leaves it paused
+  until Resume. With `resume_on_owner_loss: true` a still-commissioned axis instead goes
+  back to train control, for owners that promise to hand the axis back when they leave.
+  """
+  def claim_manual(id, owner, opts \\ []), do: call({:claim, id, owner, opts})
   def release_manual(id, token), do: call({:release_manual, id, token})
   def resume(id), do: call({:resume, id})
   def command(id, op, params, token), do: call({:command, id, op, params, token})
@@ -161,7 +167,7 @@ defmodule Trenino.Hardware.StepperManager do
     end
   end
 
-  def handle_call({:claim, id, owner}, _, s) do
+  def handle_call({:claim, id, owner, opts}, _, s) do
     with {:ok, pid} <- axis_session(s, id), nil <- Map.get(s.leases, id) do
       token = make_ref()
       monitor = Process.monitor(owner)
@@ -172,6 +178,7 @@ defmodule Trenino.Hardware.StepperManager do
         token: token,
         monitor: monitor,
         owner: owner,
+        resume_on_owner_loss: Keyword.get(opts, :resume_on_owner_loss, false),
         epoch: StepperSession.snapshot(pid).timer_epoch
       }
 
@@ -327,12 +334,10 @@ defmodule Trenino.Hardware.StepperManager do
   end
 
   def handle_info({:DOWN, monitor, :process, pid, _}, s) do
-    ids =
-      s.leases
-      |> Enum.filter(fn {_, lease} -> lease.monitor == monitor end)
-      |> Enum.map(&elem(&1, 0))
-
+    lost = Enum.filter(s.leases, fn {_, lease} -> lease.monitor == monitor end)
+    ids = Enum.map(lost, &elem(&1, 0))
     Enum.each(ids, &stop_axis(s, &1))
+    s = Enum.reduce(lost, s, &resume_after_owner_loss/2)
 
     dead_ports =
       s.sessions
@@ -576,6 +581,18 @@ defmodule Trenino.Hardware.StepperManager do
   defp normalize_target_result(false), do: {:error, :not_commissioned}
   defp normalize_target_result(true), do: {:error, :manual_pause}
   defp normalize_target_result(result), do: result
+
+  defp resume_after_owner_loss({id, %{resume_on_owner_loss: true}}, s) do
+    with {:ok, %{commissioned: true}} <- Hardware.get_stepper_axis(id),
+         {:ok, pid} <- axis_session(s, id),
+         :ok <- StepperSession.pause(pid, id, false) do
+      %{s | paused_axes: MapSet.delete(s.paused_axes, id)}
+    else
+      _ -> s
+    end
+  end
+
+  defp resume_after_owner_loss(_lost_lease, s), do: s
 
   defp stop_axis(s, id) do
     with {:ok, pid} <- axis_session(s, id),

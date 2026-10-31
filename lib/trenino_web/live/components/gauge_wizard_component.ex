@@ -26,7 +26,8 @@ defmodule TreninoWeb.GaugeWizardComponent do
 
   Leaving the wizard (Close, or finishing) stops the axis, hands manual control back and,
   when the axis is commissioned, resumes train control. Manual control is held by the
-  LiveView process, so it is dropped automatically if the page goes away.
+  LiveView process, so if the page goes away the manager does the same: it stops the
+  axis and returns a still-commissioned axis to train control.
   """
   use TreninoWeb, :live_component
 

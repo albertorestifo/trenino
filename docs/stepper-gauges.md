@@ -71,8 +71,10 @@ with measured marks kept. Closing midway stops the axis, hands control back and 
 only clearly saved steps (axis settings, the dial). The state machine lives in
 `Trenino.Hardware.GaugeWizard` (pure, tested without hardware); effects are run by
 `Trenino.Hardware.GaugeWizard.Runner` and the page is `TreninoWeb.GaugeWizardComponent`.
-Closing the browser tab or navigating away drops manual control (the manager stops the
-axis) but does not resume train control; press Resume train control in the axis controls.
+Closing the browser tab or navigating away drops manual control: the manager stops the
+axis and, when it is still commissioned, returns it to train control, exactly as Close
+does. A move in progress when that happens can lose the reference. An uncommissioned
+axis stays paused.
 
 ## Configure and commission
 
@@ -112,8 +114,9 @@ axis) but does not resume train control; press Resume train control in the axis 
    internal-stop reference**, never detection of a stop or proof of shaft movement.
 6. Record physical commissioning only after checking the real dial. Continuous
    gauges require **idle hold**; idle release loses reference after every completion.
-7. Release manual control and explicitly Resume train control. Browser/process loss
-   stops manual motion and leaves automatic output paused until Resume.
+7. Release manual control and explicitly Resume train control. Outside the guided
+   wizard, browser/process loss stops manual motion and leaves automatic output paused
+   until Resume.
 
 Manual startup is default. Commissioned internal-stop axes with idle hold can
 explicitly opt into Home on connect, causing one bounded movement on each genuine

@@ -37,7 +37,7 @@ defmodule TreninoWeb.GaugeWizardTest do
 
     stub(StepperManager, :snapshot, fn _ -> snapshot(fake) end)
 
-    stub(StepperManager, :claim_manual, fn _, _ ->
+    stub(StepperManager, :claim_manual, fn _, _, _ ->
       Agent.update(fake, &record(%{&1 | lease: true}, :claim))
       {:ok, make_ref()}
     end)
