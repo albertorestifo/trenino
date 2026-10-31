@@ -150,6 +150,26 @@ defmodule Trenino.Hardware.StepperSessionTest do
     end
   end
 
+  test "clear_target drops the queued target but lets the current move finish", %{pid: pid} do
+    setup_axis(pid)
+    StepperSession.command(pid, 1, :reference, %{position: 0}, :manual)
+    assert_receive {:sent, %StepperCommand{operation: :reference} = ref}
+    reply(pid, ref, %{configured: true, known: true, state: :idle})
+    assert_receive {:sent, %StepperCommand{operation: :get_status} = poll}
+    reply(pid, poll, %{configured: true, known: true, state: :idle})
+    assert :ok = StepperSession.set_target(pid, 1, 50, :train)
+    assert_receive {:sent, %StepperCommand{operation: :move_to} = move}
+    assert :ok = StepperSession.set_target(pid, 1, 80, :train)
+    assert :ok = StepperSession.clear_target(pid, 1)
+    reply(pid, move, %{configured: true, known: true, state: :moving})
+    refute_receive {:sent, %StepperCommand{operation: :move_to}}, 30
+    refute_receive {:sent, %StepperCommand{operation: :stop}}, 10
+    snapshot = StepperSession.snapshot(pid)
+    assert snapshot.axes[1].ready
+    assert snapshot.axes[1].desired_target == nil
+    assert {:error, :not_found} = StepperSession.clear_target(pid, 99)
+  end
+
   test "reload_axes preserves manual pause", %{pid: pid} do
     setup_axis(pid)
     :ok = StepperSession.pause(pid, 1, true)

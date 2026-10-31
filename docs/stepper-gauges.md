@@ -221,7 +221,7 @@ state (train, simulator connected, cleaning, retries, last error), and the MCP t
 failure for each gauge, so a gauge that is not moving can be diagnosed.
 
 Invalid/stale simulator data retains the last target only until stale timeout.
-Inactive always sends Stop (the needle holds). The former inactive `release` option
+Inactive clears queued targets and lets any move in progress finish (the needle holds where it lands). The former inactive `release` option
 can no longer be chosen; stored values behave as hold, because Release discards the
 reference and would strand the gauge. Train changes and
 simulator loss apply the outgoing policy and discard previous samples. Recovery

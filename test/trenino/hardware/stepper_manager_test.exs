@@ -617,11 +617,11 @@ defmodule Trenino.Hardware.StepperManagerTest do
     assert :ok = StepperManager.finish_deployment(ctx.conn.port, token, :ok)
   end
 
-  test "train inactive release only stops, never releasing the axis", ctx do
+  test "train inactive never stops or releases the axis", ctx do
     {:ok, _} = Hardware.commission_stepper_axis(ctx.axis)
     prepare(ctx)
-    assert {:ok, _} = StepperManager.inactive(ctx.axis.id, :release)
-    assert_receive {:sent, %StepperCommand{operation: :stop}}
+    assert :ok = StepperManager.inactive(ctx.axis.id, :release)
+    refute_receive {:sent, %StepperCommand{operation: :stop}}, 50
     refute_receive {:sent, %StepperCommand{operation: :release}}, 50
   end
 

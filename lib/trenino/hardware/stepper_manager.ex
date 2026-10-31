@@ -242,11 +242,15 @@ defmodule Trenino.Hardware.StepperManager do
     {:reply, normalize_target_result(result), s}
   end
 
-  def handle_call({:inactive, id, behavior}, _, s) do
+  # A train going inactive only drops queued targets. Stop on a moving needle discards its
+  # reference and Release de-energizes it, either stranding the gauge until someone
+  # references it again, so the move in progress finishes and the needle holds where it
+  # lands. `behavior` is a legacy stored value (`:release` is treated as `:hold`).
+  def handle_call({:inactive, id, _behavior}, _, s) do
     result =
       with false <- Map.has_key?(s.leases, id),
            {:ok, pid} <- axis_session(s, id),
-           do: StepperSession.command(pid, id, inactive_operation(behavior), %{}, :train)
+           do: StepperSession.clear_target(pid, id)
 
     {:reply, normalize_target_result(result), s}
   end
@@ -486,11 +490,6 @@ defmodule Trenino.Hardware.StepperManager do
       _ -> s
     end
   end
-
-  # Release de-energizes the axis and discards its reference, stranding the gauge until
-  # someone references it again, so a train going inactive only ever Stops (the needle
-  # holds). `:release` remains a legacy stored value and is treated as `:hold`.
-  defp inactive_operation(_behavior), do: :stop
 
   defp subscribe_once(s, device_id) do
     if MapSet.member?(s.subscribed, device_id) do

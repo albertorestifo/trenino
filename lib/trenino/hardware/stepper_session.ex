@@ -20,6 +20,7 @@ defmodule Trenino.Hardware.StepperSession do
   def finish_deployment(pid, token, result),
     do: GenServer.call(pid, {:finish_deployment, token, result})
 
+  def clear_target(pid, axis_id), do: GenServer.call(pid, {:clear_target, axis_id})
   def pause(pid, id, value), do: GenServer.call(pid, {:pause, id, value})
   def release_for_delete(pid, id), do: GenServer.call(pid, {:release_for_delete, id}, 3000)
   def reload_axes(pid, axes, token), do: GenServer.call(pid, {:reload_axes, axes, token})
@@ -112,6 +113,15 @@ defmodule Trenino.Hardware.StepperSession do
 
       error ->
         {:reply, error, s}
+    end
+  end
+
+  # Drops a queued target without commanding the motor, so a move already accepted by the
+  # firmware finishes and the axis keeps its reference.
+  def handle_call({:clear_target, id}, _from, s) do
+    case Map.fetch(s.axes, id) do
+      {:ok, a} -> {:reply, :ok, put_axis(s, id, %{a | desired_target: nil})}
+      :error -> {:reply, {:error, :not_found}, s}
     end
   end
 
