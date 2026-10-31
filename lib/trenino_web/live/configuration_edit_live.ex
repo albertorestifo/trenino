@@ -485,37 +485,26 @@ defmodule TreninoWeb.ConfigurationEditLive do
 
   @impl true
   def handle_event("apply_to_device", %{"port" => port}, socket) do
-    acknowledged? = Map.get(socket.assigns, :stepper_registration_acknowledged, false)
+    socket =
+      socket
+      |> assign(:applying, true)
+      |> assign(:show_apply_modal, false)
 
-    if Hardware.registration_ack_required?(socket.assigns.device.id) and not acknowledged? do
-      {:noreply,
-       put_flash(
-         socket,
-         :error,
-         "This panel has a display at address 0x70 and a stepper shield. Open Stepper axes and tick the confirmation about registering the shield first."
-       )}
-    else
-      socket =
-        socket
-        |> assign(:applying, true)
-        |> assign(:show_apply_modal, false)
+    case Hardware.apply_configuration(port, socket.assigns.device.id) do
+      {:ok, _config_id} ->
+        {:noreply, socket}
 
-      case Hardware.apply_configuration(port, socket.assigns.device.id) do
-        {:ok, _config_id} ->
-          {:noreply, socket}
+      {:error, :no_inputs} ->
+        {:noreply,
+         socket
+         |> assign(:applying, false)
+         |> put_flash(:error, "Cannot apply empty configuration. Add at least one input.")}
 
-        {:error, :no_inputs} ->
-          {:noreply,
-           socket
-           |> assign(:applying, false)
-           |> put_flash(:error, "Cannot apply empty configuration. Add at least one input.")}
-
-        {:error, reason} ->
-          {:noreply,
-           socket
-           |> assign(:applying, false)
-           |> put_flash(:error, "Failed to apply: #{inspect(reason)}")}
-      end
+      {:error, reason} ->
+        {:noreply,
+         socket
+         |> assign(:applying, false)
+         |> put_flash(:error, "Failed to apply: #{inspect(reason)}")}
     end
   end
 
@@ -946,12 +935,6 @@ defmodule TreninoWeb.ConfigurationEditLive do
      assign(socket, :stepper_count, length(Hardware.list_stepper_axes(socket.assigns.device.id)))}
   end
 
-  def handle_info({:stepper_registration_acknowledged, id}, socket) do
-    if id == socket.assigns.device.id,
-      do: {:noreply, assign(socket, :stepper_registration_acknowledged, true)},
-      else: {:noreply, socket}
-  end
-
   def handle_info(_msg, socket), do: {:noreply, socket}
 
   defp display_test_texts(4), do: ["8888", "1234", "ABCD", "    "]
@@ -1062,6 +1045,7 @@ defmodule TreninoWeb.ConfigurationEditLive do
       :if={@show_apply_modal}
       device={@device}
       connected_devices={@connected_devices}
+      allcall_warning={Hardware.allcall_warning(@device.id)}
     />
 
     <.delete_modal
@@ -1899,6 +1883,7 @@ defmodule TreninoWeb.ConfigurationEditLive do
 
   attr :device, :map, required: true
   attr :connected_devices, :list, required: true
+  attr :allcall_warning, :string, default: nil
 
   defp apply_modal(assigns) do
     ~H"""
@@ -1909,6 +1894,16 @@ defmodule TreninoWeb.ConfigurationEditLive do
         <p class="text-sm text-base-content/70 mb-6">
           Select a device to apply "<span class="font-medium">{@device.name}</span>" to:
         </p>
+
+        <div
+          :if={@allcall_warning}
+          id="apply-allcall-warning"
+          role="alert"
+          class="alert alert-warning text-sm mb-4"
+        >
+          <.icon name="hero-exclamation-triangle" class="size-5 shrink-0" />
+          <p>{@allcall_warning}</p>
+        </div>
 
         <div class="space-y-2">
           <button

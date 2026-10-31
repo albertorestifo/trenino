@@ -54,7 +54,7 @@ defmodule TreninoWeb.StepperAxisFormComponent do
      |> assign(:advanced_numbers, @advanced_numbers)
      |> assign(:basic_selects, @basic_selects)
      |> assign(:advanced_selects, @advanced_selects)
-     |> assign(:ack_required, Hardware.registration_ack_required?(socket.assigns.device_id))}
+     |> assign(:allcall_warning, Hardware.allcall_warning(socket.assigns.device_id))}
   end
 
   @impl true
@@ -65,17 +65,6 @@ defmodule TreninoWeb.StepperAxisFormComponent do
 
   def handle_event("add", _, socket),
     do: {:noreply, edit(socket, %StepperAxis{device_id: socket.assigns.device_id})}
-
-  def handle_event("ack_registration", _, socket) do
-    send(self(), {:stepper_registration_acknowledged, socket.assigns.device_id})
-
-    {:noreply,
-     assign(
-       socket,
-       :error,
-       "Registration order acknowledged. You can now Apply this configuration."
-     )}
-  end
 
   def handle_event("recommission", params, socket) do
     result =
@@ -210,14 +199,18 @@ defmodule TreninoWeb.StepperAxisFormComponent do
       <p class="text-sm">
         Firmware 3.1.0 or newer. Positions are open-loop estimates in commutation transitions.
       </p>
-      <div :if={@ack_required} class="text-sm text-warning space-y-2">
-        <p>
-          This panel has a display at address 0x70, which a brand-new motor shield also answers to.
-          The first time you use a shield, unplug the display, apply the configuration with the shield alone, then plug the display back in and apply again.
-        </p>
-        <button type="button" phx-click="ack_registration" phx-target={@myself} class="btn btn-sm">
-          I have done this (or the shield is already set up)
-        </button>
+      <div
+        :if={@allcall_warning}
+        id="stepper-allcall-warning"
+        role="alert"
+        class="alert alert-warning text-sm"
+      >
+        <.icon name="hero-exclamation-triangle" class="size-5 shrink-0" />
+        <div>
+          <p class="font-semibold">Warning: display at 0x70 and a motor shield</p>
+          <p>{@allcall_warning}</p>
+          <p class="text-xs mt-1">This does not stop you from applying.</p>
+        </div>
       </div>
       <details :if={@axes != []} class="border border-base-300 rounded p-3">
         <summary>Recommission shield address (both axes lose reference)</summary>

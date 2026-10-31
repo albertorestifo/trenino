@@ -13,8 +13,11 @@ Verify the actual winding pairs and their polarity against the motor datasheet
 before connecting each winding to a shield bridge. Check actual motor/shield
 electrical ratings, power and wiring.
 
-An unregistered PCA9685 responds to ALLCALL 0x70. **Disconnect any 0x70 display,
-register the shield alone, then reconnect and Apply the display configuration.**
+An unregistered PCA9685 responds to ALLCALL 0x70. When the panel has a stepper axis
+and a configured module at 0x70, Trenino shows a non-blocking warning (Stepper axes
+and the Apply dialog); Apply is never blocked and needs no confirmation. **To be
+safe, unplug the 0x70 display, apply with the shield alone, reconnect the display and
+apply again.**
 Repeat after EEPROM erase, address change or shield replacement. Software cannot
 safely discover an unknown responder by probing writes. Ordinary resource
 conflicts never automatically ForgetDriver.
@@ -29,9 +32,8 @@ conflicts never automatically ForgetDriver.
    **Advanced** and keep safe defaults. Both axes must share one shield address;
    display address collisions are rejected.
 2. Save, then **Apply to Device**. Saving never Home/Move commands a motor and does
-   not reach the device by itself: the form tells you to Apply. Apply is only blocked
-   when the panel also has a display at address 0x70 (see registration above); then
-   tick the confirmation in Stepper axes first. To reverse direction click
+   not reach the device by itself: the form tells you to Apply. Apply is never blocked;
+   with a display at 0x70 it only shows the warning described above. To reverse direction click
    **Flip direction** on the axis (or update `reverse` over MCP), Apply, then
    re-align the needle by hand and Assign reference again. An axis-only panel uses the canonical eight-byte empty legacy configuration
    `02 <configuration id, little endian> 00 00 ff`. ConfigurationStored must confirm
@@ -117,7 +119,7 @@ data may drive again.
 ## MCP
 
 Axis tools provide list/create/update/delete/status, `apply_stepper_configuration`
-(never moves; `acknowledged: true` required only with a 0x70 display) and explicit control; gauge
+(never moves, never blocked; the result carries a `warning` when a 0x70 display is configured) and explicit control; gauge
 tools provide list/create/update/delete and pure preview. Shared contexts enforce
 the same validation as UI. Runtime control claims a 60-second opaque lease,
 renewed only explicitly. Every mutation supplies an operation token. Identical

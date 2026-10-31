@@ -49,14 +49,13 @@ defmodule Trenino.MCP.Tools.StepperTools do
         operation_token: %{type: "string"},
         position: %{type: "integer"},
         delta: %{type: "integer"},
-        address: %{type: "integer", minimum: 96, maximum: 119},
-        acknowledged: %{type: "boolean"}
+        address: %{type: "integer", minimum: 96, maximum: 119}
       })
 
     %{
       name: name,
       description:
-        "Configurable generic stepper axis. Defaults already match an X27.168 six-state motor on shield port 1 / 0x60, so create needs only device_id and name. CRUD never moves and does NOT reach the device: after create/update call apply_stepper_configuration (also never moves), then claim, reference, jog, complete_commissioning. Flipping `reverse` is a single update_stepper_axis; afterwards apply, re-align the needle and re-assign the reference. apply_stepper_configuration needs acknowledged=true only when the panel has a display at 0x70 (shield-alone registration order); never assume it. Firmware >=3.1.0. Control requires explicit claim; 60-second lease renews only explicitly. Mutations require unique operation_token; identical retries reuse admission, not motion. Home completion is assumed, never sensed. Release loses reference. ALLCALL 0x70 registration requires shield alone.",
+        "Configurable generic stepper axis. Defaults already match an X27.168 six-state motor on shield port 1 / 0x60, so create needs only device_id and name. CRUD never moves and does NOT reach the device: after create/update call apply_stepper_configuration (also never moves), then claim, reference, jog, complete_commissioning. Flipping `reverse` is a single update_stepper_axis; afterwards apply, re-align the needle and re-assign the reference. apply_stepper_configuration is never blocked; when the panel has a display at 0x70 the result carries a `warning` (unplug that display, apply with the shield alone, reconnect, apply again) - relay it to the user. Firmware >=3.1.0. Control requires explicit claim; 60-second lease renews only explicitly. Mutations require unique operation_token; identical retries reuse admission, not motion. Home completion is assumed, never sensed. Release loses reference. ALLCALL 0x70 registration requires shield alone.",
       input_schema: %{type: "object", properties: properties, required: required}
     }
   end
@@ -101,10 +100,19 @@ defmodule Trenino.MCP.Tools.StepperTools do
     end
   end
 
-  def execute("apply_stepper_configuration", %{"device_id" => id} = args) when is_integer(id) do
-    case Hardware.apply_saved_configuration(id, args["acknowledged"] == true) do
-      {:ok, config_id} -> {:ok, %{applying: true, config_id: config_id, next_steps: @after_apply}}
-      error -> Serialization.result(error)
+  def execute("apply_stepper_configuration", %{"device_id" => id}) when is_integer(id) do
+    case Hardware.apply_saved_configuration(id) do
+      {:ok, config_id} ->
+        {:ok,
+         %{
+           applying: true,
+           config_id: config_id,
+           warning: Hardware.allcall_warning(id),
+           next_steps: @after_apply
+         }}
+
+      error ->
+        Serialization.result(error)
     end
   end
 

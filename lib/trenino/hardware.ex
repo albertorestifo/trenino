@@ -82,24 +82,37 @@ defmodule Trenino.Hardware do
   @allcall_address 0x70
 
   @doc """
-  True when a freshly installed shield could collide with a display at the PCA9685
-  ALLCALL address (0x70). Only then does applying require the user to confirm the
-  shield-alone registration order.
+  True when the panel has a stepper axis and a configured I2C module at the PCA9685
+  ALLCALL address (0x70). An unregistered motor shield also answers at 0x70, so the
+  display could be driven by shield traffic. This only drives a non-blocking warning;
+  it never prevents applying.
   """
-  @spec registration_ack_required?(integer()) :: boolean()
-  def registration_ack_required?(device_id) do
+  @spec allcall_conflict_possible?(integer()) :: boolean()
+  def allcall_conflict_possible?(device_id) do
     list_stepper_axes(device_id) != [] and
       Enum.any?(list_i2c_modules(device_id), &(&1.i2c_address == @allcall_address))
   end
 
   @doc """
-  Sends the saved configuration (including stepper axes) to the connected device.
-  Never moves a motor. Requires `acknowledged?` only when `registration_ack_required?/1`.
+  Plain-language warning shown (never enforced) when `allcall_conflict_possible?/1`.
   """
-  @spec apply_saved_configuration(integer(), boolean()) :: {:ok, integer()} | {:error, term()}
-  def apply_saved_configuration(device_id, acknowledged?) do
+  @spec allcall_warning(integer()) :: String.t() | nil
+  def allcall_warning(device_id) do
+    if allcall_conflict_possible?(device_id) do
+      "This panel has a display at address 0x70, which a brand-new motor shield also answers to. " <>
+        "If the shield has never been set up, applying with both connected can make the display show garbage " <>
+        "or the shield misbehave. To be safe: unplug the 0x70 display, apply with the shield alone, " <>
+        "reconnect the display, then apply again."
+    end
+  end
+
+  @doc """
+  Sends the saved configuration (including stepper axes) to the connected device.
+  Never moves a motor and is never blocked by the 0x70 warning.
+  """
+  @spec apply_saved_configuration(integer()) :: {:ok, integer()} | {:error, term()}
+  def apply_saved_configuration(device_id) do
     with {:ok, device} <- get_device(device_id),
-         :ok <- check_registration_ack(device_id, acknowledged?),
          %{port: port} <-
            Enum.find(
              Connection.list_devices(),
@@ -107,12 +120,6 @@ defmodule Trenino.Hardware do
            ) || {:error, :device_not_connected} do
       apply_configuration(port, device_id)
     end
-  end
-
-  defp check_registration_ack(device_id, acknowledged?) do
-    if registration_ack_required?(device_id) and acknowledged? != true,
-      do: {:error, :registration_acknowledgement_required},
-      else: :ok
   end
 
   def delete_stepper_axis(%StepperAxis{} = axis) do

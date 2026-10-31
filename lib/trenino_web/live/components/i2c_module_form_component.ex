@@ -78,20 +78,21 @@ defmodule TreninoWeb.I2cModuleFormComponent do
       name: Map.get(raw, "name"),
       module_chip: Map.get(raw, "module_chip"),
       i2c_address: addr,
-      params: %{
-        brightness: brightness,
-        num_digits: Map.get(raw, "num_digits"),
-        display_type: Map.get(raw, "display_type"),
-        has_dot: Map.get(raw, "has_dot") == "true",
-        align_right: Map.get(raw, "align_right") == "true",
-        min_value: normalize_minimum(Map.get(raw, "min_value", "0")),
-        orientation: Map.get(raw, "orientation")
-      }
-      # Drop a missing orientation so updates keep the stored value instead of
-      # casting nil into a required field.
-      |> then(fn params ->
-        if params.orientation, do: params, else: Map.delete(params, :orientation)
-      end)
+      params:
+        %{
+          brightness: brightness,
+          num_digits: Map.get(raw, "num_digits"),
+          display_type: Map.get(raw, "display_type"),
+          has_dot: Map.get(raw, "has_dot") == "true",
+          align_right: Map.get(raw, "align_right") == "true",
+          min_value: normalize_minimum(Map.get(raw, "min_value", "0")),
+          orientation: Map.get(raw, "orientation")
+        }
+        # Drop a missing orientation so updates keep the stored value instead of
+        # casting nil into a required field.
+        |> then(fn params ->
+          if params.orientation, do: params, else: Map.delete(params, :orientation)
+        end)
     }
   end
 

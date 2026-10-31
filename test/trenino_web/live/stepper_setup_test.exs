@@ -33,6 +33,38 @@ defmodule TreninoWeb.StepperSetupTest do
     assert html =~ "Apply to Device"
     assert html =~ "Assign reference"
     assert [%{reverse: true}] = Hardware.list_stepper_axes(device.id)
-    refute Hardware.registration_ack_required?(axis.device_id)
+    refute Hardware.allcall_conflict_possible?(axis.device_id)
+    refute html =~ "stepper-allcall-warning"
+  end
+
+  test "0x70 display with a stepper axis shows a non-blocking warning, no confirmation", %{
+    conn: conn
+  } do
+    {:ok, device} = Hardware.create_device(%{name: "Panel"})
+    {:ok, _} = Hardware.create_stepper_axis(device.id, %{"name" => "Speed"})
+
+    {:ok, view, _} = live(conn, ~p"/configurations/#{device.config_id}")
+    refute has_element?(view, "#stepper-allcall-warning")
+
+    {:ok, _} =
+      Hardware.create_i2c_module(device.id, %{
+        name: "D",
+        module_chip: :ht16k33,
+        i2c_address: 0x70,
+        params: %{
+          brightness: 8,
+          num_digits: 4,
+          display_type: :fourteen_segment,
+          has_dot: false,
+          align_right: true,
+          min_value: 0.0,
+          max_value: 9999.0
+        }
+      })
+
+    {:ok, view, _} = live(conn, ~p"/configurations/#{device.config_id}")
+    assert has_element?(view, "#stepper-allcall-warning", "unplug the 0x70 display")
+    assert has_element?(view, "#stepper-allcall-warning", "apply with the shield alone")
+    refute has_element?(view, "button[phx-click=ack_registration]")
   end
 end

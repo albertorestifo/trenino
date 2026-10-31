@@ -30,11 +30,12 @@ defmodule Trenino.MCP.Tools.StepperToolsTest do
     assert {:error, _} = StepperTools.execute("create_stepper_axis", %{})
   end
 
-  test "apply requires explicit acknowledgement only with a 0x70 display" do
+  test "apply is never blocked by a 0x70 display and warns instead" do
     {:ok, device} = Hardware.create_device(%{name: "Gauge"})
     {:ok, _} = Hardware.create_stepper_axis(device.id, %{"name" => "Speed"})
 
-    refute Hardware.registration_ack_required?(device.id)
+    refute Hardware.allcall_conflict_possible?(device.id)
+    assert Hardware.allcall_warning(device.id) == nil
 
     assert {:error, "device not connected"} =
              StepperTools.execute("apply_stepper_configuration", %{"device_id" => device.id})
@@ -55,9 +56,10 @@ defmodule Trenino.MCP.Tools.StepperToolsTest do
         }
       })
 
-    assert Hardware.registration_ack_required?(device.id)
+    assert Hardware.allcall_conflict_possible?(device.id)
+    assert Hardware.allcall_warning(device.id) =~ "unplug the 0x70 display"
 
-    assert {:error, "registration acknowledgement required"} =
+    assert {:error, "device not connected"} =
              StepperTools.execute("apply_stepper_configuration", %{"device_id" => device.id})
   end
 
