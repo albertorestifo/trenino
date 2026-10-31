@@ -27,11 +27,12 @@ defmodule Trenino.Hardware.DialCalibration do
   @doc """
   Validates points and unit against the axis soft limits. Passing `reviewed: true`
   with otherwise valid data marks the dial valid and reviewed; any change to the
-  points or unit without it clears the review.
+  points or unit without it clears the review, and an explicit `reviewed: false` clears it
+  even when nothing else changed.
   """
   @spec changeset(t(), map(), StepperAxis.t() | nil) :: Ecto.Changeset.t()
   def changeset(%__MODULE__{} = calibration, attrs, axis \\ nil) do
-    reviewed? = Map.get(attrs, :reviewed, Map.get(attrs, "reviewed")) in [true, "true"]
+    reviewed? = review_request(attrs)
 
     calibration
     |> cast(attrs, [:output_unit])
@@ -43,11 +44,22 @@ defmodule Trenino.Hardware.DialCalibration do
     |> unique_constraint(:stepper_axis_id)
   end
 
+  defp review_request(attrs) do
+    case Map.get(attrs, :reviewed, Map.get(attrs, "reviewed")) do
+      value when value in [true, "true"] -> true
+      value when value in [false, "false"] -> :withdraw
+      _ -> false
+    end
+  end
+
   defp review(cs, true) do
     if cs.valid?,
       do: cs |> put_change(:valid, true) |> put_change(:reviewed, true),
       else: cs
   end
+
+  # An explicit `reviewed: false` withdraws the review even when nothing else changed.
+  defp review(cs, :withdraw), do: put_change(cs, :reviewed, false)
 
   defp review(cs, false) do
     if Map.has_key?(cs.changes, :points) or Map.has_key?(cs.changes, :output_unit),

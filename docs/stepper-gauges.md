@@ -46,18 +46,22 @@ move, and commissioning is recorded only through `complete_commissioning`.
    estimated from the axis travel spread over the dial, later marks from the slope of the
    last two points (estimates land within about 2 percent). Each mark is a move to the
    estimate, optional nudges (kept inside the soft limits) and a capture of the reading
-   against a fresh stationary position, then the dial is saved unreviewed. Only if the top
-   mark cannot be reached is `max_position` extended (with Apply and realignment).
+   against a fresh stationary position. The marks stay in memory; nothing is saved until the
+   verification passes, so an earlier reviewed dial and its gauges are untouched if the
+   wizard is closed first. If a mark cannot be reached, `max_position` is extended (with
+   Apply and realignment).
 4. **Verify.** The needle returns to 0 and the user confirms it is exactly on the mark
    (a lost-step check; a miss offers realigning or measuring again), then a mark between
-   two measured points is checked and the dial is saved reviewed.
+   two measured points is checked and only then the dial is saved reviewed.
 5. **Automatic zeroing (optional).** Switches to internal stop, keeps home speed 50, and
    sets the sweep to cover the top of the dial (or the soft limit) plus the backoff and a
    margin, and a timeout above `ceil(1000 * (steps + backoff) / speed) + 500`. A sweep that
    was too short is called out and lengthened. After Apply and Home the user nudges the
-   needle up onto 0; the new `home_backoff` is the previous backoff plus the nudge
-   distance (for example 10 + 253 = 263). After a second Apply and Home the user
-   confirms it lands on 0 (otherwise nudge again).
+   needle up onto 0; the first sweep always uses `home_backoff` 0, so the needle can only
+   land at or below 0, and the new `home_backoff` is the nudge distance (for example 253).
+   After a second Apply and Home the user confirms it lands on 0 (otherwise the tuning
+   starts over from backoff 0). The tuning can be cancelled, which restores the previous
+   homing settings. The startup-homing checkbox is always written, ticked or not.
 6. **Finish.** `complete_commissioning`, optional `home_on_connect`, a name field, the
    trains with a gauge binding on the axis (with a link to add one), then closing the
    wizard releases manual control and resumes train control for a commissioned axis.

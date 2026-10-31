@@ -52,6 +52,39 @@ defmodule Trenino.Hardware.DialCalibrationTest do
     assert {:error, %Ecto.Changeset{}} = Hardware.save_dial_calibration(axis, %{points: []})
   end
 
+  test "an explicit reviewed: false clears the review even when nothing else changed" do
+    axis = setup_axis()
+    {:ok, _} = Hardware.save_dial_calibration(axis, %{points: @points, reviewed: true})
+
+    assert {:ok, cal} =
+             Hardware.save_dial_calibration(axis, %{reviewed: false})
+
+    refute cal.reviewed
+    assert {:ok, %{reviewed: false}} = Hardware.get_dial_calibration(axis.id)
+
+    {:ok, _} = Hardware.save_dial_calibration(axis, %{points: @points, reviewed: true})
+    assert {:ok, cal} = Hardware.save_dial_calibration(axis, %{reviewed: "false"})
+    refute cal.reviewed
+  end
+
+  test "an explicit reviewed: false disables the bindings of the axis" do
+    axis = setup_axis()
+    {:ok, _} = Hardware.save_dial_calibration(axis, %{points: @points, reviewed: true})
+    {:ok, train} = Train.create_train(%{name: "T", identifiers: [%{identifier: "T1"}]})
+
+    {:ok, binding} =
+      Train.create_gauge_binding(train.id, %{
+        name: "S",
+        endpoint: "S",
+        stepper_axis_id: axis.id,
+        enabled: true
+      })
+
+    assert binding.enabled
+    {:ok, _} = Hardware.save_dial_calibration(axis, %{reviewed: false})
+    assert {:ok, %{enabled: false}} = Train.get_gauge_binding(binding.id)
+  end
+
   test "axis limits are enforced for the calibration" do
     axis = setup_axis()
     wide = [%{value: 0, position: 0}, %{value: 100, position: axis.max_position + 1}]
