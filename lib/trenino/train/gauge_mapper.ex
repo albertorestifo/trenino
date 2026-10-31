@@ -36,6 +36,8 @@ defmodule Trenino.Train.GaugeMapper do
   def dial_target(_, _, _), do: {:error, :invalid_sample_or_units}
 
   @spec convert(term(), atom(), atom()) :: {:ok, float()} | {:error, atom()}
+  def convert(n, unit, unit) when is_number(n) and unit in [:mps, :kmh, :mph], do: {:ok, n * 1.0}
+
   def convert(n, from, to)
       when is_number(n) and from in [:mps, :kmh, :mph] and to in [:mps, :kmh, :mph] do
     {:ok, n * factor(from) / factor(to)}

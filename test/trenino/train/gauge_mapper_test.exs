@@ -36,6 +36,18 @@ defmodule Trenino.Train.GaugeMapperTest do
     assert {:error, _} = GaugeMapper.convert(3, :raw, :mph)
   end
 
+  test "same-unit conversion is the identity so boundary samples stay exact" do
+    for unit <- [:mps, :kmh, :mph], n <- [29, 3, 29.0, 0.1, 123.456] do
+      assert {:ok, n * 1.0} == GaugeMapper.convert(n, unit, unit)
+    end
+
+    points = [%DialPoint{value: 0.0, position: 0}, %DialPoint{value: 29.0, position: 500}]
+    b = %{gauge() | input_unit: :kmh, out_of_range: :reject}
+
+    assert {:ok, %{target: 500, clamped: false}} =
+             GaugeMapper.map(b, 29, axis(output_unit: :kmh, points: points))
+  end
+
   test "the dial comes from the axis: no or invalid calibration never maps" do
     assert {:error, :invalid_calibration_or_limits} = GaugeMapper.map(gauge(), 25, %StepperAxis{})
 
