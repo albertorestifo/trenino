@@ -1,14 +1,28 @@
 defmodule Trenino.MCP.Tools.GaugeSerialization do
   @moduledoc false
-  alias Trenino.Hardware.StepperAxis
-  alias Trenino.Hardware.StepperLease
+  alias Trenino.Hardware.{DialCalibration, StepperAxis, StepperLease}
   alias Trenino.Train.GaugeBinding
   def axis(%StepperAxis{} = axis), do: Map.take(axis, StepperAxis.__schema__(:fields))
 
   def binding(%GaugeBinding{} = b) do
-    b
-    |> Map.take(GaugeBinding.__schema__(:fields))
-    |> Map.put(:points, Enum.map(b.points, &Map.take(&1, [:value, :position])))
+    Map.put(
+      Map.take(b, GaugeBinding.__schema__(:fields)),
+      :dial,
+      dial(GaugeBinding.calibration(b.stepper_axis))
+    )
+  end
+
+  @doc "The axis dial calibration as plain data, or `nil` when none is recorded."
+  def dial(nil), do: nil
+
+  def dial(%DialCalibration{} = c) do
+    %{
+      stepper_axis_id: c.stepper_axis_id,
+      output_unit: c.output_unit,
+      valid: c.valid,
+      reviewed: c.reviewed,
+      points: Enum.map(c.points, &Map.take(&1, [:value, :position]))
+    }
   end
 
   def status(snapshot) do
