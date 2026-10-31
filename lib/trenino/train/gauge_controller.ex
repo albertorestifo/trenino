@@ -1,6 +1,7 @@
 defmodule Trenino.Train.GaugeController do
   @moduledoc "Fresh simulator samples drive commissioned, referenced axes through the manager."
   use GenServer
+  require Logger
   alias Trenino.Hardware.StepperManager
   alias Trenino.Simulator.Client
   alias Trenino.Simulator.Connection, as: SimulatorConnection
@@ -37,6 +38,8 @@ defmodule Trenino.Train.GaugeController do
 
   @impl true
   def init(_opts) do
+    # Trap exits so a supervisor shutdown runs terminate/2 and releases the steppers.
+    Process.flag(:trap_exit, true)
     Train.subscribe()
     SimulatorConnection.subscribe()
     Phoenix.PubSub.subscribe(Trenino.PubSub, "train:gauges:configuration")
@@ -301,6 +304,7 @@ defmodule Trenino.Train.GaugeController do
     case ensure_subscription(client, endpoint, id, subs, retries) do
       {:ok, subs, retries} ->
         response = Client.get_subscription(client, id)
+        {subs, retries} = evict_failed(response, endpoint, subs, retries)
 
         {subs, Map.put(values, endpoint, response), retries,
          poll_error(errors, endpoint, response)}
@@ -309,6 +313,21 @@ defmodule Trenino.Train.GaugeController do
         {subs, values, retries, Map.put(errors, endpoint, reason)}
     end
   end
+
+  # A failed GET may mean the simulator forgot the subscription (e.g. it restarted), so
+  # the endpoint is dropped and resubscribed under the usual backoff.
+  defp evict_failed({:error, reason}, endpoint, subs, retries) do
+    retry = Map.get(retries, endpoint, %{delay: 1000})
+
+    {Map.delete(subs, endpoint),
+     Map.put(retries, endpoint, %{
+       after: now() + retry.delay,
+       delay: min(5000, retry.delay * 2),
+       reason: {:poll_failed, reason}
+     })}
+  end
+
+  defp evict_failed(_response, _endpoint, subs, retries), do: {subs, retries}
 
   defp poll_error(errors, endpoint, {:error, reason}),
     do: Map.put(errors, endpoint, {:poll_failed, reason})
@@ -326,6 +345,8 @@ defmodule Trenino.Train.GaugeController do
         {:error, retries, Map.get(retry, :reason)}
 
       true ->
+        clear_stale_subscription(client, id)
+
         case Client.subscribe(client, endpoint, id) do
           {:ok, _} ->
             {:ok, Map.put(subs, endpoint, id), Map.delete(retries, endpoint)}
@@ -340,6 +361,22 @@ defmodule Trenino.Train.GaugeController do
                reason: reason
              }), reason}
         end
+    end
+  end
+
+  # The ID counter restarts at 4000 with the app, so a subscription from a previous run
+  # may still hold this ID; subscribing onto it would append paths and break sampling.
+  # A missing subscription is the normal case. Other failures surface through subscribe.
+  defp clear_stale_subscription(client, id) do
+    case Client.unsubscribe(client, id) do
+      {:ok, _} ->
+        :ok
+
+      {:error, {:http_error, 400, %{"errorCode" => @no_such_subscription}}} ->
+        :ok
+
+      error ->
+        Logger.debug("[GaugeController] Could not clear subscription #{id}: #{inspect(error)}")
     end
   end
 

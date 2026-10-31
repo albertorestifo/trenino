@@ -113,7 +113,8 @@ defmodule Trenino.Train.GaugeControllerTest do
     counter = start_supervised!({Agent, fn -> 0 end})
 
     Mimic.stub(Client, :unsubscribe, fn _, _ ->
-      if Agent.get_and_update(counter, &{&1, &1 + 1}) == 0,
+      # Call 0 is the pre-subscribe clear; call 1 is the first cleanup attempt.
+      if Agent.get_and_update(counter, &{&1, &1 + 1}) == 1,
         do: {:error, :offline},
         else: {:ok, %{}}
     end)
@@ -149,6 +150,45 @@ defmodule Trenino.Train.GaugeControllerTest do
 
     assert_receive {:subscribed, "Speed", 4000}, 500
     refute :sys.get_state(pid).cleaning
+  end
+
+  test "the subscription ID is cleared before its first subscribe, even on a fresh start", %{
+    train: train
+  } do
+    pid = start_supervised!(GaugeController)
+    send(pid, {:train_changed, train})
+    assert_receive {:subscribed, "Speed", 4000}, 500
+    # Same task, so mailbox order is call order: unsubscribe must come first.
+    assert {:messages, [{:unsubscribed, 4000} | _]} = Process.info(self(), :messages)
+  end
+
+  test "a failed GET drops the subscription and resubscribes after backoff", %{train: train} do
+    owner = self()
+    counter = start_supervised!({Agent, fn -> 0 end})
+
+    Mimic.stub(Client, :get_subscription, fn _, _ ->
+      if Agent.get_and_update(counter, &{&1, &1 + 1}) == 0 do
+        {:error, {:http_error, 400, %{"errorCode" => "dtg.comm.NoSuchSubscription"}}}
+      else
+        send(owner, :polled_ok)
+        {:ok, %{"Entries" => [%{"NodeValid" => true, "Values" => %{"Speed" => 50}}]}}
+      end
+    end)
+
+    pid = start_supervised!(GaugeController)
+    send(pid, {:train_changed, train})
+    assert_receive {:subscribed, "Speed", 4000}, 500
+    refute_receive {:subscribed, "Speed", 4000}, 500
+    assert_receive {:subscribed, "Speed", 4000}, 1500
+    assert_receive {:target, _, 360, _}, 500
+  end
+
+  test "supervisor shutdown still makes bindings inactive", %{train: train} do
+    pid = start_supervised!(GaugeController)
+    send(pid, {:train_changed, train})
+    assert_receive {:target, _, 360, _}, 500
+    assert :ok = stop_supervised(GaugeController)
+    assert_receive {:inactive, _, :hold}, 100
   end
 
   test "single numeric value selection is strict and never arbitrarily chooses a key" do
@@ -215,6 +255,11 @@ defmodule Trenino.Train.GaugeControllerTest do
   test "subscription cleanup completes before identifiers can be reused", %{train: train} do
     owner = self()
 
+    pid = start_supervised!(GaugeController)
+    send(pid, {:train_changed, train})
+    assert_receive {:target, _, _, _}, 500
+    assert_receive {:subscribed, "Speed", 4000}, 100
+
     Mimic.stub(Client, :unsubscribe, fn _, id ->
       send(owner, {:cleanup_waiting, self(), id})
 
@@ -223,13 +268,10 @@ defmodule Trenino.Train.GaugeControllerTest do
       end
     end)
 
-    pid = start_supervised!(GaugeController)
-    send(pid, {:train_changed, train})
-    assert_receive {:target, _, _, _}, 500
-    assert_receive {:subscribed, "Speed", 4000}, 100
     send(pid, {:train_changed, train})
     assert_receive {:cleanup_waiting, cleanup, 4000}, 200
     refute_receive {:subscribed, _, _}, 250
+    Mimic.stub(Client, :unsubscribe, fn _, _ -> {:ok, %{}} end)
     send(cleanup, :complete_cleanup)
     assert_receive {:subscribed, "Speed", 4000}, 500
   end
@@ -275,6 +317,8 @@ defmodule Trenino.Train.GaugeControllerTest do
     GaugeController.reload_bindings()
     send(pid, {:gauge_bindings_changed, train.id})
     :sys.get_state(pid)
+    # The one unsubscribe before the first subscribe is expected; nothing after it.
+    assert_receive {:unsubscribed, 4000}
     refute_receive {:unsubscribed, _}, 300
     refute_receive {:subscribed, _, _}, 10
     assert_receive {:target, _, 360, _}, 500
