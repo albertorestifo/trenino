@@ -44,13 +44,17 @@ defmodule Trenino.Train.GaugeControllerTest do
     {:ok, axis} = Hardware.commission_stepper_axis(axis)
     {:ok, train} = Train.create_train(%{name: "Train", identifiers: [%{identifier: "GaugeTest"}]})
 
+    {:ok, _} =
+      Hardware.save_dial_calibration(axis, %{
+        points: [%{value: 0, position: 0}, %{value: 100, position: 720}],
+        reviewed: true
+      })
+
     attrs = %{
       stepper_axis_id: axis.id,
       name: "Speed",
       endpoint: "Speed",
       enabled: true,
-      calibration_reviewed: true,
-      points: [%{value: 0, position: 0}, %{value: 100, position: 720}],
       stale_after_ms: 500
     }
 

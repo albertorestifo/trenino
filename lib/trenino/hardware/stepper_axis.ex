@@ -8,6 +8,7 @@ defmodule Trenino.Hardware.StepperAxis do
   @motion_fields Map.keys(Map.from_struct(%StepperConfiguration{}))
   schema "hardware_stepper_axes" do
     belongs_to :device, Trenino.Hardware.Device
+    has_one :dial_calibration, Trenino.Hardware.DialCalibration
     field :name, :string
     field :axis_index, :integer, default: 0
     field :driver, Ecto.Enum, values: [:adafruit_motor_shield], default: :adafruit_motor_shield

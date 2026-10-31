@@ -15,6 +15,17 @@ defmodule Trenino.Hardware.StepperPresets do
     }
   end
 
+  @doc """
+  Class 323 speedometer dial starter: 0-100 mph over about 240 degrees (720 transitions).
+  An unverified estimate; measure the real dial before reviewing.
+  """
+  def class323_dial_calibration do
+    %{
+      output_unit: :mph,
+      points: [%{value: 0.0, position: 0}, %{value: 100.0, position: 720}]
+    }
+  end
+
   def class323_speedometer_axis do
     %{
       name: "Class 323 speedometer (unverified)",

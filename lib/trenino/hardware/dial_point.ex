@@ -1,4 +1,4 @@
-defmodule Trenino.Train.GaugePoint do
+defmodule Trenino.Hardware.DialPoint do
   @moduledoc "Measured dial value and open-loop position in selected mode transitions."
   use Ecto.Schema
   import Ecto.Changeset

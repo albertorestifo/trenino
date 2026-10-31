@@ -1,23 +1,39 @@
 defmodule Trenino.Train.GaugeMapper do
   @moduledoc "Pure conversion and piecewise interpolation; never sends physical commands."
-  alias Trenino.Hardware.StepperAxis
+  alias Trenino.Hardware.{DialCalibration, StepperAxis}
   alias Trenino.Train.GaugeBinding
   @type mapping :: %{value: float(), target: integer(), clamped: boolean()}
   @spec map(GaugeBinding.t(), term(), StepperAxis.t()) :: {:ok, mapping()} | {:error, atom()}
   def map(%GaugeBinding{} = b, raw, %StepperAxis{} = a) do
-    with true <- b.calibration_valid,
-         {:ok, converted} <- convert(raw, b.input_unit, b.output_unit),
+    with %DialCalibration{valid: true} = cal <- GaugeBinding.calibration(a),
+         {:ok, converted} <- convert(raw, b.input_unit, cal.output_unit),
          {:ok, value} <- transform(converted, b),
-         {:ok, target, clamped} <- interpolate(value, b.points, b.out_of_range),
+         {:ok, target, clamped} <- interpolate(value, cal.points, b.out_of_range),
          true <- target >= a.min_position and target <= a.max_position do
       {:ok, %{value: Float.round(value, 2), target: target, clamped: clamped}}
     else
+      nil -> {:error, :invalid_calibration_or_limits}
+      %DialCalibration{} -> {:error, :invalid_calibration_or_limits}
       false -> {:error, :invalid_calibration_or_limits}
       error -> error
     end
   rescue
     ArithmeticError -> {:error, :non_finite_mapping}
   end
+
+  @doc """
+  Target position for a value already in dial units (no unit conversion or transform).
+  Used to preview a calibration before it is saved.
+  """
+  @spec dial_target(DialCalibration.t(), term(), :clamp | :reject) ::
+          {:ok, mapping()} | {:error, atom()}
+  def dial_target(%DialCalibration{} = cal, value, policy) when is_number(value) do
+    with {:ok, target, clamped} <- interpolate(value * 1.0, cal.points, policy) do
+      {:ok, %{value: Float.round(value * 1.0, 2), target: target, clamped: clamped}}
+    end
+  end
+
+  def dial_target(_, _, _), do: {:error, :invalid_sample_or_units}
 
   @spec convert(term(), atom(), atom()) :: {:ok, float()} | {:error, atom()}
   def convert(n, from, to)

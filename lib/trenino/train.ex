@@ -1425,7 +1425,7 @@ defmodule Trenino.Train do
       from b in GaugeBinding,
         where: b.train_id == ^train_id,
         order_by: b.name,
-        preload: [stepper_axis: :device]
+        preload: [stepper_axis: [:device, :dial_calibration]]
     )
   end
 
@@ -1435,7 +1435,7 @@ defmodule Trenino.Train do
   def get_gauge_binding(id) when is_integer(id) and id > 0 do
     case Repo.get(GaugeBinding, id) do
       nil -> {:error, :not_found}
-      binding -> {:ok, Repo.preload(binding, stepper_axis: :device)}
+      binding -> {:ok, Repo.preload(binding, stepper_axis: [:device, :dial_calibration])}
     end
   end
 

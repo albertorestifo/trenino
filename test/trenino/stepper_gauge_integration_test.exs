@@ -66,15 +66,19 @@ defmodule Trenino.StepperGaugeIntegrationTest do
       })
 
     {:ok, _} =
+      Hardware.save_dial_calibration(axis, %{
+        output_unit: :mph,
+        reviewed: true,
+        points: [%{value: 0, position: 0}, %{value: 100, position: 720}]
+      })
+
+    {:ok, _} =
       Train.create_gauge_binding(train.id, %{
         name: "Speed",
         stepper_axis_id: axis.id,
         endpoint: "VerifiedSpeed",
         input_unit: :mps,
-        output_unit: :mph,
-        enabled: true,
-        calibration_reviewed: true,
-        points: [%{value: 0, position: 0}, %{value: 100, position: 720}]
+        enabled: true
       })
 
     assert :ok = StepperManager.release_manual(axis.id, token)

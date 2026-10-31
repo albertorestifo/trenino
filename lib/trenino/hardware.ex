@@ -10,6 +10,7 @@ defmodule Trenino.Hardware do
   alias Trenino.Hardware.{
     ConfigId,
     Device,
+    DialCalibration,
     I2cModule,
     Input,
     Matrix,
@@ -26,14 +27,21 @@ defmodule Trenino.Hardware do
   alias Trenino.Serial.Protocol.WriteSegments
 
   def list_stepper_axes(device_id),
-    do: Repo.all(from a in StepperAxis, where: a.device_id == ^device_id, order_by: a.axis_index)
+    do:
+      Repo.all(
+        from a in StepperAxis,
+          where: a.device_id == ^device_id,
+          order_by: a.axis_index,
+          preload: :dial_calibration
+      )
 
-  def list_all_stepper_axes, do: Repo.all(StepperAxis) |> Repo.preload(:device)
+  def list_all_stepper_axes,
+    do: Repo.all(StepperAxis) |> Repo.preload([:device, :dial_calibration])
 
   def get_stepper_axis(id) when is_integer(id) and id > 0 do
     case Repo.get(StepperAxis, id) do
       nil -> {:error, :not_found}
-      axis -> {:ok, axis}
+      axis -> {:ok, Repo.preload(axis, :dial_calibration)}
     end
   end
 
@@ -45,6 +53,50 @@ defmodule Trenino.Hardware do
   end
 
   def get_stepper_axis(_), do: {:error, :not_found}
+
+  @doc """
+  The dial calibration of an axis, or `{:error, :not_found}` when none is recorded yet.
+  """
+  @spec get_dial_calibration(integer()) :: {:ok, DialCalibration.t()} | {:error, :not_found}
+  def get_dial_calibration(axis_id) do
+    case Repo.get_by(DialCalibration, stepper_axis_id: axis_id) do
+      nil -> {:error, :not_found}
+      calibration -> {:ok, calibration}
+    end
+  end
+
+  @doc """
+  Creates or replaces the dial calibration of an axis (`points`, `output_unit`,
+  `reviewed`). Validated against the axis soft limits. Pure data: never moves the motor.
+
+  Saving a dial that is not marked reviewed disables every train binding on the axis,
+  because a binding cannot run on an unreviewed dial.
+  """
+  @spec save_dial_calibration(StepperAxis.t(), map()) ::
+          {:ok, DialCalibration.t()} | {:error, Ecto.Changeset.t()}
+  def save_dial_calibration(%StepperAxis{} = axis, attrs) do
+    current =
+      case get_dial_calibration(axis.id) do
+        {:ok, calibration} -> calibration
+        {:error, :not_found} -> %DialCalibration{stepper_axis_id: axis.id, points: []}
+      end
+
+    current
+    |> DialCalibration.changeset(attrs, axis)
+    |> Repo.insert_or_update()
+    |> disable_bindings_unless_reviewed(axis)
+    |> notify_gauge_configuration()
+  end
+
+  defp disable_bindings_unless_reviewed({:ok, %DialCalibration{reviewed: false}} = result, axis) do
+    Repo.update_all(from(b in Trenino.Train.GaugeBinding, where: b.stepper_axis_id == ^axis.id),
+      set: [enabled: false]
+    )
+
+    result
+  end
+
+  defp disable_bindings_unless_reviewed(result, _axis), do: result
 
   def create_stepper_axis(device_id, attrs),
     do: save_stepper_axis(%StepperAxis{device_id: device_id}, attrs, :insert)
@@ -219,8 +271,14 @@ defmodule Trenino.Hardware do
   defp invalidate_gauge_calibration(old, updated) do
     if old.mode != updated.mode or old.min_position != updated.min_position or
          old.max_position != updated.max_position do
+      # The dial is no longer trustworthy: every binding on this axis stops running until
+      # the dial is measured and reviewed again. Nothing is edited silently.
+      Repo.update_all(from(c in DialCalibration, where: c.stepper_axis_id == ^old.id),
+        set: [valid: false, reviewed: false]
+      )
+
       Repo.update_all(from(b in Trenino.Train.GaugeBinding, where: b.stepper_axis_id == ^old.id),
-        set: [enabled: false, calibration_valid: false]
+        set: [enabled: false]
       )
     end
   end
