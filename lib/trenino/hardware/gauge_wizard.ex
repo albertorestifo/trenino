@@ -402,11 +402,11 @@ defmodule Trenino.Hardware.GaugeWizard do
     end
   end
 
-  defp handle(%{step: :jog_test} = state, {:answer, :yes}), do: {%{state | step: :range}, []}
-
-  defp handle(%{step: :jog_test} = state, {:answer, :no}) do
-    state = %{state | flips: state.flips + 1}
-    reconfigure(state, %{reverse: !state.axis.reverse}, :align, :jog_test)
+  # The answer only means something after a jog moved the needle off the reference.
+  defp handle(%{step: :jog_test} = state, {:answer, answer}) when answer in [:yes, :no] do
+    if jogged?(state),
+      do: answer_direction(state, answer),
+      else: {%{state | error: :not_moved}, []}
   end
 
   # --- range
@@ -506,6 +506,16 @@ defmodule Trenino.Hardware.GaugeWizard do
   defp handle(%{step: :finish} = state, :commission), do: {state, [:complete_commissioning]}
   defp handle(%{step: :done} = state, :continue), do: close(state)
   defp handle(state, _event), do: {state, []}
+
+  defp jogged?(%{obs: obs, axis: axis}),
+    do: is_integer(obs.position) and obs.position != axis.home_position
+
+  defp answer_direction(state, :yes), do: {%{state | step: :range}, []}
+
+  defp answer_direction(state, :no) do
+    state = %{state | flips: state.flips + 1}
+    reconfigure(state, %{reverse: !state.axis.reverse}, :align, :jog_test)
+  end
 
   # The first sweep always starts from the given (zero) backoff and a provisional stop allowance.
   defp first_sweep(state, home) do
@@ -857,9 +867,10 @@ defmodule Trenino.Hardware.GaugeWizard do
 
   defp nudge(state, _), do: {%{state | error: :invalid_number}, []}
 
-  # Only the top mark can legitimately need more travel than the soft limit allows.
+  # Any mark can need more travel than the soft limit allows (a coarse dial can bunch its
+  # lower marks high), so offer to extend it whenever the target is past the upper limit.
   defp outside_limits(%{step: :mark, current: current} = state, target) do
-    if target > state.axis.max_position and state.mark_index == length(state.marks) - 1,
+    if target > state.axis.max_position,
       do:
         {%{state | current: %{current | blocked: %{needed: target}}, error: :outside_limits}, []},
       else: {%{state | error: :outside_limits}, []}

@@ -177,6 +177,37 @@ defmodule TreninoWeb.GaugeWizardTest do
     assert has_element?(view, "##{id}-step-mark", "Mark 2 of 5: 40 mph")
   end
 
+  test "a claim refused in the middle of the flow can be retried from any step", %{
+    view: view,
+    axis: axis,
+    id: id,
+    fake: fake
+  } do
+    open(view, axis)
+    view |> form("##{id}-wiring-form", %{"wiring" => "true"}) |> render_change()
+    click(view, "##{id}-continue")
+    click(view, "##{id}-set-reference")
+    assert has_element?(view, "##{id}-step-jog_test")
+
+    stub(StepperManager, :claim_manual, fn _, _, _ ->
+      {:error, {:lease_held, %{owner: :mcp}}}
+    end)
+
+    Agent.update(fake, &%{&1 | lease: false})
+    send_update_for_test(view, axis)
+    assert has_element?(view, "##{id}-error")
+    assert has_element?(view, "##{id}-retry-claim")
+
+    stub(StepperManager, :claim_manual, fn _, _, _ ->
+      Agent.update(fake, &record(%{&1 | lease: true}, :claim))
+      {:ok, make_ref()}
+    end)
+
+    click(view, "##{id}-retry-claim")
+    refute has_element?(view, "##{id}-retry-claim")
+    refute has_element?(view, "##{id}-error")
+  end
+
   test "answering no to the direction question flips the setting", %{
     view: view,
     axis: axis,

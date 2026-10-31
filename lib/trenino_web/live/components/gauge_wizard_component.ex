@@ -188,6 +188,9 @@ defmodule TreninoWeb.GaugeWizardComponent do
   def error_text(:outside_limits),
     do: "That would move the needle past the end of its allowed travel."
 
+  def error_text(:not_moved),
+    do: "The needle has not moved yet. Press Move the needle up a little first, then answer."
+
   def error_text(:invalid_range),
     do: "Enter a lowest and highest dial value (lowest below highest) and a unit."
 
@@ -339,6 +342,8 @@ defmodule TreninoWeb.GaugeWizardComponent do
           </div>
         </div>
       </div>
+
+      <.retry_claim :if={!@wizard.interrupted} wizard={@wizard} id={@id} myself={@myself} />
 
       <div :if={!@wizard.interrupted} id={"#{@id}-step-#{@wizard.step}"} class="space-y-3">
         <.step_body
@@ -498,7 +503,6 @@ defmodule TreninoWeb.GaugeWizardComponent do
     <p :if={@missing != []} class="text-xs text-warning">
       Still to do: {Enum.map_join(@missing, " ", &prerequisite_text/1)}
     </p>
-    <.retry_claim wizard={@wizard} id={@id} myself={@myself} />
     """
   end
 

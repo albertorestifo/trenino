@@ -354,6 +354,19 @@ defmodule Trenino.Hardware.GaugeWizardTest do
       assert w.step == :range
     end
 
+    test "the direction answer needs a jog that actually moved the needle" do
+      {w, _} = to_jog_test()
+      assert w.step == :jog_test
+
+      {w, []} = GaugeWizard.update(w, {:answer, :yes})
+      assert w.step == :jog_test
+      assert w.error == :not_moved
+
+      {w, []} = GaugeWizard.update(w, {:answer, :no})
+      assert w.error == :not_moved
+      assert w.flips == 0
+    end
+
     test "events during a pending motion are refused as busy" do
       {w, _s} = to_jog_test()
       {w, _} = GaugeWizard.update(w, :jog_up)
@@ -432,6 +445,22 @@ defmodule Trenino.Hardware.GaugeWizardTest do
       {w, _} = send_event({w, s}, :set_reference)
       assert w.step == :mark
       refute w.current.blocked
+    end
+
+    test "a middle mark past the travel limit can also extend the travel" do
+      {w, s} = to_range(%{max_position: 100})
+      {w, s} = send_event({w, s}, {:set_range, @range})
+      assert w.mark_index == 0
+
+      s = %{s | position: 100}
+      {w, s} = observe({w, s})
+      {w, s} = send_event({w, s}, {:nudge, 1})
+      assert w.error == :outside_limits
+      assert w.current.blocked == %{needed: 101}
+
+      {w, _} = send_event({w, s}, :extend_max)
+      assert w.step == :align
+      assert w.return_to == :mark
     end
 
     test "nothing is saved while the new marks are still being verified" do
