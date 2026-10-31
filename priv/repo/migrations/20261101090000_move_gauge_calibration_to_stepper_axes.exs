@@ -92,7 +92,9 @@ defmodule Trenino.Repo.Migrations.MoveGaugeCalibrationToStepperAxes do
 
     {valid?, reviewed?} =
       if agree?,
-        do: {Enum.all?(bindings, &truthy?(Enum.at(&1, 4))), Enum.all?(bindings, &truthy?(Enum.at(&1, 5)))},
+        do:
+          {Enum.all?(bindings, &truthy?(Enum.at(&1, 4))),
+           Enum.all?(bindings, &truthy?(Enum.at(&1, 5)))},
         else: {truthy?(valid), false}
 
     unless agree? do
