@@ -62,6 +62,7 @@ defmodule Trenino.Hardware.StepperManager do
       barriers: %{},
       leases: %{},
       paused_axes: MapSet.new(),
+      subscribed: MapSet.new(),
       send_fun: Keyword.get(opts, :send_fun, &Connection.send_message/2)
     }
 
@@ -248,19 +249,12 @@ defmodule Trenino.Hardware.StepperManager do
     result =
       with false <- Map.has_key?(s.leases, id),
            {:ok, pid} <- axis_session(s, id),
-           do:
-             StepperSession.command(
-               pid,
-               id,
-               if(behavior == :release, do: :release, else: :stop),
-               %{},
-               :train
-             )
+           do: StepperSession.command(pid, id, inactive_operation(behavior), %{}, :train)
 
     {:reply, normalize_target_result(result), s}
   end
 
-  def handle_call({:begin_deployment, port}, _, s) do
+  def handle_call({:begin_deployment, port}, from, s) do
     if Map.has_key?(s.barriers, port) do
       {:reply, {:error, :busy}, s}
     else
@@ -274,7 +268,15 @@ defmodule Trenino.Hardware.StepperManager do
 
       case result do
         {:ok, session_token} ->
-          barrier = %{token: token, session_token: session_token}
+          {owner, _} = from
+
+          barrier = %{
+            token: token,
+            session_token: session_token,
+            monitor: Process.monitor(owner)
+          }
+
+          s = clear_auto_home(s, port)
 
           {:reply, {:ok, token},
            revoke_port(%{s | barriers: Map.put(s.barriers, port, barrier)}, port)}
@@ -287,7 +289,8 @@ defmodule Trenino.Hardware.StepperManager do
 
   def handle_call({:finish_deployment, port, token, result}, _, s) do
     case Map.get(s.barriers, port) do
-      %{token: ^token, session_token: session_token} ->
+      %{token: ^token, session_token: session_token, monitor: monitor} ->
+        demonitor(monitor)
         finish_session_deployment(s.sessions[port], session_token, result)
 
         s = %{s | barriers: Map.delete(s.barriers, port)}
@@ -301,7 +304,7 @@ defmodule Trenino.Hardware.StepperManager do
   def handle_call({:prepare_delete, id}, _, s) do
     case axis_session(s, id) do
       {:error, :disconnected} -> {:reply, :ok, s}
-      {:ok, pid} -> {:reply, StepperSession.release_for_delete(pid, id), s}
+      {:ok, pid} -> {:reply, release_for_delete(pid, id), s}
     end
   end
 
@@ -334,6 +337,25 @@ defmodule Trenino.Hardware.StepperManager do
   end
 
   def handle_info({:DOWN, monitor, :process, pid, _}, s) do
+    case Enum.find(s.barriers, fn {_, barrier} -> barrier.monitor == monitor end) do
+      {port, barrier} -> {:noreply, abandon_barrier(s, port, barrier)}
+      nil -> handle_down(monitor, pid, s)
+    end
+  end
+
+  def handle_info({:stepper_updated, id, _snapshot}, s) do
+    snapshot = get_snapshot(s, id)
+    s = revoke_stale_leases(s, id, snapshot)
+
+    case Enum.find_value(s.sessions, fn {_, entry} -> if entry.device_id == id, do: entry end) do
+      nil -> {:noreply, s}
+      session -> {:noreply, maybe_auto_home(s, session, snapshot)}
+    end
+  end
+
+  def handle_info(_, s), do: {:noreply, s}
+
+  defp handle_down(monitor, pid, s) do
     lost = Enum.filter(s.leases, fn {_, lease} -> lease.monitor == monitor end)
     ids = Enum.map(lost, &elem(&1, 0))
     Enum.each(ids, &stop_axis(s, &1))
@@ -350,24 +372,54 @@ defmodule Trenino.Hardware.StepperManager do
     {:noreply, reconcile(s, Map.values(s.connections), false)}
   end
 
-  def handle_info({:stepper_updated, id, _snapshot}, s) do
-    snapshot = get_snapshot(s, id)
-    s = revoke_stale_leases(s, id, snapshot)
-
-    session =
-      Enum.find_value(s.sessions, fn {_, entry} -> if entry.device_id == id, do: entry end)
-
-    if session && session.auto_home && snapshot.lifecycle == :awaiting_reference do
-      axes = Hardware.list_stepper_axes(id) |> Enum.filter(&StepperAxis.auto_home?/1)
-      s = update_in(s.sessions[session.port].auto_home, fn _ -> false end)
-      Enum.each(axes, &StepperSession.command(session.pid, &1.id, :home, %{}, :startup))
-      {:noreply, s}
-    else
-      {:noreply, s}
-    end
+  # The barrier owner died before finishing: nothing else can ever finish it, so fail the
+  # deployment (the session faults and a recover reconfigures it) and free the port.
+  defp abandon_barrier(s, port, barrier) do
+    finish_session_deployment(s.sessions[port], barrier.session_token, {:error, :owner_down})
+    s = %{s | barriers: Map.delete(s.barriers, port)}
+    reconcile(s, Connection.connected_devices(), false)
   end
 
-  def handle_info(_, s), do: {:noreply, s}
+  # Home is a one-shot startup (or request-ID rollover recovery) action, only for axes
+  # that are neither paused nor leased. Any fault or deployment consumes the latch.
+  defp maybe_auto_home(s, session, snapshot) do
+    rollovers = Map.get(snapshot, :rollovers, 0)
+    rearmed? = rollovers > session.rollovers
+    session = %{session | rollovers: rollovers, auto_home: session.auto_home or rearmed?}
+
+    session =
+      cond do
+        Map.get(snapshot, :lifecycle) == :fault ->
+          %{session | auto_home: false}
+
+        session.auto_home and Map.get(snapshot, :lifecycle) == :awaiting_reference ->
+          home_axes(s, session)
+
+        true ->
+          session
+      end
+
+    put_in(s.sessions[session.port], session)
+  end
+
+  defp home_axes(s, session) do
+    session.device_id
+    |> Hardware.list_stepper_axes()
+    |> Enum.filter(&(StepperAxis.auto_home?(&1) and homeable?(s, &1.id)))
+    |> Enum.each(&StepperSession.command(session.pid, &1.id, :home, %{}, :startup))
+
+    %{session | auto_home: false}
+  end
+
+  defp homeable?(s, id),
+    do: not Map.has_key?(s.leases, id) and not MapSet.member?(s.paused_axes, id)
+
+  defp clear_auto_home(s, port) do
+    case s.sessions[port] do
+      nil -> s
+      session -> put_in(s.sessions[port], %{session | auto_home: false})
+    end
+  end
 
   @impl true
   def terminate(_, s) do
@@ -421,19 +473,46 @@ defmodule Trenino.Hardware.StepperManager do
 
       {:ok, pid} = start_session_process(opts)
       Process.monitor(pid)
-      subscribe(device.id)
+      s = subscribe_once(s, device.id)
 
       session = %{
         pid: pid,
         port: conn.port,
         generation: generation(conn),
         device_id: device.id,
-        auto_home: auto_home
+        auto_home: auto_home,
+        rollovers: 0
       }
 
       %{s | sessions: Map.put(s.sessions, conn.port, session)}
     else
       _ -> s
+    end
+  end
+
+  # Release de-energizes the axis and discards its reference, stranding the gauge until
+  # someone references it again, so a train going inactive only ever Stops (the needle
+  # holds). `:release` remains a legacy stored value and is treated as `:hold`.
+  defp inactive_operation(_behavior), do: :stop
+
+  defp subscribe_once(s, device_id) do
+    if MapSet.member?(s.subscribed, device_id) do
+      s
+    else
+      subscribe(device_id)
+      %{s | subscribed: MapSet.put(s.subscribed, device_id)}
+    end
+  end
+
+  # Deleting must stay possible while the session cannot take a Release (faulted,
+  # unsupported, still starting, or the axis was never applied). Removing the axis drops
+  # the session, which stops KeepAlive so the firmware's host-loss behaviour takes over.
+  @deletable_refusals [:fault, :unsupported, :probing, :resetting, :configuring, :not_found]
+
+  defp release_for_delete(pid, id) do
+    case StepperSession.release_for_delete(pid, id) do
+      {:error, reason} when reason in @deletable_refusals -> :ok
+      other -> other
     end
   end
 
@@ -703,6 +782,8 @@ defmodule Trenino.Hardware.StepperManager do
     end
   end
 
+  @operation_limit 100
+
   defp once(lease, token, content, execute) do
     case Map.get(lease.operations, token) do
       %{content: ^content, result: result} ->
@@ -711,19 +792,30 @@ defmodule Trenino.Hardware.StepperManager do
       entry when not is_nil(entry) ->
         {{:error, :operation_token_reused}, lease}
 
-      nil when map_size(lease.operations) >= 100 ->
-        {{:error, :lease_operation_limit}, lease}
+      nil when map_size(lease.operations) >= @operation_limit ->
+        # Stop and Release must always get through; they are not recorded past the limit.
+        if exempt_from_limit?(content),
+          do: {execute.(), lease},
+          else: {{:error, :lease_operation_limit}, lease}
 
       nil ->
-        result = execute.()
-
-        {result,
-         %{
-           lease
-           | operations: Map.put(lease.operations, token, %{content: content, result: result})
-         }}
+        record(lease, token, content, execute.())
     end
   end
+
+  # Only accepted operations are recorded: a refusal (busy, needs apply, ...) is not an
+  # outcome, so retrying the same token after the cause clears must run again.
+  defp record(lease, token, content, {:ok, _} = result),
+    do:
+      {result,
+       %{
+         lease
+         | operations: Map.put(lease.operations, token, %{content: content, result: result})
+       }}
+
+  defp record(lease, _token, _content, result), do: {result, lease}
+
+  defp exempt_from_limit?({op, _params}), do: op in [:stop, :release]
 
   defp execute_once(_s, pid, id, :recover, _) do
     with {:ok, axis} <- Hardware.get_stepper_axis(id),

@@ -478,6 +478,175 @@ defmodule Trenino.Hardware.StepperManagerTest do
     end
   end
 
+  describe "startup auto-home latch" do
+    defp auto_home_axis(ctx) do
+      {:ok, axis} = Hardware.update_stepper_axis(ctx.axis, %{reference_strategy: :internal_stop})
+      {:ok, axis} = Hardware.commission_stepper_axis(axis)
+      {:ok, axis} = Hardware.update_stepper_axis(axis, %{startup_reference: :home_on_connect})
+      axis
+    end
+
+    test "skips paused axes", ctx do
+      axis = auto_home_axis(ctx)
+      :sys.replace_state(ctx.pid, &%{&1 | paused_axes: MapSet.new([axis.id])})
+      prepare(ctx)
+      refute_receive {:sent, %StepperCommand{operation: :home}}, 100
+    end
+
+    test "homes an unpaused, unleased axis once", ctx do
+      auto_home_axis(ctx)
+      prepare(ctx)
+      assert_receive {:sent, %StepperCommand{operation: :home}}, 200
+    end
+
+    test "beginning an Apply consumes the startup Home latch", ctx do
+      auto_home_axis(ctx)
+      send(ctx.pid, {:devices_updated, [ctx.conn]})
+      assert_receive {:sent, %StepperCommand{operation: :get_status} = probe}
+      publish(ctx, status(probe))
+      assert_receive {:sent, %StepperCommand{operation: :reset} = reset}
+      publish(ctx, status(reset))
+      assert_receive {:sent, %StepperCommand{operation: :configure}}
+      assert :sys.get_state(ctx.pid).sessions[ctx.conn.port].auto_home
+
+      test_pid = self()
+
+      spawn_link(fn ->
+        send(test_pid, {:began, StepperManager.begin_deployment(ctx.conn.port)})
+        Process.sleep(:infinity)
+      end)
+
+      assert_receive {:sent, %StepperCommand{operation: :reset} = reset2}
+      publish(ctx, status(reset2))
+      assert_receive {:began, {:ok, token}}
+      refute :sys.get_state(ctx.pid).sessions[ctx.conn.port].auto_home
+      assert :ok = StepperManager.finish_deployment(ctx.conn.port, token, :ok)
+      refute_receive {:sent, %StepperCommand{operation: :home}}, 150
+    end
+
+    test "a startup fault clears the latch", ctx do
+      auto_home_axis(ctx)
+      send(ctx.pid, {:devices_updated, [ctx.conn]})
+      assert_receive {:sent, %StepperCommand{operation: :get_status} = probe}
+      publish(ctx, status(probe))
+      assert_receive {:sent, %StepperCommand{operation: :reset} = reset}
+      publish(ctx, status(reset))
+      assert_receive {:sent, %StepperCommand{operation: :configure} = configure}
+      publish(ctx, %{status(configure) | result: :resource_conflict})
+      Process.sleep(30)
+      assert StepperManager.snapshot(ctx.device.id).lifecycle == :fault
+      refute :sys.get_state(ctx.pid).sessions[ctx.conn.port].auto_home
+    end
+
+    test "request-ID rollover re-homes auto-home axes after the acknowledged reset", ctx do
+      auto_home_axis(ctx)
+      prepare(ctx)
+      assert_receive {:sent, %StepperCommand{operation: :home} = home}, 200
+      publish(ctx, status(home))
+      pid = :sys.get_state(ctx.pid).sessions[ctx.conn.port].pid
+      :sys.replace_state(pid, &%{&1 | next_id: 65_535})
+      send(pid, {:tick, Trenino.Hardware.StepperSession.snapshot(pid).timer_epoch, :poll})
+      assert_receive {:sent, %StepperCommand{operation: :reset} = reset}, 200
+      publish(ctx, status(reset))
+      assert_receive {:sent, %StepperCommand{operation: :configure} = configure}, 200
+      publish(ctx, status(configure))
+      assert_receive {:sent, %StepperCommand{operation: :home}}, 200
+    end
+  end
+
+  test "each session start subscribes once per device", ctx do
+    prepare(ctx)
+    assert :ok = StepperManager.recover(ctx.device.id)
+    assert :ok = StepperManager.recover(ctx.device.id)
+
+    entries =
+      Registry.lookup(Trenino.PubSub, "hardware:steppers:#{ctx.device.id}")
+      |> Enum.filter(fn {pid, _} -> pid == ctx.pid end)
+
+    assert length(entries) == 1
+  end
+
+  test "a deployment barrier whose owner dies is released with an error", ctx do
+    prepare(ctx)
+    test_pid = self()
+
+    owner =
+      spawn(fn ->
+        send(test_pid, {:began, StepperManager.begin_deployment(ctx.conn.port)})
+        Process.sleep(:infinity)
+      end)
+
+    assert_receive {:sent, %StepperCommand{operation: :reset} = reset}
+    publish(ctx, status(reset))
+    assert_receive {:began, {:ok, _token}}
+    assert {:error, :busy} = StepperManager.begin_deployment(ctx.conn.port)
+    Process.exit(owner, :kill)
+    Process.sleep(30)
+    assert :sys.get_state(ctx.pid).barriers == %{}
+    refute StepperManager.snapshot(ctx.device.id).lifecycle == :deploying
+    assert {:ok, token} = StepperManager.begin_deployment(ctx.conn.port)
+    assert :ok = StepperManager.finish_deployment(ctx.conn.port, token, :ok)
+  end
+
+  test "train inactive release only stops, never releasing the axis", ctx do
+    {:ok, _} = Hardware.commission_stepper_axis(ctx.axis)
+    prepare(ctx)
+    assert {:ok, _} = StepperManager.inactive(ctx.axis.id, :release)
+    assert_receive {:sent, %StepperCommand{operation: :stop}}
+    refute_receive {:sent, %StepperCommand{operation: :release}}, 50
+  end
+
+  test "axis delete is allowed while the session is faulted or the axis unapplied", ctx do
+    prepare(ctx)
+
+    publish(ctx, %{
+      status(%StepperCommand{operation: :get_status, axis: 0, request_id: 0})
+      | fault: :driver_i2c
+    })
+
+    Process.sleep(20)
+    assert StepperManager.snapshot(ctx.device.id).lifecycle == :fault
+    assert :ok = StepperManager.prepare_delete(ctx.axis.id)
+
+    {:ok, other} =
+      Hardware.create_stepper_axis(ctx.device.id, %{name: "New", axis_index: 1, motor_port: 2})
+
+    assert :ok = StepperManager.prepare_delete(other.id)
+  end
+
+  describe "operation records" do
+    test "Stop and Release still work past the record limit", ctx do
+      prepare(ctx)
+      assert {:ok, %{token: token}} = StepperManager.claim_mcp_manual(ctx.axis.id)
+      assert_receive {:sent, %StepperCommand{operation: :stop}}
+
+      :sys.replace_state(ctx.pid, fn s ->
+        records = Map.new(1..100, &{to_string(&1), %{content: {:enable, %{}}, result: {:ok, &1}}})
+        update_in(s.leases[ctx.axis.id], &%{&1 | operations: records})
+      end)
+
+      assert {:ok, _} = StepperManager.command_once(ctx.axis.id, :stop, %{}, token, "stop-1")
+      assert_receive {:sent, %StepperCommand{operation: :stop}}
+      assert {:ok, _} = StepperManager.command_once(ctx.axis.id, :release, %{}, token, "rel-1")
+      assert_receive {:sent, %StepperCommand{operation: :release}}
+    end
+
+    test "a refusal is not replayed when the same token is retried", ctx do
+      prepare(ctx)
+      assert {:ok, %{token: token}} = StepperManager.claim_mcp_manual(ctx.axis.id)
+      assert_receive {:sent, %StepperCommand{operation: :stop} = stop}
+      publish(ctx, status(stop))
+      Process.sleep(5)
+      args = [ctx.axis.id, :reference, %{position: 0}]
+      assert {:ok, _} = apply(StepperManager, :command_once, args ++ [token, "first"])
+      assert_receive {:sent, %StepperCommand{operation: :reference} = reference}
+      assert {:error, :busy} = apply(StepperManager, :command_once, args ++ [token, "second"])
+      publish(ctx, status(reference))
+      Process.sleep(10)
+      assert {:ok, _} = apply(StepperManager, :command_once, args ++ [token, "second"])
+    end
+  end
+
   defp prepare(ctx) do
     send(ctx.pid, {:devices_updated, [ctx.conn]})
 
