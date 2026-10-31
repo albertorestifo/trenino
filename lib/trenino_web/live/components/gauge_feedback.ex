@@ -49,6 +49,24 @@ defmodule TreninoWeb.GaugeFeedback do
     "This operation is unavailable. Check the device status, reference and configuration."
   end
 
+  @doc "Plain-language text for a session or status fault."
+  def fault(:driver_i2c),
+    do: "Motor driver (I2C) fault. Check shield power and wiring, then recover."
+
+  def fault(:home_timeout), do: "Home timed out before finishing. Recover and set the reference."
+  def fault(:host_lost), do: "The host stopped sending keep-alive; the axis stopped."
+  def fault(:send_failed), do: "Could not talk to the device. Check the USB connection."
+
+  def fault(:unexpected_reset),
+    do: "The device restarted unexpectedly. Recover the configuration."
+
+  def fault(:unsupported_capabilities), do: "The firmware does not support this axis setup."
+
+  def fault({:configure_failed, _}),
+    do: "The device rejected the axis settings. Review and Apply again."
+
+  def fault(_), do: "The axis reported a fault. Recover the configuration."
+
   def value(value) when is_float(value), do: Float.round(value, 2)
   def value(value) when is_integer(value), do: value
   def value(_), do: "unavailable"

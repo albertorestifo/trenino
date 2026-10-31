@@ -45,6 +45,7 @@ defmodule TreninoWeb.StepperAxisFormComponent do
       |> assign_new(:form, fn -> nil end)
       |> assign_new(:error, fn -> nil end)
       |> assign_new(:notice, fn -> nil end)
+      |> assign_new(:apply_needed, fn -> false end)
       |> assign_new(:snapshot, fn -> StepperManager.snapshot(assigns.device_id) end)
 
     {:ok,
@@ -342,6 +343,7 @@ defmodule TreninoWeb.StepperAxisFormComponent do
           id={"stepper-commissioning-#{axis.id}"}
           axis={axis}
           snapshot={@snapshot}
+          apply_needed={@apply_needed}
         />
       </article>
     </section>

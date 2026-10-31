@@ -2,7 +2,7 @@ defmodule TreninoWeb.StepperCommissioningComponent do
   @moduledoc "Explicit manual commissioning. No events are generated on mount or form change."
   use TreninoWeb, :live_component
   alias Trenino.Hardware.StepperManager
-  alias TreninoWeb.GaugeFeedback
+  alias TreninoWeb.{GaugeFeedback, GaugeGuidance}
 
   @operations %{
     "home" => :home,
@@ -19,6 +19,7 @@ defmodule TreninoWeb.StepperCommissioningComponent do
      socket
      |> assign(assigns)
      |> assign_new(:token, fn -> nil end)
+     |> assign_new(:apply_needed, fn -> false end)
      |> assign_new(:message, fn -> nil end)}
   end
 
@@ -100,17 +101,41 @@ defmodule TreninoWeb.StepperCommissioningComponent do
   @impl true
   def render(assigns) do
     a = assigns.snapshot.axes[assigns.axis.id]
-    assigns = assign(assigns, :runtime, a)
+
+    assigns =
+      assigns
+      |> assign(:runtime, a)
+      |> assign(
+        :next_step,
+        GaugeGuidance.next_step(
+          assigns.axis,
+          assigns.snapshot,
+          assigns.token != nil,
+          assigns.apply_needed
+        )
+      )
+      |> assign(:glossary, GaugeGuidance.glossary())
 
     ~H"""
     <div id={@id} class="space-y-3 pt-3">
       <p class="font-medium">{Phoenix.Naming.humanize(@snapshot.lifecycle)}</p>
+      <p id={"stepper-next-step-#{@axis.id}"} class="text-sm">
+        <span class="font-medium">Next step:</span> {@next_step}
+      </p>
+      <p :for={{term, meaning} <- @glossary} class="text-xs text-base-content/60">
+        <span class="font-medium">{term}</span> is {meaning}
+      </p>
       <p :if={@runtime && @runtime.status} class="text-sm">
         {@runtime.status.state} · estimated position: {if @runtime.status.known,
           do: @runtime.status.position,
           else: "unavailable"} · target: {if @runtime.status.known,
           do: @runtime.status.target,
-          else: "unavailable"} · energized: {@runtime.status.energized} · fault: {@runtime.status.fault}
+          else: "unavailable"} · energized: {@runtime.status.energized}<span :if={
+          @runtime.status.fault != :none
+        }> · fault: {GaugeFeedback.fault(@runtime.status.fault)}</span>
+      </p>
+      <p :if={@snapshot.lifecycle == :fault && Map.get(@snapshot, :error)} role="alert">
+        {GaugeFeedback.fault(Map.get(@snapshot, :error))}
       </p>
       <p
         :if={

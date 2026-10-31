@@ -448,7 +448,7 @@ defmodule Trenino.Hardware.StepperSession do
 
   defp mutation_ack(s, id, a, status) do
     cmd = a.pending.command
-    a = %{a | pending: nil, status: status, updated_at: now()}
+    a = %{a | pending: nil, status: status, updated_at: now(), error: nil}
 
     if a.release_waiter,
       do:
@@ -605,6 +605,7 @@ defmodule Trenino.Hardware.StepperSession do
       | axes: axes,
         lifecycle: lifecycle,
         global_pending: nil,
+        error: nil,
         timer_epoch: make_ref(),
         watchdog_started: false
     }
