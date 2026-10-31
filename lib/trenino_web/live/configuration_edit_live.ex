@@ -937,6 +937,11 @@ defmodule TreninoWeb.ConfigurationEditLive do
     {:noreply, assign(socket, stepper_count: length(axes), stepper_axes: axes)}
   end
 
+  def handle_info({:gauge_wizard_closed, axis_id}, socket) do
+    send_update(TreninoWeb.StepperAxisFormComponent, id: "stepper-setup", wizard_closed: axis_id)
+    {:noreply, socket}
+  end
+
   def handle_info({:dial_calibration_saved, calibration}, socket) do
     # Re-render the axis list so every axis card shows the saved dial status.
     if Enum.any?(socket.assigns.stepper_axes, &(&1.id == calibration.stepper_axis_id)) do

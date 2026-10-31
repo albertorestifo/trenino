@@ -37,11 +37,17 @@ defmodule TreninoWeb.StepperAxisFormComponent do
   ]
 
   @impl true
+  def update(%{wizard_closed: _}, socket) do
+    axes = Hardware.list_stepper_axes(socket.assigns.device_id)
+    {:ok, assign(socket, wizard_axis_id: nil, axes: axes)}
+  end
+
   def update(assigns, socket) do
     socket =
       socket
       |> assign(assigns)
       |> assign_new(:editing, fn -> nil end)
+      |> assign_new(:wizard_axis_id, fn -> nil end)
       |> assign_new(:form, fn -> nil end)
       |> assign_new(:error, fn -> nil end)
       |> assign_new(:notice, fn -> nil end)
@@ -113,6 +119,16 @@ defmodule TreninoWeb.StepperAxisFormComponent do
        )}
     else
       error -> {:noreply, assign(socket, :error, GaugeFeedback.result(error))}
+    end
+  end
+
+  def handle_event("open_wizard", %{"id" => id}, socket) do
+    case own_axis(socket, id) do
+      nil ->
+        {:noreply, assign(socket, :error, "Axis not found")}
+
+      axis ->
+        {:noreply, assign(socket, wizard_axis_id: axis.id, form: nil, editing: nil, error: nil)}
     end
   end
 
@@ -318,39 +334,57 @@ defmodule TreninoWeb.StepperAxisFormComponent do
           Axis {axis.axis_index} · port {axis.motor_port} · {axis.mode} · {axis.min_position}…{axis.max_position}
         </p>
         <button
+          :if={@wizard_axis_id != axis.id}
+          id={"stepper-wizard-open-#{axis.id}"}
           type="button"
-          phx-click="edit"
+          phx-click="open_wizard"
           phx-value-id={axis.id}
           phx-target={@myself}
-          class="btn btn-sm"
-        >Edit</button>
-        <button
-          type="button"
-          phx-click="flip_direction"
-          phx-value-id={axis.id}
-          phx-target={@myself}
-          class="btn btn-sm"
-        >Flip direction{if axis.reverse, do: " (currently reversed)"}</button>
-        <button
-          type="button"
-          phx-click="delete"
-          phx-value-id={axis.id}
-          phx-target={@myself}
-          class="btn btn-sm btn-ghost"
-        >Delete</button>
+          class="btn btn-sm btn-primary"
+        >Guided gauge setup</button>
         <.live_component
-          module={TreninoWeb.StepperCommissioningComponent}
-          id={"stepper-commissioning-#{axis.id}"}
-          axis={axis}
-          snapshot={@snapshot}
-          apply_needed={@apply_needed}
-        />
-        <.live_component
-          module={TreninoWeb.DialCalibrationComponent}
-          id={"dial-calibration-#{axis.id}"}
+          :if={@wizard_axis_id == axis.id}
+          module={TreninoWeb.GaugeWizardComponent}
+          id={"gauge-wizard-#{axis.id}"}
           axis={axis}
           snapshot={@snapshot}
         />
+        <div :if={@wizard_axis_id != axis.id} class="space-y-2">
+          <button
+            type="button"
+            phx-click="edit"
+            phx-value-id={axis.id}
+            phx-target={@myself}
+            class="btn btn-sm"
+          >Edit</button>
+          <button
+            type="button"
+            phx-click="flip_direction"
+            phx-value-id={axis.id}
+            phx-target={@myself}
+            class="btn btn-sm"
+          >Flip direction{if axis.reverse, do: " (currently reversed)"}</button>
+          <button
+            type="button"
+            phx-click="delete"
+            phx-value-id={axis.id}
+            phx-target={@myself}
+            class="btn btn-sm btn-ghost"
+          >Delete</button>
+          <.live_component
+            module={TreninoWeb.StepperCommissioningComponent}
+            id={"stepper-commissioning-#{axis.id}"}
+            axis={axis}
+            snapshot={@snapshot}
+            apply_needed={@apply_needed}
+          />
+          <.live_component
+            module={TreninoWeb.DialCalibrationComponent}
+            id={"dial-calibration-#{axis.id}"}
+            axis={axis}
+            snapshot={@snapshot}
+          />
+        </div>
       </article>
     </section>
     """

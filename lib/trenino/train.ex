@@ -1429,6 +1429,20 @@ defmodule Trenino.Train do
     )
   end
 
+  @doc """
+  Gauge bindings that drive a stepper axis, with their train, oldest train first.
+  Used to show which trains already use a freshly set-up gauge.
+  """
+  @spec list_gauge_bindings_for_axis(integer()) :: [GaugeBinding.t()]
+  def list_gauge_bindings_for_axis(axis_id) do
+    Repo.all(
+      from b in GaugeBinding,
+        where: b.stepper_axis_id == ^axis_id,
+        order_by: [b.train_id, b.name],
+        preload: :train
+    )
+  end
+
   def list_enabled_gauge_bindings(train_id),
     do: Enum.filter(list_gauge_bindings(train_id), & &1.enabled)
 

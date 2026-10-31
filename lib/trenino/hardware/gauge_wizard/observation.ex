@@ -9,8 +9,7 @@ defmodule Trenino.Hardware.GaugeWizard.Observation do
             pending?: false,
             age_ms: nil,
             lease_held?: false,
-            config_applied?: false,
-            homed?: false
+            config_applied?: false
 
   @type t :: %__MODULE__{}
 end

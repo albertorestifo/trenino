@@ -39,4 +39,23 @@ defmodule Trenino.Train.GaugeBindingsTest do
     assert {:ok, _} = Hardware.save_dial_calibration(axis, %{points: points, reviewed: true})
     assert {:ok, %{enabled: true}} = Train.update_gauge_binding(updated, %{enabled: true})
   end
+
+  test "lists the gauge bindings that drive one axis, with their trains" do
+    {:ok, train} =
+      Train.create_train(%{name: "Class 323", identifiers: [%{identifier: "Class323"}]})
+
+    {:ok, device} = Hardware.create_device(%{name: "Speedometer"})
+    {:ok, axis} = Hardware.create_stepper_axis(device.id, %{name: "Speed"})
+
+    {:ok, other} =
+      Hardware.create_stepper_axis(device.id, %{name: "Other", axis_index: 1, motor_port: 2})
+
+    assert Train.list_gauge_bindings_for_axis(axis.id) == []
+
+    attrs = %{name: "Speed", endpoint: "Speed", stepper_axis_id: axis.id}
+    assert {:ok, _} = Train.create_gauge_binding(train.id, attrs)
+
+    assert [%{train: %{name: "Class 323"}}] = Train.list_gauge_bindings_for_axis(axis.id)
+    assert Train.list_gauge_bindings_for_axis(other.id) == []
+  end
 end

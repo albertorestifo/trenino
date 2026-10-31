@@ -291,11 +291,13 @@ defmodule Trenino.Hardware.GaugeWizard do
 
   @doc "Applies an event; returns the new state and the effects to run."
   @spec update(t(), term()) :: {t(), [effect()]}
+
+  def update(%__MODULE__{closed: true} = state, _), do: {state, []}
+
   def update(%__MODULE__{} = state, {:observed, %Observation{} = obs}),
     do: observe(%{state | obs: obs})
 
   def update(%__MODULE__{} = state, {:result, effect, result}), do: result(state, effect, result)
-  def update(%__MODULE__{closed: true} = state, _), do: {state, []}
   def update(%__MODULE__{} = state, :close), do: close(state)
 
   def update(%__MODULE__{interrupted: %{}} = state, :recover),
