@@ -28,14 +28,18 @@ defmodule Trenino.MCP.Tools.GaugeRuntimeToolsTest do
     {:ok, axis} = Hardware.commission_stepper_axis(axis)
     {:ok, train} = Train.create_train(%{name: "T", identifiers: [%{identifier: "GRT"}]})
 
+    {:ok, _} =
+      Hardware.save_dial_calibration(axis, %{
+        points: [%{value: 0, position: 0}, %{value: 100, position: 720}],
+        reviewed: true
+      })
+
     {:ok, binding} =
       Train.create_gauge_binding(train.id, %{
         stepper_axis_id: axis.id,
         name: "Speed",
         endpoint: "Speed",
-        enabled: true,
-        calibration_reviewed: true,
-        points: [%{value: 0, position: 0}, %{value: 100, position: 720}]
+        enabled: true
       })
 
     %{train: train, binding: binding}
