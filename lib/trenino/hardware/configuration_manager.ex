@@ -349,23 +349,27 @@ defmodule Trenino.Hardware.ConfigurationManager do
     end
   end
 
-  defp validate_configuration(port, device_id, [], [], []) do
-    case Hardware.list_stepper_axes(device_id) do
-      [] ->
-        {:error, :no_inputs}
-
-      _ ->
-        conn = Enum.find(Connection.connected_devices(), &(&1.port == port))
-
-        with %{device_version: version} <- conn,
-             {:ok, parsed} <- Version.parse(version),
-             true <- Version.compare(parsed, "3.1.0") != :lt and parsed.pre == [],
-             do: :ok,
-             else: (_ -> {:error, :firmware_update_required})
+  # Stepper axes need firmware 3.1+. Without this check a pre-3.1 device would accept the
+  # configuration while StepperManager silently declines to start a session.
+  defp validate_configuration(port, device_id, inputs, matrices, i2c_modules) do
+    case {Hardware.list_stepper_axes(device_id), inputs ++ matrices ++ i2c_modules} do
+      {[], []} -> {:error, :no_inputs}
+      {[], _} -> :ok
+      {_axes, _} -> validate_stepper_firmware(port)
     end
   end
 
-  defp validate_configuration(_port, _device_id, _inputs, _matrices, _i2c_modules), do: :ok
+  defp validate_stepper_firmware(port) do
+    conn = Enum.find(Connection.connected_devices(), &(&1.port == port))
+
+    with %{device_version: version} when is_binary(version) <- conn,
+         {:ok, parsed} <- Version.parse(version),
+         true <- Version.compare(parsed, "3.1.0") != :lt and parsed.pre == [] do
+      :ok
+    else
+      _ -> {:error, :firmware_update_required}
+    end
+  end
 
   defp send_configuration_messages(port, config_id, [], [], []) do
     Connection.send_message(port, %Configure{

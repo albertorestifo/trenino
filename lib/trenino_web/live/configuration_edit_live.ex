@@ -502,6 +502,15 @@ defmodule TreninoWeb.ConfigurationEditLive do
          |> assign(:applying, false)
          |> put_flash(:error, "Cannot apply empty configuration. Add at least one input.")}
 
+      {:error, :firmware_update_required} ->
+        {:noreply,
+         socket
+         |> assign(:applying, false)
+         |> put_flash(
+           :error,
+           "Stepper gauges need firmware 3.1 or newer. Update the device firmware, then apply again."
+         )}
+
       {:error, reason} ->
         {:noreply,
          socket
