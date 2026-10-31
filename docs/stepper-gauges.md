@@ -32,13 +32,21 @@ conflicts never automatically ForgetDriver.
    **Advanced** and keep safe defaults. Both axes must share one shield address;
    display address collisions are rejected.
 2. Save, then **Apply to Device**. Saving never Home/Move commands a motor and does
-   not reach the device by itself: the form tells you to Apply. Apply is never blocked;
+   not reach the device by itself: the form tells you to Apply, and an **Apply needed**
+   banner stays on the page until the device confirms the saved configuration (Trenino
+   records a fingerprint of what the device last confirmed and compares it with what is
+   saved; names and calibration do not count). With no device connected the page says
+   why Apply is unavailable instead of hiding the button. Apply is never blocked;
    with a display at 0x70 it only shows the warning described above. To reverse direction click
    **Flip direction** on the axis (or update `reverse` over MCP), Apply, then
    re-align the needle by hand and Assign reference again. An axis-only panel uses the canonical eight-byte empty legacy configuration
    `02 <configuration id, little endian> 00 00 ff`. ConfigurationStored must confirm
    its identity before axis setup. It removes old modules and resets/releases
    axes; independent SetOutput pins and removed display contents are not cleared.
+   Each axis shows a **Next step** line (Apply needed, set reference, take manual
+   control, recover, Resume train control) plus a one-line glossary for reference,
+   manual control and commissioning. A fault is shown only while the session is
+   faulted; it clears once the session reconfigures or an acknowledgement succeeds.
 3. Take manual control. Automatic targets pause. For **host reference**, physically
    align the pointer and explicitly Assign reference to the entered coordinate.
    Enable energizes a phase; it does not create a reference.
@@ -63,7 +71,16 @@ a fresh automatic Home. An uncertain Home outcome remains blocked for recovery.
 
 ## Train binding and calibration
 
-In the train editor choose **Gauges → Add gauge**. Select an axis and a verified
+In the train editor choose **Gauges → Add gauge**. The form is five numbered steps:
+(1) axis, (2) endpoint and units, (3) measure (points, preview, take manual control,
+test move, capture), (4) review calibration, (5) save/enable. Multiplier, offset, stale
+time, out-of-range and inactive behavior are under **Advanced**. Measuring needs no
+saved binding, and every disabled control states what is missing. Save never moves
+the motor; you can save disabled, finish commissioning, then enable from the saved
+gauge. An enabled gauge that cannot move shows a reason (simulator not connected,
+not commissioned, device disconnected, fault, needs reference, manual pause), and a
+hint names the detected train identifier when none of the profile's identifiers
+match it (detection stays read-only). Select an axis and a verified
 endpoint through the API explorer or enter it offline. Verify the reported units.
 A selected value key chooses that numeric field. Without a key only one
 unambiguous numeric value in a valid node is accepted. Invalid/missing data never
