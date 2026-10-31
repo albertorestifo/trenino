@@ -347,7 +347,7 @@ defmodule Trenino.Hardware.StepperManager do
     snapshot = get_snapshot(s, id)
     s = revoke_stale_leases(s, id, snapshot)
 
-    case Enum.find_value(s.sessions, fn {_, entry} -> if entry.device_id == id, do: entry end) do
+    case find_session(s, id) do
       nil -> {:noreply, s}
       session -> {:noreply, maybe_auto_home(s, session, snapshot)}
     end

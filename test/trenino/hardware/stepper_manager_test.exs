@@ -4,6 +4,7 @@ defmodule Trenino.Hardware.StepperManagerTest do
   alias Trenino.Hardware
   alias Trenino.Hardware.StepperLease
   alias Trenino.Hardware.StepperManager
+  alias Trenino.Hardware.StepperSession
   alias Trenino.Hardware.StepperSupervisor
   alias Trenino.MCP.Tools.GaugeSerialization
   alias Trenino.Repo
@@ -545,7 +546,7 @@ defmodule Trenino.Hardware.StepperManagerTest do
       publish(ctx, status(home))
       pid = :sys.get_state(ctx.pid).sessions[ctx.conn.port].pid
       :sys.replace_state(pid, &%{&1 | next_id: 65_535})
-      send(pid, {:tick, Trenino.Hardware.StepperSession.snapshot(pid).timer_epoch, :poll})
+      send(pid, {:tick, StepperSession.snapshot(pid).timer_epoch, :poll})
       assert_receive {:sent, %StepperCommand{operation: :reset} = reset}, 200
       publish(ctx, status(reset))
       assert_receive {:sent, %StepperCommand{operation: :configure} = configure}, 200

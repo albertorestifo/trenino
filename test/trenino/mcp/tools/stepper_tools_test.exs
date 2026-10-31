@@ -1,6 +1,7 @@
 defmodule Trenino.MCP.Tools.StepperToolsTest do
   use Trenino.DataCase, async: true
   alias Trenino.Hardware
+  alias Trenino.MCP.Server
   alias Trenino.MCP.Tools.StepperTools
 
   test "CRUD uses domain validation and never implicitly references" do
@@ -107,7 +108,7 @@ defmodule Trenino.MCP.Tools.StepperToolsTest do
 
     # Through the real server dispatch, the client gets an isError reply, not a crash.
     assert {:reply, %{result: %{isError: true, content: [%{text: text}]}}} =
-             Trenino.MCP.Server.handle_message(%{
+             Server.handle_message(%{
                "jsonrpc" => "2.0",
                "id" => 1,
                "method" => "tools/call",
