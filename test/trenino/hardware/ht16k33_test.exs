@@ -216,6 +216,25 @@ defmodule Trenino.Hardware.HT16K33Test do
                <<0x00, 0x00, 0x00, 0x00, 0xED, 0x00, 0x30, 0x00>>
     end
 
+    test "diagonal glyphs are drawn consistently with the orientation tables (14-segment)" do
+      # Bits: 8 upper-left, 10 upper-right, 11 lower-right, 13 lower-left diagonal.
+      # '\\' is UL+LR and '/' is UR+LL, so a vertical flip must turn one into the other
+      # and a 180 degree rotation must leave each unchanged.
+      for {text, flipped} <- [{"/", "\\"}, {"\\", "/"}] do
+        normal = HT16K33.encode_string(text, params_14seg(1))
+        vertical = %{params_14seg(1) | orientation: :flipped_vertical}
+        rotated = %{params_14seg(1) | orientation: :rotated_180}
+
+        assert HT16K33.encode_string(text, vertical) ==
+                 HT16K33.encode_string(flipped, params_14seg(1))
+
+        assert HT16K33.encode_string(text, rotated) == normal
+      end
+
+      assert HT16K33.encode_string("/", params_14seg(1)) == <<0x00, 0x24>>
+      assert HT16K33.encode_string("Z", params_14seg(1)) == <<0x09, 0x24>>
+    end
+
     test "flipped_vertical flips top/bottom and keeps digit order (14-segment)" do
       params = %{params_14seg() | orientation: :flipped_vertical}
       # '1' (B,C) maps to itself (C,B); '2' flipped vertically is 0xED.
