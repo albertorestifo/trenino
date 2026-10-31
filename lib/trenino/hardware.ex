@@ -403,14 +403,47 @@ defmodule Trenino.Hardware do
   This is called by the ConfigurationManager when a ConfigurationStored
   message is received from the device.
   """
-  @spec confirm_configuration(integer(), integer()) :: {:ok, Device.t()} | {:error, term()}
-  def confirm_configuration(device_id, config_id) do
+  @spec confirm_configuration(integer(), integer(), String.t() | nil) ::
+          {:ok, Device.t()} | {:error, term()}
+  def confirm_configuration(device_id, config_id, fingerprint \\ nil) do
     with {:ok, device} <- get_device(device_id) do
       device
       |> Device.changeset(%{config_id: config_id})
+      |> Ecto.Changeset.put_change(
+        :applied_fingerprint,
+        fingerprint || device.applied_fingerprint
+      )
       |> Repo.update()
     end
   end
+
+  @doc """
+  Fingerprint of everything that is sent to the device when a configuration is applied.
+
+  Names, descriptions and calibration data are excluded because they never reach the
+  device. Compare with `Device.applied_fingerprint` to know whether the saved
+  configuration differs from the one last confirmed by the device.
+  """
+  @spec config_fingerprint(list(), list(), list(), list()) :: String.t()
+  def config_fingerprint(inputs, matrices, i2c_modules, stepper_axes) do
+    term = {
+      inputs |> Enum.map(&{&1.pin, &1.input_type, &1.sensitivity, &1.debounce}) |> Enum.sort(),
+      matrices |> Enum.map(&matrix_pins/1) |> Enum.sort(),
+      i2c_modules |> Enum.map(&{&1.module_chip, &1.i2c_address, &1.params}) |> Enum.sort(),
+      stepper_axes
+      |> Enum.map(&{&1.axis_index, StepperAxis.to_protocol_config(&1)})
+      |> Enum.sort()
+    }
+
+    :crypto.hash(:sha256, :erlang.term_to_binary(term)) |> Base.encode16(case: :lower)
+  end
+
+  defp matrix_pins(matrix),
+    do: {Enum.map(matrix.row_pins, & &1.pin), Enum.map(matrix.col_pins, & &1.pin)}
+
+  @doc "True when the saved configuration differs from what the device last confirmed."
+  @spec config_unapplied?(Device.t(), String.t()) :: boolean()
+  def config_unapplied?(%Device{applied_fingerprint: applied}, current), do: applied != current
 
   @doc """
   Generate a unique random configuration ID.

@@ -192,7 +192,7 @@ defmodule Trenino.Hardware.ConfigurationManager do
       {%{port: ^port, timer_ref: timer_ref, device_id: device_id} = info, new_in_flight} ->
         Process.cancel_timer(timer_ref)
 
-        case Hardware.confirm_configuration(device_id, config_id) do
+        case Hardware.confirm_configuration(device_id, config_id, Map.get(info, :fingerprint)) do
           {:ok, device} ->
             Logger.info("Configuration #{config_id} successfully stored on device")
             # Update the device connection's config_id to match
@@ -326,7 +326,14 @@ defmodule Trenino.Hardware.ConfigurationManager do
             port: port,
             timer_ref: timer_ref,
             device_id: device_id,
-            stepper_token: token
+            stepper_token: token,
+            fingerprint:
+              Hardware.config_fingerprint(
+                inputs,
+                matrices,
+                i2c_modules,
+                Hardware.list_stepper_axes(device_id)
+              )
           }
 
           new_in_flight = Map.put(state.in_flight, config_id, in_flight_info)

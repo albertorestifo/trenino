@@ -116,6 +116,7 @@ defmodule TreninoWeb.ConfigurationEditLive do
      |> assign(:show_delete_modal, false)
      |> assign(:i2c_modules, [])
      |> assign(:stepper_count, 0)
+     |> assign(:stepper_axes, [])
      |> assign(:i2c_modal_open, false)
      |> assign(:i2c_modal_module, nil)}
   end
@@ -165,6 +166,7 @@ defmodule TreninoWeb.ConfigurationEditLive do
          |> assign(:show_delete_modal, false)
          |> assign(:i2c_modules, i2c_modules)
          |> assign(:stepper_count, length(Hardware.list_stepper_axes(device.id)))
+         |> assign(:stepper_axes, Hardware.list_stepper_axes(device.id))
          |> assign(:i2c_modal_open, false)
          |> assign(:i2c_modal_module, nil)}
 
@@ -931,8 +933,8 @@ defmodule TreninoWeb.ConfigurationEditLive do
   end
 
   def handle_info({:stepper_axis_saved, _axis}, socket) do
-    {:noreply,
-     assign(socket, :stepper_count, length(Hardware.list_stepper_axes(socket.assigns.device.id)))}
+    axes = Hardware.list_stepper_axes(socket.assigns.device.id)
+    {:noreply, assign(socket, stepper_count: length(axes), stepper_axes: axes)}
   end
 
   def handle_info(_msg, socket), do: {:noreply, socket}
@@ -958,7 +960,11 @@ defmodule TreninoWeb.ConfigurationEditLive do
       assigns.nav_devices
       |> Enum.filter(&(&1.status == :connected))
 
-    assigns = assign(assigns, :connected_devices, connected_devices)
+    assigns =
+      assigns
+      |> assign(:connected_devices, connected_devices)
+      |> assign(:has_parts, has_parts?(assigns))
+      |> assign(:apply_needed, apply_needed?(assigns))
 
     ~H"""
     <.breadcrumb items={[
@@ -973,10 +979,10 @@ defmodule TreninoWeb.ConfigurationEditLive do
           device_form={@device_form}
           active_port={@active_port}
           new_mode={@new_mode}
-          can_apply={
-            (length(@inputs) > 0 or length(@matrices) > 0 or length(@i2c_modules) > 0 or
-               @stepper_count > 0) and not Enum.empty?(@connected_devices)
-          }
+          can_apply={@has_parts and not Enum.empty?(@connected_devices)}
+          has_parts={@has_parts}
+          device_connected={not Enum.empty?(@connected_devices)}
+          apply_needed={@apply_needed}
           applying={@applying}
         />
 
@@ -1107,6 +1113,28 @@ defmodule TreninoWeb.ConfigurationEditLive do
     """
   end
 
+  defp has_parts?(assigns) do
+    assigns.inputs != [] or assigns.matrices != [] or assigns.i2c_modules != [] or
+      assigns.stepper_count > 0
+  end
+
+  # The device only learns the configuration on Apply, so compare what is saved now
+  # against the fingerprint recorded when the device last confirmed one.
+  defp apply_needed?(%{new_mode: true}), do: false
+
+  defp apply_needed?(assigns) do
+    current =
+      Hardware.config_fingerprint(
+        assigns.inputs,
+        assigns.matrices,
+        assigns.i2c_modules,
+        assigns.stepper_axes
+      )
+
+    Hardware.config_unapplied?(assigns.device, current) and
+      (has_parts?(assigns) or assigns.device.applied_fingerprint != nil)
+  end
+
   # Components
 
   attr :device, :map, required: true
@@ -1114,6 +1142,9 @@ defmodule TreninoWeb.ConfigurationEditLive do
   attr :active_port, :string, default: nil
   attr :new_mode, :boolean, required: true
   attr :can_apply, :boolean, required: true
+  attr :has_parts, :boolean, required: true
+  attr :device_connected, :boolean, required: true
+  attr :apply_needed, :boolean, required: true
   attr :applying, :boolean, required: true
 
   defp device_header(assigns) do
@@ -1162,10 +1193,37 @@ defmodule TreninoWeb.ConfigurationEditLive do
             </button>
           </div>
         </div>
+        <p
+          :if={not @can_apply and not @new_mode}
+          id="apply-unavailable-reason"
+          class="mt-2 text-xs text-base-content/60"
+        >
+          {apply_unavailable_reason(@has_parts, @device_connected)}
+        </p>
       </.form>
+      <div
+        :if={@apply_needed and not @new_mode}
+        id="apply-needed-banner"
+        role="status"
+        class="mt-4 rounded-lg border border-warning/40 bg-warning/10 p-3 text-sm"
+      >
+        <strong>Apply needed.</strong>
+        Saved changes are not on the device yet. {if @can_apply,
+          do: "Click Apply to Device to send them.",
+          else: "Connect the device, then click Apply to Device."}
+      </div>
     </header>
     """
   end
+
+  defp apply_unavailable_reason(false, _),
+    do: "Apply is unavailable: add at least one input, matrix, display or stepper axis first."
+
+  defp apply_unavailable_reason(true, false),
+    do:
+      "Apply is unavailable: no device is connected. Plug in the controller; Apply appears once it is connected."
+
+  defp apply_unavailable_reason(_, _), do: ""
 
   attr :inputs, :list, required: true
   attr :input_values, :map, required: true

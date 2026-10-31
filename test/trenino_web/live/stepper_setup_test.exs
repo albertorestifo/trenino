@@ -67,4 +67,39 @@ defmodule TreninoWeb.StepperSetupTest do
     assert has_element?(view, "#stepper-allcall-warning", "apply with the shield alone")
     refute has_element?(view, "button[phx-click=ack_registration]")
   end
+
+  describe "apply state" do
+    test "banner appears after saving a stepper axis until the device confirms it", %{conn: conn} do
+      {:ok, device} = Hardware.create_device(%{name: "Panel"})
+      {:ok, view, _} = live(conn, ~p"/configurations/#{device.config_id}")
+      refute has_element?(view, "#apply-needed-banner")
+      assert has_element?(view, "#apply-unavailable-reason", "add at least one")
+
+      view |> element("#stepper-add") |> render_click()
+      view |> form("#stepper-axis-form", stepper_axis: %{name: "Speed"}) |> render_submit()
+
+      assert has_element?(view, "#apply-needed-banner", "Apply needed")
+      assert has_element?(view, "#apply-unavailable-reason", "no device is connected")
+
+      fingerprint =
+        Hardware.config_fingerprint([], [], [], Hardware.list_stepper_axes(device.id))
+
+      {:ok, applied} = Hardware.confirm_configuration(device.id, device.config_id, fingerprint)
+      send(view.pid, {:configuration_applied, "tty", applied, device.config_id})
+      refute has_element?(view, "#apply-needed-banner")
+
+      view |> element("button[phx-click=flip_direction]") |> render_click()
+      assert has_element?(view, "#apply-needed-banner")
+    end
+
+    test "fingerprint ignores names", %{conn: _} do
+      {:ok, device} = Hardware.create_device(%{name: "Panel"})
+      {:ok, axis} = Hardware.create_stepper_axis(device.id, %{"name" => "A"})
+      before = Hardware.config_fingerprint([], [], [], [axis])
+      {:ok, renamed} = Hardware.update_stepper_axis(axis, %{"name" => "B"})
+      assert before == Hardware.config_fingerprint([], [], [], [renamed])
+      {:ok, flipped} = Hardware.update_stepper_axis(renamed, %{"reverse" => true})
+      refute before == Hardware.config_fingerprint([], [], [], [flipped])
+    end
+  end
 end
