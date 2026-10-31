@@ -94,6 +94,74 @@ defmodule Trenino.Hardware.StepperSessionTest do
     assert_receive {:sent, %StepperCommand{operation: :get_status}}
   end
 
+  @tag :two_axes
+  test "rollover on the first axis's poll stops polling the remaining axes", %{pid: pid} do
+    setup_axis(pid)
+    assert_receive {:sent, %StepperCommand{operation: :configure, axis: 1} = configure}
+    reply(pid, configure, %{configured: true})
+    assert StepperSession.snapshot(pid).lifecycle == :awaiting_reference
+    :sys.replace_state(pid, &%{&1 | next_id: 65_535})
+    send(pid, {:tick, StepperSession.snapshot(pid).timer_epoch, :poll})
+    assert_receive {:sent, %StepperCommand{operation: :reset} = reset}
+    refute_receive {:sent, %StepperCommand{operation: :get_status}}, 15
+    snapshot = StepperSession.snapshot(pid)
+    assert snapshot.lifecycle == :resetting
+    assert Enum.all?(snapshot.axes, fn {_, a} -> a.reference_poll == nil end)
+    assert snapshot.next_id == 2
+    reply(pid, reset)
+  end
+
+  test "complete_reference never changes lifecycle outside ready/awaiting_reference", %{pid: pid} do
+    setup_axis(pid)
+
+    :sys.replace_state(pid, fn s ->
+      %{s | lifecycle: :configuring, axes: Map.update!(s.axes, 1, &%{&1 | reference_poll: 7})}
+    end)
+
+    reply(pid, %StepperCommand{operation: :get_status, axis: 0, request_id: 7}, %{
+      configured: true,
+      known: true,
+      state: :idle
+    })
+
+    assert StepperSession.snapshot(pid).lifecycle == :configuring
+  end
+
+  test "tick rollover does not start a second poll chain", %{pid: pid} do
+    setup_axis(pid)
+    :sys.replace_state(pid, &%{&1 | next_id: 65_535, idle_poll: 40})
+    send(pid, {:tick, StepperSession.snapshot(pid).timer_epoch, :poll})
+    assert_receive {:sent, %StepperCommand{operation: :reset} = reset}
+    reply(pid, reset)
+    assert_receive {:sent, %StepperCommand{operation: :configure} = configure}
+    reply(pid, configure, %{configured: true})
+    polls = count_polls(0, System.monotonic_time(:millisecond) + 400)
+    assert polls <= 14, "expected a single poll chain, saw #{polls} polls in 400ms"
+  end
+
+  defp count_polls(n, deadline) do
+    remaining = deadline - System.monotonic_time(:millisecond)
+
+    receive do
+      {:sent, %StepperCommand{operation: :get_status}} -> count_polls(n + 1, deadline)
+      {:sent, _} -> count_polls(n, deadline)
+    after
+      max(remaining, 0) -> n
+    end
+  end
+
+  test "reload_axes preserves manual pause", %{pid: pid} do
+    setup_axis(pid)
+    :ok = StepperSession.pause(pid, 1, true)
+    waiter = Task.async(fn -> StepperSession.begin_deployment(pid) end)
+    assert_receive {:sent, %StepperCommand{operation: :reset} = reset}
+    reply(pid, reset)
+    assert {:ok, token} = Task.await(waiter)
+    axis = StepperSession.snapshot(pid).axes[1].config
+    assert :ok = StepperSession.reload_axes(pid, [axis], token)
+    assert StepperSession.snapshot(pid).axes[1].paused
+  end
+
   test "deployment reload recalculates minimum watchdog before configure", %{pid: pid} do
     setup_axis(pid)
     waiter = Task.async(fn -> StepperSession.begin_deployment(pid) end)

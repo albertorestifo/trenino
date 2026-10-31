@@ -70,7 +70,10 @@ defmodule Trenino.Hardware.StepperSession do
         %State{lifecycle: :deploying, deployment_token: token} = s
       )
       when not is_nil(token) do
-    axes = Map.new(axes, &{&1.id, %AxisState{config: &1}})
+    axes =
+      Map.new(axes, fn axis ->
+        {axis.id, %AxisState{config: axis, paused: paused?(s.axes, axis.id)}}
+      end)
 
     interval =
       axes |> Map.values() |> Enum.map(& &1.config.watchdog_ms) |> Enum.min(fn -> 1000 end)
@@ -188,8 +191,16 @@ defmodule Trenino.Hardware.StepperSession do
 
   def handle_info({:tick, epoch, :poll}, %State{timer_epoch: epoch} = s) do
     s = poll_axes(s)
-    moving = Enum.any?(s.axes, fn {_, a} -> a.status && a.status.state in [:moving, :homing] end)
-    schedule(s, :poll, if(moving, do: s.moving_poll, else: s.idle_poll))
+
+    # A new timer epoch means polling hit a rollover or fault, which already started
+    # (or deliberately ended) the poll chain; scheduling here would double it.
+    if s.timer_epoch == epoch do
+      moving =
+        Enum.any?(s.axes, fn {_, a} -> a.status && a.status.state in [:moving, :homing] end)
+
+      schedule(s, :poll, if(moving, do: s.moving_poll, else: s.idle_poll))
+    end
+
     {:noreply, s}
   end
 
@@ -532,14 +543,18 @@ defmodule Trenino.Hardware.StepperSession do
     a = %{a | status: status, updated_at: now(), reference_poll: nil, ready: ready}
     s = put_axis(s, id, a)
 
-    %{
+    if s.lifecycle in [:ready, :awaiting_reference] do
+      %{
+        s
+        | lifecycle:
+            if(Enum.any?(s.axes, fn {_, axis} -> axis.ready end),
+              do: :ready,
+              else: :awaiting_reference
+            )
+      }
+    else
       s
-      | lifecycle:
-          if(Enum.any?(s.axes, fn {_, axis} -> axis.ready end),
-            do: :ready,
-            else: :awaiting_reference
-          )
-    }
+    end
   end
 
   defp async_status(s, id, a, status) do
@@ -567,7 +582,10 @@ defmodule Trenino.Hardware.StepperSession do
 
   defp poll_axes(%State{lifecycle: lifecycle} = s)
        when lifecycle in [:ready, :awaiting_reference] do
-    Enum.reduce(Map.keys(s.axes), s, &poll_axis(&2, &1))
+    Enum.reduce_while(Map.keys(s.axes), s, fn id, acc ->
+      next = poll_axis(acc, id)
+      if next.lifecycle == lifecycle, do: {:cont, next}, else: {:halt, next}
+    end)
   end
 
   defp poll_axes(s), do: s
@@ -637,6 +655,13 @@ defmodule Trenino.Hardware.StepperSession do
     do:
       cmd.request_id != 0 and cmd.request_id == status.request_id and cmd.axis == status.axis and
         cmd.operation == status.operation
+
+  defp paused?(axes, id) do
+    case Map.fetch(axes, id) do
+      {:ok, %AxisState{paused: paused}} -> paused
+      :error -> false
+    end
+  end
 
   defp put_axis(s, id, a), do: %{s | axes: Map.put(s.axes, id, a)}
 
