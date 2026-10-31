@@ -47,6 +47,22 @@ defmodule Trenino.MCP.Tools.GaugeBindingToolsTest do
              DialCalibrationTools.execute("get_dial_calibration", %{"stepper_axis_id" => 0})
   end
 
+  test "create returns the axis dial, not null", %{axis: axis, train: train} do
+    {:ok, _} =
+      DialCalibrationTools.execute("update_dial_calibration", %{
+        "stepper_axis_id" => axis.id,
+        "points" => @points
+      })
+
+    assert {:ok, %{binding: %{dial: %{points: [_, _]}}}} =
+             GaugeBindingTools.execute("create_gauge_binding", %{
+               "train_id" => train.id,
+               "stepper_axis_id" => axis.id,
+               "name" => "Speed",
+               "endpoint" => "Speed"
+             })
+  end
+
   test "gauge CRUD and preview share mapper without movement", %{axis: axis, train: train} do
     attrs = %{
       "train_id" => train.id,

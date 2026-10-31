@@ -65,10 +65,14 @@ defmodule Trenino.MCP.Server do
   defp dispatch("tools/call", %{"name" => name, "arguments" => arguments}) do
     case ToolRegistry.call_tool(name, arguments) do
       {:ok, result} ->
-        {:ok,
-         %{
-           content: [%{type: "text", text: encode_result(result)}]
-         }}
+        case encode_result(result) do
+          {:ok, text} ->
+            {:ok, %{content: [%{type: "text", text: text}]}}
+
+          :error ->
+            {:ok,
+             %{content: [%{type: "text", text: "Result could not be encoded"}], isError: true}}
+        end
 
       {:error, message_text} ->
         {:ok,
@@ -91,9 +95,17 @@ defmodule Trenino.MCP.Server do
     {:error, -32_601, "Method not found: #{method}"}
   end
 
-  defp encode_result(nil), do: "ok"
-  defp encode_result(result) when is_binary(result), do: result
-  defp encode_result(result), do: Jason.encode!(result)
+  defp encode_result(nil), do: {:ok, "ok"}
+  defp encode_result(result) when is_binary(result), do: {:ok, result}
+
+  defp encode_result(result) do
+    case Jason.encode(result) do
+      {:ok, text} -> {:ok, text}
+      {:error, _} -> :error
+    end
+  rescue
+    Protocol.UndefinedError -> :error
+  end
 
   defp jsonrpc_response(id, result) do
     %{jsonrpc: "2.0", id: id, result: result}

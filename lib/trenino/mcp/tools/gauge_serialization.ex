@@ -53,7 +53,7 @@ defmodule Trenino.MCP.Tools.GaugeSerialization do
     errors =
       Ecto.Changeset.traverse_errors(cs, fn {msg, opts} ->
         Enum.reduce(opts, msg, fn {key, value}, acc ->
-          String.replace(acc, "%{#{key}}", to_string(value))
+          String.replace(acc, "%{#{key}}", format_option(value))
         end)
       end)
 
@@ -63,6 +63,13 @@ defmodule Trenino.MCP.Tools.GaugeSerialization do
   def result({:error, reason}), do: {:error, plain(reason)}
   def result(:ok), do: {:ok, %{accepted: true}}
   def result(result), do: result
+  # Changeset options are arbitrary terms (enum lists of atoms, types, ...), so only
+  # chardata-safe values are stringified directly.
+  defp format_option(value) when is_binary(value), do: value
+  defp format_option(value) when is_atom(value) or is_number(value), do: to_string(value)
+  defp format_option(value) when is_list(value), do: Enum.map_join(value, ", ", &format_option/1)
+  defp format_option(value), do: inspect(value)
+
   defp plain(nil), do: nil
   defp plain({:lease_held, info}), do: StepperLease.message(info)
 

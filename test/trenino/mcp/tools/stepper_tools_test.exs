@@ -91,4 +91,32 @@ defmodule Trenino.MCP.Tools.StepperToolsTest do
     assert {:ok, reloaded} = Hardware.get_stepper_axis(axis.id)
     refute reloaded.commissioned
   end
+
+  test "invalid enum and integer options come back as errors instead of crashing" do
+    {:ok, device} = Hardware.create_device(%{name: "Gauge"})
+
+    {:ok, %{axis: axis}} =
+      StepperTools.execute("create_stepper_axis", %{"device_id" => device.id, "name" => "Speed"})
+
+    for args <- [%{"mode" => "bogus"}, %{"home_direction" => 5}, %{"driver" => "nope"}] do
+      assert {:error, text} =
+               StepperTools.execute("update_stepper_axis", Map.put(args, "id", axis.id))
+
+      assert is_binary(text)
+    end
+
+    # Through the real server dispatch, the client gets an isError reply, not a crash.
+    assert {:reply, %{result: %{isError: true, content: [%{text: text}]}}} =
+             Trenino.MCP.Server.handle_message(%{
+               "jsonrpc" => "2.0",
+               "id" => 1,
+               "method" => "tools/call",
+               "params" => %{
+                 "name" => "update_stepper_axis",
+                 "arguments" => %{"id" => axis.id, "mode" => "bogus"}
+               }
+             })
+
+    assert text =~ "mode"
+  end
 end

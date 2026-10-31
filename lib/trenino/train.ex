@@ -1477,8 +1477,15 @@ defmodule Trenino.Train do
     binding
     |> GaugeBinding.changeset(attrs, axis)
     |> then(&apply(Repo, operation, [&1]))
+    |> preload_gauge_axis()
     |> notify_gauge_change()
   end
+
+  # Saved bindings are serialized with their axis dial, so load it from the saved row.
+  defp preload_gauge_axis({:ok, binding}),
+    do: {:ok, Repo.preload(binding, [stepper_axis: [:device, :dial_calibration]], force: true)}
+
+  defp preload_gauge_axis(error), do: error
 
   defp notify_gauge_change({:ok, binding} = result) do
     Phoenix.PubSub.broadcast(
