@@ -9,6 +9,9 @@ defmodule Trenino.Train.GaugeController do
   alias Trenino.Train.GaugeController.State
   alias Trenino.Train.GaugeMapper
 
+  # The simulator rejects deleting an absent subscription; cleanup's goal is already met.
+  @no_such_subscription "dtg.comm.NoSuchSubscription"
+
   def start_link(opts), do: GenServer.start_link(__MODULE__, opts, name: __MODULE__)
   def reload_bindings, do: GenServer.cast(__MODULE__, :reload)
   def subscribe(id), do: Phoenix.PubSub.subscribe(Trenino.PubSub, "train:gauges:#{id}")
@@ -192,8 +195,14 @@ defmodule Trenino.Train.GaugeController do
   defp unsubscribe_all(job) do
     Enum.reduce_while(job.ids, :cleanup_complete, fn id, _ ->
       case Client.unsubscribe(job.client, id) do
-        {:ok, _} -> {:cont, :cleanup_complete}
-        error -> {:halt, {:cleanup_failed, error}}
+        {:ok, _} ->
+          {:cont, :cleanup_complete}
+
+        {:error, {:http_error, 400, %{"errorCode" => @no_such_subscription}}} ->
+          {:cont, :cleanup_complete}
+
+        error ->
+          {:halt, {:cleanup_failed, error}}
       end
     end)
   end

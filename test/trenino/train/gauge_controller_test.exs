@@ -123,6 +123,29 @@ defmodule Trenino.Train.GaugeControllerTest do
     send(owner, :cleanup_retried)
   end
 
+  test "cleanup of an already-missing subscription completes and polling resumes", %{
+    train: train
+  } do
+    Mimic.stub(Client, :unsubscribe, fn _, _ ->
+      {:error,
+       {:http_error, 400,
+        %{
+          "errorCode" => "dtg.comm.NoSuchSubscription",
+          "errorMessage" => "Could not find requested subscription ID"
+        }}}
+    end)
+
+    pid = start_supervised!(GaugeController)
+    send(pid, {:train_changed, train})
+    assert_receive {:target, _, 360, _}, 500
+    assert_receive {:subscribed, "Speed", 4000}, 100
+
+    send(pid, {:train_changed, train})
+
+    assert_receive {:subscribed, "Speed", 4000}, 500
+    refute :sys.get_state(pid).cleaning
+  end
+
   test "single numeric value selection is strict and never arbitrarily chooses a key" do
     data = fn values -> {:ok, %{"Entries" => [%{"NodeValid" => true, "Values" => values}]}} end
     assert {:ok, 3} = GaugeController.sample(data.(%{"Speed" => 3}), nil)
