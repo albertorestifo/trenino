@@ -163,7 +163,7 @@ defmodule Trenino.Hardware.GaugeWizardTest do
     |> to_range()
     |> send_event({:set_range, @range})
     |> measure_all()
-    |> send_event(:save_dial)
+    |> send_event(:check_dial)
   end
 
   defp to_homing_offer do
@@ -372,11 +372,9 @@ defmodule Trenino.Hardware.GaugeWizardTest do
     test "measures every mark, using the first mark to estimate later ones" do
       {w, s} = to_verify()
       assert w.step == :verify_zero
-      [attrs] = s.saved
-      assert attrs.reviewed == false
-      assert attrs.output_unit == :mph
-      assert length(attrs.points) == 6
-      assert hd(attrs.points) == %{value: 0.0, position: 0}
+      assert length(w.points) == 6
+      assert hd(w.points) == %{value: 0.0, position: 0}
+      assert w.range.unit == :mph
 
       moves = for {:command, :move_to, %{position: p}} <- Enum.reverse(s.log), do: p
       assert length(moves) >= 5
@@ -436,12 +434,26 @@ defmodule Trenino.Hardware.GaugeWizardTest do
       refute w.current.blocked
     end
 
-    test "saving the dial never moves the motor" do
+    test "nothing is saved while the new marks are still being verified" do
       {w, s} = to_verify()
       assert w.step == :verify_zero
+      assert s.saved == []
 
-      # the only command after the save is none: the move to zero was requested by entering the step
-      assert match?({:save_dial, _}, Enum.find(s.log, &match?({:save_dial, _}, &1)))
+      {w, s} = send_event({w, s}, {:answer, :yes})
+      assert w.step == :verify_mid
+      assert s.saved == []
+
+      # leaving the wizard here keeps the previously reviewed dial untouched
+      {w, effects} = GaugeWizard.update(w, :close)
+      assert w.closed
+      refute Enum.any?(effects, &match?({:save_dial, _}, &1))
+      assert s.saved == []
+    end
+
+    test "measuring again from the verification saves nothing either" do
+      {w, s} = to_verify() |> send_event({:answer, :yes}) |> send_event({:answer, :no})
+      {_, s} = send_event({w, s}, :restart_calibration)
+      assert s.saved == []
     end
   end
 

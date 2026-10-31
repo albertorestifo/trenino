@@ -16,7 +16,7 @@ defmodule Trenino.Hardware.GaugeWizard do
     * `{:result, effect, result}` - outcome of an effect
     * user events: `:continue`, `{:confirm_wiring, bool}`, `:apply`, `:set_reference`,
       `:home`, `:jog_up`, `{:answer, :yes | :no}`, `{:set_range, map}`, `{:nudge, delta}`,
-      `{:capture, reading}`, `:extend_max`, `:save_dial`, `:restart_calibration`,
+      `{:capture, reading}`, `:extend_max`, `:check_dial`, `:restart_calibration`,
       `:start_homing`, `:skip_homing`, `:cancel_homing`, `:finish_nudging`,
       `:retry_claim`, `{:startup_on_connect, bool}`,
       `{:rename, name}`, `:commission`, `:stop`, `:recover`, `:close`
@@ -432,8 +432,9 @@ defmodule Trenino.Hardware.GaugeWizard do
   defp handle(%{step: :mark, current: %{blocked: %{needed: needed}}} = state, :extend_max),
     do: reconfigure(state, %{max_position: extended_max(needed)}, :align, :mark)
 
-  defp handle(%{step: :save_dial} = state, :save_dial),
-    do: {state, [{:save_dial, dial_attrs(state, false)}]}
+  # The measured marks stay in memory until the middle mark is confirmed, so an earlier
+  # reviewed dial (and the bindings that depend on it) is never replaced by an unverified one.
+  defp handle(%{step: :save_dial} = state, :check_dial), do: enter(state, :verify_zero)
 
   # --- verify
 
@@ -443,7 +444,7 @@ defmodule Trenino.Hardware.GaugeWizard do
     do: {%{state | lost_steps: state.lost_steps + 1, step: :align, return_to: :verify_zero}, []}
 
   defp handle(%{step: :verify_mid} = state, {:answer, :yes}),
-    do: {state, [{:save_dial, dial_attrs(state, true)}]}
+    do: {state, [{:save_dial, dial_attrs(state)}]}
 
   defp handle(%{step: :verify_mid} = state, {:answer, :no}),
     do: {%{state | error: :mid_mark_off}, []}
@@ -566,7 +567,6 @@ defmodule Trenino.Hardware.GaugeWizard do
   # retune or skip.
   defp result(state, {:save_dial, %{reviewed: true}}, {:ok, _}), do: enter(state, :homing_offer)
 
-  defp result(state, {:save_dial, _}, {:ok, _}), do: enter(state, :verify_zero)
   defp result(state, {:save_dial, _}, error), do: {%{state | error: reason(error)}, []}
 
   defp result(state, :complete_commissioning, {:ok, axis}) do
@@ -901,9 +901,8 @@ defmodule Trenino.Hardware.GaugeWizard do
       obs.known and obs.state == :idle and is_integer(obs.position) and not obs.pending? and
         is_integer(obs.age_ms) and obs.age_ms < @fresh_ms
 
-  defp dial_attrs(state, reviewed) do
-    %{output_unit: state.range.unit, points: state.points, reviewed: reviewed}
-  end
+  defp dial_attrs(state),
+    do: %{output_unit: state.range.unit, points: state.points, reviewed: true}
 
   defp top_position(state),
     do: state.points |> Enum.map(& &1.position) |> Enum.max(fn -> state.axis.max_position end)

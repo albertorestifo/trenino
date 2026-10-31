@@ -112,7 +112,7 @@ defmodule TreninoWeb.GaugeWizardComponent do
     "home" => :home,
     "jog_up" => :jog_up,
     "extend_max" => :extend_max,
-    "save_dial" => :save_dial,
+    "check_dial" => :check_dial,
     "restart_calibration" => :restart_calibration,
     "start_homing" => :start_homing,
     "skip_homing" => :skip_homing,
@@ -225,7 +225,7 @@ defmodule TreninoWeb.GaugeWizardComponent do
   defp step_name(:verify_mid), do: "the check at a middle mark"
   defp step_name(:home_nudge), do: "the zero adjustment"
   defp step_name(:home_confirm), do: "the homing check"
-  defp step_name(:save_dial), do: "saving the dial"
+  defp step_name(:save_dial), do: "the dial review"
   defp step_name(:finish), do: "the final confirmation"
   defp step_name(_), do: "setup"
 
@@ -736,17 +736,17 @@ defmodule TreninoWeb.GaugeWizardComponent do
     <h4 class="font-medium">All marks measured</h4>
     <.points_table points={@wizard.points} unit={@unit} />
     <p class="text-sm">
-      Save the dial now. Saving only records numbers; the motor does not move. You review it in the next steps.
+      Next you check the marks on the real dial. Nothing is saved until you confirm them, so any dial saved earlier stays as it was if you stop now.
     </p>
     <button
       id={"#{@id}-save-dial"}
       type="button"
       phx-click="act"
-      phx-value-do="save_dial"
+      phx-value-do="check_dial"
       phx-target={@myself}
       class="btn btn-primary"
     >
-      Save the dial
+      Check the dial
     </button>
     """
   end
