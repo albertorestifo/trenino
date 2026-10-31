@@ -485,13 +485,14 @@ defmodule TreninoWeb.ConfigurationEditLive do
 
   @impl true
   def handle_event("apply_to_device", %{"port" => port}, socket) do
-    if Hardware.list_stepper_axes(socket.assigns.device.id) != [] and
-         not Map.get(socket.assigns, :stepper_registration_acknowledged, false) do
+    acknowledged? = Map.get(socket.assigns, :stepper_registration_acknowledged, false)
+
+    if Hardware.registration_ack_required?(socket.assigns.device.id) and not acknowledged? do
       {:noreply,
        put_flash(
          socket,
          :error,
-         "Acknowledge the shield registration order in Stepper axes before Apply."
+         "This panel has a display at address 0x70 and a stepper shield. Open Stepper axes and tick the confirmation about registering the shield first."
        )}
     else
       socket =

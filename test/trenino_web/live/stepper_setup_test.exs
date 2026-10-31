@@ -20,4 +20,19 @@ defmodule TreninoWeb.StepperSetupTest do
     assert has_element?(view, "#stepper-axes", "Speed")
     assert has_element?(view, "#stepper-axes", "Disconnected")
   end
+
+  test "quick setup fills X27 defaults and flip direction explains next steps", %{conn: conn} do
+    {:ok, device} = Hardware.create_device(%{name: "Panel"})
+    {:ok, view, _} = live(conn, ~p"/configurations/#{device.config_id}")
+    view |> element("#stepper-preset-x27") |> render_click()
+    assert render(view) =~ "X27.168 gauge motor"
+    view |> form("#stepper-axis-form") |> render_submit()
+    assert [%{reverse: false, motor_port: 1} = axis] = Hardware.list_stepper_axes(device.id)
+
+    html = view |> element("button[phx-click=flip_direction]") |> render_click()
+    assert html =~ "Apply to Device"
+    assert html =~ "Assign reference"
+    assert [%{reverse: true}] = Hardware.list_stepper_axes(device.id)
+    refute Hardware.registration_ack_required?(axis.device_id)
+  end
 end

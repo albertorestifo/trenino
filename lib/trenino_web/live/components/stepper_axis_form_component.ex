@@ -6,14 +6,16 @@ defmodule TreninoWeb.StepperAxisFormComponent do
   alias Trenino.Hardware.{StepperAxis, StepperManager, StepperPresets}
   alias TreninoWeb.GaugeFeedback
 
-  @numbers [
-    axis_index: "Logical axis (0–1)",
-    shield_address: "Shield address (decimal or 0x60)",
-    motor_port: "Shield motor port (1–2)",
+  @basic_numbers [
+    axis_index: "Logical axis (0 or 1)",
+    motor_port: "Shield motor port (1 or 2)",
     min_position: "Minimum position (transitions)",
     max_position: "Maximum position (transitions)",
     max_speed: "Maximum speed (transitions/s)",
-    acceleration: "Acceleration (transitions/s²)",
+    acceleration: "Acceleration (transitions/s²)"
+  ]
+  @advanced_numbers [
+    shield_address: "Shield address (decimal or 0x60)",
     watchdog_ms: "Host watchdog (ms)",
     home_direction: "Home direction (-1 or +1)",
     home_steps: "Home sweep (transitions)",
@@ -22,9 +24,11 @@ defmodule TreninoWeb.StepperAxisFormComponent do
     home_timeout_ms: "Home timeout (ms)",
     home_position: "Home reference position"
   ]
-  @selects [
+  @basic_selects [
+    mode: {"Electrical mode", [:x27_six_state, :full_step, :half_step]}
+  ]
+  @advanced_selects [
     driver: {"Driver", [:adafruit_motor_shield]},
-    mode: {"Electrical mode", [:x27_six_state, :full_step, :half_step]},
     idle_behavior: {"Idle behavior", [:hold, :release]},
     host_loss_behavior: {"Host loss behavior", [:release, :hold]},
     reference_strategy: {"Reference strategy", [:host_reference, :internal_stop]},
@@ -40,13 +44,17 @@ defmodule TreninoWeb.StepperAxisFormComponent do
       |> assign_new(:editing, fn -> nil end)
       |> assign_new(:form, fn -> nil end)
       |> assign_new(:error, fn -> nil end)
+      |> assign_new(:notice, fn -> nil end)
       |> assign_new(:snapshot, fn -> StepperManager.snapshot(assigns.device_id) end)
 
     {:ok,
      socket
      |> assign(:axes, Hardware.list_stepper_axes(socket.assigns.device_id))
-     |> assign(:numbers, @numbers)
-     |> assign(:selects, @selects)}
+     |> assign(:basic_numbers, @basic_numbers)
+     |> assign(:advanced_numbers, @advanced_numbers)
+     |> assign(:basic_selects, @basic_selects)
+     |> assign(:advanced_selects, @advanced_selects)
+     |> assign(:ack_required, Hardware.registration_ack_required?(socket.assigns.device_id))}
   end
 
   @impl true
@@ -83,6 +91,15 @@ defmodule TreninoWeb.StepperAxisFormComponent do
     {:noreply, assign(socket, :error, GaugeFeedback.result(result))}
   end
 
+  def handle_event("preset", %{"name" => "x27"}, socket) do
+    index = next_free_index(socket.assigns.axes)
+
+    attrs = %{StepperPresets.x27_168_axis() | axis_index: index, motor_port: index + 1}
+
+    {:noreply,
+     edit(socket, struct(StepperAxis, Map.put(attrs, :device_id, socket.assigns.device_id)))}
+  end
+
   def handle_event("preset", _, socket) do
     axis =
       struct(
@@ -91,6 +108,22 @@ defmodule TreninoWeb.StepperAxisFormComponent do
       )
 
     {:noreply, edit(socket, axis)}
+  end
+
+  def handle_event("flip_direction", %{"id" => id}, socket) do
+    with %StepperAxis{} = axis <- own_axis(socket, id),
+         {:ok, axis} <- Hardware.update_stepper_axis(axis, %{reverse: !axis.reverse}) do
+      send(self(), {:stepper_axis_saved, axis})
+
+      {:noreply,
+       assign(socket,
+         axes: Hardware.list_stepper_axes(axis.device_id),
+         error: nil,
+         notice: saved_notice(axis, "Direction flipped.")
+       )}
+    else
+      error -> {:noreply, assign(socket, :error, GaugeFeedback.result(error))}
+    end
   end
 
   def handle_event("edit", %{"id" => id}, socket) do
@@ -125,6 +158,7 @@ defmodule TreninoWeb.StepperAxisFormComponent do
            form: nil,
            editing: nil,
            error: nil,
+           notice: saved_notice(axis, "Saved."),
            axes: Hardware.list_stepper_axes(axis.device_id)
          )}
 
@@ -149,6 +183,17 @@ defmodule TreninoWeb.StepperAxisFormComponent do
   def handle_event(_, _, socket),
     do: {:noreply, assign(socket, :error, "Enter valid configuration values before continuing.")}
 
+  defp next_free_index(axes) do
+    used = Enum.map(axes, & &1.axis_index)
+    Enum.find([0, 1], 0, &(&1 not in used))
+  end
+
+  defp saved_notice(axis, prefix) do
+    "#{prefix} Nothing has moved and the device has not changed yet. Next: click Apply to Device, " <>
+      "then take manual control, align the needle by hand and Assign reference" <>
+      if(axis.reverse, do: " (direction is now reversed).", else: ".")
+  end
+
   defp edit(socket, axis),
     do: assign(socket, editing: axis, form: to_form(StepperAxis.changeset(axis, %{})), error: nil)
 
@@ -165,10 +210,15 @@ defmodule TreninoWeb.StepperAxisFormComponent do
       <p class="text-sm">
         Firmware 3.1.0 or newer. Positions are open-loop estimates in commutation transitions.
       </p>
-      <p class="text-sm text-warning">
-        First registration: disconnect any 0x70 display, register the shield alone, then reconnect and Apply the display configuration. A new shield may respond to ALLCALL 0x70.
-      </p>
-      <button type="button" phx-click="ack_registration" phx-target={@myself} class="btn btn-sm">I confirm the shield is registered, or the 0x70 display is disconnected for first registration</button>
+      <div :if={@ack_required} class="text-sm text-warning space-y-2">
+        <p>
+          This panel has a display at address 0x70, which a brand-new motor shield also answers to.
+          The first time you use a shield, unplug the display, apply the configuration with the shield alone, then plug the display back in and apply again.
+        </p>
+        <button type="button" phx-click="ack_registration" phx-target={@myself} class="btn btn-sm">
+          I have done this (or the shield is already set up)
+        </button>
+      </div>
       <details :if={@axes != []} class="border border-base-300 rounded p-3">
         <summary>Recommission shield address (both axes lose reference)</summary>
         <.form
@@ -188,10 +238,27 @@ defmodule TreninoWeb.StepperAxisFormComponent do
           <button type="submit" class="btn btn-sm" disabled={@snapshot.lifecycle == :disconnected}>Reset, forget old registration and configure new address</button>
         </.form>
       </details>
-      <button type="button" phx-click="preset" phx-target={@myself} class="btn btn-sm btn-ghost">Use editable Class 323 starter</button>
+      <div class="flex flex-wrap gap-2">
+        <button
+          id="stepper-preset-x27"
+          type="button"
+          phx-click="preset"
+          phx-value-name="x27"
+          phx-target={@myself}
+          class="btn btn-sm btn-primary"
+        >Quick setup: X27.168 motor</button>
+        <button
+          type="button"
+          phx-click="preset"
+          phx-value-name="class323"
+          phx-target={@myself}
+          class="btn btn-sm btn-ghost"
+        >Class 323 speedometer starter</button>
+      </div>
       <p class="text-xs text-base-content/60">
-        0–100 mph, approximately 240° / 720 transitions: unverified geometry. Verify winding order, direction and whole motor travel physically. Defaults never Home automatically.
+        Presets only fill the form. Winding order, direction and travel are unverified until you check them on the real motor. Nothing homes automatically.
       </p>
+      <p :if={@notice} role="status" class="text-sm text-success">{@notice}</p>
       <p :if={@error} role="alert" class="text-error">{@error}</p>
       <.form
         :if={@form}
@@ -205,13 +272,13 @@ defmodule TreninoWeb.StepperAxisFormComponent do
         <.input field={@form[:name]} label="Axis name" />
         <div class="grid sm:grid-cols-2 gap-3">
           <.input
-            :for={{field, label} <- @numbers}
+            :for={{field, label} <- @basic_numbers}
             field={@form[field]}
             label={label}
-            type={if(field == :shield_address, do: "text", else: "number")}
+            type="number"
           />
           <.input
-            :for={{field, {label, options}} <- @selects}
+            :for={{field, {label, options}} <- @basic_selects}
             field={@form[field]}
             label={label}
             type="select"
@@ -219,9 +286,27 @@ defmodule TreninoWeb.StepperAxisFormComponent do
           />
         </div>
         <.input field={@form[:reverse]} type="checkbox" label="Reverse electrical direction" />
-        <p class="text-xs">
-          Idle release loses reference after every completion. Continuous gauges require hold. Automatic Home causes bounded motion on each new connection only after physical commissioning; selecting it does not move now.
-        </p>
+        <details class="border border-base-300 rounded p-3">
+          <summary>Advanced (home sweep, timeouts, watchdog, idle behavior)</summary>
+          <div class="grid sm:grid-cols-2 gap-3 mt-3">
+            <.input
+              :for={{field, label} <- @advanced_numbers}
+              field={@form[field]}
+              label={label}
+              type={if(field == :shield_address, do: "text", else: "number")}
+            />
+            <.input
+              :for={{field, {label, options}} <- @advanced_selects}
+              field={@form[field]}
+              label={label}
+              type="select"
+              options={Enum.map(options, &{Phoenix.Naming.humanize(&1), &1})}
+            />
+          </div>
+          <p class="text-xs mt-2">
+            Idle release loses reference after every completion. Continuous gauges require hold. Automatic Home causes bounded motion on each new connection only after physical commissioning; selecting it does not move now.
+          </p>
+        </details>
         <button type="submit" class="btn btn-primary">Save axis</button>
         <button type="button" phx-click="cancel" phx-target={@myself} class="btn btn-ghost">Cancel</button>
       </.form>
@@ -245,6 +330,13 @@ defmodule TreninoWeb.StepperAxisFormComponent do
           phx-target={@myself}
           class="btn btn-sm"
         >Edit</button>
+        <button
+          type="button"
+          phx-click="flip_direction"
+          phx-value-id={axis.id}
+          phx-target={@myself}
+          class="btn btn-sm"
+        >Flip direction{if axis.reverse, do: " (currently reversed)"}</button>
         <button
           type="button"
           phx-click="delete"

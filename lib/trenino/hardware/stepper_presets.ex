@@ -1,5 +1,20 @@
 defmodule Trenino.Hardware.StepperPresets do
   @moduledoc "Editable, physically unverified host-side commissioning candidates."
+
+  @doc """
+  X27.168 six-state motor on Motor Shield port 1 / address 0x60. All other fields
+  take the safe schema defaults (host reference, manual startup, not commissioned).
+  """
+  def x27_168_axis do
+    %{
+      name: "X27.168 gauge motor",
+      axis_index: 0,
+      mode: :x27_six_state,
+      shield_address: 96,
+      motor_port: 1
+    }
+  end
+
   def class323_speedometer_axis do
     %{
       name: "Class 323 speedometer (unverified)",

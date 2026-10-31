@@ -21,11 +21,19 @@ conflicts never automatically ForgetDriver.
 
 ## Configure and commission
 
-1. In Hardware configurations, select a panel and open **Stepper axes → Add axis**.
-   Every electrical, timing, soft limit and reference field is editable. Both axes
-   must share one shield address; display address collisions are rejected.
-2. Save, then **Apply to Device**. Saving never Home/Move commands a motor. An
-   axis-only panel uses the canonical eight-byte empty legacy configuration
+1. In Hardware configurations, select a panel and open **Stepper axes**. Click
+   **Quick setup: X27.168 motor** (six-state, shield port 1, address 0x60; the second
+   axis gets port 2) and give it a name. The form shows only the common fields (axis,
+   port, mode, direction, limits, speed, acceleration). Home sweep, backoff, timeouts,
+   watchdog, idle/host-loss behavior, reference strategy and shield address are under
+   **Advanced** and keep safe defaults. Both axes must share one shield address;
+   display address collisions are rejected.
+2. Save, then **Apply to Device**. Saving never Home/Move commands a motor and does
+   not reach the device by itself: the form tells you to Apply. Apply is only blocked
+   when the panel also has a display at address 0x70 (see registration above); then
+   tick the confirmation in Stepper axes first. To reverse direction click
+   **Flip direction** on the axis (or update `reverse` over MCP), Apply, then
+   re-align the needle by hand and Assign reference again. An axis-only panel uses the canonical eight-byte empty legacy configuration
    `02 <configuration id, little endian> 00 00 ff`. ConfigurationStored must confirm
    its identity before axis setup. It removes old modules and resets/releases
    axes; independent SetOutput pins and removed display contents are not cleared.
@@ -108,7 +116,8 @@ data may drive again.
 
 ## MCP
 
-Axis tools provide list/create/update/delete/status and explicit control; gauge
+Axis tools provide list/create/update/delete/status, `apply_stepper_configuration`
+(never moves; `acknowledged: true` required only with a 0x70 display) and explicit control; gauge
 tools provide list/create/update/delete and pure preview. Shared contexts enforce
 the same validation as UI. Runtime control claims a 60-second opaque lease,
 renewed only explicitly. Every mutation supplies an operation token. Identical

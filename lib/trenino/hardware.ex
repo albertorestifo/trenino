@@ -79,6 +79,42 @@ defmodule Trenino.Hardware do
     |> notify_gauge_configuration()
   end
 
+  @allcall_address 0x70
+
+  @doc """
+  True when a freshly installed shield could collide with a display at the PCA9685
+  ALLCALL address (0x70). Only then does applying require the user to confirm the
+  shield-alone registration order.
+  """
+  @spec registration_ack_required?(integer()) :: boolean()
+  def registration_ack_required?(device_id) do
+    list_stepper_axes(device_id) != [] and
+      Enum.any?(list_i2c_modules(device_id), &(&1.i2c_address == @allcall_address))
+  end
+
+  @doc """
+  Sends the saved configuration (including stepper axes) to the connected device.
+  Never moves a motor. Requires `acknowledged?` only when `registration_ack_required?/1`.
+  """
+  @spec apply_saved_configuration(integer(), boolean()) :: {:ok, integer()} | {:error, term()}
+  def apply_saved_configuration(device_id, acknowledged?) do
+    with {:ok, device} <- get_device(device_id),
+         :ok <- check_registration_ack(device_id, acknowledged?),
+         %{port: port} <-
+           Enum.find(
+             Connection.list_devices(),
+             &(&1.device_config_id == device.config_id and &1.status == :connected)
+           ) || {:error, :device_not_connected} do
+      apply_configuration(port, device_id)
+    end
+  end
+
+  defp check_registration_ack(device_id, acknowledged?) do
+    if registration_ack_required?(device_id) and acknowledged? != true,
+      do: {:error, :registration_acknowledgement_required},
+      else: :ok
+  end
+
   def delete_stepper_axis(%StepperAxis{} = axis) do
     with :ok <- StepperManager.prepare_delete(axis.id),
          {:ok, deleted} <- Repo.delete(axis) do

@@ -17,6 +17,9 @@ defmodule Trenino.MCP.Tools.StepperTools do
     "enable" => :enable,
     "jog" => :jog
   }
+  @next_steps "Saved only; the device is unchanged and nothing moved. Call apply_stepper_configuration, then re-align the needle by hand and re-assign the reference."
+  @after_apply "Apply is asynchronous: poll get_stepper_axis_status until the lifecycle is awaiting_reference, then claim, align by hand and reference."
+
   def tools do
     [
       tool("list_stepper_axes", ["device_id"]),
@@ -24,6 +27,7 @@ defmodule Trenino.MCP.Tools.StepperTools do
       tool("create_stepper_axis", ["device_id", "name"]),
       tool("update_stepper_axis", ["id"]),
       tool("delete_stepper_axis", ["id"]),
+      tool("apply_stepper_configuration", ["device_id"]),
       tool("control_stepper_axis", ["id", "operation"])
     ]
   end
@@ -52,7 +56,7 @@ defmodule Trenino.MCP.Tools.StepperTools do
     %{
       name: name,
       description:
-        "Configurable generic stepper axis. CRUD never moves. Firmware >=3.1.0. Control requires explicit claim; 60-second lease renews only explicitly. Mutations require unique operation_token; identical retries reuse admission, not motion. Home completion is assumed, never sensed. Release loses reference. ALLCALL 0x70 registration requires shield alone.",
+        "Configurable generic stepper axis. Defaults already match an X27.168 six-state motor on shield port 1 / 0x60, so create needs only device_id and name. CRUD never moves and does NOT reach the device: after create/update call apply_stepper_configuration (also never moves), then claim, reference, jog, complete_commissioning. Flipping `reverse` is a single update_stepper_axis; afterwards apply, re-align the needle and re-assign the reference. apply_stepper_configuration needs acknowledged=true only when the panel has a display at 0x70 (shield-alone registration order); never assume it. Firmware >=3.1.0. Control requires explicit claim; 60-second lease renews only explicitly. Mutations require unique operation_token; identical retries reuse admission, not motion. Home completion is assumed, never sensed. Release loses reference. ALLCALL 0x70 registration requires shield alone.",
       input_schema: %{type: "object", properties: properties, required: required}
     }
   end
@@ -91,8 +95,15 @@ defmodule Trenino.MCP.Tools.StepperTools do
   def execute("update_stepper_axis", %{"id" => id} = args) when is_integer(id) do
     with {:ok, axis} <- Hardware.get_stepper_axis(id),
          {:ok, axis} <- Hardware.update_stepper_axis(axis, Map.drop(args, ["id", "device_id"])) do
-      {:ok, %{axis: Serialization.axis(axis)}}
+      {:ok, %{axis: Serialization.axis(axis), next_steps: @next_steps}}
     else
+      error -> Serialization.result(error)
+    end
+  end
+
+  def execute("apply_stepper_configuration", %{"device_id" => id} = args) when is_integer(id) do
+    case Hardware.apply_saved_configuration(id, args["acknowledged"] == true) do
+      {:ok, config_id} -> {:ok, %{applying: true, config_id: config_id, next_steps: @after_apply}}
       error -> Serialization.result(error)
     end
   end
