@@ -268,21 +268,15 @@ defmodule Trenino.Hardware do
 
   # Dial points store absolute positions, so anything that changes which physical needle
   # angle a position denotes makes the dial untrustworthy. Homing backoff/speed are not
-  # listed: the wizard tunes backoff precisely to keep dial 0 at position 0.
-  @dial_meaning_fields [
-    :mode,
-    :min_position,
-    :max_position,
-    :reverse,
-    :home_position,
-    :home_direction,
-    :motor_port
-  ]
+  # listed: the wizard tunes backoff precisely to keep dial 0 at position 0. The soft limits
+  # are not listed either: they do not move the needle, so they only matter when a saved
+  # point ends up outside them.
+  @dial_meaning_fields [:mode, :reverse, :home_position, :home_direction, :motor_port]
 
   defp invalidate_gauge_calibration(%StepperAxis{id: nil}, _), do: :ok
 
   defp invalidate_gauge_calibration(old, updated) do
-    if Enum.any?(@dial_meaning_fields, &(Map.get(old, &1) != Map.get(updated, &1))) do
+    if dial_meaning_changed?(old, updated) or point_outside_limits?(old, updated) do
       # The dial is no longer trustworthy: every binding on this axis stops running until
       # the dial is measured and reviewed again. Nothing is edited silently.
       Repo.update_all(from(c in DialCalibration, where: c.stepper_axis_id == ^old.id),
@@ -292,6 +286,24 @@ defmodule Trenino.Hardware do
       Repo.update_all(from(b in Trenino.Train.GaugeBinding, where: b.stepper_axis_id == ^old.id),
         set: [enabled: false]
       )
+    end
+  end
+
+  defp dial_meaning_changed?(old, updated),
+    do: Enum.any?(@dial_meaning_fields, &(Map.get(old, &1) != Map.get(updated, &1)))
+
+  defp point_outside_limits?(old, updated) do
+    limits_changed? =
+      old.min_position != updated.min_position or old.max_position != updated.max_position
+
+    with true <- limits_changed?,
+         {:ok, %DialCalibration{points: points}} <- get_dial_calibration(old.id) do
+      Enum.any?(
+        points,
+        &(&1.position < updated.min_position or &1.position > updated.max_position)
+      )
+    else
+      _ -> false
     end
   end
 

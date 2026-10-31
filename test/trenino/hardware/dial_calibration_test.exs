@@ -142,7 +142,7 @@ defmodule Trenino.Hardware.DialCalibrationTest do
     end
   end
 
-  test "changing mode or soft limits invalidates the dial and disables all bindings" do
+  test "shrinking the soft limits past a saved point invalidates the dial and disables all bindings" do
     axis = setup_axis()
     {:ok, _} = Hardware.save_dial_calibration(axis, %{points: @points, reviewed: true})
     {:ok, a} = Train.create_train(%{name: "A", identifiers: [%{identifier: "A"}]})
@@ -158,7 +158,7 @@ defmodule Trenino.Hardware.DialCalibrationTest do
         })
     end
 
-    {:ok, _} = Hardware.update_stepper_axis(axis, %{max_position: 800})
+    {:ok, _} = Hardware.update_stepper_axis(axis, %{max_position: 700})
 
     assert {:ok, %{valid: false, reviewed: false, points: [_, _]}} =
              Hardware.get_dial_calibration(axis.id)
@@ -170,6 +170,36 @@ defmodule Trenino.Hardware.DialCalibrationTest do
 
     {:ok, cal} = Hardware.save_dial_calibration(axis, %{points: @points, reviewed: true})
     assert cal.valid and cal.reviewed
+  end
+
+  test "allowing more travel keeps the reviewed dial and its bindings" do
+    axis = setup_axis()
+    {:ok, _} = Hardware.save_dial_calibration(axis, %{points: @points, reviewed: true})
+    {:ok, train} = Train.create_train(%{name: "A", identifiers: [%{identifier: "A"}]})
+
+    {:ok, binding} =
+      Train.create_gauge_binding(train.id, %{
+        name: "S",
+        endpoint: "S",
+        stepper_axis_id: axis.id,
+        enabled: true
+      })
+
+    {:ok, axis} = Hardware.update_stepper_axis(axis, %{max_position: 800})
+    assert {:ok, %{valid: true, reviewed: true}} = Hardware.get_dial_calibration(axis.id)
+    assert {:ok, %{enabled: true}} = Train.get_gauge_binding(binding.id)
+
+    {:ok, _} = Hardware.update_stepper_axis(axis, %{max_position: 719})
+    assert {:ok, %{valid: false, reviewed: false}} = Hardware.get_dial_calibration(axis.id)
+    assert {:ok, %{enabled: false}} = Train.get_gauge_binding(binding.id)
+  end
+
+  test "changing the stepping mode invalidates the dial" do
+    axis = setup_axis()
+    {:ok, _} = Hardware.save_dial_calibration(axis, %{points: @points, reviewed: true})
+    other = Enum.find(Ecto.Enum.values(StepperAxis, :mode), &(&1 != axis.mode))
+    {:ok, _} = Hardware.update_stepper_axis(axis, %{mode: other})
+    assert {:ok, %{valid: false, reviewed: false}} = Hardware.get_dial_calibration(axis.id)
   end
 
   test "unrelated axis edits leave the dial alone" do
