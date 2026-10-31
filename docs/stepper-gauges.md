@@ -69,46 +69,60 @@ new UART connection after acknowledged setup. Train activation, form save, legac
 Apply, host/session restart, recovery and duplicate device events do not authorize
 a fresh automatic Home. An uncertain Home outcome remains blocked for recovery.
 
-## Train binding and calibration
+## Dial calibration (per axis)
 
-In the train editor choose **Gauges → Add gauge**. The form is five numbered steps:
-(1) axis, (2) endpoint and units, (3) measure (points, preview, take manual control,
-test move, capture), (4) review calibration, (5) save/enable. Multiplier, offset, stale
-time, out-of-range and inactive behavior are under **Advanced**. Measuring needs no
-saved binding, and every disabled control states what is missing. Save never moves
-the motor; you can save disabled, finish commissioning, then enable from the saved
-gauge. An enabled gauge that cannot move shows a reason (simulator not connected,
-not commissioned, device disconnected, fault, needs reference, manual pause), and a
-hint names the detected train identifier when none of the profile's identifiers
-match it (detection stays read-only). Select an axis and a verified
-endpoint through the API explorer or enter it offline. Verify the reported units.
-A selected value key chooses that numeric field. Without a key only one
-unambiguous numeric value in a valid node is accepted. Invalid/missing data never
-becomes zero.
+The dial belongs to the hardware, not the train. Calibrate it once per axis under
+**Stepper axes** on the configuration page (**Calibrate dial** on the axis card, below the
+commissioning controls); every train gauge on that axis shares it. A refit of the needle
+is measured once, not per train.
 
-Units are raw, m/s, km/h and mph; raw converts only to raw. Mapping order is unit
+The editor holds the dial unit ("Dial shows": raw, m/s, km/h or mph), the measured points
+and the review checkbox. Measuring needs no saved gauge. Preview shows the target for a
+dial value without moving anything. **Take manual control**, **Move to test value** and
+**Capture stationary estimated position** are enabled only when possible and each states
+what is missing. Saving never moves the motor.
+
+Record 2-32 strictly increasing dial values with strictly monotonic positions (increasing
+or decreasing), inside axis soft limits. Add/edit/remove/reorder rows. Capture records the
+entered dial reading with a fresh stationary known position **estimate**, not a sensor
+measurement. Editing the points or unit withdraws the review; a dial saved unreviewed
+disables every gauge on the axis. Changing the axis mode or soft limits marks the dial
+invalid and unreviewed and disables all its gauges; re-measure and review it again.
+Saving candidate points does not certify physical calibration.
+
+## Train binding
+
+In the train editor choose **Gauges -> Add gauge**. The form has three numbered steps:
+(1) axis (shows whether its dial is calibrated, with a link to calibrate it), (2) endpoint
+and "Simulator reports in" unit, (3) save/enable. Multiplier, offset, stale time,
+out-of-range and inactive behavior are under **Advanced**. Every disabled control states
+what is missing. Save never moves the motor; you can save disabled, finish commissioning and
+the dial, then enable from the saved gauge. Enabling needs a commissioned hold axis with a
+valid, reviewed dial. A raw simulator unit only fits a raw dial. An enabled gauge that
+cannot move shows a reason (simulator not connected, not commissioned, device
+disconnected, fault, needs reference, manual pause), and a hint names the detected train
+identifier when none of the profile's identifiers match it (detection stays read-only).
+Select an axis and a verified endpoint through the API explorer or enter it offline. Verify
+the reported units. A selected value key chooses that numeric field. Without a key only one
+unambiguous numeric value in a valid node is accepted. Invalid/missing data never becomes
+zero.
+
+Units are raw, m/s, km/h and mph; raw converts only to raw. The gauge sets the unit the
+simulator reports, the axis dial sets the unit the dial shows. Mapping order is unit
 conversion, optional absolute value, multiplier, offset, piecewise linear
 interpolation and integer-target rounding. Intermediate calculations retain their
 precision; display formatting does not change the target. Negative input remains
 negative unless absolute input is explicitly selected. Choose clamp or reject
 outside the calibration domain.
 
-Record 2–32 strictly increasing dial values with strictly monotonic positions
-(increasing or decreasing), inside axis soft limits. Add/edit/remove/reorder rows.
-Preview shows converted value, target estimate and clamp state without movement.
-Test value deliberately moves only with a manual lease. Capture position records
-the entered dial reading with a fresh stationary known position **estimate**, not
-a sensor measurement. Review calibration after mode/axis/bounds changes. Save
-disabled, review the measured calibration, commission hardware, then enable the
-binding. Saving candidate points does not certify physical calibration.
-
 ## Editable Class 323 starter
 
-The optional starter suggests 0–100 mph, approximately 240° / 720 six-state
-transitions, points 0 mph → 0 and 100 mph → 720. These are **unverified estimates**,
-saved disabled and awaiting calibration review.
-The endpoint is blank; m/s input and mph output must be verified. With these
-candidate points, 44.704 m/s converts to 100 mph and targets 720.
+Two optional starters exist. The dial starter (**Fill with Class 323 speedometer
+starter** in the axis dial editor) suggests 0–100 mph, approximately 240° / 720
+six-state transitions, points 0 mph → 0 and 100 mph → 720. The gauge starter in the train
+wizard only suggests m/s input. These are **unverified estimates**, saved disabled/unreviewed
+and awaiting calibration review. The endpoint is blank; m/s input and mph dial must be
+verified. With these candidate points, 44.704 m/s converts to 100 mph and targets 720.
 
 Hardware candidates: port 1/address 0x60, min 0/max 720, maximum speed 100
 transitions/s, acceleration 200 transitions/s², watchdog 1000 ms, idle hold,
@@ -146,7 +160,9 @@ data may drive again.
 
 Axis tools provide list/create/update/delete/status, `apply_stepper_configuration`
 (never moves, never blocked; the result carries a `warning` when a 0x70 display is configured) and explicit control; gauge
-tools provide list/create/update/delete and pure preview. Shared contexts enforce
+tools provide list/create/update/delete and pure preview (no points: a binding only
+chooses its speed source), and `get_dial_calibration` / `update_dial_calibration` read and
+write the per-axis dial. Shared contexts enforce
 the same validation as UI. Runtime control claims a 60-second opaque lease,
 renewed only explicitly. Every mutation supplies an operation token. Identical
 token/arguments reuse admission instead of restarting motion; changed content
