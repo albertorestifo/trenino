@@ -502,7 +502,7 @@ defmodule Trenino.Hardware.GaugeWizardTest do
       {w, s} = send_event({w, s}, {:nudge, 100})
       {w, s} = send_event({w, s}, {:nudge, 153})
       {w, s} = send_event({w, s}, :finish_nudging)
-      assert s.axis.home_backoff == 10 + 253
+      assert s.axis.home_backoff == 253
       assert s.axis.home_timeout_ms > ceil(1000 * (s.axis.home_steps + 263) / 50) + 500
       assert s.axis.home_steps >= 720 + 263
       assert w.step == :home_run
@@ -521,16 +521,57 @@ defmodule Trenino.Hardware.GaugeWizardTest do
       assert w.step == :done
     end
 
-    test "answering no after the second home nudges again from the measured backoff" do
+    test "the first sweep starts from no backoff so the needle can only land at or below 0" do
+      {_, s} = to_homing_offer() |> send_event(:start_homing)
+      assert s.axis.home_backoff == 0
+    end
+
+    test "answering no after the second home measures again from the stop" do
       {w, s} = to_homing_offer() |> send_event(:start_homing) |> send_event(:home)
       {w, s} = send_event({w, s}, {:nudge, 250})
       {w, s} = send_event({w, s}, :finish_nudging)
+      assert s.axis.home_backoff == 250
       {w, s} = send_event({w, s}, :home)
       {w, s} = send_event({w, s}, {:answer, :no})
+      assert s.axis.home_backoff == 0
+      assert w.step == :home_run
+      assert w.home.phase == :first
+      {w, s} = send_event({w, s}, :home)
       assert w.step == :home_nudge
-      {w, s} = send_event({w, s}, {:nudge, 13})
+      {w, s} = send_event({w, s}, {:nudge, 263})
       {_, s} = send_event({w, s}, :finish_nudging)
-      assert s.axis.home_backoff == 10 + 250 + 13
+      assert s.axis.home_backoff == 263
+    end
+
+    test "cancelling the tuning restores the previous homing settings" do
+      {w, s} = to_homing_offer()
+      before = Map.take(s.axis, [:reference_strategy, :home_steps, :home_backoff, :home_speed])
+      {w, s} = send_event({w, s}, :start_homing)
+      assert s.axis.reference_strategy == :internal_stop
+
+      {w, s} = send_event({w, s}, :cancel_homing)
+      assert Map.take(s.axis, Map.keys(before)) == before
+      assert w.step in [:finish, :align]
+      refute w.pending
+    end
+
+    test "a dial saved again on an axis that already homes still offers the tuning" do
+      {w, _} = to_verify()
+      w = %{w | step: :verify_mid, axis: %{w.axis | reference_strategy: :internal_stop}}
+      {w, _} = GaugeWizard.update(w, {:result, {:save_dial, %{reviewed: true}}, {:ok, :cal}})
+      assert w.step == :homing_offer
+    end
+
+    test "unticking the startup homing is written even if the axis already had it" do
+      {w, s} = to_homing_offer() |> send_event(:start_homing) |> send_event(:home)
+      {w, s} = send_event({w, s}, {:nudge, 250})
+      {w, s} = send_event({w, s}, :finish_nudging)
+      {w, s} = {w, s} |> send_event(:home) |> send_event({:answer, :yes})
+      assert w.step == :finish
+      axis = %{s.axis | startup_reference: :home_on_connect}
+      {w, s} = send_event({%{w | axis: axis}, %{s | axis: axis}}, {:startup_on_connect, false})
+      {_, s} = send_event({w, s}, :commission)
+      assert s.axis.startup_reference == :manual
     end
 
     test "a too-small sweep is warned about and fixed before homing" do

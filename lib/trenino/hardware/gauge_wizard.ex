@@ -17,7 +17,8 @@ defmodule Trenino.Hardware.GaugeWizard do
     * user events: `:continue`, `{:confirm_wiring, bool}`, `:apply`, `:set_reference`,
       `:home`, `:jog_up`, `{:answer, :yes | :no}`, `{:set_range, map}`, `{:nudge, delta}`,
       `{:capture, reading}`, `:extend_max`, `:save_dial`, `:restart_calibration`,
-      `:start_homing`, `:skip_homing`, `:finish_nudging`, `{:startup_on_connect, bool}`,
+      `:start_homing`, `:skip_homing`, `:cancel_homing`, `:finish_nudging`,
+      `:retry_claim`, `{:startup_on_connect, bool}`,
       `{:rename, name}`, `:commission`, `:stop`, `:recover`, `:close`
 
   ## Effects
@@ -80,6 +81,14 @@ defmodule Trenino.Hardware.GaugeWizard do
             paused: false,
             closed: false
 
+  @home_keys [
+    :reference_strategy,
+    :idle_behavior,
+    :home_speed,
+    :home_steps,
+    :home_backoff,
+    :home_timeout_ms
+  ]
   @jog_distance 20
   @fresh_ms 1500
   @home_speed 50
@@ -111,7 +120,15 @@ defmodule Trenino.Hardware.GaugeWizard do
 
   @doc "Starts a wizard for the given axis, with the optional 0x70 display warning."
   @spec new(StepperAxis.t(), String.t() | nil) :: t()
-  def new(%StepperAxis{} = axis, warning \\ nil), do: %__MODULE__{axis: axis, warning: warning}
+  def new(%StepperAxis{} = axis, warning \\ nil) do
+    %__MODULE__{axis: axis, warning: warning, home_on_connect: home_on_connect_default(axis)}
+  end
+
+  # An axis that already homes by itself keeps its choice; a new one is offered the default.
+  defp home_on_connect_default(%StepperAxis{reference_strategy: :internal_stop} = axis),
+    do: axis.startup_reference == :home_on_connect
+
+  defp home_on_connect_default(_), do: true
 
   @doc "Number of dial marks offered by default."
   def default_marks, do: @default_marks
@@ -442,17 +459,14 @@ defmodule Trenino.Hardware.GaugeWizard do
 
   defp handle(%{step: :homing_offer} = state, :start_homing) do
     top = top_position(state)
-    backoff = state.axis.home_backoff
-
-    case home_plan(state.axis, top, backoff, @provisional_stop) do
-      {:ok, attrs, warnings} ->
-        home = %{backoff: backoff, warnings: warnings, top: top, phase: :first}
-        reconfigure(%{state | home: home}, attrs, :home_run, :first)
-
-      {:error, reason} ->
-        {%{state | error: reason}, []}
-    end
+    previous = Map.take(state.axis, @home_keys)
+    first_sweep(state, %{backoff: 0, warnings: [], top: top, phase: :first, previous: previous})
   end
+
+  # Leaves the tuning and puts back the settings the axis had before it started.
+  defp handle(%{step: step, home: %{previous: previous}} = state, :cancel_homing)
+       when step in [:home_run, :home_nudge, :home_confirm],
+       do: reconfigure(state, previous, :finish, nil)
 
   defp handle(%{step: :home_nudge} = state, :finish_nudging) do
     obs = state.obs
@@ -470,9 +484,10 @@ defmodule Trenino.Hardware.GaugeWizard do
 
   defp handle(%{step: :home_confirm} = state, {:answer, :yes}), do: enter(state, :finish)
 
-  # Keep the measured backoff as the new starting point and nudge again from the stop.
+  # The measured backoff was not right, so measure again from the stop: backoff 0 puts the
+  # needle at or below the 0 mark, where it can always be nudged up onto it.
   defp handle(%{step: :home_confirm} = state, {:answer, :no}),
-    do: {%{state | step: :home_nudge}, []}
+    do: first_sweep(state, %{state.home | backoff: 0, warnings: [], phase: :first})
 
   # --- finish
 
@@ -490,6 +505,17 @@ defmodule Trenino.Hardware.GaugeWizard do
   defp handle(%{step: :finish} = state, :commission), do: {state, [:complete_commissioning]}
   defp handle(%{step: :done} = state, :continue), do: close(state)
   defp handle(state, _event), do: {state, []}
+
+  # The first sweep always starts from the given (zero) backoff and a provisional stop allowance.
+  defp first_sweep(state, home) do
+    case home_plan(state.axis, home.top, home.backoff, @provisional_stop) do
+      {:ok, attrs, warnings} ->
+        reconfigure(%{state | home: %{home | warnings: warnings}}, attrs, :home_run, :first)
+
+      {:error, reason} ->
+        {%{state | error: reason}, []}
+    end
+  end
 
   # ---------------------------------------------------------------- effect results
 
@@ -536,10 +562,9 @@ defmodule Trenino.Hardware.GaugeWizard do
   defp result(state, {:update_axis, _}, error),
     do: {%{state | error: reason(error), after_apply: nil}, []}
 
-  defp result(state, {:save_dial, %{reviewed: true}}, {:ok, _}) do
-    next = if state.axis.reference_strategy == :internal_stop, do: :finish, else: :homing_offer
-    enter(state, next)
-  end
+  # Always offer the tuning: on a re-run the axis may already home, and the user can still
+  # retune or skip.
+  defp result(state, {:save_dial, %{reviewed: true}}, {:ok, _}), do: enter(state, :homing_offer)
 
   defp result(state, {:save_dial, _}, {:ok, _}), do: enter(state, :verify_zero)
   defp result(state, {:save_dial, _}, error), do: {%{state | error: reason(error)}, []}
@@ -547,8 +572,8 @@ defmodule Trenino.Hardware.GaugeWizard do
   defp result(state, :complete_commissioning, {:ok, axis}) do
     state = %{state | axis: axis}
 
-    if axis.reference_strategy == :internal_stop and state.home_on_connect,
-      do: {state, [{:update_axis, %{startup_reference: :home_on_connect}}]},
+    if axis.reference_strategy == :internal_stop,
+      do: {state, [{:update_axis, %{startup_reference: startup_choice(state)}}]},
       else: {%{state | step: :done}, []}
   end
 
@@ -556,6 +581,10 @@ defmodule Trenino.Hardware.GaugeWizard do
   defp result(state, :recover, :ok), do: {state, []}
   defp result(state, :recover, error), do: {%{state | error: reason(error)}, []}
   defp result(state, _effect, _result), do: {state, []}
+
+  # The checkbox decides, whatever the axis had before.
+  defp startup_choice(%{home_on_connect: true}), do: :home_on_connect
+  defp startup_choice(_), do: :manual
 
   defp leave_failed(state, error),
     do: %{state | closed: false, error: state.error || {:leave_failed, reason(error)}}

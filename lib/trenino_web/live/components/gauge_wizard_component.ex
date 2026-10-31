@@ -120,7 +120,8 @@ defmodule TreninoWeb.GaugeWizardComponent do
     "commission" => :commission,
     "stop" => :stop,
     "recover" => :recover,
-    "retry_claim" => :retry_claim
+    "retry_claim" => :retry_claim,
+    "cancel_homing" => :cancel_homing
   }
   defp action_event(action), do: Map.get(@actions, action)
 
@@ -349,6 +350,18 @@ defmodule TreninoWeb.GaugeWizardComponent do
           moving?={@moving?}
         />
       </div>
+
+      <button
+        :if={@wizard.step in [:home_run, :home_nudge, :home_confirm] and !@wizard.interrupted}
+        id={"#{@id}-cancel-homing"}
+        type="button"
+        phx-click="act"
+        phx-value-do="cancel_homing"
+        phx-target={@myself}
+        class="btn btn-sm btn-ghost"
+      >
+        Stop tuning and keep my previous settings
+      </button>
 
       <div :if={@stop?} class="flex items-center gap-3">
         <button
@@ -899,6 +912,9 @@ defmodule TreninoWeb.GaugeWizardComponent do
     <h4 class="font-medium">Check the sweep</h4>
     <p class="font-medium">Did the needle land exactly on the 0 mark?</p>
     <.yes_no id={@id} myself={@myself} yes="Yes, exactly on 0" no="No, adjust again" />
+    <p class="text-xs text-base-content/70">
+      Adjusting again starts over from the stop: run the sweep once more and nudge the needle up onto 0.
+    </p>
     """
   end
 
@@ -1105,7 +1121,7 @@ defmodule TreninoWeb.GaugeWizardComponent do
   defp home_preview(wizard) do
     top = wizard.points |> Enum.map(& &1.position) |> Enum.max(fn -> wizard.axis.max_position end)
 
-    case GaugeWizard.home_plan(wizard.axis, top, wizard.axis.home_backoff, 400) do
+    case GaugeWizard.home_plan(wizard.axis, top, 0, 400) do
       {:ok, attrs, _} -> attrs
       _ -> nil
     end
