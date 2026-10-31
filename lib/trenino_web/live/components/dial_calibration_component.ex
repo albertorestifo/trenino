@@ -173,6 +173,20 @@ defmodule TreninoWeb.DialCalibrationComponent do
     end
   end
 
+  # Gives the lease back without saving, so Resume train control works again.
+  def handle_event("release", _, %{assigns: %{token: nil}} = socket), do: {:noreply, socket}
+
+  def handle_event("release", _, socket) do
+    result = release(socket)
+
+    message =
+      if result in [:ok, {:error, :invalid_lease}],
+        do: "Manual control released. Use Resume train control in the axis controls to continue.",
+        else: GaugeFeedback.result(result)
+
+    {:noreply, assign(socket, token: nil, message: message)}
+  end
+
   def handle_event(_, _, socket),
     do: {:noreply, assign(socket, :message, "Enter valid calibration values before continuing.")}
 
@@ -474,6 +488,14 @@ defmodule TreninoWeb.DialCalibrationComponent do
               class="btn btn-sm"
               disabled={@reasons.claim != nil}
             >Take manual control</button>
+            <button
+              :if={@token}
+              id={"#{@id}-release"}
+              type="button"
+              phx-click="release"
+              phx-target={@myself}
+              class="btn btn-sm"
+            >Release manual control</button>
             <button
               id={"#{@id}-test-value"}
               type="submit"

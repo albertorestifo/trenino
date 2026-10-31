@@ -2,6 +2,9 @@ defmodule TreninoWeb.DialCalibrationTest do
   use TreninoWeb.ConnCase, async: false
   import Phoenix.LiveViewTest
   alias Trenino.{Hardware, Train}
+  alias Trenino.Hardware.StepperManager
+
+  setup :set_mimic_global
 
   setup %{conn: conn} do
     {:ok, device} = Hardware.create_device(%{name: "Panel"})
@@ -26,6 +29,50 @@ defmodule TreninoWeb.DialCalibrationTest do
     assert has_element?(view, "##{id}-claim-reason", "not connected")
     assert has_element?(view, "button##{id}-test-value[disabled]")
     assert has_element?(view, "button##{id}-capture[disabled]")
+  end
+
+  test "manual control taken for the dial can be released without saving", %{
+    conn: conn,
+    axis: axis,
+    device: device,
+    id: id
+  } do
+    test_pid = self()
+
+    stub(StepperManager, :snapshot, fn _ ->
+      runtime = %{
+        ready: false,
+        status: nil,
+        pending: nil,
+        updated_at: System.monotonic_time(:millisecond),
+        lease: nil,
+        config: axis,
+        paused: false,
+        error: nil
+      }
+
+      %{lifecycle: :awaiting_reference, axes: %{axis.id => runtime}}
+    end)
+
+    stub(StepperManager, :claim_manual, fn _, _ -> {:ok, :token} end)
+
+    stub(StepperManager, :release_manual, fn _, token ->
+      send(test_pid, {:released, token})
+      :ok
+    end)
+
+    {:ok, view, _} = live(conn, ~p"/configurations/#{device.config_id}")
+    open(view, id)
+    refute has_element?(view, "##{id}-release")
+
+    view |> element("##{id}-claim") |> render_click()
+    assert has_element?(view, "##{id}-release")
+
+    view |> element("##{id}-release") |> render_click()
+    assert_receive {:released, :token}
+    refute has_element?(view, "##{id}-release")
+    assert has_element?(view, "##{id}-form")
+    assert Hardware.get_dial_calibration(axis.id) == {:error, :not_found}
   end
 
   test "preview is pure: it reports the target and saves nothing", %{view: view, id: id} do
