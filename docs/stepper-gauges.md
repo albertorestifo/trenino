@@ -124,9 +124,10 @@ axis stays paused.
 
 Manual startup is default. Commissioned internal-stop axes with idle hold can
 explicitly opt into Home on connect, causing one bounded movement on each genuine
-new UART connection after acknowledged setup. Train activation, form save, legacy
-Apply, host/session restart, recovery and duplicate device events do not authorize
-a fresh automatic Home. An uncertain Home outcome remains blocked for recovery.
+new UART connection after acknowledged setup. Restarting the Trenino server counts
+as a new connection: the device is rediscovered afterwards, so the needle re-homes. Train
+activation, form save, legacy Apply, recovery, a session crash and duplicate device
+events for an already-connected device do not authorize a fresh automatic Home. An uncertain Home outcome remains blocked for recovery.
 The Home is a one-shot latch: starting an Apply (deployment) or any session fault
 consumes it, and paused or leased axes are never homed automatically.
 
