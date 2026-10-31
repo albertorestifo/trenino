@@ -13,6 +13,7 @@ defmodule Trenino.MCP.ToolRegistry do
     DisplayBindingTools,
     ElementTools,
     GaugeBindingTools,
+    GaugeRuntimeTools,
     OutputBindingTools,
     ScriptTools,
     SequenceTools,
@@ -35,7 +36,8 @@ defmodule Trenino.MCP.ToolRegistry do
     DisplayBindingTools,
     VirtualJoystickTools,
     StepperTools,
-    GaugeBindingTools
+    GaugeBindingTools,
+    GaugeRuntimeTools
   ]
 
   @type tool_def :: %{

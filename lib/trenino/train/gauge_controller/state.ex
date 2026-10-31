@@ -11,7 +11,11 @@ defmodule Trenino.Train.GaugeController.State do
     subscriptions: %{},
     status: %{},
     cleaning: false,
-    retry_after: %{}
+    retry_after: %{},
+    id_base: 4000,
+    cleanup_attempts: 0,
+    last_error: nil,
+    endpoint_errors: %{}
   ]
 
   @type t :: %__MODULE__{}
