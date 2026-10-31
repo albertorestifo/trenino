@@ -242,12 +242,12 @@ defmodule TreninoWeb.GaugeWizardComponent do
   defp prerequisite_text(:idle_hold),
     do: "Keep the motor powered when idle so the needle holds its place."
 
+  defp prerequisite_text(:wiring), do: "Confirm the shield and motor are plugged in and powered."
+
   defp prerequisite_label(:device), do: "Controller connected"
   defp prerequisite_label(:firmware), do: "Controller firmware supports gauges"
   defp prerequisite_label(:applied), do: "Axis settings are on the controller"
   defp prerequisite_label(:idle_hold), do: "Motor holds its position when idle"
-
-  defp prerequisite_text(:wiring), do: "Confirm the shield and motor are plugged in and powered."
 
   # ---------------------------------------------------------------- render
 
