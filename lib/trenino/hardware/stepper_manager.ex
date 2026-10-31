@@ -2,7 +2,7 @@ defmodule Trenino.Hardware.StepperManager do
   @moduledoc "Connection-generation, ownership and deployment authority for physical gauges."
   use GenServer
   alias Trenino.Hardware
-  alias Trenino.Hardware.{StepperAxis, StepperSession, StepperSupervisor}
+  alias Trenino.Hardware.{StepperAxis, StepperLease, StepperSession, StepperSupervisor}
   alias Trenino.Serial.Connection
 
   @type state :: %{
@@ -103,7 +103,7 @@ defmodule Trenino.Hardware.StepperManager do
   end
 
   def handle_call({:claim_mcp, id}, _, s) do
-    with {:ok, pid} <- axis_session(s, id), false <- Map.has_key?(s.leases, id) do
+    with {:ok, pid} <- axis_session(s, id), nil <- Map.get(s.leases, id) do
       token = Base.url_encode64(:crypto.strong_rand_bytes(24), padding: false)
       expires = System.monotonic_time(:millisecond) + 60_000
       StepperSession.pause(pid, id, true)
@@ -114,6 +114,7 @@ defmodule Trenino.Hardware.StepperManager do
         monitor: nil,
         owner: :mcp,
         expires: expires,
+        expiring_since: nil,
         operations: %{},
         epoch: StepperSession.snapshot(pid).timer_epoch
       }
@@ -123,15 +124,19 @@ defmodule Trenino.Hardware.StepperManager do
       {:reply, {:ok, %{token: token, expires_in_ms: 60_000}},
        %{s | leases: Map.put(s.leases, id, lease), paused_axes: MapSet.put(s.paused_axes, id)}}
     else
-      true -> {:reply, {:error, :owned}, s}
+      %{} = lease -> {:reply, {:error, lease_refusal(lease, :claim)}, s}
       error -> {:reply, error, s}
     end
   end
 
   def handle_call({:renew_mcp, id, token}, _, s) do
-    case mcp_lease(s, id, token) do
+    case mcp_lease(s, id, token, :renew) do
       {:ok, lease} ->
-        lease = %{lease | expires: System.monotonic_time(:millisecond) + 60_000}
+        lease =
+          lease
+          |> Map.put(:expires, System.monotonic_time(:millisecond) + 60_000)
+          |> Map.put(:expiring_since, nil)
+
         Process.send_after(self(), {:mcp_expire, id, token}, 60_000)
 
         {:reply, {:ok, %{token: token, expires_in_ms: 60_000}},
@@ -143,7 +148,7 @@ defmodule Trenino.Hardware.StepperManager do
   end
 
   def handle_call({:command_once, id, op, params, token, operation_token}, _, s) do
-    with {:ok, lease} <- mcp_lease(s, id, token),
+    with {:ok, lease} <- mcp_lease(s, id, token, op),
          true <- is_binary(operation_token) and byte_size(operation_token) in 1..200,
          {:ok, pid} <- axis_session(s, id) do
       {result, lease} =
@@ -157,7 +162,7 @@ defmodule Trenino.Hardware.StepperManager do
   end
 
   def handle_call({:claim, id, owner}, _, s) do
-    with {:ok, pid} <- axis_session(s, id), false <- Map.has_key?(s.leases, id) do
+    with {:ok, pid} <- axis_session(s, id), nil <- Map.get(s.leases, id) do
       token = make_ref()
       monitor = Process.monitor(owner)
       StepperSession.pause(pid, id, true)
@@ -173,7 +178,7 @@ defmodule Trenino.Hardware.StepperManager do
       {:reply, {:ok, token},
        %{s | leases: Map.put(s.leases, id, lease), paused_axes: MapSet.put(s.paused_axes, id)}}
     else
-      true -> {:reply, {:error, :owned}, s}
+      %{} = lease -> {:reply, {:error, lease_refusal(lease, :claim)}, s}
       error -> {:reply, error, s}
     end
   end
@@ -191,11 +196,11 @@ defmodule Trenino.Hardware.StepperManager do
   end
 
   def handle_call({:resume, id}, _, s) do
-    with false <- Map.has_key?(s.leases, id), {:ok, pid} <- axis_session(s, id) do
+    with nil <- Map.get(s.leases, id), {:ok, pid} <- axis_session(s, id) do
       {:reply, StepperSession.pause(pid, id, false),
        %{s | paused_axes: MapSet.delete(s.paused_axes, id)}}
     else
-      true -> {:reply, {:error, :owned}, s}
+      %{} = lease -> {:reply, {:error, lease_refusal(lease, :resume)}, s}
       error -> {:reply, error, s}
     end
   end
@@ -313,9 +318,8 @@ defmodule Trenino.Hardware.StepperManager do
     now = System.monotonic_time(:millisecond)
 
     case Map.get(s.leases, id) do
-      %{token: ^token, expires: expiry} when expiry <= now ->
-        stop_axis(s, id)
-        {:noreply, %{s | leases: Map.delete(s.leases, id)}}
+      %{token: ^token, expires: expiry} = lease when expiry <= now ->
+        {:noreply, expire_lease(s, id, lease, now)}
 
       _ ->
         {:noreply, s}
@@ -471,9 +475,58 @@ defmodule Trenino.Hardware.StepperManager do
   defp get_snapshot(s, id) do
     case find_session(s, id) do
       nil -> %{lifecycle: :disconnected, axes: %{}}
-      session -> safe_snapshot(session.pid)
+      session -> session.pid |> safe_snapshot() |> put_lease_info(s.leases)
     end
   end
+
+  defp put_lease_info(%{axes: axes} = snapshot, leases) when map_size(axes) > 0 do
+    now = System.monotonic_time(:millisecond)
+
+    axes =
+      Map.new(axes, fn {id, axis} ->
+        lease = leases |> Map.get(id) |> then(&(&1 && StepperLease.info(&1, now)))
+        {id, %{axis | lease: lease}}
+      end)
+
+    %{snapshot | axes: axes}
+  end
+
+  defp put_lease_info(snapshot, _leases), do: snapshot
+
+  defp lease_refusal(lease, action),
+    do: StepperLease.refusal(lease, System.monotonic_time(:millisecond), action)
+
+  # An accepted move or home is never cut short by lease expiry: the stop is deferred
+  # until the axis is stationary (bounded, in case status never settles).
+  @expiry_recheck_ms 250
+  @max_expiry_deferral_ms 300_000
+
+  defp expire_lease(s, id, lease, now) do
+    since = Map.get(lease, :expiring_since) || now
+
+    if motion_in_progress?(s, id) and now - since < @max_expiry_deferral_ms do
+      Process.send_after(self(), {:mcp_expire, id, lease.token}, @expiry_recheck_ms)
+      %{s | leases: Map.put(s.leases, id, Map.put(lease, :expiring_since, since))}
+    else
+      stop_axis(s, id)
+      %{s | leases: Map.delete(s.leases, id)}
+    end
+  end
+
+  defp motion_in_progress?(s, id) do
+    with {:ok, pid} <- axis_session(s, id),
+         %{} = axis <- StepperSession.snapshot(pid).axes[id] do
+      pending_motion?(axis.pending) or
+        (axis.status != nil and axis.status.state in [:moving, :homing])
+    else
+      _ -> false
+    end
+  catch
+    :exit, _ -> false
+  end
+
+  defp pending_motion?(%{command: %{operation: op}}), do: op in [:move_to, :home]
+  defp pending_motion?(_), do: false
 
   defp safe_snapshot(pid) do
     StepperSession.snapshot(pid)
@@ -612,12 +665,24 @@ defmodule Trenino.Hardware.StepperManager do
   defp demonitor(nil), do: :ok
   defp demonitor(ref), do: Process.demonitor(ref, [:flush])
 
-  defp mcp_lease(s, id, token) do
+  # A lease whose expiry is deferred (axis still finishing a move/home) can still be renewed,
+  # stopped or released by its holder; every other operation is refused with an explanation.
+  @holder_operations [:renew, :stop, :release]
+
+  defp mcp_lease(s, id, token, op) do
     now = System.monotonic_time(:millisecond)
 
     case Map.get(s.leases, id) do
-      %{token: ^token, owner: :mcp, expires: expiry} = lease when expiry > now -> {:ok, lease}
-      _ -> {:error, :invalid_or_expired_lease}
+      %{token: ^token, owner: :mcp, expires: expiry} = lease when expiry > now ->
+        {:ok, lease}
+
+      %{token: ^token, owner: :mcp, expiring_since: since} = lease when since != nil ->
+        if op in @holder_operations,
+          do: {:ok, lease},
+          else: {:error, :lease_expired_finishing_motion}
+
+      _ ->
+        {:error, :invalid_or_expired_lease}
     end
   end
 

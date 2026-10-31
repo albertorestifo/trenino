@@ -9,6 +9,8 @@ defmodule Trenino.Hardware.StepperSession.AxisState do
     :last_target,
     :error,
     :release_waiter,
+    # Lease info for status reports; filled in by StepperManager, never by the session.
+    :lease,
     ready: false,
     reference_accepted: false,
     reference_poll: nil,

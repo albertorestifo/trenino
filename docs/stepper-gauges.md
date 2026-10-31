@@ -127,6 +127,15 @@ never replayed. Uncertainty, serial loss, reboot, Release, moving Stop and share
 I2C faults invalidate trustworthy reference and buffered targets. Host-loss hold
 retains a phase, not trustworthy position; a shared I2C fault affects both axes.
 
+The gauge controller never stalls on a stuck simulator subscription cleanup: a failed
+cleanup is retried three times, then those subscription IDs are abandoned (never reused,
+because the old subscription may still exist) and polling resumes on a fresh ID range.
+Reloading bindings keeps healthy subscriptions when the endpoints are unchanged.
+Subscribe, poll and set_target failures are kept per gauge, together with controller
+state (train, simulator connected, cleaning, retries, last error), and the MCP tool
+`get_gauge_runtime` returns the latest sample, converted value, target, stale flag and
+failure for each gauge, so a gauge that is not moving can be diagnosed.
+
 Invalid/stale simulator data retains the last target only until stale timeout.
 Inactive hold sends Stop, inactive release sends Release. Train changes and
 simulator loss apply the outgoing policy and discard previous samples. Recovery
@@ -142,7 +151,14 @@ the same validation as UI. Runtime control claims a 60-second opaque lease,
 renewed only explicitly. Every mutation supplies an operation token. Identical
 token/arguments reuse admission instead of restarting motion; changed content
 rejects. Up to 100 records are retained for the lease lifetime, then new operations
-reject until a new lease. Expiry Stops and leaves automatic control paused.
+reject until a new lease. Expiry Stops and leaves automatic control paused, except that an accepted
+move or home always finishes: if the lease expires while the axis is moving or homing,
+the Stop and cleanup are deferred until it is stationary (bounded at five minutes), and
+in the meantime the holder can still renew, stop or release the lease while other
+commands are refused. Explicit Stop, fault, host loss and loss of the MCP process or
+connection still stop motion immediately. Status reports each axis's `lease`
+(`owner`, `expires_in_ms`, `finishing_motion`) or null. A refused claim or resume names
+the holder (MCP session with time left, or the Trenino UI) and what to do about it.
 Status distinguishes pending acceptance from completion.
 
 ## Physical acceptance

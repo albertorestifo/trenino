@@ -1,6 +1,7 @@
 defmodule Trenino.MCP.Tools.GaugeSerialization do
   @moduledoc false
   alias Trenino.Hardware.StepperAxis
+  alias Trenino.Hardware.StepperLease
   alias Trenino.Train.GaugeBinding
   def axis(%StepperAxis{} = axis), do: Map.take(axis, StepperAxis.__schema__(:fields))
 
@@ -24,6 +25,7 @@ defmodule Trenino.MCP.Tools.GaugeSerialization do
          %{
            ready: a.ready,
            manual_pause: a.paused,
+           lease: a.lease,
            pending: pending,
            error: plain(a.error),
            status: status
@@ -48,6 +50,11 @@ defmodule Trenino.MCP.Tools.GaugeSerialization do
   def result(:ok), do: {:ok, %{accepted: true}}
   def result(result), do: result
   defp plain(nil), do: nil
+  defp plain({:lease_held, info}), do: StepperLease.message(info)
+
+  defp plain(:lease_expired_finishing_motion),
+    do:
+      "The lease expired but an accepted move or home is still finishing; only renew, stop or release_lease work now. Claim again once the axis is stationary."
 
   defp plain(reason) when is_atom(reason),
     do: reason |> Atom.to_string() |> String.replace("_", " ")

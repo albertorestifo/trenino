@@ -1,5 +1,6 @@
 defmodule TreninoWeb.GaugeFeedback do
   @moduledoc "Human-readable feedback shared by physical gauge controls."
+  alias Trenino.Hardware.StepperLease
   require Logger
 
   def result(:preview_only), do: "Preview calculated; hardware has not moved."
@@ -9,6 +10,11 @@ defmodule TreninoWeb.GaugeFeedback do
   def result(reason), do: error(reason)
 
   def error(:disconnected), do: "Connect the configured device first."
+  def error({:lease_held, info}), do: StepperLease.message(info)
+
+  def error(:lease_expired_finishing_motion),
+    do: "The lease expired while a move is finishing. Wait for it to stop, then claim again."
+
   def error(:owned), do: "Another session has manual control. Release it there first."
   def error(:invalid_lease), do: "Manual control expired. Take manual control again."
   def error(:needs_reference), do: "Reference the axis before moving it."

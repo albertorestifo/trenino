@@ -2,8 +2,10 @@ defmodule Trenino.Hardware.StepperManagerTest do
   use Trenino.DataCase, async: false
   alias Ecto.Adapters.SQL.Sandbox
   alias Trenino.Hardware
+  alias Trenino.Hardware.StepperLease
   alias Trenino.Hardware.StepperManager
   alias Trenino.Hardware.StepperSupervisor
+  alias Trenino.MCP.Tools.GaugeSerialization
   alias Trenino.Repo
   alias Trenino.Serial.Connection.DeviceConnection
   alias Trenino.Serial.Protocol.{StepperCommand, StepperStatus}
@@ -305,6 +307,127 @@ defmodule Trenino.Hardware.StepperManagerTest do
       {:sent, _} -> flush_sent()
     after
       0 -> :ok
+    end
+  end
+
+  describe "lease expiry and refusals" do
+    setup ctx do
+      prepare(ctx)
+      assert {:ok, %{token: token}} = StepperManager.claim_mcp_manual(ctx.axis.id)
+      assert_receive {:sent, %StepperCommand{operation: :stop} = stop}
+      publish(ctx, status(stop))
+      Process.sleep(5)
+
+      assert {:ok, _} =
+               StepperManager.command_once(ctx.axis.id, :reference, %{position: 0}, token, "ref")
+
+      assert_receive {:sent, %StepperCommand{operation: :reference} = reference}
+      publish(ctx, %{status(reference) | known: true, energized: true})
+      assert_receive {:sent, %StepperCommand{operation: :get_status} = poll}
+      publish(ctx, %{status(poll) | configured: true, known: true, energized: true})
+      Process.sleep(5)
+      %{token: token}
+    end
+
+    defp expire_now(ctx, token) do
+      :sys.replace_state(ctx.pid, fn s ->
+        put_in(s.leases[ctx.axis.id].expires, System.monotonic_time(:millisecond) - 1)
+      end)
+
+      send(ctx.pid, {:mcp_expire, ctx.axis.id, token})
+      :sys.get_state(ctx.pid)
+    end
+
+    defp axis_lease(ctx), do: StepperManager.snapshot(ctx.device.id).axes[ctx.axis.id].lease
+
+    test "expiry during an accepted move waits for the axis to stop, then expires", ctx do
+      %{token: token} = ctx
+
+      assert {:ok, _} =
+               StepperManager.command_once(ctx.axis.id, :move_to, %{position: 100}, token, "m1")
+
+      assert_receive {:sent, %StepperCommand{operation: :move_to} = move}
+      publish(ctx, %{status(move) | configured: true, known: true, state: :moving})
+      Process.sleep(5)
+      flush_sent()
+
+      expire_now(ctx, token)
+      refute_receive {:sent, %StepperCommand{operation: :stop}}, 100
+      assert %{owner: :mcp, finishing_motion: true} = axis_lease(ctx)
+
+      assert {:error, :lease_expired_finishing_motion} =
+               StepperManager.command_once(ctx.axis.id, :enable, %{}, token, "late")
+
+      assert {:error, :manual_pause} = StepperManager.set_target(ctx.axis.id, 20, 1)
+
+      # the move finishes; the next deferred check expires the lease and only then stops
+      session = :sys.get_state(ctx.pid).sessions[ctx.conn.port].pid
+      send(session, {:tick, StepperManager.snapshot(ctx.device.id).timer_epoch, :poll})
+      assert_receive {:sent, %StepperCommand{operation: :get_status} = poll}
+      publish(ctx, %{status(poll) | configured: true, known: true, state: :idle})
+      Process.sleep(5)
+      send(ctx.pid, {:mcp_expire, ctx.axis.id, token})
+      :sys.get_state(ctx.pid)
+
+      assert_receive {:sent, %StepperCommand{operation: :stop}}
+      assert axis_lease(ctx) == nil
+
+      assert {:error, :invalid_or_expired_lease} =
+               StepperManager.renew_mcp_manual(ctx.axis.id, token)
+
+      GenServer.stop(StepperManager)
+    end
+
+    test "a deferred lease can still be renewed or stopped by its holder", ctx do
+      %{token: token} = ctx
+
+      assert {:ok, _} =
+               StepperManager.command_once(ctx.axis.id, :move_to, %{position: 100}, token, "m1")
+
+      assert_receive {:sent, %StepperCommand{operation: :move_to} = move}
+      publish(ctx, %{status(move) | configured: true, known: true, state: :moving})
+      Process.sleep(5)
+      expire_now(ctx, token)
+      assert %{finishing_motion: true} = axis_lease(ctx)
+
+      assert {:ok, _} = StepperManager.renew_mcp_manual(ctx.axis.id, token)
+      assert %{finishing_motion: false, expires_in_ms: ms} = axis_lease(ctx)
+      assert ms > 50_000
+      GenServer.stop(StepperManager)
+    end
+
+    test "stationary expiry still stops immediately and clears the lease", ctx do
+      flush_sent()
+      expire_now(ctx, ctx.token)
+      assert_receive {:sent, %StepperCommand{operation: :stop}}
+      assert axis_lease(ctx) == nil
+      GenServer.stop(StepperManager)
+    end
+
+    test "status reports owner and remaining time", ctx do
+      assert %{owner: :mcp, expires_in_ms: ms, finishing_motion: false} = axis_lease(ctx)
+      assert ms in 1..60_000
+      GenServer.stop(StepperManager)
+    end
+
+    test "claim and resume refusals say who holds the lease", ctx do
+      assert {:error, {:lease_held, %{owner: :mcp, action: :claim} = info}} =
+               StepperManager.claim_mcp_manual(ctx.axis.id)
+
+      message = StepperLease.message(info)
+      assert message =~ "MCP session holds the lease"
+      assert message =~ "release_lease"
+
+      assert {:error, {:lease_held, %{action: :resume} = resume}} =
+               StepperManager.resume(ctx.axis.id)
+
+      assert StepperLease.message(resume) =~ "Cannot resume train control"
+
+      assert {:error, text} =
+               GaugeSerialization.result({:error, {:lease_held, info}})
+
+      assert is_binary(text) and text =~ "expires in"
+      GenServer.stop(StepperManager)
     end
   end
 
