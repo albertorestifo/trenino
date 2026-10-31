@@ -497,4 +497,19 @@ defmodule Trenino.Hardware.StepperSessionTest do
 
     assert StepperSession.snapshot(pid).rollovers == 1
   end
+
+  test "a faulted rollover during deployment resets the counter so recover can deploy", %{
+    pid: pid
+  } do
+    setup_axis(pid)
+    waiter = Task.async(fn -> StepperSession.begin_deployment(pid) end)
+    assert_receive {:sent, %StepperCommand{operation: :reset} = reset}
+    reply(pid, reset)
+    assert {:ok, token} = Task.await(waiter)
+    :sys.replace_state(pid, &%{&1 | next_id: 65_535})
+    assert {:error, :request_ids_exhausted} = StepperSession.forget_driver(pid, token)
+    assert StepperSession.snapshot(pid).lifecycle == :fault
+
+    assert :sys.get_state(pid).next_id == 1
+  end
 end

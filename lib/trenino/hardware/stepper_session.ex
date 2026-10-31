@@ -620,7 +620,7 @@ defmodule Trenino.Hardware.StepperSession do
   # counter only restarts behind an acknowledged Reset. That discards every reference;
   # `rollovers` lets the manager re-home auto-home axes once setup completes.
   defp rollover(%State{deployment_token: token} = s) when not is_nil(token),
-    do: fault(s, :request_ids_exhausted)
+    do: fault(%{s | next_id: 1}, :request_ids_exhausted)
 
   defp rollover(s) do
     Enum.each(s.axes, fn {_, axis} ->
