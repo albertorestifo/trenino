@@ -321,4 +321,92 @@ defmodule Trenino.Hardware.StepperSessionTest do
     reply(pid, poll, %{configured: true, known: true, state: :moving})
     assert :ok = StepperSession.set_target(pid, 1, 150, :train)
   end
+
+  defp referenced(pid) do
+    setup_axis(pid)
+    {:ok, _} = StepperSession.command(pid, 1, :reference, %{position: 0}, :manual)
+    assert_receive {:sent, %StepperCommand{operation: :reference} = ref}
+    reply(pid, ref, %{configured: true, known: true, state: :idle})
+    assert_receive {:sent, %StepperCommand{operation: :get_status} = poll}
+    reply(pid, poll, %{configured: true, known: true, state: :idle})
+  end
+
+  defp move_acked(pid, position) do
+    assert :ok = StepperSession.set_target(pid, 1, position, :train)
+    assert_receive {:sent, %StepperCommand{operation: :move_to, position: ^position} = move}
+    reply(pid, move, %{configured: true, known: true, state: :idle})
+  end
+
+  test "A then B then A before B is acknowledged ends at A", %{pid: pid} do
+    referenced(pid)
+    move_acked(pid, 100)
+    assert :ok = StepperSession.set_target(pid, 1, 200, :train)
+    assert_receive {:sent, %StepperCommand{operation: :move_to, position: 200} = b}
+    assert :ok = StepperSession.set_target(pid, 1, 100, :train)
+    reply(pid, b, %{configured: true, known: true, state: :idle})
+    assert_receive {:sent, %StepperCommand{operation: :move_to, position: 100}}
+  end
+
+  test "a target equal to the pre-Home target is sent again after Home", %{pid: pid} do
+    referenced(pid)
+
+    :sys.replace_state(pid, fn s ->
+      put_in(s.axes[1].config.reference_strategy, :internal_stop)
+    end)
+
+    move_acked(pid, 100)
+    {:ok, _} = StepperSession.command(pid, 1, :home, %{}, :manual)
+    assert_receive {:sent, %StepperCommand{operation: :home} = home}
+    reply(pid, home, %{configured: true, state: :homing})
+    assert_receive {:sent, %StepperCommand{operation: :get_status} = poll}
+    reply(pid, poll, %{configured: true, known: true, state: :idle})
+    assert :ok = StepperSession.set_target(pid, 1, 100, :train)
+    assert_receive {:sent, %StepperCommand{operation: :move_to, position: 100}}
+  end
+
+  test "a timed-out move forgets the last target", %{pid: pid} do
+    referenced(pid)
+    move_acked(pid, 100)
+    assert :ok = StepperSession.set_target(pid, 1, 200, :train)
+    assert StepperSession.snapshot(pid).axes[1].last_target == 100
+    Process.sleep(120)
+    assert StepperSession.snapshot(pid).axes[1].last_target == nil
+  end
+
+  test "a lost Configure ack faults instead of continuing", %{pid: pid} do
+    assert_receive {:sent, %StepperCommand{operation: :get_status} = probe}
+    reply(pid, probe)
+    assert_receive {:sent, %StepperCommand{operation: :reset} = reset}
+    reply(pid, reset)
+    assert_receive {:sent, %StepperCommand{operation: :configure}}
+    Process.sleep(150)
+    snapshot = StepperSession.snapshot(pid)
+    assert snapshot.lifecycle == :fault
+    assert snapshot.error == :outcome_unknown
+  end
+
+  test "rollover is counted and never leaves a deployment token behind", %{pid: pid} do
+    setup_axis(pid)
+    waiter = Task.async(fn -> StepperSession.begin_deployment(pid) end)
+    assert_receive {:sent, %StepperCommand{operation: :reset} = reset}
+    reply(pid, reset)
+    assert {:ok, _token} = Task.await(waiter)
+    :sys.replace_state(pid, &%{&1 | next_id: 65_535})
+
+    token = StepperSession.snapshot(pid).deployment_token
+    assert {:error, :request_ids_exhausted} = StepperSession.forget_driver(pid, token)
+    snapshot = StepperSession.snapshot(pid)
+    assert snapshot.deployment_token == nil
+    assert snapshot.lifecycle == :fault
+  end
+
+  test "rollover increments the counter the manager uses to re-home", %{pid: pid} do
+    setup_axis(pid)
+    :sys.replace_state(pid, &%{&1 | next_id: 65_535})
+
+    assert {:error, :reference_epoch_changed} =
+             StepperSession.command(pid, 1, :enable, %{}, :manual)
+
+    assert StepperSession.snapshot(pid).rollovers == 1
+  end
 end

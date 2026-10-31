@@ -241,11 +241,11 @@ defmodule Trenino.Hardware.StepperSession do
     a = s.axes[id]
 
     cond do
-      a.last_target == target ->
-        {:reply, :ok, s}
-
       a.pending != nil ->
         {:reply, :ok, put_axis(s, id, %{a | desired_target: target})}
+
+      a.last_target == target ->
+        {:reply, :ok, s}
 
       true ->
         {s, result} = issue(s, id, :move_to, %{position: target})
@@ -330,7 +330,18 @@ defmodule Trenino.Hardware.StepperSession do
     fault(%{s | deployment_waiter: nil}, :outcome_unknown)
   end
 
-  defp timeout(s, id) do
+  # A lost Configure ack leaves the axis in an unknown configuration: fault rather than
+  # carry on with later axes unconfigured (which would also burn the startup auto-home).
+  defp timeout(%State{lifecycle: :configuring} = s, id) do
+    case s.axes[id].pending do
+      %{command: %{operation: :configure}} -> fault(s, :outcome_unknown)
+      _ -> timeout_axis(s, id)
+    end
+  end
+
+  defp timeout(s, id), do: timeout_axis(s, id)
+
+  defp timeout_axis(s, id) do
     a = s.axes[id]
     if a.release_waiter, do: GenServer.reply(a.release_waiter, {:error, :outcome_unknown})
 
@@ -341,6 +352,7 @@ defmodule Trenino.Hardware.StepperSession do
           ready: false,
           reference_accepted: false,
           desired_target: nil,
+          last_target: nil,
           release_waiter: nil,
           error: :outcome_unknown
       })
@@ -467,16 +479,31 @@ defmodule Trenino.Hardware.StepperSession do
     a = %{a | release_waiter: nil}
 
     case {status.result, cmd.operation} do
-      {:ok, operation} -> accepted(s, id, a, cmd, operation)
-      {error, :configure} -> fault(s, {:configure_failed, error})
-      {error, _} -> put_axis(s, id, %{a | ready: false, reference_accepted: false, error: error})
+      {:ok, operation} ->
+        accepted(s, id, a, cmd, operation)
+
+      {error, :configure} ->
+        fault(s, {:configure_failed, error})
+
+      {error, _} ->
+        put_axis(s, id, %{
+          a
+          | ready: false,
+            reference_accepted: false,
+            last_target: nil,
+            error: error
+        })
     end
   end
 
   defp accepted(s, id, a, _, :configure), do: configure_next(put_axis(s, id, a))
 
   defp accepted(s, id, a, _, op) when op in [:home, :reference],
-    do: poll_axis(put_axis(s, id, %{a | ready: false, reference_accepted: true}), id)
+    do:
+      poll_axis(
+        put_axis(s, id, %{a | ready: false, reference_accepted: true, last_target: nil}),
+        id
+      )
 
   defp accepted(s, id, a, _, :release),
     do: put_axis(s, id, %{a | ready: false, reference_accepted: false, last_target: nil})
@@ -487,7 +514,8 @@ defmodule Trenino.Hardware.StepperSession do
         a
         | ready: a.ready and a.status.known and a.status.state == :idle,
           reference_accepted: a.reference_accepted and a.status.known and a.status.state == :idle,
-          desired_target: nil
+          desired_target: nil,
+          last_target: nil
       })
 
   defp accepted(s, id, a, cmd, :move_to),
@@ -563,8 +591,18 @@ defmodule Trenino.Hardware.StepperSession do
     end
   end
 
+  # Request IDs are 16-bit and the firmware gives no guarantee about reusing one, so the
+  # counter only restarts behind an acknowledged Reset. That discards every reference;
+  # `rollovers` lets the manager re-home auto-home axes once setup completes.
+  defp rollover(%State{deployment_token: token} = s) when not is_nil(token),
+    do: fault(s, :request_ids_exhausted)
+
   defp rollover(s) do
-    s = invalidate(s, :resetting)
+    Enum.each(s.axes, fn {_, axis} ->
+      reply_fault_waiter(axis.release_waiter, :reference_epoch_changed)
+    end)
+
+    s = invalidate(%{s | rollovers: s.rollovers + 1}, :resetting)
     {s, _} = issue(%{s | next_id: 1}, nil, :reset, %{})
     schedule(s, :poll, s.idle_poll)
     s
@@ -590,6 +628,7 @@ defmodule Trenino.Hardware.StepperSession do
       s.axes[id]
       | pending: nil,
         desired_target: nil,
+        last_target: nil,
         reference_poll: nil
     })
   end

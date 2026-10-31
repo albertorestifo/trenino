@@ -15,6 +15,7 @@ defmodule Trenino.Hardware.StepperSession.State do
     queue: [],
     lifecycle: :probing,
     next_id: 1,
+    rollovers: 0,
     ack_timeout: 250,
     idle_poll: 1000,
     moving_poll: 250,
