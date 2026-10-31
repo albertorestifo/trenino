@@ -266,11 +266,23 @@ defmodule Trenino.Hardware do
     cs
   end
 
+  # Dial points store absolute positions, so anything that changes which physical needle
+  # angle a position denotes makes the dial untrustworthy. Homing backoff/speed are not
+  # listed: the wizard tunes backoff precisely to keep dial 0 at position 0.
+  @dial_meaning_fields [
+    :mode,
+    :min_position,
+    :max_position,
+    :reverse,
+    :home_position,
+    :home_direction,
+    :motor_port
+  ]
+
   defp invalidate_gauge_calibration(%StepperAxis{id: nil}, _), do: :ok
 
   defp invalidate_gauge_calibration(old, updated) do
-    if old.mode != updated.mode or old.min_position != updated.min_position or
-         old.max_position != updated.max_position do
+    if Enum.any?(@dial_meaning_fields, &(Map.get(old, &1) != Map.get(updated, &1))) do
       # The dial is no longer trustworthy: every binding on this axis stops running until
       # the dial is measured and reviewed again. Nothing is edited silently.
       Repo.update_all(from(c in DialCalibration, where: c.stepper_axis_id == ^old.id),

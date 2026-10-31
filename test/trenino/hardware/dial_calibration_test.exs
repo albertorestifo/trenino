@@ -112,6 +112,36 @@ defmodule Trenino.Hardware.DialCalibrationTest do
     assert {:ok, %{enabled: false}} = Train.get_gauge_binding(binding.id)
   end
 
+  describe "fields that change what a stored position means" do
+    for {field, value} <- [reverse: true, home_position: 10, motor_port: 2, home_direction: 1] do
+      test "changing #{field} invalidates the dial and disables bindings" do
+        axis = setup_axis()
+        {:ok, _} = Hardware.save_dial_calibration(axis, %{points: @points, reviewed: true})
+        {:ok, train} = Train.create_train(%{name: "A", identifiers: [%{identifier: "A"}]})
+
+        {:ok, binding} =
+          Train.create_gauge_binding(train.id, %{
+            name: "S",
+            endpoint: "S",
+            stepper_axis_id: axis.id,
+            enabled: true
+          })
+
+        {:ok, _} = Hardware.update_stepper_axis(axis, %{unquote(field) => unquote(value)})
+
+        assert {:ok, %{valid: false, reviewed: false}} = Hardware.get_dial_calibration(axis.id)
+        assert {:ok, %{enabled: false}} = Train.get_gauge_binding(binding.id)
+      end
+    end
+
+    test "tuning homing backoff or speed keeps the reviewed dial" do
+      axis = setup_axis()
+      {:ok, _} = Hardware.save_dial_calibration(axis, %{points: @points, reviewed: true})
+      {:ok, _} = Hardware.update_stepper_axis(axis, %{home_backoff: 20, home_speed: 80})
+      assert {:ok, %{valid: true, reviewed: true}} = Hardware.get_dial_calibration(axis.id)
+    end
+  end
+
   test "changing mode or soft limits invalidates the dial and disables all bindings" do
     axis = setup_axis()
     {:ok, _} = Hardware.save_dial_calibration(axis, %{points: @points, reviewed: true})
