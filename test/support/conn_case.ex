@@ -40,6 +40,6 @@ defmodule TreninoWeb.ConnCase do
       {:ok, _} = Trenino.Settings.set_error_reporting(:disabled)
     end
 
-    {:ok, conn: Phoenix.ConnTest.build_conn()}
+    {:ok, conn: %{Phoenix.ConnTest.build_conn() | host: "localhost"}}
   end
 end

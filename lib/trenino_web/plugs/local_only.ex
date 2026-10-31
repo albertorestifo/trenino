@@ -1,7 +1,8 @@
 defmodule TreninoWeb.Plugs.LocalOnly do
   @moduledoc """
-  Guards endpoints that must only be reachable by local clients (DNS-rebinding and
-  cross-site request protection for the MCP server).
+  Guards the whole app (plugged at the endpoint, plus on `/mcp`) so it is only reachable by
+  local clients: DNS-rebinding and cross-site request protection. WebSocket origins are
+  checked separately through the endpoint's `:check_origin` (config/config.exs).
 
   - The `Host` must be `localhost`, `127.0.0.1` or `[::1]`.
   - A present `Origin` must also be a local host (any scheme, so the Tauri webview's
@@ -24,7 +25,7 @@ defmodule TreninoWeb.Plugs.LocalOnly do
     else
       conn
       |> put_resp_content_type("application/json")
-      |> send_resp(403, ~s({"error":"Forbidden: MCP is only available to local clients"}))
+      |> send_resp(403, ~s({"error":"Forbidden: only available to local clients"}))
       |> halt()
     end
   end
