@@ -77,6 +77,7 @@ defmodule Trenino.Hardware.GaugeWizard do
             home_on_connect: true,
             claiming: false,
             claim_blocked: false,
+            paused: false,
             closed: false
 
   @jog_distance 20
@@ -293,6 +294,11 @@ defmodule Trenino.Hardware.GaugeWizard do
   @doc "Applies an event; returns the new state and the effects to run."
   @spec update(t(), term()) :: {t(), [effect()]}
 
+  # Leaving is the only thing that still reports back after the wizard is closed.
+  def update(%__MODULE__{closed: true} = state, {:result, effect, result})
+      when effect in [:release, :resume],
+      do: result(state, effect, result)
+
   def update(%__MODULE__{closed: true} = state, _), do: {state, []}
 
   def update(%__MODULE__{} = state, {:observed, %Observation{} = obs}),
@@ -321,16 +327,15 @@ defmodule Trenino.Hardware.GaugeWizard do
     {%{state | pending: nil, info: :stopped}, effects}
   end
 
-  # Releasing stops the axis. Train control resumes only for an axis that was commissioned.
+  # Releasing stops the axis. Train control resumes for a commissioned axis the wizard paused,
+  # even if a fault or disconnect already dropped the token. The token is kept until the
+  # release has run, because the runner reads it from this state.
   defp close(state) do
     effects =
-      cond do
-        state.token == nil -> []
-        state.axis.commissioned -> [:release, :resume]
-        true -> [:release]
-      end
+      if(state.token, do: [:release], else: []) ++
+        if(state.paused and state.axis.commissioned, do: [:resume], else: [])
 
-    {%{state | closed: true, pending: nil, token: nil}, effects}
+    {%{state | closed: true, pending: nil, error: nil}, effects}
   end
 
   defp claim(%{claiming: true} = state), do: {state, []}
@@ -488,8 +493,17 @@ defmodule Trenino.Hardware.GaugeWizard do
 
   # ---------------------------------------------------------------- effect results
 
+  # An unreachable or already-lost lease cannot be released again; anything else is shown and
+  # the wizard stays open so Close can be pressed again.
+  defp result(state, :release, :ok), do: {%{state | token: nil}, []}
+  defp result(state, :release, {:error, :invalid_lease}), do: {%{state | token: nil}, []}
+  defp result(state, :release, error), do: {leave_failed(state, error), []}
+
+  defp result(state, :resume, :ok), do: {%{state | paused: false}, []}
+  defp result(state, :resume, error), do: {leave_failed(state, error), []}
+
   defp result(state, :claim, {:ok, token}) do
-    state = %{state | token: token, claiming: false, claim_blocked: false}
+    state = %{state | token: token, paused: true, claiming: false, claim_blocked: false}
     if state.step == :prerequisites, do: enter(state, :align), else: {state, []}
   end
 
@@ -542,6 +556,9 @@ defmodule Trenino.Hardware.GaugeWizard do
   defp result(state, :recover, :ok), do: {state, []}
   defp result(state, :recover, error), do: {%{state | error: reason(error)}, []}
   defp result(state, _effect, _result), do: {state, []}
+
+  defp leave_failed(state, error),
+    do: %{state | closed: false, error: state.error || {:leave_failed, reason(error)}}
 
   defp reason({:error, reason}), do: reason
   defp reason(other), do: other

@@ -94,7 +94,11 @@ defmodule TreninoWeb.GaugeWizardComponent do
 
   def handle_event("close", _, socket) do
     socket = dispatch(socket, :close)
-    send(self(), {:gauge_wizard_closed, socket.assigns.axis_id})
+
+    # A failed release or resume keeps the wizard open, with the reason, so Close can be retried.
+    if socket.assigns.wizard.closed,
+      do: send(self(), {:gauge_wizard_closed, socket.assigns.axis_id})
+
     {:noreply, socket}
   end
 
@@ -173,6 +177,10 @@ defmodule TreninoWeb.GaugeWizardComponent do
   def error_text({:lease_held, _}),
     do:
       "Manual control is already open elsewhere on this page. Use Resume train control in the axis controls, then try again."
+
+  def error_text({:leave_failed, reason}),
+    do:
+      "Could not hand the gauge back (#{inspect(reason)}). Press Close to try again; the gauge stays under your control until it works."
 
   def error_text(:owned), do: "Another session is controlling this gauge. Close it there first."
 

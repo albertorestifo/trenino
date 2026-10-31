@@ -643,6 +643,52 @@ defmodule Trenino.Hardware.GaugeWizardTest do
       assert effects == [:release, :resume]
     end
 
+    test "closing keeps the token until the release has run" do
+      {w, _s} = to_jog_test(%{commissioned: true})
+      token = w.token
+      assert token != nil
+      {w, _} = GaugeWizard.update(w, :close)
+      assert w.token == token
+      {w, []} = GaugeWizard.update(w, {:result, :release, :ok})
+      assert w.token == nil
+    end
+
+    test "a failed release is shown and Close can be retried" do
+      {w, _s} = to_jog_test()
+      {w, [:release]} = GaugeWizard.update(w, :close)
+      {w, []} = GaugeWizard.update(w, {:result, :release, {:error, :disconnected}})
+      assert w.error == {:leave_failed, :disconnected}
+      refute w.closed
+      assert {%{closed: true}, [:release]} = GaugeWizard.update(w, :close)
+    end
+
+    test "a lease the manager no longer knows counts as released" do
+      {w, _s} = to_jog_test()
+      {w, [:release]} = GaugeWizard.update(w, :close)
+      {w, []} = GaugeWizard.update(w, {:result, :release, {:error, :invalid_lease}})
+      assert w.closed
+      assert w.error == nil
+    end
+
+    test "a failed resume is shown and only the resume is retried" do
+      {w, _s} = to_jog_test(%{commissioned: true})
+      {w, [:release, :resume]} = GaugeWizard.update(w, :close)
+      {w, []} = GaugeWizard.update(w, {:result, :release, :ok})
+      {w, []} = GaugeWizard.update(w, {:result, :resume, {:error, {:lease_held, %{}}}})
+      refute w.closed
+      assert w.error != nil
+      assert {%{closed: true}, [:resume]} = GaugeWizard.update(w, :close)
+    end
+
+    test "closing while interrupted still resumes a commissioned axis" do
+      {w, s} = to_jog_test(%{commissioned: true})
+      s = %{s | lifecycle: :fault, fault: :driver_i2c, ready: false, lease?: false}
+      {w, _} = GaugeWizard.update(w, {:observed, Sim.observation(s)})
+      assert w.interrupted
+      assert w.token == nil
+      assert {%{closed: true}, [:resume]} = GaugeWizard.update(w, :close)
+    end
+
     test "closing before manual control was taken does nothing to the device" do
       {w, _} = start()
       assert {%{closed: true}, []} = GaugeWizard.update(w, :close)
