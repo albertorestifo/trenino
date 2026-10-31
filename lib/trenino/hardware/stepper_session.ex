@@ -551,21 +551,18 @@ defmodule Trenino.Hardware.StepperSession do
         a.config.idle_behavior == :hold
 
     a = %{a | status: status, updated_at: now(), reference_poll: nil, ready: ready}
-    s = put_axis(s, id, a)
-
-    if s.lifecycle in [:ready, :awaiting_reference] do
-      %{
-        s
-        | lifecycle:
-            if(Enum.any?(s.axes, fn {_, axis} -> axis.ready end),
-              do: :ready,
-              else: :awaiting_reference
-            )
-      }
-    else
-      s
-    end
+    update_lifecycle(put_axis(s, id, a))
   end
+
+  # Only ready/awaiting_reference derive from axis references; a late poll reply must not
+  # pull a configuring, resetting or faulted session into either.
+  defp update_lifecycle(%State{lifecycle: lifecycle} = s)
+       when lifecycle in [:ready, :awaiting_reference] do
+    ready? = Enum.any?(s.axes, fn {_, axis} -> axis.ready end)
+    %{s | lifecycle: if(ready?, do: :ready, else: :awaiting_reference)}
+  end
+
+  defp update_lifecycle(s), do: s
 
   defp async_status(s, id, a, status) do
     cond do
