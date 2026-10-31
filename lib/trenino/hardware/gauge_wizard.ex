@@ -79,7 +79,11 @@ defmodule Trenino.Hardware.GaugeWizard do
             claiming: false,
             claim_blocked: false,
             paused: false,
-            closed: false
+            closed: false,
+            leaving: nil,
+            restored: false,
+            notice: nil,
+            dial_reviewed: false
 
   @home_keys [
     :reference_strategy,
@@ -89,6 +93,7 @@ defmodule Trenino.Hardware.GaugeWizard do
     :home_backoff,
     :home_timeout_ms
   ]
+  @tuning_steps [:home_run, :home_nudge, :home_confirm]
   @jog_distance 20
   @fresh_ms 1500
   @home_speed 50
@@ -321,6 +326,13 @@ defmodule Trenino.Hardware.GaugeWizard do
   def update(%__MODULE__{} = state, {:observed, %Observation{} = obs}),
     do: observe(%{state | obs: obs})
 
+  # Restoring the homing settings on the way out: only its own results matter until it is done.
+  def update(%__MODULE__{leaving: leaving} = state, {:result, effect, result})
+      when leaving != nil,
+      do: leave_result(state, effect, result)
+
+  def update(%__MODULE__{leaving: leaving} = state, _) when leaving != nil, do: {state, []}
+
   def update(%__MODULE__{} = state, {:result, effect, result}), do: result(state, effect, result)
   def update(%__MODULE__{} = state, :close), do: close(state)
 
@@ -347,12 +359,49 @@ defmodule Trenino.Hardware.GaugeWizard do
   # Releasing stops the axis. Train control resumes for a commissioned axis the wizard paused,
   # even if a fault or disconnect already dropped the token. The token is kept until the
   # release has run, because the runner reads it from this state.
-  defp close(state) do
+  #
+  # Closing in the middle of the homing tuning first puts the previous homing settings back
+  # (as cancelling does) and sends them to the controller, so the gauge is not left sweeping
+  # on provisional settings. Commissioning is never restored here: that needs a fresh
+  # reference, so the user is told what is left to do.
+  defp close(%{step: step, home: %{previous: previous}, restored: false} = state)
+       when step in @tuning_steps do
+    stop = if state.token, do: [{:command, :stop, %{}}], else: []
+    {%{state | leaving: :restoring, pending: nil, error: nil}, stop ++ [{:update_axis, previous}]}
+  end
+
+  defp close(state), do: leave(state, state.axis.commissioned)
+
+  defp leave(state, resume?) do
     effects =
       if(state.token, do: [:release], else: []) ++
-        if(state.paused and state.axis.commissioned, do: [:resume], else: [])
+        if(state.paused and resume?, do: [:resume], else: [])
 
-    {%{state | closed: true, pending: nil, error: nil}, effects}
+    {%{state | closed: true, leaving: nil, pending: nil, error: nil}, effects}
+  end
+
+  defp leave_result(%{leaving: :restoring} = state, {:update_axis, _}, {:ok, axis}),
+    do: {%{state | axis: axis, restored: true, leaving: :applying}, [:apply]}
+
+  defp leave_result(%{leaving: :restoring} = state, {:update_axis, _}, error),
+    do: {%{state | leaving: nil, error: {:leave_failed, reason(error)}}, []}
+
+  defp leave_result(%{leaving: :applying} = state, :apply, {:ok, _}),
+    do: leave_restored(state, nil)
+
+  defp leave_result(%{leaving: :applying} = state, :apply, _error),
+    do: leave_restored(state, :restored_not_sent)
+
+  defp leave_result(state, _effect, _result), do: {state, []}
+
+  # The axis may still be commissioned if the restore changed nothing that clears it.
+  defp leave_restored(state, :restored_not_sent) do
+    leave(%{state | notice: :restored_not_sent}, false)
+  end
+
+  defp leave_restored(state, nil) do
+    notice = if state.axis.commissioned, do: nil, else: :recommission
+    leave(%{state | notice: notice}, state.axis.commissioned)
   end
 
   defp claim(%{claiming: true} = state), do: {state, []}
@@ -483,7 +532,22 @@ defmodule Trenino.Hardware.GaugeWizard do
     end
   end
 
-  defp handle(%{step: :home_confirm} = state, {:answer, :yes}), do: enter(state, :finish)
+  # The zero mark was measured wherever the needle stood, but Home now lands it at the home
+  # position, so the saved dial moves by the difference in one save. Marks that would leave
+  # the travel limits are refused rather than clipped.
+  defp handle(%{step: :home_confirm} = state, {:answer, :yes}) do
+    case dial_shift(state) do
+      0 ->
+        enter(state, :finish)
+
+      shift ->
+        points = Enum.map(state.points, &%{&1 | position: &1.position + shift})
+
+        if Enum.all?(points, &within_limits?(&1, state.axis)),
+          do: {state, [{:save_dial, shifted_dial_attrs(state, points)}]},
+          else: {%{state | error: :dial_shift_outside_limits}, []}
+    end
+  end
 
   # The measured backoff was not right, so measure again from the stop: backoff 0 puts the
   # needle at or below the 0 mark, where it can always be nudged up onto it.
@@ -506,6 +570,15 @@ defmodule Trenino.Hardware.GaugeWizard do
   defp handle(%{step: :finish} = state, :commission), do: {state, [:complete_commissioning]}
   defp handle(%{step: :done} = state, :continue), do: close(state)
   defp handle(state, _event), do: {state, []}
+
+  defp dial_shift(%{points: [first | _], axis: axis}), do: axis.home_position - first.position
+  defp dial_shift(_), do: 0
+
+  defp within_limits?(point, axis),
+    do: point.position >= axis.min_position and point.position <= axis.max_position
+
+  defp shifted_dial_attrs(state, points),
+    do: %{output_unit: state.range.unit, points: points, reviewed: state.dial_reviewed}
 
   defp jogged?(%{obs: obs, axis: axis}),
     do: is_integer(obs.position) and obs.position != axis.home_position
@@ -537,6 +610,9 @@ defmodule Trenino.Hardware.GaugeWizard do
   defp result(state, :release, error), do: {leave_failed(state, error), []}
 
   defp result(state, :resume, :ok), do: {%{state | paused: false}, []}
+
+  # Nothing is connected to hand control back to, so there is nothing left to resume.
+  defp result(state, :resume, {:error, :disconnected}), do: {%{state | paused: false}, []}
   defp result(state, :resume, error), do: {leave_failed(state, error), []}
 
   defp result(state, :claim, {:ok, token}) do
@@ -575,7 +651,11 @@ defmodule Trenino.Hardware.GaugeWizard do
 
   # Always offer the tuning: on a re-run the axis may already home, and the user can still
   # retune or skip.
-  defp result(state, {:save_dial, %{reviewed: true}}, {:ok, _}), do: enter(state, :homing_offer)
+  defp result(%{step: :home_confirm} = state, {:save_dial, %{points: points}}, {:ok, _}),
+    do: enter(%{state | points: points}, :finish)
+
+  defp result(state, {:save_dial, %{reviewed: true}}, {:ok, _}),
+    do: enter(%{state | dial_reviewed: true}, :homing_offer)
 
   defp result(state, {:save_dial, _}, error), do: {%{state | error: reason(error)}, []}
 
@@ -608,6 +688,7 @@ defmodule Trenino.Hardware.GaugeWizard do
   # ---------------------------------------------------------------- observations
 
   defp observe(%{step: :done} = state), do: {state, []}
+  defp observe(%{leaving: leaving} = state) when leaving != nil, do: {state, []}
 
   defp observe(%{interrupted: %{} = interrupted} = state) do
     if recovered?(state.obs),

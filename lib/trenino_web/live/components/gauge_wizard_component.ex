@@ -95,14 +95,22 @@ defmodule TreninoWeb.GaugeWizardComponent do
   def handle_event("close", _, socket) do
     socket = dispatch(socket, :close)
 
-    # A failed release or resume keeps the wizard open, with the reason, so Close can be retried.
-    if socket.assigns.wizard.closed,
-      do: send(self(), {:gauge_wizard_closed, socket.assigns.axis_id})
+    # A failed release or resume keeps the wizard open, with the reason, so Close can be
+    # retried. A notice about what is left to do stays on screen until it is dismissed.
+    wizard = socket.assigns.wizard
+    if wizard.closed and wizard.notice == nil, do: send_closed(socket)
 
     {:noreply, socket}
   end
 
+  def handle_event("dismiss", _, socket) do
+    if socket.assigns.wizard.closed, do: send_closed(socket)
+    {:noreply, socket}
+  end
+
   def handle_event(_, _, socket), do: {:noreply, socket}
+
+  defp send_closed(socket), do: send(self(), {:gauge_wizard_closed, socket.assigns.axis_id})
 
   @actions %{
     "continue" => :continue,
@@ -183,6 +191,11 @@ defmodule TreninoWeb.GaugeWizardComponent do
     do:
       "Could not hand the gauge back (#{inspect(reason)}). Press Close to try again; the gauge stays under your control until it works."
 
+  def error_text(:dial_shift_outside_limits),
+    do:
+      "Lining the dial up with the new zero would push some marks outside the allowed travel. " <>
+        "Widen the travel limits in the axis settings, then confirm again."
+
   def error_text(:owned), do: "Another session is controlling this gauge. Close it there first."
 
   def error_text(:outside_limits),
@@ -221,6 +234,18 @@ defmodule TreninoWeb.GaugeWizardComponent do
     do: "Could not save: #{Phoenix.Naming.humanize(field)} #{message}."
 
   defp changeset_text(_), do: "Could not save that change."
+
+  @doc false
+  def notice_text(:recommission),
+    do:
+      "The earlier homing settings were put back and sent to the controller. The gauge is not " <>
+        "commissioned any more, so train control is off for it: run the guided setup again " <>
+        "(skip the dial, finish with Commission), or commission it in the axis controls."
+
+  def notice_text(:restored_not_sent),
+    do:
+      "The earlier homing settings were put back, but they could not be sent to the controller. " <>
+        "Connect it and press Apply on the axis, then commission the gauge again before using it."
 
   defp step_name(:mark), do: "measuring the dial"
   defp step_name(:jog_test), do: "the direction check"
@@ -312,6 +337,25 @@ defmodule TreninoWeb.GaugeWizardComponent do
       <p :if={@wizard.error} id={"#{@id}-error"} role="alert" class="text-sm text-error">
         {error_text(@wizard.error)}
       </p>
+      <div
+        :if={@wizard.closed and @wizard.notice}
+        id={"#{@id}-notice"}
+        role="alert"
+        class="alert alert-warning text-sm"
+      >
+        <div class="space-y-2">
+          <p>{notice_text(@wizard.notice)}</p>
+          <button
+            id={"#{@id}-dismiss"}
+            type="button"
+            phx-click="dismiss"
+            phx-target={@myself}
+            class="btn btn-sm"
+          >
+            Got it
+          </button>
+        </div>
+      </div>
       <p :if={@wizard.info == :stopped} class="text-sm text-warning">
         Stopped. The motor no longer holds a trusted position, so the next step starts by lining the needle up again.
       </p>
@@ -343,9 +387,18 @@ defmodule TreninoWeb.GaugeWizardComponent do
         </div>
       </div>
 
-      <.retry_claim :if={!@wizard.interrupted} wizard={@wizard} id={@id} myself={@myself} />
+      <.retry_claim
+        :if={!@wizard.interrupted and !@wizard.closed}
+        wizard={@wizard}
+        id={@id}
+        myself={@myself}
+      />
 
-      <div :if={!@wizard.interrupted} id={"#{@id}-step-#{@wizard.step}"} class="space-y-3">
+      <div
+        :if={!@wizard.interrupted and !@wizard.closed}
+        id={"#{@id}-step-#{@wizard.step}"}
+        class="space-y-3"
+      >
         <.step_body
           wizard={@wizard}
           myself={@myself}

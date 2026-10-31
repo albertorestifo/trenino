@@ -166,8 +166,26 @@ defmodule Trenino.Hardware.GaugeWizardTest do
     |> send_event(:check_dial)
   end
 
-  defp to_homing_offer do
-    to_verify() |> send_event({:answer, :yes}) |> send_event({:answer, :yes})
+  defp to_homing_offer(attrs \\ %{}) do
+    attrs |> to_verify() |> send_event({:answer, :yes}) |> send_event({:answer, :yes})
+  end
+
+  @home_keys [
+    :reference_strategy,
+    :idle_behavior,
+    :home_speed,
+    :home_steps,
+    :home_backoff,
+    :home_timeout_ms
+  ]
+
+  defp to_home_confirm(offer) do
+    offer
+    |> send_event(:start_homing)
+    |> send_event(:home)
+    |> send_event({:nudge, 100})
+    |> send_event(:finish_nudging)
+    |> send_event(:home)
   end
 
   describe "helpers" do
@@ -584,6 +602,50 @@ defmodule Trenino.Hardware.GaugeWizardTest do
       assert s.axis.home_backoff == 263
     end
 
+    test "confirming homing moves the saved dial when the zero mark was off the home position" do
+      {w, s} = to_homing_offer()
+      points = Enum.map(w.points, &%{&1 | position: &1.position + 15})
+      {w, s} = {%{w | points: points}, s} |> to_home_confirm() |> send_event({:answer, :yes})
+
+      assert w.step == :finish
+      assert [_, shifted] = Enum.reverse(s.saved)
+      assert Enum.map(shifted.points, & &1.position) == Enum.map(points, &(&1.position - 15))
+      assert Enum.map(shifted.points, & &1.value) == Enum.map(points, & &1.value)
+      assert shifted.reviewed
+      assert shifted.output_unit == :mph
+      assert Enum.map(w.points, & &1.position) == Enum.map(shifted.points, & &1.position)
+    end
+
+    test "a zero mark already at the home position saves nothing more" do
+      {w, s} = to_homing_offer() |> to_home_confirm() |> send_event({:answer, :yes})
+      assert w.step == :finish
+      assert [_only] = s.saved
+    end
+
+    test "a shift that would leave the travel limits is refused, not clipped" do
+      {w, s} = to_homing_offer(%{home_position: 20})
+      [first | rest] = w.points
+      last = List.last(rest)
+      points = [%{first | position: 0}] ++ List.replace_at(rest, -1, %{last | position: 715})
+
+      {w, s} = {%{w | points: points}, s} |> to_home_confirm() |> send_event({:answer, :yes})
+
+      assert w.step == :home_confirm
+      assert w.error == :dial_shift_outside_limits
+      assert [_only] = s.saved
+    end
+
+    test "a failed shift save is shown and the step stays" do
+      {w, s} = to_homing_offer()
+      points = Enum.map(w.points, &%{&1 | position: &1.position + 15})
+      {w, _} = to_home_confirm({%{w | points: points}, s})
+      {w, [{:save_dial, _} = save]} = GaugeWizard.update(w, {:answer, :yes})
+      {w, []} = GaugeWizard.update(w, {:result, save, {:error, :boom}})
+      assert w.step == :home_confirm
+      assert w.error == :boom
+      assert Enum.map(w.points, & &1.position) == Enum.map(points, & &1.position)
+    end
+
     test "cancelling the tuning restores the previous homing settings" do
       {w, s} = to_homing_offer()
       before = Map.take(s.axis, [:reference_strategy, :home_steps, :home_backoff, :home_speed])
@@ -769,6 +831,73 @@ defmodule Trenino.Hardware.GaugeWizardTest do
       assert w.interrupted
       assert w.token == nil
       assert {%{closed: true}, [:resume]} = GaugeWizard.update(w, :close)
+    end
+
+    test "closing during the homing tuning puts the previous settings back before leaving" do
+      {w, s} = to_homing_offer(%{commissioned: true})
+      before = Map.take(s.axis, @home_keys)
+      {w, s} = {w, s} |> send_event(:start_homing) |> send_event(:home)
+      assert w.step == :home_nudge
+      assert s.axis.home_backoff == 0 and s.axis.reference_strategy == :internal_stop
+
+      {w, s} = send_event({w, s}, :close)
+
+      assert w.closed
+      assert Map.take(s.axis, @home_keys) == before
+      assert w.notice == :recommission
+      log = Enum.reverse(s.log)
+      restore = Enum.find_index(log, &match?({:update_axis, %{home_backoff: _}}, &1))
+      applied = Enum.find_index(log, &(&1 == :apply))
+      assert restore < applied
+      assert applied < Enum.find_index(log, &(&1 == :release))
+      refute :resume in log
+      refute :complete_commissioning in log
+    end
+
+    test "a restore that cannot be sent still lets the user leave, with a notice" do
+      {w, _} = to_homing_offer() |> send_event(:start_homing)
+      {w, effects} = GaugeWizard.update(w, :close)
+      assert [{:command, :stop, %{}}, {:update_axis, _} = restore] = effects
+      refute w.closed
+      {w, [:apply]} = GaugeWizard.update(w, {:result, restore, {:ok, w.axis}})
+      {w, [:release]} = GaugeWizard.update(w, {:result, :apply, {:error, :device_not_connected}})
+      assert w.closed
+      assert w.notice == :restored_not_sent
+    end
+
+    test "a failed restore keeps the wizard open so Close can be pressed again" do
+      {w, _} = to_homing_offer() |> send_event(:start_homing)
+      {w, [_, restore]} = GaugeWizard.update(w, :close)
+      {w, []} = GaugeWizard.update(w, {:result, restore, {:error, :boom}})
+      refute w.closed
+      assert {:leave_failed, :boom} = w.error
+      assert {%{closed: false}, [_, {:update_axis, _}]} = GaugeWizard.update(w, :close)
+    end
+
+    test "a failed release after the restore does not restore a second time" do
+      {w, _} = to_homing_offer() |> send_event(:start_homing)
+      {w, [_, restore]} = GaugeWizard.update(w, :close)
+      {w, [:apply]} = GaugeWizard.update(w, {:result, restore, {:ok, w.axis}})
+      {w, [:release]} = GaugeWizard.update(w, {:result, :apply, {:ok, 1}})
+      {w, []} = GaugeWizard.update(w, {:result, :release, {:error, :disconnected}})
+      refute w.closed
+      assert {%{closed: true}, [:release]} = GaugeWizard.update(w, :close)
+    end
+
+    test "closing after the tuning was confirmed keeps the tuned settings" do
+      {w, _} = to_homing_offer() |> to_home_confirm() |> send_event({:answer, :yes})
+      assert w.step == :finish
+      assert {%{closed: true}, [:release]} = GaugeWizard.update(w, :close)
+    end
+
+    test "a disconnected resume counts as handed back" do
+      {w, _s} = to_jog_test(%{commissioned: true})
+      {w, [:release, :resume]} = GaugeWizard.update(w, :close)
+      {w, []} = GaugeWizard.update(w, {:result, :release, :ok})
+      {w, []} = GaugeWizard.update(w, {:result, :resume, {:error, :disconnected}})
+      assert w.closed
+      assert w.error == nil
+      refute w.paused
     end
 
     test "closing before manual control was taken does nothing to the device" do
