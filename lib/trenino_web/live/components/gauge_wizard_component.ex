@@ -242,6 +242,11 @@ defmodule TreninoWeb.GaugeWizardComponent do
   defp prerequisite_text(:idle_hold),
     do: "Keep the motor powered when idle so the needle holds its place."
 
+  defp prerequisite_label(:device), do: "Controller connected"
+  defp prerequisite_label(:firmware), do: "Controller firmware supports gauges"
+  defp prerequisite_label(:applied), do: "Axis settings are on the controller"
+  defp prerequisite_label(:idle_hold), do: "Motor holds its position when idle"
+
   defp prerequisite_text(:wiring), do: "Confirm the shield and motor are plugged in and powered."
 
   # ---------------------------------------------------------------- render
@@ -317,7 +322,7 @@ defmodule TreninoWeb.GaugeWizardComponent do
               phx-click="act"
               phx-value-do="recover"
               phx-target={@myself}
-              class="btn btn-sm btn-primary"
+              class="btn btn-sm"
             >
               Recover and continue
             </button>
@@ -410,7 +415,8 @@ defmodule TreninoWeb.GaugeWizardComponent do
           class={"size-5 shrink-0 " <> if(item in @missing, do: "text-error", else: "text-success")}
         />
         <span>
-          {prerequisite_text(item)}
+          <span class="font-medium">{prerequisite_label(item)}</span>
+          <span :if={item in @missing} class="block text-base-content/70">{prerequisite_text(item)}</span>
           <button
             :if={item == :applied and :applied in @missing and :device not in @missing}
             id={"#{@id}-apply"}

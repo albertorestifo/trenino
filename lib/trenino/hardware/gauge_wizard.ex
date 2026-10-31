@@ -166,6 +166,7 @@ defmodule Trenino.Hardware.GaugeWizard do
   end
 
   defp fault_of(%{lifecycle: :fault} = snapshot, _), do: Map.get(snapshot, :error) || :unknown
+  defp fault_of(%{lifecycle: :unsupported}, _), do: :unsupported_capabilities
   defp fault_of(_, %{fault: fault}) when fault not in [nil, :none], do: fault
   defp fault_of(_, _), do: :none
 
@@ -552,8 +553,15 @@ defmodule Trenino.Hardware.GaugeWizard do
 
   defp observe(%{step: :done} = state), do: {state, []}
 
-  defp observe(%{interrupted: %{} = interrupted} = state),
-    do: if(recovered?(state.obs), do: resume(state, interrupted), else: {state, []})
+  defp observe(%{interrupted: %{} = interrupted} = state) do
+    if recovered?(state.obs),
+      do: resume(state, interrupted),
+      else:
+        {%{
+           state
+           | interrupted: %{interrupted | reason: reason_now(state.obs, interrupted.reason)}
+         }, []}
+  end
 
   defp observe(%{step: step} = state) when step in [:prerequisites, :applying],
     do: settle(state)
@@ -580,6 +588,14 @@ defmodule Trenino.Hardware.GaugeWizard do
            token: nil,
            claiming: false
        }, []}
+
+  defp reason_now(%Observation{lifecycle: :disconnected}, _), do: :disconnected
+
+  defp reason_now(%Observation{lifecycle: lifecycle, fault: fault}, _)
+       when lifecycle in [:fault, :unsupported] or fault != :none,
+       do: {:fault, fault}
+
+  defp reason_now(_, current), do: current
 
   defp recovered?(%Observation{} = obs),
     do:

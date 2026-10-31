@@ -604,6 +604,18 @@ defmodule Trenino.Hardware.GaugeWizardTest do
       assert s.lease?
     end
 
+    test "a fault that arrives while disconnected replaces the waiting message with recovery" do
+      {w, s} = to_jog_test()
+      gone = %{s | lifecycle: :disconnected, ready: false, lease?: false}
+      {w, _} = GaugeWizard.update(w, {:observed, Sim.observation(gone)})
+      assert w.interrupted.reason == :disconnected
+
+      faulted = %{gone | lifecycle: :fault, fault: :unexpected_reset}
+      {w, _} = GaugeWizard.update(w, {:observed, Sim.observation(faulted)})
+      assert w.interrupted.reason == {:fault, :unexpected_reset}
+      assert w.interrupted.step == :jog_test
+    end
+
     test "a moving Stop is visible, clears the wait, and loses the reference honestly" do
       {w, s} = to_jog_test()
       {w, _} = GaugeWizard.update(w, :jog_up)
