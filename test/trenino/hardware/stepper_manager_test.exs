@@ -263,13 +263,54 @@ defmodule Trenino.Hardware.StepperManagerTest do
       GenServer.stop(StepperManager)
     end
 
-    test "unplug honours resume_on_owner_loss for a commissioned axis", ctx do
+    test "unplug keeps a live owner's pause, and its later loss still resumes", ctx do
       {:ok, _} = Hardware.commission_stepper_axis(ctx.axis)
       prepare(ctx)
+      test_pid = self()
 
-      assert {:ok, _token} =
-               StepperManager.claim_manual(ctx.axis.id, self(), resume_on_owner_loss: true)
+      owner =
+        spawn(fn ->
+          send(
+            test_pid,
+            {:claimed,
+             StepperManager.claim_manual(ctx.axis.id, self(), resume_on_owner_loss: true)}
+          )
 
+          Process.sleep(:infinity)
+        end)
+
+      assert_receive {:claimed, {:ok, _token}}, 500
+      send(ctx.pid, {:devices_updated, []})
+      assert StepperManager.snapshot(ctx.device.id).lifecycle == :disconnected
+      state = :sys.get_state(ctx.pid)
+      assert state.leases == %{}
+      assert MapSet.member?(state.paused_axes, ctx.axis.id)
+
+      monitor = Process.monitor(owner)
+      Process.exit(owner, :kill)
+      assert_receive {:DOWN, ^monitor, :process, _, :killed}
+      refute MapSet.member?(:sys.get_state(ctx.pid).paused_axes, ctx.axis.id)
+      GenServer.stop(StepperManager)
+    end
+
+    test "unplug resumes at once when the owner is already gone", ctx do
+      {:ok, _} = Hardware.commission_stepper_axis(ctx.axis)
+      prepare(ctx)
+      test_pid = self()
+      {:ok, holder} = Agent.start(fn -> nil end)
+      Process.unlink(holder)
+
+      spawn(fn ->
+        send(
+          test_pid,
+          {:claimed, StepperManager.claim_manual(ctx.axis.id, holder, resume_on_owner_loss: true)}
+        )
+      end)
+
+      assert_receive {:claimed, {:ok, _token}}, 500
+      :sys.suspend(ctx.pid)
+      Agent.stop(holder)
+      :sys.resume(ctx.pid)
       send(ctx.pid, {:devices_updated, []})
       assert StepperManager.snapshot(ctx.device.id).lifecycle == :disconnected
       refute MapSet.member?(:sys.get_state(ctx.pid).paused_axes, ctx.axis.id)

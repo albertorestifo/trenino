@@ -10,6 +10,7 @@ defmodule Trenino.Hardware.StepperManager do
           connections: map(),
           barriers: map(),
           leases: map(),
+          watched_owners: %{reference() => term()},
           send_fun: function()
         }
 
@@ -61,6 +62,7 @@ defmodule Trenino.Hardware.StepperManager do
       connections: %{},
       barriers: %{},
       leases: %{},
+      watched_owners: %{},
       paused_axes: MapSet.new(),
       subscribed: MapSet.new(),
       send_fun: Keyword.get(opts, :send_fun, &Connection.send_message/2)
@@ -356,6 +358,19 @@ defmodule Trenino.Hardware.StepperManager do
 
   def handle_info(_, s), do: {:noreply, s}
 
+  defp handle_down(monitor, pid, %{watched_owners: watched} = s)
+       when is_map_key(watched, monitor) do
+    {id, watched} = Map.pop(watched, monitor)
+    s = %{s | watched_owners: watched}
+
+    s =
+      if Map.has_key?(s.leases, id),
+        do: s,
+        else: resume_after_owner_loss({id, %{resume_on_owner_loss: true}}, s)
+
+    {:noreply, s}
+  end
+
   defp handle_down(monitor, pid, s) do
     lost = Enum.filter(s.leases, fn {_, lease} -> lease.monitor == monitor end)
     ids = Enum.map(lost, &elem(&1, 0))
@@ -621,14 +636,29 @@ defmodule Trenino.Hardware.StepperManager do
     revoke_leases(s, Map.new(stale))
   end
 
-  # A revoked lease can no longer fire its owner-loss resume (the monitor is gone), so
-  # honour `resume_on_owner_loss` here, whether or not a session is still around.
+  # A revoked lease's `resume_on_owner_loss` is honoured only once its owner is really gone.
+  # A live owner (the gauge wizard) keeps the pause and handles the reconnect itself, so its
+  # monitor is kept and tracked in `watched_owners`: the DOWN that arrives later resumes.
   defp revoke_leases(s, leases) do
     Enum.reduce(leases, s, fn {id, lease}, acc ->
-      demonitor(lease.monitor)
-      acc = resume_after_owner_loss({id, lease}, acc)
+      acc = settle_revoked_lease({id, lease}, acc)
       %{acc | leases: Map.delete(acc.leases, id)}
     end)
+  end
+
+  defp settle_revoked_lease({id, %{resume_on_owner_loss: true, monitor: monitor} = lease}, s)
+       when is_reference(monitor) do
+    if Process.alive?(lease.owner) do
+      %{s | watched_owners: Map.put(s.watched_owners, monitor, id)}
+    else
+      demonitor(monitor)
+      resume_after_owner_loss({id, lease}, s)
+    end
+  end
+
+  defp settle_revoked_lease({_id, lease}, s) do
+    demonitor(lease.monitor)
+    s
   end
 
   defp find_session(s, id) do
