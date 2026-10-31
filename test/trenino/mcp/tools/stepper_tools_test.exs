@@ -74,4 +74,21 @@ defmodule Trenino.MCP.Tools.StepperToolsTest do
 
     assert steps =~ "apply_stepper_configuration"
   end
+
+  test "attrs can never set commissioned (create or update)" do
+    {:ok, device} = Hardware.create_device(%{name: "Gauge"})
+
+    assert {:ok, %{axis: axis}} =
+             StepperTools.execute("create_stepper_axis", %{
+               "device_id" => device.id,
+               "name" => "Speed",
+               "commissioned" => true
+             })
+
+    refute axis.commissioned
+
+    StepperTools.execute("update_stepper_axis", %{"id" => axis.id, "commissioned" => true})
+    assert {:ok, reloaded} = Hardware.get_stepper_axis(axis.id)
+    refute reloaded.commissioned
+  end
 end

@@ -52,6 +52,14 @@ defmodule Trenino.Hardware do
   def update_stepper_axis(%StepperAxis{} = axis, attrs),
     do: save_stepper_axis(axis, attrs, :update)
 
+  @doc """
+  Marks an axis commissioned. Internal: callable only after StepperManager has verified a
+  fresh stationary reference and a live manual lease. `commissioned` cannot be set via attrs.
+  """
+  @spec commission_stepper_axis(StepperAxis.t()) :: {:ok, StepperAxis.t()} | {:error, term()}
+  def commission_stepper_axis(%StepperAxis{} = axis),
+    do: save_stepper_axis(axis, %{}, :update, &StepperAxis.commission/1)
+
   def update_stepper_shield_address(device_id, address)
       when is_integer(address) and address in 96..119 do
     Repo.transact(fn ->
@@ -130,10 +138,10 @@ defmodule Trenino.Hardware do
     end
   end
 
-  defp save_stepper_axis(axis, attrs, operation) do
+  defp save_stepper_axis(axis, attrs, operation, finalize \\ & &1) do
     result =
       Repo.transact(fn ->
-        cs = stepper_resource_changeset(axis, attrs)
+        cs = axis |> stepper_resource_changeset(attrs) |> finalize.()
 
         case apply(Repo, operation, [cs]) do
           {:ok, updated} ->

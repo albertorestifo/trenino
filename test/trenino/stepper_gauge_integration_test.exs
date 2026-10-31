@@ -123,13 +123,14 @@ defmodule Trenino.StepperGaugeIntegrationTest do
 
   test "commissioned opt-in Home is once per genuine new connection, never duplicate or recovery",
        ctx do
-    {:ok, _axis} =
+    {:ok, axis} =
       Hardware.create_stepper_axis(ctx.device.id, %{
         name: "Speed",
-        reference_strategy: :internal_stop,
-        commissioned: true,
-        startup_reference: :home_on_connect
+        reference_strategy: :internal_stop
       })
+
+    {:ok, axis} = Hardware.commission_stepper_axis(axis)
+    {:ok, _axis} = Hardware.update_stepper_axis(axis, %{startup_reference: :home_on_connect})
 
     connected = %{ctx.connection | device_config_id: ctx.device.config_id}
     StepperFirmware.connect(ctx.firmware, connected)

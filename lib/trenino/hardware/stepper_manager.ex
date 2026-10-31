@@ -92,7 +92,7 @@ defmodule Trenino.Hardware.StepperManager do
            axis_state <- StepperSession.snapshot(pid).axes[id],
            true <- stationary_fresh?(axis_state),
            {:ok, axis} <- Hardware.get_stepper_axis(id),
-           do: Hardware.update_stepper_axis(axis, %{commissioned: true})
+           do: Hardware.commission_stepper_axis(axis)
 
     result =
       if match?({:ok, _}, result),
@@ -665,7 +665,7 @@ defmodule Trenino.Hardware.StepperManager do
     with :ok <- applied_configuration(s, id, pid),
          true <- stationary_fresh?(StepperSession.snapshot(pid).axes[id]),
          {:ok, axis} <- Hardware.get_stepper_axis(id),
-         {:ok, _} <- Hardware.update_stepper_axis(axis, %{commissioned: true}),
+         {:ok, _} <- Hardware.commission_stepper_axis(axis),
          do: {:ok, :commissioned},
          else: (_ -> {:error, :requires_fresh_reference_and_manual_lease})
   end

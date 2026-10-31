@@ -40,7 +40,8 @@ defmodule Trenino.Train.GaugeControllerTest do
     end)
 
     {:ok, device} = Hardware.create_device(%{name: "Panel"})
-    {:ok, axis} = Hardware.create_stepper_axis(device.id, %{name: "Speed", commissioned: true})
+    {:ok, axis} = Hardware.create_stepper_axis(device.id, %{name: "Speed"})
+    {:ok, axis} = Hardware.commission_stepper_axis(axis)
     {:ok, train} = Train.create_train(%{name: "Train", identifiers: [%{identifier: "GaugeTest"}]})
 
     attrs = %{

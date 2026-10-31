@@ -58,4 +58,14 @@ defmodule Trenino.Hardware.StepperAxisTest do
     refute Ecto.Changeset.get_field(StepperAxis.changeset(axis, %{reverse: true}), :commissioned)
     refute StepperAxis.auto_home?(%{axis | startup_reference: :home_on_connect})
   end
+
+  test "commissioned is not castable from attrs" do
+    for attrs <- [
+          %{name: "Speed", commissioned: true},
+          %{"name" => "Speed", "commissioned" => true}
+        ] do
+      cs = StepperAxis.changeset(%StepperAxis{device_id: 1}, attrs)
+      refute Ecto.Changeset.get_field(cs, :commissioned)
+    end
+  end
 end

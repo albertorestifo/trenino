@@ -34,7 +34,9 @@ defmodule Trenino.MCP.Tools.StepperTools do
 
   defp tool(name, required) do
     fields =
-      Map.new(StepperAxis.__schema__(:fields), fn key -> {key, property(key)} end)
+      Map.new(StepperAxis.__schema__(:fields) -- [:commissioned], fn key ->
+        {key, property(key)}
+      end)
 
     properties =
       Map.merge(fields, %{

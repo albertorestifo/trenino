@@ -47,7 +47,7 @@ defmodule Trenino.Hardware.StepperAxis do
     axis
     |> cast(
       parse_address(attrs),
-      @motion_fields ++ [:name, :axis_index, :startup_reference, :commissioned]
+      @motion_fields ++ [:name, :axis_index, :startup_reference]
     )
     |> validate_required([:name, :device_id, :axis_index] ++ @motion_fields)
     |> validate_length(:name, max: 100)
@@ -60,6 +60,13 @@ defmodule Trenino.Hardware.StepperAxis do
     |> unique_constraint([:device_id, :axis_index])
     |> unique_constraint([:device_id, :motor_port])
   end
+
+  @doc """
+  Marks the axis commissioned. Internal: `commissioned` is deliberately not castable
+  from attrs, so only the manager's complete_commissioning path may call this.
+  """
+  @spec commission(Ecto.Changeset.t()) :: Ecto.Changeset.t()
+  def commission(%Ecto.Changeset{} = cs), do: put_change(cs, :commissioned, true)
 
   @spec to_protocol_config(t()) :: StepperConfiguration.t()
   def to_protocol_config(%__MODULE__{} = axis),
