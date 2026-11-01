@@ -408,6 +408,67 @@ defmodule TreninoWeb.LeverSetupWizardTest do
     end
   end
 
+  describe "chip inputs" do
+    test "lever setup offers a calibrated ADS1115 input", %{conn: conn} do
+      {:ok, train} =
+        TrainContext.create_train(%{
+          name: "Chip Train",
+          identifiers: [%{identifier: "Chip_Train_#{System.unique_integer([:positive])}"}]
+        })
+
+      {:ok, lever_element} =
+        TrainContext.create_element(train.id, %{name: "Throttle", type: :lever})
+
+      {:ok, device} = Hardware.create_device(%{name: "Chip Device"})
+
+      {:ok, module} =
+        Hardware.create_i2c_module(device.id, %{
+          module_chip: :ads1115,
+          i2c_address: 0x48,
+          params: %{channel_mask: 0x01, gain: 0}
+        })
+
+      {:ok, input} =
+        Hardware.create_input(device.id, %{
+          pin: 128,
+          input_type: :analog,
+          sensitivity: 5,
+          name: "ADS Throttle",
+          i2c_module_id: module.id,
+          i2c_channel: 0
+        })
+
+      {:ok, _} =
+        Hardware.save_calibration(input.id, %{
+          max_hardware_value: 1023,
+          min_value: 0,
+          max_value: 1000,
+          has_rollover: false,
+          is_inverted: false
+        })
+
+      client = Client.new("http://localhost:8080", "test-key")
+
+      stub(Simulator, :get_status, fn ->
+        %ConnectionState{status: :connected, client: client}
+      end)
+
+      stub(Client, :list, fn _client ->
+        {:ok, %{"NodeName" => "Root", "NodePath" => "Root", "Nodes" => []}}
+      end)
+
+      {:ok, view, _html} = live(conn, ~p"/trains/#{train.id}")
+
+      view
+      |> element("[phx-click='configure_lever'][phx-value-id='#{lever_element.id}']")
+      |> render_click()
+
+      view |> element("input[value='analog']") |> render_click()
+
+      assert render(view) =~ "ADS Throttle"
+    end
+  end
+
   describe "dependency tracking" do
     setup do
       {:ok, train} =

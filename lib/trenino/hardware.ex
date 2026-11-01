@@ -590,12 +590,15 @@ defmodule Trenino.Hardware do
 
   ## Options
 
-    * `:include_virtual_buttons` - Include virtual buttons from matrices (default: false)
+    * `:include_virtual_buttons` - Include virtual buttons from matrices (default: false).
+      Implies `:include_chip_inputs`.
+    * `:include_chip_inputs` - Include inputs of I2C input chips (default: false)
 
   """
   @spec list_inputs(integer(), keyword()) :: {:ok, [Input.t()]}
   def list_inputs(device_id, opts \\ []) do
     include_virtual = Keyword.get(opts, :include_virtual_buttons, false)
+    include_chip = include_virtual or Keyword.get(opts, :include_chip_inputs, false)
 
     query =
       Input
@@ -608,6 +611,13 @@ defmodule Trenino.Hardware do
         query
       else
         where(query, [i], is_nil(i.matrix_id))
+      end
+
+    query =
+      if include_chip do
+        query
+      else
+        where(query, [i], is_nil(i.i2c_module_id))
       end
 
     inputs = Repo.all(query)
@@ -624,13 +634,16 @@ defmodule Trenino.Hardware do
   ## Options
 
     * `:include_uncalibrated` - Include inputs without calibration (default: false)
-    * `:include_virtual_buttons` - Include virtual buttons from matrices (default: false)
+    * `:include_virtual_buttons` - Include virtual buttons from matrices (default: false).
+      Implies `:include_chip_inputs`.
+    * `:include_chip_inputs` - Include inputs of I2C input chips (default: false)
 
   """
   @spec list_all_inputs(keyword()) :: [Input.t()]
   def list_all_inputs(opts \\ []) do
     include_uncalibrated = Keyword.get(opts, :include_uncalibrated, false)
     include_virtual = Keyword.get(opts, :include_virtual_buttons, false)
+    include_chip = include_virtual or Keyword.get(opts, :include_chip_inputs, false)
 
     query =
       Input
@@ -651,6 +664,13 @@ defmodule Trenino.Hardware do
         query
       else
         where(query, [i], is_nil(i.matrix_id))
+      end
+
+    query =
+      if include_chip do
+        query
+      else
+        where(query, [i], is_nil(i.i2c_module_id))
       end
 
     Repo.all(query)

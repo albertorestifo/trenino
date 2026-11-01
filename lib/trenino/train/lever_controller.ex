@@ -257,7 +257,7 @@ defmodule Trenino.Train.LeverController do
         {lookup, ports}
 
       device ->
-        {:ok, inputs} = Hardware.list_inputs(device.id)
+        {:ok, inputs} = Hardware.list_inputs(device.id, include_chip_inputs: true)
 
         updated_lookup =
           Enum.reduce(inputs, lookup, fn input, acc ->

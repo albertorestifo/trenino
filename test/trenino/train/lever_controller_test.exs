@@ -24,6 +24,41 @@ defmodule Trenino.Train.LeverControllerTest do
     :ok
   end
 
+  describe "chip inputs" do
+    test "lookup contains a chip input's {port, pin}" do
+      {:ok, device} = Hardware.create_device(%{name: "Chip Lever Device"})
+
+      {:ok, module} =
+        Hardware.create_i2c_module(device.id, %{
+          module_chip: :ads1115,
+          i2c_address: 0x48,
+          params: %{channel_mask: 0x01, gain: 0}
+        })
+
+      {:ok, input} =
+        Hardware.create_input(device.id, %{
+          pin: 128,
+          input_type: :analog,
+          sensitivity: 5,
+          i2c_module_id: module.id,
+          i2c_channel: 0
+        })
+
+      device_conn = %DeviceConnection{
+        port: "/dev/cu.usbmodemchip#{System.unique_integer([:positive])}",
+        status: :connected,
+        device_config_id: device.config_id
+      }
+
+      Mimic.stub(Trenino.Serial.Connection, :list_devices, fn -> [device_conn] end)
+      send(Process.whereis(LeverController), {:devices_updated, [device_conn]})
+
+      state = LeverController.get_state()
+      assert %{input_id: id} = state.input_lookup[{device_conn.port, 128}]
+      assert id == input.id
+    end
+  end
+
   describe "smooth lever updates" do
     setup %{test: test} do
       {:ok, train} =

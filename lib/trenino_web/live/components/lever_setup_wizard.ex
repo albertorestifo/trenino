@@ -95,7 +95,7 @@ defmodule TreninoWeb.LeverSetupWizard do
   # Initialize wizard state
   defp initialize_wizard(socket, %Element{} = element) do
     available_inputs =
-      Hardware.list_all_inputs()
+      Hardware.list_all_inputs(include_chip_inputs: true)
       |> Enum.filter(&(&1.input_type == :analog))
 
     # Check for existing lever config

@@ -8,6 +8,7 @@ defmodule Trenino.Hardware.I2cModule do
   alias Trenino.Hardware.ADS1115.Params, as: ADS1115Params
   alias Trenino.Hardware.Device
   alias Trenino.Hardware.HT16K33.Params, as: HT16K33Params
+  alias Trenino.Hardware.Input
   alias Trenino.Hardware.MCP23017.Params, as: MCP23017Params
 
   @type module_chip :: :ht16k33 | :mcp23017 | :ads1115
@@ -22,6 +23,7 @@ defmodule Trenino.Hardware.I2cModule do
           i2c_address: integer() | nil,
           params: HT16K33Params.t() | MCP23017Params.t() | ADS1115Params.t() | nil,
           device: Device.t() | Ecto.Association.NotLoaded.t(),
+          inputs: [Input.t()] | Ecto.Association.NotLoaded.t(),
           inserted_at: DateTime.t() | nil,
           updated_at: DateTime.t() | nil
         }
@@ -51,6 +53,7 @@ defmodule Trenino.Hardware.I2cModule do
     )
 
     belongs_to :device, Device
+    has_many :inputs, Input
     timestamps(type: :utc_datetime)
   end
 
