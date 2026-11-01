@@ -1,84 +1,41 @@
 ---
 description: Create a new release (major/minor/patch)
 argument-hint: [major|minor|patch]
-allowed-tools: Bash(git *), Bash(gh *), Bash(gh --version), Bash(mix version *), Read, Edit, Grep, Glob
+allowed-tools: Bash(git *), Bash(gh *), Bash(mix version *), Bash(mix precommit), Bash(mix hex.audit), Bash(cargo test *), Read, Edit, Grep, Glob
 ---
 
-# Release Process
+# Release
 
-Create a new release by bumping the version ($ARGUMENTS).
+Create a release by applying a $ARGUMENTS version bump. Stop if any verification step fails.
 
-## Instructions
+1. **Review changes.** Read `git log $(git describe --tags --abbrev=0)..HEAD --oneline`.
 
-### 1. Review Changes Since Last Release
+2. **Update the changelog.** Make sure `[Unreleased]` in `CHANGELOG.md` covers every significant change in user-friendly language. Rename it to `## [X.Y.Z] - YYYY-MM-DD` and add a new empty `[Unreleased]` section above it.
 
-Get all commits since the last release tag:
-```
-git log $(git describe --tags --abbrev=0)..HEAD --oneline
-```
+3. **Bump the version.** Run `mix version X.Y.Z`. It updates `mix.exs`, `tauri/src-tauri/tauri.conf.json`, `tauri/src-tauri/Cargo.toml`, `tauri/src-tauri/Cargo.lock`, `tauri/package.json` and `tauri/src-tauri/splash.html`.
 
-Review these commits carefully to understand what changed.
+4. **Verify.** Run each of these:
+   ```
+   mix precommit
+   cargo test --manifest-path tauri/virtual_joystick/Cargo.toml
+   mix hex.audit
+   ```
 
-### 2. Review and Improve the Changelog
+5. **Commit.** Stage only the release files, plus any formatting changes from `mix precommit` that belong to the release:
+   ```
+   git add CHANGELOG.md mix.exs tauri/package.json tauri/src-tauri/tauri.conf.json tauri/src-tauri/Cargo.toml tauri/src-tauri/Cargo.lock tauri/src-tauri/splash.html
+   git commit -m "Release vX.Y.Z"
+   ```
 
-Read `CHANGELOG.md` and check the `[Unreleased]` section:
-- Ensure all significant changes from the commits are documented
-- Improve descriptions to be clear and user-friendly
-- Group changes properly under Added/Changed/Fixed/Removed
-- Fix any typos or unclear wording
-- Make it appealing for users to read
+6. **Tag and push.**
+   ```
+   git tag vX.Y.Z
+   git push origin master
+   git push origin vX.Y.Z
+   ```
 
-If the changelog needs updates, edit it before proceeding.
-
-### 3. Calculate New Version
-
-Based on the current version and the bump type ($ARGUMENTS):
-- **major**: Breaking changes (X.0.0)
-- **minor**: New features, backwards compatible (0.X.0)
-- **patch**: Bug fixes only (0.0.X)
-
-### 4. Update Changelog Header
-
-Change `[Unreleased]` to `[X.Y.Z]` with today's date in format `## [X.Y.Z] - YYYY-MM-DD`
-
-Add a new empty `[Unreleased]` section above it with the standard subsections.
-
-### 5. Bump Version
-
-Run the mix version task with the calculated version number:
-```
-mix version X.Y.Z
-```
-
-This updates mix.exs, tauri.conf.json, Cargo.toml, package.json, and splash.html.
-
-### 6. Commit the Version Bump
-
-```
-git add -A
-git commit -m "Release vX.Y.Z"
-```
-
-### 7. Create and Push the Tag
-
-```
-git tag vX.Y.Z
-git push origin master
-git push origin vX.Y.Z
-```
-
-### 8. Create GitHub Release
-
-Use the GitHub CLI to create a release with compelling release notes:
-
-```
-gh release create vX.Y.Z --title "vX.Y.Z" --notes "RELEASE_NOTES_HERE"
-```
-
-The release notes should:
-- Start with a brief, engaging summary of the release (1-2 sentences)
-- Highlight the most important/exciting changes (3-5 bullet points max)
-- Use clear, user-focused language (not developer jargon)
-- End with "See the [full changelog](CHANGELOG.md) for complete details."
-
-Do NOT just copy-paste the entire changelog - curate and highlight what matters most to users.
+7. **Create the GitHub release.** This is what starts the desktop build: `release.yml` runs on `release: created`, not on the tag, and checks the tag against the source versions.
+   ```
+   gh release create vX.Y.Z --title "vX.Y.Z" --notes "RELEASE_NOTES_HERE"
+   ```
+   Write the notes for users: a 1-2 sentence summary, 3-5 highlights, then `See the [full changelog](https://github.com/albertorestifo/trenino/blob/vX.Y.Z/CHANGELOG.md) for complete details.`

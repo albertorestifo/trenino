@@ -105,7 +105,7 @@ Claude will:
 
 ## Available Tools
 
-Claude has access to 37 tools for interacting with Trenino:
+Claude has access to 47 tools for interacting with Trenino:
 
 | Category | Tools |
 |----------|-------|
@@ -119,6 +119,7 @@ Claude has access to 37 tools for interacting with Trenino:
 | Sequences | List, create, update, delete |
 | Scripts | List, get, create, update, delete Lua scripts |
 | Display Bindings | List, create, update, delete display bindings |
+| Virtual Joystick | Check status and installation; enable, disable, retry, clean up; list, map (axis/button), delete mappings |
 
 ## Tips
 

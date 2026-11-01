@@ -215,4 +215,4 @@ end
 - **One timer per script** — calling `schedule()` replaces any pending timer.
 - **State is in-memory** — it survives across `on_change` calls but resets on script reload or app restart.
 - **Console limit** — the console keeps the last 100 log entries.
-- **Sandboxed environment** — `require`, `io`, `os`, `file`, and `package` are not available.
+- **Sandboxed environment** — `require`, `load`, `loadfile`, `file`, `package` and file or process functions in `io` and `os` (such as `os.execute` and `os.getenv`) are not available.

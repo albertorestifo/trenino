@@ -1,4 +1,3 @@
 # Protect CI workflows and project configuration
 .github/ @albertorestifo
 CLAUDE.md @albertorestifo
-AGENTS.md @albertorestifo

@@ -1,102 +1,30 @@
 ---
 name: mimic-testing
-description: Use when writing Elixir tests that require mocking, stubbing, or expecting function calls on modules. Do not use for standard ExUnit tests that do not need mocking.
+description: Use when writing or fixing Elixir tests in this project that mock, stub, or expect calls on modules, or that touch serial, avrdude, or other hardware paths.
 ---
 
-# Mimic Mocking Library
+# Mimic in Trenino
 
-Do not mock Elixir standard library or OTP modules directly.
+`Trenino.DataCase`, `TreninoWeb.ConnCase` and `Trenino.SerialSafetyCase` already provide `use Mimic` and private mode. Use one of them; tests without a database that touch serial paths use `SerialSafetyCase`.
 
-## Required Setup
+## Adding a Mock
 
-In `test_helper.exs`, **before** `ExUnit.start()`:
+- Add `Mimic.copy(Module)` to `test/test_helper.exs`, above `ExUnit.start`.
+- Mock project modules and third-party dependencies, not stdlib or OTP modules.
+- Mimic does not intercept calls made inside the mocked module itself.
 
-```elixir
-Mimic.copy(MyModule, type_check: true)  # type_check: true is required, never omit it
-ExUnit.start()
-```
+## Hardware Guards
 
-In test modules:
+`DataCase.setup_forbidden_serial_stubs/0` stubs `Circuits.UART`, `Avrdude`, `AvrdudeRunner` and `Serial.Discovery` with raising modules from `test/support/forbidden_serial.ex`. To simulate one, override it with `stub/3` or `expect/3`. A new hardware-facing module needs its own forbidden stub.
 
-```elixir
-defmodule MyTest do
-  use ExUnit.Case, async: true
-  use Mimic
-end
-```
+## Processes
 
-## Core Functions
+| Situation | Approach |
+|---|---|
+| `Task.async` from the test process | Inherits mocks |
+| A single spawned process | `allow/3` |
+| Controllers or GenServers you do not start | `set_mimic_global` in a test module without `async: true` |
 
-| Function | Use when | Verified at end? |
-|----------|----------|-----------------|
-| `expect/4` | Function MUST be called | Yes |
-| `stub/3` | Function MAY be called | No |
-| `stub/1` | Stub all public functions | No |
-| `reject/1` or `reject/3` | Function must NOT be called | Yes |
+## Database Isolation
 
-```elixir
-# expect — FIFO queue for multiple calls
-Calculator
-|> expect(:add, fn x, y -> x + y end)
-|> expect(:add, fn _, _ -> :second_call end)
-
-# stub
-Calculator |> stub(:add, fn x, y -> x + y end)
-
-# reject
-reject(&Calculator.dangerous_operation/1)
-```
-
-## Mode Selection
-
-**Private (default — preferred):** Tests can use `async: true`. Each process sees its own mocks.
-
-```elixir
-setup :set_mimic_private
-setup :verify_on_exit!
-```
-
-**Global (use sparingly):** Must use `async: false`. Only owner process can create stubs/expectations. Cannot use `allow/3`.
-
-```elixir
-setup :set_mimic_global
-```
-
-## Multi-Process
-
-In private mode, use `allow/3` for spawned processes. `Task.async` tasks automatically inherit parent mocks — no `allow/3` needed.
-
-```elixir
-Calculator |> expect(:add, fn x, y -> x + y end)
-parent = self()
-spawn_link(fn ->
-  Calculator |> allow(parent, self())
-  assert Calculator.add(1, 2) == 3
-end)
-```
-
-## DSL Mode
-
-```elixir
-use Mimic.DSL
-
-test "example" do
-  stub Calculator.add(_x, _y), do: :stubbed
-  expect Calculator.mult(x, y), do: x * y
-end
-```
-
-## Constraints
-
-- Can only mock publicly exported functions — arity must match exactly
-- Mocking does NOT intercept intra-module calls — use fully qualified `Module.function/n`
-- `copy/2` must be called before `ExUnit.start()` for every module to mock
-
-## Common Errors
-
-| Error | Fix |
-|-------|-----|
-| `Module X has not been copied` | Add `Mimic.copy(X, type_check: true)` to `test_helper.exs` before `ExUnit.start()` |
-| `Function not defined for Module` | Check function name and arity |
-| `Only the global owner is allowed` | Wrong process in global mode |
-| `Allow must not be called when mode is global` | Don't mix `allow/3` with global mode |
+Async `DataCase` tests get a per-test copy of the SQLite database. `@tag :isolated_repo` gives the same copy without `async: true`.
