@@ -114,7 +114,8 @@ defmodule TreninoWeb.GaugeGuidance do
     do: "Not moving: the device is still being configured."
 
   defp lifecycle_blocker(_, %{ready: false}),
-    do: "Not moving: the axis needs a reference. Set it in hardware commissioning."
+    do:
+      "Not moving: the axis needs a reference. Set it in hardware commissioning, or reconnect the device if it homes automatically."
 
   defp lifecycle_blocker(_, %{paused: true}),
     do:

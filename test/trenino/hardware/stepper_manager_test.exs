@@ -388,12 +388,14 @@ defmodule Trenino.Hardware.StepperManagerTest do
       assert :sys.get_state(ctx.pid).watched_owners == %{}
     end
 
-    test "owner loss after a reconnect resumes and still references the axis", ctx do
-      auto_home_axis(ctx)
+    test "owner loss after a reconnect hands the axis back without moving it", ctx do
+      axis = auto_home_axis(ctx)
       {owner, _} = watched_owner(ctx)
       refute_receive {:sent, %StepperCommand{operation: :home}}, 100
       kill_and_wait(owner)
-      assert_receive {:sent, %StepperCommand{operation: :home}}, 200
+      refute_receive {:sent, %StepperCommand{operation: :home}}, 200
+      refute MapSet.member?(:sys.get_state(ctx.pid).paused_axes, axis.id)
+      GenServer.stop(StepperManager)
     end
 
     test "owner loss after a Recover never homes", ctx do

@@ -122,6 +122,10 @@ axis stays paused.
    wizard, browser/process loss stops manual motion and leaves automatic output paused
    until Resume.
 
+An axis paused or under manual control when the device connects misses that Home. It
+stays unreferenced until the next connection or a deliberate Home, so handing it back
+never moves it.
+
 Manual startup is default. Commissioned internal-stop axes with idle hold can
 explicitly opt into Home on connect, causing one bounded movement on each genuine
 new UART connection after acknowledged setup. Restarting the Trenino server counts

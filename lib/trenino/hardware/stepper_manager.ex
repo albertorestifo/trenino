@@ -412,7 +412,7 @@ defmodule Trenino.Hardware.StepperManager do
     session =
       cond do
         Map.get(snapshot, :lifecycle) == :fault ->
-          %{session | auto_home: false, skipped_home: MapSet.new()}
+          %{session | auto_home: false}
 
         session.auto_home and Map.get(snapshot, :lifecycle) == :awaiting_reference ->
           home_axes(s, session)
@@ -424,16 +424,15 @@ defmodule Trenino.Hardware.StepperManager do
     put_in(s.sessions[session.port], session)
   end
 
-  # An axis skipped here is remembered: only that axis may take its Home when handed back.
+  # A paused or leased axis misses this Home: it stays unreferenced until the next genuine
+  # connection or a deliberate Home, so nothing moves when it is handed back.
   defp home_axes(s, session) do
-    {ready, skipped} =
-      session.device_id
-      |> Hardware.list_stepper_axes()
-      |> Enum.filter(&StepperAxis.auto_home?/1)
-      |> Enum.split_with(&homeable?(s, &1.id))
+    session.device_id
+    |> Hardware.list_stepper_axes()
+    |> Enum.filter(&(StepperAxis.auto_home?(&1) and homeable?(s, &1.id)))
+    |> Enum.each(&StepperSession.command(session.pid, &1.id, :home, %{}, :startup))
 
-    Enum.each(ready, &StepperSession.command(session.pid, &1.id, :home, %{}, :startup))
-    %{session | auto_home: false, skipped_home: MapSet.new(skipped, & &1.id)}
+    %{session | auto_home: false}
   end
 
   defp homeable?(s, id),
@@ -445,7 +444,7 @@ defmodule Trenino.Hardware.StepperManager do
         s
 
       session ->
-        put_in(s.sessions[port], %{session | auto_home: false, skipped_home: MapSet.new()})
+        put_in(s.sessions[port], %{session | auto_home: false})
     end
   end
 
@@ -509,7 +508,6 @@ defmodule Trenino.Hardware.StepperManager do
         generation: generation(conn),
         device_id: device.id,
         auto_home: auto_home,
-        skipped_home: MapSet.new(),
         rollovers: 0
       }
 
@@ -729,7 +727,7 @@ defmodule Trenino.Hardware.StepperManager do
     case Hardware.get_stepper_axis(id) do
       {:ok, %{commissioned: true}} ->
         resume_axis(s, id)
-        s |> unpause(id) |> rearm_auto_home(id)
+        unpause(s, id)
 
       _ ->
         s
@@ -737,22 +735,6 @@ defmodule Trenino.Hardware.StepperManager do
   end
 
   defp resume_after_owner_loss(_lost_lease, s), do: s
-
-  # An axis that missed its startup Home only because it was paused takes that Home when
-  # handed back. Apply, Recover and faults forget skipped axes, so they never lead here.
-  defp rearm_auto_home(s, id) do
-    with {:ok, axis} <- Hardware.get_stepper_axis(id),
-         true <- StepperAxis.auto_home?(axis),
-         %{} = session <- find_session(s, axis.device_id),
-         true <- MapSet.member?(session.skipped_home, id),
-         %{lifecycle: :awaiting_reference} <- safe_snapshot(session.pid) do
-      StepperSession.command(session.pid, id, :home, %{}, :startup)
-      skipped = MapSet.delete(session.skipped_home, id)
-      put_in(s.sessions[session.port], %{session | skipped_home: skipped})
-    else
-      _ -> s
-    end
-  end
 
   # Without a session there is nothing to unpause: the manager's paused_axes is what a
   # future session starts from, and the caller clears it.
