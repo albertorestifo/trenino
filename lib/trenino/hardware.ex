@@ -9,6 +9,7 @@ defmodule Trenino.Hardware do
 
   alias Trenino.Hardware.{
     ConfigId,
+    ConfigurationManager,
     Device,
     DialCalibration,
     I2cInputs,
@@ -1066,6 +1067,27 @@ defmodule Trenino.Hardware do
     |> order_by([m], m.i2c_address)
     |> preload(:inputs)
     |> Repo.all()
+  end
+
+  @doc """
+  Ids of the inputs belonging to input chips currently reported failed on a port.
+  """
+  @spec failed_input_ids(String.t()) :: MapSet.t(integer())
+  def failed_input_ids(port) do
+    failed = ConfigurationManager.failed_i2c_modules(port)
+
+    with true <- failed != %{},
+         config_id when is_integer(config_id) <-
+           ConfigurationManager.port_to_config_id(port),
+         {:ok, device} <- get_device_by_config_id(config_id) do
+      device.id
+      |> list_i2c_modules()
+      |> Enum.filter(&Map.has_key?(failed, &1.i2c_address))
+      |> Enum.flat_map(& &1.inputs)
+      |> MapSet.new(& &1.id)
+    else
+      _ -> MapSet.new()
+    end
   end
 
   @doc "List all i2c modules across all devices (for MCP tools)."

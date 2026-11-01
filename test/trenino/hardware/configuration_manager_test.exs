@@ -6,6 +6,7 @@ defmodule Trenino.Hardware.ConfigurationManagerTest do
   alias Trenino.Serial.Protocol.ConfigurationError
   alias Trenino.Serial.Protocol.ConfigurationStored
   alias Trenino.Serial.Protocol.InputValue
+  alias Trenino.Serial.Protocol.ModuleError
 
   @config_topic "hardware:configuration"
   @input_values_topic "hardware:input_values"
@@ -320,6 +321,147 @@ defmodule Trenino.Hardware.ConfigurationManagerTest do
 
       assert {:error, :too_many_modules} =
                ConfigurationManager.apply_configuration(port, device.id)
+    end
+  end
+
+  describe "failed I2C chip tracking" do
+    setup do
+      Mimic.set_mimic_global()
+      Mimic.stub(Circuits.UART, :enumerate, fn -> %{} end)
+      {:ok, device} = Hardware.create_device(%{name: "Failing chips"})
+      port = unique_port()
+      test_pid = self()
+
+      Mimic.stub(Trenino.Serial.Connection, :connected_devices, fn ->
+        [%{port: port, device_config_id: device.config_id, device_version: "3.2.0"}]
+      end)
+
+      Mimic.stub(Trenino.Serial.Connection, :send_message, fn ^port, message ->
+        send(test_pid, {:configuration_message, message})
+        :ok
+      end)
+
+      {:ok, mcp} =
+        Hardware.create_i2c_module(device.id, %{
+          module_chip: :mcp23017,
+          i2c_address: 0x20,
+          params: %{
+            direct_base: 0,
+            matrix_base: 8,
+            debounce: 3,
+            direct_mask: 0x03,
+            row_mask: 0x30,
+            col_mask: 0x0C
+          }
+        })
+
+      {:ok, ads} =
+        Hardware.create_i2c_module(device.id, %{
+          module_chip: :ads1115,
+          i2c_address: 0x48,
+          params: %{channel_mask: 0b0011, gain: 1, ref_channel: nil, pin_base: 4}
+        })
+
+      %{device: device, port: port, mcp: mcp, ads: ads}
+    end
+
+    defp report(port, address, code) do
+      send(
+        ConfigurationManager,
+        {:serial_message, port, %ModuleError{i2c_address: address, error_code: code}}
+      )
+
+      :sys.get_state(ConfigurationManager)
+    end
+
+    test "codes 0, 1 and 3 mark an input chip failed", %{port: port} do
+      report(port, 0x20, 0)
+      assert %{0x20 => :init_failed} = ConfigurationManager.failed_i2c_modules(port)
+
+      report(port, 0x20, 1)
+      assert %{0x20 => :communication_lost} = ConfigurationManager.failed_i2c_modules(port)
+
+      report(port, 0x48, 3)
+
+      assert %{0x20 => :communication_lost, 0x48 => :reference_lost} =
+               ConfigurationManager.failed_i2c_modules(port)
+    end
+
+    test "code 2 clears it, and a later code 3 leaves :reference_lost", %{port: port} do
+      report(port, 0x48, 1)
+      report(port, 0x48, 2)
+      assert ConfigurationManager.failed_i2c_modules(port) == %{}
+
+      report(port, 0x48, 2)
+      report(port, 0x48, 3)
+      assert %{0x48 => :reference_lost} = ConfigurationManager.failed_i2c_modules(port)
+    end
+
+    test "an HT16K33 or stepper shield address is logged and not tracked", %{
+      device: device,
+      port: port
+    } do
+      {:ok, _} =
+        Hardware.create_i2c_module(device.id, %{
+          module_chip: :ht16k33,
+          i2c_address: 0x70,
+          params: %{brightness: 8, num_digits: 4, display_type: :fourteen_segment}
+        })
+
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          report(port, 0x70, 0)
+          report(port, 0x5F, 1)
+        end)
+
+      assert log =~ "0x70"
+      assert ConfigurationManager.failed_i2c_modules(port) == %{}
+    end
+
+    test "log wording follows the code", %{port: port} do
+      log = ExUnit.CaptureLog.capture_log(fn -> report(port, 0x20, 1) end)
+      assert log =~ "lost communication"
+      refute log =~ "failed init"
+    end
+
+    test "reconfiguring clears the port", %{device: device, port: port} do
+      report(port, 0x20, 1)
+      assert map_size(ConfigurationManager.failed_i2c_modules(port)) == 1
+
+      assert {:ok, _} = ConfigurationManager.apply_configuration(port, device.id)
+      assert ConfigurationManager.failed_i2c_modules(port) == %{}
+    end
+
+    test "disconnect clears the port", %{port: port} do
+      report(port, 0x20, 1)
+      send(ConfigurationManager, {:devices_updated, []})
+      :sys.get_state(ConfigurationManager)
+      assert ConfigurationManager.failed_i2c_modules(port) == %{}
+    end
+
+    test "a broadcast is sent on each change", %{port: port} do
+      ConfigurationManager.subscribe_i2c_status(port)
+
+      report(port, 0x20, 1)
+      assert_receive {:i2c_module_status, ^port, %{0x20 => :communication_lost}}
+
+      report(port, 0x20, 1)
+      refute_receive {:i2c_module_status, _, _}, 50
+
+      report(port, 0x20, 2)
+      assert_receive {:i2c_module_status, ^port, map} when map == %{}
+    end
+
+    test "failed_input_ids lists children of failed chips", %{port: port, mcp: mcp, ads: ads} do
+      assert Hardware.failed_input_ids(port) == MapSet.new()
+
+      report(port, 0x48, 1)
+      {:ok, inputs} = Hardware.list_inputs(ads.device_id, include_chip_inputs: true)
+      ads_ids = for i <- inputs, i.i2c_module_id == ads.id, do: i.id
+      mcp_ids = for i <- inputs, i.i2c_module_id == mcp.id, do: i.id
+      assert ads_ids != [] and mcp_ids != []
+
+      assert Hardware.failed_input_ids(port) == MapSet.new(ads_ids)
     end
   end
 

@@ -31,6 +31,9 @@ defmodule Trenino.Hardware.ConfigurationManager do
   @config_timeout_ms 10_000
   @config_topic "hardware:configuration"
   @input_values_topic "hardware:input_values"
+  @i2c_status_topic "hardware:i2c_status"
+
+  @type i2c_status :: :init_failed | :communication_lost | :reference_lost
 
   defmodule State do
     @moduledoc false
@@ -43,11 +46,15 @@ defmodule Trenino.Hardware.ConfigurationManager do
 
     @type t :: %__MODULE__{
             in_flight: %{integer() => in_flight_info()},
+            failed_i2c: %{
+              String.t() => %{integer() => Trenino.Hardware.ConfigurationManager.i2c_status()}
+            },
             input_values: %{String.t() => %{integer() => integer()}},
             subscribed_ports: MapSet.t(String.t())
           }
 
     defstruct in_flight: %{},
+              failed_i2c: %{},
               input_values: %{},
               subscribed_ports: MapSet.new()
   end
@@ -83,6 +90,19 @@ defmodule Trenino.Hardware.ConfigurationManager do
     # Ensure ConfigurationManager is listening to serial messages for this port
     GenServer.cast(__MODULE__, {:ensure_port_subscription, port})
     Phoenix.PubSub.subscribe(Trenino.PubSub, "#{@input_values_topic}:#{port}")
+  end
+
+  @doc "Subscribe to failed input chip changes for a port (`{:i2c_module_status, port, failed_map}`)"
+  @spec subscribe_i2c_status(String.t()) :: :ok | {:error, term()}
+  def subscribe_i2c_status(port) do
+    GenServer.cast(__MODULE__, {:ensure_port_subscription, port})
+    Phoenix.PubSub.subscribe(Trenino.PubSub, "#{@i2c_status_topic}:#{port}")
+  end
+
+  @doc "Input chips currently reported failed on a port, keyed by I2C address"
+  @spec failed_i2c_modules(String.t()) :: %{integer() => i2c_status()}
+  def failed_i2c_modules(port) do
+    GenServer.call(__MODULE__, {:failed_i2c_modules, port})
   end
 
   @doc "Get current input values for a port"
@@ -143,6 +163,11 @@ defmodule Trenino.Hardware.ConfigurationManager do
   end
 
   @impl true
+  def handle_call({:failed_i2c_modules, port}, _from, %State{} = state) do
+    {:reply, Map.get(state.failed_i2c, port, %{}), state}
+  end
+
+  @impl true
   def handle_cast({:ensure_port_subscription, port}, %State{} = state) do
     {:noreply, maybe_subscribe_to_port(state, port)}
   end
@@ -176,6 +201,12 @@ defmodule Trenino.Hardware.ConfigurationManager do
 
       broadcast_config_event({:configuration_failed, info.port, info.device_id, :disconnected})
     end)
+
+    state =
+      state.failed_i2c
+      |> Map.keys()
+      |> Enum.reject(&MapSet.member?(connected_ports, &1))
+      |> Enum.reduce(state, &set_failed_i2c(&2, &1, %{}))
 
     {:noreply, %{state | input_values: new_input_values, in_flight: Map.new(active)}}
   end
@@ -262,14 +293,14 @@ defmodule Trenino.Hardware.ConfigurationManager do
 
   @impl true
   def handle_info(
-        {:serial_message, _port, %ModuleError{i2c_address: addr, error_code: code}},
+        {:serial_message, port, %ModuleError{i2c_address: addr, error_code: code}},
         %State{} = state
       ) do
     Logger.warning(
-      "ModuleError: I2C module at #{I2cModule.format_i2c_address(addr)} failed init (error_code=#{code})"
+      "ModuleError: I2C module at #{I2cModule.format_i2c_address(addr)} #{ModuleError.describe(code)} (error_code=#{code})"
     )
 
-    {:noreply, state}
+    {:noreply, track_module_error(state, port, addr, code)}
   end
 
   @impl true
@@ -298,6 +329,55 @@ defmodule Trenino.Hardware.ConfigurationManager do
   end
 
   # Private helpers
+
+  defp track_module_error(%State{} = state, port, addr, code) do
+    status = ModuleError.status(code)
+
+    if status != nil and input_chip_address?(port, addr) do
+      current = Map.get(state.failed_i2c, port, %{})
+
+      updated =
+        if status == :recovered,
+          do: Map.delete(current, addr),
+          else: Map.put(current, addr, status)
+
+      set_failed_i2c(state, port, updated)
+    else
+      state
+    end
+  end
+
+  defp input_chip_address?(port, addr) do
+    with %{device_config_id: config_id} when is_integer(config_id) <-
+           Enum.find(Connection.connected_devices(), &(&1.port == port)),
+         {:ok, device} <- Hardware.get_device_by_config_id(config_id) do
+      device.id
+      |> Hardware.list_i2c_modules()
+      |> Enum.any?(&(&1.i2c_address == addr and I2cModule.input_chip?(&1)))
+    else
+      _ -> false
+    end
+  end
+
+  # Stores the port's failures and broadcasts only when they changed.
+  defp set_failed_i2c(%State{} = state, port, failed) do
+    if Map.get(state.failed_i2c, port, %{}) == failed do
+      state
+    else
+      Phoenix.PubSub.broadcast(
+        Trenino.PubSub,
+        "#{@i2c_status_topic}:#{port}",
+        {:i2c_module_status, port, failed}
+      )
+
+      failed_i2c =
+        if failed == %{},
+          do: Map.delete(state.failed_i2c, port),
+          else: Map.put(state.failed_i2c, port, failed)
+
+      %{state | failed_i2c: failed_i2c}
+    end
+  end
 
   defp maybe_subscribe_to_port(%State{} = state, port) do
     if MapSet.member?(state.subscribed_ports, port) do
@@ -337,6 +417,7 @@ defmodule Trenino.Hardware.ConfigurationManager do
           }
 
           new_in_flight = Map.put(state.in_flight, config_id, in_flight_info)
+          state = set_failed_i2c(state, port, %{})
           {:ok, config_id, %{state | in_flight: new_in_flight}}
 
         error ->
