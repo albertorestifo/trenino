@@ -23,6 +23,7 @@ defmodule Trenino.Hardware.ConfigurationManager do
   alias Trenino.Serial.Protocol.ConfigurationError
   alias Trenino.Serial.Protocol.ConfigurationStored
   alias Trenino.Serial.Protocol.Configure
+  alias Trenino.Serial.Protocol.IdentityRequest
   alias Trenino.Serial.Protocol.InputValue
   alias Trenino.Serial.Protocol.ModuleError
 
@@ -50,13 +51,15 @@ defmodule Trenino.Hardware.ConfigurationManager do
               String.t() => %{integer() => Trenino.Hardware.ConfigurationManager.i2c_status()}
             },
             input_values: %{String.t() => %{integer() => integer()}},
-            subscribed_ports: MapSet.t(String.t())
+            subscribed_ports: MapSet.t(String.t()),
+            connected_ports: MapSet.t(String.t())
           }
 
     defstruct in_flight: %{},
               failed_i2c: %{},
               input_values: %{},
-              subscribed_ports: MapSet.new()
+              subscribed_ports: MapSet.new(),
+              connected_ports: MapSet.new()
   end
 
   # Client API
@@ -208,7 +211,18 @@ defmodule Trenino.Hardware.ConfigurationManager do
       |> Enum.reject(&MapSet.member?(connected_ports, &1))
       |> Enum.reduce(state, &set_failed_i2c(&2, &1, %{}))
 
-    {:noreply, %{state | input_values: new_input_values, in_flight: Map.new(active)}}
+    state =
+      connected_ports
+      |> MapSet.difference(state.connected_ports)
+      |> Enum.reduce(state, &announce_connected_port(&2, &1))
+
+    {:noreply,
+     %{
+       state
+       | input_values: new_input_values,
+         in_flight: Map.new(active),
+         connected_ports: connected_ports
+     }}
   end
 
   @impl true
@@ -329,6 +343,24 @@ defmodule Trenino.Hardware.ConfigurationManager do
   end
 
   # Private helpers
+
+  # Failures reported while the port was still discovering were lost. A fresh identity
+  # request makes the firmware report the active ones again.
+  defp announce_connected_port(%State{} = state, port) do
+    state = maybe_subscribe_to_port(state, port)
+    request = %IdentityRequest{request_id: :erlang.unique_integer([:positive])}
+
+    try do
+      case Connection.send_message(port, request) do
+        :ok -> :ok
+        error -> Logger.debug("Identity request to #{port} failed: #{inspect(error)}")
+      end
+    catch
+      :exit, reason -> Logger.debug("Identity request to #{port} failed: #{inspect(reason)}")
+    end
+
+    state
+  end
 
   defp track_module_error(%State{} = state, port, addr, code) do
     status = ModuleError.status(code)

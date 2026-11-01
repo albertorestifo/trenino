@@ -5,6 +5,7 @@ defmodule Trenino.Hardware.ConfigurationManagerTest do
   alias Trenino.Hardware.ConfigurationManager
   alias Trenino.Serial.Protocol.ConfigurationError
   alias Trenino.Serial.Protocol.ConfigurationStored
+  alias Trenino.Serial.Protocol.IdentityRequest
   alias Trenino.Serial.Protocol.InputValue
   alias Trenino.Serial.Protocol.ModuleError
 
@@ -450,6 +451,51 @@ defmodule Trenino.Hardware.ConfigurationManagerTest do
 
       report(port, 0x20, 2)
       assert_receive {:i2c_module_status, ^port, map} when map == %{}
+    end
+
+    test "a newly connected port gets one IdentityRequest and a subscription", %{port: port} do
+      send(ConfigurationManager, {:devices_updated, [%{port: port, status: :connected}]})
+      :sys.get_state(ConfigurationManager)
+
+      assert_receive {:configuration_message, %IdentityRequest{}}
+      refute_receive {:configuration_message, _}, 50
+      assert port in MapSet.to_list(:sys.get_state(ConfigurationManager).subscribed_ports)
+    end
+
+    test "an already connected port gets no further request", %{port: port} do
+      devices = [%{port: port, status: :connected}]
+      send(ConfigurationManager, {:devices_updated, devices})
+      :sys.get_state(ConfigurationManager)
+      assert_receive {:configuration_message, %IdentityRequest{}}
+
+      send(ConfigurationManager, {:devices_updated, devices})
+      :sys.get_state(ConfigurationManager)
+      refute_receive {:configuration_message, _}, 50
+    end
+
+    test "a ModuleError after connecting is tracked", %{port: port} do
+      send(ConfigurationManager, {:devices_updated, [%{port: port, status: :connected}]})
+      :sys.get_state(ConfigurationManager)
+
+      Phoenix.PubSub.broadcast(
+        Trenino.PubSub,
+        "serial:messages:#{port}",
+        {:serial_message, port, %ModuleError{i2c_address: 0x20, error_code: 1}}
+      )
+
+      :sys.get_state(ConfigurationManager)
+      assert %{0x20 => :communication_lost} = ConfigurationManager.failed_i2c_modules(port)
+    end
+
+    test "a device that reconnects gets another request", %{port: port} do
+      send(ConfigurationManager, {:devices_updated, [%{port: port, status: :connected}]})
+      send(ConfigurationManager, {:devices_updated, []})
+      send(ConfigurationManager, {:devices_updated, [%{port: port, status: :connected}]})
+      :sys.get_state(ConfigurationManager)
+
+      assert_receive {:configuration_message, %IdentityRequest{}}
+      assert_receive {:configuration_message, %IdentityRequest{}}
+      refute_receive {:configuration_message, _}, 50
     end
 
     test "failed_input_ids lists children of failed chips", %{port: port, mcp: mcp, ads: ads} do
