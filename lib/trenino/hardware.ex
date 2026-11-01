@@ -564,6 +564,27 @@ defmodule Trenino.Hardware do
   defp i2c_wire_config(%{module_chip: :ht16k33, i2c_address: address, params: params}),
     do: {:ht16k33, address, params.brightness, params.num_digits}
 
+  defp i2c_wire_config(%{module_chip: :mcp23017, i2c_address: address, params: p}),
+    do:
+      {:mcp23017, address, p.direct_base, p.matrix_base, p.debounce, p.direct_mask, p.row_mask,
+       p.col_mask}
+
+  defp i2c_wire_config(%{module_chip: :ads1115, i2c_address: address, params: p} = mod),
+    do:
+      {:ads1115, address, p.pin_base, p.channel_mask, p.gain, p.ref_channel,
+       chip_sensitivities(mod)}
+
+  @doc """
+  The four per-channel sensitivities sent to an ADS1115, indexed by channel.
+
+  A channel without a child input gets 0 (disabled). Requires `:inputs` to be loaded.
+  """
+  @spec chip_sensitivities(I2cModule.t()) :: [non_neg_integer()]
+  def chip_sensitivities(%I2cModule{inputs: inputs}) when is_list(inputs) do
+    by_channel = Map.new(inputs, &{&1.i2c_channel, &1.sensitivity || 0})
+    for channel <- 0..3, do: Map.get(by_channel, channel, 0)
+  end
+
   defp matrix_pins(matrix),
     do: {Enum.map(matrix.row_pins, & &1.pin), Enum.map(matrix.col_pins, & &1.pin)}
 
@@ -1043,6 +1064,7 @@ defmodule Trenino.Hardware do
     I2cModule
     |> where([m], m.device_id == ^device_id)
     |> order_by([m], m.i2c_address)
+    |> preload(:inputs)
     |> Repo.all()
   end
 

@@ -349,22 +349,43 @@ defmodule Trenino.Hardware.ConfigurationManager do
     end
   end
 
-  # Stepper axes need firmware 3.1+. Without this check a pre-3.1 device would accept the
-  # configuration while StepperManager silently declines to start a session.
+  @max_modules 8
+  @stepper_min_version "3.1.0"
+  @chip_min_version "3.2.0"
+
+  # Stepper axes need firmware 3.1+ and input chips 3.2+. Without these checks an older
+  # device would accept the configuration while ignoring or mishandling the new parts.
   defp validate_configuration(port, device_id, inputs, matrices, i2c_modules) do
-    case {Hardware.list_stepper_axes(device_id), inputs ++ matrices ++ i2c_modules} do
-      {[], []} -> {:error, :no_inputs}
-      {[], _} -> :ok
-      {_axes, _} -> validate_stepper_firmware(port)
+    axes = Hardware.list_stepper_axes(device_id)
+
+    cond do
+      axes == [] and inputs == [] and matrices == [] and i2c_modules == [] ->
+        {:error, :no_inputs}
+
+      length(inputs) + length(matrices) + length(i2c_modules) > @max_modules ->
+        {:error, :too_many_modules}
+
+      true ->
+        required =
+          [
+            if(axes != [], do: @stepper_min_version),
+            if(Enum.any?(i2c_modules, &I2cModule.input_chip?/1), do: @chip_min_version)
+          ]
+          |> Enum.reject(&is_nil/1)
+          |> Enum.max(Version, fn -> nil end)
+
+        validate_firmware(port, required)
     end
   end
 
-  defp validate_stepper_firmware(port) do
+  defp validate_firmware(_port, nil), do: :ok
+
+  defp validate_firmware(port, minimum) do
     conn = Enum.find(Connection.connected_devices(), &(&1.port == port))
 
     with %{device_version: version} when is_binary(version) <- conn,
          {:ok, parsed} <- Version.parse(version),
-         true <- Version.compare(parsed, "3.1.0") != :lt and parsed.pre == [] do
+         true <- Version.compare(parsed, minimum) != :lt and parsed.pre == [] do
       :ok
     else
       _ -> {:error, :firmware_update_required}
@@ -481,6 +502,51 @@ defmodule Trenino.Hardware.ConfigurationManager do
       i2c_address: mod.i2c_address,
       brightness: mod.params.brightness,
       num_digits: mod.params.num_digits
+    }
+  end
+
+  defp build_configure_message(
+         config_id,
+         total_parts,
+         part_number,
+         {:i2c_module, %I2cModule{module_chip: :mcp23017} = mod}
+       ) do
+    p = mod.params
+
+    %Configure{
+      config_id: config_id,
+      total_parts: total_parts,
+      part_number: part_number,
+      input_type: :mcp23017,
+      i2c_address: mod.i2c_address,
+      direct_base: p.direct_base,
+      matrix_base: p.matrix_base,
+      debounce: p.debounce,
+      direct_mask: p.direct_mask,
+      row_mask: p.row_mask,
+      col_mask: p.col_mask
+    }
+  end
+
+  defp build_configure_message(
+         config_id,
+         total_parts,
+         part_number,
+         {:i2c_module, %I2cModule{module_chip: :ads1115} = mod}
+       ) do
+    p = mod.params
+
+    %Configure{
+      config_id: config_id,
+      total_parts: total_parts,
+      part_number: part_number,
+      input_type: :ads1115,
+      i2c_address: mod.i2c_address,
+      pin_base: p.pin_base,
+      channel_mask: p.channel_mask,
+      gain: p.gain,
+      ref_channel: p.ref_channel,
+      sensitivities: Hardware.chip_sensitivities(mod)
     }
   end
 

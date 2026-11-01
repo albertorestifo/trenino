@@ -7,6 +7,40 @@ defmodule TreninoWeb.ConfigurationEditLiveTest do
   alias Trenino.Hardware.Calibration.Session, as: CalibrationSession
   alias Trenino.Hardware.Input
 
+  describe "apply_to_device errors" do
+    setup %{conn: conn} do
+      Mimic.set_mimic_global()
+      {:ok, device} = Hardware.create_device(%{name: "Apply device"})
+      {:ok, view, _html} = live(conn, "/configurations/#{device.config_id}")
+      %{device: device, view: view, port: "/dev/tty.apply_#{System.unique_integer([:positive])}"}
+    end
+
+    test "shows the generic firmware message", %{device: device, view: view, port: port} do
+      {:ok, _} =
+        Hardware.create_i2c_module(device.id, %{
+          module_chip: :mcp23017,
+          i2c_address: 0x20,
+          params: %{direct_mask: 1, row_mask: 0, col_mask: 0}
+        })
+
+      Mimic.stub(Trenino.Serial.Connection, :connected_devices, fn ->
+        [%{port: port, device_version: "3.1.0"}]
+      end)
+
+      html = render_hook(view, "apply_to_device", %{"port" => port})
+      assert html =~ "This configuration needs newer firmware. Update the device firmware"
+    end
+
+    test "shows the too many modules error", %{device: device, view: view, port: port} do
+      for pin <- 1..9 do
+        {:ok, _} = Hardware.create_input(device.id, %{pin: pin, input_type: :button, debounce: 5})
+      end
+
+      html = render_hook(view, "apply_to_device", %{"port" => port})
+      assert html =~ "at most 8 modules"
+    end
+  end
+
   describe "mount/3 with invalid config_id" do
     test "redirects when configuration not found", %{conn: conn} do
       {:error, {:redirect, %{to: "/", flash: flash}}} =

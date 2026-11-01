@@ -502,13 +502,22 @@ defmodule TreninoWeb.ConfigurationEditLive do
          |> assign(:applying, false)
          |> put_flash(:error, "Cannot apply empty configuration. Add at least one input.")}
 
+      {:error, :too_many_modules} ->
+        {:noreply,
+         socket
+         |> assign(:applying, false)
+         |> put_flash(
+           :error,
+           "A configuration supports at most 8 modules (inputs, matrices and I2C modules together)."
+         )}
+
       {:error, :firmware_update_required} ->
         {:noreply,
          socket
          |> assign(:applying, false)
          |> put_flash(
            :error,
-           "Stepper gauges need firmware 3.1 or newer. Update the device firmware, then apply again."
+           "This configuration needs newer firmware. Update the device firmware, then apply again."
          )}
 
       {:error, reason} ->
