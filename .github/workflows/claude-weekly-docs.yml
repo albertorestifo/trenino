@@ -20,7 +20,7 @@ jobs:
 
     steps:
       - name: Harden Runner
-        uses: step-security/harden-runner@v2
+        uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
         with:
           egress-policy: audit
 
@@ -129,7 +129,7 @@ jobs:
       - name: Run Claude Documentation Review
         if: steps.collect-commits.outputs.commit_count > 0
         id: claude-review
-        uses: anthropics/claude-code-action@v1
+        uses: anthropics/claude-code-action@d535f5172dec02b204866b393d6b20b9b2aaf98d # v1.0.266
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
 
@@ -162,9 +162,8 @@ jobs:
             | `docs/development.md` | Developers | Development setup and workflow |
             | `docs/control_auto_suggestion.md` | Developers | Auto-suggestion system design |
             | `docs/lever_input_mapping_architecture.md` | Developers | Lever mapping internals |
-            | `docs/features/bldc-levers.md` | Both | BLDC lever feature documentation |
+            | `docs/windows-distribution.md` | Developers | Tauri installers and updater distribution |
             | `CLAUDE.md` | Developers (AI agents) | Coding guidelines for AI assistants |
-            | `AGENTS.md` | Developers (AI agents) | Agent-specific instructions |
 
             ## Context
 
@@ -238,7 +237,7 @@ jobs:
             - **Read the code**: Don't guess what a feature does from commit messages alone. Read the implementation to write accurate docs.
             - **Show, don't just tell**: Prefer concrete examples over abstract descriptions, especially in end-user docs.
             - **Respect existing style**: Match the voice and formatting conventions already established in each file.
-            - **Create new docs if needed**: If a significant feature has zero documentation, create a new file in `docs/` or `docs/features/` and link to it from README.md.
+            - **Create new docs if needed**: If a significant feature has zero documentation, create a new file in `docs/` and link to it from README.md.
             - **ONLY create PR if you made changes**: Do not create empty PRs.
 
             Start by reading the commit data, then systematically audit each documentation file.

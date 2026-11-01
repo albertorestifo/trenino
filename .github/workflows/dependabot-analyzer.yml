@@ -12,7 +12,7 @@ on:
 
 jobs:
   analyze-dependabot:
-    if: github.actor == 'dependabot[bot]'
+    if: github.event.pull_request.user.login == 'dependabot[bot]'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
@@ -22,7 +22,7 @@ jobs:
 
     steps:
       - name: Harden Runner
-        uses: step-security/harden-runner@v2
+        uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
         with:
           egress-policy: audit
 
@@ -36,10 +36,15 @@ jobs:
           fetch-depth: 1
 
       - name: Analyze with Claude
-        uses: anthropics/claude-code-action@v1
+        uses: anthropics/claude-code-action@d535f5172dec02b204866b393d6b20b9b2aaf98d # v1.0.266
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          # OIDC tokens are rejected under pull_request_target, so skip the
+          # action's App token exchange and use the job's scoped token instead.
+          github_token: ${{ github.token }}
           allowed_bots: "dependabot[bot]"
+          claude_args: |
+            --allowedTools "Bash(gh pr view:*),Bash(gh pr comment:*),WebFetch"
           prompt: |
             Analyze Dependabot PR #${{ github.event.pull_request.number }} and post a safety assessment comment.
 
