@@ -5,6 +5,7 @@ defmodule TreninoWeb.TrainEditLiveTest do
 
   alias Trenino.Hardware
   alias Trenino.Train, as: TrainContext
+  alias Trenino.Train.Detection
   alias Trenino.Train.Train
 
   # Sample state that NotchMappingSession broadcasts with events
@@ -225,6 +226,42 @@ defmodule TreninoWeb.TrainEditLiveTest do
         |> render_submit()
 
       assert html =~ "has already been taken"
+    end
+
+    test "re-detects the active train when identifiers change", %{conn: conn} do
+      train = saved_train_with_cached_detection()
+      [existing] = train.identifiers
+
+      {:ok, view, _html} = live(conn, ~p"/trains/#{train.id}")
+
+      render_submit(view, "save_train", %{
+        "train" => %{
+          identifiers: %{
+            "0" => %{id: existing.id, identifier: existing.identifier},
+            "1" => %{identifier: "RVM_NEW_CAB"}
+          },
+          identifiers_sort: ["0", "1"]
+        }
+      })
+
+      assert Detection.get_current_identifier() == nil
+    end
+
+    test "keeps the cached detection when identifiers are unchanged", %{conn: conn} do
+      train = saved_train_with_cached_detection()
+      [existing] = train.identifiers
+
+      {:ok, view, _html} = live(conn, ~p"/trains/#{train.id}")
+
+      render_submit(view, "save_train", %{
+        "train" => %{
+          name: "Renamed",
+          identifiers: %{"0" => %{id: existing.id, identifier: existing.identifier}},
+          identifiers_sort: ["0"]
+        }
+      })
+
+      assert Detection.get_current_identifier() == "RVM_CACHED_CAB"
     end
 
     test "removes one identifier while keeping another", %{conn: conn} do
@@ -449,4 +486,17 @@ defmodule TreninoWeb.TrainEditLiveTest do
   # Note: "button element with custom on/off values" tests removed - configuration
   # now requires simulator connection and uses the ConfigurationWizard.
   # See configuration_wizard_component_test.exs for wizard tests.
+
+  defp saved_train_with_cached_detection do
+    {:ok, train} =
+      TrainContext.create_train(%{
+        name: "Cached",
+        identifiers: [%{identifier: "RVM_EXISTING_CAB"}]
+      })
+
+    :sys.replace_state(Detection, &%{&1 | current_identifier: "RVM_CACHED_CAB"})
+    on_exit(fn -> :sys.replace_state(Detection, &%{&1 | current_identifier: nil}) end)
+
+    train
+  end
 end

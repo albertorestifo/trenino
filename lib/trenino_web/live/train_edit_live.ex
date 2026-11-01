@@ -1297,6 +1297,11 @@ defmodule TreninoWeb.TrainEditLive do
       {:ok, train} ->
         changeset = Train.changeset(train, %{})
 
+        # Detection caches its lookup per identifier, so a changed list needs a fresh match
+        if Train.identifier_values(train) != Train.identifier_values(socket.assigns.train) do
+          TrainContext.sync()
+        end
+
         {:noreply,
          socket
          |> assign(:train, train)
