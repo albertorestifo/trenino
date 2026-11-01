@@ -630,7 +630,7 @@ defmodule Trenino.Hardware do
       Input
       |> where([i], i.device_id == ^device_id)
       |> order_by([i], i.pin)
-      |> preload([:calibration])
+      |> preload([:calibration, :i2c_module])
 
     query =
       if include_virtual do
@@ -675,7 +675,7 @@ defmodule Trenino.Hardware do
       Input
       |> join(:inner, [i], d in Device, on: i.device_id == d.id)
       |> order_by([i, d], [d.name, i.pin])
-      |> preload([:device, :calibration])
+      |> preload([:device, :calibration, :i2c_module])
 
     query =
       if include_uncalibrated do
@@ -1065,7 +1065,7 @@ defmodule Trenino.Hardware do
     I2cModule
     |> where([m], m.device_id == ^device_id)
     |> order_by([m], m.i2c_address)
-    |> preload(:inputs)
+    |> preload(inputs: :calibration)
     |> Repo.all()
   end
 

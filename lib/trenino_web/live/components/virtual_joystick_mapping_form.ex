@@ -2,6 +2,8 @@ defmodule TreninoWeb.Live.Components.VirtualJoystickMappingForm do
   @moduledoc false
   use TreninoWeb, :html
 
+  alias Trenino.Hardware.InputLabel
+
   attr :kind, :atom, required: true
   attr :inputs, :list, required: true
   attr :mapping, :any, default: nil
@@ -61,7 +63,7 @@ defmodule TreninoWeb.Live.Components.VirtualJoystickMappingForm do
                 value={input.id}
                 selected={@selected_input_id == input.id}
               >
-                {input.device.name} · {input.name || "Pin #{input.pin}"}
+                {input.device.name} · {input.name || InputLabel.pin(input)}
               </option>
             </select>
           </label>

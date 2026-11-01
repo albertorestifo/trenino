@@ -14,24 +14,41 @@ defmodule TreninoWeb.I2cModuleFormComponent do
   @output_only_pins [7, 15]
   @default_sensitivity "5"
 
+  # The parent re-renders on live events (input values, chip status). Form state
+  # is initialised only when the module being edited changes (a different module,
+  # or the same one reloaded after a save), so those renders never reset what the
+  # user has typed.
   @impl true
   def update(%{i2c_module: mod, device_id: device_id} = _assigns, socket) do
+    if initialized_for?(socket, mod, device_id) do
+      {:ok, socket}
+    else
+      {:ok, init_form(socket, mod, device_id)}
+    end
+  end
+
+  defp initialized_for?(socket, mod, device_id) do
+    Map.has_key?(socket.assigns, :form) and
+      socket.assigns.device_id == device_id and
+      socket.assigns.i2c_module == mod
+  end
+
+  defp init_form(socket, mod, device_id) do
     chip = if mod, do: Atom.to_string(mod.module_chip), else: "ht16k33"
     changeset = I2cModule.changeset(mod || %I2cModule{}, %{})
 
-    {:ok,
-     socket
-     |> assign(:i2c_module, mod)
-     |> assign(:device_id, device_id)
-     |> assign(:form, to_form(changeset))
-     |> assign(:chip, chip)
-     |> assign(:impact, nil)
-     |> assign(:free_pins, Hardware.free_virtual_pin_count(device_id, mod && mod.id))
-     |> assign(
-       :i2c_address_input,
-       if(mod && mod.i2c_address, do: to_string(mod.i2c_address), else: "")
-     )
-     |> assign_chip_state(chip, mod)}
+    socket
+    |> assign(:i2c_module, mod)
+    |> assign(:device_id, device_id)
+    |> assign(:form, to_form(changeset))
+    |> assign(:chip, chip)
+    |> assign(:impact, nil)
+    |> assign(:free_pins, Hardware.free_virtual_pin_count(device_id, mod && mod.id))
+    |> assign(
+      :i2c_address_input,
+      if(mod && mod.i2c_address, do: to_string(mod.i2c_address), else: "")
+    )
+    |> assign_chip_state(chip, mod)
   end
 
   @impl true

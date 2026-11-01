@@ -22,6 +22,7 @@ defmodule TreninoWeb.CalibrationWizard do
 
   alias Trenino.Hardware
   alias Trenino.Hardware.Calibration.Session
+  alias Trenino.Hardware.InputLabel
 
   @impl true
   def mount(socket) do
@@ -125,7 +126,7 @@ defmodule TreninoWeb.CalibrationWizard do
     <div class="flex items-center justify-between mb-6">
       <div>
         <h2 class="text-xl font-semibold">Calibrate Input</h2>
-        <p class="text-sm text-base-content/70">Pin {@input.pin}</p>
+        <p class="text-sm text-base-content/70">{InputLabel.pin(@input)}</p>
       </div>
       <button
         phx-click="cancel"

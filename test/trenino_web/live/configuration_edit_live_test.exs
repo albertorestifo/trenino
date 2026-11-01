@@ -466,4 +466,245 @@ defmodule TreninoWeb.ConfigurationEditLiveTest do
       end)
     end)
   end
+
+  describe "chip inputs" do
+    alias Trenino.Hardware.ConfigurationManager
+
+    setup %{conn: conn} do
+      Mimic.set_mimic_global()
+      {:ok, device} = Hardware.create_device(%{name: "Chip device"})
+
+      {:ok, mcp} =
+        Hardware.create_i2c_module(device.id, %{
+          name: "Panel",
+          module_chip: :mcp23017,
+          i2c_address: 0x20,
+          params: %{direct_mask: 0b10000, row_mask: 0b11, col_mask: 0b1100}
+        })
+
+      {:ok, ads} =
+        Hardware.create_i2c_module(device.id, %{
+          module_chip: :ads1115,
+          i2c_address: 0x48,
+          params: %{channel_mask: 0b0100, gain: 1, ref_channel: nil}
+        })
+
+      %{conn: conn, device: device, mcp: mcp, ads: ads}
+    end
+
+    defp connect_device(device) do
+      port = "/dev/tty.chip_#{System.unique_integer([:positive])}"
+
+      Mimic.stub(Trenino.Serial.Connection, :list_devices, fn ->
+        [
+          %Trenino.Serial.Connection.DeviceConnection{
+            port: port,
+            status: :connected,
+            device_config_id: device.config_id
+          }
+        ]
+      end)
+
+      port
+    end
+
+    test "device page groups inputs under their chip", %{conn: conn, device: device, mcp: mcp} do
+      {:ok, view, html} = live(conn, "/configurations/#{device.config_id}")
+
+      assert has_element?(view, "#chip-inputs-#{mcp.id}")
+      assert has_element?(view, "#chip-inputs-#{mcp.id} td", "MCP 0x20 GPA4")
+      assert has_element?(view, "#chip-inputs-#{mcp.id} td", "MCP 0x20 R1C1")
+      assert html =~ "ADS 0x48 AIN2"
+      # Chip inputs are not listed with the board inputs.
+      refute has_element?(view, "#add-display[disabled]")
+    end
+
+    test "modal titles are chip neutral and keep their ids", %{
+      conn: conn,
+      device: device,
+      mcp: mcp
+    } do
+      {:ok, view, _html} = live(conn, "/configurations/#{device.config_id}")
+
+      view |> element("#add-display") |> render_click()
+      assert has_element?(view, "#i2c-display-title", "Add I2C module")
+      view |> element("button", "Cancel") |> render_click()
+
+      view |> element("#edit-display-#{mcp.id}") |> render_click()
+      assert has_element?(view, "#i2c-display-title", "Edit I2C module")
+    end
+
+    test "chip inputs can be calibrated and renamed from the device page", %{
+      conn: conn,
+      device: device,
+      mcp: mcp,
+      ads: ads
+    } do
+      port = connect_device(device)
+      {:ok, view, _html} = live(conn, "/configurations/#{device.config_id}")
+      [ads_input] = Hardware.list_i2c_module_inputs(ads)
+      [direct | _] = Hardware.list_i2c_module_inputs(mcp)
+
+      assert has_element?(view, "#chip-input-#{ads_input.id} button", "Calibrate")
+      refute has_element?(view, "#chip-input-#{direct.id} button", "Calibrate")
+
+      render_blur(element(view, "#chip-input-#{ads_input.id} input[type=text]"), %{
+        "value" => "Brake pipe"
+      })
+
+      assert {:ok, %{name: "Brake pipe"}} = Hardware.get_input(ads_input.id)
+      assert has_element?(view, "#chip-input-#{ads_input.id} input[value='Brake pipe']")
+
+      render_blur(element(view, "#chip-input-#{ads_input.id} input[type=number]"), %{
+        "value" => "8"
+      })
+
+      assert {:ok, %{sensitivity: 8}} = Hardware.get_input(ads_input.id)
+
+      view |> element("#chip-input-#{ads_input.id} button", "Calibrate") |> render_click()
+      assert has_element?(view, "h2", "Calibrate Input")
+      assert has_element?(view, "p", "ADS 0x48 AIN2")
+
+      send(view.pid, {:input_value_updated, port, ads_input.pin, 512})
+      assert render(view) =~ "512"
+    end
+
+    test "sensitivity edits on a child make the configuration unapplied", %{
+      conn: conn,
+      device: device,
+      ads: ads
+    } do
+      [ads_input] = Hardware.list_i2c_module_inputs(ads)
+
+      fingerprint =
+        Hardware.config_fingerprint([], [], Hardware.list_i2c_modules(device.id), [])
+
+      {:ok, device} = Hardware.confirm_configuration(device.id, device.config_id, fingerprint)
+      {:ok, view, _html} = live(conn, "/configurations/#{device.config_id}")
+      refute has_element?(view, "#apply-needed-banner")
+
+      render_blur(element(view, "#chip-input-#{ads_input.id} input[type=number]"), %{
+        "value" => "9"
+      })
+
+      assert has_element?(view, "#apply-needed-banner")
+    end
+
+    test "failed chip shows address and wiring hint", %{conn: conn, device: device, mcp: mcp} do
+      port = connect_device(device)
+      send(ConfigurationManager, {:devices_updated, []})
+      {:ok, view, _html} = live(conn, "/configurations/#{device.config_id}")
+
+      send(view.pid, {:i2c_module_status, port, %{0x20 => :init_failed}})
+      html = render(view)
+
+      assert has_element?(view, "#chip-failure-#{mcp.id}", "MCP 0x20")
+      assert html =~ "Check wiring and the address jumpers."
+    end
+
+    test "chip status updates live", %{conn: conn, device: device, mcp: mcp, ads: ads} do
+      port = connect_device(device)
+      {:ok, view, _html} = live(conn, "/configurations/#{device.config_id}")
+      refute has_element?(view, "#chip-failure-#{mcp.id}")
+
+      send(view.pid, {:i2c_module_status, port, %{0x48 => :reference_lost}})
+      render(view)
+
+      assert has_element?(
+               view,
+               "#chip-failure-#{ads.id}",
+               "Supply reference lost. Check the wire to the reference channel."
+             )
+
+      send(view.pid, {:i2c_module_status, port, %{}})
+      render(view)
+      refute has_element?(view, "#chip-failure-#{ads.id}")
+    end
+
+    test "chip rows do not crash the display controls", %{
+      conn: conn,
+      device: device,
+      mcp: mcp
+    } do
+      connect_device(device)
+      {:ok, view, _html} = live(conn, "/configurations/#{device.config_id}")
+
+      refute has_element?(view, "button[phx-click='test_display']")
+      assert has_element?(view, "#test-chip-matrix-#{mcp.id}")
+      render_click(view, "test_display", %{"id" => to_string(mcp.id)})
+      send(view.pid, {:display_test_step, mcp.id, 1})
+      assert render(view) =~ "Panel"
+    end
+
+    test "matrix test wizard runs for an MCP matrix", %{conn: conn, device: device, mcp: mcp} do
+      port = connect_device(device)
+      {:ok, view, _html} = live(conn, "/configurations/#{device.config_id}")
+
+      [matrix_cell | _] =
+        mcp |> Hardware.list_i2c_module_inputs() |> Enum.filter(&(&1.i2c_channel >= 16))
+
+      view |> element("#test-chip-matrix-#{mcp.id}") |> render_click()
+      html = render(view)
+
+      assert html =~ "2 rows x 2 columns"
+      assert html =~ "GPA0"
+      assert html =~ "GPA3"
+
+      send(view.pid, {:input_value_updated, port, matrix_cell.pin, 1})
+      html = render(view)
+      assert html =~ "1 / 4 buttons tested"
+    end
+
+    test "a parent re-render does not reset the open chip form", %{
+      conn: conn,
+      device: device,
+      mcp: mcp
+    } do
+      port = connect_device(device)
+      {:ok, view, _html} = live(conn, "/configurations/#{device.config_id}")
+
+      view |> element("#edit-display-#{mcp.id}") |> render_click()
+
+      view
+      |> form("#i2c-module-form", %{"i2c_module" => %{"name" => "Renamed"}})
+      |> render_change()
+
+      send(view.pid, {:i2c_module_status, port, %{0x20 => :communication_lost}})
+      send(view.pid, {:input_value_updated, port, 4, 1})
+
+      # A parent update with the same module must not re-initialise the form.
+      {:ok, same} = Hardware.get_i2c_module(mcp.id)
+
+      Phoenix.LiveView.send_update(view.pid, TreninoWeb.I2cModuleFormComponent,
+        id: "i2c-module-form",
+        i2c_module: same,
+        device_id: device.id
+      )
+
+      assert render(view) =~ ~s(value="Renamed")
+    end
+
+    test "deleting a bound chip shows the impact in the confirmation", %{
+      conn: conn,
+      device: device,
+      ads: ads
+    } do
+      [input] = Hardware.list_i2c_module_inputs(ads)
+
+      {:ok, train} =
+        Trenino.Train.create_train(%{name: "Bound", identifiers: [%{identifier: "Bound_1"}]})
+
+      {:ok, elem} = Trenino.Train.create_element(train.id, %{name: "Horn", type: :button})
+
+      {:ok, _} =
+        Trenino.Train.create_button_binding(elem.id, input.id, %{endpoint: "Horn.InputValue"})
+
+      {:ok, view, _html} = live(conn, "/configurations/#{device.config_id}")
+
+      assert has_element?(
+               view,
+               "button[phx-click='delete_i2c_module'][phx-value-id='#{ads.id}'][data-confirm*='in use']"
+             )
+    end
+  end
 end

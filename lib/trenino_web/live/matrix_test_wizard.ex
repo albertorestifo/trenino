@@ -2,6 +2,10 @@ defmodule TreninoWeb.MatrixTestWizard do
   @moduledoc """
   LiveComponent for testing matrix button inputs.
 
+  Works for a board matrix and for an MCP23017 chip matrix: it takes row and
+  column labels and the first virtual pin, not a `Matrix`. Build the spec with
+  `matrix_spec/1` or `chip_matrix_spec/1`.
+
   Displays a visual grid of all matrix button positions.
   Buttons light up when pressed and change color once pressed at least once.
   This allows testing of matrix wiring to verify all buttons work.
@@ -11,7 +15,7 @@ defmodule TreninoWeb.MatrixTestWizard do
       <.live_component
         module={TreninoWeb.MatrixTestWizard}
         id="matrix-test-wizard"
-        input={@testing_matrix_input}
+        spec={@testing_matrix}
         port={@active_port}
         input_values={@input_values}
         tested_buttons={@matrix_tested_buttons}
@@ -26,24 +30,59 @@ defmodule TreninoWeb.MatrixTestWizard do
 
   use TreninoWeb, :live_component
 
+  alias Trenino.Hardware.I2cModule
+  alias Trenino.Hardware.InputLabel
+  alias Trenino.Hardware.Matrix
+
   @impl true
   def mount(socket) do
     {:ok,
      socket
      |> assign(:rows, [])
-     |> assign(:cols, [])}
+     |> assign(:cols, [])
+     |> assign(:title, "Test Matrix")
+     |> assign(:base_pin, 128)}
   end
 
   @impl true
-  def update(%{matrix: matrix} = assigns, socket) do
-    rows = matrix.row_pins |> Enum.sort_by(& &1.position)
-    cols = matrix.col_pins |> Enum.sort_by(& &1.position)
-
+  def update(%{spec: %{} = spec} = assigns, socket) do
     {:ok,
      socket
-     |> assign(assigns)
-     |> assign(:rows, rows)
-     |> assign(:cols, cols)}
+     |> assign(Map.delete(assigns, :spec))
+     |> assign(:title, spec.title)
+     |> assign(:base_pin, spec.base_pin)
+     |> assign(:rows, spec.rows)
+     |> assign(:cols, spec.cols)}
+  end
+
+  @typedoc "Row and column labels (pin names) and the first virtual pin of a matrix."
+  @type spec :: %{
+          title: String.t(),
+          base_pin: non_neg_integer(),
+          rows: [String.t()],
+          cols: [String.t()]
+        }
+
+  @doc "Spec for a board `Matrix`, whose buttons start at virtual pin 128."
+  @spec matrix_spec(Matrix.t()) :: spec()
+  def matrix_spec(%Matrix{} = matrix) do
+    %{
+      title: "Test Matrix",
+      base_pin: 128,
+      rows: matrix.row_pins |> Enum.sort_by(& &1.position) |> Enum.map(&"Pin #{&1.pin}"),
+      cols: matrix.col_pins |> Enum.sort_by(& &1.position) |> Enum.map(&"Pin #{&1.pin}")
+    }
+  end
+
+  @doc "Spec for the matrix of an MCP23017 chip, with its GPIO pin names."
+  @spec chip_matrix_spec(I2cModule.t()) :: spec()
+  def chip_matrix_spec(%I2cModule{params: %{} = params} = mod) do
+    %{
+      title: "Test Matrix · #{InputLabel.module(mod)}",
+      base_pin: params.matrix_base,
+      rows: InputLabel.gpio_names(params.row_mask),
+      cols: InputLabel.gpio_names(params.col_mask)
+    }
   end
 
   @impl true
@@ -65,11 +104,12 @@ defmodule TreninoWeb.MatrixTestWizard do
     total_buttons = num_rows * num_cols
     tested_count = MapSet.size(assigns.tested_buttons)
 
-    # Compute currently pressed buttons from input_values
-    # Virtual pins start at 128
+    # Currently pressed buttons: virtual pins inside this matrix's block
+    pins = assigns.base_pin..(assigns.base_pin + max(total_buttons, 1) - 1)
+
     pressed_buttons =
       assigns.input_values
-      |> Enum.filter(fn {pin, value} -> pin >= 128 and value == 1 end)
+      |> Enum.filter(fn {pin, value} -> pin in pins and value == 1 end)
       |> Enum.map(fn {pin, _} -> pin end)
       |> MapSet.new()
 
@@ -94,6 +134,7 @@ defmodule TreninoWeb.MatrixTestWizard do
       <div class="absolute inset-0 bg-black/50" phx-click="close" phx-target={@myself} />
       <div class="relative bg-base-100 rounded-xl shadow-xl w-full max-w-2xl mx-4 p-6 max-h-[90vh] overflow-y-auto">
         <.wizard_header
+          title={@title}
           num_rows={@num_rows}
           num_cols={@num_cols}
           target={@myself}
@@ -109,6 +150,7 @@ defmodule TreninoWeb.MatrixTestWizard do
           :if={@num_rows > 0 and @num_cols > 0}
           rows={@rows}
           cols={@cols}
+          base_pin={@base_pin}
           num_cols={@num_cols}
           pressed_buttons={@pressed_buttons}
           tested_buttons={@tested_buttons}
@@ -126,6 +168,7 @@ defmodule TreninoWeb.MatrixTestWizard do
 
   # Components
 
+  attr :title, :string, required: true
   attr :num_rows, :integer, required: true
   attr :num_cols, :integer, required: true
   attr :target, :any, required: true
@@ -134,7 +177,7 @@ defmodule TreninoWeb.MatrixTestWizard do
     ~H"""
     <div class="flex items-center justify-between mb-4">
       <div>
-        <h2 class="text-xl font-semibold">Test Matrix</h2>
+        <h2 class="text-xl font-semibold">{@title}</h2>
         <p class="text-sm text-base-content/70">{@num_rows} rows x {@num_cols} columns</p>
       </div>
       <button
@@ -175,6 +218,7 @@ defmodule TreninoWeb.MatrixTestWizard do
 
   attr :rows, :list, required: true
   attr :cols, :list, required: true
+  attr :base_pin, :integer, required: true
   attr :num_cols, :integer, required: true
   attr :pressed_buttons, :any, required: true
   attr :tested_buttons, :any, required: true
@@ -192,19 +236,20 @@ defmodule TreninoWeb.MatrixTestWizard do
             >
               C{col_idx}
               <br />
-              <span class="text-[10px]">({col.pin})</span>
+              <span class="text-[10px]">({col})</span>
             </th>
           </tr>
         </thead>
         <tbody>
           <tr :for={{row, row_idx} <- Enum.with_index(@rows)}>
             <td class="p-1 text-xs font-mono text-base-content/70 text-right pr-2">
-              R{row_idx} <span class="text-[10px]">({row.pin})</span>
+              R{row_idx} <span class="text-[10px]">({row})</span>
             </td>
             <td :for={{_col, col_idx} <- Enum.with_index(@cols)} class="p-1">
               <.matrix_button
                 row_idx={row_idx}
                 col_idx={col_idx}
+                base_pin={@base_pin}
                 num_cols={@num_cols}
                 pressed_buttons={@pressed_buttons}
                 tested_buttons={@tested_buttons}
@@ -218,13 +263,14 @@ defmodule TreninoWeb.MatrixTestWizard do
   end
 
   attr :row_idx, :integer, required: true
+  attr :base_pin, :integer, required: true
   attr :col_idx, :integer, required: true
   attr :num_cols, :integer, required: true
   attr :pressed_buttons, :any, required: true
   attr :tested_buttons, :any, required: true
 
   defp matrix_button(assigns) do
-    virtual_pin = 128 + assigns.row_idx * assigns.num_cols + assigns.col_idx
+    virtual_pin = assigns.base_pin + assigns.row_idx * assigns.num_cols + assigns.col_idx
     pressed = MapSet.member?(assigns.pressed_buttons, virtual_pin)
     tested = MapSet.member?(assigns.tested_buttons, virtual_pin)
 
