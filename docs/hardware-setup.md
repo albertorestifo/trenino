@@ -167,7 +167,7 @@ On an Arduino Uno or Nano there is room for one chip with a matrix.
 ### MCP23017
 
 - Choose which pins are **direct inputs** (buttons wired between the pin and GND, using the chip's pull-ups) and, optionally, which pins are matrix **rows** and **columns**.
-- **GPA7 and GPB7 are output-only.** They cannot be direct inputs or matrix columns, because using them as inputs can corrupt SDA. A chip therefore has at most 14 inputs. They can be matrix rows. An 8x8 matrix needs GPA7 and GPB7 as rows.
+- **GPA7 and GPB7 are output-only.** They cannot be direct inputs or matrix columns, because using them as inputs can corrupt SDA. A chip therefore has at most 14 direct inputs. They can be matrix rows. An 8x8 matrix needs GPA7 and GPB7 as rows.
 - **Every matrix switch needs a diode.** There is no ghost key detection.
 - Default debounce is 3 samples with no matrix and 2 with one; you can change it.
 
