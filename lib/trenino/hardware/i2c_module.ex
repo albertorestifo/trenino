@@ -13,6 +13,8 @@ defmodule Trenino.Hardware.I2cModule do
 
   @type module_chip :: :ht16k33 | :mcp23017 | :ads1115
 
+  @input_chips [:mcp23017, :ads1115]
+
   @address_ranges %{mcp23017: 0x20..0x27, ads1115: 0x48..0x4B}
 
   @params_modules %{
@@ -89,7 +91,11 @@ defmodule Trenino.Hardware.I2cModule do
 
   @doc "True for chips that provide inputs (MCP23017, ADS1115)."
   @spec input_chip?(t()) :: boolean()
-  def input_chip?(%__MODULE__{module_chip: chip}), do: chip in [:mcp23017, :ads1115]
+  def input_chip?(%__MODULE__{module_chip: chip}), do: chip in @input_chips
+
+  @doc "The chips that provide inputs."
+  @spec input_chips() :: [atom()]
+  def input_chips, do: @input_chips
 
   defp validate_chip_address(changeset) do
     with chip when is_map_key(@address_ranges, chip) <- get_field(changeset, :module_chip),

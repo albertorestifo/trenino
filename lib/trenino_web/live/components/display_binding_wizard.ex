@@ -20,7 +20,7 @@ defmodule TreninoWeb.DisplayBindingWizard do
         socket
       else
         socket
-        |> assign(:i2c_modules, Hardware.list_all_i2c_modules())
+        |> assign(:i2c_modules, Hardware.list_all_display_modules())
         |> initialize_wizard(assigns[:binding])
       end
 

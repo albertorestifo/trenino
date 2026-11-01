@@ -1077,6 +1077,20 @@ defmodule Trenino.Hardware do
     |> Repo.all()
   end
 
+  @doc """
+  List display modules across all devices, with `:device` preloaded.
+
+  Input chips (MCP23017, ADS1115) are excluded: they can never be display targets.
+  """
+  @spec list_all_display_modules() :: [I2cModule.t()]
+  def list_all_display_modules do
+    I2cModule
+    |> where([m], m.module_chip not in ^I2cModule.input_chips())
+    |> order_by([m], m.i2c_address)
+    |> preload(:device)
+    |> Repo.all()
+  end
+
   @doc "Get a single i2c module by id."
   @spec get_i2c_module(integer()) :: {:ok, I2cModule.t()} | {:error, :not_found}
   def get_i2c_module(id) do

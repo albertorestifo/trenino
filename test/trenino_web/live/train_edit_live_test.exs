@@ -449,4 +449,51 @@ defmodule TreninoWeb.TrainEditLiveTest do
   # Note: "button element with custom on/off values" tests removed - configuration
   # now requires simulator connection and uses the ConfigurationWizard.
   # See configuration_wizard_component_test.exs for wizard tests.
+
+  describe "display hardware availability" do
+    setup %{conn: conn} do
+      {:ok, train} =
+        TrainContext.create_train(%{
+          name: "Display Train",
+          identifiers: [%{identifier: "Display_Train_#{System.unique_integer([:positive])}"}]
+        })
+
+      {:ok, device} = Hardware.create_device(%{name: "ADS Panel"})
+      %{conn: conn, train: train, device: device}
+    end
+
+    test "display_hardware_available is false with only an ADS1115", %{
+      conn: conn,
+      train: train,
+      device: device
+    } do
+      {:ok, _} =
+        Hardware.create_i2c_module(device.id, %{
+          module_chip: :ads1115,
+          i2c_address: 0x48,
+          params: %{channel_mask: 1, gain: 0}
+        })
+
+      {:ok, view, _html} = live(conn, ~p"/trains/#{train.id}")
+
+      assert :sys.get_state(view.pid).socket.assigns.display_hardware_available == false
+    end
+
+    test "display_hardware_available is true with an HT16K33", %{
+      conn: conn,
+      train: train,
+      device: device
+    } do
+      {:ok, _} =
+        Hardware.create_i2c_module(device.id, %{
+          module_chip: :ht16k33,
+          i2c_address: 0x70,
+          params: %{display_type: :seven_segment, num_digits: 4}
+        })
+
+      {:ok, view, _html} = live(conn, ~p"/trains/#{train.id}")
+
+      assert :sys.get_state(view.pid).socket.assigns.display_hardware_available == true
+    end
+  end
 end
