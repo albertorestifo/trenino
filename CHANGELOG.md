@@ -25,6 +25,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - MCP `create_i2c_module`/`update_i2c_module` silently dropped `brightness`
   and `num_digits` (passed as top-level attrs instead of nested chip params);
   they are now persisted, and chip params survive partial updates.
+- Saving a train with changed identifiers re-detects the active train right
+  away. Previously, adding an identifier that matched the loaded train left it
+  inactive until the cab changed.
+- Notched levers no longer bounce against the simulator while held on a notch.
+  A value the simulator already received is not sent again, so input jitter
+  cannot keep pulling the handle off the position it snapped to.
 
 ## [0.8.2] - 2026-10-28
 
