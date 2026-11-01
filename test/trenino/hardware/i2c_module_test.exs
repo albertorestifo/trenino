@@ -182,8 +182,10 @@ defmodule Trenino.Hardware.I2cModuleTest do
       refute mcp(%{row_mask: 0x0001, col_mask: 0x8000}).valid?
     end
 
-    test "rejects more than 8 rows" do
+    test "rejects more than 8 rows or cols" do
       refute mcp(%{row_mask: 0x01FF, col_mask: 0x0200}).valid?
+      cs = mcp(%{row_mask: 0x0001, col_mask: 0x7F7E})
+      assert {"at most 8 columns", _} = cs.changes.params.errors[:col_mask]
     end
 
     test "rejects rows without cols and cols without rows" do
@@ -200,8 +202,8 @@ defmodule Trenino.Hardware.I2cModuleTest do
       assert errors_on(cs).i2c_address != []
     end
 
-    test "row_mask 0x8080 with col_mask 0x7F7F is valid" do
-      assert mcp(%{row_mask: 0x8080, col_mask: 0x7F7F}).valid?
+    test "8 rows including both output-only pins with 8 columns spanning both ports is valid" do
+      assert mcp(%{row_mask: 0x80BF, col_mask: 0x7F40}).valid?
     end
 
     test "debounce defaults from layout" do

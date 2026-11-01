@@ -112,10 +112,14 @@ defmodule Trenino.Hardware.MCP23017.Params do
         add_error(changeset, :row_mask, "rows and columns must both be set or both be empty")
 
       true ->
-        if pin_count(rows) > 8,
-          do: add_error(changeset, :row_mask, "at most 8 rows"),
-          else: changeset
+        changeset
+        |> validate_max_pins(:row_mask, rows, "at most 8 rows")
+        |> validate_max_pins(:col_mask, cols, "at most 8 columns")
     end
+  end
+
+  defp validate_max_pins(changeset, field, mask, message) do
+    if pin_count(mask) > 8, do: add_error(changeset, field, message), else: changeset
   end
 
   defp validate_not_empty(changeset, 0, 0, 0),
