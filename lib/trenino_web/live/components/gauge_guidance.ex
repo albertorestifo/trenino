@@ -50,29 +50,32 @@ defmodule TreninoWeb.GaugeGuidance do
   """
   @spec axis_status(StepperAxis.t(), snapshot(), boolean(), boolean()) :: axis_status()
   def axis_status(%StepperAxis{} = axis, snapshot, has_token?, apply_needed?) do
-    runtime = snapshot.axes[axis.id]
     reason = next_step(axis, snapshot, has_token?, apply_needed?)
-    lifecycle = snapshot.lifecycle
+    classify(snapshot.lifecycle, snapshot, axis, snapshot.axes[axis.id], reason, apply_needed?)
+  end
 
+  defp classify(:disconnected, _, _, _, reason, _),
+    do: status(:offline, "Device not connected", :muted, reason, nil)
+
+  defp classify(:fault, snapshot, _, _, reason, _) do
+    detail = if Map.get(snapshot, :error), do: GaugeFeedback.fault(snapshot.error), else: reason
+    status(:fault, "Fault", :error, detail, :recover)
+  end
+
+  defp classify(:unsupported, _, _, _, reason, _),
+    do: status(:needs_setup, "Needs setup", :warn, reason, nil)
+
+  defp classify(lifecycle, _, _, _, reason, _)
+       when lifecycle in [:probing, :deploying, :resetting, :configuring],
+       do: status(:busy, "Starting", :info, reason, nil)
+
+  defp classify(_, _, _, _, reason, true),
+    do: status(:needs_setup, "Needs setup", :warn, reason, :wizard)
+
+  defp classify(_, _, _, nil, reason, _), do: status(:busy, "Starting", :info, reason, nil)
+
+  defp classify(_, _, axis, runtime, reason, _) do
     cond do
-      lifecycle == :disconnected ->
-        status(:offline, "Device not connected", :muted, reason, nil)
-
-      lifecycle == :fault ->
-        detail =
-          if Map.get(snapshot, :error), do: GaugeFeedback.fault(snapshot.error), else: reason
-
-        status(:fault, "Fault", :error, detail, :recover)
-
-      lifecycle == :unsupported ->
-        status(:needs_setup, "Needs setup", :warn, reason, nil)
-
-      apply_needed? ->
-        status(:needs_setup, "Needs setup", :warn, reason, :wizard)
-
-      lifecycle in [:probing, :deploying, :resetting, :configuring] or is_nil(runtime) ->
-        status(:busy, "Starting", :info, reason, nil)
-
       not runtime.ready or not axis.commissioned ->
         status(:needs_setup, "Needs setup", :warn, reason, :wizard)
 
