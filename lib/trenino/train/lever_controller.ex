@@ -27,6 +27,10 @@ defmodule Trenino.Train.LeverController do
   and replay them FIFO. The write runs under `Task.Supervisor`. While it is in
   flight, a newer sample replaces that lever's pending value. Only the latest
   value is sent. Other levers are not blocked by it.
+
+  A value the simulator already received is not sent again. Notched levers snap
+  to their own position after a write, so repeating a gate target on every jitter
+  sample would pull the handle off the notch and let it snap back, over and over.
   """
 
   use GenServer
@@ -77,7 +81,8 @@ defmodule Trenino.Train.LeverController do
                 timer: reference() | nil,
                 token: reference() | nil
               }
-            }
+            },
+            last_written: %{integer() => float()}
           }
 
     defstruct active_train: nil,
@@ -85,7 +90,8 @@ defmodule Trenino.Train.LeverController do
               binding_lookup: %{},
               subscribed_ports: MapSet.new(),
               pending: %{},
-              retries: %{}
+              retries: %{},
+              last_written: %{}
   end
 
   # Client API
@@ -196,7 +202,7 @@ defmodule Trenino.Train.LeverController do
   end
 
   def handle_info({:simulator_status_changed, %ConnectionState{}}, %State{} = state) do
-    {:noreply, cancel_retry_timers(state)}
+    {:noreply, %{cancel_retry_timers(state) | last_written: %{}}}
   end
 
   def handle_info({:retry_write, id, token}, %State{} = state) do
@@ -329,7 +335,11 @@ defmodule Trenino.Train.LeverController do
         put_in(state.pending[id], {lever_config, sim_value, task})
 
       _ ->
-        start_write(clear_retry(state, id), lever_config, sim_value)
+        if Map.get(state.last_written, id) == sim_value do
+          state
+        else
+          start_write(clear_retry(state, id), lever_config, sim_value)
+        end
     end
   end
 
@@ -351,14 +361,10 @@ defmodule Trenino.Train.LeverController do
   defp finish_write(%State{} = state, ref, {:ok, id, written}) do
     case Map.get(state.pending, id) do
       {%LeverConfig{}, latest, %Task{ref: ^ref}} when latest == written ->
-        %{clear_retry(state, id) | pending: Map.delete(state.pending, id)}
+        record_written(state, id, written)
 
       {%LeverConfig{} = lever_config, latest, %Task{ref: ^ref}} ->
-        start_write(
-          %{clear_retry(state, id) | pending: Map.delete(state.pending, id)},
-          lever_config,
-          latest
-        )
+        start_write(record_written(state, id, written), lever_config, latest)
 
       _ ->
         state
@@ -375,6 +381,14 @@ defmodule Trenino.Train.LeverController do
       _, acc ->
         acc
     end)
+  end
+
+  defp record_written(%State{} = state, id, written) do
+    %{
+      clear_retry(state, id)
+      | pending: Map.delete(state.pending, id),
+        last_written: Map.put(state.last_written, id, written)
+    }
   end
 
   defp schedule_retry(state, id) do
@@ -415,7 +429,7 @@ defmodule Trenino.Train.LeverController do
       _ -> :ok
     end)
 
-    %{cancel_retry_timers(state) | pending: %{}, retries: %{}}
+    %{cancel_retry_timers(state) | pending: %{}, retries: %{}, last_written: %{}}
   end
 
   # Normalizes a raw hardware value to a 0.0-1.0 float for lever mapping.

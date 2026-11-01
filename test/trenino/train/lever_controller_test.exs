@@ -129,6 +129,39 @@ defmodule Trenino.Train.LeverControllerTest do
       refute_receive {:set_started, _, _}, 100
     end
 
+    test "does not repeat a value the simulator already received", context do
+      {controller, writer} = start_blocked_write(context)
+      send(writer, {:finish, {:ok, %{"Result" => "Success"}}})
+      wait_for_writer_release(controller)
+
+      send(controller, {:input_value_updated, context.port, context.pin, 500})
+      refute_receive {:attempt, _, _}, 100
+    end
+
+    test "writes again when the value changes back", context do
+      {controller, writer} = start_blocked_write(context)
+      send(writer, {:finish, {:ok, %{"Result" => "Success"}}})
+      wait_for_writer_release(controller)
+
+      send(controller, {:input_value_updated, context.port, context.pin, 700})
+      assert_receive {:attempt, 0.7, writer}, 1_000
+      send(writer, {:finish, {:ok, %{"Result" => "Success"}}})
+      wait_for_writer_release(controller)
+
+      send(controller, {:input_value_updated, context.port, context.pin, 500})
+      assert_receive {:attempt, 0.5, _writer}, 1_000
+    end
+
+    test "resends the current value after a simulator disconnect", context do
+      {controller, writer} = start_blocked_write(context)
+      send(writer, {:finish, {:ok, %{"Result" => "Success"}}})
+      wait_for_writer_release(controller)
+
+      send(controller, {:simulator_status_changed, %ConnectionState{status: :disconnected}})
+      send(controller, {:input_value_updated, context.port, context.pin, 500})
+      assert_receive {:attempt, 0.5, _writer}, 1_000
+    end
+
     test "reconnect retries a retained failed write", %{port: port, pin: pin} do
       test_pid = self()
       client = %Client{base_url: "http://localhost:31270", api_key: "test"}
