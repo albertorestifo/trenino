@@ -421,21 +421,12 @@ defmodule TreninoWeb.LeverSetupWizardTest do
 
       {:ok, device} = Hardware.create_device(%{name: "Chip Device"})
 
-      {:ok, module} =
+      {:ok, %{inputs: [input]}} =
         Hardware.create_i2c_module(device.id, %{
           module_chip: :ads1115,
           i2c_address: 0x48,
-          params: %{channel_mask: 0x01, gain: 0}
-        })
-
-      {:ok, input} =
-        Hardware.create_input(device.id, %{
-          pin: 128,
-          input_type: :analog,
-          sensitivity: 5,
-          name: "ADS Throttle",
-          i2c_module_id: module.id,
-          i2c_channel: 0
+          params: %{channel_mask: 0x01, gain: 0},
+          channels: %{0 => %{name: "ADS Throttle"}}
         })
 
       {:ok, _} =

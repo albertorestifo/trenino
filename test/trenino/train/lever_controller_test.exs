@@ -28,20 +28,11 @@ defmodule Trenino.Train.LeverControllerTest do
     test "lookup contains a chip input's {port, pin}" do
       {:ok, device} = Hardware.create_device(%{name: "Chip Lever Device"})
 
-      {:ok, module} =
+      {:ok, %{inputs: [input]}} =
         Hardware.create_i2c_module(device.id, %{
           module_chip: :ads1115,
           i2c_address: 0x48,
           params: %{channel_mask: 0x01, gain: 0}
-        })
-
-      {:ok, input} =
-        Hardware.create_input(device.id, %{
-          pin: 128,
-          input_type: :analog,
-          sensitivity: 5,
-          i2c_module_id: module.id,
-          i2c_channel: 0
         })
 
       device_conn = %DeviceConnection{
@@ -54,7 +45,7 @@ defmodule Trenino.Train.LeverControllerTest do
       send(Process.whereis(LeverController), {:devices_updated, [device_conn]})
 
       state = LeverController.get_state()
-      assert %{input_id: id} = state.input_lookup[{device_conn.port, 128}]
+      assert %{input_id: id} = state.input_lookup[{device_conn.port, input.pin}]
       assert id == input.id
     end
   end
