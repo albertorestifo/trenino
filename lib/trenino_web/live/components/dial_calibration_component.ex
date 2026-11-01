@@ -391,10 +391,10 @@ defmodule TreninoWeb.DialCalibrationComponent do
       |> assign(:unit_options, @unit_options)
 
     ~H"""
-    <div id={@id} class="border-t border-base-300 pt-3 space-y-3">
+    <div id={@id} class="border-t border-base-300 pt-2 space-y-3">
       <div class="flex justify-between items-center gap-2">
-        <p class="text-sm">
-          <span class="font-medium">Dial calibration:</span>
+        <p class="text-sm text-base-content/80">
+          <span>Dial:</span>
           <span id={"#{@id}-status"}>{status_label(@calibration)}</span>
         </p>
         <button
@@ -402,7 +402,7 @@ defmodule TreninoWeb.DialCalibrationComponent do
           type="button"
           phx-click="toggle"
           phx-target={@myself}
-          class="btn btn-sm"
+          class="btn btn-ghost btn-sm"
         >{if @open?, do: "Close", else: "Calibrate dial"}</button>
       </div>
       <p :if={@message && !@open?} role="status" class="text-sm">{@message}</p>

@@ -114,7 +114,7 @@ defmodule TreninoWeb.GaugeWizardTest do
     id: id,
     fake: fake
   } do
-    assert has_element?(view, "#stepper-wizard-open-#{axis.id}", "Guided gauge setup")
+    assert has_element?(view, "#stepper-wizard-open-#{axis.id}", "Set up gauge")
     open(view, axis)
     assert has_element?(view, "##{id}-step-prerequisites")
     assert has_element?(view, "##{id}-checklist", "Controller connected")

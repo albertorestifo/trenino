@@ -75,6 +75,28 @@ defmodule TreninoWeb.StepperCommissioningComponent do
     end
   end
 
+  # Stop must be one click away even when this page does not hold manual control (a needle
+  # driven by a train). It uses the same guarded claim, then the same guarded stop command;
+  # the axis stays paused until the operator chooses Resume train control.
+  def handle_event("stop_now", _, socket) do
+    id = socket.assigns.axis.id
+
+    claimed =
+      case socket.assigns.token do
+        nil -> StepperManager.claim_manual(id, self())
+        token -> {:ok, token}
+      end
+
+    case claimed do
+      {:ok, token} ->
+        result = StepperManager.command(id, :stop, %{}, token)
+        {:noreply, assign(socket, token: token, message: GaugeFeedback.result(result))}
+
+      error ->
+        {:noreply, assign(socket, :message, GaugeFeedback.result(error))}
+    end
+  end
+
   def handle_event("complete", _, socket) do
     case StepperManager.complete_commissioning(socket.assigns.axis.id, socket.assigns.token) do
       {:ok, axis} ->
@@ -100,149 +122,261 @@ defmodule TreninoWeb.StepperCommissioningComponent do
   defp parse_position(_), do: :error
   @impl true
   def render(assigns) do
-    a = assigns.snapshot.axes[assigns.axis.id]
+    runtime = assigns.snapshot.axes[assigns.axis.id]
+
+    status =
+      GaugeGuidance.axis_status(
+        assigns.axis,
+        assigns.snapshot,
+        assigns.token != nil,
+        assigns.apply_needed
+      )
 
     assigns =
       assigns
-      |> assign(:runtime, a)
-      |> assign(
-        :next_step,
-        GaugeGuidance.next_step(
-          assigns.axis,
-          assigns.snapshot,
-          assigns.token != nil,
-          assigns.apply_needed
-        )
-      )
+      |> assign(:runtime, runtime)
+      |> assign(:status, status)
       |> assign(:glossary, GaugeGuidance.glossary())
+      |> assign(:offline, assigns.snapshot.lifecycle == :disconnected)
+      |> assign(:show_stop, assigns.token != nil or GaugeGuidance.moving?(runtime))
+      |> assign(:promote_resume, assigns.token != nil or status.primary == :resume)
+      |> assign(:promote_recover, status.primary == :recover)
+      |> assign(:promote_wizard, status.primary == :wizard)
 
     ~H"""
-    <div id={@id} class="space-y-3 pt-3">
-      <p class="font-medium">{Phoenix.Naming.humanize(@snapshot.lifecycle)}</p>
-      <p id={"stepper-next-step-#{@axis.id}"} class="text-sm">
-        <span class="font-medium">Next step:</span> {@next_step}
-      </p>
-      <p :for={{term, meaning} <- @glossary} class="text-xs text-base-content/60">
-        <span class="font-medium">{term}</span> is {meaning}
-      </p>
-      <p :if={@runtime && @runtime.status} class="text-sm">
-        {@runtime.status.state} · estimated position: {if @runtime.status.known,
-          do: @runtime.status.position,
-          else: "unavailable"} · target: {if @runtime.status.known,
-          do: @runtime.status.target,
-          else: "unavailable"} · energized: {@runtime.status.energized}<span :if={
-          @runtime.status.fault != :none
-        }> · fault: {GaugeFeedback.fault(@runtime.status.fault)}</span>
-      </p>
-      <p :if={@snapshot.lifecycle == :fault && Map.get(@snapshot, :error)} role="alert">
-        {GaugeFeedback.fault(Map.get(@snapshot, :error))}
-      </p>
+    <div id={@id} class="space-y-3">
       <p
-        :if={
-          @runtime && @runtime.status && @runtime.status.known &&
-            @runtime.status.reference_kind == :assumed_stop
-        }
-        class="text-sm"
+        :if={@status.reason}
+        id={"stepper-next-step-#{@axis.id}"}
+        role={if @status.state == :fault, do: "alert"}
+        class="text-sm text-base-content/80"
       >
-        Assumed internal-stop reference
+        {@status.reason}
       </p>
-      <p :if={@runtime && @runtime.pending} class="text-sm">
-        Pending {@runtime.pending.command.operation}; waiting for firmware acknowledgement.
+      <p :if={@runtime && @runtime.pending} class="text-sm text-base-content/70">
+        Waiting for the device to confirm {@runtime.pending.command.operation}.
       </p>
-      <p :if={@runtime && @runtime.error} role="alert">{GaugeFeedback.error(@runtime.error)}</p>
+      <p :if={@runtime && @runtime.error} role="alert" class="text-sm text-error">
+        {GaugeFeedback.error(@runtime.error)}
+      </p>
       <p :if={@message} role="status" class="text-sm">{@message}</p>
-      <div class="flex flex-wrap gap-2">
+      <p :if={@token} class="text-sm font-medium">
+        You have manual control. Train output is paused until you resume it.
+      </p>
+
+      <div
+        :if={@show_stop or @promote_resume or @promote_recover or @promote_wizard}
+        class="flex flex-wrap gap-2"
+      >
         <button
-          id={"stepper-claim-#{@axis.id}"}
+          :if={@promote_wizard}
+          id={"stepper-wizard-open-#{@axis.id}"}
           type="button"
-          phx-click="claim"
-          phx-target={@myself}
-          class="btn btn-sm"
-          disabled={@snapshot.lifecycle == :disconnected}
-        >Take manual control</button>
+          phx-click="open_wizard"
+          phx-value-id={@axis.id}
+          phx-target={@wizard_target}
+          class="btn btn-primary"
+        >
+          Set up gauge
+        </button>
         <button
-          :for={op <- ["stop", "release", "enable"]}
-          id={"stepper-#{op}-#{@axis.id}"}
-          type="button"
-          phx-click="command"
-          phx-value-op={op}
-          phx-target={@myself}
-          class="btn btn-sm"
-          disabled={is_nil(@token) or @snapshot.lifecycle == :disconnected}
-        >{Phoenix.Naming.humanize(op)}</button>
-        <button
-          :if={@axis.reference_strategy == :internal_stop}
-          id={"stepper-home-#{@axis.id}"}
-          type="button"
-          phx-click="command"
-          phx-value-op="home"
-          phx-target={@myself}
-          class="btn btn-sm"
-          disabled={is_nil(@token) or @snapshot.lifecycle == :disconnected}
-        >Home (bounded, assumed stop)</button>
-        <button
-          id={"stepper-resume-#{@axis.id}"}
-          disabled={@snapshot.lifecycle == :disconnected}
-          type="button"
-          phx-click="resume"
-          phx-target={@myself}
-          class="btn btn-sm"
-        >Resume train control</button>
-        <button
+          :if={@promote_recover}
+          id={"stepper-recover-#{@axis.id}"}
           type="button"
           phx-click="recover"
           phx-target={@myself}
-          class="btn btn-sm"
-          disabled={@snapshot.lifecycle == :disconnected}
-        >Recover configuration</button>
-      </div>
-      <.form
-        for={to_form(%{})}
-        id={"stepper-reference-#{@axis.id}"}
-        phx-submit="command"
-        phx-target={@myself}
-        class="flex gap-2 items-end"
-      >
-        <.input
-          name="position"
-          value="0"
-          label="Physically aligned reference / target position"
-          type="number"
-        />
+          class="btn btn-primary"
+        >
+          Recover configuration
+        </button>
         <button
-          :if={@axis.reference_strategy == :host_reference}
-          name="op"
-          value="reference"
-          class="btn btn-sm"
-          disabled={is_nil(@token) or @snapshot.lifecycle == :disconnected}
-        >Assign reference</button>
-        <button
-          name="op"
-          value="move_to"
-          class="btn btn-sm"
-          disabled={is_nil(@token) or @snapshot.lifecycle == :disconnected}
-        >Move to target</button>
-      </.form>
-      <div class="flex gap-2">
-        <button
-          :for={n <- [-10, -1, 1, 10]}
+          :if={@promote_resume}
+          id={"stepper-resume-#{@axis.id}"}
           type="button"
-          phx-click="command"
-          phx-value-op="jog"
-          phx-value-position={n}
+          phx-click="resume"
+          phx-target={@myself}
+          class={[
+            "btn",
+            @status.state == :paused && "btn-primary",
+            @status.state != :paused && "btn-soft"
+          ]}
+          disabled={@offline}
+        >
+          Resume train control
+        </button>
+        <.stop_button
+          :if={@show_stop}
+          axis={@axis}
+          token={@token}
+          myself={@myself}
+          offline={@offline}
+        />
+      </div>
+
+      <.disclosure id={"stepper-advanced-#{@axis.id}"} summary="Advanced / manual controls">
+        <p :for={{term, meaning} <- @glossary} class="text-xs text-base-content/70">
+          <span class="font-medium">{term}</span> is {meaning}
+        </p>
+        <p :if={@runtime && @runtime.status} class="text-sm">
+          {@runtime.status.state} · estimated position: {if @runtime.status.known,
+            do: @runtime.status.position,
+            else: "unavailable"} · target: {if @runtime.status.known,
+            do: @runtime.status.target,
+            else: "unavailable"} · energized: {@runtime.status.energized}<span :if={
+            @runtime.status.fault != :none
+          }> · fault: {GaugeFeedback.fault(@runtime.status.fault)}</span>
+          <span :if={@runtime.status.known and @runtime.status.reference_kind == :assumed_stop}>
+            · assumed internal-stop reference
+          </span>
+        </p>
+        <div class="flex flex-wrap gap-2">
+          <button
+            id={"stepper-claim-#{@axis.id}"}
+            type="button"
+            phx-click="claim"
+            phx-target={@myself}
+            class="btn btn-sm"
+            disabled={@offline}
+          >
+            Take manual control
+          </button>
+          <.stop_button
+            :if={not @show_stop}
+            axis={@axis}
+            token={@token}
+            myself={@myself}
+            offline={@offline}
+            size="btn-sm"
+            gated
+          />
+          <button
+            :for={op <- ["release", "enable"]}
+            id={"stepper-#{op}-#{@axis.id}"}
+            type="button"
+            phx-click="command"
+            phx-value-op={op}
+            phx-target={@myself}
+            class="btn btn-sm"
+            disabled={is_nil(@token) or @offline}
+          >
+            {Phoenix.Naming.humanize(op)}
+          </button>
+          <button
+            :if={@axis.reference_strategy == :internal_stop}
+            id={"stepper-home-#{@axis.id}"}
+            type="button"
+            phx-click="command"
+            phx-value-op="home"
+            phx-target={@myself}
+            class="btn btn-sm"
+            disabled={is_nil(@token) or @offline}
+          >
+            Home (bounded, assumed stop)
+          </button>
+          <button
+            :if={not @promote_resume}
+            id={"stepper-resume-#{@axis.id}"}
+            disabled={@offline}
+            type="button"
+            phx-click="resume"
+            phx-target={@myself}
+            class="btn btn-sm"
+          >
+            Resume train control
+          </button>
+          <button
+            :if={not @promote_recover}
+            id={"stepper-recover-#{@axis.id}"}
+            type="button"
+            phx-click="recover"
+            phx-target={@myself}
+            class="btn btn-sm"
+            disabled={@offline}
+          >
+            Recover configuration
+          </button>
+        </div>
+        <.form
+          for={to_form(%{})}
+          id={"stepper-reference-#{@axis.id}"}
+          phx-submit="command"
+          phx-target={@myself}
+          class="flex flex-wrap items-end gap-2"
+        >
+          <.input
+            name="position"
+            value="0"
+            label="Physically aligned reference / target position"
+            type="number"
+          />
+          <button
+            :if={@axis.reference_strategy == :host_reference}
+            name="op"
+            value="reference"
+            class="btn btn-sm mb-2"
+            disabled={is_nil(@token) or @offline}
+          >
+            Assign reference
+          </button>
+          <button
+            name="op"
+            value="move_to"
+            class="btn btn-sm mb-2"
+            disabled={is_nil(@token) or @offline}
+          >
+            Move to target
+          </button>
+        </.form>
+        <div class="flex flex-wrap gap-2">
+          <button
+            :for={n <- [-10, -1, 1, 10]}
+            type="button"
+            phx-click="command"
+            phx-value-op="jog"
+            phx-value-position={n}
+            phx-target={@myself}
+            class="btn btn-sm"
+            disabled={is_nil(@token) or @offline}
+          >
+            Jog {n}
+          </button>
+        </div>
+        <button
+          type="button"
+          phx-click="complete"
           phx-target={@myself}
           class="btn btn-sm"
-          disabled={is_nil(@token) or @snapshot.lifecycle == :disconnected}
-        >Jog {n}</button>
-      </div>
-      <button
-        type="button"
-        phx-click="complete"
-        phx-target={@myself}
-        class="btn btn-sm"
-        disabled={is_nil(@token) or @snapshot.lifecycle == :disconnected}
-      >I physically verified direction, travel and reference — complete commissioning</button>
+          disabled={is_nil(@token) or @offline}
+        >
+          I physically verified direction, travel and reference — complete commissioning
+        </button>
+      </.disclosure>
     </div>
+    """
+  end
+
+  attr :axis, :any, required: true
+  attr :token, :any, default: nil
+  attr :myself, :any, required: true
+  attr :offline, :boolean, default: false
+  attr :size, :string, default: nil
+  attr :gated, :boolean, default: false
+
+  # Stop is the one control that is never hidden while the needle moves or the operator
+  # holds the axis. Without manual control it takes it first (see `stop_now`).
+  defp stop_button(assigns) do
+    ~H"""
+    <button
+      id={"stepper-stop-#{@axis.id}"}
+      type="button"
+      phx-click={if @token, do: "command", else: "stop_now"}
+      phx-value-op="stop"
+      phx-target={@myself}
+      class={["btn btn-error", @size]}
+      disabled={@offline or (@gated and is_nil(@token))}
+    >
+      Stop
+    </button>
     """
   end
 end

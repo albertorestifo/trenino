@@ -121,6 +121,107 @@ defmodule TreninoWeb.CoreComponents do
   end
 
   @doc """
+  A one-word status pill. The text is always present, so colour is never the only signal.
+  The element is a polite live region so a change is announced to screen readers.
+
+  ## Examples
+
+      <.status_chip kind={:ok} label="Ready" />
+      <.status_chip kind={:error} label="Fault" id="axis-1-status" />
+  """
+  attr :id, :string, default: nil
+  attr :kind, :atom, values: [:ok, :warn, :error, :info, :muted], default: :muted
+  attr :label, :string, required: true
+
+  def status_chip(assigns) do
+    assigns =
+      assign(
+        assigns,
+        :style,
+        %{
+          ok: {"badge-success", "hero-check-circle-mini"},
+          warn: {"badge-warning", "hero-exclamation-triangle-mini"},
+          error: {"badge-error", "hero-x-circle-mini"},
+          info: {"badge-info", "hero-arrow-path-mini"},
+          muted: {"badge-ghost", "hero-minus-circle-mini"}
+        }[assigns.kind]
+      )
+
+    ~H"""
+    <span id={@id} role="status" class={["badge badge-soft gap-1 whitespace-nowrap", elem(@style, 0)]}>
+      <.icon name={elem(@style, 1)} class="size-4 shrink-0" />{@label}
+    </span>
+    """
+  end
+
+  @doc """
+  A real on/off switch. State lives on the server: `aria-checked` follows `checked`, and
+  nothing flips on the client until the server confirms.
+
+  ## Examples
+
+      <.switch id="gauge-toggle-1" checked={@enabled} label="Gauge on" phx-click="toggle" />
+  """
+  attr :id, :string, required: true
+  attr :checked, :boolean, required: true
+  attr :label, :string, required: true, doc: "the accessible name, e.g. the thing being switched"
+  attr :rest, :global, include: ~w(phx-click phx-value-id phx-target disabled)
+
+  def switch(assigns) do
+    ~H"""
+    <button
+      id={@id}
+      type="button"
+      role="switch"
+      aria-checked={to_string(@checked)}
+      aria-label={@label}
+      class="group inline-flex min-h-11 min-w-11 items-center justify-center rounded-full px-1 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+      {@rest}
+    >
+      <span class={[
+        "relative inline-flex h-6 w-11 shrink-0 items-center rounded-full border transition-colors motion-reduce:transition-none",
+        @checked && "border-success bg-success",
+        !@checked && "border-base-content/30 bg-base-300"
+      ]}>
+        <span class={[
+          "inline-block size-4 rounded-full bg-base-100 transition-transform motion-reduce:transition-none",
+          @checked && "translate-x-6",
+          !@checked && "translate-x-1"
+        ]}></span>
+      </span>
+    </button>
+    """
+  end
+
+  @doc """
+  A native, keyboard-accessible disclosure. The open state is owned by the browser: a
+  server re-render (for example a live status update) never collapses it.
+  """
+  attr :id, :string, required: true
+  attr :summary, :string, required: true
+  attr :class, :string, default: nil
+  slot :inner_block, required: true
+
+  def disclosure(assigns) do
+    ~H"""
+    <details
+      id={@id}
+      phx-mounted={JS.ignore_attributes("open")}
+      class={["group rounded-lg border border-base-300", @class]}
+    >
+      <summary class="flex min-h-11 cursor-pointer list-none items-center justify-between gap-2 rounded-lg px-3 text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary [&::-webkit-details-marker]:hidden">
+        <span>{@summary}</span>
+        <.icon
+          name="hero-chevron-down-mini"
+          class="size-4 shrink-0 transition-transform group-open:rotate-180 motion-reduce:transition-none"
+        />
+      </summary>
+      <div class="space-y-3 px-3 pb-3">{render_slot(@inner_block)}</div>
+    </details>
+    """
+  end
+
+  @doc """
   Renders an input with label and error messages.
 
   A `Phoenix.HTML.FormField` may be passed as argument,

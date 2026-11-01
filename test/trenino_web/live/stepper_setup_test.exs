@@ -18,20 +18,23 @@ defmodule TreninoWeb.StepperSetupTest do
              Hardware.list_stepper_axes(device.id)
 
     assert has_element?(view, "#stepper-axes", "Speed")
-    assert has_element?(view, "#stepper-axes", "Disconnected")
+    assert has_element?(view, "#stepper-axes", "Device not connected")
   end
 
-  test "quick setup fills X27 defaults and flip direction explains next steps", %{conn: conn} do
+  test "quick setup fills X27 defaults and flip direction says to apply", %{conn: conn} do
     {:ok, device} = Hardware.create_device(%{name: "Panel"})
     {:ok, view, _} = live(conn, ~p"/configurations/#{device.config_id}")
+    # Presets live inside the Add axis flow, not on the resting panel.
+    refute has_element?(view, "#stepper-preset-x27")
+    view |> element("#stepper-add") |> render_click()
     view |> element("#stepper-preset-x27") |> render_click()
     assert render(view) =~ "X27.168 gauge motor"
     view |> form("#stepper-axis-form") |> render_submit()
     assert [%{reverse: false, motor_port: 1} = axis] = Hardware.list_stepper_axes(device.id)
 
-    html = view |> element("button[phx-click=flip_direction]") |> render_click()
-    assert html =~ "Apply to Device"
-    assert html =~ "Assign reference"
+    view |> element("button[id^=stepper-flip-]") |> render_click()
+    assert has_element?(view, "[role=status]", "Click Apply to Device")
+    html = render(view)
     assert [%{reverse: true}] = Hardware.list_stepper_axes(device.id)
     refute Hardware.allcall_conflict_possible?(axis.device_id)
     refute html =~ "stepper-allcall-warning"
@@ -90,7 +93,7 @@ defmodule TreninoWeb.StepperSetupTest do
       send(view.pid, {:configuration_applied, "tty", applied, device.config_id})
       refute has_element?(view, "#apply-needed-banner")
 
-      view |> element("button[phx-click=flip_direction]") |> render_click()
+      view |> element("button[id^=stepper-flip-]") |> render_click()
       assert has_element?(view, "#apply-needed-banner", "Apply needed")
     end
 

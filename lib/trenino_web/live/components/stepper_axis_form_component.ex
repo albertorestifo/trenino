@@ -4,7 +4,7 @@ defmodule TreninoWeb.StepperAxisFormComponent do
   alias Trenino.Hardware
   alias Trenino.Hardware.I2cModule
   alias Trenino.Hardware.{StepperAxis, StepperManager, StepperPresets}
-  alias TreninoWeb.GaugeFeedback
+  alias TreninoWeb.{GaugeFeedback, GaugeGuidance}
 
   @basic_numbers [
     axis_index: "Logical axis (0 or 1)",
@@ -194,28 +194,28 @@ defmodule TreninoWeb.StepperAxisFormComponent do
     Enum.find([0, 1], 0, &(&1 not in used))
   end
 
-  defp saved_notice(axis, prefix) do
-    "#{prefix} Nothing has moved and the device has not changed yet. Next: click Apply to Device, " <>
-      "then take manual control, align the needle by hand and Assign reference" <>
-      if(axis.reverse, do: " (direction is now reversed).", else: ".")
-  end
+  defp saved_notice(_axis, prefix),
+    do: "#{prefix} Nothing has moved yet. Click Apply to Device to send it to the device."
+
+  defp axis_status(axis, assigns),
+    do: GaugeGuidance.axis_status(axis, assigns.snapshot, false, assigns.apply_needed)
 
   defp edit(socket, axis),
     do: assign(socket, editing: axis, form: to_form(StepperAxis.changeset(axis, %{})), error: nil)
 
-  defp own_axis(socket, id), do: Enum.find(socket.assigns.axes, &(to_string(&1.id) == id))
+  defp own_axis(socket, id),
+    do: Enum.find(socket.assigns.axes, &(to_string(&1.id) == to_string(id)))
 
   @impl true
   def render(assigns) do
     ~H"""
     <section id="stepper-axes" class="bg-base-200/50 rounded-xl p-6 mt-6 space-y-4">
-      <div class="flex justify-between items-center">
+      <div class="flex items-center justify-between gap-2">
         <h2 class="text-lg font-semibold">Stepper axes</h2>
-        <button id="stepper-add" type="button" phx-click="add" phx-target={@myself} class="btn btn-sm">Add axis</button>
+        <button id="stepper-add" type="button" phx-click="add" phx-target={@myself} class="btn btn-sm">
+          Add axis
+        </button>
       </div>
-      <p class="text-sm">
-        Firmware 3.1.0 or newer. Positions are open-loop estimates in commutation transitions.
-      </p>
       <div
         :if={@allcall_warning}
         id="stepper-allcall-warning"
@@ -229,44 +229,8 @@ defmodule TreninoWeb.StepperAxisFormComponent do
           <p class="text-xs mt-1">This does not stop you from applying.</p>
         </div>
       </div>
-      <details :if={@axes != []} class="border border-base-300 rounded p-3">
-        <summary>Recommission shield address (both axes lose reference)</summary>
-        <.form
-          for={to_form(%{})}
-          id="stepper-recommission-address"
-          phx-submit="recommission"
-          phx-target={@myself}
-        >
-          <.input name="address" value="0x60" label="New shared shield address" />
-          <.input
-            name="acknowledged"
-            type="checkbox"
-            value="true"
-            label="I followed the shield-alone ALLCALL registration order"
-            checked={false}
-          />
-          <button type="submit" class="btn btn-sm" disabled={@snapshot.lifecycle == :disconnected}>Reset, forget old registration and configure new address</button>
-        </.form>
-      </details>
-      <div class="flex flex-wrap gap-2">
-        <button
-          id="stepper-preset-x27"
-          type="button"
-          phx-click="preset"
-          phx-value-name="x27"
-          phx-target={@myself}
-          class="btn btn-sm btn-primary"
-        >Quick setup: X27.168 motor</button>
-        <button
-          type="button"
-          phx-click="preset"
-          phx-value-name="class323"
-          phx-target={@myself}
-          class="btn btn-sm btn-ghost"
-        >Class 323 speedometer starter</button>
-      </div>
-      <p class="text-xs text-base-content/60">
-        Presets only fill the form. Winding order, direction and travel are unverified until you check them on the real motor. Nothing homes automatically.
+      <p :if={@axes == [] and is_nil(@form)} class="text-sm text-base-content/70">
+        Add an axis to drive a gauge needle with a stepper motor. Needs controller firmware 3.1.0 or newer.
       </p>
       <p :if={@notice} role="status" class="text-sm text-success">{@notice}</p>
       <p :if={@error} role="alert" class="text-error">{@error}</p>
@@ -279,6 +243,32 @@ defmodule TreninoWeb.StepperAxisFormComponent do
         phx-target={@myself}
         class="space-y-3"
       >
+        <div :if={is_nil(@editing.id)} class="flex flex-wrap items-center gap-2">
+          <span class="text-sm text-base-content/70">Start from</span>
+          <button
+            id="stepper-preset-x27"
+            type="button"
+            phx-click="preset"
+            phx-value-name="x27"
+            phx-target={@myself}
+            class="btn btn-sm btn-primary"
+          >
+            X27.168 motor
+          </button>
+          <button
+            id="stepper-preset-class323"
+            type="button"
+            phx-click="preset"
+            phx-value-name="class323"
+            phx-target={@myself}
+            class="btn btn-sm btn-ghost"
+          >
+            Class 323 speedometer
+          </button>
+          <span class="text-xs text-base-content/70">
+            Presets only fill in this form. Check direction and travel on the real motor.
+          </span>
+        </div>
         <.input field={@form[:name]} label="Axis name" />
         <div class="grid sm:grid-cols-2 gap-3">
           <.input
@@ -296,9 +286,11 @@ defmodule TreninoWeb.StepperAxisFormComponent do
           />
         </div>
         <.input field={@form[:reverse]} type="checkbox" label="Reverse electrical direction" />
-        <details class="border border-base-300 rounded p-3">
-          <summary>Advanced (home sweep, timeouts, watchdog, idle behavior)</summary>
-          <div class="grid sm:grid-cols-2 gap-3 mt-3">
+        <.disclosure
+          id="stepper-form-advanced"
+          summary="Advanced (home sweep, timeouts, watchdog, idle behavior)"
+        >
+          <div class="grid sm:grid-cols-2 gap-3">
             <.input
               :for={{field, label} <- @advanced_numbers}
               field={@form[field]}
@@ -313,35 +305,85 @@ defmodule TreninoWeb.StepperAxisFormComponent do
               options={Enum.map(options, &{Phoenix.Naming.humanize(&1), &1})}
             />
           </div>
-          <p class="text-xs mt-2">
+          <p class="text-xs">
             Idle release loses reference after every completion. Continuous gauges require hold. Automatic Home causes bounded motion on each new connection only after physical commissioning; selecting it does not move now.
           </p>
-        </details>
-        <button type="submit" class="btn btn-primary">Save axis</button>
-        <button type="button" phx-click="cancel" phx-target={@myself} class="btn btn-ghost">Cancel</button>
+        </.disclosure>
+        <div class="flex gap-2">
+          <button type="submit" class="btn btn-primary">Save axis</button>
+          <button type="button" phx-click="cancel" phx-target={@myself} class="btn btn-ghost">
+            Cancel
+          </button>
+        </div>
       </.form>
       <article
         :for={axis <- @axes}
         id={"stepper-axis-#{axis.id}"}
-        class="border border-base-300 rounded-lg p-4 space-y-2"
+        class="border border-base-300 rounded-lg p-4 space-y-3"
       >
-        <div class="flex justify-between">
-          <strong>{axis.name}</strong><span>{if axis.commissioned,
-            do: "Commissioned",
-            else: "Needs physical commissioning"}</span>
+        <% status = axis_status(axis, assigns) %>
+        <div class="flex items-start justify-between gap-3">
+          <div class="min-w-0">
+            <h3 class="font-semibold break-words">{axis.name}</h3>
+            <p class="text-xs text-base-content/70">
+              Axis {axis.axis_index} · port {axis.motor_port}
+            </p>
+          </div>
+          <div class="flex shrink-0 items-center gap-1">
+            <.status_chip id={"stepper-status-#{axis.id}"} kind={status.kind} label={status.label} />
+            <details
+              :if={@wizard_axis_id != axis.id}
+              id={"stepper-menu-#{axis.id}"}
+              phx-mounted={JS.ignore_attributes("open")}
+              class="dropdown dropdown-end"
+            >
+              <summary
+                aria-label={"More actions for #{axis.name}"}
+                class="btn btn-ghost btn-square list-none"
+              >
+                <.icon name="hero-ellipsis-horizontal" class="size-5" />
+              </summary>
+              <ul class="menu dropdown-content z-10 mt-1 w-56 rounded-box border border-base-300 bg-base-100 p-1 shadow">
+                <li :if={status.primary != :wizard}>
+                  <button
+                    id={"stepper-wizard-open-#{axis.id}"}
+                    type="button"
+                    phx-click={menu_action("open_wizard", axis, @myself)}
+                  >
+                    Guided gauge setup
+                  </button>
+                </li>
+                <li>
+                  <button
+                    id={"stepper-edit-#{axis.id}"}
+                    type="button"
+                    phx-click={menu_action("edit", axis, @myself)}
+                  >
+                    Edit axis
+                  </button>
+                </li>
+                <li>
+                  <button
+                    id={"stepper-flip-#{axis.id}"}
+                    type="button"
+                    phx-click={menu_action("flip_direction", axis, @myself)}
+                  >
+                    Flip direction{if axis.reverse, do: " (reversed)"}
+                  </button>
+                </li>
+                <li>
+                  <button
+                    id={"stepper-delete-#{axis.id}"}
+                    type="button"
+                    phx-click={menu_action("delete", axis, @myself)}
+                  >
+                    Delete axis
+                  </button>
+                </li>
+              </ul>
+            </details>
+          </div>
         </div>
-        <p class="text-sm">
-          Axis {axis.axis_index} · port {axis.motor_port} · {axis.mode} · {axis.min_position}…{axis.max_position}
-        </p>
-        <button
-          :if={@wizard_axis_id != axis.id}
-          id={"stepper-wizard-open-#{axis.id}"}
-          type="button"
-          phx-click="open_wizard"
-          phx-value-id={axis.id}
-          phx-target={@myself}
-          class="btn btn-sm btn-primary"
-        >Guided gauge setup</button>
         <.live_component
           :if={@wizard_axis_id == axis.id}
           module={TreninoWeb.GaugeWizardComponent}
@@ -349,34 +391,14 @@ defmodule TreninoWeb.StepperAxisFormComponent do
           axis={axis}
           snapshot={@snapshot}
         />
-        <div :if={@wizard_axis_id != axis.id} class="space-y-2">
-          <button
-            type="button"
-            phx-click="edit"
-            phx-value-id={axis.id}
-            phx-target={@myself}
-            class="btn btn-sm"
-          >Edit</button>
-          <button
-            type="button"
-            phx-click="flip_direction"
-            phx-value-id={axis.id}
-            phx-target={@myself}
-            class="btn btn-sm"
-          >Flip direction{if axis.reverse, do: " (currently reversed)"}</button>
-          <button
-            type="button"
-            phx-click="delete"
-            phx-value-id={axis.id}
-            phx-target={@myself}
-            class="btn btn-sm btn-ghost"
-          >Delete</button>
+        <div :if={@wizard_axis_id != axis.id} class="space-y-3">
           <.live_component
             module={TreninoWeb.StepperCommissioningComponent}
             id={"stepper-commissioning-#{axis.id}"}
             axis={axis}
             snapshot={@snapshot}
             apply_needed={@apply_needed}
+            wizard_target={@myself}
           />
           <.live_component
             module={TreninoWeb.DialCalibrationComponent}
@@ -386,7 +408,35 @@ defmodule TreninoWeb.StepperAxisFormComponent do
           />
         </div>
       </article>
+      <.disclosure :if={@axes != []} id="stepper-panel-advanced" summary="Advanced">
+        <h3 class="text-sm font-medium">Recommission shield address (both axes lose reference)</h3>
+        <.form
+          for={to_form(%{})}
+          id="stepper-recommission-address"
+          phx-submit="recommission"
+          phx-target={@myself}
+        >
+          <.input name="address" value="0x60" label="New shared shield address" />
+          <.input
+            name="acknowledged"
+            type="checkbox"
+            value="true"
+            label="I followed the shield-alone ALLCALL registration order"
+            checked={false}
+          />
+          <button type="submit" class="btn btn-sm" disabled={@snapshot.lifecycle == :disconnected}>
+            Reset, forget old registration and configure new address
+          </button>
+        </.form>
+      </.disclosure>
     </section>
     """
+  end
+
+  # Runs the event, then closes the menu it was clicked in.
+  defp menu_action(event, axis, target) do
+    event
+    |> JS.push(value: %{id: axis.id}, target: target)
+    |> JS.remove_attribute("open", to: {:closest, "details"})
   end
 end

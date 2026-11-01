@@ -8,6 +8,7 @@ defmodule TreninoWeb.GaugeGuidance do
   alias Trenino.Hardware.{DialCalibration, StepperAxis}
   alias Trenino.Train.GaugeBinding
   alias Trenino.Train.Train
+  alias TreninoWeb.GaugeFeedback
 
   @type snapshot :: %{required(:lifecycle) => atom(), optional(atom()) => term()}
 
@@ -30,6 +31,69 @@ defmodule TreninoWeb.GaugeGuidance do
     runtime = snapshot.axes[axis.id]
     step(snapshot.lifecycle, axis, runtime, has_token?, apply_needed?)
   end
+
+  @typedoc """
+  The one-word state of an axis card. `primary` is the single promoted action:
+  `:wizard`, `:recover`, `:resume` or `nil`.
+  """
+  @type axis_status :: %{
+          state: :ready | :needs_setup | :offline | :fault | :paused | :moving | :busy,
+          label: String.t(),
+          kind: :ok | :warn | :error | :info | :muted,
+          reason: String.t() | nil,
+          primary: :wizard | :recover | :resume | nil
+        }
+
+  @doc """
+  The resting-view summary of an axis: one state, one reason (only when something needs
+  attention) and the one action that moves the operator forward. Read-only.
+  """
+  @spec axis_status(StepperAxis.t(), snapshot(), boolean(), boolean()) :: axis_status()
+  def axis_status(%StepperAxis{} = axis, snapshot, has_token?, apply_needed?) do
+    runtime = snapshot.axes[axis.id]
+    reason = next_step(axis, snapshot, has_token?, apply_needed?)
+    lifecycle = snapshot.lifecycle
+
+    cond do
+      lifecycle == :disconnected ->
+        status(:offline, "Device not connected", :muted, reason, nil)
+
+      lifecycle == :fault ->
+        detail =
+          if Map.get(snapshot, :error), do: GaugeFeedback.fault(snapshot.error), else: reason
+
+        status(:fault, "Fault", :error, detail, :recover)
+
+      lifecycle == :unsupported ->
+        status(:needs_setup, "Needs setup", :warn, reason, nil)
+
+      apply_needed? ->
+        status(:needs_setup, "Needs setup", :warn, reason, :wizard)
+
+      lifecycle in [:probing, :deploying, :resetting, :configuring] or is_nil(runtime) ->
+        status(:busy, "Starting", :info, reason, nil)
+
+      not runtime.ready or not axis.commissioned ->
+        status(:needs_setup, "Needs setup", :warn, reason, :wizard)
+
+      runtime.paused ->
+        status(:paused, "Paused", :warn, reason, :resume)
+
+      moving?(runtime) ->
+        status(:moving, "Moving", :info, nil, nil)
+
+      true ->
+        status(:ready, "Ready", :ok, nil, nil)
+    end
+  end
+
+  defp status(state, label, kind, reason, primary),
+    do: %{state: state, label: label, kind: kind, reason: reason, primary: primary}
+
+  @doc "Whether the axis needle is in motion right now (reported or just commanded)."
+  @spec moving?(map() | nil) :: boolean()
+  def moving?(%{status: %{state: state}}) when state in [:moving, :homing], do: true
+  def moving?(_), do: false
 
   defp step(:disconnected, _, _, _, true),
     do: "Apply needed: connect the device, then click Apply to Device."

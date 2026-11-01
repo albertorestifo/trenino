@@ -267,6 +267,191 @@ defmodule TreninoWeb.GaugeBindingWizard do
     """
   end
 
+  attr :b, :any, required: true
+  attr :runtime, :any, default: nil
+  attr :client, :any, default: nil
+  attr :myself, :any, required: true
+
+  # One line of identity, one state chip, one reason only when something is wrong, and at
+  # most one action. Everything else (endpoint, raw numbers) sits behind Details.
+  defp gauge_card(assigns) do
+    b = assigns.b
+    card = card_state(b, assigns.runtime, assigns.client)
+
+    assigns =
+      assigns
+      |> assign(:card, card)
+      |> assign(:axis, b.stepper_axis)
+      |> assign(:config_id, b.stepper_axis.device.config_id)
+
+    ~H"""
+    <article id={"gauge-binding-#{@b.id}"} class="space-y-2 rounded-lg border border-base-300 p-4">
+      <div class="flex items-start justify-between gap-3">
+        <div class="min-w-0">
+          <h3 class="font-semibold break-words">{@b.name}</h3>
+          <p class="text-sm text-base-content/70">{@axis.device.name} · {@axis.name}</p>
+        </div>
+        <.switch
+          id={"gauge-toggle-#{@b.id}"}
+          checked={@b.enabled}
+          label={"#{@b.name} on"}
+          phx-click="toggle"
+          phx-value-id={@b.id}
+          phx-target={@myself}
+        />
+      </div>
+      <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
+        <.status_chip id={"gauge-status-#{@b.id}"} kind={@card.kind} label={@card.label} />
+        <span :if={@card.live} class="text-sm tabular-nums">{@card.live}</span>
+      </div>
+      <p :if={@card.reason} id={"#{@card.reason_id}-#{@b.id}"} class="text-sm text-base-content/80">
+        {@card.reason}
+      </p>
+      <.link
+        :if={@card.action}
+        navigate={action_path(@card.action, @axis, @config_id)}
+        class="btn btn-sm btn-soft"
+      >
+        {action_label(@card.action)}
+      </.link>
+      <div class="flex flex-wrap items-center gap-1 pt-1">
+        <button
+          type="button"
+          phx-click="edit"
+          phx-value-id={@b.id}
+          phx-target={@myself}
+          class="btn btn-ghost btn-sm"
+        >
+          Edit
+        </button>
+        <button
+          type="button"
+          phx-click="delete"
+          phx-value-id={@b.id}
+          phx-target={@myself}
+          class="btn btn-ghost btn-sm"
+        >
+          Delete
+        </button>
+      </div>
+      <.disclosure id={"gauge-details-#{@b.id}"} summary="Details">
+        <p class="break-all text-sm">
+          {@b.endpoint} · {unit_label(@b.input_unit)}
+        </p>
+        <p :if={@runtime} class="text-sm">
+          Latest sample: {GaugeFeedback.value(@runtime[:sample])} ·
+          Converted value: {GaugeFeedback.value(@runtime[:value])} ·
+          Estimated target: {GaugeFeedback.value(@runtime[:target])} transitions
+        </p>
+        <p
+          :if={@runtime[:failure] && GaugeFeedback.result(@runtime[:failure]) != @card.reason}
+          class="text-sm"
+        >
+          Last result: {GaugeFeedback.result(@runtime[:failure])}
+        </p>
+        <p :if={is_nil(@runtime)} class="text-sm text-base-content/70">
+          No simulator data received yet.
+        </p>
+      </.disclosure>
+    </article>
+    """
+  end
+
+  defp action_path(:dial, axis, config_id),
+    do: ~p"/configurations/#{config_id}" <> "#dial-calibration-#{axis.id}"
+
+  defp action_path(:axis, axis, config_id),
+    do: ~p"/configurations/#{config_id}" <> "#stepper-axis-#{axis.id}"
+
+  defp action_label(:dial), do: "Calibrate the dial"
+  defp action_label(:axis), do: "Open axis"
+
+  # Exactly one reason wins, in order of how directly it explains a still needle.
+  defp card_state(b, runtime, client) do
+    blocker = binding_blocker(b, client)
+    dial = dial_status(b.stepper_axis)
+    state = pick_state(b, blocker, dial, runtime)
+    Map.put_new(state, :live, nil)
+  end
+
+  defp pick_state(_b, blocker, _dial, _rt) when is_binary(blocker) do
+    action =
+      cond do
+        String.contains?(blocker, "dial is blocked") -> :dial
+        String.contains?(blocker, "simulator is not connected") -> nil
+        true -> :axis
+      end
+
+    %{
+      kind: :warn,
+      label: "Not moving",
+      reason: sentence(String.replace_prefix(blocker, "Not moving: ", "")),
+      reason_id: "gauge-blocker",
+      action: action
+    }
+  end
+
+  defp pick_state(_b, nil, _dial, %{stale: true}),
+    do: note(:warn, "Waiting for data", "Simulator data is stale; movement is suspended.")
+
+  defp pick_state(_b, nil, _dial, %{failure: failure}) when not is_nil(failure),
+    do: note(:warn, "Not moving", GaugeFeedback.result(failure))
+
+  defp pick_state(%{enabled: false} = b, nil, dial, _rt) do
+    cond do
+      match?({:missing, _}, dial) ->
+        dial_note(:muted, "Off", dial)
+
+      not b.stepper_axis.commissioned ->
+        axis_note(:muted, "Off", "The axis is not commissioned yet.")
+
+      true ->
+        %{kind: :muted, label: "Off", reason: nil, reason_id: nil, action: nil}
+    end
+  end
+
+  defp pick_state(b, nil, dial, rt) do
+    cond do
+      match?({:missing, _}, dial) ->
+        dial_note(:warn, "Needs setup", dial)
+
+      is_map(rt) and is_number(rt[:value]) ->
+        %{
+          kind: :ok,
+          label: "Live",
+          reason: nil,
+          reason_id: nil,
+          action: nil,
+          live: live_text(b, rt)
+        }
+
+      true ->
+        %{kind: :ok, label: "Ready", reason: nil, reason_id: nil, action: nil}
+    end
+  end
+
+  defp note(kind, label, reason),
+    do: %{kind: kind, label: label, reason: reason, reason_id: "gauge-note", action: nil}
+
+  defp axis_note(kind, label, reason),
+    do: %{kind: kind, label: label, reason: reason, reason_id: "gauge-note", action: :axis}
+
+  defp dial_note(kind, label, {:missing, reason}),
+    do: %{kind: kind, label: label, reason: reason, reason_id: "gauge-dial", action: :dial}
+
+  defp sentence(<<first::utf8, rest::binary>>), do: String.upcase(<<first::utf8>>) <> rest
+  defp sentence(other), do: other
+
+  defp live_text(b, rt) do
+    case GaugeBinding.calibration(b.stepper_axis) do
+      %DialCalibration{output_unit: unit} when unit != :raw ->
+        "#{GaugeFeedback.value(rt[:value])} #{unit_label(unit)}"
+
+      _ ->
+        "#{GaugeFeedback.value(rt[:value])}"
+    end
+  end
+
   @impl true
   def render(assigns) do
     axis = find_axis(assigns.axes, assigns.params["stepper_axis_id"])
@@ -417,52 +602,13 @@ defmodule TreninoWeb.GaugeBindingWizard do
       <p :if={@train_hint} id="gauge-train-hint" role="status" class="text-sm text-warning">
         {@train_hint}
       </p>
-      <article
+      <.gauge_card
         :for={b <- @bindings}
-        id={"gauge-binding-#{b.id}"}
-        class="border border-base-300 rounded p-4 space-y-2"
-      >
-        <strong>{b.name}</strong><p class="text-sm">
-          {b.stepper_axis.device.name} · {b.stepper_axis.name} · {b.endpoint} · {unit_label(
-            b.input_unit
-          )}
-        </p>
-        <p>{if b.enabled, do: "Enabled", else: "Disabled"}</p>
-        <.dial_line id={"gauge-dial-#{b.id}"} axis={b.stepper_axis} />
-        <p
-          :if={blocker = binding_blocker(b, @client)}
-          id={"gauge-blocker-#{b.id}"}
-          role="status"
-          class="text-sm text-warning"
-        >
-          {blocker}
-        </p>
-        <p :if={@runtime[b.id]} class="text-sm">
-          Latest sample: {GaugeFeedback.value(@runtime[b.id][:sample])} ·
-          Converted value: {GaugeFeedback.value(@runtime[b.id][:value])} ·
-          Estimated target: {GaugeFeedback.value(@runtime[b.id][:target])} transitions
-        </p>
-        <p :if={@runtime[b.id] && @runtime[b.id][:stale]} role="status">
-          Simulator data is stale; movement is suspended.
-        </p>
-        <p :if={@runtime[b.id] && @runtime[b.id][:failure]} role="status">
-          {GaugeFeedback.result(@runtime[b.id][:failure])}
-        </p>
-        <p :if={is_nil(@runtime[b.id])} class="text-sm">
-          Awaiting fresh simulator data and referenced hardware. Manual pause, stale values or faults suspend movement.
-        </p>
-        <button
-          :for={
-            {label, event} <- [{"Edit", "edit"}, {"Enable / disable", "toggle"}, {"Delete", "delete"}]
-          }
-          type="button"
-          phx-click={event}
-          phx-value-id={b.id}
-          phx-target={@myself}
-          class="btn btn-sm"
-        >{label}</button>
-        <.link navigate={~p"/configurations/#{b.stepper_axis.device.config_id}"} class="link text-sm">Hardware commissioning</.link>
-      </article>
+        b={b}
+        runtime={@runtime[b.id]}
+        client={@client}
+        myself={@myself}
+      />
     </section>
     """
   end
