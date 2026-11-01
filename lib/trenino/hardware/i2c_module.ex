@@ -5,10 +5,14 @@ defmodule Trenino.Hardware.I2cModule do
   import Ecto.Changeset
   import PolymorphicEmbed
 
+  alias Trenino.Hardware.ADS1115.Params, as: ADS1115Params
   alias Trenino.Hardware.Device
   alias Trenino.Hardware.HT16K33.Params, as: HT16K33Params
+  alias Trenino.Hardware.MCP23017.Params, as: MCP23017Params
 
-  @type module_chip :: :ht16k33
+  @type module_chip :: :ht16k33 | :mcp23017 | :ads1115
+
+  @address_ranges %{mcp23017: 0x20..0x27, ads1115: 0x48..0x4B}
 
   @type t() :: %__MODULE__{
           id: integer() | nil,
@@ -16,7 +20,7 @@ defmodule Trenino.Hardware.I2cModule do
           name: String.t() | nil,
           module_chip: module_chip(),
           i2c_address: integer() | nil,
-          params: HT16K33Params.t() | nil,
+          params: HT16K33Params.t() | MCP23017Params.t() | ADS1115Params.t() | nil,
           device: Device.t() | Ecto.Association.NotLoaded.t(),
           inserted_at: DateTime.t() | nil,
           updated_at: DateTime.t() | nil
@@ -24,7 +28,7 @@ defmodule Trenino.Hardware.I2cModule do
 
   schema "device_i2c_modules" do
     field :name, :string
-    field :module_chip, Ecto.Enum, values: [:ht16k33]
+    field :module_chip, Ecto.Enum, values: [:ht16k33, :mcp23017, :ads1115]
     field :i2c_address, :integer
 
     polymorphic_embeds_one(:params,
@@ -32,6 +36,14 @@ defmodule Trenino.Hardware.I2cModule do
         ht16k33: [
           module: HT16K33Params,
           identify_by_fields: [:brightness, :num_digits, :display_type, :has_dot]
+        ],
+        mcp23017: [
+          module: MCP23017Params,
+          identify_by_fields: [:direct_mask, :row_mask, :col_mask]
+        ],
+        ads1115: [
+          module: ADS1115Params,
+          identify_by_fields: [:channel_mask, :gain]
         ]
       ],
       on_type_not_found: :raise,
@@ -49,10 +61,44 @@ defmodule Trenino.Hardware.I2cModule do
     |> cast_polymorphic_embed(:params, required: true)
     |> validate_required([:device_id, :module_chip, :i2c_address])
     |> validate_number(:i2c_address, greater_than_or_equal_to: 0, less_than_or_equal_to: 255)
+    |> validate_chip_address()
+    |> validate_chip_immutable(mod)
     |> validate_length(:name, max: 100)
     |> foreign_key_constraint(:device_id)
     |> unique_constraint([:device_id, :i2c_address])
   end
+
+  @doc "True for chips that provide inputs (MCP23017, ADS1115)."
+  @spec input_chip?(t()) :: boolean()
+  def input_chip?(%__MODULE__{module_chip: chip}), do: chip in [:mcp23017, :ads1115]
+
+  defp validate_chip_address(changeset) do
+    with chip when is_map_key(@address_ranges, chip) <- get_field(changeset, :module_chip),
+         addr when is_integer(addr) <- get_field(changeset, :i2c_address),
+         range = Map.fetch!(@address_ranges, chip),
+         false <- addr in range do
+      add_error(
+        changeset,
+        :i2c_address,
+        "must be between #{format_i2c_address(range.first)} and #{format_i2c_address(range.last)} for this chip"
+      )
+    else
+      _ -> changeset
+    end
+  end
+
+  defp validate_chip_immutable(changeset, %__MODULE__{id: id, module_chip: current})
+       when not is_nil(id) and not is_nil(current) do
+    case fetch_change(changeset, :module_chip) do
+      {:ok, new} when new != current ->
+        add_error(changeset, :module_chip, "cannot be changed after creation")
+
+      _ ->
+        changeset
+    end
+  end
+
+  defp validate_chip_immutable(changeset, _mod), do: changeset
 
   @doc "Parse an i2c address string — accepts decimal ('112') or lowercase hex ('0x70'). Uppercase prefix ('0X70') is not supported."
   @spec parse_i2c_address(String.t()) :: {:ok, integer()} | :error
