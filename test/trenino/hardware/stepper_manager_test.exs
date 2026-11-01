@@ -690,6 +690,31 @@ defmodule Trenino.Hardware.StepperManagerTest do
       refute_receive {:sent, %StepperCommand{operation: :home}}, 150
     end
 
+    test "an MCP recover consumes the startup Home latch", ctx do
+      auto_home_axis(ctx)
+      send(ctx.pid, {:devices_updated, [ctx.conn]})
+      assert_receive {:sent, %StepperCommand{operation: :get_status} = probe}
+      publish(ctx, status(probe))
+      assert_receive {:sent, %StepperCommand{operation: :reset} = reset}
+      publish(ctx, status(reset))
+      assert_receive {:sent, %StepperCommand{operation: :configure}}
+      assert :sys.get_state(ctx.pid).sessions[ctx.conn.port].auto_home
+
+      assert {:ok, %{token: token}} = StepperManager.claim_mcp_manual(ctx.axis.id)
+      flush_sent()
+
+      recover =
+        Task.async(fn ->
+          StepperManager.command_once(ctx.axis.id, :recover, %{}, token, "recover")
+        end)
+
+      assert_receive {:sent, %StepperCommand{operation: :reset} = again}, 500
+      publish(ctx, status(again))
+      assert {:ok, :recovering} = Task.await(recover, 2000)
+      refute :sys.get_state(ctx.pid).sessions[ctx.conn.port].auto_home
+      GenServer.stop(StepperManager)
+    end
+
     test "a startup fault clears the latch", ctx do
       auto_home_axis(ctx)
       send(ctx.pid, {:devices_updated, [ctx.conn]})

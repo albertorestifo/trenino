@@ -162,6 +162,8 @@ defmodule Trenino.Hardware.StepperManager do
     with {:ok, lease} <- mcp_lease(s, id, token, op),
          true <- is_binary(operation_token) and byte_size(operation_token) in 1..200,
          {:ok, pid} <- axis_session(s, id) do
+      s = consume_home_on_recover(s, pid, op)
+
       {result, lease} =
         once(lease, operation_token, {op, params}, fn -> execute_once(s, pid, id, op, params) end)
 
@@ -437,6 +439,16 @@ defmodule Trenino.Hardware.StepperManager do
 
   defp homeable?(s, id),
     do: not Map.has_key?(s.leases, id) and not MapSet.member?(s.paused_axes, id)
+
+  # A Recover, like an Apply, never authorizes a Home.
+  defp consume_home_on_recover(s, pid, :recover) do
+    case Enum.find(s.sessions, fn {_, session} -> session.pid == pid end) do
+      {port, _} -> clear_auto_home(s, port)
+      nil -> s
+    end
+  end
+
+  defp consume_home_on_recover(s, _pid, _op), do: s
 
   defp clear_auto_home(s, port) do
     case s.sessions[port] do
