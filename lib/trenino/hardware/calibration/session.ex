@@ -35,7 +35,7 @@ defmodule Trenino.Hardware.Calibration.Session do
 
   @calibration_topic "hardware:calibration"
   @min_sample_count 10
-  @min_unique_samples 3
+  @default_min_unique_samples 3
 
   defmodule State do
     @moduledoc false
@@ -47,6 +47,8 @@ defmodule Trenino.Hardware.Calibration.Session do
             port: String.t(),
             pin: integer(),
             max_hardware_value: integer(),
+            min_unique_samples: pos_integer(),
+            allow_rollover: boolean(),
             current_step: step(),
             min_samples: [integer()],
             sweep_samples: [integer()],
@@ -59,6 +61,8 @@ defmodule Trenino.Hardware.Calibration.Session do
       :port,
       :pin,
       :max_hardware_value,
+      min_unique_samples: 3,
+      allow_rollover: true,
       current_step: :ready,
       min_samples: [],
       sweep_samples: [],
@@ -78,6 +82,9 @@ defmodule Trenino.Hardware.Calibration.Session do
     * `:port` - Required. The serial port of the device.
     * `:pin` - Required. The pin number of the input.
     * `:max_hardware_value` - Optional. Hardware max value (default: 1023).
+    * `:min_unique_samples` - Optional. Distinct values required per hold step (default: 3).
+    * `:allow_rollover` - Optional. When false, a rollover sweep fails with
+      `{:error, :rollover_needs_reference}` and nothing is saved (default: true).
   """
   @spec start_link(keyword()) :: GenServer.on_start()
   def start_link(opts) do
@@ -135,6 +142,8 @@ defmodule Trenino.Hardware.Calibration.Session do
     port = Keyword.fetch!(opts, :port)
     pin = Keyword.fetch!(opts, :pin)
     max_hardware_value = Keyword.get(opts, :max_hardware_value, 1023)
+    min_unique_samples = Keyword.get(opts, :min_unique_samples, @default_min_unique_samples)
+    allow_rollover = Keyword.get(opts, :allow_rollover, true)
 
     Logger.debug("Calibration session starting for input #{input_id}, port #{port}, pin #{pin}")
 
@@ -145,7 +154,9 @@ defmodule Trenino.Hardware.Calibration.Session do
       input_id: input_id,
       port: port,
       pin: pin,
-      max_hardware_value: max_hardware_value
+      max_hardware_value: max_hardware_value,
+      min_unique_samples: min_unique_samples,
+      allow_rollover: allow_rollover
     }
 
     broadcast_event(state, :session_started)
@@ -243,7 +254,7 @@ defmodule Trenino.Hardware.Calibration.Session do
   end
 
   defp validate_and_advance(%State{current_step: :collecting_min} = state) do
-    if valid_samples?(state.min_samples) do
+    if valid_samples?(state.min_samples, state.min_unique_samples) do
       {:ok, %{state | current_step: :sweeping}}
     else
       {:error, :insufficient_samples}
@@ -259,7 +270,7 @@ defmodule Trenino.Hardware.Calibration.Session do
   end
 
   defp validate_and_advance(%State{current_step: :collecting_max} = state) do
-    if valid_samples?(state.max_samples) do
+    if valid_samples?(state.max_samples, state.min_unique_samples) do
       {:ok, %{state | current_step: :analyzing}}
     else
       {:error, :insufficient_samples}
@@ -270,9 +281,9 @@ defmodule Trenino.Hardware.Calibration.Session do
     {:error, :invalid_step}
   end
 
-  defp valid_samples?(samples) do
+  defp valid_samples?(samples, min_unique) do
     length(samples) >= @min_sample_count and
-      length(Enum.uniq(samples)) >= @min_unique_samples
+      length(Enum.uniq(samples)) >= min_unique
   end
 
   defp analyze_and_save_calibration(%State{} = state) do
@@ -283,6 +294,14 @@ defmodule Trenino.Hardware.Calibration.Session do
 
     {:ok, analysis} = Analyzer.analyze_sweep(sweep_samples, state.max_hardware_value)
 
+    if analysis.rollover and not state.allow_rollover do
+      {:error, :rollover_needs_reference}
+    else
+      save_analysis(state, analysis, min_samples, max_samples)
+    end
+  end
+
+  defp save_analysis(%State{} = state, analysis, min_samples, max_samples) do
     min_value = Analyzer.calculate_min(min_samples, analysis)
     max_value = Analyzer.calculate_max(max_samples, analysis)
 
@@ -317,6 +336,7 @@ defmodule Trenino.Hardware.Calibration.Session do
     %{
       input_id: state.input_id,
       pin: state.pin,
+      min_unique_samples: state.min_unique_samples,
       current_step: state.current_step,
       min_sample_count: length(state.min_samples),
       min_unique_count: length(Enum.uniq(state.min_samples)),
@@ -330,16 +350,16 @@ defmodule Trenino.Hardware.Calibration.Session do
 
   defp can_advance?(%State{current_step: :ready}), do: true
 
-  defp can_advance?(%State{current_step: :collecting_min, min_samples: samples}) do
-    valid_samples?(samples)
+  defp can_advance?(%State{current_step: :collecting_min} = state) do
+    valid_samples?(state.min_samples, state.min_unique_samples)
   end
 
   defp can_advance?(%State{current_step: :sweeping, sweep_samples: samples}) do
     length(samples) >= @min_sample_count
   end
 
-  defp can_advance?(%State{current_step: :collecting_max, max_samples: samples}) do
-    valid_samples?(samples)
+  defp can_advance?(%State{current_step: :collecting_max} = state) do
+    valid_samples?(state.max_samples, state.min_unique_samples)
   end
 
   defp can_advance?(%State{}), do: false

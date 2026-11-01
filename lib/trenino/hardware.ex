@@ -1180,14 +1180,27 @@ defmodule Trenino.Hardware do
           {:ok, pid()} | {:error, term()}
   def start_calibration_session(%Input{} = input, port, opts \\ []) do
     session_opts =
-      Keyword.merge(opts,
-        input_id: input.id,
-        port: port,
-        pin: input.pin
+      Keyword.merge(
+        chip_calibration_opts(input),
+        Keyword.merge(opts, input_id: input.id, port: port, pin: input.pin)
       )
 
     SessionSupervisor.start_session(session_opts)
   end
+
+  # ADS1115 readings can repeat exactly, so one unique value is enough;
+  # rollover can only be resolved when a supply reference channel is set.
+  defp chip_calibration_opts(%Input{i2c_module_id: module_id}) when is_integer(module_id) do
+    case Repo.get(I2cModule, module_id) do
+      %I2cModule{module_chip: :ads1115, params: params} ->
+        [min_unique_samples: 1, allow_rollover: not is_nil(params.ref_channel)]
+
+      _ ->
+        []
+    end
+  end
+
+  defp chip_calibration_opts(%Input{}), do: []
 
   @doc """
   Save calibration data for an input.

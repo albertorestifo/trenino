@@ -782,6 +782,11 @@ defmodule TreninoWeb.ConfigurationEditLive do
 
   defp parse_pins(_), do: []
 
+  defp calibration_failure_message(:rollover_needs_reference),
+    do: TreninoWeb.CalibrationWizard.error_message({:error, :rollover_needs_reference})
+
+  defp calibration_failure_message(reason), do: "Calibration failed: #{inspect(reason)}"
+
   # handle_info callbacks
 
   @impl true
@@ -807,7 +812,7 @@ defmodule TreninoWeb.ConfigurationEditLive do
     {:noreply,
      socket
      |> assign(:calibrating_input, nil)
-     |> put_flash(:error, "Calibration failed: #{inspect(reason)}")}
+     |> put_flash(:error, calibration_failure_message(reason))}
   end
 
   @impl true
