@@ -18,11 +18,14 @@ defmodule Trenino.Hardware.I2cInputs do
   alias Trenino.Hardware.Input.Calibration
   alias Trenino.Hardware.MCP23017.Params, as: MCP23017Params
   alias Trenino.Repo
+  alias Trenino.Train.ButtonController
   alias Trenino.Train.ButtonInputBinding
   alias Trenino.Train.Element
   alias Trenino.Train.LeverConfig
+  alias Trenino.Train.LeverController
   alias Trenino.Train.LeverInputBinding
   alias Trenino.Train.Train
+  alias Trenino.VirtualJoystick.Manager
   alias Trenino.VirtualJoystick.Mapping
 
   @type child :: %{
@@ -99,9 +102,10 @@ defmodule Trenino.Hardware.I2cInputs do
   Drop host-computed and non-schema keys from module attrs.
 
   Returns the attrs to cast and the `:channels` map, keyed by integer channel with
-  atom-keyed `:name` and `:sensitivity` entries.
+  atom-keyed `:name` and `:sensitivity` entries, or `:invalid` when it cannot be
+  read, which `save/2` reports as an error on `:params`.
   """
-  @spec split_attrs(map()) :: {map(), %{integer() => map()}}
+  @spec split_attrs(map()) :: {map(), %{integer() => map()} | :invalid}
   def split_attrs(attrs) when is_map(attrs) do
     channels = Map.get(attrs, :channels) || Map.get(attrs, "channels") || %{}
     attrs = Map.drop(attrs, [:channels, "channels"])
@@ -114,10 +118,16 @@ defmodule Trenino.Hardware.I2cInputs do
 
   The changeset must come from attrs passed through `split_attrs/1`.
   """
-  @spec save(Changeset.t(), map()) :: {:ok, I2cModule.t()} | {:error, Changeset.t()}
+  @spec save(Changeset.t(), map() | :invalid) :: {:ok, I2cModule.t()} | {:error, Changeset.t()}
+  def save(%Changeset{} = changeset, :invalid) do
+    {:error, params_error(changeset, "has invalid channel settings")}
+  end
+
   def save(%Changeset{} = changeset, channels) do
     if input_chip?(changeset) do
-      Repo.transaction(fn -> save_chip(changeset, channels) end, mode: :immediate)
+      fn -> save_chip(changeset, channels) end
+      |> Repo.transaction(mode: :immediate)
+      |> tap(&notify_on_success/1)
     else
       Repo.insert_or_update(changeset)
     end
@@ -126,7 +136,7 @@ defmodule Trenino.Hardware.I2cInputs do
   @doc "Delete a module with its child inputs and their calibrations and bindings."
   @spec delete(I2cModule.t()) :: {:ok, I2cModule.t()} | {:error, Changeset.t()}
   def delete(%I2cModule{id: id} = mod) do
-    Repo.transaction(fn ->
+    fn ->
       from(i in Input, where: i.i2c_module_id == ^id, select: i.id)
       |> Repo.all()
       |> delete_inputs()
@@ -135,7 +145,9 @@ defmodule Trenino.Hardware.I2cInputs do
         {:ok, deleted} -> deleted
         {:error, changeset} -> Repo.rollback(changeset)
       end
-    end)
+    end
+    |> Repo.transaction()
+    |> tap(&notify_on_success/1)
   end
 
   @doc """
@@ -149,7 +161,7 @@ defmodule Trenino.Hardware.I2cInputs do
 
   def impact(%I2cModule{} = mod, attrs) do
     {attrs, _channels} = split_attrs(attrs)
-    changeset = I2cModule.changeset(mod, attrs)
+    changeset = I2cModule.changeset(Repo.get(I2cModule, mod.id) || mod, attrs)
 
     if changeset.valid? do
       kept = changeset |> Changeset.apply_changes() |> children() |> channel_set()
@@ -165,9 +177,12 @@ defmodule Trenino.Hardware.I2cInputs do
 
   # Saving
 
+  # Children sync from the row just written, never from the caller's copy, which
+  # may be stale.
   defp save_chip(changeset, channels) do
     with {:ok, changeset} <- assign_bases(changeset),
-         {:ok, mod} <- Repo.insert_or_update(changeset),
+         {:ok, written} <- Repo.insert_or_update(changeset),
+         {:ok, mod} <- reload(written),
          :ok <- sync_children(mod, channels) do
       Repo.preload(mod, :inputs, force: true)
     else
@@ -176,6 +191,24 @@ defmodule Trenino.Hardware.I2cInputs do
     end
   end
 
+  defp reload(%I2cModule{id: id}) do
+    case Repo.get(I2cModule, id) do
+      nil -> {:error, "no longer exists"}
+      mod -> {:ok, mod}
+    end
+  end
+
+  # The controllers key inputs on {port, pin}, and pins move with their block.
+  defp notify_on_success({:ok, _mod}) do
+    LeverController.reload_inputs()
+    LeverController.reload_bindings()
+    ButtonController.reload_inputs()
+    ButtonController.reload_bindings()
+    Manager.reload_mappings()
+  end
+
+  defp notify_on_success(_result), do: :ok
+
   defp input_chip?(changeset) do
     chip = Changeset.get_field(changeset, :module_chip)
     changeset.valid? and I2cModule.input_chip?(%I2cModule{module_chip: chip})
@@ -183,13 +216,28 @@ defmodule Trenino.Hardware.I2cInputs do
 
   # An edit without params changes no block.
   defp assign_bases(%Changeset{changes: %{params: params}} = changeset) do
-    case place_blocks(params, used_pins(changeset)) do
+    case place_blocks(current_bases(params, changeset), used_pins(changeset)) do
       {:ok, params} -> {:ok, Changeset.put_change(changeset, :params, params)}
       :error -> {:error, @no_room}
     end
   end
 
   defp assign_bases(changeset), do: {:ok, changeset}
+
+  # Bases come from the row, as the caller's struct may be stale.
+  defp current_bases(params, %Changeset{data: %I2cModule{id: nil}}), do: params
+
+  defp current_bases(params, %Changeset{data: %I2cModule{id: id}}) do
+    case Repo.get(I2cModule, id) do
+      %I2cModule{params: %{__struct__: module} = row} when module == params.__struct__ ->
+        params |> blocks() |> Enum.reduce(params, &copy_base(&2, row, &1))
+
+      _ ->
+        params
+    end
+  end
+
+  defp copy_base(params, row, {field, _size}), do: Map.put(params, field, Map.fetch!(row, field))
 
   # Kept blocks claim their pins first, so a new or moved block cannot land on them.
   defp place_blocks(params, used) do
@@ -220,7 +268,7 @@ defmodule Trenino.Hardware.I2cInputs do
     end
   end
 
-  defp keep?(_used, 0, _size), do: false
+  defp keep?(_used, base, _size) when base < @first_virtual_pin, do: false
   defp keep?(used, base, size), do: free?(used, base, size)
 
   defp free?(used, base, size) do
@@ -416,14 +464,31 @@ defmodule Trenino.Hardware.I2cInputs do
     end)
   end
 
-  defp normalize_channels(channels) do
-    Map.new(channels, fn {channel, settings} ->
-      {to_channel(channel), %{name: name(settings), sensitivity: sensitivity(settings)}}
+  defp normalize_channels(channels) when is_map(channels) do
+    Enum.reduce_while(channels, %{}, fn {channel, settings}, acc ->
+      case {to_channel(channel), settings} do
+        {channel, %{} = settings} when is_integer(channel) ->
+          entry = %{name: name(settings), sensitivity: sensitivity(settings)}
+          {:cont, Map.put(acc, channel, entry)}
+
+        _ ->
+          {:halt, :invalid}
+      end
     end)
   end
 
+  defp normalize_channels(_channels), do: :invalid
+
   defp to_channel(channel) when is_integer(channel), do: channel
-  defp to_channel(channel) when is_binary(channel), do: String.to_integer(channel)
+
+  defp to_channel(channel) when is_binary(channel) do
+    case Integer.parse(channel) do
+      {channel, ""} -> channel
+      _ -> nil
+    end
+  end
+
+  defp to_channel(_channel), do: nil
 
   defp name(settings) do
     case setting(settings, :name) do

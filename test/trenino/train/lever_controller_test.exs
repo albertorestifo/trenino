@@ -50,6 +50,44 @@ defmodule Trenino.Train.LeverControllerTest do
     end
   end
 
+  describe "chip edits" do
+    test "a moved pin reaches the right input" do
+      {:ok, device} = Hardware.create_device(%{name: "Moving Chip Device"})
+
+      {:ok, mod} =
+        Hardware.create_i2c_module(device.id, %{
+          module_chip: :mcp23017,
+          i2c_address: 0x20,
+          params: %{direct_mask: 0, row_mask: 0x03, col_mask: 0x0300}
+        })
+
+      moved = Enum.find(mod.inputs, &(&1.i2c_channel == 16 + 16 + 9))
+
+      device_conn = %DeviceConnection{
+        port: "/dev/cu.usbmodemmove#{System.unique_integer([:positive])}",
+        status: :connected,
+        device_config_id: device.config_id
+      }
+
+      Mimic.stub(Trenino.Serial.Connection, :list_devices, fn -> [device_conn] end)
+      send(Process.whereis(LeverController), {:devices_updated, [device_conn]})
+      assert %{input_id: id} = LeverController.get_state().input_lookup[{device_conn.port, 255}]
+      assert id == moved.id
+
+      {:ok, updated} =
+        Hardware.update_i2c_module(mod, %{
+          params: %{direct_mask: 0, row_mask: 0x03, col_mask: 0x0700}
+        })
+
+      new_pin = Enum.find(updated.inputs, &(&1.id == moved.id)).pin
+      assert new_pin != 255
+
+      lookup = LeverController.get_state().input_lookup
+      assert lookup[{device_conn.port, new_pin}].input_id == moved.id
+      assert lookup[{device_conn.port, 255}].input_id != moved.id
+    end
+  end
+
   describe "smooth lever updates" do
     setup %{test: test} do
       {:ok, train} =

@@ -15,6 +15,19 @@ defmodule Trenino.Hardware.I2cModule do
 
   @address_ranges %{mcp23017: 0x20..0x27, ads1115: 0x48..0x4B}
 
+  @params_modules %{
+    ht16k33: HT16K33Params,
+    mcp23017: MCP23017Params,
+    ads1115: ADS1115Params
+  }
+
+  # Must match identify_by_fields below.
+  @identify_fields [
+    ["brightness", "num_digits", "display_type", "has_dot"],
+    ["direct_mask", "row_mask", "col_mask"],
+    ["channel_mask", "gain"]
+  ]
+
   @type t() :: %__MODULE__{
           id: integer() | nil,
           device_id: integer() | nil,
@@ -48,7 +61,7 @@ defmodule Trenino.Hardware.I2cModule do
           identify_by_fields: [:channel_mask, :gain]
         ]
       ],
-      on_type_not_found: :raise,
+      on_type_not_found: :changeset_error,
       on_replace: :update
     )
 
@@ -61,11 +74,14 @@ defmodule Trenino.Hardware.I2cModule do
   def changeset(%__MODULE__{} = mod, attrs) do
     mod
     |> cast(attrs, [:device_id, :name, :module_chip, :i2c_address])
+    |> put_params_type()
     |> cast_polymorphic_embed(:params, required: true)
+    |> validate_params_match_chip()
     |> validate_required([:device_id, :module_chip, :i2c_address])
     |> validate_number(:i2c_address, greater_than_or_equal_to: 0, less_than_or_equal_to: 255)
     |> validate_chip_address()
-    |> validate_chip_immutable(mod)
+    |> validate_immutable(:module_chip, mod)
+    |> validate_immutable(:device_id, mod)
     |> validate_length(:name, max: 100)
     |> foreign_key_constraint(:device_id)
     |> unique_constraint([:device_id, :i2c_address])
@@ -90,18 +106,57 @@ defmodule Trenino.Hardware.I2cModule do
     end
   end
 
-  defp validate_chip_immutable(changeset, %__MODULE__{id: id, module_chip: current})
-       when not is_nil(id) and not is_nil(current) do
-    case fetch_change(changeset, :module_chip) do
-      {:ok, new} when new != current ->
-        add_error(changeset, :module_chip, "cannot be changed after creation")
+  defp validate_immutable(changeset, _field, %__MODULE__{id: nil}), do: changeset
+
+  defp validate_immutable(changeset, field, %__MODULE__{} = mod) do
+    case fetch_change(changeset, field) do
+      {:ok, new} when new != :erlang.map_get(field, mod) ->
+        add_error(changeset, field, "cannot be changed after creation")
 
       _ ->
         changeset
     end
   end
 
-  defp validate_chip_immutable(changeset, _mod), do: changeset
+  # Partial params cannot identify their own type, so the chip names it. Params
+  # that do identify a type keep it, for validate_params_match_chip/1 to judge.
+  defp put_params_type(changeset) do
+    case {get_field(changeset, :module_chip), changeset.params} do
+      {chip, %{"params" => %{} = params}} when not is_nil(chip) ->
+        if identifies_type?(params) do
+          changeset
+        else
+          typed = Map.put(params, type_key(params), chip)
+          %{changeset | params: Map.put(changeset.params, "params", typed)}
+        end
+
+      _ ->
+        changeset
+    end
+  end
+
+  defp identifies_type?(params) do
+    keys = MapSet.new(Map.keys(params), &to_string/1)
+
+    MapSet.member?(keys, "__type__") or
+      Enum.any?(@identify_fields, fn fields -> Enum.all?(fields, &MapSet.member?(keys, &1)) end)
+  end
+
+  defp type_key(params) do
+    if Enum.any?(Map.keys(params), &is_binary/1), do: "__type__", else: :__type__
+  end
+
+  defp validate_params_match_chip(changeset) do
+    expected = Map.get(@params_modules, get_field(changeset, :module_chip))
+
+    case get_field(changeset, :params) do
+      %{__struct__: module} when module != expected and module != Ecto.Changeset ->
+        add_error(changeset, :params, "do not match this chip")
+
+      _ ->
+        changeset
+    end
+  end
 
   @doc "Parse an i2c address string — accepts decimal ('112') or lowercase hex ('0x70'). Uppercase prefix ('0X70') is not supported."
   @spec parse_i2c_address(String.t()) :: {:ok, integer()} | :error

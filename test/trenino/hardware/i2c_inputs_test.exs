@@ -555,6 +555,194 @@ defmodule Trenino.Hardware.I2cInputsLifecycleTest do
     end
   end
 
+  describe "params must match the chip" do
+    test "an edit cannot store another chip's params", %{device: device} do
+      {:ok, mcp} = create_mcp(device, %{direct_mask: @a0})
+
+      assert {:error, cs} =
+               Hardware.update_i2c_module(mcp, %{params: %{channel_mask: 1, gain: 0}})
+
+      assert errors_on(cs)[:params] == ["do not match this chip"]
+      {:ok, reloaded} = Hardware.get_i2c_module(mcp.id)
+      assert %MCPParams{} = reloaded.params
+      assert child_channels(mcp) == [0]
+    end
+
+    test "a create cannot pair a chip with another chip's params", %{device: device} do
+      assert {:error, cs} =
+               Hardware.create_i2c_module(device.id, %{
+                 module_chip: :mcp23017,
+                 i2c_address: 0x20,
+                 params: %{
+                   brightness: 8,
+                   num_digits: 4,
+                   display_type: :fourteen_segment,
+                   has_dot: false
+                 }
+               })
+
+      assert errors_on(cs)[:params] == ["do not match this chip"]
+    end
+
+    test "partial params edit the chip they belong to", %{device: device} do
+      {:ok, mod} = create_ads(device, 0b0001)
+
+      assert {:ok, updated} = Hardware.update_i2c_module(mod, %{params: %{gain: 1}})
+      assert updated.params.gain == 1
+      assert updated.params.channel_mask == 0b0001
+    end
+
+    test "partial params give a changeset on create", %{device: device} do
+      assert {:error, %Ecto.Changeset{}} =
+               Hardware.create_i2c_module(device.id, %{
+                 module_chip: :ads1115,
+                 i2c_address: 0x48,
+                 params: %{gain: 0}
+               })
+    end
+
+    test "params with no chip give a changeset", %{device: device} do
+      assert {:error, %Ecto.Changeset{}} =
+               Hardware.create_i2c_module(device.id, %{i2c_address: 0x48, params: %{gain: 0}})
+    end
+  end
+
+  describe "stale and moved modules" do
+    test "a stale struct does not delete real children", %{device: device} do
+      {:ok, stale} = create_ads(device, 0b0001)
+
+      {:ok, _fresh} =
+        Hardware.update_i2c_module(stale, %{params: %{channel_mask: 0b0011, gain: 0}})
+
+      assert {:ok, renamed} = Hardware.update_i2c_module(stale, %{name: "Renamed"})
+
+      assert renamed.name == "Renamed"
+      assert renamed.params.channel_mask == 0b0011
+      assert child_channels(renamed) == [0, 1]
+    end
+
+    test "a stale struct does not move a block off its row's base", %{device: device} do
+      {:ok, ads} = create_ads(device, 0b0001)
+      {:ok, mcp} = create_mcp(device, %{row_mask: @a0, col_mask: @b0})
+      assert mcp.params.matrix_base == 251
+      {:ok, _} = Hardware.delete_i2c_module(ads)
+
+      stale = %{mcp | params: %{mcp.params | matrix_base: 255}}
+
+      {:ok, updated} =
+        Hardware.update_i2c_module(stale, %{
+          params: mcp_params(%{row_mask: @a0 ||| @a1, col_mask: @b0})
+        })
+
+      assert updated.params.matrix_base == 251
+    end
+
+    test "device_id cannot change on update", %{device: device} do
+      {:ok, other} = Hardware.create_device(%{name: "Other", config_id: 4344})
+      {:ok, mod} = create_ads(device, 0b0001)
+
+      assert {:error, cs} = Hardware.update_i2c_module(mod, %{device_id: other.id})
+      assert errors_on(cs)[:device_id] == ["cannot be changed after creation"]
+      assert [%I2cModule{}] = Hardware.list_i2c_modules(device.id)
+    end
+
+    test "a base below 128 is not kept", %{device: device} do
+      {:ok, mod} = create_ads(device, 0b0001)
+
+      mod =
+        mod
+        |> Ecto.Changeset.change(params: %{mod.params | pin_base: 100})
+        |> Repo.update!()
+
+      {:ok, updated} =
+        Hardware.update_i2c_module(mod, %{params: %{channel_mask: 0b0011, gain: 0}})
+
+      assert updated.params.pin_base == 252
+    end
+
+    test "adding a lower column with base kept shifts pins onto siblings", %{device: device} do
+      {mod, inputs} = two_by_two_below_free_pins(device)
+
+      {:ok, updated} =
+        Hardware.update_i2c_module(mod, %{
+          params: mcp_params(%{row_mask: @a0 ||| @a1, col_mask: @b0 ||| @b1 ||| @b2})
+        })
+
+      assert updated.params.matrix_base == 248
+
+      for {r, c, col_index} <- [{0, 9, 1}, {0, 10, 2}, {1, 9, 1}, {1, 10, 2}] do
+        input = child(updated, cell(r, c))
+        assert input.id == inputs[cell(r, c)].id
+        assert input.pin == 248 + r * 3 + col_index
+      end
+
+      assert child(updated, cell(0, 8)).pin == 248
+      assert child(updated, cell(1, 8)).pin == 251
+    end
+
+    test "a failed edit rolls moved rows back", %{device: device} do
+      {:ok, matrix} =
+        Hardware.create_matrix(device.id, %{name: "M", row_pins: [0], col_pins: [1]})
+
+      {:ok, mod} = create_ads(device, 0b1000)
+      kept = child(mod, 3)
+
+      # A row the allocator must avoid, standing in the chip's block.
+      Repo.insert!(%Input{
+        device_id: device.id,
+        matrix_id: matrix.id,
+        pin: 252,
+        input_type: :button,
+        debounce: 1
+      })
+
+      assert {:error, cs} =
+               Hardware.update_i2c_module(mod, %{
+                 params: %{channel_mask: 0b1001, gain: 0},
+                 channels: %{3 => %{sensitivity: 11}}
+               })
+
+      assert errors_on(cs)[:params] != nil
+      assert child(mod, 3).pin == kept.pin
+      assert child_channels(mod) == [3]
+      {:ok, reloaded} = Hardware.get_i2c_module(mod.id)
+      assert reloaded.params.pin_base == 252
+    end
+
+    defp two_by_two_below_free_pins(device) do
+      {:ok, ads} = create_ads(device, 0b0001)
+
+      {:ok, mod} =
+        create_mcp(device, %{row_mask: @a0 ||| @a1, col_mask: @b1 ||| @b2})
+
+      assert mod.params.matrix_base == 248
+      {:ok, _} = Hardware.delete_i2c_module(ads)
+
+      channels = for r <- [0, 1], c <- [9, 10], do: cell(r, c)
+      {mod, Map.new(channels, &{&1, child(mod, &1)})}
+    end
+  end
+
+  describe "malformed channels" do
+    test "a non-integer key returns an error on :params", %{device: device} do
+      assert {:error, cs} = create_ads(device, 0b0001, %{channels: %{"abc" => %{name: "X"}}})
+      assert errors_on(cs)[:params] != nil
+      assert Hardware.list_i2c_modules(device.id) == []
+
+      assert {:error, _} = create_ads(device, 0b0001, %{channels: %{1.5 => %{name: "X"}}})
+    end
+
+    test "non-map settings return an error on :params", %{device: device} do
+      assert {:error, cs} = create_ads(device, 0b0001, %{channels: %{0 => "Brake"}})
+      assert errors_on(cs)[:params] != nil
+    end
+
+    test "a non-map channels value returns an error on :params", %{device: device} do
+      assert {:error, cs} = create_ads(device, 0b0001, %{channels: [1, 2]})
+      assert errors_on(cs)[:params] != nil
+    end
+  end
+
   describe "delete_i2c_module/1" do
     test "removes children, calibrations and bindings", %{device: device} do
       {:ok, mod} = create_ads(device, 0b0011)
