@@ -90,6 +90,25 @@ defmodule Trenino.Hardware.I2cInputs do
     end
   end
 
+  @doc "The child inputs of a module, in channel order."
+  @spec module_inputs(I2cModule.t()) :: [Input.t()]
+  def module_inputs(%I2cModule{id: nil}), do: []
+  def module_inputs(%I2cModule{} = mod), do: child_inputs(mod)
+
+  @doc """
+  How many virtual pins are still free on a device, not counting the pins held by
+  the module `module_id` (nil for a module not yet saved).
+  """
+  @spec free_virtual_pin_count(integer(), integer() | nil) :: non_neg_integer()
+  def free_virtual_pin_count(device_id, module_id) do
+    used =
+      %I2cModule{id: module_id}
+      |> then(&used_pins(%Changeset{data: &1, changes: %{device_id: device_id}}))
+
+    total = @last_virtual_pin - @first_virtual_pin + 1
+    total - Enum.count(used, &(&1 in @first_virtual_pin..@last_virtual_pin))
+  end
+
   @doc "Every pin reserved by a chip on the device."
   @spec device_reserved_pins(integer()) :: MapSet.t(integer())
   def device_reserved_pins(device_id) do
@@ -515,9 +534,23 @@ defmodule Trenino.Hardware.I2cInputs do
       (lever_bindings(ids) ++ button_bindings(ids) ++ joystick_mappings(ids))
       |> Enum.group_by(&elem(&1, 0), &elem(&1, 1))
 
-    for input <- inputs, binding <- Map.get(described, input.id, []) do
+    calibrated = calibrated_ids(ids)
+
+    for input <- inputs,
+        binding <- Map.get(described, input.id) || calibration_only(calibrated, input) do
       %{input_id: input.id, name: input.name, binding: binding}
     end
+  end
+
+  # A calibrated input without bindings still loses its calibration.
+  defp calibration_only(calibrated, input) do
+    if MapSet.member?(calibrated, input.id), do: ["Calibration will be removed"], else: []
+  end
+
+  defp calibrated_ids(ids) do
+    from(c in Calibration, where: c.input_id in ^ids, select: c.input_id)
+    |> Repo.all()
+    |> MapSet.new()
   end
 
   defp lever_bindings(ids) do

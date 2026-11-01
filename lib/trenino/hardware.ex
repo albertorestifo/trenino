@@ -1180,6 +1180,18 @@ defmodule Trenino.Hardware do
   @spec i2c_module_impact(I2cModule.t(), map()) :: [I2cInputs.impact()]
   def i2c_module_impact(%I2cModule{} = mod, attrs \\ %{}), do: I2cInputs.impact(mod, attrs)
 
+  @doc "The child inputs of an i2c module, in channel order."
+  @spec list_i2c_module_inputs(I2cModule.t()) :: [Input.t()]
+  def list_i2c_module_inputs(%I2cModule{} = mod), do: I2cInputs.module_inputs(mod)
+
+  @doc """
+  Virtual pins still free on a device, not counting those held by the given module
+  (nil when creating one).
+  """
+  @spec free_virtual_pin_count(integer(), integer() | nil) :: non_neg_integer()
+  def free_virtual_pin_count(device_id, module_id \\ nil),
+    do: I2cInputs.free_virtual_pin_count(device_id, module_id)
+
   @doc "Send WriteSegments to an I2C display module."
   @spec write_segments(String.t(), integer(), binary()) :: :ok | {:error, term()}
   def write_segments(port, i2c_address, data) do
