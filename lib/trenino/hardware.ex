@@ -206,9 +206,7 @@ defmodule Trenino.Hardware do
 
         case apply(Repo, operation, [cs]) do
           {:ok, updated} ->
-            unless Keyword.get(opts, :keep_dial, false),
-              do: invalidate_gauge_calibration(axis, updated)
-
+            invalidate_unless_kept(axis, updated, opts)
             {:ok, updated}
 
           error ->
@@ -217,6 +215,12 @@ defmodule Trenino.Hardware do
       end)
 
     notify_gauge_configuration(result)
+  end
+
+  defp invalidate_unless_kept(axis, updated, opts) do
+    if Keyword.get(opts, :keep_dial, false),
+      do: :ok,
+      else: invalidate_gauge_calibration(axis, updated)
   end
 
   defp notify_gauge_configuration({:ok, _} = result) do
