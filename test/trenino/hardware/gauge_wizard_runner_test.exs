@@ -9,6 +9,7 @@ defmodule Trenino.Hardware.GaugeWizardRunnerTest do
   alias Trenino.Hardware.GaugeWizard
   alias Trenino.Hardware.GaugeWizard.Runner
   alias Trenino.Hardware.StepperManager
+  alias Trenino.Hardware.StepperSupervisor
   alias Trenino.Serial.Connection
   alias Trenino.Serial.Connection.DeviceConnection
   alias Trenino.Serial.Protocol.StepperCommand
@@ -46,6 +47,7 @@ defmodule Trenino.Hardware.GaugeWizardRunnerTest do
       :ok
     end)
 
+    start_supervised!(StepperSupervisor)
     start_supervised!({StepperManager, devices: []})
     {:ok, axis} = Hardware.create_stepper_axis(device.id, %{name: "Speed"})
     {:ok, _} = Hardware.apply_configuration(connection.port, device.id)

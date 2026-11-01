@@ -2,6 +2,7 @@ defmodule Trenino.StepperGaugeIntegrationTest do
   use Trenino.DataCase, async: false
   alias Trenino.Hardware
   alias Trenino.Hardware.StepperManager
+  alias Trenino.Hardware.StepperSupervisor
   alias Trenino.Serial.Connection
   alias Trenino.Serial.Connection.DeviceConnection
   alias Trenino.Serial.Protocol.{Configure, StepperCommand}
@@ -41,6 +42,7 @@ defmodule Trenino.StepperGaugeIntegrationTest do
       :ok
     end)
 
+    start_supervised!(StepperSupervisor)
     manager = start_supervised!({StepperManager, devices: []})
     %{device: device, firmware: firmware, manager: manager, connection: connection}
   end

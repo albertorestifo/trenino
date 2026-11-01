@@ -34,6 +34,7 @@ defmodule TreninoWeb.ConnCase do
 
   setup tags do
     Trenino.DataCase.setup_sandbox(tags)
+    unless tags[:async], do: Trenino.DataCase.setup_detection_reset()
     Trenino.DataCase.setup_forbidden_serial_stubs()
 
     unless tags[:consent_unset] do

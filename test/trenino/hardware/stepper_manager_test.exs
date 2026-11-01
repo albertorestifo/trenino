@@ -13,6 +13,8 @@ defmodule Trenino.Hardware.StepperManagerTest do
 
   setup do
     owner = self()
+    # Without it sessions are unlinked from the manager and outlive the test.
+    start_supervised!(StepperSupervisor)
     {:ok, device} = Hardware.create_device(%{name: "Stepper"})
     {:ok, axis} = Hardware.create_stepper_axis(device.id, %{name: "Speed"})
 
@@ -422,7 +424,6 @@ defmodule Trenino.Hardware.StepperManagerTest do
   end
 
   test "manager hard restart removes orphan supervised sessions before reconstructing", ctx do
-    start_supervised!(StepperSupervisor)
     prepare(ctx)
     old_session = :sys.get_state(ctx.pid).sessions[ctx.conn.port].pid
     Process.unlink(ctx.pid)
