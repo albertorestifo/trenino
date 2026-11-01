@@ -8,6 +8,10 @@ defmodule Trenino.Serial.Protocol.Configure do
   - Button payload (0x01): [pin:u8][debounce:u8]
   - Matrix payload (0x02): [num_row_pins:u8][num_col_pins:u8][row_pins...][col_pins...]
   - HT16K33 payload (0x04): [i2c_address:u8][brightness:u8][num_digits:u8]
+  - MCP23017 payload (0x05): [i2c_address:u8][direct_base:u8][matrix_base:u8][debounce:u8]
+    [direct_mask:u16le][row_mask:u16le][col_mask:u16le]
+  - ADS1115 payload (0x06): [i2c_address:u8][pin_base:u8][channel_mask:u8][gain:u8]
+    [ref_channel:u8][sensitivity:u8 x4]; ref_channel is 0xFF on the wire for none (nil in the struct)
   - Note: type ID 0x03 is reserved (BLDC, removed)
   """
 
@@ -15,7 +19,7 @@ defmodule Trenino.Serial.Protocol.Configure do
 
   @behaviour Message
 
-  @type input_type :: :analog | :button | :matrix | :ht16k33 | :empty
+  @type input_type :: :analog | :button | :matrix | :ht16k33 | :mcp23017 | :ads1115 | :empty
 
   @type t() :: %__MODULE__{
           config_id: integer(),
@@ -32,7 +36,19 @@ defmodule Trenino.Serial.Protocol.Configure do
           # HT16K33 fields
           i2c_address: integer() | nil,
           brightness: integer() | nil,
-          num_digits: integer() | nil
+          num_digits: integer() | nil,
+          # MCP23017 fields (also uses i2c_address, debounce)
+          direct_base: integer() | nil,
+          matrix_base: integer() | nil,
+          direct_mask: integer() | nil,
+          row_mask: integer() | nil,
+          col_mask: integer() | nil,
+          # ADS1115 fields (also uses i2c_address)
+          pin_base: integer() | nil,
+          channel_mask: integer() | nil,
+          gain: integer() | nil,
+          ref_channel: integer() | nil,
+          sensitivities: [integer()] | nil
         }
 
   defstruct [
@@ -47,7 +63,17 @@ defmodule Trenino.Serial.Protocol.Configure do
     :col_pins,
     :i2c_address,
     :brightness,
-    :num_digits
+    :num_digits,
+    :direct_base,
+    :matrix_base,
+    :direct_mask,
+    :row_mask,
+    :col_mask,
+    :pin_base,
+    :channel_mask,
+    :gain,
+    :ref_channel,
+    :sensitivities
   ]
 
   # Encode - Analog (input_type = 0x00)
@@ -121,6 +147,49 @@ defmodule Trenino.Serial.Protocol.Configure do
        0x04::8-unsigned, i2c_address::8-unsigned, brightness::8-unsigned, num_digits::8-unsigned>>}
   end
 
+  # Encode - MCP23017 (input_type = 0x05)
+  def encode(%__MODULE__{
+        config_id: config_id,
+        total_parts: total_parts,
+        part_number: part_number,
+        input_type: :mcp23017,
+        i2c_address: i2c_address,
+        direct_base: direct_base,
+        matrix_base: matrix_base,
+        debounce: debounce,
+        direct_mask: direct_mask,
+        row_mask: row_mask,
+        col_mask: col_mask
+      }) do
+    {:ok,
+     <<0x02, config_id::little-32-unsigned, total_parts::8-unsigned, part_number::8-unsigned,
+       0x05::8-unsigned, i2c_address::8-unsigned, direct_base::8-unsigned,
+       matrix_base::8-unsigned, debounce::8-unsigned, direct_mask::little-16-unsigned,
+       row_mask::little-16-unsigned, col_mask::little-16-unsigned>>}
+  end
+
+  # Encode - ADS1115 (input_type = 0x06)
+  def encode(%__MODULE__{
+        config_id: config_id,
+        total_parts: total_parts,
+        part_number: part_number,
+        input_type: :ads1115,
+        i2c_address: i2c_address,
+        pin_base: pin_base,
+        channel_mask: channel_mask,
+        gain: gain,
+        ref_channel: ref_channel,
+        sensitivities: [s0, s1, s2, s3]
+      }) do
+    ref = if is_nil(ref_channel), do: 0xFF, else: ref_channel
+
+    {:ok,
+     <<0x02, config_id::little-32-unsigned, total_parts::8-unsigned, part_number::8-unsigned,
+       0x06::8-unsigned, i2c_address::8-unsigned, pin_base::8-unsigned, channel_mask::8-unsigned,
+       gain::8-unsigned, ref::8-unsigned, s0::8-unsigned, s1::8-unsigned, s2::8-unsigned,
+       s3::8-unsigned>>}
+  end
+
   # Decode body - Analog (input_type = 0x00)
   @impl Message
   def decode_body(<<id::little-32, 0, 0, 255>>),
@@ -183,6 +252,51 @@ defmodule Trenino.Serial.Protocol.Configure do
     else
       {:error, :invalid_message}
     end
+  end
+
+  # Decode body - MCP23017 (input_type = 0x05)
+  def decode_body(
+        <<config_id::little-32-unsigned, total_parts::8-unsigned, part_number::8-unsigned, 0x05,
+          i2c_address::8-unsigned, direct_base::8-unsigned, matrix_base::8-unsigned,
+          debounce::8-unsigned, direct_mask::little-16-unsigned, row_mask::little-16-unsigned,
+          col_mask::little-16-unsigned>>
+      ) do
+    {:ok,
+     %__MODULE__{
+       config_id: config_id,
+       total_parts: total_parts,
+       part_number: part_number,
+       input_type: :mcp23017,
+       i2c_address: i2c_address,
+       direct_base: direct_base,
+       matrix_base: matrix_base,
+       debounce: debounce,
+       direct_mask: direct_mask,
+       row_mask: row_mask,
+       col_mask: col_mask
+     }}
+  end
+
+  # Decode body - ADS1115 (input_type = 0x06)
+  def decode_body(
+        <<config_id::little-32-unsigned, total_parts::8-unsigned, part_number::8-unsigned, 0x06,
+          i2c_address::8-unsigned, pin_base::8-unsigned, channel_mask::8-unsigned,
+          gain::8-unsigned, ref::8-unsigned, s0::8-unsigned, s1::8-unsigned, s2::8-unsigned,
+          s3::8-unsigned>>
+      ) do
+    {:ok,
+     %__MODULE__{
+       config_id: config_id,
+       total_parts: total_parts,
+       part_number: part_number,
+       input_type: :ads1115,
+       i2c_address: i2c_address,
+       pin_base: pin_base,
+       channel_mask: channel_mask,
+       gain: gain,
+       ref_channel: if(ref == 0xFF, do: nil, else: ref),
+       sensitivities: [s0, s1, s2, s3]
+     }}
   end
 
   def decode_body(_), do: {:error, :invalid_message}
