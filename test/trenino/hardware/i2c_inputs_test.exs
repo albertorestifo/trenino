@@ -820,6 +820,18 @@ defmodule Trenino.Hardware.I2cInputsLifecycleTest do
       assert Hardware.i2c_module_impact(mod, %{name: "Renamed"}) == []
     end
 
+    test "lists a calibrated input without bindings", %{mod: mod} do
+      calibrate(child(mod, 1))
+
+      assert [%{name: "AIN1", binding: "Calibration will be removed"}] =
+               Hardware.i2c_module_impact(mod)
+
+      assert [%{name: "AIN1", binding: "Calibration will be removed"}] =
+               Hardware.i2c_module_impact(mod, %{params: %{channel_mask: 0b0101, gain: 0}})
+
+      assert Hardware.i2c_module_impact(mod, %{params: %{channel_mask: 0b0011, gain: 0}}) == []
+    end
+
     test "is empty when the edit is invalid", %{mod: mod} do
       {:ok, _} = VirtualJoystick.put_mapping(child(mod, 1).id, %{target_type: :axis, axis: :x})
 
@@ -831,6 +843,17 @@ defmodule Trenino.Hardware.I2cInputsLifecycleTest do
 
       assert [_] = Hardware.i2c_module_impact(mod, %{params: %{channel_mask: 0b0110, gain: 0}})
       assert child_channels(mod) == [0, 1, 2]
+    end
+  end
+
+  describe "free_virtual_pin_count/2" do
+    test "counts what allocation reserves", %{device: device} do
+      before = Hardware.free_virtual_pin_count(device.id)
+      {:ok, mod} = create_mcp(device, %{direct_mask: @a0, row_mask: @a1, col_mask: @b0 ||| @b1})
+
+      # A direct block of 16 plus a 1 x 2 matrix.
+      assert Hardware.free_virtual_pin_count(device.id) == before - 18
+      assert Hardware.free_virtual_pin_count(device.id, mod.id) == before
     end
   end
 

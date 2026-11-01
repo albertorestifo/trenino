@@ -336,11 +336,11 @@ defmodule TreninoWeb.I2cModuleFormComponent do
   end
 
   defp coerce_params(raw, "ads1115") do
-    channels = Map.get(raw, "channels") || %{}
+    channels = read_channels(Map.get(raw, "channels"))
 
     enabled =
       for channel <- 0..3,
-          get_in(channels, [Integer.to_string(channel), "enabled"]) in ["true", true],
+          Map.get(Map.fetch!(channels, channel), "enabled") in ["true", true],
           do: channel
 
     base_attrs(raw, "ads1115")
@@ -352,7 +352,7 @@ defmodule TreninoWeb.I2cModuleFormComponent do
     |> Map.put(
       :channels,
       Map.new(enabled, fn channel ->
-        settings = Map.get(channels, Integer.to_string(channel))
+        settings = Map.fetch!(channels, channel)
 
         {channel,
          %{name: Map.get(settings, "name"), sensitivity: Map.get(settings, "sensitivity")}}
@@ -361,6 +361,14 @@ defmodule TreninoWeb.I2cModuleFormComponent do
   end
 
   defp coerce_params(raw, _chip), do: coerce_params(raw)
+
+  # Channel settings keyed by integer; anything that is not a map reads as empty.
+  defp read_channels(raw) do
+    Map.new(0..3, fn channel ->
+      settings = if is_map(raw), do: Map.get(raw, Integer.to_string(channel)), else: nil
+      {channel, if(is_map(settings), do: settings, else: %{})}
+    end)
+  end
 
   defp base_attrs(raw, chip) do
     %{
@@ -856,16 +864,17 @@ defmodule TreninoWeb.I2cModuleFormComponent do
       />
       <fieldset class="space-y-2">
         <legend class="text-sm font-medium mb-1">Channels</legend>
-        <div
+        <fieldset
           :for={{channel, state} <- Enum.sort(@channels)}
           id={"ads-channel-#{channel}"}
           class="rounded-lg border border-base-300 p-3"
         >
+          <legend class="px-1 text-sm font-medium">AIN{channel}</legend>
           <.input
             id={"ads-enabled-#{channel}"}
             type="checkbox"
             name={"i2c_module[channels][#{channel}][enabled]"}
-            label={"AIN#{channel}"}
+            label={"Use AIN#{channel}"}
             checked={state.enabled}
           />
           <div :if={state.enabled} class="grid grid-cols-2 gap-3">
@@ -873,7 +882,7 @@ defmodule TreninoWeb.I2cModuleFormComponent do
               id={"ads-name-#{channel}"}
               type="text"
               name={"i2c_module[channels][#{channel}][name]"}
-              label="Name"
+              label={"AIN#{channel} name"}
               value={state.name}
               placeholder={"AIN#{channel}"}
             />
@@ -881,13 +890,13 @@ defmodule TreninoWeb.I2cModuleFormComponent do
               id={"ads-sensitivity-#{channel}"}
               type="number"
               name={"i2c_module[channels][#{channel}][sensitivity]"}
-              label="Sensitivity (1 to 10)"
+              label={"AIN#{channel} sensitivity (1 to 10)"}
               value={state.sensitivity}
               min="1"
               max="10"
             />
           </div>
-        </div>
+        </fieldset>
       </fieldset>
       <.input
         id="ads-gain"

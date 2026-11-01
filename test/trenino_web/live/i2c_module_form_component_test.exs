@@ -190,6 +190,23 @@ defmodule TreninoWeb.I2cModuleFormComponentTest do
       assert has_element?(view, "#mcp-pins-left", "112 virtual pins left")
     end
 
+    test "direct pins reserve a block of 16", %{conn: conn, device: device} do
+      view = open(conn, device)
+      choose_chip(view, "mcp23017")
+
+      view
+      |> element("#i2c-module-form")
+      |> render_change(%{
+        "i2c_module" => %{
+          "module_chip" => "mcp23017",
+          "pins" => pins(%{0 => "direct", 1 => "direct"})
+        }
+      })
+
+      assert has_element?(view, "#mcp-direct-count", "2 buttons")
+      assert has_element?(view, "#mcp-pins-left", "112 virtual pins left")
+    end
+
     test "debounce follows the layout until the user changes it", %{conn: conn, device: device} do
       view = open(conn, device)
       choose_chip(view, "mcp23017")
@@ -246,7 +263,7 @@ defmodule TreninoWeb.I2cModuleFormComponentTest do
 
       html = render(view)
       assert html =~ "The chip needs at least one input"
-      assert has_element?(view, "#chip-address-hint")
+      assert has_element?(view, "input#chip-address.input-error")
       assert html =~ "must be between"
       refute has_element?(view, "#saved")
     end
@@ -351,6 +368,23 @@ defmodule TreninoWeb.I2cModuleFormComponentTest do
       assert has_element?(view, "#chip-errors", "Enable at least one channel.")
     end
 
+    test "malformed channel params do not crash", %{conn: conn, device: device} do
+      view = open(conn, device)
+      choose_chip(view, "ads1115")
+
+      view
+      |> element("#i2c-module-form")
+      |> render_submit(%{
+        "i2c_module" => %{
+          "module_chip" => "ads1115",
+          "i2c_address_raw" => "0x48",
+          "channels" => "oops"
+        }
+      })
+
+      assert has_element?(view, "#chip-errors", "Enable at least one channel.")
+    end
+
     test "a bad sensitivity is reported", %{conn: conn, device: device} do
       view = open(conn, device)
       choose_chip(view, "ads1115")
@@ -364,7 +398,8 @@ defmodule TreninoWeb.I2cModuleFormComponentTest do
       )
       |> render_submit()
 
-      assert has_element?(view, "#chip-errors", "AIN0")
+      # Raised by the child input, so it sits on the top-level :params error.
+      assert has_element?(view, "#chip-errors", "AIN0: sensitivity")
       refute has_element?(view, "#saved")
     end
   end
