@@ -395,6 +395,22 @@ defmodule Trenino.Hardware.StepperManagerTest do
       kill_and_wait(owner)
       assert_receive {:sent, %StepperCommand{operation: :home}}, 200
     end
+
+    test "owner loss after a Recover never homes", ctx do
+      axis = auto_home_axis(ctx)
+      {owner, _} = watched_owner(ctx)
+      refute_receive {:sent, %StepperCommand{operation: :home}}, 100
+      assert :ok = StepperManager.recover(ctx.device.id)
+      prepare(ctx)
+      assert ctx.device.id |> StepperManager.snapshot() |> awaiting?()
+
+      kill_and_wait(owner)
+      refute_receive {:sent, %StepperCommand{operation: :home}}, 200
+      refute MapSet.member?(:sys.get_state(ctx.pid).paused_axes, axis.id)
+      GenServer.stop(StepperManager)
+    end
+
+    defp awaiting?(snapshot), do: snapshot.lifecycle == :awaiting_reference
   end
 
   test "unapplied edits cannot be commissioned against a previous firmware configuration", ctx do

@@ -152,6 +152,23 @@ defmodule TreninoWeb.DialCalibrationTest do
     assert {:ok, %{reviewed: false}} = Hardware.get_dial_calibration(axis.id)
   end
 
+  test "a blocked dial is not pre-ticked as reviewed, so one Save cannot revalidate it", %{
+    conn: conn,
+    device: device,
+    axis: axis,
+    id: id
+  } do
+    points = [%{value: 0, position: 0}, %{value: 100, position: 720}]
+    {:ok, _} = Hardware.save_dial_calibration(axis, %{reviewed: true, points: points})
+    {:ok, _} = Hardware.update_stepper_axis(axis, %{home_backoff: 20}, dial_valid: false)
+
+    {:ok, device_view, _} = live(conn, ~p"/configurations/#{device.config_id}")
+    open(device_view, id)
+    refute has_element?(device_view, "##{id}-form input[type=checkbox][checked]")
+    device_view |> form("##{id}-form") |> render_submit(%{"intent" => "save"})
+    assert {:ok, %{valid: false}} = Hardware.get_dial_calibration(axis.id)
+  end
+
   test "a train gauge sees the axis dial without any points of its own", %{axis: axis} do
     {:ok, _} =
       Hardware.save_dial_calibration(axis, %{

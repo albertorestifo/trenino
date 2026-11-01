@@ -94,7 +94,7 @@ defmodule TreninoWeb.GaugeGuidance do
         "Not moving: the axis is not commissioned. Complete physical commissioning first."
 
       match?(%DialCalibration{valid: false}, GaugeBinding.calibration(axis)) ->
-        "Not moving: the dial is blocked because the axis changed or a homing setup was left unfinished. Run the gauge wizard again, or review the dial."
+        "Not moving: the dial is blocked because the axis changed or a homing setup was left unfinished. Run the gauge wizard again."
 
       true ->
         lifecycle_blocker(snapshot, snapshot.axes[axis.id])
