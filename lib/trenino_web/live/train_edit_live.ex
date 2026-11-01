@@ -1392,7 +1392,7 @@ defmodule TreninoWeb.TrainEditLive do
             train_id={@train.id}
             client={@nav_simulator_status.client}
           />
-          <div class="bg-base-200/50 rounded-xl p-4 sm:p-6 space-y-6">
+          <div class="mt-4 bg-base-200/50 rounded-xl p-4 sm:p-6 space-y-6">
             <.display_bindings_section
               display_bindings={@display_bindings}
               simulator_connected={@nav_simulator_status.status == :connected}
