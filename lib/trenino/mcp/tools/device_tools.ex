@@ -275,9 +275,13 @@ defmodule Trenino.MCP.Tools.DeviceTools do
             attrs
           end
 
+        removed = removed_by_update(mod, attrs)
+
         case Hardware.update_i2c_module(mod, attrs) do
           {:ok, updated} ->
-            {:ok, %{i2c_module: serialize_i2c_module(Repo.preload(updated, :device))}}
+            {:ok,
+             %{i2c_module: serialize_i2c_module(Repo.preload(updated, :device))}
+             |> put_removed(mod, removed)}
 
           {:error, changeset} ->
             {:error, format_changeset_errors(changeset)}
@@ -291,14 +295,25 @@ defmodule Trenino.MCP.Tools.DeviceTools do
   def execute("delete_i2c_module", %{"id" => id}) do
     case Hardware.get_i2c_module(id) do
       {:ok, mod} ->
+        removed = Hardware.i2c_module_impact(mod)
+
         case Hardware.delete_i2c_module(mod) do
-          {:ok, _} -> {:ok, %{deleted: true, id: id}}
+          {:ok, _} -> {:ok, put_removed(%{deleted: true, id: id}, mod, removed)}
           {:error, changeset} -> {:error, format_changeset_errors(changeset)}
         end
 
       {:error, :not_found} ->
         {:error, "I2C module not found with id #{id}"}
     end
+  end
+
+  # Bindings lost by an edit, read before it. Empty attrs would mean a delete.
+  defp removed_by_update(_mod, attrs) when map_size(attrs) == 0, do: []
+  defp removed_by_update(mod, attrs), do: Hardware.i2c_module_impact(mod, attrs)
+
+  # Only input chips have inputs that can be lost.
+  defp put_removed(result, mod, removed) do
+    if I2cModule.input_chip?(mod), do: Map.put(result, :removed, removed), else: result
   end
 
   defp parse_i2c_address(str), do: I2cModule.parse_i2c_address(str)

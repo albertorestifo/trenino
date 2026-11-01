@@ -165,7 +165,7 @@ defmodule Trenino.Hardware.I2cInputs do
         {:error, changeset} -> Repo.rollback(changeset)
       end
     end
-    |> Repo.transaction()
+    |> Repo.transaction(mode: :immediate)
     |> tap(&notify_on_success/1)
   end
 
@@ -199,14 +199,26 @@ defmodule Trenino.Hardware.I2cInputs do
   # Children sync from the row just written, never from the caller's copy, which
   # may be stale.
   defp save_chip(changeset, channels) do
+    defaults = previous_defaults(changeset)
+
     with {:ok, changeset} <- assign_bases(changeset),
          {:ok, written} <- Repo.insert_or_update(changeset),
          {:ok, mod} <- reload(written),
-         :ok <- sync_children(mod, channels) do
+         :ok <- sync_children(mod, channels, defaults) do
       Repo.preload(mod, :inputs, force: true)
     else
       {:error, %Changeset{} = failed} -> Repo.rollback(failed)
       {:error, message} -> changeset |> params_error(message) |> Repo.rollback()
+    end
+  end
+
+  # Default names by channel as the stored row has them, read before the write.
+  defp previous_defaults(%Changeset{data: %I2cModule{id: nil}}), do: %{}
+
+  defp previous_defaults(%Changeset{data: %I2cModule{id: id}}) do
+    case Repo.get(I2cModule, id) do
+      nil -> %{}
+      row -> row |> children() |> Map.new(&{&1.i2c_channel, &1.name})
     end
   end
 
@@ -340,7 +352,7 @@ defmodule Trenino.Hardware.I2cInputs do
 
   # Removed rows go first so a kept row can take a freed pin, and moved rows are
   # parked on negative pins so they cannot collide on [device_id, pin] in passing.
-  defp sync_children(%I2cModule{} = mod, channels) do
+  defp sync_children(%I2cModule{} = mod, channels, defaults) do
     wanted = children(mod)
     existing = child_inputs(mod)
     wanted_channels = channel_set(wanted)
@@ -357,7 +369,9 @@ defmodule Trenino.Hardware.I2cInputs do
     |> Enum.reduce_while(:ok, fn child, :ok ->
       existing = Map.get(existing_by_channel, child.i2c_channel)
 
-      case save_child(existing, child, mod, Map.get(channels, child.i2c_channel, %{})) do
+      channel = Map.get(channels, child.i2c_channel, %{})
+
+      case save_child(existing, child, mod, channel, defaults) do
         {:ok, _input} -> {:cont, :ok}
         {:error, changeset} -> {:halt, {:error, child_error(child, changeset)}}
       end
@@ -376,7 +390,7 @@ defmodule Trenino.Hardware.I2cInputs do
     |> Repo.update_all([])
   end
 
-  defp save_child(nil, child, %I2cModule{} = mod, channel) do
+  defp save_child(nil, child, %I2cModule{} = mod, channel, _defaults) do
     attrs =
       child
       |> Map.merge(%{device_id: mod.device_id, i2c_module_id: mod.id})
@@ -385,10 +399,16 @@ defmodule Trenino.Hardware.I2cInputs do
     %Input{} |> Input.changeset(attrs) |> Repo.insert()
   end
 
-  defp save_child(%Input{} = input, child, %I2cModule{} = mod, channel) do
-    attrs = Map.merge(%{pin: child.pin}, child_settings(child, input, mod, channel))
+  defp save_child(%Input{} = input, child, %I2cModule{} = mod, channel, defaults) do
+    named = follow_default_name(input, child, defaults)
+    attrs = Map.merge(%{pin: child.pin}, child_settings(child, named, mod, channel))
 
     input |> Input.changeset(attrs) |> Repo.update()
+  end
+
+  # A name still equal to the old default follows the default to its new position.
+  defp follow_default_name(%Input{name: name} = input, child, defaults) do
+    if Map.get(defaults, child.i2c_channel) == name, do: %{input | name: child.name}, else: input
   end
 
   defp child_settings(child, input, %I2cModule{params: params}, channel) do

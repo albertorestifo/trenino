@@ -118,7 +118,7 @@ defmodule TreninoWeb.ConfigurationEditLive do
      |> assign(:show_apply_modal, false)
      |> assign(:show_delete_modal, false)
      |> assign(:i2c_modules, [])
-     |> assign(:i2c_impacts, %{})
+     |> assign(:i2c_delete_confirm, nil)
      |> assign(:failed_chips, %{})
      |> assign(:stepper_count, 0)
      |> assign(:stepper_axes, [])
@@ -171,7 +171,7 @@ defmodule TreninoWeb.ConfigurationEditLive do
          |> assign(:show_apply_modal, false)
          |> assign(:show_delete_modal, false)
          |> assign(:i2c_modules, i2c_modules)
-         |> assign(:i2c_impacts, i2c_impacts(i2c_modules))
+         |> assign(:i2c_delete_confirm, nil)
          |> assign(:failed_chips, failed_chips)
          |> assign(:stepper_count, length(Hardware.list_stepper_axes(device.id)))
          |> assign(:stepper_axes, Hardware.list_stepper_axes(device.id))
@@ -208,14 +208,7 @@ defmodule TreninoWeb.ConfigurationEditLive do
 
     socket
     |> assign(:i2c_modules, modules)
-    |> assign(:i2c_impacts, i2c_impacts(modules))
-  end
-
-  # What deleting each input chip would unbind, shown in its delete confirmation.
-  defp i2c_impacts(modules) do
-    for %I2cModule{} = mod <- modules, I2cModule.input_chip?(mod), into: %{} do
-      {mod.id, Hardware.i2c_module_impact(mod)}
-    end
+    |> assign(:i2c_delete_confirm, nil)
   end
 
   # Child inputs of input chips, with their module attached for labels.
@@ -478,6 +471,23 @@ defmodule TreninoWeb.ConfigurationEditLive do
   @impl true
   def handle_event("close_i2c_modal", _params, socket) do
     {:noreply, socket |> assign(:i2c_modal_open, false) |> assign(:i2c_modal_module, nil)}
+  end
+
+  @impl true
+  def handle_event("ask_delete_i2c_module", %{"id" => id_str}, socket) do
+    case Hardware.get_i2c_module(String.to_integer(id_str)) do
+      {:ok, mod} ->
+        confirm = %{id: mod.id, impact: Hardware.i2c_module_impact(mod)}
+        {:noreply, assign(socket, :i2c_delete_confirm, confirm)}
+
+      {:error, :not_found} ->
+        {:noreply, put_flash(socket, :error, "Module not found")}
+    end
+  end
+
+  @impl true
+  def handle_event("cancel_delete_i2c_module", _params, socket) do
+    {:noreply, assign(socket, :i2c_delete_confirm, nil)}
   end
 
   @impl true
@@ -1150,7 +1160,7 @@ defmodule TreninoWeb.ConfigurationEditLive do
         <div class="bg-base-200/50 rounded-xl p-6 mt-6">
           <.i2c_modules_section
             i2c_modules={@i2c_modules}
-            i2c_impacts={@i2c_impacts}
+            i2c_delete_confirm={@i2c_delete_confirm}
             failed_chips={@failed_chips}
             input_values={@input_values}
             new_mode={@new_mode}
@@ -1733,7 +1743,7 @@ defmodule TreninoWeb.ConfigurationEditLive do
   end
 
   attr :i2c_modules, :list, required: true
-  attr :i2c_impacts, :map, default: %{}
+  attr :i2c_delete_confirm, :map, default: nil
   attr :failed_chips, :map, default: %{}
   attr :input_values, :map, default: %{}
   attr :new_mode, :boolean, required: true
@@ -1810,14 +1820,48 @@ defmodule TreninoWeb.ConfigurationEditLive do
                     <.icon name="hero-pencil" class="w-3.5 h-3.5" />
                   </button>
                   <button
-                    phx-click="delete_i2c_module"
+                    phx-click={
+                      if I2cModule.input_chip?(mod),
+                        do: "ask_delete_i2c_module",
+                        else: "delete_i2c_module"
+                    }
                     aria-label={"Delete I2C module #{mod.name || I2cModule.format_i2c_address(mod.i2c_address)}"}
                     phx-value-id={mod.id}
-                    data-confirm={delete_confirmation(Map.get(@i2c_impacts, mod.id, []))}
+                    data-confirm={if not I2cModule.input_chip?(mod), do: "Delete this I2C module?"}
                     class="btn btn-ghost btn-xs text-error"
                   >
                     <.icon name="hero-trash" class="w-3.5 h-3.5" />
                   </button>
+                </div>
+              </td>
+            </tr>
+            <tr :if={match?(%{id: id} when id == mod.id, @i2c_delete_confirm)}>
+              <td colspan="6" class="pt-0">
+                <div
+                  id={"delete-confirm-#{mod.id}"}
+                  role="alert"
+                  class="rounded-md border border-error/40 bg-error/10 px-3 py-2 text-sm flex items-center justify-between gap-3"
+                >
+                  <span>{delete_confirmation(@i2c_delete_confirm.impact)}</span>
+                  <span class="flex gap-2">
+                    <button
+                      type="button"
+                      id={"cancel-delete-#{mod.id}"}
+                      phx-click="cancel_delete_i2c_module"
+                      class="btn btn-ghost btn-xs"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      id={"confirm-delete-#{mod.id}"}
+                      phx-click="delete_i2c_module"
+                      phx-value-id={mod.id}
+                      class="btn btn-error btn-xs"
+                    >
+                      Confirm
+                    </button>
+                  </span>
                 </div>
               </td>
             </tr>

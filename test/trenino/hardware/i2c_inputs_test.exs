@@ -543,7 +543,7 @@ defmodule Trenino.Hardware.I2cInputsLifecycleTest do
           params: mcp_params(%{row_mask: @a0 ||| @a1, col_mask: @b0 ||| @b1})
         })
 
-      assert child(updated, cell(1, 9)).name == "R0C1"
+      assert child(updated, cell(1, 9)).name == "R1C1"
       assert child(updated, cell(0, 8)).name == "R0C0"
 
       {:ok, updated} =
@@ -740,6 +740,24 @@ defmodule Trenino.Hardware.I2cInputsLifecycleTest do
     test "a non-map channels value returns an error on :params", %{device: device} do
       assert {:error, cs} = create_ads(device, 0b0001, %{channels: [1, 2]})
       assert errors_on(cs)[:params] != nil
+    end
+  end
+
+  describe "default names after a reshape" do
+    test "default matrix names follow the new position, given names stay", %{device: device} do
+      {:ok, mod} = create_mcp(device, %{row_mask: @a1, col_mask: @b0 ||| @b1})
+      assert child(mod, cell(1, 9)).name == "R0C1"
+
+      {:ok, mod} = Hardware.update_i2c_module(mod, %{channels: %{cell(1, 8) => %{name: "Horn"}}})
+
+      {:ok, updated} =
+        Hardware.update_i2c_module(mod, %{
+          params: mcp_params(%{row_mask: @a0 ||| @a1, col_mask: @b0 ||| @b1})
+        })
+
+      assert child(updated, cell(1, 9)).name == "R1C1"
+      assert child(updated, cell(1, 8)).name == "Horn"
+      assert child(updated, cell(0, 8)).name == "R0C0"
     end
   end
 

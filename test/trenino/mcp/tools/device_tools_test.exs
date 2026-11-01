@@ -152,11 +152,13 @@ defmodule Trenino.MCP.Tools.DeviceToolsTest do
           "num_digits" => 8
         })
 
-      assert {:ok, %{i2c_module: updated}} =
+      assert {:ok, %{i2c_module: updated} = result} =
                DeviceTools.execute("update_i2c_module", %{
                  "id" => created.id,
                  "orientation" => "flipped_vertical"
                })
+
+      refute Map.has_key?(result, :removed)
 
       assert updated.orientation == :flipped_vertical
       assert updated.brightness == 5
@@ -239,6 +241,31 @@ defmodule Trenino.MCP.Tools.DeviceToolsTest do
       assert updated.channel_mask == 7
       assert length(updated.inputs) == 3
       assert Enum.any?(updated.inputs, &(&1.name == "Brake"))
+    end
+
+    test "update and delete report the bindings removed", %{device: device} do
+      {:ok, %{i2c_module: created}} =
+        DeviceTools.execute("create_i2c_module", %{
+          "device_id" => device.id,
+          "module_chip" => "ads1115",
+          "i2c_address" => "0x48",
+          "channel_mask" => 3
+        })
+
+      {:ok, mod} = Hardware.get_i2c_module(created.id)
+      [_, second] = Hardware.list_i2c_module_inputs(mod)
+      {:ok, _} = Trenino.VirtualJoystick.put_mapping(second.id, %{target_type: :axis, axis: :x})
+
+      assert {:ok, %{removed: [%{input_id: id, binding: "Virtual joystick axis x"}]}} =
+               DeviceTools.execute("update_i2c_module", %{
+                 "id" => created.id,
+                 "channel_mask" => 1
+               })
+
+      assert id == second.id
+
+      assert {:ok, %{removed: []}} =
+               DeviceTools.execute("delete_i2c_module", %{"id" => created.id})
     end
 
     test "list_i2c_modules includes channels and pins", %{device: device} do

@@ -684,13 +684,15 @@ defmodule TreninoWeb.ConfigurationEditLiveTest do
       assert render(view) =~ ~s(value="Renamed")
     end
 
-    test "deleting a bound chip shows the impact in the confirmation", %{
+    test "deleting a bound chip confirms with the impact computed at click time", %{
       conn: conn,
       device: device,
       ads: ads
     } do
       [input] = Hardware.list_i2c_module_inputs(ads)
+      {:ok, view, _html} = live(conn, "/configurations/#{device.config_id}")
 
+      # Bound after the page loaded: a load-time impact would miss it.
       {:ok, train} =
         Trenino.Train.create_train(%{name: "Bound", identifiers: [%{identifier: "Bound_1"}]})
 
@@ -699,12 +701,28 @@ defmodule TreninoWeb.ConfigurationEditLiveTest do
       {:ok, _} =
         Trenino.Train.create_button_binding(elem.id, input.id, %{endpoint: "Horn.InputValue"})
 
+      view
+      |> element("button[phx-click='ask_delete_i2c_module'][phx-value-id='#{ads.id}']")
+      |> render_click()
+
+      assert has_element?(view, "#delete-confirm-#{ads.id}", "Button Horn on Bound")
+
+      view |> element("#confirm-delete-#{ads.id}") |> render_click()
+      assert {:error, :not_found} = Hardware.get_i2c_module(ads.id)
+    end
+
+    test "cancelling the confirmation keeps the chip", %{conn: conn, device: device, ads: ads} do
       {:ok, view, _html} = live(conn, "/configurations/#{device.config_id}")
 
-      assert has_element?(
-               view,
-               "button[phx-click='delete_i2c_module'][phx-value-id='#{ads.id}'][data-confirm*='in use']"
-             )
+      view
+      |> element("button[phx-click='ask_delete_i2c_module'][phx-value-id='#{ads.id}']")
+      |> render_click()
+
+      assert has_element?(view, "#delete-confirm-#{ads.id}")
+
+      view |> element("#cancel-delete-#{ads.id}") |> render_click()
+      refute has_element?(view, "#delete-confirm-#{ads.id}")
+      assert {:ok, _} = Hardware.get_i2c_module(ads.id)
     end
   end
 end
