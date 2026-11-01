@@ -318,6 +318,83 @@ defmodule Trenino.Hardware.StepperManagerTest do
     end
   end
 
+  describe "watched owners after a revoked lease" do
+    # A wizard owner whose lease was revoked by an unplug stays watched; the axis is then
+    # replugged and the page (owner) outlives the wizard.
+    defp watched_owner(ctx) do
+      prepare(ctx)
+      test_pid = self()
+
+      owner =
+        spawn(fn ->
+          send(
+            test_pid,
+            {:claimed,
+             StepperManager.claim_manual(ctx.axis.id, self(), resume_on_owner_loss: true)}
+          )
+
+          Process.sleep(:infinity)
+        end)
+
+      assert_receive {:claimed, {:ok, token}}, 500
+      send(ctx.pid, {:devices_updated, []})
+      assert StepperManager.snapshot(ctx.device.id).lifecycle == :disconnected
+      assert map_size(:sys.get_state(ctx.pid).watched_owners) == 1
+      flush_sent()
+      prepare(ctx)
+      {owner, token}
+    end
+
+    defp kill_and_wait(owner) do
+      monitor = Process.monitor(owner)
+      Process.exit(owner, :kill)
+      assert_receive {:DOWN, ^monitor, :process, _, :killed}
+    end
+
+    setup ctx do
+      {:ok, _} = Hardware.commission_stepper_axis(ctx.axis)
+      :ok
+    end
+
+    test "a later claim and release is not undone when the old owner dies", ctx do
+      {owner, _} = watched_owner(ctx)
+      assert {:ok, token} = StepperManager.claim_manual(ctx.axis.id, self())
+      assert :ok = StepperManager.release_manual(ctx.axis.id, token)
+      kill_and_wait(owner)
+      assert MapSet.member?(:sys.get_state(ctx.pid).paused_axes, ctx.axis.id)
+      GenServer.stop(StepperManager)
+    end
+
+    test "an MCP claim drops the old watch", ctx do
+      {owner, _} = watched_owner(ctx)
+      assert {:ok, _} = StepperManager.claim_mcp_manual(ctx.axis.id)
+      assert :sys.get_state(ctx.pid).watched_owners == %{}
+      kill_and_wait(owner)
+      assert MapSet.member?(:sys.get_state(ctx.pid).paused_axes, ctx.axis.id)
+      GenServer.stop(StepperManager)
+    end
+
+    test "Resume and the wizard's own release drop the watch", ctx do
+      {_owner, token} = watched_owner(ctx)
+      assert {:error, :invalid_lease} = StepperManager.release_manual(ctx.axis.id, token)
+      assert :sys.get_state(ctx.pid).watched_owners == %{}
+    end
+
+    test "Resume drops the watch", ctx do
+      {_owner, _} = watched_owner(ctx)
+      assert :ok = StepperManager.resume(ctx.axis.id)
+      assert :sys.get_state(ctx.pid).watched_owners == %{}
+    end
+
+    test "owner loss after a reconnect resumes and still references the axis", ctx do
+      auto_home_axis(ctx)
+      {owner, _} = watched_owner(ctx)
+      refute_receive {:sent, %StepperCommand{operation: :home}}, 100
+      kill_and_wait(owner)
+      assert_receive {:sent, %StepperCommand{operation: :home}}, 200
+    end
+  end
+
   test "unapplied edits cannot be commissioned against a previous firmware configuration", ctx do
     prepare(ctx)
     assert {:ok, token} = StepperManager.claim_manual(ctx.axis.id, self())

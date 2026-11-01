@@ -10,7 +10,7 @@ defmodule Trenino.Hardware.StepperManager do
           connections: map(),
           barriers: map(),
           leases: map(),
-          watched_owners: %{reference() => term()},
+          watched_owners: %{term() => %{monitor: reference(), token: term()}},
           send_fun: function()
         }
 
@@ -130,6 +130,8 @@ defmodule Trenino.Hardware.StepperManager do
 
       Process.send_after(self(), {:mcp_expire, id, token}, 60_000)
 
+      s = drop_watch(s, id)
+
       {:reply, {:ok, %{token: token, expires_in_ms: 60_000}},
        %{s | leases: Map.put(s.leases, id, lease), paused_axes: MapSet.put(s.paused_axes, id)}}
     else
@@ -185,6 +187,8 @@ defmodule Trenino.Hardware.StepperManager do
         epoch: StepperSession.snapshot(pid).timer_epoch
       }
 
+      s = drop_watch(s, id)
+
       {:reply, {:ok, token},
        %{s | leases: Map.put(s.leases, id, lease), paused_axes: MapSet.put(s.paused_axes, id)}}
     else
@@ -200,6 +204,9 @@ defmodule Trenino.Hardware.StepperManager do
         stop_axis(s, id)
         {:reply, :ok, %{s | leases: Map.delete(s.leases, id)}}
 
+      nil ->
+        {:reply, {:error, :invalid_lease}, drop_watch(s, id, token)}
+
       _ ->
         {:reply, {:error, :invalid_lease}, s}
     end
@@ -207,7 +214,7 @@ defmodule Trenino.Hardware.StepperManager do
 
   def handle_call({:resume, id}, _, s) do
     case Map.get(s.leases, id) do
-      nil -> {:reply, resume_axis(s, id), %{s | paused_axes: MapSet.delete(s.paused_axes, id)}}
+      nil -> {:reply, resume_axis(s, id), s |> drop_watch(id) |> unpause(id)}
       lease -> {:reply, {:error, lease_refusal(lease, :resume)}, s}
     end
   end
@@ -358,20 +365,19 @@ defmodule Trenino.Hardware.StepperManager do
 
   def handle_info(_, s), do: {:noreply, s}
 
-  defp handle_down(monitor, _pid, %{watched_owners: watched} = s)
-       when is_map_key(watched, monitor) do
-    {id, watched} = Map.pop(watched, monitor)
-    s = %{s | watched_owners: watched}
-
-    s =
-      if Map.has_key?(s.leases, id),
-        do: s,
-        else: resume_after_owner_loss({id, %{resume_on_owner_loss: true}}, s)
-
-    {:noreply, s}
+  defp handle_down(monitor, pid, s) do
+    case Enum.find(s.watched_owners, fn {_, watch} -> watch.monitor == monitor end) do
+      {id, _} -> {:noreply, owner_lost(s, id)}
+      nil -> handle_lease_down(monitor, pid, s)
+    end
   end
 
-  defp handle_down(monitor, pid, s) do
+  defp owner_lost(s, id) do
+    s = %{s | watched_owners: Map.delete(s.watched_owners, id)}
+    resume_after_owner_loss({id, %{resume_on_owner_loss: true}}, s)
+  end
+
+  defp handle_lease_down(monitor, pid, s) do
     lost = Enum.filter(s.leases, fn {_, lease} -> lease.monitor == monitor end)
     ids = Enum.map(lost, &elem(&1, 0))
     Enum.each(ids, &stop_axis(s, &1))
@@ -649,7 +655,12 @@ defmodule Trenino.Hardware.StepperManager do
   defp settle_revoked_lease({id, %{resume_on_owner_loss: true, monitor: monitor} = lease}, s)
        when is_reference(monitor) do
     if Process.alive?(lease.owner) do
-      %{s | watched_owners: Map.put(s.watched_owners, monitor, id)}
+      s = drop_watch(s, id)
+
+      %{
+        s
+        | watched_owners: Map.put(s.watched_owners, id, %{monitor: monitor, token: lease.token})
+      }
     else
       demonitor(monitor)
       resume_after_owner_loss({id, lease}, s)
@@ -692,11 +703,26 @@ defmodule Trenino.Hardware.StepperManager do
   defp normalize_target_result(true), do: {:error, :manual_pause}
   defp normalize_target_result(result), do: result
 
+  # A revoked lease's owner stays watched (one watch per axis). Any later claim, Resume or
+  # the owner's own release supersedes it, so the owner's death must not touch the axis then.
+  defp drop_watch(s, id, token \\ :any) do
+    case Map.get(s.watched_owners, id) do
+      %{monitor: monitor, token: watch_token} when token in [:any, watch_token] ->
+        demonitor(monitor)
+        %{s | watched_owners: Map.delete(s.watched_owners, id)}
+
+      _ ->
+        s
+    end
+  end
+
+  defp unpause(s, id), do: %{s | paused_axes: MapSet.delete(s.paused_axes, id)}
+
   defp resume_after_owner_loss({id, %{resume_on_owner_loss: true}}, s) do
     case Hardware.get_stepper_axis(id) do
       {:ok, %{commissioned: true}} ->
         resume_axis(s, id)
-        %{s | paused_axes: MapSet.delete(s.paused_axes, id)}
+        s |> unpause(id) |> rearm_auto_home(id)
 
       _ ->
         s
@@ -704,6 +730,18 @@ defmodule Trenino.Hardware.StepperManager do
   end
 
   defp resume_after_owner_loss(_lost_lease, s), do: s
+
+  # A reconnect during the watch spent the startup Home latch on a paused axis. Handing the
+  # axis back while the session still awaits a reference gives it that Home.
+  defp rearm_auto_home(s, id) do
+    with {:ok, axis} <- Hardware.get_stepper_axis(id),
+         %{} = session <- find_session(s, axis.device_id),
+         %{lifecycle: :awaiting_reference} = snapshot <- safe_snapshot(session.pid) do
+      maybe_auto_home(s, %{session | auto_home: true}, snapshot)
+    else
+      _ -> s
+    end
+  end
 
   # Without a session there is nothing to unpause: the manager's paused_axes is what a
   # future session starts from, and the caller clears it.
