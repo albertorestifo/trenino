@@ -3,6 +3,7 @@ defmodule Trenino.Hardware.DialCalibrationTest do
   alias Trenino.Hardware
   alias Trenino.Hardware.{DialCalibration, StepperAxis}
   alias Trenino.Train
+  alias Trenino.Train.GaugeMapper
 
   @points [%{value: 0, position: 0}, %{value: 100, position: 720}]
 
@@ -169,7 +170,7 @@ defmodule Trenino.Hardware.DialCalibrationTest do
       {:ok, blocked} = Hardware.get_stepper_axis(axis.id)
 
       assert {:error, :invalid_calibration_or_limits} =
-               Trenino.Train.GaugeMapper.map(binding, 50, blocked)
+               GaugeMapper.map(binding, 50, blocked)
 
       {:ok, _} = Hardware.update_stepper_axis(tuned, %{home_speed: 60}, dial_valid: true)
       assert {:ok, %{valid: true, reviewed: true}} = Hardware.get_dial_calibration(axis.id)
