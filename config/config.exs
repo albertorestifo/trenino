@@ -27,6 +27,9 @@ config :trenino, TreninoWeb.Endpoint,
     layout: false
   ],
   pubsub_server: Trenino.PubSub,
+  # WebSocket/LongPoll origins: local hosts only, any scheme/port (browser, Tauri webview).
+  # Keep in sync with TreninoWeb.Plugs.LocalOnly.
+  check_origin: ["//localhost", "//127.0.0.1", "//[::1]", "//tauri.localhost"],
   live_view: [signing_salt: "zLxA4/mQ"]
 
 # Configure esbuild (the version is required)

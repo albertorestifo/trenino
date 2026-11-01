@@ -36,6 +36,18 @@ defmodule Trenino.Hardware.ConfigurationManagerTest do
                ConfigurationManager.apply_configuration(port, empty_device.id)
     end
 
+    test "refuses inputs plus stepper axes on firmware below 3.1", %{device: device, port: port} do
+      Mimic.set_mimic_global()
+      {:ok, _} = Hardware.create_stepper_axis(device.id, %{name: "Speed"})
+
+      Mimic.stub(Trenino.Serial.Connection, :connected_devices, fn ->
+        [%{port: port, device_version: "3.0.0"}]
+      end)
+
+      assert {:error, :firmware_update_required} =
+               ConfigurationManager.apply_configuration(port, device.id)
+    end
+
     test "preserves existing config_id when configuration is stored", %{
       device: device,
       port: port

@@ -38,9 +38,28 @@ defmodule Trenino.DataCase do
       Trenino.DataCase.setup_isolated_repo()
     else
       Trenino.DataCase.setup_sandbox(tags)
+      Trenino.DataCase.setup_detection_reset()
     end
 
     Trenino.DataCase.setup_forbidden_serial_stubs()
+    :ok
+  end
+
+  @doc """
+  Train.Detection is a global application process whose state outlives a test while the
+  sandbox rolls the database back. A leftover `active_train` is then a stale struct whose id
+  is reused by the next test's freshly inserted train, so a controller starting in that test
+  loads the stale train's bindings. Reset it before and after every non-async test.
+  """
+  def setup_detection_reset do
+    reset_detection()
+    ExUnit.Callbacks.on_exit(&reset_detection/0)
+  end
+
+  defp reset_detection do
+    if pid = Process.whereis(Trenino.Train.Detection),
+      do: :sys.replace_state(pid, fn _ -> %Trenino.Train.Detection.State{} end)
+
     :ok
   end
 

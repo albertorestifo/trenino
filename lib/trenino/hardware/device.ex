@@ -20,6 +20,7 @@ defmodule Trenino.Hardware.Device do
           name: String.t() | nil,
           description: String.t() | nil,
           config_id: integer() | nil,
+          applied_fingerprint: String.t() | nil,
           inputs: [Input.t()] | Ecto.Association.NotLoaded.t(),
           outputs: [Output.t()] | Ecto.Association.NotLoaded.t(),
           i2c_modules: [I2cModule.t()] | Ecto.Association.NotLoaded.t(),
@@ -31,10 +32,12 @@ defmodule Trenino.Hardware.Device do
     field :name, :string
     field :description, :string
     field :config_id, :integer
+    field :applied_fingerprint, :string
 
     has_many :inputs, Input
     has_many :outputs, Output
     has_many :i2c_modules, I2cModule
+    has_many :stepper_axes, Trenino.Hardware.StepperAxis
 
     timestamps(type: :utc_datetime)
   end

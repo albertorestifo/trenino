@@ -22,6 +22,7 @@ defmodule Trenino.Application do
         {Registry, keys: :unique, name: Trenino.MCP.SessionRegistry},
         {Task.Supervisor, name: Trenino.TaskSupervisor},
         Trenino.Serial.Connection,
+        stepper_children(),
         Trenino.Hardware.ConfigurationManager,
         virtual_joystick_manager_child(),
         Trenino.Hardware.Calibration.SessionSupervisor,
@@ -38,6 +39,7 @@ defmodule Trenino.Application do
           button_controller_child() ++
           output_controller_child() ++
           display_controller_child() ++
+          gauge_controller_child() ++
           script_runner_child() ++
           update_checker_child() ++
           app_version_checker_child()
@@ -73,6 +75,12 @@ defmodule Trenino.Application do
     else
       []
     end
+  end
+
+  defp stepper_children do
+    if Application.get_env(:trenino, :start_stepper_manager, true),
+      do: [Trenino.Hardware.StepperSupervisor, Trenino.Hardware.StepperManager],
+      else: []
   end
 
   defp virtual_joystick_manager_child do
@@ -125,6 +133,12 @@ defmodule Trenino.Application do
     else
       []
     end
+  end
+
+  defp gauge_controller_child do
+    if Application.get_env(:trenino, :start_gauge_controller, true),
+      do: [Trenino.Train.GaugeController],
+      else: []
   end
 
   # Returns the ScriptRunner child spec only in non-test environments.

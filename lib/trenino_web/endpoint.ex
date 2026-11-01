@@ -1,6 +1,8 @@
 defmodule TreninoWeb.Endpoint do
   use Phoenix.Endpoint, otp_app: :trenino
 
+  alias TreninoWeb.Plugs.LocalOnly
+
   # The session will be stored in the cookie and signed,
   # this means its contents can be read but not tampered with.
   # Set :encryption_salt if you would also like to encrypt it.
@@ -44,6 +46,10 @@ defmodule TreninoWeb.Endpoint do
   plug Plug.RequestId
   plug Plug.Telemetry, event_prefix: [:phoenix, :endpoint]
 
+  # The UI, LiveView and API are as sensitive as /mcp (they can move motors), so reject
+  # DNS-rebinding and cross-site requests before the router. Health stays open.
+  plug :local_only
+
   plug Plug.Parsers,
     parsers: [:urlencoded, :multipart, :json],
     pass: ["*/*"],
@@ -55,4 +61,7 @@ defmodule TreninoWeb.Endpoint do
   plug Plug.Head
   plug Plug.Session, @session_options
   plug TreninoWeb.Router
+
+  defp local_only(%Plug.Conn{path_info: ["api", "health"]} = conn, _opts), do: conn
+  defp local_only(conn, _opts), do: LocalOnly.call(conn, [])
 end

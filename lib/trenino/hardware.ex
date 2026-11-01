@@ -6,13 +6,340 @@ defmodule Trenino.Hardware do
   import Ecto.Query
 
   alias Trenino.Hardware.Calibration.{Calculator, SessionSupervisor}
-  alias Trenino.Hardware.{ConfigId, Device, I2cModule, Input, Matrix, Output}
+
+  alias Trenino.Hardware.{
+    ConfigId,
+    Device,
+    DialCalibration,
+    I2cModule,
+    Input,
+    Matrix,
+    Output,
+    StepperAxis,
+    StepperManager
+  }
+
   alias Trenino.Hardware.Input.Calibration
   alias Trenino.Hardware.Input.MatrixPin
   alias Trenino.Repo
   alias Trenino.Serial.Connection
   alias Trenino.Serial.Protocol.SetOutput
   alias Trenino.Serial.Protocol.WriteSegments
+
+  def list_stepper_axes(device_id),
+    do:
+      Repo.all(
+        from a in StepperAxis,
+          where: a.device_id == ^device_id,
+          order_by: a.axis_index,
+          preload: :dial_calibration
+      )
+
+  def list_all_stepper_axes,
+    do: Repo.all(StepperAxis) |> Repo.preload([:device, :dial_calibration])
+
+  def get_stepper_axis(id) when is_integer(id) and id > 0 do
+    case Repo.get(StepperAxis, id) do
+      nil -> {:error, :not_found}
+      axis -> {:ok, Repo.preload(axis, :dial_calibration)}
+    end
+  end
+
+  def get_stepper_axis(id) when is_binary(id) do
+    case Integer.parse(id) do
+      {n, ""} -> get_stepper_axis(n)
+      _ -> {:error, :not_found}
+    end
+  end
+
+  def get_stepper_axis(_), do: {:error, :not_found}
+
+  @doc """
+  The dial calibration of an axis, or `{:error, :not_found}` when none is recorded yet.
+  """
+  @spec get_dial_calibration(integer()) :: {:ok, DialCalibration.t()} | {:error, :not_found}
+  def get_dial_calibration(axis_id) do
+    case Repo.get_by(DialCalibration, stepper_axis_id: axis_id) do
+      nil -> {:error, :not_found}
+      calibration -> {:ok, calibration}
+    end
+  end
+
+  @doc """
+  Creates or replaces the dial calibration of an axis (`points`, `output_unit`,
+  `reviewed`). Validated against the axis soft limits. Pure data: never moves the motor.
+
+  Saving a dial that is not marked reviewed disables every train binding on the axis,
+  because a binding cannot run on an unreviewed dial.
+  """
+  @spec save_dial_calibration(StepperAxis.t(), map()) ::
+          {:ok, DialCalibration.t()} | {:error, Ecto.Changeset.t()}
+  def save_dial_calibration(%StepperAxis{} = axis, attrs) do
+    current =
+      case get_dial_calibration(axis.id) do
+        {:ok, calibration} -> calibration
+        {:error, :not_found} -> %DialCalibration{stepper_axis_id: axis.id, points: []}
+      end
+
+    current
+    |> DialCalibration.changeset(attrs, axis)
+    |> Repo.insert_or_update()
+    |> disable_bindings_unless_reviewed(axis)
+    |> notify_gauge_configuration()
+  end
+
+  defp disable_bindings_unless_reviewed({:ok, %DialCalibration{reviewed: false}} = result, axis) do
+    Repo.update_all(from(b in Trenino.Train.GaugeBinding, where: b.stepper_axis_id == ^axis.id),
+      set: [enabled: false]
+    )
+
+    result
+  end
+
+  defp disable_bindings_unless_reviewed(result, _axis), do: result
+
+  def create_stepper_axis(device_id, attrs),
+    do: save_stepper_axis(%StepperAxis{device_id: device_id}, attrs, :insert)
+
+  @doc """
+  Updates a stepper axis.
+
+  Changing anything that moves the physical needle for a stored dial position (including
+  the home frame: `home_backoff` and `reference_strategy`) invalidates the dial. The gauge
+  wizard's homing tuning shifts the dial itself and passes `dial_valid: boolean` instead:
+  the dial is left as measured but marked valid or not (`false` blocks it while the tuning
+  is provisional, `true` hands it back), and bindings are not touched.
+  """
+  @spec update_stepper_axis(StepperAxis.t(), map(), keyword()) ::
+          {:ok, StepperAxis.t()} | {:error, Ecto.Changeset.t()}
+  def update_stepper_axis(%StepperAxis{} = axis, attrs, opts \\ []),
+    do: save_stepper_axis(axis, attrs, :update, & &1, opts)
+
+  @doc """
+  Marks an axis commissioned. Internal: callable only after StepperManager has verified a
+  fresh stationary reference and a live manual lease. `commissioned` cannot be set via attrs.
+  """
+  @spec commission_stepper_axis(StepperAxis.t()) :: {:ok, StepperAxis.t()} | {:error, term()}
+  def commission_stepper_axis(%StepperAxis{} = axis),
+    do: save_stepper_axis(axis, %{}, :update, &StepperAxis.commission/1)
+
+  def update_stepper_shield_address(device_id, address)
+      when is_integer(address) and address in 96..119 do
+    Repo.transact(fn ->
+      axes = list_stepper_axes(device_id)
+
+      if Repo.exists?(
+           from m in I2cModule, where: m.device_id == ^device_id and m.i2c_address == ^address
+         ) do
+        {:error, :display_address_conflict}
+      else
+        Repo.update_all(from(a in StepperAxis, where: a.device_id == ^device_id),
+          set: [shield_address: address, commissioned: false]
+        )
+
+        Repo.update_all(
+          from(b in Trenino.Train.GaugeBinding,
+            where: b.stepper_axis_id in ^Enum.map(axes, & &1.id)
+          ),
+          set: [enabled: false]
+        )
+
+        {:ok, list_stepper_axes(device_id)}
+      end
+    end)
+    |> notify_gauge_configuration()
+  end
+
+  @allcall_address 0x70
+
+  @doc """
+  True when the panel has a stepper axis and a configured I2C module at the PCA9685
+  ALLCALL address (0x70). An unregistered motor shield also answers at 0x70, so the
+  display could be driven by shield traffic. This only drives a non-blocking warning;
+  it never prevents applying.
+  """
+  @spec allcall_conflict_possible?(integer()) :: boolean()
+  def allcall_conflict_possible?(device_id) do
+    list_stepper_axes(device_id) != [] and
+      Enum.any?(list_i2c_modules(device_id), &(&1.i2c_address == @allcall_address))
+  end
+
+  @doc """
+  Plain-language warning shown (never enforced) when `allcall_conflict_possible?/1`.
+  """
+  @spec allcall_warning(integer()) :: String.t() | nil
+  def allcall_warning(device_id) do
+    if allcall_conflict_possible?(device_id) do
+      "This panel has a display at address 0x70, which a brand-new motor shield also answers to. " <>
+        "If the shield has never been set up, applying with both connected can make the display show garbage " <>
+        "or the shield misbehave. To be safe: unplug the 0x70 display, apply with the shield alone, " <>
+        "reconnect the display, then apply again."
+    end
+  end
+
+  @doc """
+  Sends the saved configuration (including stepper axes) to the connected device.
+  Never moves a motor and is never blocked by the 0x70 warning.
+  """
+  @spec apply_saved_configuration(integer()) :: {:ok, integer()} | {:error, term()}
+  def apply_saved_configuration(device_id) do
+    with {:ok, device} <- get_device(device_id),
+         %{port: port} <-
+           Enum.find(
+             Connection.list_devices(),
+             &(&1.device_config_id == device.config_id and &1.status == :connected)
+           ) || {:error, :device_not_connected} do
+      apply_configuration(port, device_id)
+    end
+  end
+
+  def delete_stepper_axis(%StepperAxis{} = axis) do
+    with :ok <- StepperManager.prepare_delete(axis.id),
+         {:ok, deleted} <- Repo.delete(axis) do
+      StepperManager.reconcile_device(axis.device_id)
+      notify_gauge_configuration({:ok, deleted})
+    end
+  end
+
+  defp save_stepper_axis(axis, attrs, operation, finalize \\ & &1, opts \\ []) do
+    result =
+      Repo.transact(fn ->
+        cs = axis |> stepper_resource_changeset(attrs) |> finalize.()
+
+        case apply(Repo, operation, [cs]) do
+          {:ok, updated} ->
+            settle_dial(axis, updated, opts)
+            {:ok, updated}
+
+          error ->
+            error
+        end
+      end)
+
+    notify_gauge_configuration(result)
+  end
+
+  defp settle_dial(axis, updated, opts) do
+    case Keyword.fetch(opts, :dial_valid) do
+      {:ok, valid?} when is_boolean(valid?) ->
+        Repo.update_all(from(c in DialCalibration, where: c.stepper_axis_id == ^axis.id),
+          set: [valid: valid?]
+        )
+
+      :error ->
+        invalidate_gauge_calibration(axis, updated)
+    end
+  end
+
+  defp notify_gauge_configuration({:ok, _} = result) do
+    Phoenix.PubSub.broadcast(
+      Trenino.PubSub,
+      "train:gauges:configuration",
+      {:gauge_bindings_changed, :all}
+    )
+
+    result
+  end
+
+  defp notify_gauge_configuration(error), do: error
+
+  defp stepper_resource_changeset(axis, attrs) do
+    cs = StepperAxis.changeset(axis, attrs)
+
+    cs =
+      if axis.id && Ecto.Changeset.changed?(cs, :shield_address),
+        do:
+          Ecto.Changeset.add_error(
+            cs,
+            :shield_address,
+            "use Recommission shield address to change registered hardware"
+          ),
+        else: cs
+
+    cs =
+      if Repo.get(Device, axis.device_id),
+        do: cs,
+        else: Ecto.Changeset.add_error(cs, :device_id, "does not exist")
+
+    address = Ecto.Changeset.get_field(cs, :shield_address)
+    peers = list_stepper_axes(axis.device_id) |> Enum.reject(&(&1.id == axis.id))
+
+    cs =
+      if Enum.any?(peers, &(&1.shield_address != address)),
+        do:
+          Ecto.Changeset.add_error(
+            cs,
+            :shield_address,
+            "all axes must use the same shield address"
+          ),
+        else: cs
+
+    conflict =
+      is_integer(address) and
+        Repo.exists?(
+          from m in I2cModule,
+            where: m.device_id == ^axis.device_id and m.i2c_address == ^address
+        )
+
+    cs =
+      if conflict,
+        do: Ecto.Changeset.add_error(cs, :shield_address, "conflicts with a display address"),
+        else: cs
+
+    cs
+  end
+
+  # Dial points store absolute positions, so anything that changes which physical needle
+  # angle a position denotes makes the dial untrustworthy. That includes the home frame:
+  # `home_backoff` and `reference_strategy` decide where the needle sits after Home, and the
+  # gauge wizard (which retunes them deliberately) opts out with `dial_valid`.
+  # `home_speed`/`home_steps` are not listed: the frame is the stop plus the backoff, so they
+  # only matter if the sweep stops short of the stop, which cannot be known here (the wizard
+  # warns with :sweep_too_small). The soft limits are not listed either: they do not move the
+  # needle, so they only matter when a saved point ends up outside them.
+  @dial_meaning_fields [
+    :mode,
+    :reverse,
+    :home_position,
+    :home_direction,
+    :motor_port,
+    :home_backoff,
+    :reference_strategy
+  ]
+
+  defp invalidate_gauge_calibration(%StepperAxis{id: nil}, _), do: :ok
+
+  defp invalidate_gauge_calibration(old, updated) do
+    if dial_meaning_changed?(old, updated) or point_outside_limits?(old, updated) do
+      # The dial is no longer trustworthy: every binding on this axis stops running until
+      # the dial is measured and reviewed again. Nothing is edited silently.
+      Repo.update_all(from(c in DialCalibration, where: c.stepper_axis_id == ^old.id),
+        set: [valid: false, reviewed: false]
+      )
+
+      Repo.update_all(from(b in Trenino.Train.GaugeBinding, where: b.stepper_axis_id == ^old.id),
+        set: [enabled: false]
+      )
+    end
+  end
+
+  defp dial_meaning_changed?(old, updated),
+    do: Enum.any?(@dial_meaning_fields, &(Map.get(old, &1) != Map.get(updated, &1)))
+
+  defp point_outside_limits?(old, updated) do
+    limits_changed? =
+      old.min_position != updated.min_position or old.max_position != updated.max_position
+
+    with true <- limits_changed?,
+         {:ok, %DialCalibration{points: points}} <- get_dial_calibration(old.id) do
+      Enum.any?(
+        points,
+        &(&1.position < updated.min_position or &1.position > updated.max_position)
+      )
+    else
+      _ -> false
+    end
+  end
 
   # Delegate configuration operations to ConfigurationManager
   defdelegate apply_configuration(port, device_id), to: Trenino.Hardware.ConfigurationManager
@@ -192,14 +519,60 @@ defmodule Trenino.Hardware do
   This is called by the ConfigurationManager when a ConfigurationStored
   message is received from the device.
   """
-  @spec confirm_configuration(integer(), integer()) :: {:ok, Device.t()} | {:error, term()}
-  def confirm_configuration(device_id, config_id) do
+  @spec confirm_configuration(integer(), integer(), String.t() | nil) ::
+          {:ok, Device.t()} | {:error, term()}
+  def confirm_configuration(device_id, config_id, fingerprint \\ nil) do
     with {:ok, device} <- get_device(device_id) do
       device
       |> Device.changeset(%{config_id: config_id})
+      |> Ecto.Changeset.put_change(
+        :applied_fingerprint,
+        fingerprint || device.applied_fingerprint
+      )
       |> Repo.update()
     end
   end
+
+  @doc """
+  Fingerprint of everything that is sent to the device when a configuration is applied.
+
+  Names, descriptions and calibration data are excluded because they never reach the
+  device. Compare with `Device.applied_fingerprint` to know whether the saved
+  configuration differs from the one last confirmed by the device.
+  """
+  @spec config_fingerprint(list(), list(), list(), list()) :: String.t()
+  def config_fingerprint(inputs, matrices, i2c_modules, stepper_axes) do
+    term = {
+      inputs |> Enum.map(&{&1.pin, &1.input_type, &1.sensitivity, &1.debounce}) |> Enum.sort(),
+      matrices |> Enum.map(&matrix_pins/1) |> Enum.sort(),
+      i2c_modules |> Enum.map(&i2c_wire_config/1) |> Enum.sort(),
+      stepper_axes
+      |> Enum.map(&{&1.axis_index, StepperAxis.to_protocol_config(&1)})
+      |> Enum.sort()
+    }
+
+    :crypto.hash(:sha256, :erlang.term_to_binary(term, [:deterministic]))
+    |> Base.encode16(case: :lower)
+  end
+
+  # Mirrors ConfigurationManager.build_configure_message/4: only these reach the device.
+  # The other display params (orientation, dot, alignment, min value) are applied in software.
+  defp i2c_wire_config(%{module_chip: :ht16k33, i2c_address: address, params: params}),
+    do: {:ht16k33, address, params.brightness, params.num_digits}
+
+  defp matrix_pins(matrix),
+    do: {Enum.map(matrix.row_pins, & &1.pin), Enum.map(matrix.col_pins, & &1.pin)}
+
+  @doc """
+  Whether the saved configuration matches what the device last confirmed.
+
+  `:unknown` when the device never recorded a fingerprint (created before fingerprints
+  existed, or never applied): there is nothing to compare against, so no claim is made.
+  """
+  @spec config_status(Device.t(), String.t()) :: :applied | :unapplied | :unknown
+  def config_status(%Device{applied_fingerprint: nil}, _current), do: :unknown
+  def config_status(%Device{applied_fingerprint: current}, current), do: :applied
+  def config_status(%Device{}, _current), do: :unapplied
 
   @doc """
   Generate a unique random configuration ID.
@@ -648,6 +1021,7 @@ defmodule Trenino.Hardware do
   def create_i2c_module(device_id, attrs) do
     %I2cModule{device_id: device_id}
     |> I2cModule.changeset(attrs)
+    |> validate_stepper_display_conflict()
     |> Repo.insert()
   end
 
@@ -657,7 +1031,22 @@ defmodule Trenino.Hardware do
   def update_i2c_module(%I2cModule{} = mod, attrs) do
     mod
     |> I2cModule.changeset(attrs)
+    |> validate_stepper_display_conflict()
     |> Repo.update()
+  end
+
+  defp validate_stepper_display_conflict(cs) do
+    device_id = Ecto.Changeset.get_field(cs, :device_id)
+    address = Ecto.Changeset.get_field(cs, :i2c_address)
+
+    if is_integer(address) and is_integer(device_id) and
+         Repo.exists?(
+           from a in StepperAxis,
+             where: a.device_id == ^device_id and a.shield_address == ^address
+         ),
+       do:
+         Ecto.Changeset.add_error(cs, :i2c_address, "conflicts with the stepper shield address"),
+       else: cs
   end
 
   @doc "Delete an i2c module."

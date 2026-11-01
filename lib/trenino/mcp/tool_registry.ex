@@ -10,12 +10,16 @@ defmodule Trenino.MCP.ToolRegistry do
     ButtonBindingTools,
     DetectionTools,
     DeviceTools,
+    DialCalibrationTools,
     DisplayBindingTools,
     ElementTools,
+    GaugeBindingTools,
+    GaugeRuntimeTools,
     OutputBindingTools,
     ScriptTools,
     SequenceTools,
     SimulatorTools,
+    StepperTools,
     TrainTools,
     VirtualJoystickTools
   }
@@ -31,7 +35,11 @@ defmodule Trenino.MCP.ToolRegistry do
     ScriptTools,
     DetectionTools,
     DisplayBindingTools,
-    VirtualJoystickTools
+    VirtualJoystickTools,
+    StepperTools,
+    GaugeBindingTools,
+    GaugeRuntimeTools,
+    DialCalibrationTools
   ]
 
   @type tool_def :: %{

@@ -1,6 +1,81 @@
 defmodule TreninoWeb.MCP.MCPControllerTest do
   use TreninoWeb.ConnCase, async: false
 
+  setup %{conn: conn}, do: %{conn: %{conn | host: "localhost"}}
+
+  describe "host and origin protection" do
+    setup %{conn: conn} do
+      session_id = "guard-#{System.unique_integer([:positive])}"
+      {:ok, _} = Registry.register(Trenino.MCP.SessionRegistry, session_id, self())
+      body = %{"jsonrpc" => "2.0", "method" => "ping", "id" => 1}
+      %{conn: conn, path: "/mcp/messages?session_id=#{session_id}", body: body}
+    end
+
+    test "rejects a foreign Host (DNS rebinding)", %{conn: conn, path: path, body: body} do
+      conn = post(%{conn | host: "evil.example.com"}, path, body)
+      assert response(conn, 403)
+      refute_received {:mcp_response, _}
+    end
+
+    test "rejects a foreign Origin", %{conn: conn, path: path, body: body} do
+      conn = conn |> put_req_header("origin", "https://evil.example.com") |> post(path, body)
+      assert response(conn, 403)
+      refute_received {:mcp_response, _}
+    end
+
+    test "accepts native clients without Origin and every local host", ctx do
+      assert ctx.conn |> post(ctx.path, ctx.body) |> response(202)
+
+      for host <- ["127.0.0.1", "[::1]", "localhost"] do
+        assert response(post(%{ctx.conn | host: host}, ctx.path, ctx.body), 202)
+      end
+    end
+
+    test "accepts local origins including the Tauri webview", ctx do
+      origins = [
+        "http://localhost:4000",
+        "http://127.0.0.1:4000",
+        "tauri://localhost",
+        "http://[::1]:4000"
+      ]
+
+      for origin <- origins do
+        assert ctx.conn
+               |> put_req_header("origin", origin)
+               |> post(ctx.path, ctx.body)
+               |> response(202)
+      end
+    end
+
+    test "SSE rejects a foreign Origin", %{conn: conn} do
+      conn = conn |> put_req_header("origin", "http://evil.test") |> get("/mcp/sse")
+      assert response(conn, 403)
+    end
+
+    test "SSE no longer sends a wildcard CORS header", %{conn: conn} do
+      task = Task.async(fn -> get(conn, "/mcp/sse") end)
+      pid = wait_for_session_other_than_self()
+      send(pid, :close)
+
+      assert Task.await(task).resp_headers |> List.keyfind("access-control-allow-origin", 0) ==
+               nil
+    end
+
+    defp wait_for_session_other_than_self(attempts \\ 50) do
+      me = self()
+
+      case Registry.select(Trenino.MCP.SessionRegistry, [{{:_, :"$1", :_}, [], [:"$1"]}])
+           |> Enum.reject(&(&1 == me)) do
+        [pid | _] ->
+          pid
+
+        [] when attempts > 0 ->
+          Process.sleep(10)
+          wait_for_session_other_than_self(attempts - 1)
+      end
+    end
+  end
+
   describe "POST /mcp/messages" do
     test "returns 400 when session_id is missing", %{conn: conn} do
       conn = post(conn, "/mcp/messages", %{"jsonrpc" => "2.0", "method" => "ping", "id" => 1})
@@ -54,7 +129,7 @@ defmodule TreninoWeb.MCP.MCPControllerTest do
 
       assert_receive {:mcp_response, response}
       assert %{tools: tools} = response.result
-      assert length(tools) == 47
+      assert length(tools) == 62
     end
 
     test "handles tools/call via POST", %{conn: conn} do

@@ -56,6 +56,8 @@ config :trenino, :start_output_controller, false
 
 # Disable DisplayController GenServer in tests to avoid pubsub conflicts.
 config :trenino, :start_display_controller, false
+config :trenino, :start_stepper_manager, false
+config :trenino, :start_gauge_controller, false
 
 # Disable ScriptRunner GenServer in tests to avoid pubsub conflicts.
 config :trenino, :start_script_runner, false

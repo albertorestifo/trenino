@@ -14,6 +14,10 @@ defmodule TreninoWeb.Router do
     plug :accepts, ["json"]
   end
 
+  pipeline :mcp do
+    plug TreninoWeb.Plugs.LocalOnly
+  end
+
   # Health check endpoint - returns 200 only when app is fully ready
   # Shutdown endpoint for graceful desktop app termination
   scope "/api", TreninoWeb do
@@ -66,6 +70,8 @@ defmodule TreninoWeb.Router do
 
   # MCP (Model Context Protocol) server endpoints
   scope "/mcp", TreninoWeb.MCP do
+    pipe_through :mcp
+
     get "/sse", MCPController, :sse
     post "/messages", MCPController, :messages
   end

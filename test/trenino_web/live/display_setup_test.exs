@@ -80,6 +80,39 @@ defmodule TreninoWeb.DisplaySetupTest do
     assert has_element?(view, "#i2c-display-dialog[role='dialog'][aria-modal='true']")
   end
 
+  test "orientation select saves and pre-selects the saved value", %{
+    conn: conn,
+    device: device,
+    display: display
+  } do
+    {:ok, view, _} = live(conn, ~p"/configurations/#{device.config_id}")
+
+    view
+    |> element("[phx-click='open_edit_i2c_modal'][phx-value-id='#{display.id}']")
+    |> render_click()
+
+    assert has_element?(
+             view,
+             "select[name='i2c_module[orientation]'] option[value='normal'][selected]"
+           )
+
+    view
+    |> form("#i2c-module-form", i2c_module: %{orientation: "rotated_180"})
+    |> render_submit()
+
+    {:ok, saved} = Hardware.get_i2c_module(display.id)
+    assert saved.params.orientation == :rotated_180
+
+    view
+    |> element("[phx-click='open_edit_i2c_modal'][phx-value-id='#{display.id}']")
+    |> render_click()
+
+    assert has_element?(
+             view,
+             "select[name='i2c_module[orientation]'] option[value='rotated_180'][selected]"
+           )
+  end
+
   test "invalid minimum stays visible with a field error", %{
     conn: conn,
     device: device,
