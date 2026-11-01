@@ -24,7 +24,7 @@ defmodule Trenino.Hardware.GaugeWizard do
   ## Effects
 
   `:claim`, `:release`, `:resume`, `:recover`, `:apply`, `:complete_commissioning`,
-  `{:command, op, params}`, `{:update_axis, attrs}`, `{:update_axis, attrs, keep_dial: true}` (homing tuning, which
+  `{:command, op, params}`, `{:update_axis, attrs}`, `{:update_axis, attrs, dial_valid: bool}` (homing tuning, which
   shifts the dial itself), `{:save_dial, attrs}`.
 
   Safety rules are kept by construction: nothing here moves a motor on its own, motion only
@@ -95,7 +95,11 @@ defmodule Trenino.Hardware.GaugeWizard do
     :home_backoff,
     :home_timeout_ms
   ]
-  @keep_dial [keep_dial: true]
+  # The homing tuning moves the needle's home, so the saved dial is blocked (`valid: false`,
+  # bindings stay enabled) until the tuning is confirmed or put back. A tab that dies midway
+  # then leaves a blocked gauge, never a needle driven by an offset dial.
+  @tuning [dial_valid: false]
+  @restore [dial_valid: true]
   @jog_distance 20
   @fresh_ms 1500
   @home_speed 50
@@ -371,7 +375,7 @@ defmodule Trenino.Hardware.GaugeWizard do
     stop = if state.token, do: [{:command, :stop, %{}}], else: []
 
     {%{state | leaving: :restoring, pending: nil, error: nil},
-     stop ++ [{:update_axis, previous, @keep_dial}]}
+     stop ++ [{:update_axis, previous, @restore}]}
   end
 
   defp close(state), do: leave(state, state.axis.commissioned)
@@ -521,7 +525,7 @@ defmodule Trenino.Hardware.GaugeWizard do
   # Leaves the tuning and puts back the settings the axis had before it started.
   defp handle(%{step: step, home: %{previous: previous}} = state, :cancel_homing)
        when step in [:home_run, :home_nudge, :home_confirm],
-       do: reconfigure(state, previous, :finish, nil, @keep_dial)
+       do: reconfigure(state, previous, :finish, nil, @restore)
 
   defp handle(%{step: :home_nudge} = state, :finish_nudging) do
     obs = state.obs
@@ -535,7 +539,7 @@ defmodule Trenino.Hardware.GaugeWizard do
         attrs,
         :home_run,
         :second,
-        @keep_dial
+        @tuning
       )
     else
       {:error, reason} -> {%{state | error: reason}, []}
@@ -547,17 +551,12 @@ defmodule Trenino.Hardware.GaugeWizard do
   # position, so the saved dial moves by the difference in one save. Marks that would leave
   # the travel limits are refused rather than clipped.
   defp handle(%{step: :home_confirm} = state, {:answer, :yes}) do
-    case dial_shift(state) do
-      0 ->
-        enter(state, :finish)
+    shift = dial_shift(state)
+    points = Enum.map(state.points, &%{&1 | position: &1.position + shift})
 
-      shift ->
-        points = Enum.map(state.points, &%{&1 | position: &1.position + shift})
-
-        if Enum.all?(points, &within_limits?(&1, state.axis)),
-          do: {state, [{:save_dial, shifted_dial_attrs(state, points)}]},
-          else: {%{state | error: :dial_shift_outside_limits}, []}
-    end
+    if Enum.all?(points, &within_limits?(&1, state.axis)),
+      do: {state, [{:save_dial, shifted_dial_attrs(state, points)}]},
+      else: {%{state | error: :dial_shift_outside_limits}, []}
   end
 
   # The measured backoff was not right, so measure again from the stop: backoff 0 puts the
@@ -610,7 +609,7 @@ defmodule Trenino.Hardware.GaugeWizard do
           attrs,
           :home_run,
           :first,
-          @keep_dial
+          @tuning
         )
 
       {:error, reason} ->

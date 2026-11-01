@@ -5,7 +5,7 @@ defmodule TreninoWeb.GaugeGuidance do
   Everything here is read-only: it explains the next step for an axis and why an
   enabled gauge binding is not moving, without changing any state.
   """
-  alias Trenino.Hardware.StepperAxis
+  alias Trenino.Hardware.{DialCalibration, StepperAxis}
   alias Trenino.Train.GaugeBinding
   alias Trenino.Train.Train
 
@@ -92,6 +92,9 @@ defmodule TreninoWeb.GaugeGuidance do
 
       not axis.commissioned ->
         "Not moving: the axis is not commissioned. Complete physical commissioning first."
+
+      match?(%DialCalibration{valid: false}, GaugeBinding.calibration(axis)) ->
+        "Not moving: the dial is blocked because the axis changed or a homing setup was left unfinished. Run the gauge wizard again, or review the dial."
 
       true ->
         lifecycle_blocker(snapshot, snapshot.axes[axis.id])

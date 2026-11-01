@@ -72,16 +72,8 @@ defmodule Trenino.Hardware.GaugeWizardTest do
     def run(:apply, s),
       do: {{:ok, 1}, %{s | applied?: true, ready: false, lease?: false, log: [:apply | s.log]}}
 
-    def run({:update_axis, attrs, _opts}, s), do: run({:update_axis, attrs}, s)
-
-    def run({:update_axis, attrs} = effect, s) do
-      axis = struct(s.axis, attrs)
-      motion? = Enum.any?(Map.keys(attrs), &(&1 not in [:name, :startup_reference]))
-      axis = if motion?, do: %{axis | commissioned: false}, else: axis
-
-      {{:ok, axis},
-       %{s | axis: axis, applied?: s.applied? and not motion?, log: [effect | s.log]}}
-    end
+    def run({:update_axis, attrs, _opts} = effect, s), do: update_axis(attrs, effect, s)
+    def run({:update_axis, attrs} = effect, s), do: update_axis(attrs, effect, s)
 
     def run({:save_dial, attrs} = effect, s),
       do: {{:ok, :calibration}, %{s | saved: [attrs | s.saved], log: [effect | s.log]}}
@@ -92,6 +84,15 @@ defmodule Trenino.Hardware.GaugeWizardTest do
     end
 
     def run(effect, s), do: {:ok, %{s | log: [effect | s.log]}}
+
+    defp update_axis(attrs, effect, s) do
+      axis = struct(s.axis, attrs)
+      motion? = Enum.any?(Map.keys(attrs), &(&1 not in [:name, :startup_reference]))
+      axis = if motion?, do: %{axis | commissioned: false}, else: axis
+
+      {{:ok, axis},
+       %{s | axis: axis, applied?: s.applied? and not motion?, log: [effect | s.log]}}
+    end
   end
 
   # Feed an event, run its effects against the sim, feed results and fresh observations
@@ -618,10 +619,12 @@ defmodule Trenino.Hardware.GaugeWizardTest do
       assert Enum.map(w.points, & &1.position) == Enum.map(shifted.points, & &1.position)
     end
 
-    test "a zero mark already at the home position saves nothing more" do
+    test "a zero mark already at the home position still saves, to hand the dial back" do
       {w, s} = to_homing_offer() |> to_home_confirm() |> send_event({:answer, :yes})
       assert w.step == :finish
-      assert [_only] = s.saved
+      assert [first, second] = Enum.reverse(s.saved)
+      assert second.points == first.points
+      assert second.reviewed
     end
 
     test "a shift that would leave the travel limits is refused, not clipped" do
@@ -848,7 +851,7 @@ defmodule Trenino.Hardware.GaugeWizardTest do
       assert Map.take(s.axis, @home_keys) == before
       assert w.notice == :recommission
       log = Enum.reverse(s.log)
-      restore = Enum.find_index(log, &match?({:update_axis, %{home_backoff: _}}, &1))
+      restore = Enum.find_index(log, &match?({:update_axis, %{home_backoff: _}, _}, &1))
       applied = Enum.find_index(log, &(&1 == :apply))
       assert restore < applied
       assert applied < Enum.find_index(log, &(&1 == :release))
@@ -864,7 +867,7 @@ defmodule Trenino.Hardware.GaugeWizardTest do
       assert w.step == :applying
 
       {_, effects} = GaugeWizard.update(w, :close)
-      assert Enum.any?(effects, &match?({:update_axis, _, [keep_dial: true]}, &1))
+      assert Enum.any?(effects, &match?({:update_axis, _, [dial_valid: true]}, &1))
     end
 
     test "closing at align after reference loss during the tuning restores the settings" do
@@ -872,12 +875,18 @@ defmodule Trenino.Hardware.GaugeWizardTest do
       w = %{w | step: :align, return_to: :home_nudge}
 
       {_, effects} = GaugeWizard.update(w, :close)
-      assert Enum.any?(effects, &match?({:update_axis, _, [keep_dial: true]}, &1))
+      assert Enum.any?(effects, &match?({:update_axis, _, [dial_valid: true]}, &1))
     end
 
-    test "homing tuning updates opt out of dial invalidation explicitly" do
+    test "homing tuning blocks the dial explicitly rather than invalidating it" do
       {w, _} = to_homing_offer()
-      assert {_, [{:update_axis, _, [keep_dial: true]}]} = GaugeWizard.update(w, :start_homing)
+      assert {_, [{:update_axis, _, [dial_valid: false]}]} = GaugeWizard.update(w, :start_homing)
+    end
+
+    test "cancelling the tuning hands the dial back" do
+      {w, s} = to_homing_offer() |> send_event(:start_homing)
+      {_, s} = send_event({w, s}, :cancel_homing)
+      assert Enum.any?(s.log, &match?({:update_axis, _, [dial_valid: true]}, &1))
     end
 
     test "a restore that cannot be sent still lets the user leave, with a notice" do

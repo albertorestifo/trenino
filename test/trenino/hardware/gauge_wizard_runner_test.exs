@@ -162,6 +162,8 @@ defmodule Trenino.Hardware.GaugeWizardRunnerTest do
   end
 
   describe "closing during the homing tuning" do
+    @dial [%{value: 0.0, position: 0}, %{value: 100.0, position: 680}]
+
     @home_keys [
       :reference_strategy,
       :idle_behavior,
@@ -180,14 +182,16 @@ defmodule Trenino.Hardware.GaugeWizardRunnerTest do
       wizard = open_and_claim(axis)
       previous = Map.take(axis, @home_keys)
       {:ok, attrs, _} = GaugeWizard.home_plan(axis, 680, 0, 400)
-      {:ok, tuned} = Hardware.update_stepper_axis(axis, attrs, keep_dial: true)
+      {:ok, tuned} = Hardware.update_stepper_axis(axis, attrs, dial_valid: false)
       home = %{previous: previous, backoff: 0, warnings: [], top: 680, phase: :first}
       {%{wizard | axis: tuned, step: :home_nudge, home: home, home_provisional: true}, previous}
     end
 
     test "puts the previous settings back, sends them and releases the lease", %{axis: axis} do
       axis = commission(axis)
+      {:ok, _} = Hardware.save_dial_calibration(axis, %{points: @dial, reviewed: true})
       {wizard, previous} = tuning(axis)
+      assert {:ok, %{valid: false, reviewed: true}} = Hardware.get_dial_calibration(axis.id)
       assert wizard.axis.home_backoff == 0
       refute wizard.axis.commissioned
       flush_wire()
@@ -199,6 +203,7 @@ defmodule Trenino.Hardware.GaugeWizardRunnerTest do
       assert wizard.notice == :recommission
       assert {:ok, restored} = Hardware.get_stepper_axis(axis.id)
       assert Map.take(restored, @home_keys) == previous
+      assert {:ok, %{valid: true, reviewed: true}} = Hardware.get_dial_calibration(axis.id)
       refute restored.commissioned
       assert_receive {:wire, %StepperCommand{operation: :stop}}, 500
       assert runtime(axis).lease == nil

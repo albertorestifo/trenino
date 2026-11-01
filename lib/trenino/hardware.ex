@@ -106,7 +106,9 @@ defmodule Trenino.Hardware do
 
   Changing anything that moves the physical needle for a stored dial position (including
   the home frame: `home_backoff` and `reference_strategy`) invalidates the dial. The gauge
-  wizard's homing tuning shifts the dial itself and passes `keep_dial: true` to skip that.
+  wizard's homing tuning shifts the dial itself and passes `dial_valid: boolean` instead:
+  the dial is left as measured but marked valid or not (`false` blocks it while the tuning
+  is provisional, `true` hands it back), and bindings are not touched.
   """
   @spec update_stepper_axis(StepperAxis.t(), map(), keyword()) ::
           {:ok, StepperAxis.t()} | {:error, Ecto.Changeset.t()}
@@ -206,7 +208,7 @@ defmodule Trenino.Hardware do
 
         case apply(Repo, operation, [cs]) do
           {:ok, updated} ->
-            invalidate_unless_kept(axis, updated, opts)
+            settle_dial(axis, updated, opts)
             {:ok, updated}
 
           error ->
@@ -217,10 +219,16 @@ defmodule Trenino.Hardware do
     notify_gauge_configuration(result)
   end
 
-  defp invalidate_unless_kept(axis, updated, opts) do
-    if Keyword.get(opts, :keep_dial, false),
-      do: :ok,
-      else: invalidate_gauge_calibration(axis, updated)
+  defp settle_dial(axis, updated, opts) do
+    case Keyword.fetch(opts, :dial_valid) do
+      {:ok, valid?} when is_boolean(valid?) ->
+        Repo.update_all(from(c in DialCalibration, where: c.stepper_axis_id == ^axis.id),
+          set: [valid: valid?]
+        )
+
+      :error ->
+        invalidate_gauge_calibration(axis, updated)
+    end
   end
 
   defp notify_gauge_configuration({:ok, _} = result) do
@@ -284,7 +292,7 @@ defmodule Trenino.Hardware do
   # Dial points store absolute positions, so anything that changes which physical needle
   # angle a position denotes makes the dial untrustworthy. That includes the home frame:
   # `home_backoff` and `reference_strategy` decide where the needle sits after Home, and the
-  # gauge wizard (which retunes them deliberately) opts out with `keep_dial: true`.
+  # gauge wizard (which retunes them deliberately) opts out with `dial_valid`.
   # `home_speed`/`home_steps` are not listed: the frame is the stop plus the backoff, so they
   # only matter if the sweep stops short of the stop, which cannot be known here (the wizard
   # warns with :sweep_too_small). The soft limits are not listed either: they do not move the

@@ -148,13 +148,30 @@ defmodule Trenino.Hardware.DialCalibrationTest do
       assert {:ok, %{valid: true, reviewed: true}} = Hardware.get_dial_calibration(axis.id)
     end
 
-    test "an explicit keep_dial option lets the wizard retune the home frame" do
+    test "dial_valid: false lets the wizard retune the home frame and blocks the dial" do
       axis = setup_axis()
       {:ok, _} = Hardware.save_dial_calibration(axis, %{points: @points, reviewed: true})
+      {:ok, train} = Train.create_train(%{name: "A", identifiers: [%{identifier: "A"}]})
 
-      {:ok, _} =
-        Hardware.update_stepper_axis(axis, %{home_backoff: 20, home_speed: 80}, keep_dial: true)
+      {:ok, binding} =
+        Train.create_gauge_binding(train.id, %{
+          name: "S",
+          endpoint: "S",
+          stepper_axis_id: axis.id,
+          enabled: true
+        })
 
+      {:ok, tuned} =
+        Hardware.update_stepper_axis(axis, %{home_backoff: 20, home_speed: 80}, dial_valid: false)
+
+      assert {:ok, %{valid: false, reviewed: true}} = Hardware.get_dial_calibration(axis.id)
+      assert {:ok, %{enabled: true}} = Train.get_gauge_binding(binding.id)
+      {:ok, blocked} = Hardware.get_stepper_axis(axis.id)
+
+      assert {:error, :invalid_calibration_or_limits} =
+               Trenino.Train.GaugeMapper.map(binding, 50, blocked)
+
+      {:ok, _} = Hardware.update_stepper_axis(tuned, %{home_speed: 60}, dial_valid: true)
       assert {:ok, %{valid: true, reviewed: true}} = Hardware.get_dial_calibration(axis.id)
     end
   end

@@ -147,6 +147,22 @@ defmodule TreninoWeb.GaugeSetupTest do
   end
 
   describe "guidance" do
+    test "blocker says why a blocked dial keeps an enabled gauge still" do
+      alias Trenino.Hardware.{DialCalibration, StepperAxis}
+      alias Trenino.Train.GaugeBinding
+
+      axis = %StepperAxis{
+        id: 1,
+        commissioned: true,
+        dial_calibration: %DialCalibration{valid: false, reviewed: true}
+      }
+
+      b = %GaugeBinding{enabled: true, stepper_axis: axis}
+
+      assert TreninoWeb.GaugeGuidance.blocker(b, %{lifecycle: :ready, axes: %{}}, true) =~
+               "dial is blocked"
+    end
+
     test "blocker explains why an enabled gauge cannot move" do
       alias Trenino.Train.GaugeBinding
       axis = %Trenino.Hardware.StepperAxis{id: 1, commissioned: false}

@@ -367,7 +367,10 @@ defmodule TreninoWeb.DialCalibrationComponent do
   defp checked?(field), do: Form.normalize_value("checkbox", field.value)
 
   defp status_label(nil), do: "No dial calibration yet"
-  defp status_label(%DialCalibration{valid: false}), do: "Needs re-measuring (axis changed)"
+
+  defp status_label(%DialCalibration{valid: false}),
+    do: "Blocked: axis changed or homing setup unfinished"
+
   defp status_label(%DialCalibration{reviewed: false}), do: "Saved, not reviewed"
   defp status_label(%DialCalibration{}), do: "Calibrated and reviewed"
 

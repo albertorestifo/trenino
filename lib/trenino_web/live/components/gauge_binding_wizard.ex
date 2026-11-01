@@ -176,10 +176,17 @@ defmodule TreninoWeb.GaugeBindingWizard do
   # Short description of the axis dial for the wizard and the saved gauge cards.
   def dial_status(axis) do
     case GaugeBinding.calibration(axis) do
-      nil -> {:missing, "No dial calibration on this axis yet."}
-      %DialCalibration{valid: false} -> {:missing, "The dial needs re-measuring (axis changed)."}
-      %DialCalibration{reviewed: false} -> {:missing, "The dial is saved but not reviewed."}
-      %DialCalibration{output_unit: unit} -> {:ok, "Dial calibrated, shows #{unit_label(unit)}."}
+      nil ->
+        {:missing, "No dial calibration on this axis yet."}
+
+      %DialCalibration{valid: false} ->
+        {:missing, "The dial is blocked: the axis changed or a homing setup was left unfinished."}
+
+      %DialCalibration{reviewed: false} ->
+        {:missing, "The dial is saved but not reviewed."}
+
+      %DialCalibration{output_unit: unit} ->
+        {:ok, "Dial calibrated, shows #{unit_label(unit)}."}
     end
   end
 
