@@ -8,6 +8,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- I2C input chips: **MCP23017** (up to 14 digital inputs or an 8x8 switch matrix)
+  and **ADS1115** (up to 4 analog inputs, with an optional supply reference for
+  rollover sensors). Chip inputs can be named, calibrated and bound like board
+  pins, and a failed chip is reported and recovers by itself. Requires firmware
+  3.2.0. `create_i2c_module`, `update_i2c_module`, `list_i2c_modules` and
+  `list_device_inputs` MCP tools support the new chips.
 - Display bindings support optional speed unit conversion (`m/s → km/h` or
   `m/s → mph`) applied before formatting — also available as `unit` in the
   `create_display_binding`/`update_display_binding` MCP tools.

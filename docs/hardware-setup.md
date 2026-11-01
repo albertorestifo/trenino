@@ -147,6 +147,47 @@ After saving, click **Test** next to the module in the I2C Modules table. This r
 
 Once a module is configured, set up a **display binding** in your train configuration to show live values. See [Train Configuration — Display Bindings](train-configuration.md#display-bindings) for details.
 
+## I2C Input Chips
+
+Two I2C chips add inputs to a device, for when the board runs out of pins. They need firmware **3.2.0** or later. Trenino refuses to apply a configuration with an input chip to older firmware.
+
+| Chip | Provides | Addresses |
+|------|----------|-----------|
+| **MCP23017** | Up to 14 digital inputs, or a switch matrix of up to 8x8, or a mix | `0x20`-`0x27` |
+| **ADS1115** | Up to 4 analog inputs (3 if you use a supply reference) | `0x48`-`0x4B` |
+
+Chip inputs behave like board-pin inputs: you can name, calibrate and bind them, and use them with detection and the virtual joystick. Each chip gets a block of virtual pins, handled by Trenino. They appear in the input lists as, for example, `MCP 0x20 GPA3`, `MCP 0x20 R0C1` or `ADS 0x48 AIN2`. A device has 128 virtual pins in total.
+
+### Wiring
+
+Wire SDA, SCL, VCC and GND as for a display (see above), and set the address with the chip's address pins (A0-A2 on the MCP23017; ADDR on the ADS1115). Every module on a device needs its own address. The I2C bus runs at 100 kHz, so a device with many chips, a large matrix, steppers and displays on one bus can get slow. If inputs feel sluggish, reduce the load on the bus.
+
+On an Arduino Uno or Nano there is room for one chip with a matrix.
+
+### MCP23017
+
+- Choose which pins are **direct inputs** (buttons wired between the pin and GND, using the chip's pull-ups) and, optionally, which pins are matrix **rows** and **columns**.
+- **GPA7 and GPB7 are output-only.** They cannot be direct inputs or matrix columns, because using them as inputs can corrupt SDA. A chip therefore has at most 14 inputs. They can be matrix rows. An 8x8 matrix needs GPA7 and GPB7 as rows.
+- **Every matrix switch needs a diode.** There is no ghost key detection.
+- Default debounce is 3 samples with no matrix and 2 with one; you can change it.
+
+### ADS1115
+
+- Choose which channels (AIN0-AIN3) are inputs, and the gain: `+-4.096 V` (default) or `+-2.048 V`.
+- Inputs must stay within the chip's supply rails.
+- **Without a supply reference**, readings depend on the supply voltage. On 5 V a lever at full travel reads about 80% of the range. Power potentiometers from a clean rail, away from stepper and LED current paths.
+- **With a supply reference**, wire one channel to the same supply as the sensors and select it as the reference channel. Readings become a ratio of it and are 0-100% on any supply. **All sensors on that chip must be powered from that same supply.** If the reference reads too low, the chip reports an error and sends no values until it recovers.
+- **Rollover (wrapping) sensors** only work on a chip with a supply reference, and only if the sensor spans the full supply voltage. Sensors with outputs of, for example, 10-90% of supply cannot wrap.
+- ADS1115 inputs used as levers need calibrating, as with board pins (see [Calibrating Inputs](#calibrating-inputs)). Calibration will tell you if a sweep looks like rollover but the chip has no reference.
+
+### Adding a Chip
+
+Open your device configuration and add the chip from the I2C modules section. Choose the chip, address and pins or channels, and optionally name each input. When you edit a chip, only the channels you add or remove change: kept inputs keep their calibration and bindings. Removing a channel, or deleting the chip, deletes the affected inputs and their bindings; Trenino shows what will be lost first.
+
+### Chip Failures
+
+If a chip does not answer when the configuration is applied, loses power, or resets, Trenino marks its inputs as failed and shows a notice. The chip recovers by itself once it responds again. Check wiring, address and power first.
+
 ## Calibrating Inputs
 
 Calibration maps raw ADC values to normalized 0.0-1.0 range.

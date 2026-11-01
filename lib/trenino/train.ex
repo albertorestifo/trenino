@@ -1426,14 +1426,6 @@ defmodule Trenino.Train do
     Repo.delete(binding)
   end
 
-  @doc """
-  List all I2C modules across all devices.
-
-  Used when creating display bindings to select an available module.
-  """
-  @spec list_all_i2c_modules() :: [Trenino.Hardware.I2cModule.t()]
-  def list_all_i2c_modules, do: Hardware.list_all_display_modules()
-
   def list_gauge_bindings(train_id) do
     Repo.all(
       from b in GaugeBinding,
