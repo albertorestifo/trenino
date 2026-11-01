@@ -394,8 +394,7 @@ defmodule TreninoWeb.DialCalibrationComponent do
     <div id={@id} class="border-t border-base-300 pt-2 space-y-3">
       <div class="flex justify-between items-center gap-2">
         <p class="text-sm text-base-content/80">
-          <span>Dial:</span>
-          {" "}<span id={"#{@id}-status"}>{status_label(@calibration)}</span>
+          Dial: <span id={"#{@id}-status"}>{status_label(@calibration)}</span>
         </p>
         <button
           id={"#{@id}-toggle"}

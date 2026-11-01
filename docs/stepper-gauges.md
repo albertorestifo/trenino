@@ -24,7 +24,8 @@ conflicts never automatically ForgetDriver.
 
 ## Guided gauge setup
 
-The quickest route to a working speedometer is **Guided gauge setup** on the axis card
+The quickest route to a working speedometer is **Set up gauge** on the axis card
+(**Guided gauge setup** in its ⋯ menu once the axis is ready)
 (**Stepper axes** on the configuration page). It chains the manual steps below into one
 flow and needs no knowledge of the parameters. It uses the same operations as the manual
 controls (`StepperManager` claim/command/release, `Hardware.save_dial_calibration`,
@@ -83,7 +84,7 @@ axis stays paused.
 ## Configure and commission
 
 1. In Hardware configurations, select a panel and open **Stepper axes**. Click
-   **Quick setup: X27.168 motor** (six-state, shield port 1, address 0x60; the second
+   **Add axis**, then **X27.168 motor** under "Start from" (six-state, shield port 1, address 0x60; the second
    axis gets port 2) and give it a name. The form shows only the common fields (axis,
    port, mode, direction, limits, speed, acceleration). Home sweep, backoff, timeouts,
    watchdog, idle/host-loss behavior, reference strategy and shield address are under
@@ -101,11 +102,17 @@ axis stays paused.
    `02 <configuration id, little endian> 00 00 ff`. ConfigurationStored must confirm
    its identity before axis setup. It removes old modules and resets/releases
    axes; independent SetOutput pins and removed display contents are not cleared.
-   Each axis shows a **Next step** line (Apply needed, set reference, take manual
-   control, recover, Resume train control) plus a one-line glossary for reference,
-   manual control and commissioning. A fault is shown only while the session is
+   Each axis card shows one state chip (Ready, Needs setup, Paused, Moving, Device
+   not connected, Fault), one reason line when something needs attention, and the
+   single action that moves you forward (Set up gauge, Resume train control or
+   Recover configuration). **Stop** appears on the card face whenever the needle is
+   moving or you hold manual control. Every manual control (take manual control, Stop,
+   Release, Enable, Home, Resume, Recover, reference, Move to target, jog, complete
+   commissioning) and the glossary for reference, manual control and commissioning are
+   under **Advanced / manual controls**. Edit, Flip direction and Delete are in the
+   ⋯ menu, and shield-address recommissioning is under the panel's **Advanced**. A fault is shown only while the session is
    faulted; it clears once the session reconfigures or an acknowledgement succeeds.
-3. Take manual control. Automatic targets pause. For **host reference**, physically
+3. Under **Advanced / manual controls**, take manual control. Automatic targets pause. For **host reference**, physically
    align the pointer and explicitly Assign reference to the entered coordinate.
    Enable energizes a phase; it does not create a reference.
 4. Use small jog increments and conservative speed/acceleration to verify direction
@@ -167,7 +174,11 @@ Saving candidate points does not certify physical calibration.
 
 ## Train binding
 
-In the train editor choose **Gauges -> Add gauge**. The form has three numbered steps:
+In the train editor, each saved gauge shows its name, the dial it drives, one status chip
+(Live with the current dial value, Ready, Off, Not moving, Needs setup) and, only when
+something is wrong, the one reason plus one link to fix it on the axis. Turn it on or off with
+the switch; Edit and Delete are quiet buttons, and the endpoint and raw values are under
+**Details**. To add one, choose **Gauges -> Add gauge**. The form has three numbered steps:
 (1) axis (shows whether its dial is calibrated, with a link to calibrate it), (2) endpoint
 and "Simulator reports in" unit, (3) save/enable. Multiplier, offset, stale time,
 out-of-range and inactive behavior are under **Advanced**. Every disabled control states

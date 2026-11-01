@@ -322,14 +322,14 @@ defmodule TreninoWeb.StepperAxisFormComponent do
         class="border border-base-300 rounded-lg p-4 space-y-3"
       >
         <% status = axis_status(axis, assigns) %>
-        <div class="flex items-start justify-between gap-3">
-          <div class="min-w-0">
+        <div class="flex flex-wrap items-start justify-between gap-x-3 gap-y-1">
+          <div class="min-w-0 flex-1 basis-48">
             <h3 class="font-semibold break-words">{axis.name}</h3>
             <p class="text-xs text-base-content/70">
               Axis {axis.axis_index} · port {axis.motor_port}
             </p>
           </div>
-          <div class="flex shrink-0 items-center gap-1">
+          <div class="ml-auto flex shrink-0 items-center gap-1">
             <.status_chip id={"stepper-status-#{axis.id}"} kind={status.kind} label={status.label} />
             <details
               :if={@wizard_axis_id != axis.id}

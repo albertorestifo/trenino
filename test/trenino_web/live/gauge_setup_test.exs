@@ -146,6 +146,57 @@ defmodule TreninoWeb.GaugeSetupTest do
     end
   end
 
+  describe "gauge card" do
+    setup %{conn: conn} do
+      {:ok, device} = Hardware.create_device(%{name: "Panel"})
+      {:ok, axis} = Hardware.create_stepper_axis(device.id, %{name: "Speed"})
+      {:ok, axis} = Hardware.commission_stepper_axis(axis)
+
+      {:ok, _} =
+        Hardware.save_dial_calibration(axis, %{
+          output_unit: :mph,
+          reviewed: true,
+          points: [%{value: 0, position: 0}, %{value: 100, position: 720}]
+        })
+
+      {:ok, train} = Train.create_train(%{name: "T", identifiers: [%{identifier: "Card_T"}]})
+
+      {:ok, binding} =
+        Train.create_gauge_binding(train.id, %{
+          stepper_axis_id: axis.id,
+          name: "Speedometer",
+          endpoint: "HUD_GetSpeed",
+          input_unit: :mps
+        })
+
+      %{conn: conn, train: train, binding: binding}
+    end
+
+    test "rests as identity, one state and a switch; the endpoint is behind Details", ctx do
+      {:ok, view, _} = live(ctx.conn, ~p"/trains/#{ctx.train.id}")
+      id = ctx.binding.id
+      assert has_element?(view, "#gauge-status-#{id}[role=status]", "Off")
+      assert has_element?(view, "#gauge-toggle-#{id}[role=switch][aria-checked=false]")
+      assert has_element?(view, "#gauge-details-#{id} p", "HUD_GetSpeed")
+      refute has_element?(view, "#gauge-binding-#{id} > p", "HUD_GetSpeed")
+      refute render(view) =~ "Awaiting fresh simulator data"
+      refute has_element?(view, "#gauge-blocker-#{id}")
+    end
+
+    test "the switch enables the gauge and a stopped gauge gives one reason", ctx do
+      {:ok, view, _} = live(ctx.conn, ~p"/trains/#{ctx.train.id}")
+      id = ctx.binding.id
+      view |> element("#gauge-toggle-#{id}") |> render_click()
+      assert [%{enabled: true}] = Train.list_gauge_bindings(ctx.train.id)
+      assert has_element?(view, "#gauge-toggle-#{id}[aria-checked=true]")
+      assert has_element?(view, "#gauge-status-#{id}", "Not moving")
+      assert has_element?(view, "#gauge-blocker-#{id}", "simulator is not connected")
+      assert has_element?(view, "#gauge-binding-#{id} p", "simulator is not connected")
+      # No axis link when the axis is not the problem.
+      refute has_element?(view, "#gauge-binding-#{id} a", "Open axis")
+    end
+  end
+
   describe "guidance" do
     test "blocker says why a blocked dial keeps an enabled gauge still" do
       alias Trenino.Hardware.{DialCalibration, StepperAxis}
