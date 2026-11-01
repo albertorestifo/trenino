@@ -85,7 +85,7 @@ defmodule Trenino.MCP.Tools.DeviceTools do
             "mcp23017: direct_mask, row_mask and col_mask are integer bitmasks, bit 0-7 = GPA0-7 and bit 8-15 = GPB0-7. " <>
             "GPA7 and GPB7 (bits 7 and 15) are output-only: they may be matrix rows, never direct inputs or columns. " <>
             "A matrix needs both row_mask and col_mask (up to 8 each), and every switch needs a diode. debounce is in samples (optional). " <>
-            "ads1115: channel_mask bits 0-3 enable AIN0-3, gain 0 (+-4.096 V) or 1 (+-2.048 V), ref_channel (0-3, optional) is a channel wired to the sensor supply and must not be in channel_mask. " <>
+            "ads1115: channel_mask bits 0-3 enable AIN0-3, gain 0 (+-6.144 V, default, needed on a 5 V supply because inputs reach the rail) or 1 (+-4.096 V), ref_channel (0-3, optional) is a channel wired to the sensor supply and must not be in channel_mask. " <>
             "Input chips create one input per channel; use list_device_inputs to find them. " <>
             "channels optionally names them: an object keyed by channel number with name and sensitivity (analog only), e.g. {\"0\": {\"name\": \"Throttle\", \"sensitivity\": 7}}.",
         input_schema: %{

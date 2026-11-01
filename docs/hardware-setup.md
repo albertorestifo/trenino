@@ -173,7 +173,7 @@ On an Arduino Uno or Nano there is room for one chip with a matrix.
 
 ### ADS1115
 
-- Choose which channels (AIN0-AIN3) are inputs, and the gain: `+-4.096 V` (default) or `+-2.048 V`.
+- Choose which channels (AIN0-AIN3) are inputs, and the gain: `+-6.144 V` (default) or `+-4.096 V`. A 5 V supply needs gain 0, because inputs reach the rail.
 - Inputs must stay within the chip's supply rails.
 - **Without a supply reference**, readings depend on the supply voltage. On 5 V a lever at full travel reads about 80% of the range. Power potentiometers from a clean rail, away from stepper and LED current paths.
 - **With a supply reference**, wire one channel to the same supply as the sensors and select it as the reference channel. Readings become a ratio of it and are 0-100% on any supply. **All sensors on that chip must be powered from that same supply.** If the reference reads too low, the chip reports an error and sends no values until it recovers.
