@@ -33,6 +33,22 @@ defmodule Trenino.Train.LeverMapperTest do
       assert {:ok, 1.0} = LeverMapper.map_input(config, 1.0)
     end
 
+    test "returns an error instead of dividing by zero for a zero-width linear notch" do
+      notch = %Notch{
+        index: 0,
+        type: :linear,
+        min_value: 0.0,
+        max_value: 1.0,
+        input_min: 1.0,
+        input_max: 1.0,
+        sim_input_min: 0.0,
+        sim_input_max: 1.0
+      }
+
+      assert {:error, :zero_width_notch} =
+               LeverMapper.map_input(%LeverConfig{notches: [notch]}, 1.0)
+    end
+
     test "interpolates mid-range values", %{lever_config: config} do
       assert {:ok, 0.5} = LeverMapper.map_input(config, 0.5)
       assert {:ok, 0.25} = LeverMapper.map_input(config, 0.25)
@@ -743,6 +759,296 @@ defmodule Trenino.Train.LeverMapperTest do
       }
 
       assert {:ok, 0.5} = LeverMapper.calculate_sim_input(notch, 0.5)
+    end
+  end
+
+  # M9-A style layout stored in effective space: sim falls as effective input rises
+  defp descending_notches do
+    [
+      %Notch{
+        index: 0,
+        type: :gate,
+        value: -2,
+        input_min: 0.99,
+        input_max: 1.0,
+        sim_input_min: 0.0,
+        sim_input_max: 0.04
+      },
+      %Notch{
+        index: 1,
+        type: :linear,
+        min_value: -1,
+        max_value: -0.25,
+        input_min: 0.56,
+        input_max: 0.96,
+        sim_input_min: 0.06,
+        sim_input_max: 0.44
+      },
+      %Notch{
+        index: 2,
+        type: :gate,
+        value: 0,
+        input_min: 0.5,
+        input_max: 0.51,
+        sim_input_min: 0.46,
+        sim_input_max: 0.54
+      },
+      %Notch{
+        index: 3,
+        type: :linear,
+        min_value: 0.25,
+        max_value: 1,
+        input_min: 0.0,
+        input_max: 0.45,
+        sim_input_min: 0.56,
+        sim_input_max: 1.0
+      }
+    ]
+  end
+
+  describe "descending?/1" do
+    test "is false for fewer than 2 entries" do
+      refute LeverMapper.descending?([])
+      refute LeverMapper.descending?([{0.0, 1.0, 1.0, 0.0}])
+    end
+
+    test "compares sim centres of the notches at the hardware-centre extremes" do
+      assert LeverMapper.descending?([{0.0, 0.4, 0.6, 1.0}, {0.6, 1.0, 0.0, 0.4}])
+      refute LeverMapper.descending?([{0.0, 0.4, 0.0, 0.4}, {0.6, 1.0, 0.6, 1.0}])
+    end
+
+    test "accepts integer values from SQLite" do
+      assert LeverMapper.descending?([{0, 0, 1, 1}, {1, 1, 0, 0}])
+    end
+
+    test "reversed_layout?/1 agrees with descending?/1 on the mapped notches" do
+      notches = descending_notches()
+
+      tuples =
+        Enum.map(notches, &{&1.input_min, &1.input_max, &1.sim_input_min, &1.sim_input_max})
+
+      assert LeverMapper.reversed_layout?(notches) == LeverMapper.descending?(tuples)
+    end
+  end
+
+  describe "map_input/2 with a descending layout" do
+    test "interpolates linear notches backwards when not inverted" do
+      config = %LeverConfig{inverted: false, notches: descending_notches()}
+
+      # Effective input == hardware input. Power notch runs 1.0 -> 0.56 as input rises
+      assert {:ok, 1.0} = LeverMapper.map_input(config, 0.0)
+      assert {:ok, 0.57} = LeverMapper.map_input(config, 0.44)
+      assert {:ok, 0.5} = LeverMapper.map_input(config, 0.5)
+      # Braking notch runs 0.44 -> 0.06 as input rises
+      assert {:ok, 0.44} = LeverMapper.map_input(config, 0.56)
+      assert {:ok, 0.07} = LeverMapper.map_input(config, 0.95)
+      assert {:ok, 0.02} = LeverMapper.map_input(config, 1.0)
+
+      # Monotone: sim never rises as hardware input rises
+      values =
+        for hw <- [0.0, 0.2, 0.44, 0.5, 0.56, 0.75, 0.95, 1.0] do
+          {:ok, v} = LeverMapper.map_input(config, hw)
+          v
+        end
+
+      assert values == Enum.sort(values, :desc)
+    end
+
+    test "interpolates linear notches backwards when inverted" do
+      config = %LeverConfig{inverted: true, notches: descending_notches()}
+
+      # Hardware x -> effective 1 - x, then the same descending interpolation
+      assert {:ok, 1.0} = LeverMapper.map_input(config, 1.0)
+      assert {:ok, 0.57} = LeverMapper.map_input(config, 0.56)
+      assert {:ok, 0.44} = LeverMapper.map_input(config, 0.44)
+      assert {:ok, 0.02} = LeverMapper.map_input(config, 0.0)
+    end
+  end
+
+  describe "map_input/2 with a wizard-style flipped config" do
+    # The wizard detects inversion and flips captured ranges, so the stored
+    # layout ascends in effective space: interpolation runs forward.
+    setup do
+      notches = [
+        %Notch{
+          type: :linear,
+          input_min: 0.0,
+          input_max: 0.45,
+          sim_input_min: 0.0,
+          sim_input_max: 0.45
+        },
+        %Notch{
+          type: :gate,
+          input_min: 0.5,
+          input_max: 0.5,
+          sim_input_min: 0.46,
+          sim_input_max: 0.54
+        },
+        %Notch{
+          type: :linear,
+          input_min: 0.55,
+          input_max: 1.0,
+          sim_input_min: 0.55,
+          sim_input_max: 1.0
+        }
+      ]
+
+      %{config: %LeverConfig{inverted: true, notches: notches}}
+    end
+
+    test "is not a reversed layout", %{config: config} do
+      refute LeverMapper.reversed_layout?(config.notches)
+    end
+
+    test "maps physical ends and interiors forward in effective space", %{config: config} do
+      assert {:ok, 1.0} = LeverMapper.map_input(config, 0.0)
+      assert {:ok, +0.0} = LeverMapper.map_input(config, 1.0)
+      assert {:ok, 0.78} = LeverMapper.map_input(config, 0.22)
+      assert {:ok, 0.22} = LeverMapper.map_input(config, 0.78)
+    end
+  end
+
+  describe "map_input/2 when hardware-range edges and centres disagree" do
+    # A wide linear notch starts at the lowest input_min while a narrow gate
+    # has the lowest centre. The old edge rule (lowest input_min vs highest
+    # input_max) called this reversed; the centre rule, shared with the wizard,
+    # says ascending.
+    setup do
+      notches = [
+        %Notch{
+          type: :linear,
+          input_min: 0.0,
+          input_max: 0.9,
+          sim_input_min: 0.6,
+          sim_input_max: 1.0
+        },
+        %Notch{
+          type: :gate,
+          input_min: 0.1,
+          input_max: 0.12,
+          sim_input_min: 0.0,
+          sim_input_max: 0.1
+        },
+        %Notch{
+          type: :gate,
+          input_min: 0.95,
+          input_max: 1.0,
+          sim_input_min: 0.4,
+          sim_input_max: 0.5
+        }
+      ]
+
+      %{notches: notches}
+    end
+
+    test "uses the centre rule", %{notches: notches} do
+      refute LeverMapper.reversed_layout?(notches)
+    end
+
+    test "interpolates forward regardless of inversion", %{notches: notches} do
+      # Effective 0.0 is the start of the wide linear notch: sim_input_min
+      assert {:ok, 0.6} =
+               LeverMapper.map_input(%LeverConfig{inverted: false, notches: notches}, 0.0)
+
+      assert {:ok, 0.6} =
+               LeverMapper.map_input(%LeverConfig{inverted: true, notches: notches}, 1.0)
+    end
+  end
+
+  describe "find_notch/2 with zero-width gates" do
+    setup do
+      gate = %Notch{
+        index: 1,
+        type: :gate,
+        input_min: 0.5,
+        input_max: 0.5,
+        sim_input_min: 0.46,
+        sim_input_max: 0.54
+      }
+
+      braking = %Notch{
+        index: 0,
+        type: :linear,
+        input_min: 0.0,
+        input_max: 0.5,
+        sim_input_min: 0.0,
+        sim_input_max: 0.45
+      }
+
+      power = %Notch{
+        index: 2,
+        type: :linear,
+        input_min: 0.5,
+        input_max: 1.0,
+        sim_input_min: 0.55,
+        sim_input_max: 1.0
+      }
+
+      %{gate: gate, braking: braking, power: power}
+    end
+
+    test "matches a lone zero-width gate at its value and within 0.01", %{gate: gate} do
+      for v <- [0.49, 0.5, 0.51] do
+        assert LeverMapper.find_notch([gate], v) == gate
+      end
+
+      assert LeverMapper.find_notch([gate], 0.48) == nil
+      assert LeverMapper.find_notch([gate], 0.52) == nil
+    end
+
+    test "takes priority over adjacent linear notches", ctx do
+      notches = [ctx.braking, ctx.gate, ctx.power]
+
+      for v <- [0.49, 0.5, 0.51] do
+        assert LeverMapper.find_notch(notches, v) == ctx.gate
+      end
+
+      assert LeverMapper.find_notch(notches, 0.48) == ctx.braking
+      assert LeverMapper.find_notch(notches, 0.52) == ctx.power
+
+      config = %LeverConfig{notches: notches}
+      assert {:ok, 0.5} = LeverMapper.map_input(config, 0.49)
+      assert {:ok, 0.5} = LeverMapper.map_input(config, 0.51)
+    end
+
+    test "pads a one-step gate whose width is a float rounding of 0.01" do
+      gate = %Notch{
+        type: :gate,
+        input_min: 0.12,
+        input_max: 0.13,
+        sim_input_min: 0.0,
+        sim_input_max: 0.1
+      }
+
+      for v <- [0.11, 0.12, 0.13, 0.14] do
+        assert LeverMapper.find_notch([gate], v) == gate
+      end
+
+      assert LeverMapper.find_notch([gate], 0.15) == nil
+    end
+
+    test "zero-width gate at 1.0 matches 1.0 and 0.99" do
+      gate = %Notch{
+        type: :gate,
+        input_min: 1.0,
+        input_max: 1.0,
+        sim_input_min: 0.9,
+        sim_input_max: 1.0
+      }
+
+      assert LeverMapper.find_notch([gate], 1.0) == gate
+      assert LeverMapper.find_notch([gate], 0.99) == gate
+    end
+
+    test "exact 1.0 boundary still resolves to a wide notch ending at 1.0", ctx do
+      assert LeverMapper.find_notch([ctx.braking, ctx.power], 1.0) == ctx.power
+    end
+
+    test "wide gates keep half-open matching at shared boundaries" do
+      neutral = %Notch{type: :gate, input_min: 0.45, input_max: 0.55}
+      power = %Notch{type: :linear, input_min: 0.55, input_max: 1.0}
+
+      assert LeverMapper.find_notch([neutral, power], 0.55) == power
     end
   end
 end

@@ -609,4 +609,556 @@ defmodule TreninoWeb.LeverSetupWizardTest do
       end
     end
   end
+
+  describe "map positions step with a running session" do
+    alias Trenino.Serial.Connection, as: SerialConnection
+    alias Trenino.Train.Calibration.NotchMappingSession
+
+    setup do
+      {:ok, train} =
+        TrainContext.create_train(%{
+          name: "Direction Train",
+          identifiers: [%{identifier: "Direction_Train_#{System.unique_integer([:positive])}"}]
+        })
+
+      {:ok, element} = TrainContext.create_element(train.id, %{name: "Throttle", type: :lever})
+
+      {:ok, device} = Hardware.create_device(%{name: "Direction Device"})
+
+      {:ok, input} =
+        Hardware.create_input(device.id, %{pin: 5, input_type: :analog, sensitivity: 5})
+
+      {:ok, _calibration} =
+        Hardware.save_calibration(input.id, %{
+          min_value: 100,
+          max_value: 900,
+          max_hardware_value: 1023,
+          is_inverted: false,
+          has_rollover: false
+        })
+
+      {:ok, lever_config} =
+        Trenino.Repo.insert(%LeverConfig{
+          element_id: element.id,
+          min_endpoint: "CurrentDrivableActor/Throttle.InputMin",
+          max_endpoint: "CurrentDrivableActor/Throttle.InputMax",
+          value_endpoint: "CurrentDrivableActor/Throttle.InputValue",
+          lever_type: :continuous
+        })
+
+      # A single linear notch: direction can't be detected, so manual controls show
+      {:ok, lever_config} =
+        TrainContext.save_notches(lever_config, [
+          %{
+            type: :linear,
+            min_value: 0.0,
+            max_value: 1.0,
+            sim_input_min: 0.0,
+            sim_input_max: 1.0,
+            description: "Throttle"
+          }
+        ])
+
+      {:ok, _binding} = TrainContext.bind_input(lever_config.id, input.id)
+
+      client = Client.new("http://localhost:8080", "test-key")
+
+      stub(Simulator, :get_status, fn -> %ConnectionState{status: :connected, client: client} end)
+
+      stub(Client, :list, fn _client ->
+        {:ok, %{"NodeName" => "Root", "NodePath" => "Root", "Nodes" => []}}
+      end)
+
+      stub(SerialConnection, :list_devices, fn ->
+        [%{device_config_id: device.config_id, status: :connected, port: "/dev/direction"}]
+      end)
+
+      on_exit(fn -> TrainContext.stop_notch_mapping(lever_config.id) end)
+
+      %{train: train, element: element, lever_config: lever_config}
+    end
+
+    test "set_direction reaches the session and re-renders the manual state", %{
+      conn: conn,
+      train: train,
+      element: element,
+      lever_config: lever_config
+    } do
+      {:ok, view, _html} = live(conn, ~p"/trains/#{train.id}")
+
+      view
+      |> element("[phx-click='configure_lever'][phx-value-id='#{element.id}']")
+      |> render_click()
+
+      view
+      |> element("[phx-click='go_to_step'][phx-value-step='map_notches']")
+      |> render_click()
+
+      pid = NotchMappingSession.whereis(lever_config.id)
+      assert is_pid(pid)
+
+      :ok = NotchMappingSession.start_capturing(pid)
+      Enum.each([100, 500, 900], &send(pid, {:input_value_updated, "/dev/direction", 5, &1}))
+      :ok = NotchMappingSession.capture_range(pid)
+
+      # First render drains the PubSub broadcast; its send_update lands before the second
+      render(view)
+      html = render(view)
+      assert html =~ "Set manually:"
+
+      view
+      |> element(~s([phx-click="set_direction"][phx-value-direction="reversed"]), "Reversed")
+      |> render_click()
+
+      assert NotchMappingSession.get_state(pid).direction_override == true
+
+      render(view)
+      html = render(view)
+      assert html =~ "Direction: set manually (reversed)"
+      assert html =~ "Reset to default"
+
+      view
+      |> element(~s([phx-click="set_direction"][phx-value-direction="auto"]))
+      |> render_click()
+
+      assert NotchMappingSession.get_state(pid).direction_override == nil
+    end
+  end
+
+  describe "map positions step" do
+    alias TreninoWeb.LeverSetupWizard
+
+    @notches [
+      %{
+        index: 0,
+        type: :gate,
+        value: 0.0,
+        min_value: nil,
+        max_value: nil,
+        sim_input_min: 0.0,
+        sim_input_max: 0.0,
+        description: "Idle"
+      },
+      %{
+        index: 1,
+        type: :linear,
+        value: nil,
+        min_value: 0.0,
+        max_value: 100.0,
+        sim_input_min: 0.1,
+        sim_input_max: 0.9,
+        description: "Linear 0.0 to 100.0"
+      },
+      %{
+        index: 2,
+        type: :gate,
+        value: -11.0,
+        min_value: nil,
+        max_value: nil,
+        sim_input_min: 1.0,
+        sim_input_max: 1.0,
+        description: "Gate at output -11"
+      }
+    ]
+
+    defp range(notch_index, min_pct, max_pct, sim_at_min, sim_at_max) do
+      notch = Enum.at(@notches, notch_index)
+
+      {out_min, out_max} =
+        if notch.type == :gate,
+          do: {notch.value, notch.value},
+          else: {notch.min_value, notch.max_value}
+
+      %{
+        notch_index: notch_index,
+        description: notch.description,
+        type: notch.type,
+        min_pct: min_pct,
+        max_pct: max_pct,
+        sim_at_min: sim_at_min,
+        sim_at_max: sim_at_max,
+        sim_output_min: out_min,
+        sim_output_max: out_max
+      }
+    end
+
+    defp end_info(notch_index, hardware_pct, sim_input) do
+      notch = Enum.at(@notches, notch_index)
+
+      %{
+        notch_index: notch_index,
+        description: notch.description,
+        type: notch.type,
+        hardware_pct: hardware_pct,
+        sim_input: sim_input
+      }
+    end
+
+    defp forward_preview do
+      %{
+        status: :ready,
+        direction_known: true,
+        direction_detectable: true,
+        direction_pending: false,
+        direction_overridable: false,
+        direction_source: :auto,
+        detected_inverted: false,
+        inverted: false,
+        low_end: end_info(0, 0.0, 0.0),
+        high_end: end_info(2, 100.0, 1.0),
+        live: end_info(1, 50.0, 0.5),
+        hardware_ranges: [
+          range(0, 0.0, 5.0, 0.0, 0.0),
+          range(1, 10.0, 90.0, 0.1, 0.9),
+          range(2, 95.0, 100.0, 1.0, 1.0)
+        ]
+      }
+    end
+
+    defp inverted_preview do
+      %{
+        status: :ready,
+        direction_known: true,
+        direction_detectable: true,
+        direction_pending: false,
+        direction_overridable: false,
+        direction_source: :auto,
+        detected_inverted: true,
+        inverted: true,
+        low_end: end_info(2, 0.0, 1.0),
+        high_end: end_info(0, 100.0, 0.0),
+        live: end_info(1, 36.0, 0.64),
+        hardware_ranges: [
+          range(2, 0.0, 5.0, 1.0, 1.0),
+          range(1, 10.0, 90.0, 0.9, 0.1),
+          range(0, 95.0, 100.0, 0.0, 0.0)
+        ]
+      }
+    end
+
+    defp mapping_state(overrides) do
+      base = %{
+        lever_config_id: 1,
+        notch_count: length(@notches),
+        notches: @notches,
+        total_travel: 1000,
+        current_step: {:mapping_notch, 1},
+        current_notch_index: 1,
+        current_notch: Enum.at(@notches, 1),
+        is_capturing: true,
+        captured_ranges: [%{min: 0, max: 50}, nil, nil],
+        current_value: 640,
+        current_min: 120,
+        current_max: 880,
+        sample_count: 42,
+        can_capture: true,
+        all_captured: false,
+        result: nil
+      }
+
+      Map.merge(base, Map.new(overrides))
+    end
+
+    defp review_state(preview) do
+      mapping_state(
+        current_step: :preview,
+        current_notch_index: nil,
+        current_notch: nil,
+        is_capturing: false,
+        all_captured: true,
+        captured_ranges: [%{min: 0, max: 50}, %{min: 100, max: 900}, %{min: 950, max: 1000}],
+        preview: preview
+      )
+    end
+
+    defp render_step(state) do
+      render_component(&LeverSetupWizard.step_map_notches/1,
+        mapping_state: state,
+        can_proceed: false,
+        myself: %Phoenix.LiveComponent.CID{cid: 1}
+      )
+    end
+
+    test "capturing a linear notch shows full description, output and new copy" do
+      html = render_step(mapping_state(preview: forward_preview()))
+
+      assert html =~ "Notch 2 of 3: Linear 0.0 to 100.0"
+      assert html =~ "Train output: 0 → 100"
+
+      assert html =~
+               "Sweep your lever across the whole Linear 0.0 to 100.0 range — either direction is fine."
+
+      assert html =~ "Lowest"
+      assert html =~ "Now"
+      assert html =~ "Highest"
+      assert html =~ "64%"
+      assert html =~ "12%"
+      assert html =~ "88%"
+      assert html =~ "raw 640"
+      assert html =~ "→ Linear 0.0 to 100.0, sim 0.50"
+      refute html =~ "Linear…"
+      refute html =~ "automatically detected when you save"
+    end
+
+    test "gate notch uses gate copy and single output value" do
+      state =
+        mapping_state(
+          current_step: {:mapping_notch, 2},
+          current_notch_index: 2,
+          current_notch: Enum.at(@notches, 2),
+          preview: forward_preview()
+        )
+
+      html = render_step(state)
+
+      assert html =~ "Notch 3 of 3: Gate at output -11"
+      assert html =~ "Train output: -11"
+
+      assert html =~
+               "Move your lever to where Gate at output -11 should be, then wiggle it within that position."
+    end
+
+    test "simulator bar is captioned and labelled with notch names, not MIN/MAX" do
+      html = render_step(mapping_state(preview: forward_preview()))
+
+      assert html =~ "Simulator notches (in simulator order)"
+      assert html =~ "← Idle"
+      assert html =~ "Gate at output -11 →"
+      refute html =~ ">MIN<"
+      refute html =~ ">MAX<"
+    end
+
+    test "forward lever shows physical strip without reversed badge" do
+      html = render_step(mapping_state(preview: forward_preview()))
+
+      assert html =~ "Your lever"
+      assert html =~ "Low end (0%)"
+      assert html =~ "High end (100%)"
+      assert html =~ "Same direction as simulator"
+      refute html =~ "Reversed vs. simulator"
+      refute html =~ "Direction is detected after you capture a second notch"
+    end
+
+    test "inverted lever shows reversed badge" do
+      html = render_step(mapping_state(preview: inverted_preview()))
+
+      assert html =~ "Reversed vs. simulator"
+      refute html =~ "Same direction as simulator"
+    end
+
+    test "partial capture without known direction shows the hint" do
+      preview = %{
+        status: :partial,
+        direction_known: false,
+        direction_detectable: false,
+        direction_pending: true,
+        direction_overridable: false,
+        direction_source: :auto,
+        detected_inverted: false,
+        inverted: false,
+        low_end: nil,
+        high_end: nil,
+        live: nil,
+        hardware_ranges: [range(0, 0.0, 5.0, 0.0, 0.0)]
+      }
+
+      html = render_step(mapping_state(preview: preview))
+
+      assert html =~ "Your lever"
+      assert html =~ "Direction is detected after you capture a second notch"
+      refute html =~ "Reversed vs. simulator"
+      refute html =~ ", sim "
+      refute html =~ "Set manually"
+    end
+
+    test "missing preview renders the step without the physical strip" do
+      html = render_step(mapping_state([]))
+
+      assert html =~ "Notch 2 of 3: Linear 0.0 to 100.0"
+      assert html =~ "Simulator notches (in simulator order)"
+      refute html =~ "Your lever"
+      refute html =~ "Direction is detected"
+    end
+
+    test "nil preview renders the step without the physical strip" do
+      html = render_step(mapping_state(preview: nil))
+
+      refute html =~ "Your lever"
+    end
+
+    test "review state summarises ends for a forward lever" do
+      html = render_step(review_state(forward_preview()))
+
+      assert html =~
+               "Low end of your lever → Idle (sim 0.00). High end → Gate at output -11 (sim 1.00)."
+
+      refute html =~ "runs opposite to the simulator"
+      refute html =~ "All Notches Mapped!"
+      assert html =~ "Lever now →"
+      assert html =~ ~s(phx-click="save_and_finish")
+      assert html =~ "Save Mapping"
+    end
+
+    test "review state for an inverted lever lists ranges in physical order" do
+      html = render_step(review_state(inverted_preview()))
+
+      assert html =~
+               "Low end of your lever → Gate at output -11 (sim 1.00). High end → Idle (sim 0.00)."
+
+      assert html =~
+               "Your lever runs opposite to the simulator — that's fine, it's handled automatically."
+
+      assert html =~ "Lever range"
+      assert html =~ "Sends to sim"
+      assert html =~ "0–5%"
+      assert html =~ "10–90%"
+      assert html =~ "0.90 → 0.10"
+      assert html =~ "0 → 100"
+      assert html =~ "Linear 0.0 to 100.0</span>, sim 0.64"
+
+      rows =
+        html
+        |> LazyHTML.from_fragment()
+        |> LazyHTML.query("tr[data-notch-index]")
+        |> LazyHTML.attribute("data-notch-index")
+
+      assert rows == ["2", "1", "0"]
+    end
+
+    defp direction_buttons(html) do
+      html
+      |> LazyHTML.from_fragment()
+      |> LazyHTML.query(~s(button[phx-click="set_direction"]))
+      |> Enum.map(fn button ->
+        {button |> LazyHTML.attribute("phx-value-direction") |> List.first(),
+         button |> LazyHTML.text() |> String.trim()}
+      end)
+    end
+
+    defp single_notch_preview(attrs) do
+      Map.merge(
+        %{
+          forward_preview()
+          | direction_known: false,
+            direction_detectable: false,
+            direction_pending: false,
+            direction_overridable: true,
+            hardware_ranges: [range(1, 0.0, 100.0, 0.0, 1.0)]
+        },
+        Map.new(attrs)
+      )
+    end
+
+    test "detectable direction shows the auto-detected label without buttons" do
+      html = render_step(mapping_state(preview: forward_preview()))
+
+      assert html =~ "Direction: auto-detected (same as simulator)."
+      assert html =~ "Detected from the notches you captured."
+      assert direction_buttons(html) == []
+    end
+
+    test "multi-notch partial capture shows only the hint, no manual choices" do
+      preview = %{
+        status: :partial,
+        direction_known: false,
+        direction_detectable: false,
+        direction_pending: true,
+        direction_overridable: false,
+        direction_source: :auto,
+        detected_inverted: false,
+        inverted: false,
+        low_end: nil,
+        high_end: nil,
+        live: nil,
+        hardware_ranges: [range(0, 0.0, 5.0, 0.0, 0.0)]
+      }
+
+      html = render_step(mapping_state(preview: preview))
+
+      assert html =~ "Direction is detected after you capture a second notch"
+      refute html =~ "Set manually"
+      assert direction_buttons(html) == []
+    end
+
+    test "overridable lever without override defaults to same and offers manual choices" do
+      html = render_step(mapping_state(preview: single_notch_preview([])))
+
+      refute html =~ "Direction is detected after"
+      assert html =~ "Same direction as simulator"
+      assert html =~ "Set manually:"
+
+      assert direction_buttons(html) == [
+               {"same", "Same as simulator"},
+               {"reversed", "Reversed"}
+             ]
+
+      assert html =~ ~s(phx-target="1")
+      assert html =~ ~s(type="button")
+    end
+
+    test "manual direction offers auto-detect" do
+      html =
+        render_step(
+          mapping_state(
+            preview:
+              single_notch_preview(
+                direction_known: true,
+                direction_source: :manual,
+                inverted: true
+              )
+          )
+        )
+
+      assert html =~ "Direction: set manually (reversed)"
+      assert html =~ "Reversed vs. simulator"
+      assert direction_buttons(html) == [{"auto", "Reset to default"}]
+    end
+
+    test "review state has no flip button when the direction is detectable" do
+      for preview <- [forward_preview(), inverted_preview()] do
+        html = render_step(review_state(preview))
+
+        assert direction_buttons(html) == []
+        refute html =~ "Change direction"
+        refute html =~ "Flip direction"
+      end
+    end
+
+    test "review state has no direction buttons on a non-overridable, undetectable lever" do
+      preview = single_notch_preview(direction_overridable: false)
+      html = render_step(review_state(preview))
+
+      assert direction_buttons(html) == []
+      refute html =~ "Change direction"
+    end
+
+    test "review state offers Change direction when the lever is overridable" do
+      html = render_step(review_state(single_notch_preview([])))
+
+      assert {"reversed", "Change direction"} in direction_buttons(html)
+      assert {"same", "Same as simulator"} in direction_buttons(html)
+    end
+
+    test "review state with a manual direction says so instead of 'handled automatically'" do
+      preview =
+        single_notch_preview(direction_known: true, direction_source: :manual, inverted: true)
+
+      html = render_step(review_state(preview))
+
+      assert html =~ "You set the direction manually: your lever runs opposite to the simulator."
+      refute html =~ "handled automatically"
+      assert html =~ "Direction: set manually (reversed)"
+
+      assert direction_buttons(html) == [
+               {"auto", "Reset to default"},
+               {"same", "Change direction"}
+             ]
+    end
+
+    test "review state without live notch says the lever is between notches" do
+      html = render_step(review_state(%{forward_preview() | live: nil}))
+
+      assert html =~ "64% (not in a captured notch)"
+    end
+  end
 end
