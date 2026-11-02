@@ -1,8 +1,12 @@
 defmodule TreninoWeb.MCP.MCPController do
   @moduledoc """
-  Phoenix controller for MCP SSE transport.
+  Phoenix controller for the MCP transports.
 
-  Exposes two endpoints:
+  Streamable HTTP (current spec, stateless, JSON responses only):
+  - POST /mcp — Receives one JSON-RPC message and answers in the response body
+  - GET /mcp — 405, the server never opens a server-initiated stream
+
+  Legacy HTTP+SSE (protocol 2024-11-05):
   - GET /mcp/sse — Opens an SSE stream and sends the POST endpoint URL
   - POST /mcp/messages — Receives JSON-RPC messages and pushes responses via SSE
   """
@@ -10,6 +14,38 @@ defmodule TreninoWeb.MCP.MCPController do
   use TreninoWeb, :controller
 
   alias Trenino.MCP.Server
+
+  @doc """
+  Streamable HTTP endpoint. Requests get their JSON-RPC response as the body;
+  notifications and client responses (no `method` with an `id`) get 202.
+  Batches are not supported.
+  """
+  def streamable(conn, %{"_json" => _batch}) do
+    conn |> put_status(400) |> json(invalid_request())
+  end
+
+  def streamable(conn, %{"method" => _, "id" => _} = message) do
+    {_, response} = Server.handle_message(message)
+    json(conn, response)
+  end
+
+  def streamable(conn, %{"jsonrpc" => "2.0"} = message) do
+    _ = Server.handle_message(message)
+    send_resp(conn, 202, "")
+  end
+
+  def streamable(conn, _params) do
+    conn |> put_status(400) |> json(invalid_request())
+  end
+
+  @doc """
+  The server never pushes messages outside a request, so there is no stream to open.
+  """
+  def streamable_get(conn, _params) do
+    conn
+    |> put_resp_header("allow", "POST")
+    |> send_resp(405, "")
+  end
 
   @doc """
   Opens an SSE stream. Sends an `endpoint` event with the POST URL
@@ -76,6 +112,10 @@ defmodule TreninoWeb.MCP.MCPController do
   defp send_sse_event(conn, event, data) do
     payload = "event: #{event}\ndata: #{data}\n\n"
     chunk(conn, payload)
+  end
+
+  defp invalid_request do
+    %{jsonrpc: "2.0", id: nil, error: %{code: -32_600, message: "Invalid request"}}
   end
 
   defp generate_session_id do

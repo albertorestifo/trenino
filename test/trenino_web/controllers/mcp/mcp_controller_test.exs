@@ -172,4 +172,66 @@ defmodule TreninoWeb.MCP.MCPControllerTest do
       assert response.error.code == -32_601
     end
   end
+
+  describe "Streamable HTTP POST /mcp" do
+    test "answers a request in the response body", %{conn: conn} do
+      conn =
+        post(conn, "/mcp", %{
+          "jsonrpc" => "2.0",
+          "id" => 1,
+          "method" => "initialize",
+          "params" => %{"protocolVersion" => "2025-06-18"}
+        })
+
+      assert %{"id" => 1, "result" => result} = json_response(conn, 200)
+      assert result["protocolVersion"] == "2025-06-18"
+      assert result["serverInfo"]["name"] == "Trenino"
+    end
+
+    test "returns tools/call results", %{conn: conn} do
+      conn =
+        post(conn, "/mcp", %{
+          "jsonrpc" => "2.0",
+          "id" => 2,
+          "method" => "tools/call",
+          "params" => %{"name" => "list_trains", "arguments" => %{}}
+        })
+
+      assert %{"result" => %{"content" => [%{"text" => text}]}} = json_response(conn, 200)
+      assert %{"trains" => []} = Jason.decode!(text)
+    end
+
+    test "returns JSON-RPC errors in the body", %{conn: conn} do
+      conn = post(conn, "/mcp", %{"jsonrpc" => "2.0", "id" => 3, "method" => "nope"})
+      assert %{"id" => 3, "error" => %{"code" => -32_601}} = json_response(conn, 200)
+    end
+
+    test "accepts notifications with 202", %{conn: conn} do
+      conn = post(conn, "/mcp", %{"jsonrpc" => "2.0", "method" => "notifications/initialized"})
+      assert response(conn, 202) == ""
+    end
+
+    test "rejects batches and malformed bodies", %{conn: conn} do
+      batch = conn |> put_req_header("content-type", "application/json") |> post("/mcp", "[]")
+      assert %{"error" => %{"code" => -32_600}} = json_response(batch, 400)
+
+      assert %{"error" => %{"code" => -32_600}} =
+               conn |> post("/mcp", %{"foo" => "bar"}) |> json_response(400)
+    end
+
+    test "GET has no stream to open", %{conn: conn} do
+      conn = get(conn, "/mcp")
+      assert response(conn, 405)
+      assert get_resp_header(conn, "allow") == ["POST"]
+    end
+
+    test "rejects a foreign Origin", %{conn: conn} do
+      conn =
+        conn
+        |> put_req_header("origin", "https://evil.example.com")
+        |> post("/mcp", %{"jsonrpc" => "2.0", "id" => 1, "method" => "ping"})
+
+      assert response(conn, 403)
+    end
+  end
 end

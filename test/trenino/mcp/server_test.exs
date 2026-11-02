@@ -20,6 +20,24 @@ defmodule Trenino.MCP.ServerTest do
       assert is_binary(response.result.protocolVersion)
     end
 
+    test "initialize echoes a supported protocol version and falls back to the newest" do
+      initialize = fn version ->
+        {:reply, response} =
+          Server.handle_message(%{
+            "jsonrpc" => "2.0",
+            "id" => 1,
+            "method" => "initialize",
+            "params" => %{"protocolVersion" => version}
+          })
+
+        response.result.protocolVersion
+      end
+
+      assert initialize.("2025-06-18") == "2025-06-18"
+      assert initialize.("2024-11-05") == "2024-11-05"
+      assert initialize.("1999-01-01") == hd(Server.supported_protocol_versions())
+    end
+
     test "notifications/initialized returns ok" do
       message = %{
         "jsonrpc" => "2.0",

@@ -72,7 +72,19 @@ defmodule TreninoWeb.Router do
   scope "/mcp", TreninoWeb.MCP do
     pipe_through :mcp
 
+    post "/", MCPController, :streamable
+    get "/", MCPController, :streamable_get
+    get "/server-card", DiscoveryController, :server_card
     get "/sse", MCPController, :sse
     post "/messages", MCPController, :messages
+  end
+
+  # Discovery documents so an assistant told to "install the Trenino MCP" can find and
+  # configure the server on its own
+  scope "/", TreninoWeb.MCP do
+    pipe_through :mcp
+
+    get "/llms.txt", DiscoveryController, :llms_txt
+    get "/.well-known/ai-catalog.json", DiscoveryController, :ai_catalog
   end
 end

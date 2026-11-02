@@ -1,5 +1,7 @@
 # AI-Powered Train Setup with Claude
 
+> **Quick connect:** with Trenino running, Claude Code users run `claude mcp add --transport http --scope user trenino http://localhost:4000/mcp`. Other clients: see [Setup](#setup), or point your assistant at `http://localhost:4000/llms.txt`.
+
 Trenino includes a built-in MCP (Model Context Protocol) server that lets you use Claude to configure your trains through natural conversation. Instead of manually setting up output bindings, button mappings, and command sequences, describe what you want and let Claude handle the details.
 
 ## What Can Claude Do?
@@ -17,43 +19,83 @@ Trenino includes a built-in MCP (Model Context Protocol) server that lets you us
 
 ### Requirements
 
-- Trenino running on your machine (`http://localhost:4000`)
-- [Claude Desktop](https://claude.ai/download) or [Claude Code](https://docs.anthropic.com/en/docs/claude-code)
+- Trenino running on your machine (the MCP server lives inside the desktop app at `http://localhost:4000/mcp`)
+- An MCP client on the same computer: Claude Code, Claude Desktop, Codex, Gemini CLI, VS Code, Cursor, …
 
-### Claude Desktop
+The server only accepts connections from your own computer and needs no API key.
 
-1. Open Claude Desktop settings
-2. Go to the **MCP Servers** section
-3. Add a new server:
+### Let your assistant do it
 
-```json
-{
-  "trenino": {
-    "type": "sse",
-    "url": "http://localhost:4000/mcp/sse"
-  }
-}
+With Trenino open, ask a coding agent running on your computer (Claude Code, Codex, Gemini CLI, GitHub Copilot in VS Code, …) to **"install the Trenino MCP"**. Trenino publishes everything an agent needs to set itself up:
+
+| URL | What it is |
+|-----|------------|
+| `http://localhost:4000/llms.txt` | Setup guide written for AI assistants, with the exact install command for each client |
+| `http://localhost:4000/mcp/server-card` | [MCP Server Card](https://modelcontextprotocol.io/seps/2127-mcp-server-cards) describing both transports |
+| `http://localhost:4000/.well-known/ai-catalog.json` | AI Catalog entry pointing at the server card |
+
+If the agent does not find it, tell it: *"Read http://localhost:4000/llms.txt and install the Trenino MCP server."*
+
+Chat apps such as Claude Desktop cannot do this themselves: they fetch web pages from the cloud, so they cannot see your computer's `localhost`, and they cannot edit their own config. Use the manual steps below.
+
+### Manual setup
+
+Trenino speaks the current **Streamable HTTP** transport at `http://localhost:4000/mcp`, and the older **HTTP+SSE** transport at `http://localhost:4000/mcp/sse` for clients that still need it.
+
+**Claude Code**
+
+```bash
+claude mcp add --transport http --scope user trenino http://localhost:4000/mcp
 ```
 
-4. Restart Claude Desktop
-5. You should see "Trenino" listed as a connected MCP server
+Inside the Trenino repository this is already configured through the checked-in `.mcp.json`.
 
-### Claude Code
+**Claude Desktop**
 
-If you're working inside the Trenino project directory, the MCP server is already configured — `.mcp.json` is included in the repo. Just make sure Trenino is running and restart Claude Code.
-
-To use Trenino's MCP from a different directory, create a `.mcp.json` file there:
+Claude Desktop only launches local (stdio) servers from its config file, so it connects through the [`mcp-remote`](https://www.npmjs.com/package/mcp-remote) bridge, which needs [Node.js](https://nodejs.org). Add this to `claude_desktop_config.json` (macOS: `~/Library/Application Support/Claude/`, Windows: `%APPDATA%\Claude\`), then fully quit and reopen Claude Desktop:
 
 ```json
 {
   "mcpServers": {
     "trenino": {
-      "type": "sse",
-      "url": "http://localhost:4000/mcp/sse"
+      "command": "npx",
+      "args": ["-y", "mcp-remote", "http://localhost:4000/mcp"]
     }
   }
 }
 ```
+
+Adding Trenino under **Settings → Connectors** does not work: custom connectors are reached from Anthropic's servers, which cannot see your computer.
+
+**Codex** (CLI, IDE extension and app)
+
+```bash
+codex mcp add trenino --url http://localhost:4000/mcp
+```
+
+**Gemini CLI**
+
+```bash
+gemini mcp add --transport http trenino http://localhost:4000/mcp
+```
+
+**VS Code** (GitHub Copilot)
+
+```bash
+code --add-mcp '{"name":"trenino","type":"http","url":"http://localhost:4000/mcp"}'
+```
+
+**Cursor** — add to `~/.cursor/mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "trenino": { "url": "http://localhost:4000/mcp" }
+  }
+}
+```
+
+**ChatGPT** (web and desktop) is not supported: its connectors run in OpenAI's cloud and need a public HTTPS address, while Trenino deliberately refuses connections from outside your computer. Use Codex instead.
 
 ## Example Workflows
 
@@ -105,7 +147,7 @@ Claude will:
 
 ## Available Tools
 
-Claude has access to 47 tools for interacting with Trenino:
+Claude has access to dozens of tools for interacting with Trenino (the client lists them all once connected):
 
 | Category | Tools |
 |----------|-------|

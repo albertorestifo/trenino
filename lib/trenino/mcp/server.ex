@@ -10,7 +10,12 @@ defmodule Trenino.MCP.Server do
 
   @server_name "Trenino"
   @server_version Mix.Project.config()[:version]
-  @protocol_version "2024-11-05"
+  # Newest first. The tools-only surface is identical across these revisions, so the
+  # server echoes whichever one the client asks for.
+  @supported_protocol_versions ["2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05"]
+
+  @spec supported_protocol_versions() :: [String.t()]
+  def supported_protocol_versions, do: @supported_protocol_versions
 
   @spec handle_message(map()) :: {:reply, map()} | {:error, map()}
   def handle_message(%{"jsonrpc" => "2.0", "method" => method} = message) do
@@ -30,10 +35,10 @@ defmodule Trenino.MCP.Server do
     {:error, jsonrpc_error(nil, -32_600, "Invalid request")}
   end
 
-  defp dispatch("initialize", _params) do
+  defp dispatch("initialize", params) do
     {:ok,
      %{
-       protocolVersion: @protocol_version,
+       protocolVersion: negotiate_protocol_version(params["protocolVersion"]),
        capabilities: %{
          tools: %{}
        },
@@ -94,6 +99,11 @@ defmodule Trenino.MCP.Server do
   defp dispatch(method, _params) do
     {:error, -32_601, "Method not found: #{method}"}
   end
+
+  defp negotiate_protocol_version(requested) when requested in @supported_protocol_versions,
+    do: requested
+
+  defp negotiate_protocol_version(_requested), do: hd(@supported_protocol_versions)
 
   defp encode_result(nil), do: {:ok, "ok"}
   defp encode_result(result) when is_binary(result), do: {:ok, result}
