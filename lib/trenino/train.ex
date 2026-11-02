@@ -9,6 +9,7 @@ defmodule Trenino.Train do
   import Ecto.Query
 
   alias Trenino.Hardware
+  alias Trenino.Hardware.I2cModule
   alias Trenino.Hardware.Input
   alias Trenino.Repo
   alias Trenino.Simulator.Client
@@ -1389,6 +1390,7 @@ defmodule Trenino.Train do
   def create_display_binding(train_id, attrs) do
     %DisplayBinding{train_id: train_id}
     |> DisplayBinding.changeset(attrs)
+    |> validate_display_module()
     |> Repo.insert()
   end
 
@@ -1400,7 +1402,19 @@ defmodule Trenino.Train do
   def update_display_binding(%DisplayBinding{} = binding, attrs) do
     binding
     |> DisplayBinding.changeset(attrs)
+    |> validate_display_module()
     |> Repo.update()
+  end
+
+  # Input chips (MCP23017, ADS1115) are not displays; DisplayController must never see one.
+  defp validate_display_module(%Ecto.Changeset{} = changeset) do
+    with id when is_integer(id) <- Ecto.Changeset.get_field(changeset, :i2c_module_id),
+         %I2cModule{} = mod <- Repo.get(I2cModule, id),
+         true <- I2cModule.input_chip?(mod) do
+      Ecto.Changeset.add_error(changeset, :i2c_module_id, "must be a display module")
+    else
+      _ -> changeset
+    end
   end
 
   @doc """
@@ -1411,14 +1425,6 @@ defmodule Trenino.Train do
   def delete_display_binding(%DisplayBinding{} = binding) do
     Repo.delete(binding)
   end
-
-  @doc """
-  List all I2C modules across all devices.
-
-  Used when creating display bindings to select an available module.
-  """
-  @spec list_all_i2c_modules() :: [Trenino.Hardware.I2cModule.t()]
-  def list_all_i2c_modules, do: Hardware.list_all_i2c_modules()
 
   def list_gauge_bindings(train_id) do
     Repo.all(

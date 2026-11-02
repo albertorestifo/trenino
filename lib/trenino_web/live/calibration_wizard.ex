@@ -22,6 +22,7 @@ defmodule TreninoWeb.CalibrationWizard do
 
   alias Trenino.Hardware
   alias Trenino.Hardware.Calibration.Session
+  alias Trenino.Hardware.InputLabel
 
   @impl true
   def mount(socket) do
@@ -125,7 +126,7 @@ defmodule TreninoWeb.CalibrationWizard do
     <div class="flex items-center justify-between mb-6">
       <div>
         <h2 class="text-xl font-semibold">Calibrate Input</h2>
-        <p class="text-sm text-base-content/70">Pin {@input.pin}</p>
+        <p class="text-sm text-base-content/70">{InputLabel.pin(@input)}</p>
       </div>
       <button
         phx-click="cancel"
@@ -261,7 +262,7 @@ defmodule TreninoWeb.CalibrationWizard do
         count={@state.min_sample_count}
         unique={@state.min_unique_count}
         min_required={10}
-        min_unique={3}
+        min_unique={@state.min_unique_samples}
       />
     </div>
     """
@@ -305,7 +306,7 @@ defmodule TreninoWeb.CalibrationWizard do
         count={@state.max_sample_count}
         unique={@state.max_unique_count}
         min_required={10}
-        min_unique={3}
+        min_unique={@state.min_unique_samples}
       />
     </div>
     """
@@ -341,7 +342,7 @@ defmodule TreninoWeb.CalibrationWizard do
         </div>
         <h3 class="text-lg font-semibold">Calibration Failed</h3>
         <p class="text-base-content/70">
-          {format_error(@state.result)}
+          {error_message(@state.result)}
         </p>
       </div>
     </div>
@@ -420,12 +421,19 @@ defmodule TreninoWeb.CalibrationWizard do
   defp advance_button_text(:collecting_max), do: "Finish"
   defp advance_button_text(_), do: "Continue"
 
-  defp format_error({:error, reason}) when is_atom(reason) do
+  @doc "Human-readable text for a failed calibration result."
+  @spec error_message({:error, term()}) :: String.t()
+  def error_message({:error, :rollover_needs_reference}) do
+    "This sensor wraps around, which needs a supply reference on its ADS1115. " <>
+      "Add one in the chip settings, then calibrate again."
+  end
+
+  def error_message({:error, reason}) when is_atom(reason) do
     reason
     |> Atom.to_string()
     |> String.replace("_", " ")
     |> String.capitalize()
   end
 
-  defp format_error({:error, reason}), do: inspect(reason)
+  def error_message({:error, reason}), do: inspect(reason)
 end

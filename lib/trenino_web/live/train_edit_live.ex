@@ -89,7 +89,7 @@ defmodule TreninoWeb.TrainEditLive do
      |> assign(:new_mode, true)
      |> assign(:active_train, TrainContext.get_active_train())
      |> assign(:current_identifier, TrainContext.get_current_identifier())
-     |> assign(:display_hardware_available, Hardware.list_all_i2c_modules() != [])
+     |> assign(:display_hardware_available, Hardware.list_all_display_modules() != [])
      |> assign(:modal_open, false)
      |> assign(:element_form, to_form(Element.changeset(%Element{}, %{type: :lever})))
      |> assign(:show_delete_modal, false)
@@ -116,6 +116,8 @@ defmodule TreninoWeb.TrainEditLive do
      |> assign(:display_wizard_event, nil)
      |> assign(:sequence_manager_event, nil)
      |> assign(:value_polling_target, nil)
+     |> assign(:failed_input_ids, MapSet.new())
+     |> assign(:i2c_status_ports, MapSet.new())
      |> assign(:scripts, [])}
   end
 
@@ -150,7 +152,7 @@ defmodule TreninoWeb.TrainEditLive do
          |> assign(:new_mode, false)
          |> assign(:active_train, TrainContext.get_active_train())
          |> assign(:current_identifier, TrainContext.get_current_identifier())
-         |> assign(:display_hardware_available, Hardware.list_all_i2c_modules() != [])
+         |> assign(:display_hardware_available, Hardware.list_all_display_modules() != [])
          |> assign(:modal_open, false)
          |> assign(:element_form, to_form(Element.changeset(%Element{}, %{type: :lever})))
          |> assign(:show_delete_modal, false)
@@ -177,7 +179,10 @@ defmodule TreninoWeb.TrainEditLive do
          |> assign(:display_wizard_event, nil)
          |> assign(:sequence_manager_event, nil)
          |> assign(:value_polling_target, nil)
-         |> assign(:scripts, scripts)}
+         |> assign(:failed_input_ids, MapSet.new())
+         |> assign(:i2c_status_ports, MapSet.new())
+         |> assign(:scripts, scripts)
+         |> track_chip_failures()}
 
       {:error, :not_found} ->
         {:ok,
@@ -185,6 +190,28 @@ defmodule TreninoWeb.TrainEditLive do
          |> put_flash(:error, "Train not found")
          |> redirect(to: ~p"/trains")}
     end
+  end
+
+  # Subscribes to chip failures on every connected port and recomputes which
+  # inputs sit on a failed chip.
+  defp track_chip_failures(socket) do
+    ports = Connection.connected_devices() |> Enum.map(& &1.port) |> MapSet.new()
+
+    subscribed =
+      if connected?(socket) do
+        new_ports = MapSet.difference(ports, socket.assigns.i2c_status_ports)
+        Enum.each(new_ports, &ConfigurationManager.subscribe_i2c_status/1)
+        MapSet.union(socket.assigns.i2c_status_ports, new_ports)
+      else
+        socket.assigns.i2c_status_ports
+      end
+
+    failed_ids =
+      Enum.reduce(ports, MapSet.new(), &MapSet.union(&2, Hardware.failed_input_ids(&1)))
+
+    socket
+    |> assign(:i2c_status_ports, subscribed)
+    |> assign(:failed_input_ids, failed_ids)
   end
 
   # Nav component events
@@ -546,7 +573,12 @@ defmodule TreninoWeb.TrainEditLive do
   # PubSub events
   @impl true
   def handle_info({:devices_updated, devices}, socket) do
-    {:noreply, assign(socket, :nav_devices, devices)}
+    {:noreply, socket |> assign(:nav_devices, devices) |> track_chip_failures()}
+  end
+
+  @impl true
+  def handle_info({:i2c_module_status, _port, _failed}, socket) do
+    {:noreply, track_chip_failures(socket)}
   end
 
   @impl true
@@ -1380,7 +1412,11 @@ defmodule TreninoWeb.TrainEditLive do
         >
           <h2 id="controls-title" class="text-lg font-semibold mb-3">Controls</h2>
           <div class="bg-base-200/50 rounded-xl p-4 sm:p-6">
-            <.elements_section elements={@elements} is_active={@is_active} />
+            <.elements_section
+              elements={@elements}
+              is_active={@is_active}
+              failed_input_ids={@failed_input_ids}
+            />
           </div>
         </section>
 
@@ -1644,6 +1680,7 @@ defmodule TreninoWeb.TrainEditLive do
 
   attr :elements, :list, required: true
   attr :is_active, :boolean, required: true
+  attr :failed_input_ids, :any, required: true
 
   defp elements_section(assigns) do
     ~H"""
@@ -1671,6 +1708,7 @@ defmodule TreninoWeb.TrainEditLive do
               :for={element <- @elements}
               element={element}
               is_active={@is_active}
+              failed_input_ids={@failed_input_ids}
             />
           </tbody>
         </table>
@@ -1943,9 +1981,17 @@ defmodule TreninoWeb.TrainEditLive do
 
   attr :element, :map, required: true
   attr :is_active, :boolean, required: true
+  attr :failed_input_ids, :any, required: true
 
   defp element_row(assigns) do
     {status_badges, configure_action} = element_status(assigns.element)
+
+    status_badges =
+      if bound_input_failed?(assigns.element, assigns.failed_input_ids) do
+        status_badges ++ [{:error, "Input chip failed"}]
+      else
+        status_badges
+      end
 
     assigns =
       assigns
@@ -2033,6 +2079,19 @@ defmodule TreninoWeb.TrainEditLive do
       true -> [{:ghost, "Not configured"}]
     end
   end
+
+  defp bound_input_failed?(element, failed_input_ids) do
+    ids =
+      [
+        element |> get_lever_config() |> get_input_binding() |> binding_input_id(),
+        element |> get_button_binding() |> binding_input_id()
+      ]
+
+    Enum.any?(ids, &(&1 && MapSet.member?(failed_input_ids, &1)))
+  end
+
+  defp binding_input_id(nil), do: nil
+  defp binding_input_id(%{input_id: input_id}), do: input_id
 
   defp element_type_icon(:lever), do: "hero-adjustments-vertical"
   defp element_type_icon(:button), do: "hero-cursor-arrow-rays"

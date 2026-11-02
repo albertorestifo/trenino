@@ -478,7 +478,7 @@ defmodule Trenino.Train.ScriptRunner do
 
   defp apply_display_set(i2c_address, text) do
     # Queries DB each invocation — acceptable for first iteration; cache here if it becomes hot
-    modules = Hardware.list_all_i2c_modules()
+    modules = Hardware.list_all_display_modules()
 
     case Enum.find(modules, &(&1.i2c_address == i2c_address)) do
       nil ->

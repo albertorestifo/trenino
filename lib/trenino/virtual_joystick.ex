@@ -10,7 +10,7 @@ defmodule Trenino.VirtualJoystick do
   alias Trenino.Train.{ButtonController, ButtonInputBinding, LeverController, LeverInputBinding}
   alias Trenino.VirtualJoystick.{Configuration, Manager, Mapping}
 
-  @mapping_preloads [input: [:device, :calibration]]
+  @mapping_preloads [input: [:device, :calibration, :i2c_module]]
 
   @spec get_configuration() :: Configuration.t()
   def get_configuration do

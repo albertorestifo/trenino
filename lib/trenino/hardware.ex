@@ -9,8 +9,10 @@ defmodule Trenino.Hardware do
 
   alias Trenino.Hardware.{
     ConfigId,
+    ConfigurationManager,
     Device,
     DialCalibration,
+    I2cInputs,
     I2cModule,
     Input,
     Matrix,
@@ -490,6 +492,9 @@ defmodule Trenino.Hardware do
     {:ok, matrices} = list_matrices(device.id)
     Enum.each(matrices, &Repo.delete/1)
 
+    # Delete I2C modules, now that their child inputs are gone
+    device.id |> list_i2c_modules() |> Enum.each(&Repo.delete/1)
+
     # Delete the device
     Repo.delete(device)
   end
@@ -560,6 +565,27 @@ defmodule Trenino.Hardware do
   defp i2c_wire_config(%{module_chip: :ht16k33, i2c_address: address, params: params}),
     do: {:ht16k33, address, params.brightness, params.num_digits}
 
+  defp i2c_wire_config(%{module_chip: :mcp23017, i2c_address: address, params: p}),
+    do:
+      {:mcp23017, address, p.direct_base, p.matrix_base, p.debounce, p.direct_mask, p.row_mask,
+       p.col_mask}
+
+  defp i2c_wire_config(%{module_chip: :ads1115, i2c_address: address, params: p} = mod),
+    do:
+      {:ads1115, address, p.pin_base, p.channel_mask, p.gain, p.ref_channel,
+       chip_sensitivities(mod)}
+
+  @doc """
+  The four per-channel sensitivities sent to an ADS1115, indexed by channel.
+
+  A channel without a child input gets 0 (disabled). Requires `:inputs` to be loaded.
+  """
+  @spec chip_sensitivities(I2cModule.t()) :: [non_neg_integer()]
+  def chip_sensitivities(%I2cModule{inputs: inputs}) when is_list(inputs) do
+    by_channel = Map.new(inputs, &{&1.i2c_channel, &1.sensitivity || 0})
+    for channel <- 0..3, do: Map.get(by_channel, channel, 0)
+  end
+
   defp matrix_pins(matrix),
     do: {Enum.map(matrix.row_pins, & &1.pin), Enum.map(matrix.col_pins, & &1.pin)}
 
@@ -590,24 +616,34 @@ defmodule Trenino.Hardware do
 
   ## Options
 
-    * `:include_virtual_buttons` - Include virtual buttons from matrices (default: false)
+    * `:include_virtual_buttons` - Include virtual buttons from matrices (default: false).
+      Implies `:include_chip_inputs`.
+    * `:include_chip_inputs` - Include inputs of I2C input chips (default: false)
 
   """
   @spec list_inputs(integer(), keyword()) :: {:ok, [Input.t()]}
   def list_inputs(device_id, opts \\ []) do
     include_virtual = Keyword.get(opts, :include_virtual_buttons, false)
+    include_chip = include_virtual or Keyword.get(opts, :include_chip_inputs, false)
 
     query =
       Input
       |> where([i], i.device_id == ^device_id)
       |> order_by([i], i.pin)
-      |> preload([:calibration])
+      |> preload([:calibration, :i2c_module])
 
     query =
       if include_virtual do
         query
       else
         where(query, [i], is_nil(i.matrix_id))
+      end
+
+    query =
+      if include_chip do
+        query
+      else
+        where(query, [i], is_nil(i.i2c_module_id))
       end
 
     inputs = Repo.all(query)
@@ -624,19 +660,22 @@ defmodule Trenino.Hardware do
   ## Options
 
     * `:include_uncalibrated` - Include inputs without calibration (default: false)
-    * `:include_virtual_buttons` - Include virtual buttons from matrices (default: false)
+    * `:include_virtual_buttons` - Include virtual buttons from matrices (default: false).
+      Implies `:include_chip_inputs`.
+    * `:include_chip_inputs` - Include inputs of I2C input chips (default: false)
 
   """
   @spec list_all_inputs(keyword()) :: [Input.t()]
   def list_all_inputs(opts \\ []) do
     include_uncalibrated = Keyword.get(opts, :include_uncalibrated, false)
     include_virtual = Keyword.get(opts, :include_virtual_buttons, false)
+    include_chip = include_virtual or Keyword.get(opts, :include_chip_inputs, false)
 
     query =
       Input
       |> join(:inner, [i], d in Device, on: i.device_id == d.id)
       |> order_by([i, d], [d.name, i.pin])
-      |> preload([:device, :calibration])
+      |> preload([:device, :calibration, :i2c_module])
 
     query =
       if include_uncalibrated do
@@ -651,6 +690,13 @@ defmodule Trenino.Hardware do
         query
       else
         where(query, [i], is_nil(i.matrix_id))
+      end
+
+    query =
+      if include_chip do
+        query
+      else
+        where(query, [i], is_nil(i.i2c_module_id))
       end
 
     Repo.all(query)
@@ -832,7 +878,8 @@ defmodule Trenino.Hardware do
   end
 
   defp setup_matrix_pins_and_buttons(device_id, matrix_id, row_pins, col_pins) do
-    with {:ok, _pins} <- create_matrix_pins(matrix_id, row_pins, col_pins),
+    with :ok <- validate_matrix_clear_of_chips(device_id, matrix_id, row_pins, col_pins),
+         {:ok, _pins} <- create_matrix_pins(matrix_id, row_pins, col_pins),
          {:ok, _buttons} <- create_virtual_buttons(device_id, matrix_id, row_pins, col_pins) do
       :ok
     end
@@ -894,6 +941,29 @@ defmodule Trenino.Hardware do
     case Enum.find(all_results, &match?({:error, _}, &1)) do
       nil -> {:ok, Enum.map(all_results, fn {:ok, pin} -> pin end)}
       {:error, changeset} -> {:error, changeset}
+    end
+  end
+
+  # A chip block can hold pins with no child input, so the unique index alone
+  # would not catch every overlap.
+  defp validate_matrix_clear_of_chips(device_id, matrix_id, row_pins, col_pins) do
+    num_cols = length(col_pins)
+    reserved = I2cInputs.device_reserved_pins(device_id)
+
+    overlaps? =
+      Enum.any?(0..(length(row_pins) * num_cols - 1)//1, fn cell ->
+        pin = Matrix.virtual_pin(div(cell, num_cols), rem(cell, num_cols), num_cols)
+        MapSet.member?(reserved, pin)
+      end)
+
+    if overlaps? do
+      {:error,
+       %Matrix{id: matrix_id, device_id: device_id}
+       |> Ecto.Changeset.change()
+       |> Ecto.Changeset.add_error(:row_pins, "overlaps the virtual pins of an I2C chip")
+       |> Map.put(:action, :insert)}
+    else
+      :ok
     end
   end
 
@@ -995,13 +1065,49 @@ defmodule Trenino.Hardware do
     I2cModule
     |> where([m], m.device_id == ^device_id)
     |> order_by([m], m.i2c_address)
+    |> preload(inputs: :calibration)
     |> Repo.all()
+  end
+
+  @doc """
+  Ids of the inputs belonging to input chips currently reported failed on a port.
+  """
+  @spec failed_input_ids(String.t()) :: MapSet.t(integer())
+  def failed_input_ids(port) do
+    failed = ConfigurationManager.failed_i2c_modules(port)
+
+    with true <- failed != %{},
+         config_id when is_integer(config_id) <-
+           ConfigurationManager.port_to_config_id(port),
+         {:ok, device} <- get_device_by_config_id(config_id) do
+      device.id
+      |> list_i2c_modules()
+      |> Enum.filter(&Map.has_key?(failed, &1.i2c_address))
+      |> Enum.flat_map(& &1.inputs)
+      |> MapSet.new(& &1.id)
+    else
+      _ -> MapSet.new()
+    end
   end
 
   @doc "List all i2c modules across all devices (for MCP tools)."
   @spec list_all_i2c_modules() :: [I2cModule.t()]
   def list_all_i2c_modules do
     I2cModule
+    |> order_by([m], m.i2c_address)
+    |> preload(:device)
+    |> Repo.all()
+  end
+
+  @doc """
+  List display modules across all devices, with `:device` preloaded.
+
+  Input chips (MCP23017, ADS1115) are excluded: they can never be display targets.
+  """
+  @spec list_all_display_modules() :: [I2cModule.t()]
+  def list_all_display_modules do
+    I2cModule
+    |> where([m], m.module_chip not in ^I2cModule.input_chips())
     |> order_by([m], m.i2c_address)
     |> preload(:device)
     |> Repo.all()
@@ -1016,23 +1122,36 @@ defmodule Trenino.Hardware do
     end
   end
 
-  @doc "Create an i2c module on a device."
+  @doc """
+  Create an i2c module on a device.
+
+  For an input chip this also allocates its virtual pins and creates its child
+  inputs, in one transaction. `:channels` is an optional map of `i2c_channel` to
+  `%{name, sensitivity}`. Any base in `params` is ignored.
+  """
   @spec create_i2c_module(integer(), map()) :: {:ok, I2cModule.t()} | {:error, Ecto.Changeset.t()}
   def create_i2c_module(device_id, attrs) do
-    %I2cModule{device_id: device_id}
-    |> I2cModule.changeset(attrs)
-    |> validate_stepper_display_conflict()
-    |> Repo.insert()
+    save_i2c_module(%I2cModule{device_id: device_id}, attrs)
   end
 
-  @doc "Update an i2c module."
+  @doc """
+  Update an i2c module.
+
+  For an input chip, only the channels that changed are added or removed. Kept
+  child inputs keep their row, calibration and bindings, and their pin follows
+  the block. `:channels` is as in `create_i2c_module/2`.
+  """
   @spec update_i2c_module(I2cModule.t(), map()) ::
           {:ok, I2cModule.t()} | {:error, Ecto.Changeset.t()}
-  def update_i2c_module(%I2cModule{} = mod, attrs) do
+  def update_i2c_module(%I2cModule{} = mod, attrs), do: save_i2c_module(mod, attrs)
+
+  defp save_i2c_module(%I2cModule{} = mod, attrs) do
+    {attrs, channels} = I2cInputs.split_attrs(attrs)
+
     mod
     |> I2cModule.changeset(attrs)
     |> validate_stepper_display_conflict()
-    |> Repo.update()
+    |> I2cInputs.save(channels)
   end
 
   defp validate_stepper_display_conflict(cs) do
@@ -1049,11 +1168,29 @@ defmodule Trenino.Hardware do
        else: cs
   end
 
-  @doc "Delete an i2c module."
+  @doc "Delete an i2c module, with its child inputs and their calibrations and bindings."
   @spec delete_i2c_module(I2cModule.t()) :: {:ok, I2cModule.t()} | {:error, Ecto.Changeset.t()}
-  def delete_i2c_module(%I2cModule{} = mod) do
-    Repo.delete(mod)
-  end
+  def delete_i2c_module(%I2cModule{} = mod), do: I2cInputs.delete(mod)
+
+  @doc """
+  List the bindings a change to an i2c module would remove.
+
+  With empty `attrs` this is a delete of the module, otherwise the edit they describe.
+  """
+  @spec i2c_module_impact(I2cModule.t(), map()) :: [I2cInputs.impact()]
+  def i2c_module_impact(%I2cModule{} = mod, attrs \\ %{}), do: I2cInputs.impact(mod, attrs)
+
+  @doc "The child inputs of an i2c module, in channel order."
+  @spec list_i2c_module_inputs(I2cModule.t()) :: [Input.t()]
+  def list_i2c_module_inputs(%I2cModule{} = mod), do: I2cInputs.module_inputs(mod)
+
+  @doc """
+  Virtual pins still free on a device, not counting those held by the given module
+  (nil when creating one).
+  """
+  @spec free_virtual_pin_count(integer(), integer() | nil) :: non_neg_integer()
+  def free_virtual_pin_count(device_id, module_id \\ nil),
+    do: I2cInputs.free_virtual_pin_count(device_id, module_id)
 
   @doc "Send WriteSegments to an I2C display module."
   @spec write_segments(String.t(), integer(), binary()) :: :ok | {:error, term()}
@@ -1077,14 +1214,27 @@ defmodule Trenino.Hardware do
           {:ok, pid()} | {:error, term()}
   def start_calibration_session(%Input{} = input, port, opts \\ []) do
     session_opts =
-      Keyword.merge(opts,
-        input_id: input.id,
-        port: port,
-        pin: input.pin
+      Keyword.merge(
+        chip_calibration_opts(input),
+        Keyword.merge(opts, input_id: input.id, port: port, pin: input.pin)
       )
 
     SessionSupervisor.start_session(session_opts)
   end
+
+  # ADS1115 readings can repeat exactly, so one unique value is enough;
+  # rollover can only be resolved when a supply reference channel is set.
+  defp chip_calibration_opts(%Input{i2c_module_id: module_id}) when is_integer(module_id) do
+    case Repo.get(I2cModule, module_id) do
+      %I2cModule{module_chip: :ads1115, params: params} ->
+        [min_unique_samples: 1, allow_rollover: not is_nil(params.ref_channel)]
+
+      _ ->
+        []
+    end
+  end
+
+  defp chip_calibration_opts(%Input{}), do: []
 
   @doc """
   Save calibration data for an input.

@@ -111,6 +111,16 @@ defmodule Trenino.Train.ButtonController do
   end
 
   @doc """
+  Rebuild the `{port, pin}` lookup after a saved input's pin changes.
+  """
+  @spec reload_inputs() :: :ok
+  def reload_inputs do
+    if Process.whereis(__MODULE__), do: GenServer.cast(__MODULE__, :reload_inputs)
+
+    :ok
+  end
+
+  @doc """
   Reload bindings for the active train.
 
   Call this when bindings are modified to pick up changes.
@@ -152,6 +162,10 @@ defmodule Trenino.Train.ButtonController do
   end
 
   @impl true
+  def handle_cast(:reload_inputs, %State{} = state) do
+    {:noreply, rebuild_input_lookup(state)}
+  end
+
   def handle_cast(:reload_bindings, %State{active_train: nil} = state) do
     {:noreply, state}
   end

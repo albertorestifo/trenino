@@ -4,6 +4,7 @@ defmodule TreninoWeb.TrainEditLiveTest do
   import Phoenix.LiveViewTest
 
   alias Trenino.Hardware
+  alias Trenino.Serial.Protocol.ModuleError
   alias Trenino.Train, as: TrainContext
   alias Trenino.Train.Detection
   alias Trenino.Train.Train
@@ -498,5 +499,132 @@ defmodule TreninoWeb.TrainEditLiveTest do
     on_exit(fn -> :sys.replace_state(Detection, &%{&1 | current_identifier: nil}) end)
 
     train
+  end
+
+  describe "display hardware availability" do
+    setup %{conn: conn} do
+      {:ok, train} =
+        TrainContext.create_train(%{
+          name: "Display Train",
+          identifiers: [%{identifier: "Display_Train_#{System.unique_integer([:positive])}"}]
+        })
+
+      {:ok, device} = Hardware.create_device(%{name: "ADS Panel"})
+      %{conn: conn, train: train, device: device}
+    end
+
+    test "display_hardware_available is false with only an ADS1115", %{
+      conn: conn,
+      train: train,
+      device: device
+    } do
+      {:ok, _} =
+        Hardware.create_i2c_module(device.id, %{
+          module_chip: :ads1115,
+          i2c_address: 0x48,
+          params: %{channel_mask: 1, gain: 0}
+        })
+
+      {:ok, view, _html} = live(conn, ~p"/trains/#{train.id}")
+
+      assert :sys.get_state(view.pid).socket.assigns.display_hardware_available == false
+    end
+
+    test "display_hardware_available is true with an HT16K33", %{
+      conn: conn,
+      train: train,
+      device: device
+    } do
+      {:ok, _} =
+        Hardware.create_i2c_module(device.id, %{
+          module_chip: :ht16k33,
+          i2c_address: 0x70,
+          params: %{display_type: :seven_segment, num_digits: 4}
+        })
+
+      {:ok, view, _html} = live(conn, ~p"/trains/#{train.id}")
+
+      assert :sys.get_state(view.pid).socket.assigns.display_hardware_available == true
+    end
+  end
+
+  describe "chip inputs" do
+    setup do
+      Mimic.set_mimic_global()
+      {:ok, device} = Hardware.create_device(%{name: "Chip device"})
+
+      {:ok, mcp} =
+        Hardware.create_i2c_module(device.id, %{
+          module_chip: :mcp23017,
+          i2c_address: 0x20,
+          params: %{direct_mask: 0b1, row_mask: 0, col_mask: 0}
+        })
+
+      [input] = Hardware.list_i2c_module_inputs(mcp)
+
+      {:ok, train} =
+        TrainContext.create_train(%{
+          name: "Chip train",
+          identifiers: [%{identifier: "Chip_#{System.unique_integer([:positive])}"}]
+        })
+
+      {:ok, elem} = TrainContext.create_element(train.id, %{name: "Horn", type: :button})
+
+      {:ok, _} =
+        TrainContext.create_button_binding(elem.id, input.id, %{endpoint: "Horn.InputValue"})
+
+      port = "/dev/tty.train_chip_#{System.unique_integer([:positive])}"
+
+      Mimic.stub(Trenino.Serial.Connection, :connected_devices, fn ->
+        [%{port: port, device_config_id: device.config_id}]
+      end)
+
+      %{device: device, train: train, input: input, port: port}
+    end
+
+    test "train view warns when a bound input is on a failed chip", %{
+      conn: conn,
+      train: train,
+      port: port
+    } do
+      {:ok, view, html} = live(conn, ~p"/trains/#{train.id}")
+      refute html =~ "Input chip failed"
+
+      manager = Trenino.Hardware.ConfigurationManager
+
+      send(manager, {:serial_message, port, %ModuleError{i2c_address: 0x20, error_code: 1}})
+      :sys.get_state(manager)
+      send(view.pid, {:i2c_module_status, port, %{0x20 => :communication_lost}})
+      assert render(view) =~ "Input chip failed"
+
+      send(manager, {:serial_message, port, %ModuleError{i2c_address: 0x20, error_code: 2}})
+      :sys.get_state(manager)
+      send(view.pid, {:i2c_module_status, port, %{}})
+      refute render(view) =~ "Input chip failed"
+    end
+
+    test "input detection finds a chip input", %{
+      conn: conn,
+      train: train,
+      device: device,
+      input: input,
+      port: port
+    } do
+      {:ok, view, _html} = live(conn, ~p"/trains/#{train.id}")
+
+      available =
+        Hardware.list_all_inputs(include_uncalibrated: true, include_virtual_buttons: true)
+
+      assert Enum.any?(available, &(&1.id == input.id))
+
+      send(view.pid, {:start_button_detection, available})
+      assert %{} = :sys.get_state(view.pid).socket.assigns.button_detection_inputs
+
+      send(view.pid, {:input_value_updated, port, input.pin, 1})
+      _ = render(view)
+
+      assert :sys.get_state(view.pid).socket.assigns.button_detection_inputs == nil
+      assert device.config_id
+    end
   end
 end

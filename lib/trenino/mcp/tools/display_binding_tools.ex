@@ -20,7 +20,7 @@ defmodule Trenino.MCP.Tools.DisplayBindingTools do
         name: "create_display_binding",
         description:
           "Create a display binding that shows a simulator endpoint value on an I2C display. " <>
-            "Use list_i2c_modules to find i2c_module_id. " <>
+            "Use list_i2c_modules to find i2c_module_id (display chips only; MCP23017 and ADS1115 input chips are rejected). " <>
             "format_string tokens: '{value}' (raw), '{value:.Nf}' (float with N decimals). " <>
             "Example: '{value:.0f}' shows speed as integer.",
         input_schema: %{

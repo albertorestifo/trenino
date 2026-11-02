@@ -32,9 +32,20 @@ Manages physical device connections, input calibration, and I2C peripherals.
 
 - **Device** - Configuration schema with unique `config_id`
 - **Input** - Pin definitions (analog/digital) with sensitivity
-- **I2cModule** - Schema for I2C-attached display modules (HT16K33 chip) with polymorphic params
+- **I2cModule** - Schema for I2C-attached modules with polymorphic params: HT16K33 displays and the MCP23017 and ADS1115 input chips
+- **I2cInputs** - Virtual pin allocation and child input lifecycle for input chips (see below)
 - **HT16K33** - Segment encoder and display driver for HT16K33 LED displays
 - **ConfigurationManager** - GenServer broadcasting input value changes
+
+#### Input chips
+
+MCP23017 (digital) and ADS1115 (analog) chips supply inputs over I2C. The wire protocol is unchanged: `InputValue` carries a one-byte pin, so each chip is allocated a block of **virtual pins** (128-255), first fit from 255 downward so the low end stays free for board-pin matrices. Blocks are 16 pins for MCP direct inputs, `rows * cols` for an MCP matrix and 4 for an ADS1115. The bases are stored in the module's `params`, computed by `I2cInputs` and never taken from callers, and sent to the device in `Configure`.
+
+Each channel is a child `Input` row (`i2c_module_id`, `i2c_channel`), so calibration, bindings, detection and the virtual joystick treat it like a board-pin input. Children are identified by channel across edits, so editing a chip adds or removes only the channels that changed, in one transaction, and keeps the rest with their calibration and bindings. Deleting a chip deletes its inputs. `Hardware.list_inputs/2` excludes chip inputs unless `include_chip_inputs: true` is passed, and `InputLabel` renders their labels.
+
+**Failed chips.** The firmware sends `ModuleError` for an init failure, lost communication, recovery, or (ADS1115) a lost supply reference. `ConfigurationManager` keeps the failed input chips per port, rebroadcasts changes on a PubSub topic, and re-requests identity when a device connects so a late host learns current state. The UI marks the chip's inputs as failed until a recovery arrives.
+
+**Firmware.** Input chips need firmware 3.2.0. `ConfigurationManager` checks the connected device's version before sending a configuration containing one, and returns an error otherwise.
 
 ### Firmware Domain (`lib/trenino/firmware/`)
 
@@ -106,7 +117,7 @@ Model Context Protocol server for AI-powered configuration.
   - **SimulatorTools** - Browse endpoints, read/write simulator values
   - **TrainTools** - List trains and get configurations
   - **ElementTools** - Manage train buttons and levers
-  - **DeviceTools** - List devices, inputs, outputs, and I2C modules; CRUD for I2C modules
+  - **DeviceTools** - List devices, inputs (including chip inputs), outputs, and I2C modules; CRUD for I2C modules of all three chips
   - **DetectionTools** - Interactive hardware input detection (prompts the user via a UI modal)
   - **OutputBindingTools** - CRUD operations for output bindings
   - **ButtonBindingTools** - CRUD operations for button bindings
