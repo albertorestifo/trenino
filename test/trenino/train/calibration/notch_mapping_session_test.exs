@@ -8,6 +8,7 @@ defmodule Trenino.Train.Calibration.NotchMappingSessionTest do
   alias Trenino.Hardware
   alias Trenino.Train
   alias Trenino.Train.Calibration.NotchMappingSession
+  alias Trenino.Train.LeverMapper
 
   # Helper to create test fixtures
   defp create_fixtures(_context) do
@@ -439,6 +440,20 @@ defmodule Trenino.Train.Calibration.NotchMappingSessionTest do
 
       NotchMappingSession.cancel(pid)
     end
+
+    test "capturing the last notch first returns to the first uncaptured notch", context do
+      pid = start_session(context)
+
+      assert :ok = NotchMappingSession.start_mapping(pid)
+      assert :ok = NotchMappingSession.go_to_notch(pid, 2)
+      capture_notch(pid, [800, 820, 850])
+
+      state = NotchMappingSession.get_public_state(pid)
+      assert state.current_step == {:mapping_notch, 0}
+      refute state.all_captured
+
+      NotchMappingSession.cancel(pid)
+    end
   end
 
   describe "preview and save" do
@@ -651,6 +666,788 @@ defmodule Trenino.Train.Calibration.NotchMappingSessionTest do
 
       refute Process.alive?(pid)
     end
+  end
+
+  describe "preview" do
+    setup [:create_fixtures]
+
+    # Forward lever: hardware 0% = Braking (sim 0.0), hardware 100% = Power (sim 1.0)
+    @forward_notches [
+      %{
+        type: :linear,
+        min_value: -10.0,
+        max_value: 0.0,
+        sim_input_min: 0.0,
+        sim_input_max: 0.45,
+        description: "Braking"
+      },
+      %{
+        type: :gate,
+        value: 0.0,
+        sim_input_min: 0.46,
+        sim_input_max: 0.54,
+        description: "Neutral"
+      },
+      %{
+        type: :linear,
+        min_value: 0.0,
+        max_value: 1.0,
+        sim_input_min: 0.55,
+        sim_input_max: 1.0,
+        description: "Power"
+      }
+    ]
+
+    # Raw samples per notch (calibration 100..900 -> calibrated 0..800)
+    @forward_captures [
+      # Braking: calibrated 0-350
+      [100, 200, 300, 450],
+      # Neutral: calibrated 360-440
+      [460, 500, 540],
+      # Power: calibrated 450-800
+      [550, 700, 900]
+    ]
+
+    # M9-A style: sim order Emergency -> Power, but physically Power sits at
+    # hardware 0% and Emergency at hardware 100%.
+    @reversed_notches [
+      %{
+        type: :gate,
+        value: -1.0,
+        sim_input_min: 0.0,
+        sim_input_max: 0.04,
+        description: "Emergency"
+      },
+      %{
+        type: :linear,
+        min_value: -10.0,
+        max_value: -1.0,
+        sim_input_min: 0.05,
+        sim_input_max: 0.45,
+        description: "Braking"
+      },
+      %{
+        type: :gate,
+        value: 0.0,
+        sim_input_min: 0.46,
+        sim_input_max: 0.54,
+        description: "Neutral"
+      },
+      %{
+        type: :linear,
+        min_value: 0.0,
+        max_value: 1.0,
+        sim_input_min: 0.55,
+        sim_input_max: 1.0,
+        description: "Power"
+      }
+    ]
+
+    @reversed_captures [
+      # Emergency: calibrated 780-800
+      [880, 900],
+      # Braking: calibrated 400-750
+      [500, 700, 850],
+      # Neutral: calibrated 350-370
+      [450, 470],
+      # Power: calibrated 0-300
+      [100, 250, 400]
+    ]
+
+    test "is :none before anything is captured", context do
+      pid = start_preview_session(context, @forward_notches)
+
+      assert %{
+               status: :none,
+               direction_known: false,
+               inverted: false,
+               low_end: nil,
+               high_end: nil,
+               live: nil,
+               hardware_ranges: []
+             } = NotchMappingSession.get_public_state(pid).preview
+
+      NotchMappingSession.cancel(pid)
+    end
+
+    test "forward lever maps low end to sim 0 and high end to sim 1", context do
+      pid = start_preview_session(context, @forward_notches)
+      :ok = NotchMappingSession.start_mapping(pid)
+      Enum.each(@forward_captures, &capture_notch(pid, &1))
+
+      preview = NotchMappingSession.get_public_state(pid).preview
+
+      assert preview.status == :ready
+      assert preview.direction_known
+      refute preview.inverted
+
+      assert preview.low_end == %{
+               notch_index: 0,
+               description: "Braking",
+               type: :linear,
+               hardware_pct: +0.0,
+               sim_input: +0.0
+             }
+
+      assert %{notch_index: 2, hardware_pct: 100.0, sim_input: 1.0} = preview.high_end
+
+      assert [braking, neutral, power] = preview.hardware_ranges
+
+      assert %{
+               notch_index: 0,
+               type: :linear,
+               min_pct: +0.0,
+               max_pct: 43.75,
+               sim_at_min: +0.0,
+               sim_output_min: -10.0,
+               sim_output_max: +0.0
+             } = braking
+
+      assert braking.sim_at_max > braking.sim_at_min
+
+      assert %{
+               notch_index: 1,
+               type: :gate,
+               min_pct: 45.0,
+               max_pct: 55.0,
+               sim_at_min: 0.5,
+               sim_at_max: 0.5,
+               sim_output_min: +0.0,
+               sim_output_max: +0.0
+             } = neutral
+
+      assert %{notch_index: 2, sim_at_min: 0.55, sim_at_max: 1.0} = power
+
+      NotchMappingSession.cancel(pid)
+    end
+
+    test "inverted (M9-A style) lever is detected and maps ends correctly", context do
+      pid = start_preview_session(context, @reversed_notches)
+      :ok = NotchMappingSession.start_mapping(pid)
+      Enum.each(@reversed_captures, &capture_notch(pid, &1))
+
+      preview = NotchMappingSession.get_public_state(pid).preview
+
+      assert preview.status == :ready
+      assert preview.direction_known
+      assert preview.inverted
+
+      # Physical low end is Power at full, physical high end is Emergency
+      assert %{notch_index: 3, description: "Power", hardware_pct: +0.0, sim_input: 1.0} =
+               preview.low_end
+
+      assert %{notch_index: 0, description: "Emergency", hardware_pct: 100.0, sim_input: 0.02} =
+               preview.high_end
+
+      # Physical order is the reverse of sim order
+      assert Enum.map(preview.hardware_ranges, & &1.notch_index) == [3, 2, 1, 0]
+
+      # sim_input decreases monotonically as the lever moves toward hardware 100%
+      sims =
+        Enum.flat_map(preview.hardware_ranges, fn range ->
+          [range.sim_at_min, range.sim_at_max]
+        end)
+
+      assert Enum.all?(sims, &is_float/1)
+      assert sims == Enum.sort(sims, :desc)
+
+      NotchMappingSession.cancel(pid)
+    end
+
+    test "partial capture with one notch leaves direction unknown", context do
+      pid = start_preview_session(context, @forward_notches)
+      :ok = NotchMappingSession.start_mapping(pid)
+      capture_notch(pid, Enum.at(@forward_captures, 0))
+
+      preview = NotchMappingSession.get_public_state(pid).preview
+
+      assert preview.status == :partial
+      refute preview.direction_known
+      refute preview.inverted
+      assert [%{notch_index: 0}] = preview.hardware_ranges
+      assert %{notch_index: 0, sim_input: +0.0} = preview.low_end
+
+      # Hardware 100% falls in an uncaptured gap: nearest range's edge is used
+      [braking] = preview.hardware_ranges
+      assert %{notch_index: 0, hardware_pct: 100.0} = preview.high_end
+      assert preview.high_end.sim_input == braking.sim_at_max
+
+      NotchMappingSession.cancel(pid)
+    end
+
+    test "live reflects the current lever position", context do
+      pid = start_preview_session(context, @forward_notches)
+      :ok = NotchMappingSession.start_mapping(pid)
+      capture_notch(pid, Enum.at(@forward_captures, 0))
+      capture_notch(pid, Enum.at(@forward_captures, 1))
+
+      # Positioning (not capturing) for Power: calibrated 200 -> 25% inside Braking
+      send(pid, {:input_value_updated, "/dev/test", 5, 300})
+      preview = NotchMappingSession.get_public_state(pid).preview
+
+      assert preview.direction_known
+      assert %{notch_index: 0, hardware_pct: 25.0, type: :linear} = preview.live
+      # Braking stored as 0.0-0.44: 0.25 / 0.44 * 0.45
+      assert preview.live.sim_input == 0.26
+
+      # Calibrated 800 -> 100%, Power not captured yet: a gap
+      send(pid, {:input_value_updated, "/dev/test", 5, 900})
+      assert NotchMappingSession.get_public_state(pid).preview.live == nil
+
+      NotchMappingSession.cancel(pid)
+    end
+
+    for {name, notches, captures} <- [
+          {"forward", @forward_notches, @forward_captures},
+          {"inverted", @reversed_notches, @reversed_captures}
+        ] do
+      test "#{name} preview matches LeverMapper on the saved config", context do
+        pid = start_preview_session(context, unquote(Macro.escape(notches)))
+        Sandbox.allow(Trenino.Repo, self(), pid)
+        :ok = NotchMappingSession.start_mapping(pid)
+        Enum.each(unquote(captures), &capture_notch(pid, &1))
+
+        preview = NotchMappingSession.get_public_state(pid).preview
+        assert :ok = NotchMappingSession.save_mapping(pid)
+
+        {:ok, saved} = Train.get_lever_config(context.element.id)
+
+        assert saved.inverted == preview.inverted
+        assert {:ok, preview.low_end.sim_input} == LeverMapper.map_input(saved, 0.0)
+        assert {:ok, preview.high_end.sim_input} == LeverMapper.map_input(saved, 1.0)
+
+        # Gates are position independent, so their range ends are comparable directly
+        for %{type: :gate} = range <- preview.hardware_ranges do
+          mid = Float.round((range.min_pct + range.max_pct) / 200, 2)
+          assert {:ok, range.sim_at_min} == LeverMapper.map_input(saved, mid)
+        end
+      end
+    end
+  end
+
+  describe "direction override" do
+    setup [:create_fixtures]
+
+    @override_notches [
+      %{
+        type: :linear,
+        min_value: -10.0,
+        max_value: 0.0,
+        sim_input_min: 0.0,
+        sim_input_max: 0.45,
+        description: "Braking"
+      },
+      %{
+        type: :gate,
+        value: 0.0,
+        sim_input_min: 0.46,
+        sim_input_max: 0.54,
+        description: "Neutral"
+      },
+      %{
+        type: :linear,
+        min_value: 0.0,
+        max_value: 1.0,
+        sim_input_min: 0.55,
+        sim_input_max: 1.0,
+        description: "Power"
+      }
+    ]
+
+    @override_captures [[100, 200, 300, 450], [460, 500, 540], [550, 700, 900]]
+
+    @single_notch [
+      %{
+        type: :linear,
+        min_value: 0.0,
+        max_value: 1.0,
+        sim_input_min: 0.0,
+        sim_input_max: 1.0,
+        description: "Throttle"
+      }
+    ]
+
+    test "defaults to auto with the detected direction", context do
+      pid = start_preview_session(context, @override_notches)
+      :ok = NotchMappingSession.start_mapping(pid)
+      Enum.each(@override_captures, &capture_notch(pid, &1))
+
+      state = NotchMappingSession.get_public_state(pid)
+      assert state.direction_override == nil
+
+      assert %{
+               direction_source: :auto,
+               direction_known: true,
+               direction_detectable: true,
+               detected_inverted: false,
+               inverted: false
+             } = state.preview
+
+      NotchMappingSession.cancel(pid)
+    end
+
+    test "is rejected before mapping starts and for unknown directions", context do
+      pid = start_preview_session(context, @override_notches)
+
+      assert {:error, :invalid_step} = NotchMappingSession.set_direction_override(pid, :reversed)
+      assert {:error, :invalid_direction} = NotchMappingSession.set_direction_override(pid, :up)
+
+      NotchMappingSession.cancel(pid)
+    end
+
+    test "broadcasts step_changed with the updated preview", context do
+      pid = start_preview_session(context, @single_notch)
+      :ok = NotchMappingSession.start_mapping(pid)
+      :ok = NotchMappingSession.subscribe(context.lever_config.id)
+
+      :ok = NotchMappingSession.set_direction_override(pid, :reversed)
+
+      assert_receive {:step_changed, %{direction_override: true, preview: preview}}
+      assert %{direction_source: :manual, direction_known: true, inverted: true} = preview
+
+      NotchMappingSession.cancel(pid)
+    end
+
+    test "is rejected once the direction is detectable, in preview and save", context do
+      pid = start_preview_session(context, @override_notches)
+      Sandbox.allow(Trenino.Repo, self(), pid)
+      :ok = NotchMappingSession.start_mapping(pid)
+      Enum.each(@override_captures, &capture_notch(pid, &1))
+
+      auto = NotchMappingSession.get_public_state(pid).preview
+
+      assert {:error, :not_overridable} =
+               NotchMappingSession.set_direction_override(pid, :reversed)
+
+      state = NotchMappingSession.get_public_state(pid)
+
+      assert state.direction_override == nil
+      assert state.preview == auto
+
+      assert %{
+               direction_source: :auto,
+               direction_detectable: true,
+               direction_overridable: false,
+               inverted: false
+             } = auto
+
+      assert :ok = NotchMappingSession.save_mapping(pid)
+      {:ok, saved} = Train.get_lever_config(context.element.id)
+
+      assert saved.inverted == false
+      assert {:ok, auto.low_end.sim_input} == LeverMapper.map_input(saved, 0.0)
+      assert {:ok, auto.high_end.sim_input} == LeverMapper.map_input(saved, 1.0)
+    end
+
+    test "detection is used on an inverted lever and :same is rejected", context do
+      notches = [
+        %{type: :gate, value: 0.0, sim_input_min: 0.0, sim_input_max: 0.1, description: "Off"},
+        %{type: :gate, value: 1.0, sim_input_min: 0.9, sim_input_max: 1.0, description: "On"}
+      ]
+
+      pid = start_preview_session(context, notches)
+      Sandbox.allow(Trenino.Repo, self(), pid)
+      :ok = NotchMappingSession.start_mapping(pid)
+      # Off captured at the high end, On at the low end: detected inverted
+      capture_notch(pid, [880, 900])
+      capture_notch(pid, [100, 120])
+
+      assert {:error, :not_overridable} = NotchMappingSession.set_direction_override(pid, :same)
+      preview = NotchMappingSession.get_public_state(pid).preview
+
+      assert %{direction_source: :auto, detected_inverted: true, inverted: true} = preview
+
+      assert :ok = NotchMappingSession.save_mapping(pid)
+      {:ok, saved} = Train.get_lever_config(context.element.id)
+      assert saved.inverted == true
+    end
+
+    test "multi-notch lever in partial capture is not overridable", context do
+      pid = start_preview_session(context, @override_notches)
+      :ok = NotchMappingSession.start_mapping(pid)
+      :ok = NotchMappingSession.subscribe(context.lever_config.id)
+
+      assert {:error, :not_overridable} =
+               NotchMappingSession.set_direction_override(pid, :reversed)
+
+      capture_notch(pid, Enum.at(@override_captures, 0))
+      flush_mailbox()
+
+      assert %{
+               status: :partial,
+               direction_known: false,
+               direction_detectable: false,
+               direction_pending: true,
+               direction_overridable: false,
+               direction_source: :auto,
+               inverted: false
+             } = NotchMappingSession.get_public_state(pid).preview
+
+      for direction <- [:same, :reversed, :auto] do
+        assert {:error, :not_overridable} =
+                 NotchMappingSession.set_direction_override(pid, direction)
+      end
+
+      assert NotchMappingSession.get_state(pid).direction_override == nil
+      refute_received {:step_changed, _}
+
+      # The second capture makes it detectable
+      capture_notch(pid, Enum.at(@override_captures, 1))
+
+      assert %{direction_known: true, direction_detectable: true, direction_overridable: false} =
+               NotchMappingSession.get_public_state(pid).preview
+
+      NotchMappingSession.cancel(pid)
+    end
+
+    test "single-gate lever is not overridable", context do
+      gate = [
+        %{type: :gate, value: 0.0, sim_input_min: 0.4, sim_input_max: 0.6, description: "Hold"}
+      ]
+
+      pid = start_preview_session(context, gate)
+      :ok = NotchMappingSession.start_mapping(pid)
+      capture_notch(pid, [450, 500])
+
+      assert %{
+               status: :ready,
+               direction_known: false,
+               direction_detectable: false,
+               direction_pending: false,
+               direction_overridable: false,
+               direction_source: :auto,
+               inverted: false
+             } = NotchMappingSession.get_public_state(pid).preview
+
+      assert {:error, :not_overridable} =
+               NotchMappingSession.set_direction_override(pid, :reversed)
+
+      NotchMappingSession.cancel(pid)
+    end
+
+    test "overridable is decided by the lever's notches, not the captures", context do
+      no_sim = %{type: :linear, min_value: 0.0, max_value: 1.0, description: "Plain"}
+      gate_no_sim = %{type: :gate, value: 0.0, description: "Off"}
+      [linear] = @single_notch
+      [braking, neutral, _power] = @override_notches
+
+      cases = [
+        {[linear], true},
+        {[gate_no_sim, linear], true},
+        {[linear, no_sim], true},
+        {[no_sim], false},
+        {[gate_no_sim, no_sim], false},
+        {[neutral], false},
+        {[braking, neutral], false}
+      ]
+
+      for {notches, expected} <- cases do
+        pid = start_preview_session(context, notches)
+
+        assert NotchMappingSession.get_public_state(pid).preview.direction_overridable ==
+                 expected,
+               inspect(Enum.map(notches, & &1.description))
+
+        stop_session(pid)
+      end
+    end
+
+    test "survives go_to_notch and re-capture", context do
+      pid = start_preview_session(context, @single_notch)
+      :ok = NotchMappingSession.start_mapping(pid)
+      capture_notch(pid, [100, 500, 900])
+      :ok = NotchMappingSession.set_direction_override(pid, :reversed)
+
+      :ok = NotchMappingSession.go_to_notch(pid, 0)
+      capture_notch(pid, [100, 500, 900])
+
+      state = NotchMappingSession.get_public_state(pid)
+      assert state.direction_override == true
+      assert %{direction_source: :manual, inverted: true} = state.preview
+
+      NotchMappingSession.cancel(pid)
+    end
+
+    test "resetting to auto restores the default", context do
+      pid = start_preview_session(context, @single_notch)
+      :ok = NotchMappingSession.start_mapping(pid)
+      capture_notch(pid, [100, 500, 900])
+
+      auto = NotchMappingSession.get_public_state(pid).preview
+      :ok = NotchMappingSession.set_direction_override(pid, :reversed)
+      assert NotchMappingSession.get_public_state(pid).preview.inverted
+      :ok = NotchMappingSession.set_direction_override(pid, :auto)
+
+      state = NotchMappingSession.get_public_state(pid)
+      assert state.direction_override == nil
+      assert state.preview == auto
+
+      assert %{
+               direction_source: :auto,
+               direction_known: false,
+               direction_overridable: true,
+               inverted: false
+             } = state.preview
+
+      NotchMappingSession.cancel(pid)
+    end
+
+    test "single-notch lever can be set reversed and saves inverted", context do
+      pid = start_preview_session(context, @single_notch)
+      Sandbox.allow(Trenino.Repo, self(), pid)
+      :ok = NotchMappingSession.start_mapping(pid)
+      capture_notch(pid, [100, 500, 900])
+
+      before = NotchMappingSession.get_public_state(pid).preview
+
+      assert %{
+               status: :ready,
+               direction_known: false,
+               direction_detectable: false,
+               direction_overridable: true,
+               direction_source: :auto,
+               inverted: false
+             } = before
+
+      :ok = NotchMappingSession.set_direction_override(pid, :reversed)
+      preview = NotchMappingSession.get_public_state(pid).preview
+
+      assert %{
+               direction_known: true,
+               direction_detectable: false,
+               direction_source: :manual,
+               detected_inverted: false,
+               inverted: true
+             } = preview
+
+      assert before.low_end.sim_input == 0.0
+      assert before.high_end.sim_input == 1.0
+      assert preview.low_end.sim_input == before.high_end.sim_input
+      assert preview.high_end.sim_input == before.low_end.sim_input
+
+      assert :ok = NotchMappingSession.save_mapping(pid)
+      {:ok, saved} = Train.get_lever_config(context.element.id)
+
+      assert saved.inverted == true
+      assert {:ok, preview.low_end.sim_input} == LeverMapper.map_input(saved, 0.0)
+      assert {:ok, preview.high_end.sim_input} == LeverMapper.map_input(saved, 1.0)
+    end
+  end
+
+  describe "preview cache" do
+    setup [:create_fixtures]
+
+    @cache_notches [
+      %{
+        type: :linear,
+        min_value: -10.0,
+        max_value: 0.0,
+        sim_input_min: 0.0,
+        sim_input_max: 0.45,
+        description: "Braking"
+      },
+      %{
+        type: :gate,
+        value: 0.0,
+        sim_input_min: 0.46,
+        sim_input_max: 0.54,
+        description: "Neutral"
+      },
+      %{
+        type: :linear,
+        min_value: 0.0,
+        max_value: 1.0,
+        sim_input_min: 0.55,
+        sim_input_max: 1.0,
+        description: "Power"
+      }
+    ]
+
+    @cache_linear [
+      %{
+        type: :linear,
+        min_value: 0.0,
+        max_value: 1.0,
+        sim_input_min: 0.0,
+        sim_input_max: 1.0,
+        description: "Throttle"
+      }
+    ]
+
+    # Same final captures and override reached by different paths must give
+    # identical previews: the cached one (history-dependent refreshes) and a
+    # direct one.
+    defp preview_after(context, notches, steps) do
+      pid = start_preview_session(context, notches)
+      :ok = NotchMappingSession.start_mapping(pid)
+
+      Enum.each(steps, fn
+        {:capture, raw} -> capture_notch(pid, raw)
+        {:go_to, idx} -> :ok = NotchMappingSession.go_to_notch(pid, idx)
+        {:override, direction} -> :ok = NotchMappingSession.set_direction_override(pid, direction)
+      end)
+
+      preview = NotchMappingSession.get_public_state(pid).preview
+      stop_session(pid)
+      preview
+    end
+
+    test "recapture via go_to_notch matches capturing the final values directly", context do
+      recaptured =
+        preview_after(context, @cache_notches, [
+          {:capture, [100, 200, 300, 450]},
+          {:capture, [460, 500, 540]},
+          {:capture, [550, 700, 900]},
+          {:go_to, 1},
+          {:capture, [520, 480, 500]}
+        ])
+
+      direct =
+        preview_after(context, @cache_notches, [
+          {:capture, [100, 200, 300, 450]},
+          {:go_to, 2},
+          {:capture, [550, 700, 900]},
+          {:capture, [520, 480, 500]}
+        ])
+
+      assert recaptured == direct
+      assert %{status: :ready, direction_detectable: true} = recaptured
+      assert Enum.find(recaptured.hardware_ranges, &(&1.notch_index == 1)).min_pct == 47.5
+      assert recaptured.live != nil
+    end
+
+    test "override before capture matches override after capture", context do
+      before =
+        preview_after(context, @cache_linear, [
+          {:override, :reversed},
+          {:capture, [100, 500, 900]}
+        ])
+
+      after_capture =
+        preview_after(context, @cache_linear, [
+          {:capture, [100, 500, 900]},
+          {:override, :reversed}
+        ])
+
+      assert before == after_capture
+      assert %{direction_source: :manual, inverted: true, live: %{}} = before
+    end
+
+    test "override then auto matches never overriding", context do
+      reset =
+        preview_after(context, @cache_linear, [
+          {:capture, [100, 500, 900]},
+          {:override, :reversed},
+          {:override, :auto}
+        ])
+
+      never = preview_after(context, @cache_linear, [{:capture, [100, 500, 900]}])
+
+      assert reset == never
+      assert %{direction_source: :auto, inverted: false} = reset
+    end
+
+    test "sample updates and reset_samples change only live", context do
+      pid = start_preview_session(context, @cache_notches)
+      :ok = NotchMappingSession.start_mapping(pid)
+      capture_notch(pid, [100, 200, 300, 450])
+      capture_notch(pid, [460, 500, 540])
+
+      cache = NotchMappingSession.get_state(pid).preview_cache
+      first = NotchMappingSession.get_public_state(pid).preview
+
+      :ok = NotchMappingSession.start_capturing(pid)
+      send(pid, {:input_value_updated, "/dev/test", 5, 300})
+      second = NotchMappingSession.get_public_state(pid).preview
+
+      assert Map.delete(second, :live) == Map.delete(first, :live)
+      assert %{notch_index: 0, hardware_pct: 25.0} = second.live
+      assert second.live != first.live
+
+      :ok = NotchMappingSession.reset_samples(pid)
+      send(pid, {:input_value_updated, "/dev/test", 5, 500})
+      third = NotchMappingSession.get_public_state(pid).preview
+
+      assert Map.delete(third, :live) == Map.delete(first, :live)
+      assert %{notch_index: 1, type: :gate} = third.live
+      assert NotchMappingSession.get_state(pid).preview_cache == cache
+
+      NotchMappingSession.cancel(pid)
+    end
+  end
+
+  describe "inversion detection parity" do
+    setup [:create_fixtures]
+
+    # The centre rule detect_inversion/3 used before delegating to
+    # LeverMapper.descending?/1, kept here as the reference.
+    defp legacy_inverted?(pairs) when length(pairs) < 2, do: false
+
+    defp legacy_inverted?(pairs) do
+      hw_center = fn {_notch, range} -> (range.min + range.max) / 2 end
+      sim_center = fn {notch, _range} -> (notch.sim_input_min + notch.sim_input_max) / 2 end
+      {first, _} = Enum.min_by(pairs, hw_center)
+      {last, _} = Enum.max_by(pairs, hw_center)
+      sim_center.({first, nil}) > sim_center.({last, nil})
+    end
+
+    @parity_notches [
+      %{type: :gate, value: 0.0, sim_input_min: 0.0, sim_input_max: 0.1, description: "A"},
+      %{type: :gate, value: 0.5, sim_input_min: 0.45, sim_input_max: 0.55, description: "B"},
+      %{type: :gate, value: 1.0, sim_input_min: 0.9, sim_input_max: 1.0, description: "C"}
+    ]
+
+    # Raw sample pairs (calibration 100..900), including equal hardware centres
+    @parity_cases [
+      [[100, 150], [450, 550], [850, 900]],
+      [[850, 900], [450, 550], [100, 150]],
+      [[450, 550], [100, 150], [850, 900]],
+      [[450, 550], [850, 900], [100, 150]],
+      [[500, 500], [500, 500], [500, 500]],
+      [[100, 900], [400, 600], [300, 700]]
+    ]
+
+    test "preview detection matches the legacy centre rule", context do
+      for raw <- @parity_cases do
+        pid = start_preview_session(context, @parity_notches)
+        :ok = NotchMappingSession.start_mapping(pid)
+        Enum.each(raw, &capture_notch(pid, &1))
+
+        state = NotchMappingSession.get_state(pid)
+
+        pairs =
+          state.notches
+          |> Enum.zip(state.captured_ranges)
+          |> Enum.filter(fn {_n, r} -> r != nil end)
+
+        preview = NotchMappingSession.get_public_state(pid).preview
+        assert preview.detected_inverted == legacy_inverted?(pairs), inspect(raw)
+        assert preview.inverted == preview.detected_inverted
+
+        NotchMappingSession.cancel(pid)
+        ref = Process.monitor(pid)
+        assert_receive {:DOWN, ^ref, _, _, _}
+      end
+    end
+  end
+
+  defp start_preview_session(%{lever_config: lever_config} = context, notches) do
+    {:ok, lever_config} = Train.save_notches(lever_config, notches)
+    start_session(%{context | lever_config: lever_config})
+  end
+
+  # GenServer calls are processed after the input messages sent before them,
+  # so no sleep is needed between the sends and capture_range/1.
+  defp capture_notch(pid, raw_values) do
+    :ok = NotchMappingSession.start_capturing(pid)
+    Enum.each(raw_values, &send(pid, {:input_value_updated, "/dev/test", 5, &1}))
+    :ok = NotchMappingSession.capture_range(pid)
+  end
+
+  defp stop_session(pid) do
+    ref = Process.monitor(pid)
+    NotchMappingSession.cancel(pid)
+    assert_receive {:DOWN, ^ref, _, _, _}
   end
 
   # Helper to flush all messages from mailbox
