@@ -471,6 +471,16 @@ defmodule TreninoWeb.LeverSetupWizard do
   end
 
   @impl true
+  def handle_event("set_direction", %{"direction" => direction}, socket) do
+    with pid when is_pid(pid) <- socket.assigns.mapping_session_pid,
+         {:ok, direction} <- parse_direction(direction) do
+      NotchMappingSession.set_direction_override(pid, direction)
+    end
+
+    {:noreply, socket}
+  end
+
+  @impl true
   def handle_event("save_and_finish", _params, socket) do
     if socket.assigns.mapping_session_pid do
       case NotchMappingSession.save_mapping(socket.assigns.mapping_session_pid) do
@@ -505,6 +515,11 @@ defmodule TreninoWeb.LeverSetupWizard do
     send(self(), {:lever_setup_cancelled, socket.assigns.element.id})
     {:noreply, socket}
   end
+
+  defp parse_direction("auto"), do: {:ok, :auto}
+  defp parse_direction("same"), do: {:ok, :same}
+  defp parse_direction("reversed"), do: {:ok, :reversed}
+  defp parse_direction(_), do: :error
 
   # Note: NotchMappingSession events are forwarded from parent LiveView via assigns
   # since LiveComponents don't support handle_info
@@ -1353,6 +1368,7 @@ defmodule TreninoWeb.LeverSetupWizard do
           current_value={@mapping_state.current_value}
           total_travel={@mapping_state.total_travel}
           current_notch_index={@mapping_state.current_notch_index}
+          event_target={@myself}
         />
 
         <%!-- Current notch mapping panel --%>
@@ -1463,10 +1479,21 @@ defmodule TreninoWeb.LeverSetupWizard do
               )}).
             </p>
             <p
-              :if={@preview && @preview[:direction_known] && @preview[:inverted]}
+              :if={
+                @preview && @preview[:direction_known] && @preview[:inverted] &&
+                  @preview[:direction_source] != :manual
+              }
               class="text-sm text-base-content/70 mt-1"
             >
               Your lever runs opposite to the simulator — that's fine, it's handled automatically.
+            </p>
+            <p
+              :if={@preview && @preview[:direction_source] == :manual}
+              class="text-sm text-base-content/70 mt-1"
+            >
+              You set the direction manually: {if @preview[:inverted],
+                do: "your lever runs opposite to the simulator.",
+                else: "your lever runs the same way as the simulator."}
             </p>
             <p
               :if={!(@preview && @preview[:low_end] && @preview[:high_end])}
@@ -1519,7 +1546,17 @@ defmodule TreninoWeb.LeverSetupWizard do
             <% end %>
           </p>
 
-          <div class="text-center mt-4">
+          <div class="flex flex-wrap items-center justify-center gap-2 mt-4">
+            <button
+              :if={@preview && @preview[:direction_overridable]}
+              type="button"
+              phx-click="set_direction"
+              phx-value-direction={if @preview[:inverted], do: "same", else: "reversed"}
+              phx-target={@myself}
+              class="btn btn-ghost focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
+            >
+              <.icon name="hero-arrows-right-left" class="w-4 h-4" /> Change direction
+            </button>
             <button phx-click="save_and_finish" phx-target={@myself} class="btn btn-primary">
               <.icon name="hero-check" class="w-4 h-4" /> Save Mapping
             </button>
@@ -1605,7 +1642,8 @@ defmodule TreninoWeb.LeverSetupWizard do
       else: "#{formatter.(a)} → #{formatter.(b)}"
   end
 
-  # One end can be nil (e.g. the mapper can't reach a zero-width gate there)
+  # sim_at_min/sim_at_max are nil only when the mapper can't resolve a
+  # zero-width linear capture (nothing to interpolate); gates always resolve
   defp format_value_range(a, nil, formatter) when is_number(a), do: formatter.(a)
   defp format_value_range(nil, b, formatter) when is_number(b), do: formatter.(b)
   defp format_value_range(_, _, _), do: "—"

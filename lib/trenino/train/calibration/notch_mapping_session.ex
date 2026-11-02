@@ -31,6 +31,7 @@ defmodule Trenino.Train.Calibration.NotchMappingSession do
   - `{:session_started, public_state}` - Session began
   - `{:step_changed, public_state}` - Advanced to next step
   - `{:sample_updated, public_state}` - Current value/range updated
+    (`set_direction_override/2` broadcasts `:step_changed`)
   - `{:mapping_result, {:ok, lever_config}}` - Success
   - `{:mapping_result, {:error, reason}}` - Failure
   """
@@ -71,7 +72,7 @@ defmodule Trenino.Train.Calibration.NotchMappingSession do
 
   `min_pct`/`max_pct` are hardware percent (0..100). `sim_at_min`/`sim_at_max`
   are the sim_input the mapper yields at that physical end of the range (nil if
-  the mapper can't reach that notch there, e.g. a zero-width gate capture).
+  the mapper can't resolve that notch there, e.g. a zero-width linear capture).
   `sim_output_min`/`sim_output_max` are the notch's min_value/max_value (linear)
   or value/value (gate), informational only.
   """
@@ -94,9 +95,26 @@ defmodule Trenino.Train.Calibration.NotchMappingSession do
   virtual `LeverConfig` built from the captured notches only.
 
     * `status` - `:none` (nothing captured), `:partial`, `:ready` (all captured)
-    * `direction_known` - at least 2 captured notches have sim_input ranges, so
-      inversion can be detected
-    * `inverted` - detected inversion (false when direction is unknown)
+    * `direction_known` - the effective direction is settled: it is
+      auto-detected (`direction_detectable`) or the user set it manually on an
+      overridable lever. An overridable lever without an override is not
+      known: it defaults to "same as simulator" until the user picks
+    * `direction_detectable` - at least 2 captured notches have sim_input
+      ranges, so inversion is auto-detected from the captures
+    * `direction_pending` - not detectable yet, but will be once more notches
+      are captured (the lever has 2+ notches with sim_input ranges)
+    * `direction_overridable` - lever-level, fixed for the session: the
+      direction can never be detected (fewer than 2 notches, captured or not,
+      have sim_input ranges) and at least one linear notch has a sim_input
+      range, so flipping it changes what is sent. Only then does
+      `set_direction_override/2` accept a value
+    * `direction_source` - `:manual` when an override is in effect (lever
+      overridable and an override set), `:auto` otherwise
+    * `detected_inverted` - what auto-detection says (false when not
+      detectable)
+    * `inverted` - the effective inversion: `detected_inverted` when
+      detectable, else the override on an overridable lever (default false),
+      else false. This is what saving persists.
     * `low_end`/`high_end` - physical lever at hardware 0% / 100%. If that point
       falls in a gap, the nearest captured range's edge is used (hardware_pct
       stays 0.0 / 100.0)
@@ -106,6 +124,11 @@ defmodule Trenino.Train.Calibration.NotchMappingSession do
   @type preview :: %{
           status: :none | :partial | :ready,
           direction_known: boolean(),
+          direction_detectable: boolean(),
+          direction_pending: boolean(),
+          direction_overridable: boolean(),
+          direction_source: :auto | :manual,
+          detected_inverted: boolean(),
           inverted: boolean(),
           low_end: end_info() | nil,
           high_end: end_info() | nil,
@@ -132,6 +155,16 @@ defmodule Trenino.Train.Calibration.NotchMappingSession do
 
     @type notch_range :: %{min: integer(), max: integer()} | nil
 
+    # The capture-dependent part of the preview, refreshed only when
+    # captured_ranges or direction_override change. `base` is the full preview
+    # minus `live`; `config`/`index_by_id` let each sample resolve `live`
+    # without rebuilding the virtual lever (nil config: nothing to resolve).
+    @type preview_cache :: %{
+            base: map(),
+            config: LeverConfig.t() | nil,
+            index_by_id: %{optional(integer()) => non_neg_integer()}
+          }
+
     @type t :: %__MODULE__{
             lever_config_id: integer(),
             lever_config: LeverConfig.t(),
@@ -147,6 +180,9 @@ defmodule Trenino.Train.Calibration.NotchMappingSession do
             current_value: integer() | nil,
             current_min: integer() | nil,
             current_max: integer() | nil,
+            direction_override: boolean() | nil,
+            direction_overridable: boolean(),
+            preview_cache: preview_cache() | nil,
             result: {:ok, LeverConfig.t()} | {:error, term()} | nil
           }
 
@@ -165,6 +201,11 @@ defmodule Trenino.Train.Calibration.NotchMappingSession do
       current_value: nil,
       current_min: nil,
       current_max: nil,
+      # nil = auto-detect; true/false = user forced inverted/not inverted
+      direction_override: nil,
+      # Lever-level: the override is only accepted when this is true
+      direction_overridable: false,
+      preview_cache: nil,
       result: nil
     ]
   end
@@ -275,6 +316,31 @@ defmodule Trenino.Train.Calibration.NotchMappingSession do
   end
 
   @doc """
+  Override the lever direction for the rest of the session.
+
+    * `:auto` - auto-detect from the captured ranges (default)
+    * `:same` - lever runs the same way as the simulator (not inverted)
+    * `:reversed` - lever runs opposite to the simulator (inverted)
+
+  Allowed while mapping a notch or in preview, and only on a lever whose
+  direction can never be detected but matters (`direction_overridable` in the
+  preview, e.g. a single linear notch). Otherwise returns
+  `{:error, :not_overridable}`: levers with 2+ sim-ranged notches are
+  auto-detected once a second one is captured, and a lone gate sends the same
+  value either way. Preview and `save_mapping/1` resolve it the same way.
+  """
+  @spec set_direction_override(pid(), :auto | :same | :reversed) :: :ok | {:error, term()}
+  def set_direction_override(pid, direction) when direction in [:auto, :same, :reversed] do
+    GenServer.call(pid, {:set_direction_override, direction_override_value(direction)})
+  end
+
+  def set_direction_override(_pid, _direction), do: {:error, :invalid_direction}
+
+  defp direction_override_value(:auto), do: nil
+  defp direction_override_value(:same), do: false
+  defp direction_override_value(:reversed), do: true
+
+  @doc """
   Save the mapped notch ranges.
   """
   @spec save_mapping(pid()) :: :ok | {:error, term()}
@@ -343,16 +409,18 @@ defmodule Trenino.Train.Calibration.NotchMappingSession do
     # Subscribe to input values for this port
     Hardware.subscribe_input_values(port)
 
-    state = %State{
-      lever_config_id: lever_config.id,
-      lever_config: lever_config,
-      port: port,
-      pin: pin,
-      calibration: calibration,
-      total_travel: total_travel,
-      notches: notches,
-      captured_ranges: List.duplicate(nil, length(notches))
-    }
+    state =
+      refresh_preview_cache(%State{
+        lever_config_id: lever_config.id,
+        lever_config: lever_config,
+        port: port,
+        pin: pin,
+        calibration: calibration,
+        total_travel: total_travel,
+        notches: notches,
+        captured_ranges: List.duplicate(nil, length(notches)),
+        direction_overridable: direction_overridable?(notches)
+      })
 
     broadcast_event(state, :session_started)
 
@@ -397,15 +465,16 @@ defmodule Trenino.Train.Calibration.NotchMappingSession do
 
         next_step = next_step_after_capture(new_ranges, idx)
 
-        new_state = %{
-          state
-          | captured_ranges: new_ranges,
-            current_step: next_step,
-            is_capturing: false,
-            current_samples: [],
-            current_min: nil,
-            current_max: nil
-        }
+        new_state =
+          refresh_preview_cache(%{
+            state
+            | captured_ranges: new_ranges,
+              current_step: next_step,
+              is_capturing: false,
+              current_samples: [],
+              current_min: nil,
+              current_max: nil
+          })
 
         broadcast_event(new_state, :step_changed)
         {:reply, :ok, new_state}
@@ -515,6 +584,22 @@ defmodule Trenino.Train.Calibration.NotchMappingSession do
   end
 
   @impl true
+  def handle_call({:set_direction_override, override}, _from, %State{current_step: step} = state)
+      when step == :preview or (is_tuple(step) and elem(step, 0) == :mapping_notch) do
+    if state.direction_overridable do
+      new_state = refresh_preview_cache(%{state | direction_override: override})
+      broadcast_event(new_state, :step_changed)
+      {:reply, :ok, new_state}
+    else
+      {:reply, {:error, :not_overridable}, state}
+    end
+  end
+
+  def handle_call({:set_direction_override, _override}, _from, %State{} = state) do
+    {:reply, {:error, :invalid_step}, state}
+  end
+
+  @impl true
   def handle_call(:save_mapping, _from, %State{current_step: :preview} = state) do
     new_state = %{state | current_step: :saving}
     broadcast_event(new_state, :step_changed)
@@ -619,37 +704,27 @@ defmodule Trenino.Train.Calibration.NotchMappingSession do
     Enum.all?(ranges, &(&1 != nil))
   end
 
-  # Auto-detect if lever inversion is needed by comparing captured hardware ranges
-  # with the expected sim_input ranges.
-  #
-  # If the notch at the lowest hardware position has a higher sim_input than the
-  # notch at the highest hardware position, then inversion is needed.
+  # Auto-detect if lever inversion is needed by comparing captured (raw
+  # calibrated) hardware ranges with the expected sim_input ranges, using the
+  # same direction rule as the runtime mapper (`LeverMapper.descending?/1`):
+  # inverted if the notch at the lowest hardware position has a higher
+  # sim_input than the notch at the highest hardware position. False with
+  # fewer than 2 direction pairs.
   #
   # Example (no inversion): hardware 0→100% maps to sim 0→1
   # Example (inversion needed - M9-A style): hardware 0→100% maps to sim 1→0
-  defp detect_inversion(notches, captured_ranges, _total_travel) do
-    valid_pairs = direction_pairs(notches, captured_ranges)
-
-    # Need at least 2 notches to determine orientation
-    if length(valid_pairs) < 2 do
-      false
-    else
-      # Helper to get center of a range
-      hw_center = fn {_notch, range} -> (range.min + range.max) / 2 end
-      sim_center = fn {notch, _range} -> (notch.sim_input_min + notch.sim_input_max) / 2 end
-
-      # Find notches at hardware extremes
-      {first_notch, _} = Enum.min_by(valid_pairs, hw_center)
-      {last_notch, _} = Enum.max_by(valid_pairs, hw_center)
-
-      # Inverted if low hardware → high sim
-      sim_center.({first_notch, nil}) > sim_center.({last_notch, nil})
-    end
+  defp detect_inversion(notches, captured_ranges) do
+    notches
+    |> direction_pairs(captured_ranges)
+    |> Enum.map(fn {notch, range} ->
+      {range.min, range.max, notch.sim_input_min, notch.sim_input_max}
+    end)
+    |> LeverMapper.descending?()
   end
 
-  # Captured notches that have a sim_input range: the only ones that can tell
-  # us the lever's direction. Shared by detect_inversion/3 and the preview's
-  # `direction_known` so the two can never disagree.
+  # Captured notches that have a sim_input range, in notch order: the only
+  # ones that can tell us the lever's direction. Shared by detect_inversion/2
+  # and direction_detectable?/2 so the two can never disagree.
   defp direction_pairs(notches, captured_ranges) do
     notches
     |> Enum.zip(captured_ranges)
@@ -658,30 +733,71 @@ defmodule Trenino.Train.Calibration.NotchMappingSession do
     end)
   end
 
-  # Pure normalization/inversion step shared by save and preview: detects
-  # inversion and converts each captured calibrated range to normalized
-  # 0.0-1.0 (flipped when inverted). Uncaptured notches are excluded.
-  @spec normalize_captured_ranges([map()], [State.notch_range()], integer()) ::
-          {boolean(), [normalized_range()]}
-  defp normalize_captured_ranges(notches, captured_ranges, total_travel) do
-    inverted = detect_inversion(notches, captured_ranges, total_travel)
+  defp direction_detectable?(notches, captured_ranges),
+    do: length(direction_pairs(notches, captured_ranges)) >= 2
 
-    ranges =
-      notches
-      |> Enum.zip(captured_ranges)
-      |> Enum.with_index()
-      |> Enum.flat_map(fn
-        {{_notch, nil}, _idx} ->
-          []
+  # Lever-level (captures don't matter): the direction can never be detected,
+  # because fewer than 2 notches have sim_input ranges, yet it matters,
+  # because a linear notch with a sim_input range interpolates differently
+  # when flipped. A lone gate sends the same value either way.
+  defp direction_overridable?(notches) do
+    sim_ranged = Enum.filter(notches, &sim_ranged?/1)
+    length(sim_ranged) < 2 and Enum.any?(sim_ranged, &(&1.type == :linear))
+  end
 
-        {{notch, range}, idx} ->
-          {norm_min, norm_max} =
-            calibrated_to_normalized(range.min, range.max, total_travel, inverted)
+  defp sim_ranged?(notch), do: notch.sim_input_min != nil and notch.sim_input_max != nil
 
-          [%{notch_index: idx, id: notch.id, input_min: norm_min, input_max: norm_max}]
-      end)
+  # Direction fields of the preview, resolved once per rebuild. When the
+  # direction is detectable the captures fix which notch sits where and the
+  # mapper derives within-notch interpolation from that layout, so detection
+  # is authoritative. Otherwise the override applies on an overridable lever
+  # (default not inverted); set_direction_override/2 never stores one on any
+  # other lever.
+  @spec direction_fields(State.t()) :: %{
+          direction_known: boolean(),
+          direction_detectable: boolean(),
+          direction_pending: boolean(),
+          direction_overridable: boolean(),
+          direction_source: :auto | :manual,
+          detected_inverted: boolean(),
+          inverted: boolean()
+        }
+  defp direction_fields(%State{direction_overridable: overridable} = state) do
+    detectable = direction_detectable?(state.notches, state.captured_ranges)
+    detected = detect_inversion(state.notches, state.captured_ranges)
+    manual = overridable and state.direction_override != nil
 
-    {inverted, ranges}
+    %{
+      direction_known: detectable or manual,
+      direction_detectable: detectable,
+      direction_pending: not detectable and Enum.count(state.notches, &sim_ranged?/1) >= 2,
+      direction_overridable: overridable,
+      direction_source: if(manual, do: :manual, else: :auto),
+      detected_inverted: detected,
+      inverted: if(detectable, do: detected, else: manual and state.direction_override == true)
+    }
+  end
+
+  # Pure normalization step shared by save and preview: converts each captured
+  # calibrated range to normalized 0.0-1.0 (flipped when `inverted`, the
+  # effective inversion from direction_fields/1). Uncaptured notches are
+  # excluded.
+  @spec normalize_captured_ranges([map()], [State.notch_range()], integer(), boolean()) ::
+          [normalized_range()]
+  defp normalize_captured_ranges(notches, captured_ranges, total_travel, inverted) do
+    notches
+    |> Enum.zip(captured_ranges)
+    |> Enum.with_index()
+    |> Enum.flat_map(fn
+      {{_notch, nil}, _idx} ->
+        []
+
+      {{notch, range}, idx} ->
+        {norm_min, norm_max} =
+          calibrated_to_normalized(range.min, range.max, total_travel, inverted)
+
+        [%{notch_index: idx, id: notch.id, input_min: norm_min, input_max: norm_max}]
+    end)
   end
 
   # The LeverConfig the runtime would use if the captured ranges were saved now.
@@ -706,16 +822,25 @@ defmodule Trenino.Train.Calibration.NotchMappingSession do
 
   defp save_notch_ranges(%State{} = state) do
     if all_ranges_captured?(state) do
-      # Auto-detect inversion and convert calibrated values to normalized 0.0-1.0
-      {inverted, ranges} =
-        normalize_captured_ranges(state.notches, state.captured_ranges, state.total_travel)
+      # Resolve inversion (override or auto-detect) and normalize to 0.0-1.0
+      %{inverted: inverted} = direction_fields(state)
 
-      Logger.debug("Auto-detected inversion: #{inverted}")
+      ranges =
+        normalize_captured_ranges(
+          state.notches,
+          state.captured_ranges,
+          state.total_travel,
+          inverted
+        )
+
+      Logger.debug(
+        "Saving inversion: #{inverted} (override: #{inspect(state.direction_override)})"
+      )
 
       notch_updates =
         Enum.map(ranges, fn range -> Map.take(range, [:id, :input_min, :input_max]) end)
 
-      # Save the auto-detected inverted flag along with notch ranges
+      # Save the effective inverted flag along with notch ranges
       Train.update_notch_input_ranges(state.lever_config_id, notch_updates, inverted: inverted)
     else
       {:error, :incomplete_ranges}
@@ -782,6 +907,7 @@ defmodule Trenino.Train.Calibration.NotchMappingSession do
       sample_count: length(state.current_samples),
       can_capture: can_capture?(state),
       all_captured: all_ranges_captured?(state),
+      direction_override: state.direction_override,
       preview: build_preview(state),
       result: state.result,
       # Legacy fields for compatibility
@@ -795,8 +921,18 @@ defmodule Trenino.Train.Calibration.NotchMappingSession do
 
   # Preview
 
+  # Per sample only `live` is recomputed; everything else comes from the cache.
   @spec build_preview(State.t()) :: preview()
-  defp build_preview(%State{} = state) do
+  defp build_preview(%State{preview_cache: %{config: nil, base: base}}),
+    do: Map.put(base, :live, nil)
+
+  defp build_preview(%State{preview_cache: %{config: config, index_by_id: index_by_id}} = state),
+    do: Map.put(state.preview_cache.base, :live, live_end(state, config, index_by_id))
+
+  # Recompute the capture-dependent preview. Call after every change to
+  # captured_ranges or direction_override.
+  @spec refresh_preview_cache(State.t()) :: State.t()
+  defp refresh_preview_cache(%State{} = state) do
     captured_count = Enum.count(state.captured_ranges, &(&1 != nil))
 
     status =
@@ -806,38 +942,48 @@ defmodule Trenino.Train.Calibration.NotchMappingSession do
         true -> :partial
       end
 
-    if status == :none or state.total_travel <= 0 do
-      %{
-        status: status,
-        direction_known: false,
-        inverted: false,
-        low_end: nil,
-        high_end: nil,
-        live: nil,
-        hardware_ranges: []
-      }
-    else
-      build_captured_preview(state, status)
-    end
+    direction = direction_fields(state)
+
+    cache =
+      if status == :none or state.total_travel <= 0 do
+        base =
+          Map.merge(direction, %{
+            status: status,
+            low_end: nil,
+            high_end: nil,
+            hardware_ranges: []
+          })
+
+        %{base: base, config: nil, index_by_id: %{}}
+      else
+        build_captured_cache(state, status, direction)
+      end
+
+    %{state | preview_cache: cache}
   end
 
-  defp build_captured_preview(%State{} = state, status) do
-    {inverted, ranges} =
-      normalize_captured_ranges(state.notches, state.captured_ranges, state.total_travel)
+  defp build_captured_cache(%State{} = state, status, %{inverted: inverted} = direction) do
+    ranges =
+      normalize_captured_ranges(
+        state.notches,
+        state.captured_ranges,
+        state.total_travel,
+        inverted
+      )
 
     config = virtual_lever_config(state, inverted, ranges)
     index_by_id = Map.new(ranges, &{&1.id, &1.notch_index})
     hardware_ranges = build_hardware_ranges(state, config, index_by_id)
 
-    %{
-      status: status,
-      direction_known: length(direction_pairs(state.notches, state.captured_ranges)) >= 2,
-      inverted: inverted,
-      low_end: extreme_end(state, config, index_by_id, hardware_ranges, :low),
-      high_end: extreme_end(state, config, index_by_id, hardware_ranges, :high),
-      live: live_end(state, config, index_by_id),
-      hardware_ranges: hardware_ranges
-    }
+    base =
+      Map.merge(direction, %{
+        status: status,
+        low_end: extreme_end(state, config, index_by_id, hardware_ranges, :low),
+        high_end: extreme_end(state, config, index_by_id, hardware_ranges, :high),
+        hardware_ranges: hardware_ranges
+      })
+
+    %{base: base, config: config, index_by_id: index_by_id}
   end
 
   defp build_hardware_ranges(%State{} = state, %LeverConfig{} = config, index_by_id) do
@@ -871,9 +1017,10 @@ defmodule Trenino.Train.Calibration.NotchMappingSession do
   # hardware, so the mapper's own inversion reproduces them exactly. The
   # notch interval is half-open, so the upper end is probed at input_max
   # (only reachable when it is exactly 1.0) and then one quantum inside.
-  # A probe only counts if the mapper resolves it to this very notch;
-  # zero-width captures (input_min == input_max) are unreachable at runtime
-  # and yield nil.
+  # A probe only counts if the mapper resolves it to this very notch.
+  # Narrow (incl. zero-width) gates are matched inclusively by the mapper, so
+  # a probe at input_min reaches them; zero-width linear captures
+  # (input_min == input_max) have nothing to interpolate and yield nil.
   defp probe_range_ends(%LeverConfig{} = config, %Notch{} = notch, idx, index_by_id) do
     lower = probe_effective(config, [notch.input_min], idx, index_by_id)
 

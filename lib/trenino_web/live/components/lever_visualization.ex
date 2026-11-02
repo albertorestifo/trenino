@@ -30,7 +30,13 @@ defmodule TreninoWeb.LeverVisualization do
         preview={@preview}
         current_value={@current_value}
         total_travel={@total_travel}
+        event_target={@myself}
       />
+
+  Passing `event_target` adds the direction line: the auto-detected direction
+  once it is detectable, or, on a lever whose direction can only be set by
+  hand (`direction_overridable`), controls that send `"set_direction"` with
+  `phx-value-direction` of `auto`, `same` or `reversed`.
   """
 
   use TreninoWeb, :live_component
@@ -187,11 +193,16 @@ defmodule TreninoWeb.LeverVisualization do
   current reading.
 
   `preview` is the `mapping_state.preview` map from the notch mapping session.
+  When `event_target` is set, a direction line is rendered: the auto-detected
+  direction when it is detectable, manual controls that send
+  `"set_direction"` events to it when the lever is `direction_overridable`,
+  and nothing while detection is still pending (the header hint covers it).
   """
   attr :preview, :map, required: true
   attr :current_value, :integer, default: nil
   attr :total_travel, :integer, default: nil
   attr :current_notch_index, :integer, default: nil
+  attr :event_target, :any, default: nil
 
   def hardware_strip(assigns) do
     assigns =
@@ -209,16 +220,24 @@ defmodule TreninoWeb.LeverVisualization do
         >
           <.icon name="hero-arrows-right-left" class="w-3 h-3" /> Reversed vs. simulator
         </span>
+        <%!-- An overridable lever without an override defaults to "same" --%>
         <span
-          :if={@preview[:direction_known] && !@preview[:inverted]}
+          :if={
+            (@preview[:direction_known] || @preview[:direction_overridable]) && !@preview[:inverted]
+          }
           class="badge badge-ghost badge-sm"
         >
           Same direction as simulator
         </span>
-        <span :if={!@preview[:direction_known]} class="text-xs text-base-content/60">
+        <span
+          :if={@preview[:direction_pending]}
+          class="text-xs text-base-content/60"
+        >
           Direction is detected after you capture a second notch
         </span>
       </div>
+
+      <.direction_controls :if={@event_target} preview={@preview} event_target={@event_target} />
 
       <div class="relative h-10 mx-4">
         <div class="absolute top-1/2 left-0 right-0 h-2 -translate-y-1/2 bg-base-300 rounded-full" />
@@ -268,6 +287,70 @@ defmodule TreninoWeb.LeverVisualization do
     </div>
     """
   end
+
+  attr :preview, :map, required: true
+  attr :event_target, :any, required: true
+
+  defp direction_controls(assigns) do
+    assigns =
+      assigns
+      |> assign(:detectable, assigns.preview[:direction_detectable] == true)
+      |> assign(:overridable, assigns.preview[:direction_overridable] == true)
+      |> assign(:manual, assigns.preview[:direction_source] == :manual)
+      |> assign(:inverted, assigns.preview[:inverted] == true)
+
+    ~H"""
+    <div :if={@detectable || @overridable} class="mb-2 text-xs" data-role="direction-controls">
+      <%= cond do %>
+        <% @detectable -> %>
+          <p class="text-base-content/70">
+            Direction: auto-detected ({direction_label(@inverted)}).
+            <span class="text-base-content/60">Detected from the notches you captured.</span>
+          </p>
+        <% @manual -> %>
+          <div class="flex flex-wrap items-center gap-2">
+            <span class="text-base-content/70">
+              Direction: set manually ({direction_label(@inverted)})
+            </span>
+            <.direction_button direction="auto" event_target={@event_target}>
+              Reset to default
+            </.direction_button>
+          </div>
+        <% true -> %>
+          <div class="flex flex-wrap items-center gap-2">
+            <span class="text-base-content/70">Set manually:</span>
+            <.direction_button direction="same" event_target={@event_target}>
+              Same as simulator
+            </.direction_button>
+            <.direction_button direction="reversed" event_target={@event_target}>
+              Reversed
+            </.direction_button>
+          </div>
+      <% end %>
+    </div>
+    """
+  end
+
+  attr :direction, :string, required: true
+  attr :event_target, :any, required: true
+  slot :inner_block, required: true
+
+  defp direction_button(assigns) do
+    ~H"""
+    <button
+      type="button"
+      phx-click="set_direction"
+      phx-value-direction={@direction}
+      phx-target={@event_target}
+      class="btn btn-ghost btn-xs focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
+    >
+      {render_slot(@inner_block)}
+    </button>
+    """
+  end
+
+  defp direction_label(true), do: "reversed"
+  defp direction_label(false), do: "same as simulator"
 
   # Helper functions
 
