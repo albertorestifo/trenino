@@ -38,6 +38,13 @@ defmodule Trenino.MCP.ServerTest do
       assert initialize.("1999-01-01") == hd(Server.supported_protocol_versions())
     end
 
+    test "initialize tolerates params that are not an object" do
+      message = %{"jsonrpc" => "2.0", "id" => 1, "method" => "initialize", "params" => []}
+
+      assert {:reply, response} = Server.handle_message(message)
+      assert response.result.protocolVersion == hd(Server.supported_protocol_versions())
+    end
+
     test "notifications/initialized returns ok" do
       message = %{
         "jsonrpc" => "2.0",

@@ -1,6 +1,8 @@
 # AI-Powered Train Setup with Claude
 
 > **Quick connect:** with Trenino running, Claude Code users run `claude mcp add --transport http --scope user trenino http://localhost:4000/mcp`. Other clients: see [Setup](#setup), or point your assistant at `http://localhost:4000/llms.txt`.
+>
+> The `/mcp` endpoint and `/llms.txt` need a Trenino release newer than 0.8.2. On 0.8.2 and earlier, use the SSE endpoint instead: `claude mcp add --transport sse --scope user trenino http://localhost:4000/mcp/sse`.
 
 Trenino includes a built-in MCP (Model Context Protocol) server that lets you use Claude to configure your trains through natural conversation. Instead of manually setting up output bindings, button mappings, and command sequences, describe what you want and let Claude handle the details.
 
@@ -40,7 +42,7 @@ Chat apps such as Claude Desktop cannot do this themselves: they fetch web pages
 
 ### Manual setup
 
-Trenino speaks the current **Streamable HTTP** transport at `http://localhost:4000/mcp`, and the older **HTTP+SSE** transport at `http://localhost:4000/mcp/sse` for clients that still need it.
+Trenino speaks the current **Streamable HTTP** transport at `http://localhost:4000/mcp`, and the older **HTTP+SSE** transport at `http://localhost:4000/mcp/sse` for clients that still need it. Releases up to 0.8.2 only have the SSE endpoint: replace `--transport http` with `--transport sse` and `/mcp` with `/mcp/sse` in the commands below.
 
 **Claude Code**
 
@@ -48,7 +50,7 @@ Trenino speaks the current **Streamable HTTP** transport at `http://localhost:40
 claude mcp add --transport http --scope user trenino http://localhost:4000/mcp
 ```
 
-Inside the Trenino repository this is already configured through the checked-in `.mcp.json`.
+Inside the Trenino repository this is already configured through the checked-in `.mcp.json`, which uses the SSE endpoint so it works with every Trenino version.
 
 **Claude Desktop**
 

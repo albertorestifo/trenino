@@ -4,9 +4,9 @@ defmodule TreninoWeb.MCP.MCPController do
 
   Streamable HTTP (current spec, stateless, JSON responses only):
   - POST /mcp — Receives one JSON-RPC message and answers in the response body
-  - GET /mcp — 405, the server never opens a server-initiated stream
+  - GET, DELETE /mcp — 405, there is no server-initiated stream or session to end
 
-  Legacy HTTP+SSE (protocol 2024-11-05):
+  Legacy HTTP+SSE:
   - GET /mcp/sse — Opens an SSE stream and sends the POST endpoint URL
   - POST /mcp/messages — Receives JSON-RPC messages and pushes responses via SSE
   """
@@ -17,20 +17,22 @@ defmodule TreninoWeb.MCP.MCPController do
 
   @doc """
   Streamable HTTP endpoint. Requests get their JSON-RPC response as the body;
-  notifications and client responses (no `method` with an `id`) get 202.
+  `notifications/*` messages and client responses get 202. Anything else without an
+  `id` is rejected so a tool call can never run without its result reaching the client.
   Batches are not supported.
   """
-  def streamable(conn, %{"_json" => _batch}) do
-    conn |> put_status(400) |> json(invalid_request())
-  end
-
   def streamable(conn, %{"method" => _, "id" => _} = message) do
     {_, response} = Server.handle_message(message)
     json(conn, response)
   end
 
-  def streamable(conn, %{"jsonrpc" => "2.0"} = message) do
+  def streamable(conn, %{"jsonrpc" => "2.0", "method" => "notifications/" <> _} = message) do
     _ = Server.handle_message(message)
+    send_resp(conn, 202, "")
+  end
+
+  def streamable(conn, %{"jsonrpc" => "2.0", "id" => _} = response)
+      when not is_map_key(response, "method") do
     send_resp(conn, 202, "")
   end
 
@@ -39,9 +41,10 @@ defmodule TreninoWeb.MCP.MCPController do
   end
 
   @doc """
-  The server never pushes messages outside a request, so there is no stream to open.
+  The server never pushes messages outside a request and keeps no sessions, so there
+  is no stream to open (GET) or session to end (DELETE).
   """
-  def streamable_get(conn, _params) do
+  def method_not_allowed(conn, _params) do
     conn
     |> put_resp_header("allow", "POST")
     |> send_resp(405, "")

@@ -31,12 +31,14 @@ defmodule TreninoWeb.MCP.DiscoveryControllerTest do
 
       assert [
                %{"type" => "streamable-http", "url" => streamable_url} = streamable,
-               %{"type" => "sse", "url" => sse_url}
+               %{"type" => "sse", "url" => sse_url} = sse
              ] = card["remotes"]
 
       assert streamable_url =~ ~r{^http://localhost(:\d+)?/mcp$}
       assert sse_url =~ ~r{/mcp/sse$}
       assert "2025-06-18" in streamable["supportedProtocolVersions"]
+      assert sse["supportedProtocolVersions"] == streamable["supportedProtocolVersions"]
+      assert card["title"] == "Trenino"
     end
   end
 

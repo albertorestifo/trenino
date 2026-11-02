@@ -14,7 +14,6 @@ defmodule TreninoWeb.MCP.DiscoveryController do
 
   alias Trenino.MCP.Server
 
-  @version Mix.Project.config()[:version]
   @card_name "io.github.albertorestifo/trenino"
   @repository_url "https://github.com/albertorestifo/trenino"
   @docs_url "#{@repository_url}/blob/master/docs/mcp-setup.md"
@@ -26,11 +25,14 @@ defmodule TreninoWeb.MCP.DiscoveryController do
   end
 
   def server_card(conn, _params) do
+    %{name: title, version: version} = Server.server_info()
+    protocol_versions = Server.supported_protocol_versions()
+
     card = %{
       "$schema" => "https://static.modelcontextprotocol.io/schemas/v1/server-card.schema.json",
       name: @card_name,
-      title: "Trenino",
-      version: @version,
+      title: title,
+      version: version,
       description:
         "Configure Trenino train controllers for Train Sim World: hardware inputs, " <>
           "LEDs, displays, sequences, Lua scripts and live simulator access.",
@@ -40,9 +42,9 @@ defmodule TreninoWeb.MCP.DiscoveryController do
         %{
           type: "streamable-http",
           url: url(conn, ~p"/mcp"),
-          supportedProtocolVersions: Server.supported_protocol_versions()
+          supportedProtocolVersions: protocol_versions
         },
-        %{type: "sse", url: url(conn, ~p"/mcp/sse"), supportedProtocolVersions: ["2024-11-05"]}
+        %{type: "sse", url: url(conn, ~p"/mcp/sse"), supportedProtocolVersions: protocol_versions}
       ]
     }
 

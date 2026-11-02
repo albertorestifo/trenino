@@ -73,7 +73,8 @@ defmodule TreninoWeb.Router do
     pipe_through :mcp
 
     post "/", MCPController, :streamable
-    get "/", MCPController, :streamable_get
+    get "/", MCPController, :method_not_allowed
+    delete "/", MCPController, :method_not_allowed
     get "/server-card", DiscoveryController, :server_card
     get "/sse", MCPController, :sse
     post "/messages", MCPController, :messages

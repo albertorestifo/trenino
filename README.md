@@ -34,7 +34,7 @@ Build your own train controls with real throttle levers, brake handles, switches
 - **Windows virtual joystick** — expose selected calibrated levers and buttons as one removable DirectInput joystick with eight axes and 32 buttons, independently of Train Sim World
 - **I2C display modules** — show live simulator data (speed, brake pressure, gear position) on HT16K33 7- or 14-segment LED displays wired to your Arduino
 - **Lua scripting** — write custom logic to flash warning LEDs, react to speed changes, automate sequences, and more ([scripting guide](docs/lua-scripting.md))
-- **AI-assisted setup** — describe what you want in plain language and let Claude configure your train via [MCP integration](docs/mcp-setup.md). With Trenino open, a coding agent such as Claude Code or Codex can set itself up when you ask it to "install the Trenino MCP" (setup guide for agents at `http://localhost:4000/llms.txt`)
+- **AI-assisted setup** — describe what you want in plain language and let Claude configure your train via [MCP integration](docs/mcp-setup.md). With Trenino open, a coding agent such as Claude Code or Codex can set itself up when you ask it to "install the Trenino MCP" (setup guide for agents at `http://localhost:4000/llms.txt`, in releases newer than 0.8.2)
 
 ## Getting Started
 

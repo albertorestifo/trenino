@@ -17,6 +17,9 @@ defmodule Trenino.MCP.Server do
   @spec supported_protocol_versions() :: [String.t()]
   def supported_protocol_versions, do: @supported_protocol_versions
 
+  @spec server_info() :: %{name: String.t(), version: String.t()}
+  def server_info, do: %{name: @server_name, version: @server_version}
+
   @spec handle_message(map()) :: {:reply, map()} | {:error, map()}
   def handle_message(%{"jsonrpc" => "2.0", "method" => method} = message) do
     id = Map.get(message, "id")
@@ -38,14 +41,11 @@ defmodule Trenino.MCP.Server do
   defp dispatch("initialize", params) do
     {:ok,
      %{
-       protocolVersion: negotiate_protocol_version(params["protocolVersion"]),
+       protocolVersion: negotiate_protocol_version(params),
        capabilities: %{
          tools: %{}
        },
-       serverInfo: %{
-         name: @server_name,
-         version: @server_version
-       }
+       serverInfo: server_info()
      }}
   end
 
@@ -100,10 +100,11 @@ defmodule Trenino.MCP.Server do
     {:error, -32_601, "Method not found: #{method}"}
   end
 
-  defp negotiate_protocol_version(requested) when requested in @supported_protocol_versions,
-    do: requested
+  defp negotiate_protocol_version(%{"protocolVersion" => requested})
+       when requested in @supported_protocol_versions,
+       do: requested
 
-  defp negotiate_protocol_version(_requested), do: hd(@supported_protocol_versions)
+  defp negotiate_protocol_version(_params), do: hd(@supported_protocol_versions)
 
   defp encode_result(nil), do: {:ok, "ok"}
   defp encode_result(result) when is_binary(result), do: {:ok, result}

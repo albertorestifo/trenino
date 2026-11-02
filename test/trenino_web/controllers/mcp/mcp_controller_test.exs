@@ -206,9 +206,23 @@ defmodule TreninoWeb.MCP.MCPControllerTest do
       assert %{"id" => 3, "error" => %{"code" => -32_601}} = json_response(conn, 200)
     end
 
-    test "accepts notifications with 202", %{conn: conn} do
-      conn = post(conn, "/mcp", %{"jsonrpc" => "2.0", "method" => "notifications/initialized"})
-      assert response(conn, 202) == ""
+    test "accepts notifications and client responses with 202", %{conn: conn} do
+      notification = %{"jsonrpc" => "2.0", "method" => "notifications/initialized"}
+      assert conn |> post("/mcp", notification) |> response(202) == ""
+
+      client_response = %{"jsonrpc" => "2.0", "id" => 7, "result" => %{}}
+      assert conn |> post("/mcp", client_response) |> response(202) == ""
+    end
+
+    test "rejects id-less requests instead of running them blind", %{conn: conn} do
+      message = %{
+        "jsonrpc" => "2.0",
+        "method" => "tools/call",
+        "params" => %{"name" => "list_trains", "arguments" => %{}}
+      }
+
+      assert %{"error" => %{"code" => -32_600}} =
+               conn |> post("/mcp", message) |> json_response(400)
     end
 
     test "rejects batches and malformed bodies", %{conn: conn} do
@@ -219,10 +233,11 @@ defmodule TreninoWeb.MCP.MCPControllerTest do
                conn |> post("/mcp", %{"foo" => "bar"}) |> json_response(400)
     end
 
-    test "GET has no stream to open", %{conn: conn} do
-      conn = get(conn, "/mcp")
-      assert response(conn, 405)
-      assert get_resp_header(conn, "allow") == ["POST"]
+    test "GET and DELETE are not allowed", %{conn: conn} do
+      for conn <- [get(conn, "/mcp"), delete(conn, "/mcp")] do
+        assert response(conn, 405)
+        assert get_resp_header(conn, "allow") == ["POST"]
+      end
     end
 
     test "rejects a foreign Origin", %{conn: conn} do
