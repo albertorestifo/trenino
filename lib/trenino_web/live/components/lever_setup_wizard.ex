@@ -32,6 +32,7 @@ defmodule TreninoWeb.LeverSetupWizard do
   alias Trenino.Train
   alias Trenino.Train.Calibration.NotchMappingSession
   alias Trenino.Train.Element
+  alias TreninoWeb.LeverVisualization
 
   # Steps for new lever setup (includes explanation step)
   @steps_new [
@@ -479,6 +480,9 @@ defmodule TreninoWeb.LeverSetupWizard do
           socket = stop_notch_mapping(socket)
           send(self(), {:lever_setup_complete, socket.assigns.element.id})
           {:noreply, socket}
+
+        {:error, :incomplete_ranges} ->
+          {:noreply, put_flash(socket, :error, "Capture every notch before saving.")}
 
         {:error, reason} ->
           {:noreply, put_flash(socket, :error, "Save failed: #{inspect(reason)}")}
@@ -1301,11 +1305,18 @@ defmodule TreninoWeb.LeverSetupWizard do
   defp format_calibration_error(reason), do: inspect(reason)
 
   # Step 5: Map Notches
+  #
+  # Public (but undocumented) so it can be render-tested without hardware.
+  # `mapping_state` is the public state from NotchMappingSession; its optional
+  # `:preview` key drives the "Your lever" strip and the review summary.
+  @doc false
   attr :mapping_state, :map, default: nil
   attr :can_proceed, :boolean, required: true
   attr :myself, :any, required: true
 
-  defp step_map_notches(assigns) do
+  def step_map_notches(assigns) do
+    assigns = assign(assigns, :preview, assigns.mapping_state && assigns.mapping_state[:preview])
+
     ~H"""
     <div class="flex-1 overflow-y-auto p-6">
       <div :if={is_nil(@mapping_state)} class="flex items-center justify-center h-full">
@@ -1316,12 +1327,17 @@ defmodule TreninoWeb.LeverSetupWizard do
         <h3 class="text-lg font-semibold mb-2">Map Hardware Positions</h3>
         <p class="text-sm text-base-content/60 mb-4">
           Move your physical lever to capture the range for each notch.
-          Lever direction will be automatically detected when you save.
+          <%= if @preview do %>
+            The “Your lever” strip shows where each captured notch sits on your
+            hardware, and whether your lever runs the same way as the simulator.
+          <% else %>
+            Lever direction is worked out from the notches you capture.
+          <% end %>
         </p>
 
-        <%!-- Lever Visualization (no live indicator - just shows notch positions) --%>
+        <%!-- Simulator-order bar (x-axis is notch order, not hardware travel) --%>
         <.live_component
-          module={TreninoWeb.LeverVisualization}
+          module={LeverVisualization}
           id="lever-viz"
           notches={@mapping_state.notches}
           captured_ranges={@mapping_state.captured_ranges}
@@ -1330,19 +1346,37 @@ defmodule TreninoWeb.LeverSetupWizard do
           event_target={@myself}
         />
 
+        <%!-- Physical-order strip with live marker --%>
+        <LeverVisualization.hardware_strip
+          :if={@preview}
+          preview={@preview}
+          current_value={@mapping_state.current_value}
+          total_travel={@mapping_state.total_travel}
+          current_notch_index={@mapping_state.current_notch_index}
+        />
+
         <%!-- Current notch mapping panel --%>
         <div :if={@mapping_state.current_notch} class="mt-6 bg-base-200 rounded-lg p-4">
-          <div class="flex items-center justify-between mb-4">
-            <div>
-              <h4 class="font-semibold">{@mapping_state.current_notch.description}</h4>
-              <p class="text-sm text-base-content/60">
-                {if @mapping_state.current_notch.type == :gate,
-                  do: "Wiggle the lever within this position",
-                  else: "Sweep through the full range"}
+          <div class="flex items-start justify-between gap-4 mb-4">
+            <div class="min-w-0">
+              <h4 class="font-semibold break-words">
+                Notch {@mapping_state.current_notch_index + 1} of {length(@mapping_state.notches)}: {notch_display_name(
+                  @mapping_state.current_notch,
+                  @mapping_state.current_notch_index
+                )}
+              </h4>
+              <p class="text-xs text-base-content/60 mt-0.5">
+                Train output: {format_notch_output(@mapping_state.current_notch)}
+              </p>
+              <p class="text-sm text-base-content/70 mt-2">
+                {capture_instruction(
+                  @mapping_state.current_notch,
+                  @mapping_state.current_notch_index
+                )}
               </p>
             </div>
             <span class={[
-              "badge",
+              "badge shrink-0",
               @mapping_state.current_notch.type == :gate && "badge-warning",
               @mapping_state.current_notch.type == :linear && "badge-info"
             ]}>
@@ -1352,24 +1386,25 @@ defmodule TreninoWeb.LeverSetupWizard do
 
           <div :if={@mapping_state.is_capturing} class="space-y-4">
             <div class="grid grid-cols-3 gap-4 text-center">
+              <.hardware_reading
+                label="Lowest"
+                value={@mapping_state.current_min}
+                total_travel={@mapping_state.total_travel}
+              />
               <div>
-                <div class="text-2xl font-mono font-bold text-info">
-                  {format_calibrated(@mapping_state.current_min)}
-                </div>
-                <div class="text-xs text-base-content/60">Min</div>
+                <.hardware_reading
+                  label="Now"
+                  value={@mapping_state.current_value}
+                  total_travel={@mapping_state.total_travel}
+                  primary
+                />
+                <.live_notch_hint preview={@preview} />
               </div>
-              <div>
-                <div class="text-3xl font-mono font-bold text-primary">
-                  {format_calibrated(@mapping_state.current_value)}
-                </div>
-                <div class="text-xs text-base-content/60">Current</div>
-              </div>
-              <div>
-                <div class="text-2xl font-mono font-bold text-info">
-                  {format_calibrated(@mapping_state.current_max)}
-                </div>
-                <div class="text-xs text-base-content/60">Max</div>
-              </div>
+              <.hardware_reading
+                label="Highest"
+                value={@mapping_state.current_max}
+                total_travel={@mapping_state.total_travel}
+              />
             </div>
 
             <div class="flex items-center justify-center gap-4 text-sm text-base-content/60">
@@ -1395,8 +1430,14 @@ defmodule TreninoWeb.LeverSetupWizard do
           </div>
 
           <div :if={not @mapping_state.is_capturing} class="text-center">
-            <div class="text-3xl font-mono font-bold text-primary mb-4">
-              {format_calibrated(@mapping_state.current_value)}
+            <div class="mb-4">
+              <.hardware_reading
+                label="Now"
+                value={@mapping_state.current_value}
+                total_travel={@mapping_state.total_travel}
+                primary
+              />
+              <.live_notch_hint preview={@preview} />
             </div>
             <button phx-click="start_capturing" phx-target={@myself} class="btn btn-primary">
               <.icon name="hero-play" class="w-4 h-4" /> Start Capturing
@@ -1404,18 +1445,85 @@ defmodule TreninoWeb.LeverSetupWizard do
           </div>
         </div>
 
-        <%!-- Preview step (when all captured) --%>
-        <div :if={@mapping_state.current_step == :preview} class="mt-6 text-center">
-          <div class="w-12 h-12 mx-auto mb-4 rounded-full bg-success/10 flex items-center justify-center">
-            <.icon name="hero-check-circle" class="w-6 h-6 text-success" />
+        <%!-- Review step (when all captured) --%>
+        <div :if={@mapping_state.current_step == :preview} class="mt-6">
+          <div class="text-center">
+            <div class="w-12 h-12 mx-auto mb-4 rounded-full bg-success/10 flex items-center justify-center">
+              <.icon name="hero-check-circle" class="w-6 h-6 text-success" />
+            </div>
+            <h4 class="font-semibold mb-2">All notches mapped</h4>
+            <p
+              :if={@preview && @preview[:low_end] && @preview[:high_end]}
+              class="text-sm text-base-content/80"
+            >
+              Low end of your lever → {end_display_name(@preview.low_end)} (sim {format_sim(
+                @preview.low_end.sim_input
+              )}). High end → {end_display_name(@preview.high_end)} (sim {format_sim(
+                @preview.high_end.sim_input
+              )}).
+            </p>
+            <p
+              :if={@preview && @preview[:direction_known] && @preview[:inverted]}
+              class="text-sm text-base-content/70 mt-1"
+            >
+              Your lever runs opposite to the simulator — that's fine, it's handled automatically.
+            </p>
+            <p
+              :if={!(@preview && @preview[:low_end] && @preview[:high_end])}
+              class="text-sm text-base-content/60"
+            >
+              Review the mapping above, then save to continue.
+            </p>
           </div>
-          <h4 class="font-semibold mb-2">All Notches Mapped!</h4>
-          <p class="text-sm text-base-content/60 mb-4">
-            Review the mapping above, then save to continue.
+
+          <div
+            :if={@preview && (@preview[:hardware_ranges] || []) != []}
+            class="mt-4 overflow-x-auto"
+          >
+            <table class="table table-sm">
+              <thead>
+                <tr>
+                  <th>Lever range</th>
+                  <th>Notch</th>
+                  <th>Sends to sim</th>
+                  <th>Output</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr :for={range <- @preview.hardware_ranges} data-notch-index={range.notch_index}>
+                  <td class="font-mono whitespace-nowrap">
+                    {format_pct_range(range.min_pct, range.max_pct)}
+                  </td>
+                  <td class="break-words">{end_display_name(range)}</td>
+                  <td class="font-mono whitespace-nowrap">
+                    {format_value_range(range.sim_at_min, range.sim_at_max, &format_sim/1)}
+                  </td>
+                  <td class="font-mono whitespace-nowrap">
+                    {format_value_range(range.sim_output_min, range.sim_output_max, &format_number/1)}
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <p :if={@preview} class="text-sm text-center mt-4">
+            <span class="text-base-content/60">Lever now →</span>
+            <%= if @preview[:live] do %>
+              <span class="font-medium">{end_display_name(@preview.live)}</span>, sim {format_sim(
+                @preview.live.sim_input
+              )}
+            <% else %>
+              <span class="text-base-content/60">
+                {format_hardware_pct(@mapping_state.current_value, @mapping_state.total_travel)} (not in a captured notch)
+              </span>
+            <% end %>
           </p>
-          <button phx-click="save_and_finish" phx-target={@myself} class="btn btn-primary">
-            <.icon name="hero-check" class="w-4 h-4" /> Save Mapping
-          </button>
+
+          <div class="text-center mt-4">
+            <button phx-click="save_and_finish" phx-target={@myself} class="btn btn-primary">
+              <.icon name="hero-check" class="w-4 h-4" /> Save Mapping
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -1423,6 +1531,101 @@ defmodule TreninoWeb.LeverSetupWizard do
     <.step_footer can_proceed={false} show_back={true} myself={@myself} />
     """
   end
+
+  attr :label, :string, required: true
+  attr :value, :any, default: nil
+  attr :total_travel, :any, default: nil
+  attr :primary, :boolean, default: false
+
+  defp hardware_reading(assigns) do
+    ~H"""
+    <div>
+      <div class={[
+        "font-mono font-bold",
+        @primary && "text-3xl text-primary",
+        !@primary && "text-2xl text-info"
+      ]}>
+        {format_hardware_pct(@value, @total_travel)}
+      </div>
+      <div class="text-xs text-base-content/60">{@label}</div>
+      <div class="text-[10px] font-mono text-base-content/60">raw {format_calibrated(@value)}</div>
+    </div>
+    """
+  end
+
+  attr :preview, :map, default: nil
+
+  defp live_notch_hint(assigns) do
+    ~H"""
+    <div :if={@preview && @preview[:live]} class="text-xs text-base-content/80 mt-1">
+      → {end_display_name(@preview.live)}, sim {format_sim(@preview.live.sim_input)}
+    </div>
+    """
+  end
+
+  defp notch_display_name(notch, index),
+    do: LeverVisualization.display_name(Map.get(notch, :description), index)
+
+  defp end_display_name(%{notch_index: index} = info),
+    do: LeverVisualization.display_name(Map.get(info, :description), index)
+
+  defp capture_instruction(%{type: :gate} = notch, index) do
+    "Move your lever to where #{notch_display_name(notch, index)} should be, " <>
+      "then wiggle it within that position."
+  end
+
+  defp capture_instruction(notch, index) do
+    "Sweep your lever across the whole #{notch_display_name(notch, index)} range — " <>
+      "either direction is fine."
+  end
+
+  defp format_notch_output(%{type: :gate, value: value}) when is_number(value),
+    do: format_number(value)
+
+  defp format_notch_output(%{type: :linear, min_value: min, max_value: max})
+       when is_number(min) and is_number(max),
+       do: "#{format_number(min)} → #{format_number(max)}"
+
+  defp format_notch_output(_), do: "—"
+
+  defp format_hardware_pct(value, total) when is_number(value) and is_number(total) and total > 0,
+    do: "#{round(value / total * 100)}%"
+
+  defp format_hardware_pct(_, _), do: "—"
+
+  defp format_pct_range(min, max) when is_number(min) and is_number(max) do
+    if round(min) == round(max), do: "#{round(min)}%", else: "#{round(min)}–#{round(max)}%"
+  end
+
+  defp format_pct_range(_, _), do: "—"
+
+  defp format_value_range(a, b, formatter) when is_number(a) and is_number(b) do
+    if formatter.(a) == formatter.(b),
+      do: formatter.(a),
+      else: "#{formatter.(a)} → #{formatter.(b)}"
+  end
+
+  # One end can be nil (e.g. the mapper can't reach a zero-width gate there)
+  defp format_value_range(a, nil, formatter) when is_number(a), do: formatter.(a)
+  defp format_value_range(nil, b, formatter) when is_number(b), do: formatter.(b)
+  defp format_value_range(_, _, _), do: "—"
+
+  # Simulator InputValue: always two decimals so small differences are visible
+  defp format_sim(value) when is_number(value),
+    do: :erlang.float_to_binary(Float.round(value / 1, 2), decimals: 2)
+
+  defp format_sim(_), do: "—"
+
+  # Train output values: compact (100 rather than 100.0)
+  defp format_number(value) when is_number(value) do
+    rounded = Float.round(value / 1, 2)
+
+    if rounded == trunc(rounded),
+      do: Integer.to_string(trunc(rounded)),
+      else: Float.to_string(rounded)
+  end
+
+  defp format_number(_), do: "—"
 
   defp format_calibrated(nil), do: "—"
   defp format_calibrated(value) when is_integer(value), do: Integer.to_string(value)

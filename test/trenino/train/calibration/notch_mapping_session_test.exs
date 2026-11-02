@@ -8,6 +8,7 @@ defmodule Trenino.Train.Calibration.NotchMappingSessionTest do
   alias Trenino.Hardware
   alias Trenino.Train
   alias Trenino.Train.Calibration.NotchMappingSession
+  alias Trenino.Train.LeverMapper
 
   # Helper to create test fixtures
   defp create_fixtures(_context) do
@@ -439,6 +440,20 @@ defmodule Trenino.Train.Calibration.NotchMappingSessionTest do
 
       NotchMappingSession.cancel(pid)
     end
+
+    test "capturing the last notch first returns to the first uncaptured notch", context do
+      pid = start_session(context)
+
+      assert :ok = NotchMappingSession.start_mapping(pid)
+      assert :ok = NotchMappingSession.go_to_notch(pid, 2)
+      capture_notch(pid, [800, 820, 850])
+
+      state = NotchMappingSession.get_public_state(pid)
+      assert state.current_step == {:mapping_notch, 0}
+      refute state.all_captured
+
+      NotchMappingSession.cancel(pid)
+    end
   end
 
   describe "preview and save" do
@@ -651,6 +666,276 @@ defmodule Trenino.Train.Calibration.NotchMappingSessionTest do
 
       refute Process.alive?(pid)
     end
+  end
+
+  describe "preview" do
+    setup [:create_fixtures]
+
+    # Forward lever: hardware 0% = Braking (sim 0.0), hardware 100% = Power (sim 1.0)
+    @forward_notches [
+      %{
+        type: :linear,
+        min_value: -10.0,
+        max_value: 0.0,
+        sim_input_min: 0.0,
+        sim_input_max: 0.45,
+        description: "Braking"
+      },
+      %{
+        type: :gate,
+        value: 0.0,
+        sim_input_min: 0.46,
+        sim_input_max: 0.54,
+        description: "Neutral"
+      },
+      %{
+        type: :linear,
+        min_value: 0.0,
+        max_value: 1.0,
+        sim_input_min: 0.55,
+        sim_input_max: 1.0,
+        description: "Power"
+      }
+    ]
+
+    # Raw samples per notch (calibration 100..900 -> calibrated 0..800)
+    @forward_captures [
+      # Braking: calibrated 0-350
+      [100, 200, 300, 450],
+      # Neutral: calibrated 360-440
+      [460, 500, 540],
+      # Power: calibrated 450-800
+      [550, 700, 900]
+    ]
+
+    # M9-A style: sim order Emergency -> Power, but physically Power sits at
+    # hardware 0% and Emergency at hardware 100%.
+    @reversed_notches [
+      %{
+        type: :gate,
+        value: -1.0,
+        sim_input_min: 0.0,
+        sim_input_max: 0.04,
+        description: "Emergency"
+      },
+      %{
+        type: :linear,
+        min_value: -10.0,
+        max_value: -1.0,
+        sim_input_min: 0.05,
+        sim_input_max: 0.45,
+        description: "Braking"
+      },
+      %{
+        type: :gate,
+        value: 0.0,
+        sim_input_min: 0.46,
+        sim_input_max: 0.54,
+        description: "Neutral"
+      },
+      %{
+        type: :linear,
+        min_value: 0.0,
+        max_value: 1.0,
+        sim_input_min: 0.55,
+        sim_input_max: 1.0,
+        description: "Power"
+      }
+    ]
+
+    @reversed_captures [
+      # Emergency: calibrated 780-800
+      [880, 900],
+      # Braking: calibrated 400-750
+      [500, 700, 850],
+      # Neutral: calibrated 350-370
+      [450, 470],
+      # Power: calibrated 0-300
+      [100, 250, 400]
+    ]
+
+    test "is :none before anything is captured", context do
+      pid = start_preview_session(context, @forward_notches)
+
+      assert %{
+               status: :none,
+               direction_known: false,
+               inverted: false,
+               low_end: nil,
+               high_end: nil,
+               live: nil,
+               hardware_ranges: []
+             } = NotchMappingSession.get_public_state(pid).preview
+
+      NotchMappingSession.cancel(pid)
+    end
+
+    test "forward lever maps low end to sim 0 and high end to sim 1", context do
+      pid = start_preview_session(context, @forward_notches)
+      :ok = NotchMappingSession.start_mapping(pid)
+      Enum.each(@forward_captures, &capture_notch(pid, &1))
+
+      preview = NotchMappingSession.get_public_state(pid).preview
+
+      assert preview.status == :ready
+      assert preview.direction_known
+      refute preview.inverted
+
+      assert preview.low_end == %{
+               notch_index: 0,
+               description: "Braking",
+               type: :linear,
+               hardware_pct: +0.0,
+               sim_input: +0.0
+             }
+
+      assert %{notch_index: 2, hardware_pct: 100.0, sim_input: 1.0} = preview.high_end
+
+      assert [braking, neutral, power] = preview.hardware_ranges
+
+      assert %{
+               notch_index: 0,
+               type: :linear,
+               min_pct: +0.0,
+               max_pct: 43.75,
+               sim_at_min: +0.0,
+               sim_output_min: -10.0,
+               sim_output_max: +0.0
+             } = braking
+
+      assert braking.sim_at_max > braking.sim_at_min
+
+      assert %{
+               notch_index: 1,
+               type: :gate,
+               min_pct: 45.0,
+               max_pct: 55.0,
+               sim_at_min: 0.5,
+               sim_at_max: 0.5,
+               sim_output_min: +0.0,
+               sim_output_max: +0.0
+             } = neutral
+
+      assert %{notch_index: 2, sim_at_min: 0.55, sim_at_max: 1.0} = power
+
+      NotchMappingSession.cancel(pid)
+    end
+
+    test "inverted (M9-A style) lever is detected and maps ends correctly", context do
+      pid = start_preview_session(context, @reversed_notches)
+      :ok = NotchMappingSession.start_mapping(pid)
+      Enum.each(@reversed_captures, &capture_notch(pid, &1))
+
+      preview = NotchMappingSession.get_public_state(pid).preview
+
+      assert preview.status == :ready
+      assert preview.direction_known
+      assert preview.inverted
+
+      # Physical low end is Power at full, physical high end is Emergency
+      assert %{notch_index: 3, description: "Power", hardware_pct: +0.0, sim_input: 1.0} =
+               preview.low_end
+
+      assert %{notch_index: 0, description: "Emergency", hardware_pct: 100.0, sim_input: 0.02} =
+               preview.high_end
+
+      # Physical order is the reverse of sim order
+      assert Enum.map(preview.hardware_ranges, & &1.notch_index) == [3, 2, 1, 0]
+
+      # sim_input decreases monotonically as the lever moves toward hardware 100%
+      sims =
+        Enum.flat_map(preview.hardware_ranges, fn range ->
+          [range.sim_at_min, range.sim_at_max]
+        end)
+
+      assert Enum.all?(sims, &is_float/1)
+      assert sims == Enum.sort(sims, :desc)
+
+      NotchMappingSession.cancel(pid)
+    end
+
+    test "partial capture with one notch leaves direction unknown", context do
+      pid = start_preview_session(context, @forward_notches)
+      :ok = NotchMappingSession.start_mapping(pid)
+      capture_notch(pid, Enum.at(@forward_captures, 0))
+
+      preview = NotchMappingSession.get_public_state(pid).preview
+
+      assert preview.status == :partial
+      refute preview.direction_known
+      refute preview.inverted
+      assert [%{notch_index: 0}] = preview.hardware_ranges
+      assert %{notch_index: 0, sim_input: +0.0} = preview.low_end
+
+      # Hardware 100% falls in an uncaptured gap: nearest range's edge is used
+      [braking] = preview.hardware_ranges
+      assert %{notch_index: 0, hardware_pct: 100.0} = preview.high_end
+      assert preview.high_end.sim_input == braking.sim_at_max
+
+      NotchMappingSession.cancel(pid)
+    end
+
+    test "live reflects the current lever position", context do
+      pid = start_preview_session(context, @forward_notches)
+      :ok = NotchMappingSession.start_mapping(pid)
+      capture_notch(pid, Enum.at(@forward_captures, 0))
+      capture_notch(pid, Enum.at(@forward_captures, 1))
+
+      # Positioning (not capturing) for Power: calibrated 200 -> 25% inside Braking
+      send(pid, {:input_value_updated, "/dev/test", 5, 300})
+      preview = NotchMappingSession.get_public_state(pid).preview
+
+      assert preview.direction_known
+      assert %{notch_index: 0, hardware_pct: 25.0, type: :linear} = preview.live
+      # Braking stored as 0.0-0.44: 0.25 / 0.44 * 0.45
+      assert preview.live.sim_input == 0.26
+
+      # Calibrated 800 -> 100%, Power not captured yet: a gap
+      send(pid, {:input_value_updated, "/dev/test", 5, 900})
+      assert NotchMappingSession.get_public_state(pid).preview.live == nil
+
+      NotchMappingSession.cancel(pid)
+    end
+
+    for {name, notches, captures} <- [
+          {"forward", @forward_notches, @forward_captures},
+          {"inverted", @reversed_notches, @reversed_captures}
+        ] do
+      test "#{name} preview matches LeverMapper on the saved config", context do
+        pid = start_preview_session(context, unquote(Macro.escape(notches)))
+        Sandbox.allow(Trenino.Repo, self(), pid)
+        :ok = NotchMappingSession.start_mapping(pid)
+        Enum.each(unquote(captures), &capture_notch(pid, &1))
+
+        preview = NotchMappingSession.get_public_state(pid).preview
+        assert :ok = NotchMappingSession.save_mapping(pid)
+
+        {:ok, saved} = Train.get_lever_config(context.element.id)
+
+        assert saved.inverted == preview.inverted
+        assert {:ok, preview.low_end.sim_input} == LeverMapper.map_input(saved, 0.0)
+        assert {:ok, preview.high_end.sim_input} == LeverMapper.map_input(saved, 1.0)
+
+        # Gates are position independent, so their range ends are comparable directly
+        for %{type: :gate} = range <- preview.hardware_ranges do
+          mid = Float.round((range.min_pct + range.max_pct) / 200, 2)
+          assert {:ok, range.sim_at_min} == LeverMapper.map_input(saved, mid)
+        end
+      end
+    end
+  end
+
+  defp start_preview_session(%{lever_config: lever_config} = context, notches) do
+    {:ok, lever_config} = Train.save_notches(lever_config, notches)
+    start_session(%{context | lever_config: lever_config})
+  end
+
+  # GenServer calls are processed after the input messages sent before them,
+  # so no sleep is needed between the sends and capture_range/1.
+  defp capture_notch(pid, raw_values) do
+    :ok = NotchMappingSession.start_capturing(pid)
+    Enum.each(raw_values, &send(pid, {:input_value_updated, "/dev/test", 5, &1}))
+    :ok = NotchMappingSession.capture_range(pid)
   end
 
   # Helper to flush all messages from mailbox

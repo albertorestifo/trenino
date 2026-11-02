@@ -55,6 +55,7 @@ defmodule Trenino.Train.LeverMapper do
           | {:error, :no_notch}
           | {:error, :unmapped_notch}
           | {:error, :no_sim_input_range}
+          | {:error, :zero_width_notch}
 
   @doc """
   Map a normalized hardware input value to a simulator InputValue.
@@ -81,7 +82,25 @@ defmodule Trenino.Train.LeverMapper do
 
   """
   @spec map_input(LeverConfig.t(), float()) :: map_result()
-  def map_input(%LeverConfig{notches: notches, inverted: inverted}, input_value)
+  def map_input(%LeverConfig{} = lever_config, input_value) when is_float(input_value) do
+    case resolve_input(lever_config, input_value) do
+      {:ok, _notch, sim_input} -> {:ok, sim_input}
+      {:error, _reason} = error -> error
+    end
+  end
+
+  @doc """
+  Like `map_input/2`, but also returns the notch the input resolved to.
+
+  This is the single implementation of the hardware -> simulator mapping;
+  `map_input/2` delegates to it. Callers that need to know *which* notch a
+  hardware position lands in (e.g. the notch mapping wizard preview) use this
+  so their answer can never diverge from the runtime mapping.
+  """
+  @spec resolve_input(LeverConfig.t(), float()) ::
+          {:ok, Notch.t(), float()}
+          | {:error, :no_notch | :unmapped_notch | :no_sim_input_range | :zero_width_notch}
+  def resolve_input(%LeverConfig{notches: notches, inverted: inverted}, input_value)
       when is_float(input_value) and input_value >= 0.0 and input_value <= 1.0 do
     # Apply inversion if configured (hardware direction opposite to simulator)
     effective_value = if inverted, do: Float.round(1.0 - input_value, 2), else: input_value
@@ -96,11 +115,15 @@ defmodule Trenino.Train.LeverMapper do
         # the position within linear notches. A "reversed" layout is when high input
         # values correspond to low sim values (e.g., emergency at input 1.0, power at input 0).
         invert_position = inverted == true and reversed_layout?(notches)
-        calculate_sim_input(notch, effective_value, invert_position)
+
+        case calculate_sim_input(notch, effective_value, invert_position) do
+          {:ok, sim_input} -> {:ok, notch, sim_input}
+          {:error, _reason} = error -> error
+        end
     end
   end
 
-  def map_input(%LeverConfig{}, input_value) when is_float(input_value) do
+  def resolve_input(%LeverConfig{}, input_value) when is_float(input_value) do
     # Out-of-range values (below 0.0 or above 1.0) - return error
     {:error, :no_notch}
   end
@@ -197,6 +220,17 @@ defmodule Trenino.Train.LeverMapper do
     # For gates, return center of the simulator input range
     center = (sim_min + sim_max) / 2
     {:ok, Float.round(center, 2)}
+  end
+
+  # A linear notch captured with a tiny sweep can round to zero width when saved;
+  # there is no position to interpolate, so treat it as unmapped instead of dividing by zero
+  def calculate_sim_input(
+        %Notch{type: :linear, input_min: input_min, input_max: input_max},
+        _input_value,
+        _invert_position
+      )
+      when is_number(input_min) and is_number(input_max) and input_max <= input_min do
+    {:error, :zero_width_notch}
   end
 
   def calculate_sim_input(

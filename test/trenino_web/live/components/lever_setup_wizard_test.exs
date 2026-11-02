@@ -609,4 +609,295 @@ defmodule TreninoWeb.LeverSetupWizardTest do
       end
     end
   end
+
+  describe "map positions step" do
+    alias TreninoWeb.LeverSetupWizard
+
+    @notches [
+      %{
+        index: 0,
+        type: :gate,
+        value: 0.0,
+        min_value: nil,
+        max_value: nil,
+        sim_input_min: 0.0,
+        sim_input_max: 0.0,
+        description: "Idle"
+      },
+      %{
+        index: 1,
+        type: :linear,
+        value: nil,
+        min_value: 0.0,
+        max_value: 100.0,
+        sim_input_min: 0.1,
+        sim_input_max: 0.9,
+        description: "Linear 0.0 to 100.0"
+      },
+      %{
+        index: 2,
+        type: :gate,
+        value: -11.0,
+        min_value: nil,
+        max_value: nil,
+        sim_input_min: 1.0,
+        sim_input_max: 1.0,
+        description: "Gate at output -11"
+      }
+    ]
+
+    defp range(notch_index, min_pct, max_pct, sim_at_min, sim_at_max) do
+      notch = Enum.at(@notches, notch_index)
+
+      {out_min, out_max} =
+        if notch.type == :gate,
+          do: {notch.value, notch.value},
+          else: {notch.min_value, notch.max_value}
+
+      %{
+        notch_index: notch_index,
+        description: notch.description,
+        type: notch.type,
+        min_pct: min_pct,
+        max_pct: max_pct,
+        sim_at_min: sim_at_min,
+        sim_at_max: sim_at_max,
+        sim_output_min: out_min,
+        sim_output_max: out_max
+      }
+    end
+
+    defp end_info(notch_index, hardware_pct, sim_input) do
+      notch = Enum.at(@notches, notch_index)
+
+      %{
+        notch_index: notch_index,
+        description: notch.description,
+        type: notch.type,
+        hardware_pct: hardware_pct,
+        sim_input: sim_input
+      }
+    end
+
+    defp forward_preview do
+      %{
+        status: :ready,
+        direction_known: true,
+        inverted: false,
+        low_end: end_info(0, 0.0, 0.0),
+        high_end: end_info(2, 100.0, 1.0),
+        live: end_info(1, 50.0, 0.5),
+        hardware_ranges: [
+          range(0, 0.0, 5.0, 0.0, 0.0),
+          range(1, 10.0, 90.0, 0.1, 0.9),
+          range(2, 95.0, 100.0, 1.0, 1.0)
+        ]
+      }
+    end
+
+    defp inverted_preview do
+      %{
+        status: :ready,
+        direction_known: true,
+        inverted: true,
+        low_end: end_info(2, 0.0, 1.0),
+        high_end: end_info(0, 100.0, 0.0),
+        live: end_info(1, 36.0, 0.64),
+        hardware_ranges: [
+          range(2, 0.0, 5.0, 1.0, 1.0),
+          range(1, 10.0, 90.0, 0.9, 0.1),
+          range(0, 95.0, 100.0, 0.0, 0.0)
+        ]
+      }
+    end
+
+    defp mapping_state(overrides) do
+      base = %{
+        lever_config_id: 1,
+        notch_count: length(@notches),
+        notches: @notches,
+        total_travel: 1000,
+        current_step: {:mapping_notch, 1},
+        current_notch_index: 1,
+        current_notch: Enum.at(@notches, 1),
+        is_capturing: true,
+        captured_ranges: [%{min: 0, max: 50}, nil, nil],
+        current_value: 640,
+        current_min: 120,
+        current_max: 880,
+        sample_count: 42,
+        can_capture: true,
+        all_captured: false,
+        result: nil
+      }
+
+      Map.merge(base, Map.new(overrides))
+    end
+
+    defp review_state(preview) do
+      mapping_state(
+        current_step: :preview,
+        current_notch_index: nil,
+        current_notch: nil,
+        is_capturing: false,
+        all_captured: true,
+        captured_ranges: [%{min: 0, max: 50}, %{min: 100, max: 900}, %{min: 950, max: 1000}],
+        preview: preview
+      )
+    end
+
+    defp render_step(state) do
+      render_component(&LeverSetupWizard.step_map_notches/1,
+        mapping_state: state,
+        can_proceed: false,
+        myself: %Phoenix.LiveComponent.CID{cid: 1}
+      )
+    end
+
+    test "capturing a linear notch shows full description, output and new copy" do
+      html = render_step(mapping_state(preview: forward_preview()))
+
+      assert html =~ "Notch 2 of 3: Linear 0.0 to 100.0"
+      assert html =~ "Train output: 0 → 100"
+
+      assert html =~
+               "Sweep your lever across the whole Linear 0.0 to 100.0 range — either direction is fine."
+
+      assert html =~ "Lowest"
+      assert html =~ "Now"
+      assert html =~ "Highest"
+      assert html =~ "64%"
+      assert html =~ "12%"
+      assert html =~ "88%"
+      assert html =~ "raw 640"
+      assert html =~ "→ Linear 0.0 to 100.0, sim 0.50"
+      refute html =~ "Linear…"
+      refute html =~ "automatically detected when you save"
+    end
+
+    test "gate notch uses gate copy and single output value" do
+      state =
+        mapping_state(
+          current_step: {:mapping_notch, 2},
+          current_notch_index: 2,
+          current_notch: Enum.at(@notches, 2),
+          preview: forward_preview()
+        )
+
+      html = render_step(state)
+
+      assert html =~ "Notch 3 of 3: Gate at output -11"
+      assert html =~ "Train output: -11"
+
+      assert html =~
+               "Move your lever to where Gate at output -11 should be, then wiggle it within that position."
+    end
+
+    test "simulator bar is captioned and labelled with notch names, not MIN/MAX" do
+      html = render_step(mapping_state(preview: forward_preview()))
+
+      assert html =~ "Simulator notches (in simulator order)"
+      assert html =~ "← Idle"
+      assert html =~ "Gate at output -11 →"
+      refute html =~ ">MIN<"
+      refute html =~ ">MAX<"
+    end
+
+    test "forward lever shows physical strip without reversed badge" do
+      html = render_step(mapping_state(preview: forward_preview()))
+
+      assert html =~ "Your lever"
+      assert html =~ "Low end (0%)"
+      assert html =~ "High end (100%)"
+      assert html =~ "Same direction as simulator"
+      refute html =~ "Reversed vs. simulator"
+      refute html =~ "Direction is detected after you capture a second notch"
+    end
+
+    test "inverted lever shows reversed badge" do
+      html = render_step(mapping_state(preview: inverted_preview()))
+
+      assert html =~ "Reversed vs. simulator"
+      refute html =~ "Same direction as simulator"
+    end
+
+    test "partial capture without known direction shows the hint" do
+      preview = %{
+        status: :partial,
+        direction_known: false,
+        inverted: false,
+        low_end: nil,
+        high_end: nil,
+        live: nil,
+        hardware_ranges: [range(0, 0.0, 5.0, 0.0, 0.0)]
+      }
+
+      html = render_step(mapping_state(preview: preview))
+
+      assert html =~ "Your lever"
+      assert html =~ "Direction is detected after you capture a second notch"
+      refute html =~ "Reversed vs. simulator"
+      refute html =~ ", sim "
+    end
+
+    test "missing preview renders the step without the physical strip" do
+      html = render_step(mapping_state([]))
+
+      assert html =~ "Notch 2 of 3: Linear 0.0 to 100.0"
+      assert html =~ "Simulator notches (in simulator order)"
+      refute html =~ "Your lever"
+      refute html =~ "Direction is detected"
+    end
+
+    test "nil preview renders the step without the physical strip" do
+      html = render_step(mapping_state(preview: nil))
+
+      refute html =~ "Your lever"
+    end
+
+    test "review state summarises ends for a forward lever" do
+      html = render_step(review_state(forward_preview()))
+
+      assert html =~
+               "Low end of your lever → Idle (sim 0.00). High end → Gate at output -11 (sim 1.00)."
+
+      refute html =~ "runs opposite to the simulator"
+      refute html =~ "All Notches Mapped!"
+      assert html =~ "Lever now →"
+      assert html =~ ~s(phx-click="save_and_finish")
+      assert html =~ "Save Mapping"
+    end
+
+    test "review state for an inverted lever lists ranges in physical order" do
+      html = render_step(review_state(inverted_preview()))
+
+      assert html =~
+               "Low end of your lever → Gate at output -11 (sim 1.00). High end → Idle (sim 0.00)."
+
+      assert html =~
+               "Your lever runs opposite to the simulator — that's fine, it's handled automatically."
+
+      assert html =~ "Lever range"
+      assert html =~ "Sends to sim"
+      assert html =~ "0–5%"
+      assert html =~ "10–90%"
+      assert html =~ "0.90 → 0.10"
+      assert html =~ "0 → 100"
+      assert html =~ "Linear 0.0 to 100.0</span>, sim 0.64"
+
+      rows =
+        html
+        |> LazyHTML.from_fragment()
+        |> LazyHTML.query("tr[data-notch-index]")
+        |> LazyHTML.attribute("data-notch-index")
+
+      assert rows == ["2", "1", "0"]
+    end
+
+    test "review state without live notch says the lever is between notches" do
+      html = render_step(review_state(%{forward_preview() | live: nil}))
+
+      assert html =~ "64% (not in a captured notch)"
+    end
+  end
 end

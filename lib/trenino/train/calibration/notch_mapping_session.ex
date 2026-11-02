@@ -42,11 +42,83 @@ defmodule Trenino.Train.Calibration.NotchMappingSession do
   alias Trenino.Hardware.Input.Calibration
   alias Trenino.Train
   alias Trenino.Train.LeverConfig
+  alias Trenino.Train.LeverMapper
+  alias Trenino.Train.Notch
 
   require Logger
 
   @mapping_topic "train:notch_mapping"
   @min_sample_count 10
+
+  # The runtime (LeverController) feeds LeverMapper hardware values rounded to
+  # 2 decimals, and the mapper re-rounds `1.0 - value` to 2 decimals for
+  # inverted levers. Edge probes therefore step in this quantum: a smaller
+  # epsilon (e.g. 0.0001) would be rounded away and land on the exclusive
+  # `input_max` of the half-open notch interval.
+  @probe_step 0.01
+
+  @typedoc "What the lever sends to the simulator at a single hardware position."
+  @type end_info :: %{
+          notch_index: non_neg_integer(),
+          description: String.t() | nil,
+          type: :gate | :linear,
+          hardware_pct: float(),
+          sim_input: float()
+        }
+
+  @typedoc """
+  A captured notch in physical order.
+
+  `min_pct`/`max_pct` are hardware percent (0..100). `sim_at_min`/`sim_at_max`
+  are the sim_input the mapper yields at that physical end of the range (nil if
+  the mapper can't reach that notch there, e.g. a zero-width gate capture).
+  `sim_output_min`/`sim_output_max` are the notch's min_value/max_value (linear)
+  or value/value (gate), informational only.
+  """
+  @type hardware_range :: %{
+          notch_index: non_neg_integer(),
+          description: String.t() | nil,
+          type: :gate | :linear,
+          min_pct: float(),
+          max_pct: float(),
+          sim_at_min: float() | nil,
+          sim_at_max: float() | nil,
+          sim_output_min: float() | nil,
+          sim_output_max: float() | nil
+        }
+
+  @typedoc """
+  Live preview of what the captured mapping will send to the simulator.
+
+  Computed by running `LeverMapper.resolve_input/2` (the runtime code path) on a
+  virtual `LeverConfig` built from the captured notches only.
+
+    * `status` - `:none` (nothing captured), `:partial`, `:ready` (all captured)
+    * `direction_known` - at least 2 captured notches have sim_input ranges, so
+      inversion can be detected
+    * `inverted` - detected inversion (false when direction is unknown)
+    * `low_end`/`high_end` - physical lever at hardware 0% / 100%. If that point
+      falls in a gap, the nearest captured range's edge is used (hardware_pct
+      stays 0.0 / 100.0)
+    * `live` - at `current_value`; nil if no value or it falls in a gap
+    * `hardware_ranges` - captured notches sorted by `min_pct` (physical order)
+  """
+  @type preview :: %{
+          status: :none | :partial | :ready,
+          direction_known: boolean(),
+          inverted: boolean(),
+          low_end: end_info() | nil,
+          high_end: end_info() | nil,
+          live: end_info() | nil,
+          hardware_ranges: [hardware_range()]
+        }
+
+  @typep normalized_range :: %{
+           notch_index: non_neg_integer(),
+           id: integer(),
+           input_min: float(),
+           input_max: float()
+         }
 
   defmodule State do
     @moduledoc false
@@ -255,7 +327,11 @@ defmodule Trenino.Train.Calibration.NotchMappingSession do
           description: notch.description || "Notch #{notch.index}",
           # Include sim_input ranges for inversion auto-detection
           sim_input_min: notch.sim_input_min,
-          sim_input_max: notch.sim_input_max
+          sim_input_max: notch.sim_input_max,
+          # Simulator output values (informational, shown in the preview)
+          value: notch.value,
+          min_value: notch.min_value,
+          max_value: notch.max_value
         }
       end)
 
@@ -319,12 +395,7 @@ defmodule Trenino.Train.Calibration.NotchMappingSession do
         range = %{min: state.current_min, max: state.current_max}
         new_ranges = List.replace_at(state.captured_ranges, idx, range)
 
-        next_step =
-          if idx + 1 >= length(state.notches) do
-            :preview
-          else
-            {:mapping_notch, idx + 1}
-          end
+        next_step = next_step_after_capture(new_ranges, idx)
 
         new_state = %{
           state
@@ -532,6 +603,18 @@ defmodule Trenino.Train.Calibration.NotchMappingSession do
     end
   end
 
+  # Advance to the next uncaptured notch (wrapping around, since users can jump
+  # ahead with go_to_notch); only enter preview once every notch has a range
+  defp next_step_after_capture(ranges, idx) do
+    indexed = Enum.with_index(ranges)
+    {after_current, up_to_current} = Enum.split(indexed, idx + 1)
+
+    case Enum.find(after_current ++ up_to_current, fn {range, _i} -> is_nil(range) end) do
+      nil -> :preview
+      {_range, next_idx} -> {:mapping_notch, next_idx}
+    end
+  end
+
   defp all_ranges_captured?(%State{captured_ranges: ranges}) do
     Enum.all?(ranges, &(&1 != nil))
   end
@@ -545,13 +628,7 @@ defmodule Trenino.Train.Calibration.NotchMappingSession do
   # Example (no inversion): hardware 0→100% maps to sim 0→1
   # Example (inversion needed - M9-A style): hardware 0→100% maps to sim 1→0
   defp detect_inversion(notches, captured_ranges, _total_travel) do
-    # Pair notches with their captured ranges, keeping only valid pairs
-    valid_pairs =
-      notches
-      |> Enum.zip(captured_ranges)
-      |> Enum.filter(fn {notch, range} ->
-        range != nil and notch.sim_input_min != nil and notch.sim_input_max != nil
-      end)
+    valid_pairs = direction_pairs(notches, captured_ranges)
 
     # Need at least 2 notches to determine orientation
     if length(valid_pairs) < 2 do
@@ -570,32 +647,79 @@ defmodule Trenino.Train.Calibration.NotchMappingSession do
     end
   end
 
-  defp save_notch_ranges(%State{} = state) do
-    # Auto-detect if inversion is needed by comparing captured hardware ranges with sim_input ranges
-    inverted = detect_inversion(state.notches, state.captured_ranges, state.total_travel)
+  # Captured notches that have a sim_input range: the only ones that can tell
+  # us the lever's direction. Shared by detect_inversion/3 and the preview's
+  # `direction_known` so the two can never disagree.
+  defp direction_pairs(notches, captured_ranges) do
+    notches
+    |> Enum.zip(captured_ranges)
+    |> Enum.filter(fn {notch, range} ->
+      range != nil and notch.sim_input_min != nil and notch.sim_input_max != nil
+    end)
+  end
 
-    Logger.debug("Auto-detected inversion: #{inverted}")
+  # Pure normalization/inversion step shared by save and preview: detects
+  # inversion and converts each captured calibrated range to normalized
+  # 0.0-1.0 (flipped when inverted). Uncaptured notches are excluded.
+  @spec normalize_captured_ranges([map()], [State.notch_range()], integer()) ::
+          {boolean(), [normalized_range()]}
+  defp normalize_captured_ranges(notches, captured_ranges, total_travel) do
+    inverted = detect_inversion(notches, captured_ranges, total_travel)
 
-    # Convert calibrated values to normalized 0.0-1.0
-    # Apply inversion if detected (hardware direction opposite to simulator)
-    notch_updates =
-      state.notches
+    ranges =
+      notches
+      |> Enum.zip(captured_ranges)
       |> Enum.with_index()
-      |> Enum.map(fn {notch, idx} ->
-        range = Enum.at(state.captured_ranges, idx)
+      |> Enum.flat_map(fn
+        {{_notch, nil}, _idx} ->
+          []
 
-        {norm_min, norm_max} =
-          calibrated_to_normalized(range.min, range.max, state.total_travel, inverted)
+        {{notch, range}, idx} ->
+          {norm_min, norm_max} =
+            calibrated_to_normalized(range.min, range.max, total_travel, inverted)
 
-        %{
-          id: notch.id,
-          input_min: norm_min,
-          input_max: norm_max
-        }
+          [%{notch_index: idx, id: notch.id, input_min: norm_min, input_max: norm_max}]
       end)
 
-    # Save the auto-detected inverted flag along with notch ranges
-    Train.update_notch_input_ranges(state.lever_config_id, notch_updates, inverted: inverted)
+    {inverted, ranges}
+  end
+
+  # The LeverConfig the runtime would use if the captured ranges were saved now.
+  # Notch input ranges go through Notch.changeset/2 exactly like
+  # Train.update_notch_input_ranges/3 does, so they carry the same rounding as
+  # the persisted values.
+  @spec virtual_lever_config(State.t(), boolean(), [normalized_range()]) :: LeverConfig.t()
+  defp virtual_lever_config(%State{lever_config: %LeverConfig{} = config}, inverted, ranges) do
+    notches_by_id = Map.new(config.notches, &{&1.id, &1})
+
+    notches =
+      Enum.map(ranges, fn %{id: id, input_min: input_min, input_max: input_max} ->
+        %Notch{} = notch = Map.fetch!(notches_by_id, id)
+
+        notch
+        |> Notch.changeset(%{input_min: input_min, input_max: input_max})
+        |> Ecto.Changeset.apply_changes()
+      end)
+
+    %LeverConfig{config | inverted: inverted, notches: notches}
+  end
+
+  defp save_notch_ranges(%State{} = state) do
+    if all_ranges_captured?(state) do
+      # Auto-detect inversion and convert calibrated values to normalized 0.0-1.0
+      {inverted, ranges} =
+        normalize_captured_ranges(state.notches, state.captured_ranges, state.total_travel)
+
+      Logger.debug("Auto-detected inversion: #{inverted}")
+
+      notch_updates =
+        Enum.map(ranges, fn range -> Map.take(range, [:id, :input_min, :input_max]) end)
+
+      # Save the auto-detected inverted flag along with notch ranges
+      Train.update_notch_input_ranges(state.lever_config_id, notch_updates, inverted: inverted)
+    else
+      {:error, :incomplete_ranges}
+    end
   end
 
   defp calibrated_to_normalized(min_cal, max_cal, total_travel, inverted)
@@ -658,6 +782,7 @@ defmodule Trenino.Train.Calibration.NotchMappingSession do
       sample_count: length(state.current_samples),
       can_capture: can_capture?(state),
       all_captured: all_ranges_captured?(state),
+      preview: build_preview(state),
       result: state.result,
       # Legacy fields for compatibility
       boundary_count: length(state.notches) + 1,
@@ -667,6 +792,191 @@ defmodule Trenino.Train.Calibration.NotchMappingSession do
       is_stable: length(state.current_samples) >= @min_sample_count
     }
   end
+
+  # Preview
+
+  @spec build_preview(State.t()) :: preview()
+  defp build_preview(%State{} = state) do
+    captured_count = Enum.count(state.captured_ranges, &(&1 != nil))
+
+    status =
+      cond do
+        captured_count == 0 -> :none
+        captured_count == length(state.notches) -> :ready
+        true -> :partial
+      end
+
+    if status == :none or state.total_travel <= 0 do
+      %{
+        status: status,
+        direction_known: false,
+        inverted: false,
+        low_end: nil,
+        high_end: nil,
+        live: nil,
+        hardware_ranges: []
+      }
+    else
+      build_captured_preview(state, status)
+    end
+  end
+
+  defp build_captured_preview(%State{} = state, status) do
+    {inverted, ranges} =
+      normalize_captured_ranges(state.notches, state.captured_ranges, state.total_travel)
+
+    config = virtual_lever_config(state, inverted, ranges)
+    index_by_id = Map.new(ranges, &{&1.id, &1.notch_index})
+    hardware_ranges = build_hardware_ranges(state, config, index_by_id)
+
+    %{
+      status: status,
+      direction_known: length(direction_pairs(state.notches, state.captured_ranges)) >= 2,
+      inverted: inverted,
+      low_end: extreme_end(state, config, index_by_id, hardware_ranges, :low),
+      high_end: extreme_end(state, config, index_by_id, hardware_ranges, :high),
+      live: live_end(state, config, index_by_id),
+      hardware_ranges: hardware_ranges
+    }
+  end
+
+  defp build_hardware_ranges(%State{} = state, %LeverConfig{} = config, index_by_id) do
+    config.notches
+    |> Enum.map(fn %Notch{} = virtual_notch ->
+      idx = Map.fetch!(index_by_id, virtual_notch.id)
+      notch = Enum.at(state.notches, idx)
+      range = Enum.at(state.captured_ranges, idx)
+      {sim_at_min, sim_at_max} = probe_range_ends(config, virtual_notch, idx, index_by_id)
+      {output_min, output_max} = sim_outputs(notch)
+
+      %{
+        notch_index: idx,
+        description: notch.description,
+        type: notch.type,
+        min_pct: Float.round(range.min / state.total_travel * 100, 2),
+        max_pct: Float.round(range.max / state.total_travel * 100, 2),
+        sim_at_min: sim_at_min,
+        sim_at_max: sim_at_max,
+        sim_output_min: output_min,
+        sim_output_max: output_max
+      }
+    end)
+    |> Enum.sort_by(&{&1.min_pct, &1.max_pct})
+  end
+
+  # Probe the mapper at both physical ends of a captured range.
+  #
+  # Probes are chosen in the mapper's *effective* space (the stored input
+  # range, already flipped for inverted levers) and converted back to raw
+  # hardware, so the mapper's own inversion reproduces them exactly. The
+  # notch interval is half-open, so the upper end is probed at input_max
+  # (only reachable when it is exactly 1.0) and then one quantum inside.
+  # A probe only counts if the mapper resolves it to this very notch;
+  # zero-width captures (input_min == input_max) are unreachable at runtime
+  # and yield nil.
+  defp probe_range_ends(%LeverConfig{} = config, %Notch{} = notch, idx, index_by_id) do
+    lower = probe_effective(config, [notch.input_min], idx, index_by_id)
+
+    upper =
+      probe_effective(
+        config,
+        [notch.input_max, Float.round(max(notch.input_min, notch.input_max - @probe_step), 2)],
+        idx,
+        index_by_id
+      )
+
+    # Not inverted: physical min = effective min. Inverted: physical min is the
+    # effective max side.
+    if config.inverted, do: {upper, lower}, else: {lower, upper}
+  end
+
+  defp probe_effective(%LeverConfig{} = config, effective_values, idx, index_by_id) do
+    Enum.find_value(effective_values, fn effective ->
+      raw = if config.inverted, do: Float.round(1.0 - effective, 2), else: effective
+
+      case resolve(config, raw, index_by_id) do
+        {:ok, ^idx, sim_input} -> sim_input
+        _ -> nil
+      end
+    end)
+  end
+
+  defp resolve(%LeverConfig{} = config, hardware, index_by_id) do
+    case LeverMapper.resolve_input(config, hardware) do
+      {:ok, %Notch{id: id}, sim_input} -> {:ok, Map.fetch!(index_by_id, id), sim_input}
+      {:error, _reason} -> :error
+    end
+  end
+
+  defp extreme_end(%State{} = state, config, index_by_id, hardware_ranges, side) do
+    hardware = if side == :low, do: 0.0, else: 1.0
+
+    case resolve(config, hardware, index_by_id) do
+      {:ok, idx, sim_input} ->
+        end_info(state, idx, hardware, sim_input)
+
+      :error ->
+        # Gap at this end: fall back to the nearest captured range's edge
+        nearest_range_end(state, hardware_ranges, hardware, side)
+    end
+  end
+
+  defp nearest_range_end(%State{} = state, hardware_ranges, hardware, :low) do
+    hardware_ranges
+    |> Enum.reject(&is_nil(&1.sim_at_min))
+    |> Enum.min_by(& &1.min_pct, fn -> nil end)
+    |> case do
+      nil -> nil
+      range -> end_info(state, range.notch_index, hardware, range.sim_at_min)
+    end
+  end
+
+  defp nearest_range_end(%State{} = state, hardware_ranges, hardware, :high) do
+    hardware_ranges
+    |> Enum.reject(&is_nil(&1.sim_at_max))
+    |> Enum.max_by(& &1.max_pct, fn -> nil end)
+    |> case do
+      nil -> nil
+      range -> end_info(state, range.notch_index, hardware, range.sim_at_max)
+    end
+  end
+
+  defp live_end(%State{current_value: nil}, _config, _index_by_id), do: nil
+
+  defp live_end(%State{} = state, config, index_by_id) do
+    # Same normalization LeverController applies before calling the mapper
+    hardware =
+      (state.current_value / state.total_travel)
+      |> max(0.0)
+      |> min(1.0)
+      |> Float.round(2)
+
+    case resolve(config, hardware, index_by_id) do
+      {:ok, idx, sim_input} -> end_info(state, idx, hardware, sim_input)
+      :error -> nil
+    end
+  end
+
+  defp end_info(%State{} = state, idx, hardware, sim_input) do
+    notch = Enum.at(state.notches, idx)
+
+    %{
+      notch_index: idx,
+      description: notch.description,
+      type: notch.type,
+      hardware_pct: Float.round(hardware * 100, 2),
+      sim_input: sim_input
+    }
+  end
+
+  defp sim_outputs(%{type: :gate, value: value}), do: {round2(value), round2(value)}
+
+  defp sim_outputs(%{min_value: min_value, max_value: max_value}),
+    do: {round2(min_value), round2(max_value)}
+
+  defp round2(value) when is_float(value), do: Float.round(value, 2)
+  defp round2(value) when is_integer(value), do: Float.round(value / 1, 2)
+  defp round2(nil), do: nil
 
   defp current_notch_index({:mapping_notch, idx}), do: idx
   defp current_notch_index(_), do: nil

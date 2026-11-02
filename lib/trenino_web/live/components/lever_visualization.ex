@@ -1,14 +1,19 @@
 defmodule TreninoWeb.LeverVisualization do
   @moduledoc """
-  Horizontal bar visualization for lever notch positions.
+  Visualizations for lever notch mapping.
 
-  Displays:
-  - Gates as dots/circles on the bar
-  - Linear notches as segments spanning their range
-  - Small gaps between adjacent notches
-  - Live position indicator showing current hardware value
+  The live component renders the simulator-order bar: one slot per notch in
+  the order the simulator defines them. Its x-axis is the notch list, not the
+  hardware travel, so it never shows a live hardware position.
+
+  - Gates as dots, linear notches as segments
   - Highlighting for the active notch being mapped
-  - Captured min/max values below each notch
+  - Full notch descriptions (wrapping) and captured hardware ranges below
+  - Ends labelled with the first and last notch descriptions
+
+  `hardware_strip/1` renders the "Your lever" strip in physical order: each
+  captured notch at its real position on the hardware travel, plus a live
+  marker at the current reading.
 
   ## Usage
 
@@ -17,9 +22,14 @@ defmodule TreninoWeb.LeverVisualization do
         id="lever-viz"
         notches={@notches}
         captured_ranges={@captured_ranges}
-        current_value={@current_value}
         total_travel={@total_travel}
         current_notch_index={@current_notch_index}
+      />
+
+      <TreninoWeb.LeverVisualization.hardware_strip
+        preview={@preview}
+        current_value={@current_value}
+        total_travel={@total_travel}
       />
   """
 
@@ -35,19 +45,19 @@ defmodule TreninoWeb.LeverVisualization do
 
   @impl true
   def render(assigns) do
-    # Calculate positions for each notch
-    notch_positions = calculate_notch_positions(assigns)
-
-    # Calculate live indicator position
-    indicator_position = calculate_indicator_position(assigns)
+    notches = assigns[:notches] || []
 
     assigns =
       assigns
-      |> assign(:notch_positions, notch_positions)
-      |> assign(:indicator_position, indicator_position)
+      |> assign(:notch_positions, calculate_notch_positions(assigns))
+      |> assign(:label_gap, @gap_percent)
+      |> assign(:first_name, notches |> List.first() |> end_name(0))
+      |> assign(:last_name, notches |> List.last() |> end_name(length(notches) - 1))
 
     ~H"""
     <div class="w-full py-4">
+      <div class="text-sm font-medium mb-1">Simulator notches (in simulator order)</div>
+
       <%!-- Main visualization container --%>
       <div class="relative h-12 mx-4">
         <%!-- Background track --%>
@@ -68,23 +78,13 @@ defmodule TreninoWeb.LeverVisualization do
             event_target={assigns[:event_target]}
           />
         </div>
-
-        <%!-- Live position indicator --%>
-        <div
-          :if={@indicator_position != nil}
-          class="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-1 h-8 bg-primary rounded-full shadow-lg transition-[left] duration-75"
-          style={"left: #{@indicator_position}%;"}
-        >
-          <div class="absolute -top-1 left-1/2 -translate-x-1/2 w-3 h-3 bg-primary rounded-full" />
-        </div>
       </div>
 
-      <%!-- Labels row --%>
-      <div class="relative h-8 mx-4 mt-2">
+      <%!-- Labels row: equal slots matching the marker layout --%>
+      <div class="flex mx-4 mt-2" style={"column-gap: #{@label_gap}%;"}>
         <div
           :for={{notch_data, idx} <- Enum.with_index(@notch_positions)}
-          class="absolute text-center"
-          style={"left: #{notch_data.left}%; width: #{notch_data.width}%;"}
+          class="flex-1 min-w-0 text-center"
         >
           <.notch_label
             notch={notch_data.notch}
@@ -96,10 +96,13 @@ defmodule TreninoWeb.LeverVisualization do
         </div>
       </div>
 
-      <%!-- Min/Max labels at ends --%>
-      <div class="flex justify-between mx-4 text-xs text-base-content/50 -mt-1">
-        <span>MIN</span>
-        <span>MAX</span>
+      <%!-- End labels: simulator notch names, not hardware ends --%>
+      <div
+        :if={@notch_positions != []}
+        class="flex justify-between gap-4 mx-4 mt-2 text-xs text-base-content/60"
+      >
+        <span>← {@first_name}</span>
+        <span class="text-right">{@last_name} →</span>
       </div>
     </div>
     """
@@ -120,6 +123,8 @@ defmodule TreninoWeb.LeverVisualization do
       phx-click={@event_target && "go_to_notch"}
       phx-value-index={@index}
       phx-target={@event_target}
+      title={notch_name(@notch, @index)}
+      aria-label={"Go to notch #{@index + 1}: #{notch_name(@notch, @index)}"}
       class={[
         "w-full h-full transition-all",
         @event_target &&
@@ -162,21 +167,153 @@ defmodule TreninoWeb.LeverVisualization do
   defp notch_label(assigns) do
     ~H"""
     <div class={[
-      "text-xs truncate",
+      "text-xs leading-tight",
       @is_active && "text-primary font-medium",
       not @is_active && "text-base-content/60"
     ]}>
-      <div class="font-medium truncate" title={@notch.description || "Notch #{@index}"}>
-        {short_description(@notch.description, @index)}
+      <div class="font-medium break-words" title={notch_name(@notch, @index)}>
+        {notch_name(@notch, @index)}
       </div>
-      <div :if={@captured_range} class="font-mono text-[10px] text-base-content/50">
+      <div :if={@captured_range} class="font-mono text-[10px] text-base-content/60 mt-0.5">
         {format_range(@captured_range, @total_travel)}
       </div>
     </div>
     """
   end
 
+  @doc """
+  Renders the "Your lever" strip: captured notches in physical (hardware)
+  order, placed at their real `min_pct..max_pct`, with a live marker at the
+  current reading.
+
+  `preview` is the `mapping_state.preview` map from the notch mapping session.
+  """
+  attr :preview, :map, required: true
+  attr :current_value, :integer, default: nil
+  attr :total_travel, :integer, default: nil
+  attr :current_notch_index, :integer, default: nil
+
+  def hardware_strip(assigns) do
+    assigns =
+      assigns
+      |> assign(:segments, Enum.map(assigns.preview[:hardware_ranges] || [], &strip_segment/1))
+      |> assign(:live_pct, live_percent(assigns.current_value, assigns.total_travel))
+
+    ~H"""
+    <div class="w-full py-4" data-role="hardware-strip">
+      <div class="flex flex-wrap items-center justify-between gap-2 mb-1">
+        <span class="text-sm font-medium">Your lever</span>
+        <span
+          :if={@preview[:direction_known] && @preview[:inverted]}
+          class="badge badge-warning badge-sm gap-1"
+        >
+          <.icon name="hero-arrows-right-left" class="w-3 h-3" /> Reversed vs. simulator
+        </span>
+        <span
+          :if={@preview[:direction_known] && !@preview[:inverted]}
+          class="badge badge-ghost badge-sm"
+        >
+          Same direction as simulator
+        </span>
+        <span :if={!@preview[:direction_known]} class="text-xs text-base-content/60">
+          Direction is detected after you capture a second notch
+        </span>
+      </div>
+
+      <div class="relative h-10 mx-4">
+        <div class="absolute top-1/2 left-0 right-0 h-2 -translate-y-1/2 bg-base-300 rounded-full" />
+
+        <div
+          :for={segment <- @segments}
+          class={[
+            "absolute top-1/2 -translate-y-1/2 rounded",
+            segment.type == :gate && "h-4",
+            segment.type != :gate && "h-2",
+            segment.notch_index == @current_notch_index && "bg-primary",
+            segment.notch_index != @current_notch_index && "bg-success"
+          ]}
+          style={"left: #{segment.left}%; width: #{segment.width}%;"}
+          title={segment.label}
+        />
+
+        <div
+          :if={@live_pct}
+          class="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-1 h-8 bg-primary rounded-full shadow-lg transition-[left] duration-75"
+          style={"left: #{@live_pct}%;"}
+          title={"Lever now at #{round(@live_pct)}%"}
+        >
+          <div class="absolute -top-1 left-1/2 -translate-x-1/2 w-3 h-3 bg-primary rounded-full" />
+        </div>
+      </div>
+
+      <ul class="sr-only">
+        <li :for={segment <- @segments}>{segment.label}</li>
+        <li :if={@live_pct}>Lever now at {round(@live_pct)}%</li>
+      </ul>
+
+      <div class="flex justify-between gap-4 mx-4 mt-2 text-xs">
+        <div>
+          <div class="text-base-content/60">Low end (0%)</div>
+          <div :if={@preview[:low_end]} class="font-medium">
+            {display_name(@preview.low_end.description, @preview.low_end.notch_index)}
+          </div>
+        </div>
+        <div class="text-right">
+          <div class="text-base-content/60">High end (100%)</div>
+          <div :if={@preview[:high_end]} class="font-medium">
+            {display_name(@preview.high_end.description, @preview.high_end.notch_index)}
+          </div>
+        </div>
+      </div>
+    </div>
+    """
+  end
+
   # Helper functions
+
+  defp strip_segment(range) do
+    min_pct = clamp_pct(range.min_pct)
+    max_pct = clamp_pct(range.max_pct)
+    width = max_pct - min_pct
+
+    {left, width} =
+      if width < @gate_width_percent do
+        center = (min_pct + max_pct) / 2
+        left = center - @gate_width_percent / 2
+        {clamp_pct(min(left, 100.0 - @gate_width_percent)), @gate_width_percent}
+      else
+        {min_pct, width}
+      end
+
+    %{
+      notch_index: range.notch_index,
+      type: range.type,
+      left: Float.round(left / 1, 2),
+      width: Float.round(width / 1, 2),
+      label:
+        "#{display_name(range.description, range.notch_index)}: #{round(min_pct)}–#{round(max_pct)}% of travel"
+    }
+  end
+
+  defp live_percent(value, total) when is_number(value) and is_number(total) and total > 0 do
+    Float.round(clamp_pct(value / total * 100.0), 2)
+  end
+
+  defp live_percent(_, _), do: nil
+
+  defp clamp_pct(value), do: value |> max(0.0) |> min(100.0)
+
+  defp end_name(nil, _index), do: nil
+  defp end_name(notch, index), do: notch_name(notch, index)
+
+  defp notch_name(notch, index), do: display_name(Map.get(notch, :description), index)
+
+  @doc """
+  Returns a notch's description, or "Notch N" (1-based) when it has none.
+  """
+  @spec display_name(String.t() | nil, non_neg_integer()) :: String.t()
+  def display_name(desc, _index) when is_binary(desc) and desc != "", do: desc
+  def display_name(_desc, index), do: "Notch #{index + 1}"
 
   defp calculate_notch_positions(assigns) do
     notches = assigns[:notches] || []
@@ -186,12 +323,10 @@ defmodule TreninoWeb.LeverVisualization do
     if total_count == 0 do
       []
     else
-      # Calculate total gaps
       total_gap_percent = (total_count - 1) * @gap_percent
       available_percent = 100.0 - total_gap_percent
 
-      # Each notch gets equal space (for simplicity)
-      # For more accurate representation, we could use the actual input_min/input_max values
+      # Each notch gets an equal slot: this axis is notch order, not hardware travel
       notch_width = available_percent / total_count
 
       notches
@@ -222,35 +357,11 @@ defmodule TreninoWeb.LeverVisualization do
 
   defp notch_dimensions(_type, base_left, notch_width), do: {base_left, notch_width}
 
-  defp calculate_indicator_position(assigns) do
-    current_value = assigns[:current_value]
-    total_travel = assigns[:total_travel] || 1
-    inverted = assigns[:inverted] || false
-
-    if current_value && total_travel > 0 do
-      # Normalize to 0-100%
-      position = current_value / total_travel * 100.0
-
-      # Apply inversion if enabled (so user sees "logical" position)
-      position = if inverted, do: 100.0 - position, else: position
-
-      min(100.0, max(0.0, position))
-    else
-      nil
-    end
-  end
-
-  defp short_description(nil, index), do: "##{index}"
-  defp short_description(desc, _index) when byte_size(desc) <= 8, do: desc
-
-  defp short_description(desc, _index) do
-    String.slice(desc, 0, 6) <> "…"
-  end
-
-  defp format_range(%{min: min, max: max}, total_travel) when total_travel > 0 do
-    min_pct = Float.round(min / total_travel * 100, 0)
-    max_pct = Float.round(max / total_travel * 100, 0)
-    "#{trunc(min_pct)}–#{trunc(max_pct)}%"
+  defp format_range(%{min: min, max: max}, total_travel)
+       when is_number(total_travel) and total_travel > 0 do
+    min_pct = round(min / total_travel * 100)
+    max_pct = round(max / total_travel * 100)
+    "#{min_pct}–#{max_pct}%"
   end
 
   defp format_range(_, _), do: ""

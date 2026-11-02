@@ -33,6 +33,22 @@ defmodule Trenino.Train.LeverMapperTest do
       assert {:ok, 1.0} = LeverMapper.map_input(config, 1.0)
     end
 
+    test "returns an error instead of dividing by zero for a zero-width linear notch" do
+      notch = %Notch{
+        index: 0,
+        type: :linear,
+        min_value: 0.0,
+        max_value: 1.0,
+        input_min: 1.0,
+        input_max: 1.0,
+        sim_input_min: 0.0,
+        sim_input_max: 1.0
+      }
+
+      assert {:error, :zero_width_notch} =
+               LeverMapper.map_input(%LeverConfig{notches: [notch]}, 1.0)
+    end
+
     test "interpolates mid-range values", %{lever_config: config} do
       assert {:ok, 0.5} = LeverMapper.map_input(config, 0.5)
       assert {:ok, 0.25} = LeverMapper.map_input(config, 0.25)
