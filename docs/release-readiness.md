@@ -43,8 +43,10 @@ tests on macOS does not perform them.
 - Upgrade a copied v0.7.4 configuration database. Confirm train identifiers and
   existing control/calibration data remain available.
 - Install the signed Windows NSIS package on a disposable Windows 10/11 machine.
-  Check vJoy installation, activation, UAC cancellation, recovery and shared-driver
-  uninstall behavior. MSI does not manage the driver lifecycle.
+  Check that the installer leaves vJoy untouched, that the Virtual joystick page
+  links to vJoy 2.2.2.0 while the driver is missing, then activation, UAC
+  cancellation, recovery and device removal on uninstall. Also upgrade over a
+  0.8.x install that had vJoy installed by Trenino and record what uninstall does.
 - Verify Train Sim World 7 key detection and Train Sim World 6 fallback. Connect,
   drive, disconnect and reconnect while moving a lever; check for lag or freezes.
 - Deploy a display-only configuration, test its segments, bind a stable simulator

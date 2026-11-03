@@ -10,7 +10,6 @@
     "resources": [
       "binaries/avrdude.conf",
       "resources/vc_redist.x64.exe",
-      "resources/vJoySetup.exe",
       "resources/vJoyConfig.exe",
       "resources/vJoyInstall.dll",
       "resources/vJoyInterface.dll",

@@ -17,7 +17,8 @@ $stage = Join-Path ([System.IO.Path]::GetTempPath()) ("trenino-vjoy-{0}" -f [gui
 [System.IO.Directory]::CreateDirectory($stage) | Out-Null
 
 try {
-    $installer = Join-Path $resources 'vJoySetup.exe'
+    # The installer is only a source for vJoyConfig.exe and is never bundled.
+    $installer = Join-Path $stage 'vJoySetup.exe'
     $sdk = Join-Path $resources 'SDK.zip'
     $license = Join-Path $resources 'vJoy-LICENSE.txt'
 

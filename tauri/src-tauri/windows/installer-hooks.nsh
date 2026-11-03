@@ -2,6 +2,11 @@
 ; The vc_redist.x64.exe is bundled as a resource and installed silently
 ; during app installation to prevent MSVCP140.dll / VCRUNTIME140.dll errors
 ; on systems that don't have it pre-installed.
+;
+; The vJoy driver is not installed here: joystick mode is optional and asks
+; the user to install vJoy themselves. The uninstall hook still removes the
+; device Trenino created, and offers to remove the driver only while the
+; VJoyInstalledByTrenino marker from an earlier release is still present.
 
 !define VJOY_VERSION "2.2.2.0"
 !define VJOY_UNINSTALL_KEY "SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\{8E31F76F-74C3-47F1-9550-E041EEDC5FBB}_is1"
@@ -26,70 +31,6 @@
 
   ; Clean up the installer from resources — it's not needed at runtime
   Delete "$INSTDIR\resources\vc_redist.x64.exe"
-
-  ; Preserve compatible pre-existing vJoy installations as shared system state.
-  ReadRegDWORD $3 HKLM "${TRENINO_REGISTRY_KEY}" "VJoyInstalledByTrenino"
-  ReadRegStr $0 HKLM "${VJOY_UNINSTALL_KEY}" "DisplayVersion"
-  ${If} $0 == "${VJOY_VERSION}"
-    ; A matching uninstall string alone can be stale. Require the running kernel
-    ; service, its signed pinned-version image, and a successful feeder API probe.
-    nsExec::ExecToStack '"${TRENINO_POWERSHELL}" -NoProfile -NonInteractive -Command "$$d=Get-CimInstance Win32_SystemDriver -Filter $\"Name='vjoy'$\" -ErrorAction SilentlyContinue; if (-not $$d -or $$d.State -ne $\"Running$\") { exit 1 }; $$p=$$d.PathName.Trim($\"`\"$\"); if (-not (Test-Path -LiteralPath $$p)) { exit 1 }; $$f=(Get-Item -LiteralPath $$p).VersionInfo.FileVersion; $$s=Get-AuthenticodeSignature -LiteralPath $$p; if ($$f -notlike $\"2.2.2.0*$\" -or $$s.Status -ne $\"Valid$\") { exit 1 }; $$r=& $\"$INSTDIR\resources\vJoyConfig.exe$\" -t -c 2>$$null; $$t=$$r -join $\" $\"; if ($$LASTEXITCODE -ne 0 -or $$t -notmatch $\"Product ID:$\" -or $$t -match $\"not installed|disabled|Failed$\") { exit 1 }; exit 0"'
-    Pop $5
-    Pop $6
-    ${If} $5 == 0
-      DetailPrint "Verified running signed vJoy ${VJOY_VERSION} driver and feeder API; preserving ownership."
-      ${If} $3 != 1
-        WriteRegDWORD HKLM "${TRENINO_REGISTRY_KEY}" "VJoyInstalledByTrenino" 0
-      ${EndIf}
-    ${Else}
-      DetailPrint "WARNING: A stale or incompatible vJoy ${VJOY_VERSION} installation was detected; preserving it as shared system state."
-      ${If} $3 != 1
-        WriteRegDWORD HKLM "${TRENINO_REGISTRY_KEY}" "VJoyInstalledByTrenino" 0
-      ${EndIf}
-      IfSilent vjoy_stale_warning_done
-      MessageBox MB_OK|MB_ICONEXCLAMATION "Trenino was installed, but the existing vJoy driver could not be verified. No driver changes were made. Virtual joystick mode will remain unavailable until vJoy is repaired or removed."
-      vjoy_stale_warning_done:
-    ${EndIf}
-  ${Else}
-    ; A service without the exact 64-bit uninstall entry may be an alternate-view
-    ; or manually installed shared driver. Never replace or claim it unless a
-    ; prior Trenino ownership marker proves this is our upgrade.
-    ReadRegStr $4 HKLM "SYSTEM\CurrentControlSet\Services\vjoy" "ImagePath"
-    ${If} $4 != ""
-    ${AndIf} $3 != 1
-      DetailPrint "WARNING: Existing vJoy does not match the supported ${VJOY_VERSION} installation; preserving shared driver state."
-      WriteRegDWORD HKLM "${TRENINO_REGISTRY_KEY}" "VJoyInstalledByTrenino" 0
-      IfSilent vjoy_unverified_warning_done
-      MessageBox MB_OK|MB_ICONEXCLAMATION "Trenino was installed successfully. An existing vJoy driver was found, but its version or installation state does not match the supported ${VJOY_VERSION} release. This does not mean the driver is unsigned. No shared driver changes were made. To use virtual joystick mode, review other apps that use vJoy and repair or upgrade it to ${VJOY_VERSION}."
-      vjoy_unverified_warning_done:
-    ${Else}
-      DetailPrint "Installing pinned signed vJoy ${VJOY_VERSION} runtime..."
-      nsExec::ExecToStack '"${TRENINO_POWERSHELL}" -NoProfile -NonInteractive -Command "if ((Get-AuthenticodeSignature -LiteralPath $\"$INSTDIR\resources\vJoySetup.exe$\").Status -eq $\"Valid$\") { exit 0 } else { exit 1 }"'
-      Pop $5
-      Pop $6
-      ${If} $5 != 0
-        Abort "The bundled vJoy driver signature is not valid."
-      ${EndIf}
-
-      ExecWait '"$INSTDIR\resources\vJoySetup.exe" /VERYSILENT /NORESTART /SUPPRESSMSGBOXES' $1
-      ${If} $1 == 0
-        WriteRegDWORD HKLM "${TRENINO_REGISTRY_KEY}" "VJoyInstalledByTrenino" 1
-        DetailPrint "Trenino installed vJoy ${VJOY_VERSION}; ownership marker recorded."
-
-        ; vJoy setup may create its default device. Trenino's virtual joystick
-        ; mode is initially off, so remove only the default created by this
-        ; installation. Never alter a compatible pre-existing installation.
-        ExecWait '"$INSTDIR\resources\vJoyConfig.exe" -d 1' $2
-        DetailPrint "Cleared installer-created vJoy default device 1 (exit code $2)."
-      ${Else}
-        DetailPrint "vJoy installer exited with code $1; ownership was not claimed."
-        Abort "The signed vJoy driver could not be installed (exit code $1)."
-      ${EndIf}
-    ${EndIf}
-  ${EndIf}
-
-  ; The installer is privileged setup payload, never a runtime executable.
-  Delete "$INSTDIR\resources\vJoySetup.exe"
 !macroend
 
 !macro NSIS_HOOK_PREUNINSTALL

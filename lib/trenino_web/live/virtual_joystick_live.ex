@@ -279,6 +279,16 @@ defmodule TreninoWeb.VirtualJoystickLive do
                 {@status_ui.label}
               </p>
               <p class="mt-1 text-sm text-muted">{@status_ui.help}</p>
+              <a
+                :if={@status == :error and @status_reason == :driver_missing}
+                data-testid="virtual-joystick-driver-install"
+                href={VirtualJoystick.driver_install_url()}
+                target="_blank"
+                rel="noopener noreferrer"
+                class="link link-primary mt-2 inline-flex items-center gap-1 text-sm"
+              >
+                Download vJoy 2.2.2.0 <.icon name="hero-arrow-top-right-on-square" class="w-3 h-3" />
+              </a>
             </div>
             <button
               :if={@status != :unsupported}
@@ -651,7 +661,7 @@ defmodule TreninoWeb.VirtualJoystickLive do
   defp status_ui(:error, :driver_missing),
     do: %{
       label: "Needs attention",
-      help: "The vJoy driver is missing. Repair the Trenino installation, then check again.",
+      help: "Joystick mode needs the vJoy 2.2.2.0 driver. Install it, then check again.",
       toggle: nil,
       recovery: "Check installation"
     }

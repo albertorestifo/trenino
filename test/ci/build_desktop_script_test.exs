@@ -12,14 +12,30 @@ defmodule Trenino.CI.BuildDesktopScriptTest do
   test "Windows vJoy installer extraction uses innoextract's known config path" do
     contents = File.read!(Path.join([File.cwd!(), "scripts", "build-desktop.sh"]))
 
-    refute contents =~ "7z x -y -o\"$VJOY_STAGE/installer\" \"$RESOURCES_DIR/vJoySetup.exe\""
+    refute contents =~ "7z x -y -o\"$VJOY_STAGE/installer\""
 
     assert contents =~
-             "innoextract --silent --extract --output-dir \"$VJOY_STAGE/installer\" \"$RESOURCES_DIR/vJoySetup.exe\""
+             "innoextract --silent --extract --output-dir \"$VJOY_STAGE/installer\" \"$VJOY_STAGE/vJoySetup.exe\""
 
     assert contents =~ "VJOY_CONFIG=\"$VJOY_STAGE/installer/app/x64/vJoyConfig.exe\""
     assert contents =~ "[ ! -f \"$VJOY_CONFIG\" ]"
     assert contents =~ "cp \"$VJOY_CONFIG\" \"$RESOURCES_DIR/vJoyConfig.exe\""
+  end
+
+  test "the vJoy driver installer is never staged as a bundled resource" do
+    contents = File.read!(Path.join([File.cwd!(), "scripts", "build-desktop.sh"]))
+    staging = File.read!(Path.join([File.cwd!(), "scripts", "stage-vjoy-resources.ps1"]))
+
+    windows_config =
+      [File.cwd!(), "tauri", "src-tauri", "tauri.windows.conf.json"]
+      |> Path.join()
+      |> File.read!()
+      |> Jason.decode!()
+
+    refute contents =~ "$RESOURCES_DIR/vJoySetup.exe"
+    assert contents =~ "-Destination \"$VJOY_STAGE/vJoySetup.exe\""
+    assert staging =~ "$installer = Join-Path $stage 'vJoySetup.exe'"
+    refute "resources/vJoySetup.exe" in windows_config["bundle"]["resources"]
   end
 
   test "Windows backend sidecar is staged with an executable suffix" do

@@ -11,6 +11,7 @@ defmodule Trenino.VirtualJoystick do
   alias Trenino.VirtualJoystick.{Configuration, Manager, Mapping}
 
   @mapping_preloads [input: [:device, :calibration, :i2c_module]]
+  @driver_install_url "https://github.com/BrunnerInnovation/vJoy/releases/tag/v2.2.2.0"
 
   @spec get_configuration() :: Configuration.t()
   def get_configuration do
@@ -33,6 +34,10 @@ defmodule Trenino.VirtualJoystick do
     |> Configuration.changeset(%{enabled: enabled?})
     |> Repo.update()
   end
+
+  @doc "Release page of the vJoy driver version joystick mode is built against."
+  @spec driver_install_url() :: String.t()
+  def driver_install_url, do: @driver_install_url
 
   @spec status() :: Trenino.VirtualJoystick.Manager.State.status()
   defdelegate status(), to: Trenino.VirtualJoystick.Manager

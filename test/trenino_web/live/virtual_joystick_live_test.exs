@@ -294,7 +294,12 @@ defmodule TreninoWeb.VirtualJoystickLiveTest do
       {:virtual_joystick_status_details_changed, %{status: :error, reason: :driver_missing}}
     )
 
-    assert render(view) =~ "Repair the Trenino installation"
+    assert render(view) =~ "Joystick mode needs the vJoy 2.2.2.0 driver."
+
+    assert has_element?(
+             view,
+             "a[data-testid='virtual-joystick-driver-install'][href='#{VirtualJoystick.driver_install_url()}']"
+           )
 
     assert has_element?(
              view,

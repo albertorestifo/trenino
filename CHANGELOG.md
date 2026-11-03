@@ -37,6 +37,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Devices in the nav dropdown are named after the configuration they run,
   with the port second.
 - Settings is now a nav tab next to Devices, Trains and Joystick.
+- The Windows installer no longer installs the vJoy driver. Joystick mode is
+  optional, so it now asks you to install vJoy 2.2.2.0 yourself and links to
+  the release when the driver is missing. The installer is smaller and never
+  changes system drivers. If an earlier Trenino installed vJoy for you, it
+  stays installed; remove it from Windows Settings if you no longer need it.
 
 ### Fixed
 

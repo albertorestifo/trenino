@@ -1,8 +1,8 @@
 # Standard Tauri distribution and updates
 
 Use Tauri's built-in installers. **Choose the NSIS `.exe` for a normal Windows
-installation**: its hooks install the Visual C++ runtime and manage vJoy when
-safe. The WiX `.msi` does not run those prerequisite hooks; its prerequisites
+installation**: its hooks install the Visual C++ runtime and remove the vJoy
+device Trenino created on uninstall. The WiX `.msi` does not run those prerequisite hooks; its prerequisites
 must already be provisioned separately. The stable release workflow
 enables `desktop-updater` and merges `tauri.updater.conf.json` to generate updater
 signatures. `tauri-action` uploads signatures and `latest.json`, preferring NSIS
@@ -51,8 +51,16 @@ signing service is configured, and no release was published during setup.
 Ship `vJoyInstall.dll` beside `vJoyConfig.exe`; the helper imports it at load time.
 The runtime resolves helpers from the launcher's absolute `APP_PATH/resources`
 as well as bundled backend resources, preserving link/reparse-point checks.
-The installer keeps unowned shared drivers intact and describes version/state
-mismatches without asserting that the installed driver is unsigned.
+Neither installer installs the vJoy driver: joystick mode is optional, so users
+install vJoy 2.2.2.0 themselves from the link on the Virtual joystick page. The
+build still downloads the pinned, checksum-verified `vJoySetup.exe`, but only to
+extract `vJoyConfig.exe` and `vJoyInstall.dll`; the installer is not bundled.
+
+Releases up to 0.8.x installed the driver and recorded `VJoyInstalledByTrenino`
+in `HKLM\SOFTWARE\Trenino`. The uninstaller still offers to remove the driver
+while that marker is present. A Windows upgrade may run the previous
+uninstaller and clear it; users who no longer want vJoy can remove it from
+Windows Settings.
 
 The original report involved an older signed vJoy 2.1.9 driver while this app pins
 2.2.2.0. These code fixes alone do not upgrade or remove that shared system driver.
