@@ -24,8 +24,13 @@ defmodule Trenino.Firmware.Uploader do
   }
 
   @bootloader_initial_wait_ms 100
-  @bootloader_poll_interval_ms 300
+  @bootloader_poll_interval_ms 100
   @bootloader_poll_deadline_ms 5_000
+  # The board takes ~500ms to drop off USB after the touch. Until then the
+  # original port is still the running sketch, not the bootloader, so it is
+  # only accepted once it has disappeared and come back, or after this grace
+  # period for boards that are already in the bootloader and never reset.
+  @bootloader_reset_grace_ms 2_000
 
   @doc """
   Returns alternate baud rates to try for a programmer when the initial
@@ -224,8 +229,8 @@ defmodule Trenino.Firmware.Uploader do
               Process.sleep(@bootloader_initial_wait_ms)
               Circuits.UART.close(uart)
               Logger.info("Waiting for bootloader to start...")
-              deadline = System.monotonic_time(:millisecond) + @bootloader_poll_deadline_ms
-              poll_for_bootloader_port(port, ports_before, deadline)
+              touched_at = System.monotonic_time(:millisecond)
+              poll_for_bootloader_port(port, ports_before, false, touched_at)
 
             {:error, reason} ->
               Logger.warning("Could not open port for 1200bps touch: #{inspect(reason)}")
@@ -243,33 +248,49 @@ defmodule Trenino.Firmware.Uploader do
 
   defp maybe_trigger_bootloader(port, _config), do: {:ok, port}
 
-  defp poll_for_bootloader_port(original_port, ports_before, deadline) do
+  defp poll_for_bootloader_port(original_port, ports_before, seen_gone?, touched_at) do
     ports_after = get_available_ports()
     new_ports = ports_after -- ports_before
+    original_present? = original_port in ports_after
+    elapsed_ms = System.monotonic_time(:millisecond) - touched_at
 
     cond do
-      length(new_ports) == 1 ->
-        [new_port] = new_ports
-        Logger.info("Bootloader appeared on new port #{new_port} (was #{original_port})")
-        {:ok, new_port}
+      new_ports != [] ->
+        pick_new_port(new_ports, original_port)
 
-      length(new_ports) > 1 ->
-        new_port = Enum.max(new_ports)
-        Logger.info("Multiple new ports appeared, using #{new_port}")
-        {:ok, new_port}
-
-      original_port in ports_after ->
-        Logger.info("Original port #{original_port} still available, using it")
+      original_present? and seen_gone? ->
+        Logger.info("Bootloader re-enumerated on #{original_port}")
         {:ok, original_port}
 
-      System.monotonic_time(:millisecond) >= deadline ->
+      original_present? and elapsed_ms >= @bootloader_reset_grace_ms ->
+        Logger.info("Original port #{original_port} never reset, using it")
+        {:ok, original_port}
+
+      elapsed_ms >= @bootloader_poll_deadline_ms ->
         Logger.error("No ports available after bootloader trigger")
         {:error, :bootloader_port_not_found}
 
       true ->
         Process.sleep(@bootloader_poll_interval_ms)
-        poll_for_bootloader_port(original_port, ports_before, deadline)
+
+        poll_for_bootloader_port(
+          original_port,
+          ports_before,
+          seen_gone? or not original_present?,
+          touched_at
+        )
     end
+  end
+
+  defp pick_new_port([new_port], original_port) do
+    Logger.info("Bootloader appeared on new port #{new_port} (was #{original_port})")
+    {:ok, new_port}
+  end
+
+  defp pick_new_port(new_ports, _original_port) do
+    new_port = Enum.max(new_ports)
+    Logger.info("Multiple new ports appeared, using #{new_port}")
+    {:ok, new_port}
   end
 
   defp get_available_ports do

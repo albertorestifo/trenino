@@ -145,5 +145,63 @@ defmodule Trenino.Firmware.UploadFlowTest do
       assert {:ok, %{duration_ms: _, output: _}} =
                Uploader.upload("COM5", "micro", hex_file)
     end
+
+    test "waits for the original port to drop and re-enumerate (macOS/Linux scenario)", %{
+      hex_file: hex_file
+    } do
+      # The sketch keeps the port for ~500ms after the touch, then the
+      # bootloader re-enumerates under the same name. Running avrdude while
+      # the sketch still owns the port hangs it, so it must wait for the drop.
+      port = "/dev/cu.usbmodem111101"
+      {:ok, mock_uart} = Agent.start_link(fn -> :ok end)
+      {:ok, enum_agent} = Agent.start_link(fn -> 0 end)
+
+      on_exit(fn ->
+        if Process.alive?(mock_uart), do: Agent.stop(mock_uart)
+        if Process.alive?(enum_agent), do: Agent.stop(enum_agent)
+      end)
+
+      stub(Circuits.UART, :start_link, fn -> {:ok, mock_uart} end)
+      stub(Circuits.UART, :open, fn ^mock_uart, ^port, [speed: 1200] -> :ok end)
+      stub(Circuits.UART, :close, fn ^mock_uart -> :ok end)
+
+      stub(Circuits.UART, :enumerate, fn ->
+        call_n = Agent.get_and_update(enum_agent, fn n -> {n, n + 1} end)
+
+        case call_n do
+          n when n in [0, 1, 2] -> %{port => %{}}
+          3 -> %{}
+          _ -> %{port => %{}}
+        end
+      end)
+
+      stub(AvrdudeRunner, :run, fn _path, args, _cb ->
+        assert port in args
+        assert Agent.get(enum_agent, & &1) == 5
+        {:ok, AvrdudeFixtures.successful_upload()}
+      end)
+
+      assert {:ok, %{duration_ms: _, output: _}} =
+               Uploader.upload(port, "micro", hex_file)
+    end
+
+    test "falls back to the original port when it never resets", %{hex_file: hex_file} do
+      port = "/dev/cu.usbmodem111101"
+      {:ok, mock_uart} = Agent.start_link(fn -> :ok end)
+      on_exit(fn -> if Process.alive?(mock_uart), do: Agent.stop(mock_uart) end)
+
+      stub(Circuits.UART, :start_link, fn -> {:ok, mock_uart} end)
+      stub(Circuits.UART, :open, fn ^mock_uart, ^port, [speed: 1200] -> :ok end)
+      stub(Circuits.UART, :close, fn ^mock_uart -> :ok end)
+      stub(Circuits.UART, :enumerate, fn -> %{port => %{}} end)
+
+      stub(AvrdudeRunner, :run, fn _path, args, _cb ->
+        assert port in args
+        {:ok, AvrdudeFixtures.successful_upload()}
+      end)
+
+      assert {:ok, %{duration_ms: duration_ms}} = Uploader.upload(port, "micro", hex_file)
+      assert duration_ms >= 2_000
+    end
   end
 end

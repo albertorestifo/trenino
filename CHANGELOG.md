@@ -55,6 +55,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   once-a-second status poll used to query the database and refresh the
   configuration page even when nothing had changed; it now does so only when
   the motor's status actually changes.
+- Firmware uploads to Pro Micro, Leonardo and Micro boards on macOS and Linux
+  no longer hang with no output. The upload now waits for the board to reset
+  into its bootloader instead of starting avrdude while the old firmware was
+  still running.
 
 ## [0.8.2] - 2026-10-28
 

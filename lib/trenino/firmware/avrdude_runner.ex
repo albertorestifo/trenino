@@ -31,6 +31,9 @@ defmodule Trenino.Firmware.AvrdudeRunner do
     collect_output(port, "", progress_callback)
   end
 
+  # avrdude echoes raw bytes from the device (e.g. a running sketch answering
+  # bootloader commands), so the output is not guaranteed to be valid UTF-8.
+  # Sanitize it before it reaches Logger, the database or Sentry.
   defp collect_output(port, acc, progress_callback) do
     receive do
       {^port, {:data, data}} ->
@@ -39,14 +42,16 @@ defmodule Trenino.Firmware.AvrdudeRunner do
         collect_output(port, new_acc, progress_callback)
 
       {^port, {:exit_status, 0}} ->
-        {:ok, acc}
+        {:ok, String.replace_invalid(acc)}
 
       {^port, {:exit_status, _code}} ->
-        {:error, acc}
+        {:error, String.replace_invalid(acc)}
     after
       @collect_timeout_ms ->
         Port.close(port)
-        {:error, acc <> "\n[Timeout: avrdude did not respond within 2 minutes]"}
+
+        {:error,
+         String.replace_invalid(acc) <> "\n[Timeout: avrdude did not respond within 2 minutes]"}
     end
   end
 
