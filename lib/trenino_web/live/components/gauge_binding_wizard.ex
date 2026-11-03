@@ -289,7 +289,7 @@ defmodule TreninoWeb.GaugeBindingWizard do
       <div class="flex items-start justify-between gap-3">
         <div class="min-w-0">
           <h3 class="font-semibold break-words">{@b.name}</h3>
-          <p class="text-sm text-base-content/70">{@axis.device.name} · {@axis.name}</p>
+          <p class="text-sm text-muted">{@axis.device.name} · {@axis.name}</p>
         </div>
         <.switch
           id={"gauge-toggle-#{@b.id}"}
@@ -349,7 +349,7 @@ defmodule TreninoWeb.GaugeBindingWizard do
         >
           Last result: {GaugeFeedback.result(@runtime[:failure])}
         </p>
-        <p :if={is_nil(@runtime)} class="text-sm text-base-content/70">
+        <p :if={is_nil(@runtime)} class="text-sm text-muted">
           No simulator data received yet.
         </p>
       </.disclosure>
@@ -465,7 +465,7 @@ defmodule TreninoWeb.GaugeBindingWizard do
     ~H"""
     <section id="gauge-bindings" class="bg-base-200/50 rounded-xl p-6 mt-6 space-y-4">
       <div class="flex justify-between">
-        <h2 class="text-lg font-semibold">Gauges</h2><button
+        <h2 class="text-xl font-semibold">Gauges</h2><button
           id="gauge-add"
           type="button"
           phx-click="add"

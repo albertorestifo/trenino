@@ -14,9 +14,20 @@ defmodule Trenino.Hardware.GaugeWizard.Runner do
   alias Trenino.Hardware.GaugeWizard.Observation
   alias Trenino.Hardware.StepperManager
 
+  require Logger
+
   @doc "Runs one effect for the wizard state and returns the event to feed back."
   @spec run(GaugeWizard.effect(), GaugeWizard.t()) :: {:result, GaugeWizard.effect(), term()}
-  def run(effect, %GaugeWizard{} = state), do: {:result, effect, execute(effect, state)}
+  def run(effect, %GaugeWizard{} = state) do
+    result = execute(effect, state)
+    log_failure(effect, result)
+    {:result, effect, result}
+  end
+
+  defp log_failure(effect, {:error, reason}),
+    do: Logger.warning("Gauge wizard effect #{inspect(effect)} failed: #{inspect(reason)}")
+
+  defp log_failure(_effect, _result), do: :ok
 
   defp execute(:claim, state),
     do: StepperManager.claim_manual(state.axis.id, self(), resume_on_owner_loss: true)

@@ -64,7 +64,7 @@ defmodule TreninoWeb.CoreComponents do
       {@rest}
     >
       <div class={[
-        "alert w-80 sm:w-96 max-w-80 sm:max-w-96 text-wrap",
+        "alert alert-soft w-80 sm:w-96 max-w-80 sm:max-w-96 text-wrap",
         @kind == :info && "alert-info",
         @kind == :error && "alert-error"
       ]}>
@@ -76,7 +76,7 @@ defmodule TreninoWeb.CoreComponents do
         </div>
         <div class="flex-1" />
         <button type="button" class="group self-start cursor-pointer" aria-label={gettext("close")}>
-          <.icon name="hero-x-mark" class="size-5 opacity-40 group-hover:opacity-70" />
+          <.icon name="hero-x-mark" class="size-5 text-muted group-hover:text-base-content" />
         </button>
       </div>
     </div>
@@ -120,6 +120,48 @@ defmodule TreninoWeb.CoreComponents do
     end
   end
 
+  @typedoc """
+  Status kinds shared by `status_chip/1` and `status_indicator/1`.
+
+  `:busy` is an in-progress state such as "Connecting"; its icon spins only when the
+  user has not asked for reduced motion.
+  """
+  @type status_kind :: :ok | :warn | :error | :info | :busy | :muted
+
+  @status_kinds [:ok, :warn, :error, :info, :busy, :muted]
+
+  # {badge class, icon, foreground class}
+  @status_styles %{
+    ok: {"badge-success", "hero-check-circle-mini", "text-success"},
+    warn: {"badge-warning", "hero-exclamation-triangle-mini", "text-warning"},
+    error: {"badge-error", "hero-x-circle-mini", "text-error"},
+    info: {"badge-info", "hero-arrow-path-mini", "text-info"},
+    busy: {"badge-info", "hero-arrow-path-mini motion-safe:animate-spin", "text-info"},
+    muted: {"badge-ghost", "hero-minus-circle-mini", "text-muted"}
+  }
+
+  @doc """
+  Maps a serial device lifecycle status to the shared status vocabulary.
+
+  The brand vocabulary for connection state is: **Connected**, **Connecting**,
+  **Needs attention** and **Failed**. Use these labels (sentence case) wherever a
+  connection state is shown, always paired with an icon so colour is never the only
+  signal. "Needs attention" is for summaries that roll up a failure; "Failed" is for
+  the item that failed.
+
+  ## Examples
+
+      device_status(:discovering)
+      #=> {:busy, "Connecting"}
+  """
+  @spec device_status(atom()) :: {status_kind(), String.t()}
+  def device_status(:connected), do: {:ok, "Connected"}
+  def device_status(status) when status in [:connecting, :discovering], do: {:busy, "Connecting"}
+  def device_status(:uploading), do: {:busy, "Updating firmware"}
+  def device_status(:disconnecting), do: {:muted, "Disconnecting"}
+  def device_status(:failed), do: {:error, "Failed"}
+  def device_status(_status), do: {:muted, "Not connected"}
+
   @doc """
   A one-word status pill. The text is always present, so colour is never the only signal.
   The element is a polite live region so a change is announced to screen readers.
@@ -130,26 +172,40 @@ defmodule TreninoWeb.CoreComponents do
       <.status_chip kind={:error} label="Fault" id="axis-1-status" />
   """
   attr :id, :string, default: nil
-  attr :kind, :atom, values: [:ok, :warn, :error, :info, :muted], default: :muted
+  attr :kind, :atom, values: @status_kinds, default: :muted
   attr :label, :string, required: true
 
   def status_chip(assigns) do
-    assigns =
-      assign(
-        assigns,
-        :style,
-        %{
-          ok: {"badge-success", "hero-check-circle-mini"},
-          warn: {"badge-warning", "hero-exclamation-triangle-mini"},
-          error: {"badge-error", "hero-x-circle-mini"},
-          info: {"badge-info", "hero-arrow-path-mini"},
-          muted: {"badge-ghost", "hero-minus-circle-mini"}
-        }[assigns.kind]
-      )
+    assigns = assign(assigns, :style, Map.fetch!(@status_styles, assigns.kind))
 
     ~H"""
     <span id={@id} role="status" class={["badge badge-soft gap-1 whitespace-nowrap", elem(@style, 0)]}>
       <.icon name={elem(@style, 1)} class="size-4 shrink-0" />{@label}
+    </span>
+    """
+  end
+
+  @doc """
+  An inline status: a status-coloured icon followed by a plain text label. Use it where a
+  pill would be too heavy, such as list rows and the header.
+
+  ## Examples
+
+      <.status_indicator kind={:ok} label="Connected" />
+      <.status_indicator kind={:busy} label="Connecting" label_class="sr-only" />
+  """
+  attr :kind, :atom, values: @status_kinds, default: :muted
+  attr :label, :string, required: true
+  attr :class, :string, default: nil
+  attr :label_class, :string, default: nil
+
+  def status_indicator(assigns) do
+    assigns = assign(assigns, :style, Map.fetch!(@status_styles, assigns.kind))
+
+    ~H"""
+    <span class={["inline-flex items-center gap-1", @class]}>
+      <.icon name={elem(@style, 1)} class={"size-4 shrink-0 #{elem(@style, 2)}"} />
+      <span class={@label_class}>{@label}</span>
     </span>
     """
   end
@@ -395,10 +451,10 @@ defmodule TreninoWeb.CoreComponents do
     ~H"""
     <header class={[@actions != [] && "flex items-center justify-between gap-6", "pb-4"]}>
       <div>
-        <h1 class="text-lg font-semibold leading-8">
+        <h1 class="text-2xl font-semibold leading-8">
           {render_slot(@inner_block)}
         </h1>
-        <p :if={@subtitle != []} class="text-sm text-base-content/70">
+        <p :if={@subtitle != []} class="text-sm text-muted">
           {render_slot(@subtitle)}
         </p>
       </div>

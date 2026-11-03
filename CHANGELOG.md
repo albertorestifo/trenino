@@ -24,6 +24,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   display test — no firmware update needed. Also exposed as `orientation` in
   the `create_i2c_module`/`update_i2c_module`/`list_i2c_modules` MCP tools.
 
+### Changed
+
+- New Trenino identity (brand guide v1.1): a throttle-lever logo with an
+  Inter Bold wordmark, a new app icon, favicon and splash screen, and a
+  refreshed theme with one indigo action color and labelled statuses
+  (Connected, Connecting, Needs attention, Failed).
+- The simulator banner is gone. The status button in the nav now covers
+  devices and Train Sim World together, and its dropdown shows the
+  simulator first with the next step and Retry or Open Settings. Only the
+  Trains pages show a small notice while the simulator is not connected.
+- Devices in the nav dropdown are named after the configuration they run,
+  with the port second.
+- Settings is now a nav tab next to Devices, Trains and Joystick.
+
 ### Fixed
 
 - 14-segment display glyphs for `0` and `7` no longer light the middle

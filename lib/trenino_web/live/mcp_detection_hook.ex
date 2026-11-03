@@ -56,33 +56,33 @@ defmodule TreninoWeb.MCPDetectionHook do
       aria-modal="true"
     >
       <div class="absolute inset-0 bg-black/50" />
-      <div class="relative bg-base-100 rounded-xl shadow-xl w-full max-w-md">
+      <div class="relative bg-base-200 rounded-xl shadow-xl w-full max-w-md">
         <div class="p-4 border-b border-base-300">
           <div class="flex items-center justify-between">
-            <h2 class="text-lg font-semibold flex items-center gap-2">
-              <.icon name="hero-cpu-chip" class="w-5 h-5 text-primary" />
+            <h2 class="text-xl font-semibold flex items-center gap-2">
+              <.icon name="hero-cpu-chip" class="w-5 h-5" />
               <span :if={@detection.type == :hardware}>Hardware Detection</span>
               <span :if={@detection.type == :simulator}>Simulator Detection</span>
             </h2>
-            <span class="badge badge-sm badge-primary">MCP</span>
+            <span class="badge badge-sm badge-ghost">MCP</span>
           </div>
         </div>
 
         <div class="p-6 text-center space-y-4">
           <div class="relative">
-            <span class="loading loading-ring loading-lg text-primary"></span>
+            <span class="loading loading-ring loading-lg text-muted" aria-hidden="true"></span>
           </div>
           <div>
-            <h3 class="font-semibold text-lg">Listening...</h3>
-            <p class="text-sm text-base-content/60 mt-2">
+            <h3 class="font-semibold text-xl">Listening...</h3>
+            <p class="text-sm text-muted mt-2">
               {@detection.prompt}
             </p>
           </div>
-          <p :if={@detection.type == :hardware} class="text-xs text-base-content/40">
-            Press a button or move a lever on your hardware controller
+          <p :if={@detection.type == :hardware} class="text-sm">
+            Press a button or move a lever on your hardware controller.
           </p>
-          <p :if={@detection.type == :simulator} class="text-xs text-base-content/40">
-            Interact with a control in Train Sim World
+          <p :if={@detection.type == :simulator} class="text-sm">
+            Interact with a control in Train Sim World.
           </p>
         </div>
       </div>

@@ -105,7 +105,7 @@ defmodule TreninoWeb.LeverVisualization do
       <%!-- End labels: simulator notch names, not hardware ends --%>
       <div
         :if={@notch_positions != []}
-        class="flex justify-between gap-4 mx-4 mt-2 text-xs text-base-content/60"
+        class="flex justify-between gap-4 mx-4 mt-2 text-xs text-muted"
       >
         <span>← {@first_name}</span>
         <span class="text-right">{@last_name} →</span>
@@ -143,7 +143,7 @@ defmodule TreninoWeb.LeverVisualization do
         class={[
           "mx-auto w-4 h-4 rounded-full transition-all",
           marker_color(@is_active, @is_captured),
-          @is_active && "ring-4 ring-primary/30 scale-110"
+          @is_active && "outline-2 outline-offset-2 outline-primary"
         ]}
       />
 
@@ -152,7 +152,7 @@ defmodule TreninoWeb.LeverVisualization do
         class={[
           "w-full h-2 rounded transition-all",
           marker_color(@is_active, @is_captured),
-          @is_active && "ring-2 ring-primary/30 scale-y-125"
+          @is_active && "outline-2 outline-offset-2 outline-primary"
         ]}
       />
     </button>
@@ -175,12 +175,12 @@ defmodule TreninoWeb.LeverVisualization do
     <div class={[
       "text-xs leading-tight",
       @is_active && "text-primary font-medium",
-      not @is_active && "text-base-content/60"
+      not @is_active && "text-muted"
     ]}>
       <div class="font-medium break-words" title={notch_name(@notch, @index)}>
         {notch_name(@notch, @index)}
       </div>
-      <div :if={@captured_range} class="font-mono text-[10px] text-base-content/60 mt-0.5">
+      <div :if={@captured_range} class="font-mono text-xs text-muted mt-0.5">
         {format_range(@captured_range, @total_travel)}
       </div>
     </div>
@@ -216,7 +216,7 @@ defmodule TreninoWeb.LeverVisualization do
         <span class="text-sm font-medium">Your lever</span>
         <span
           :if={@preview[:direction_known] && @preview[:inverted]}
-          class="badge badge-warning badge-sm gap-1"
+          class="badge badge-soft badge-warning badge-sm gap-1"
         >
           <.icon name="hero-arrows-right-left" class="w-3 h-3" /> Reversed vs. simulator
         </span>
@@ -231,7 +231,7 @@ defmodule TreninoWeb.LeverVisualization do
         </span>
         <span
           :if={@preview[:direction_pending]}
-          class="text-xs text-base-content/60"
+          class="text-xs text-muted"
         >
           Direction is detected after you capture a second notch
         </span>
@@ -257,7 +257,7 @@ defmodule TreninoWeb.LeverVisualization do
 
         <div
           :if={@live_pct}
-          class="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-1 h-8 bg-primary rounded-full shadow-lg transition-[left] duration-75"
+          class="absolute top-1/2 -translate-y-1/2 -translate-x-1/2 w-1 h-8 bg-primary rounded-full transition-[left] duration-75"
           style={"left: #{@live_pct}%;"}
           title={"Lever now at #{round(@live_pct)}%"}
         >
@@ -272,13 +272,13 @@ defmodule TreninoWeb.LeverVisualization do
 
       <div class="flex justify-between gap-4 mx-4 mt-2 text-xs">
         <div>
-          <div class="text-base-content/60">Low end (0%)</div>
+          <div class="text-muted">Low end (0%)</div>
           <div :if={@preview[:low_end]} class="font-medium">
             {display_name(@preview.low_end.description, @preview.low_end.notch_index)}
           </div>
         </div>
         <div class="text-right">
-          <div class="text-base-content/60">High end (100%)</div>
+          <div class="text-muted">High end (100%)</div>
           <div :if={@preview[:high_end]} class="font-medium">
             {display_name(@preview.high_end.description, @preview.high_end.notch_index)}
           </div>
@@ -303,13 +303,13 @@ defmodule TreninoWeb.LeverVisualization do
     <div :if={@detectable || @overridable} class="mb-2 text-xs" data-role="direction-controls">
       <%= cond do %>
         <% @detectable -> %>
-          <p class="text-base-content/70">
+          <p class="text-muted">
             Direction: auto-detected ({direction_label(@inverted)}).
-            <span class="text-base-content/60">Detected from the notches you captured.</span>
+            <span class="text-muted">Detected from the notches you captured.</span>
           </p>
         <% @manual -> %>
           <div class="flex flex-wrap items-center gap-2">
-            <span class="text-base-content/70">
+            <span class="text-muted">
               Direction: set manually ({direction_label(@inverted)})
             </span>
             <.direction_button direction="auto" event_target={@event_target}>
@@ -318,7 +318,7 @@ defmodule TreninoWeb.LeverVisualization do
           </div>
         <% true -> %>
           <div class="flex flex-wrap items-center gap-2">
-            <span class="text-base-content/70">Set manually:</span>
+            <span class="text-muted">Set manually:</span>
             <.direction_button direction="same" event_target={@event_target}>
               Same as simulator
             </.direction_button>

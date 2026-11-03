@@ -27,6 +27,8 @@ defmodule TreninoWeb.LeverSetupWizard do
 
   use TreninoWeb, :live_component
 
+  require Logger
+
   alias Trenino.Hardware
   alias Trenino.Hardware.InputLabel
   alias Trenino.Train
@@ -443,7 +445,14 @@ defmodule TreninoWeb.LeverSetupWizard do
           {:noreply, put_flash(socket, :error, "No range detected. Move the lever.")}
 
         {:error, reason} ->
-          {:noreply, put_flash(socket, :error, "Capture failed: #{inspect(reason)}")}
+          Logger.error("Notch capture failed: #{inspect(reason)}")
+
+          {:noreply,
+           put_flash(
+             socket,
+             :error,
+             "This position could not be captured. Move the lever through the notch and try again."
+           )}
       end
     else
       {:noreply, socket}
@@ -495,7 +504,14 @@ defmodule TreninoWeb.LeverSetupWizard do
           {:noreply, put_flash(socket, :error, "Capture every notch before saving.")}
 
         {:error, reason} ->
-          {:noreply, put_flash(socket, :error, "Save failed: #{inspect(reason)}")}
+          Logger.error("Saving notch mapping failed: #{inspect(reason)}")
+
+          {:noreply,
+           put_flash(
+             socket,
+             :error,
+             "The lever mapping could not be saved. Try again; if it keeps failing, restart the setup."
+           )}
       end
     else
       {:noreply, socket}
@@ -633,11 +649,34 @@ defmodule TreninoWeb.LeverSetupWizard do
       Train.subscribe_notch_mapping(lever_config.id)
       start_mapping_session(socket, lever_config, selected_input, port)
     else
-      {:config, nil} -> put_flash(socket, :error, "Missing lever config")
-      {:input, nil} -> put_flash(socket, :error, "Missing selected input")
-      {:port, nil} -> put_flash(socket, :error, "Device not connected")
-      {:calibration, nil} -> put_flash(socket, :error, "Input not calibrated")
-      {:error, reason} -> put_flash(socket, :error, "Failed to bind input: #{inspect(reason)}")
+      {:config, nil} ->
+        put_flash(
+          socket,
+          :error,
+          "This lever has no calibration yet. Go back and run auto-calibration first."
+        )
+
+      {:input, nil} ->
+        put_flash(socket, :error, "No hardware input is selected. Go back and pick one.")
+
+      {:port, nil} ->
+        put_flash(socket, :error, "Controller disconnected. Check the USB cable and reconnect.")
+
+      {:calibration, nil} ->
+        put_flash(
+          socket,
+          :error,
+          "This input is not calibrated. Calibrate it on the Devices page first."
+        )
+
+      {:error, reason} ->
+        Logger.error("Binding input to lever failed: #{inspect(reason)}")
+
+        put_flash(
+          socket,
+          :error,
+          "The input could not be linked to this lever. Try again; if it keeps failing, reload the page."
+        )
     end
   end
 
@@ -660,7 +699,13 @@ defmodule TreninoWeb.LeverSetupWizard do
         |> assign(:mapping_state, state)
 
       {:error, reason} ->
-        put_flash(socket, :error, "Failed to start mapping: #{inspect(reason)}")
+        Logger.error("Starting notch mapping failed: #{inspect(reason)}")
+
+        put_flash(
+          socket,
+          :error,
+          "Position mapping could not start. Close the setup and open it again."
+        )
     end
   end
 
@@ -752,7 +797,7 @@ defmodule TreninoWeb.LeverSetupWizard do
     ~H"""
     <div class="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div class="absolute inset-0 bg-black/50" phx-click="cancel" phx-target={@myself} />
-      <div class="relative bg-base-100 rounded-xl shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col">
+      <div class="relative bg-base-200 rounded-xl shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col">
         <.wizard_header
           element={@element}
           current_step={@current_step}
@@ -789,8 +834,8 @@ defmodule TreninoWeb.LeverSetupWizard do
     <div class="p-4 border-b border-base-300">
       <div class="flex items-center justify-between">
         <div>
-          <h2 class="text-lg font-semibold">Configure Lever</h2>
-          <p class="text-sm text-base-content/60">{@element.name}</p>
+          <h2 class="text-xl font-semibold">Configure Lever</h2>
+          <p class="text-sm text-muted">{@element.name}</p>
         </div>
         <button
           type="button"
@@ -876,7 +921,7 @@ defmodule TreninoWeb.LeverSetupWizard do
           @is_configured && not @is_active && not @needs_redo && "bg-success text-success-content",
           @needs_redo && "bg-warning text-warning-content",
           (not @is_active and not @is_configured and not @needs_redo) &&
-            "bg-base-300 text-base-content/50"
+            "bg-base-200 border border-base-300 text-muted"
         ]}>
           <.icon
             :if={@is_configured and not @is_active and not @needs_redo}
@@ -891,7 +936,7 @@ defmodule TreninoWeb.LeverSetupWizard do
           @is_active && "font-medium",
           @is_configured && not @is_active && not @needs_redo && "text-success",
           @needs_redo && "text-warning font-medium",
-          (not @is_active and not @is_configured and not @needs_redo) && "text-base-content/50"
+          (not @is_active and not @is_configured and not @needs_redo) && "text-muted"
         ]}>
           {@label}
         </span>
@@ -980,8 +1025,8 @@ defmodule TreninoWeb.LeverSetupWizard do
     ~H"""
     <div class="flex-1 overflow-y-auto p-6">
       <div class="max-w-lg mx-auto">
-        <h3 class="text-lg font-semibold mb-2">Select Lever Type</h3>
-        <p class="text-sm text-base-content/60 mb-4">
+        <h3 class="text-xl font-semibold mb-2">Select Lever Type</h3>
+        <p class="text-sm text-muted mb-4">
           Choose the type of lever hardware you want to use.
         </p>
 
@@ -1003,10 +1048,10 @@ defmodule TreninoWeb.LeverSetupWizard do
             />
             <div class="flex-1">
               <div class="font-medium">Analog Potentiometer</div>
-              <p class="text-sm text-base-content/60 mt-1">
+              <p class="text-sm text-muted mt-1">
                 Traditional analog lever using a potentiometer for position sensing
               </p>
-              <p class="text-xs text-base-content/50 mt-2">
+              <p class="text-xs text-muted mt-2">
                 Requires calibrated analog input pin
               </p>
             </div>
@@ -1029,12 +1074,12 @@ defmodule TreninoWeb.LeverSetupWizard do
     ~H"""
     <div class="flex-1 overflow-y-auto p-6">
       <div class="max-w-lg mx-auto">
-        <h3 class="text-lg font-semibold mb-2">Select Hardware Input</h3>
-        <p class="text-sm text-base-content/60 mb-4">
+        <h3 class="text-xl font-semibold mb-2">Select Hardware Input</h3>
+        <p class="text-sm text-muted mb-4">
           Choose a calibrated lever to control this element. Only calibrated analog inputs are shown.
         </p>
 
-        <div :if={Enum.empty?(@available_inputs)} class="alert alert-warning">
+        <div :if={Enum.empty?(@available_inputs)} class="alert alert-soft alert-warning">
           <.icon name="hero-exclamation-triangle" class="w-5 h-5" />
           <div>
             <p class="font-medium">No calibrated levers available</p>
@@ -1063,8 +1108,8 @@ defmodule TreninoWeb.LeverSetupWizard do
             />
             <div class="flex-1">
               <div class="font-medium">{input.name || "Unnamed Input"}</div>
-              <div class="text-sm text-base-content/60">
-                {input.device.name} · {InputLabel.pin(input)}
+              <div class="text-sm text-muted">
+                {input.device.name} · <span class="font-mono">{InputLabel.pin(input)}</span>
                 <span :if={input.calibration} class="text-success">
                   — Calibrated
                 </span>
@@ -1092,7 +1137,7 @@ defmodule TreninoWeb.LeverSetupWizard do
       <div class="p-4 border-b border-base-300 bg-base-200/50">
         <div class="flex items-center justify-between">
           <div class="flex items-center gap-2">
-            <.icon name="hero-sparkles" class="w-5 h-5 text-primary" />
+            <.icon name="hero-sparkles" class="w-5 h-5" />
             <span class="font-medium">Quick Setup</span>
           </div>
           <button
@@ -1104,7 +1149,7 @@ defmodule TreninoWeb.LeverSetupWizard do
             <.icon name="hero-cursor-arrow-rays" class="w-4 h-4" /> Auto-Detect Control
           </button>
         </div>
-        <p class="text-xs text-base-content/60 mt-1">
+        <p class="text-xs text-muted mt-1">
           Move the lever in the simulator to detect it, or browse the API tree below
         </p>
       </div>
@@ -1124,13 +1169,13 @@ defmodule TreninoWeb.LeverSetupWizard do
         <h4 class="text-sm font-medium mb-2">Detected Endpoints</h4>
         <div class="grid grid-cols-3 gap-2 text-xs font-mono">
           <div class="truncate" title={@detected_endpoints[:min_endpoint]}>
-            <span class="text-base-content/60">Min:</span> {@detected_endpoints[:min_endpoint] || "—"}
+            <span class="text-muted">Min:</span> {@detected_endpoints[:min_endpoint] || "—"}
           </div>
           <div class="truncate" title={@detected_endpoints[:max_endpoint]}>
-            <span class="text-base-content/60">Max:</span> {@detected_endpoints[:max_endpoint] || "—"}
+            <span class="text-muted">Max:</span> {@detected_endpoints[:max_endpoint] || "—"}
           </div>
           <div class="truncate" title={@detected_endpoints[:value_endpoint]}>
-            <span class="text-base-content/60">Value:</span> {@detected_endpoints[:value_endpoint] ||
+            <span class="text-muted">Value:</span> {@detected_endpoints[:value_endpoint] ||
               "—"}
           </div>
         </div>
@@ -1155,12 +1200,12 @@ defmodule TreninoWeb.LeverSetupWizard do
     ~H"""
     <div class="flex-1 overflow-y-auto p-6">
       <div class="max-w-lg mx-auto text-center">
-        <div class="w-16 h-16 mx-auto mb-4 rounded-full bg-primary/10 flex items-center justify-center">
-          <.icon name="hero-cog-6-tooth" class="w-8 h-8 text-primary" />
+        <div class="w-16 h-16 mx-auto mb-4 rounded-full bg-base-200 flex items-center justify-center">
+          <.icon name="hero-cog-6-tooth" class="w-8 h-8" />
         </div>
 
-        <h3 class="text-lg font-semibold mb-2">Auto-Calibration</h3>
-        <p class="text-base-content/70 mb-6">
+        <h3 class="text-xl font-semibold mb-2">Auto-Calibration</h3>
+        <p class="text-muted mb-6">
           The system will detect notch positions by stepping through the lever range and reading simulator values.
         </p>
 
@@ -1183,7 +1228,7 @@ defmodule TreninoWeb.LeverSetupWizard do
         </div>
 
         <div class="mt-6">
-          <p class="text-sm text-base-content/50">
+          <p class="text-sm text-muted">
             This process takes about 5-10 seconds.
           </p>
         </div>
@@ -1220,14 +1265,14 @@ defmodule TreninoWeb.LeverSetupWizard do
     <div class="flex-1 overflow-y-auto p-6">
       <div class="max-w-lg mx-auto text-center">
         <div :if={@calibration_status == :running}>
-          <div class="w-16 h-16 mx-auto mb-4 rounded-full bg-primary/10 flex items-center justify-center">
-            <span class="loading loading-spinner loading-lg text-primary"></span>
+          <div class="w-16 h-16 mx-auto mb-4 rounded-full bg-base-200 flex items-center justify-center">
+            <span class="loading loading-spinner loading-lg"></span>
           </div>
-          <h3 class="text-lg font-semibold mb-2">Analyzing Lever...</h3>
-          <p class="text-base-content/70 mb-4">
+          <h3 class="text-xl font-semibold mb-2">Analyzing Lever...</h3>
+          <p class="text-muted mb-4">
             Sweeping through lever positions and reading values.
           </p>
-          <p class="text-sm text-base-content/50 mt-2">
+          <p class="text-sm text-muted mt-2">
             This may take 10-15 seconds
           </p>
         </div>
@@ -1236,11 +1281,11 @@ defmodule TreninoWeb.LeverSetupWizard do
           <div class="w-16 h-16 mx-auto mb-4 rounded-full bg-success/10 flex items-center justify-center">
             <.icon name="hero-check-circle" class="w-8 h-8 text-success" />
           </div>
-          <h3 class="text-lg font-semibold mb-2">Analysis Complete!</h3>
-          <p class="text-base-content/70 mb-2">
+          <h3 class="text-xl font-semibold mb-2">Analysis Complete!</h3>
+          <p class="text-muted mb-2">
             Detected as <span class="font-semibold">{format_lever_type(@lever_type)}</span> lever
           </p>
-          <p class="text-base-content/60 text-sm mb-4">
+          <p class="text-muted text-sm mb-4">
             Found {length(@notches)} notches
           </p>
 
@@ -1252,14 +1297,13 @@ defmodule TreninoWeb.LeverSetupWizard do
               <div class="flex items-center gap-2">
                 <span class={[
                   "w-6 h-6 rounded-full flex items-center justify-center text-xs font-medium",
-                  notch.type == :gate && "bg-warning/20 text-warning",
-                  notch.type == :linear && "bg-info/20 text-info"
+                  "bg-base-300 text-base-content"
                 ]}>
                   {if notch.type == :gate, do: "G", else: "L"}
                 </span>
                 <span class="font-medium">{notch.description || "Notch #{idx}"}</span>
               </div>
-              <span class="font-mono text-sm text-base-content/60">
+              <span class="font-mono text-sm text-muted">
                 {format_notch_value(notch)}
               </span>
             </div>
@@ -1270,7 +1314,7 @@ defmodule TreninoWeb.LeverSetupWizard do
           <div class="w-16 h-16 mx-auto mb-4 rounded-full bg-error/10 flex items-center justify-center">
             <.icon name="hero-exclamation-circle" class="w-8 h-8 text-error" />
           </div>
-          <h3 class="text-lg font-semibold mb-2">Calibration Failed</h3>
+          <h3 class="text-xl font-semibold mb-2">Calibration Failed</h3>
           <p class="text-error mb-4">{@calibration_error}</p>
         </div>
       </div>
@@ -1300,12 +1344,20 @@ defmodule TreninoWeb.LeverSetupWizard do
   defp format_lever_type(:hybrid), do: "Hybrid"
   defp format_lever_type(_), do: "Unknown"
 
-  defp format_calibration_error(:no_client), do: "Simulator not connected"
-  defp format_calibration_error(:no_control_path), do: "Could not determine control path"
-  defp format_calibration_error(:insufficient_samples), do: "Could not collect enough samples"
+  defp format_calibration_error(:no_client),
+    do: "Train Sim World is not connected. Start the game, then go back and try again."
 
-  defp format_calibration_error({:http_error, code, msg}),
-    do: "Simulator error: #{code} - #{msg}"
+  defp format_calibration_error(:no_control_path),
+    do: "Trenino could not find this lever in the simulator. Go back and pick the endpoint again."
+
+  defp format_calibration_error(:insufficient_samples),
+    do:
+      "Not enough readings were collected. Make sure you are in the cab, then go back and try again."
+
+  defp format_calibration_error({:http_error, code, msg} = reason) do
+    Logger.error("Lever calibration simulator error: #{inspect(reason)}")
+    "The simulator returned an error (#{code}: #{msg}). Go back and try again."
+  end
 
   defp format_calibration_error(%Ecto.Changeset{} = cs) do
     Ecto.Changeset.traverse_errors(cs, fn {msg, opts} ->
@@ -1316,8 +1368,11 @@ defmodule TreninoWeb.LeverSetupWizard do
     |> Enum.map_join("; ", fn {field, errors} -> "#{field}: #{Enum.join(errors, ", ")}" end)
   end
 
-  defp format_calibration_error(reason) when is_atom(reason), do: Atom.to_string(reason)
-  defp format_calibration_error(reason), do: inspect(reason)
+  defp format_calibration_error(reason) do
+    Logger.error("Lever calibration failed: #{inspect(reason)}")
+
+    "Something unexpected happened. Go back and try again; if it continues, check the log and report it."
+  end
 
   # Step 5: Map Notches
   #
@@ -1335,12 +1390,12 @@ defmodule TreninoWeb.LeverSetupWizard do
     ~H"""
     <div class="flex-1 overflow-y-auto p-6">
       <div :if={is_nil(@mapping_state)} class="flex items-center justify-center h-full">
-        <span class="loading loading-spinner loading-lg text-primary"></span>
+        <span class="loading loading-spinner loading-lg"></span>
       </div>
 
       <div :if={@mapping_state} class="max-w-2xl mx-auto">
-        <h3 class="text-lg font-semibold mb-2">Map Hardware Positions</h3>
-        <p class="text-sm text-base-content/60 mb-4">
+        <h3 class="text-xl font-semibold mb-2">Map Hardware Positions</h3>
+        <p class="text-sm text-muted mb-4">
           Move your physical lever to capture the range for each notch.
           <%= if @preview do %>
             The “Your lever” strip shows where each captured notch sits on your
@@ -1381,10 +1436,10 @@ defmodule TreninoWeb.LeverSetupWizard do
                   @mapping_state.current_notch_index
                 )}
               </h4>
-              <p class="text-xs text-base-content/60 mt-0.5">
+              <p class="text-xs text-muted mt-0.5">
                 Train output: {format_notch_output(@mapping_state.current_notch)}
               </p>
-              <p class="text-sm text-base-content/70 mt-2">
+              <p class="text-sm text-muted mt-2">
                 {capture_instruction(
                   @mapping_state.current_notch,
                   @mapping_state.current_notch_index
@@ -1392,9 +1447,7 @@ defmodule TreninoWeb.LeverSetupWizard do
               </p>
             </div>
             <span class={[
-              "badge shrink-0",
-              @mapping_state.current_notch.type == :gate && "badge-warning",
-              @mapping_state.current_notch.type == :linear && "badge-info"
+              "badge badge-ghost shrink-0"
             ]}>
               {if @mapping_state.current_notch.type == :gate, do: "Gate", else: "Linear"}
             </span>
@@ -1423,7 +1476,7 @@ defmodule TreninoWeb.LeverSetupWizard do
               />
             </div>
 
-            <div class="flex items-center justify-center gap-4 text-sm text-base-content/60">
+            <div class="flex items-center justify-center gap-4 text-sm text-muted">
               {@mapping_state.sample_count} samples collected
             </div>
 
@@ -1483,13 +1536,13 @@ defmodule TreninoWeb.LeverSetupWizard do
                 @preview && @preview[:direction_known] && @preview[:inverted] &&
                   @preview[:direction_source] != :manual
               }
-              class="text-sm text-base-content/70 mt-1"
+              class="text-sm text-muted mt-1"
             >
               Your lever runs opposite to the simulator — that's fine, it's handled automatically.
             </p>
             <p
               :if={@preview && @preview[:direction_source] == :manual}
-              class="text-sm text-base-content/70 mt-1"
+              class="text-sm text-muted mt-1"
             >
               You set the direction manually: {if @preview[:inverted],
                 do: "your lever runs opposite to the simulator.",
@@ -1497,7 +1550,7 @@ defmodule TreninoWeb.LeverSetupWizard do
             </p>
             <p
               :if={!(@preview && @preview[:low_end] && @preview[:high_end])}
-              class="text-sm text-base-content/60"
+              class="text-sm text-muted"
             >
               Review the mapping above, then save to continue.
             </p>
@@ -1534,13 +1587,13 @@ defmodule TreninoWeb.LeverSetupWizard do
           </div>
 
           <p :if={@preview} class="text-sm text-center mt-4">
-            <span class="text-base-content/60">Lever now →</span>
+            <span class="text-muted">Lever now →</span>
             <%= if @preview[:live] do %>
               <span class="font-medium">{end_display_name(@preview.live)}</span>, sim {format_sim(
                 @preview.live.sim_input
               )}
             <% else %>
-              <span class="text-base-content/60">
+              <span class="text-muted">
                 {format_hardware_pct(@mapping_state.current_value, @mapping_state.total_travel)} (not in a captured notch)
               </span>
             <% end %>
@@ -1579,13 +1632,13 @@ defmodule TreninoWeb.LeverSetupWizard do
     <div>
       <div class={[
         "font-mono font-bold",
-        @primary && "text-3xl text-primary",
-        !@primary && "text-2xl text-info"
+        @primary && "text-2xl",
+        !@primary && "text-xl"
       ]}>
         {format_hardware_pct(@value, @total_travel)}
       </div>
-      <div class="text-xs text-base-content/60">{@label}</div>
-      <div class="text-[10px] font-mono text-base-content/60">raw {format_calibrated(@value)}</div>
+      <div class="text-xs text-muted">{@label}</div>
+      <div class="text-xs font-mono text-muted">raw {format_calibrated(@value)}</div>
     </div>
     """
   end

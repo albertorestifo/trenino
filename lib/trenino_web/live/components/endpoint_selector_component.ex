@@ -268,12 +268,12 @@ defmodule TreninoWeb.EndpointSelectorComponent do
     ~H"""
     <div class="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div class="absolute inset-0 bg-black/50" phx-click="cancel" phx-target={@myself} />
-      <div class="relative bg-base-100 rounded-xl shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col">
+      <div class="relative bg-base-200 rounded-xl shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col">
         <div class="p-4 border-b border-base-300">
           <div class="flex items-center justify-between">
             <div>
-              <h2 class="text-lg font-semibold">Select Endpoint</h2>
-              <p :if={@selected_endpoint} class="text-sm text-base-content/60 font-mono">
+              <h2 class="text-xl font-semibold">Select Endpoint</h2>
+              <p :if={@selected_endpoint} class="text-sm text-muted font-mono">
                 {@selected_endpoint}
               </p>
             </div>
@@ -312,7 +312,7 @@ defmodule TreninoWeb.EndpointSelectorComponent do
             <div class="p-4 border-b border-base-300 bg-base-200/50">
               <div class="flex items-center justify-between">
                 <div class="flex items-center gap-2">
-                  <.icon name="hero-sparkles" class="w-5 h-5 text-primary" />
+                  <.icon name="hero-sparkles" class="w-5 h-5" />
                   <span class="font-medium">Quick Setup</span>
                 </div>
                 <button
@@ -324,7 +324,7 @@ defmodule TreninoWeb.EndpointSelectorComponent do
                   <.icon name="hero-cursor-arrow-rays" class="w-4 h-4" /> Auto-Detect Control
                 </button>
               </div>
-              <p class="text-xs text-base-content/60 mt-1">
+              <p class="text-xs text-muted mt-1">
                 Interact with a control in the simulator to automatically detect it, or browse below
               </p>
             </div>
@@ -397,7 +397,7 @@ defmodule TreninoWeb.EndpointSelectorComponent do
         "w-6 h-6 rounded-full flex items-center justify-center text-xs font-medium",
         @active && "bg-primary text-primary-content",
         @completed && "bg-success text-success-content",
-        (not @active and not @completed) && "bg-base-300 text-base-content/50"
+        (not @active and not @completed) && "bg-base-200 border border-base-300 text-muted"
       ]}>
         <.icon :if={@completed} name="hero-check" class="w-4 h-4" />
         <span :if={not @completed}>{@step}</span>
@@ -405,7 +405,7 @@ defmodule TreninoWeb.EndpointSelectorComponent do
       <span class={[
         "text-sm",
         @active && "font-medium",
-        (not @active and not @completed) && "text-base-content/50"
+        (not @active and not @completed) && "text-muted"
       ]}>
         {@label}
       </span>
@@ -444,7 +444,7 @@ defmodule TreninoWeb.EndpointSelectorComponent do
             </span>
             <input
               type="checkbox"
-              class="toggle toggle-sm"
+              class="toggle toggle-sm toggle-primary"
               checked={@value_config_mode == :manual}
               phx-click="set_value_config_mode"
               phx-value-mode={if @value_config_mode == :manual, do: "auto", else: "manual"}
@@ -469,7 +469,7 @@ defmodule TreninoWeb.EndpointSelectorComponent do
               class="input input-bordered w-full"
               placeholder="Enter value..."
             />
-            <p class="text-xs text-base-content/60 mt-1">
+            <p class="text-xs text-muted mt-1">
               Enter the exact value to use for this endpoint
             </p>
           </div>
@@ -480,7 +480,7 @@ defmodule TreninoWeb.EndpointSelectorComponent do
             <div class="flex items-center justify-between">
               <div>
                 <p class="font-medium">Detect Value</p>
-                <p class="text-xs text-base-content/60">
+                <p class="text-xs text-muted">
                   Interact with the control in the simulator to detect its value
                 </p>
               </div>
@@ -500,10 +500,10 @@ defmodule TreninoWeb.EndpointSelectorComponent do
             class="bg-primary/10 border border-primary rounded-lg p-4"
           >
             <div class="flex items-center gap-3 mb-3">
-              <span class="loading loading-dots loading-md text-primary"></span>
+              <span class="loading loading-dots loading-md"></span>
               <div>
                 <p class="font-medium text-primary">Detecting value...</p>
-                <p class="text-xs text-base-content/60">
+                <p class="text-xs text-muted">
                   Interact with the control in the simulator
                 </p>
               </div>
@@ -529,7 +529,7 @@ defmodule TreninoWeb.EndpointSelectorComponent do
             </div>
 
             <div class="bg-base-100 rounded p-3 text-center mb-4">
-              <p class="text-xs text-base-content/60">Detected Value</p>
+              <p class="text-xs text-muted">Detected Value</p>
               <p class="font-mono text-2xl">{@detected_value}</p>
             </div>
 
@@ -546,7 +546,7 @@ defmodule TreninoWeb.EndpointSelectorComponent do
                 type="button"
                 phx-click="confirm_detected_value"
                 phx-target={@myself}
-                class="btn btn-success btn-sm"
+                class="btn btn-primary btn-sm"
               >
                 <.icon name="hero-check" class="w-4 h-4" /> Confirm
               </button>

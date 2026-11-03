@@ -46,14 +46,16 @@ defmodule TreninoWeb.ConfigurationEditLiveTest do
       {:error, {:redirect, %{to: "/", flash: flash}}} =
         live(conn, "/configurations/999999999")
 
-      assert flash["error"] == "Configuration not found"
+      assert flash["error"] ==
+               "That configuration no longer exists. Pick another one from Devices."
     end
 
     test "redirects with invalid config_id format", %{conn: conn} do
       {:error, {:redirect, %{to: "/", flash: flash}}} =
         live(conn, "/configurations/invalid")
 
-      assert flash["error"] == "Invalid configuration ID"
+      assert flash["error"] ==
+               "That configuration link is not valid. Pick a configuration from Devices."
     end
   end
 
@@ -270,28 +272,21 @@ defmodule TreninoWeb.ConfigurationEditLiveTest do
       assert found.id == updated_device.id
     end
 
-    test "configuration failure reasons" do
-      # Test the error message mapping logic from handle_info
-      reasons = [:timeout, :device_rejected, :no_inputs, :unknown]
+    test "configuration failure reasons map to a plain next step" do
+      alias TreninoWeb.ConfigurationEditLive
 
-      expected_messages = [
-        "Configuration timed out - device did not respond",
-        "Device rejected the configuration",
-        "Cannot apply empty configuration",
-        "Failed to apply configuration"
-      ]
+      assert ConfigurationEditLive.configuration_failure_message(:timeout) =~
+               "Check the USB cable and reconnect"
 
-      for {reason, expected} <- Enum.zip(reasons, expected_messages) do
-        message =
-          case reason do
-            :timeout -> "Configuration timed out - device did not respond"
-            :device_rejected -> "Device rejected the configuration"
-            :no_inputs -> "Cannot apply empty configuration"
-            _ -> "Failed to apply configuration"
-          end
+      assert ConfigurationEditLive.configuration_failure_message(:device_rejected) =~
+               "Update the firmware"
 
-        assert message == expected, "Expected '#{expected}' for reason #{inspect(reason)}"
-      end
+      assert ConfigurationEditLive.configuration_failure_message(:no_inputs) =~
+               "Add at least one input"
+
+      unknown = ConfigurationEditLive.configuration_failure_message({:unexpected, :term})
+      assert unknown =~ "could not be applied"
+      refute unknown =~ "unexpected"
     end
 
     test "input value updates" do

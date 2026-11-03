@@ -320,8 +320,8 @@ defmodule TreninoWeb.LeverSetupWizardTest do
 
       # Detect Notches (step 3) should NOT be configured (no lever_type)
       # Map Positions (step 4) should NOT be configured
-      # These should show as base-300 (gray/inactive)
-      assert html =~ "bg-base-300"
+      # These should show the neutral inactive step styling
+      assert html =~ "bg-base-200 border border-base-300 text-muted"
     end
   end
 

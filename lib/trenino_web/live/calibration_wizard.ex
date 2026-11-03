@@ -20,6 +20,8 @@ defmodule TreninoWeb.CalibrationWizard do
 
   use TreninoWeb, :live_component
 
+  require Logger
+
   alias Trenino.Hardware
   alias Trenino.Hardware.Calibration.Session
   alias Trenino.Hardware.InputLabel
@@ -79,7 +81,14 @@ defmodule TreninoWeb.CalibrationWizard do
         {:noreply, put_flash(socket, :error, "Need more movement. Sweep through the full range.")}
 
       {:error, reason} ->
-        {:noreply, put_flash(socket, :error, "Cannot advance: #{inspect(reason)}")}
+        Logger.error("Calibration step could not advance: #{inspect(reason)}")
+
+        {:noreply,
+         put_flash(
+           socket,
+           :error,
+           "This step could not continue. Cancel and start the calibration again."
+         )}
     end
   end
 
@@ -98,7 +107,7 @@ defmodule TreninoWeb.CalibrationWizard do
     ~H"""
     <div class="fixed inset-0 z-50 flex items-center justify-center">
       <div class="absolute inset-0 bg-black/50" phx-click="cancel" phx-target={@myself} />
-      <div class="relative bg-base-100 rounded-xl shadow-xl w-full max-w-lg mx-4 p-6">
+      <div class="relative bg-base-200 rounded-xl shadow-xl w-full max-w-lg mx-4 p-6">
         <.wizard_header input={@input} target={@myself} />
 
         <.loading_state :if={is_nil(@session_state)} />
@@ -126,7 +135,7 @@ defmodule TreninoWeb.CalibrationWizard do
     <div class="flex items-center justify-between mb-6">
       <div>
         <h2 class="text-xl font-semibold">Calibrate Input</h2>
-        <p class="text-sm text-base-content/70">{InputLabel.pin(@input)}</p>
+        <p class="text-sm text-muted">{InputLabel.pin(@input)}</p>
       </div>
       <button
         phx-click="cancel"
@@ -143,8 +152,8 @@ defmodule TreninoWeb.CalibrationWizard do
   defp loading_state(assigns) do
     ~H"""
     <div class="flex flex-col items-center justify-center py-12">
-      <span class="loading loading-spinner loading-lg text-primary"></span>
-      <p class="mt-4 text-base-content/70">Starting calibration session...</p>
+      <span class="loading loading-spinner loading-lg"></span>
+      <p class="mt-4 text-muted">Starting calibration session...</p>
     </div>
     """
   end
@@ -194,11 +203,11 @@ defmodule TreninoWeb.CalibrationWizard do
   end
 
   defp step_class(index, current_index) when index == current_index do
-    "bg-primary text-primary-content ring-4 ring-primary/30"
+    "bg-primary text-primary-content outline-2 outline-offset-2 outline-primary"
   end
 
   defp step_class(_index, _current_index) do
-    "bg-base-300 text-base-content/50"
+    "bg-base-200 border border-base-300 text-muted"
   end
 
   attr :session_state, :map, required: true
@@ -232,11 +241,11 @@ defmodule TreninoWeb.CalibrationWizard do
   defp ready_step(assigns) do
     ~H"""
     <div class="text-center">
-      <div class="w-16 h-16 mx-auto mb-4 rounded-full bg-primary/10 flex items-center justify-center">
-        <.icon name="hero-play" class="w-8 h-8 text-primary" />
+      <div class="w-16 h-16 mx-auto mb-4 rounded-full bg-base-300 flex items-center justify-center">
+        <.icon name="hero-play" class="w-8 h-8 text-base-content" />
       </div>
-      <h3 class="text-lg font-semibold mb-2">Ready to Calibrate</h3>
-      <p class="text-base-content/70 mb-4">
+      <h3 class="text-xl font-semibold mb-2">Ready to Calibrate</h3>
+      <p class="text-muted mb-4">
         Move the input to its <strong>minimum</strong>
         position, then press <strong>Start</strong>
         to begin collecting samples.
@@ -250,11 +259,11 @@ defmodule TreninoWeb.CalibrationWizard do
   defp collecting_min_step(assigns) do
     ~H"""
     <div class="text-center">
-      <div class="w-16 h-16 mx-auto mb-4 rounded-full bg-info/10 flex items-center justify-center">
-        <.icon name="hero-arrow-down-circle" class="w-8 h-8 text-info" />
+      <div class="w-16 h-16 mx-auto mb-4 rounded-full bg-base-300 flex items-center justify-center">
+        <.icon name="hero-arrow-down-circle" class="w-8 h-8 text-base-content" />
       </div>
-      <h3 class="text-lg font-semibold mb-2">Set Minimum Position</h3>
-      <p class="text-base-content/70 mb-4">
+      <h3 class="text-xl font-semibold mb-2">Set Minimum Position</h3>
+      <p class="text-muted mb-4">
         Move the input to its <strong>minimum</strong> position and hold it steady.
       </p>
 
@@ -273,17 +282,17 @@ defmodule TreninoWeb.CalibrationWizard do
   defp sweeping_step(assigns) do
     ~H"""
     <div class="text-center">
-      <div class="w-16 h-16 mx-auto mb-4 rounded-full bg-warning/10 flex items-center justify-center">
-        <.icon name="hero-arrows-right-left" class="w-8 h-8 text-warning" />
+      <div class="w-16 h-16 mx-auto mb-4 rounded-full bg-base-300 flex items-center justify-center">
+        <.icon name="hero-arrows-right-left" class="w-8 h-8 text-base-content" />
       </div>
-      <h3 class="text-lg font-semibold mb-2">Sweep Through Range</h3>
-      <p class="text-base-content/70 mb-4">
+      <h3 class="text-xl font-semibold mb-2">Sweep Through Range</h3>
+      <p class="text-muted mb-4">
         Slowly move the input from <strong>minimum</strong> to <strong>maximum</strong> position.
       </p>
 
-      <div class="bg-base-200 rounded-lg p-4">
-        <div class="text-2xl font-bold text-primary">{@state.sweep_sample_count}</div>
-        <div class="text-sm text-base-content/70">samples collected</div>
+      <div class="bg-base-100 rounded-lg p-4">
+        <div class="text-2xl font-semibold font-mono">{@state.sweep_sample_count}</div>
+        <div class="text-sm text-muted">samples collected</div>
       </div>
     </div>
     """
@@ -294,11 +303,11 @@ defmodule TreninoWeb.CalibrationWizard do
   defp collecting_max_step(assigns) do
     ~H"""
     <div class="text-center">
-      <div class="w-16 h-16 mx-auto mb-4 rounded-full bg-success/10 flex items-center justify-center">
-        <.icon name="hero-arrow-up-circle" class="w-8 h-8 text-success" />
+      <div class="w-16 h-16 mx-auto mb-4 rounded-full bg-base-300 flex items-center justify-center">
+        <.icon name="hero-arrow-up-circle" class="w-8 h-8 text-base-content" />
       </div>
-      <h3 class="text-lg font-semibold mb-2">Set Maximum Position</h3>
-      <p class="text-base-content/70 mb-4">
+      <h3 class="text-xl font-semibold mb-2">Set Maximum Position</h3>
+      <p class="text-muted mb-4">
         Move the input to its <strong>maximum</strong> position and hold it steady.
       </p>
 
@@ -315,8 +324,8 @@ defmodule TreninoWeb.CalibrationWizard do
   defp analyzing_step(assigns) do
     ~H"""
     <div class="text-center py-8">
-      <span class="loading loading-spinner loading-lg text-primary"></span>
-      <p class="mt-4 text-base-content/70">Analyzing calibration data...</p>
+      <span class="loading loading-spinner loading-lg"></span>
+      <p class="mt-4 text-muted">Analyzing calibration data...</p>
     </div>
     """
   end
@@ -330,9 +339,9 @@ defmodule TreninoWeb.CalibrationWizard do
         <div class="w-16 h-16 mx-auto rounded-full bg-success/10 flex items-center justify-center">
           <.icon name="hero-check-circle" class="w-8 h-8 text-success" />
         </div>
-        <h3 class="text-lg font-semibold">Calibration Complete!</h3>
-        <p class="text-base-content/70">
-          The input has been calibrated successfully.
+        <h3 class="text-xl font-semibold">Calibration saved</h3>
+        <p class="text-muted">
+          The input is calibrated and ready to use.
         </p>
       </div>
 
@@ -340,8 +349,8 @@ defmodule TreninoWeb.CalibrationWizard do
         <div class="w-16 h-16 mx-auto rounded-full bg-error/10 flex items-center justify-center">
           <.icon name="hero-exclamation-circle" class="w-8 h-8 text-error" />
         </div>
-        <h3 class="text-lg font-semibold">Calibration Failed</h3>
-        <p class="text-base-content/70">
+        <h3 class="text-xl font-semibold">Calibration Failed</h3>
+        <p class="text-muted">
           {error_message(@state.result)}
         </p>
       </div>
@@ -364,9 +373,9 @@ defmodule TreninoWeb.CalibrationWizard do
       |> assign(:unique_ok, unique_ok)
 
     ~H"""
-    <div class="bg-base-200 rounded-lg p-4 space-y-2">
+    <div class="bg-base-100 rounded-lg p-4 space-y-2">
       <div class="flex items-center justify-between">
-        <span class="text-sm text-base-content/70">Samples</span>
+        <span class="text-sm text-muted">Samples</span>
         <span class={[
           "font-mono font-bold",
           if(@count_ok, do: "text-success", else: "text-base-content")
@@ -376,7 +385,7 @@ defmodule TreninoWeb.CalibrationWizard do
         </span>
       </div>
       <div class="flex items-center justify-between">
-        <span class="text-sm text-base-content/70">Unique values</span>
+        <span class="text-sm text-muted">Unique values</span>
         <span class={[
           "font-mono font-bold",
           if(@unique_ok, do: "text-success", else: "text-base-content")
@@ -429,11 +438,15 @@ defmodule TreninoWeb.CalibrationWizard do
   end
 
   def error_message({:error, reason}) when is_atom(reason) do
-    reason
-    |> Atom.to_string()
-    |> String.replace("_", " ")
-    |> String.capitalize()
+    summary =
+      reason
+      |> Atom.to_string()
+      |> String.replace("_", " ")
+      |> String.capitalize()
+
+    summary <> ". Cancel and start the calibration again."
   end
 
-  def error_message({:error, reason}), do: inspect(reason)
+  def error_message({:error, _reason}),
+    do: "Calibration failed. Cancel and start the calibration again."
 end

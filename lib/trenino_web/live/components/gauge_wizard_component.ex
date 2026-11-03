@@ -188,9 +188,9 @@ defmodule TreninoWeb.GaugeWizardComponent do
     do:
       "Manual control is already open elsewhere on this page. Use Resume train control in the axis controls, then try again."
 
-  def error_text({:leave_failed, reason}),
+  def error_text({:leave_failed, _reason}),
     do:
-      "Could not hand the gauge back (#{inspect(reason)}). Press Close to try again; the gauge stays under your control until it works."
+      "Could not hand the gauge back. Press Close to try again; the gauge stays under your control until it works."
 
   def error_text(:dial_shift_outside_limits),
     do:
@@ -310,7 +310,7 @@ defmodule TreninoWeb.GaugeWizardComponent do
       aria-label="Guided gauge setup"
     >
       <header class="flex flex-wrap items-center justify-between gap-2">
-        <h3 class="text-base font-semibold">Guided gauge setup: {@wizard.axis.name}</h3>
+        <h3 class="text-xl font-semibold">Guided gauge setup: {@wizard.axis.name}</h3>
         <button
           id={"#{@id}-close"}
           type="button"
@@ -342,7 +342,7 @@ defmodule TreninoWeb.GaugeWizardComponent do
         :if={@wizard.closed and @wizard.notice}
         id={"#{@id}-notice"}
         role="alert"
-        class="alert alert-warning text-sm"
+        class="alert alert-soft alert-warning text-sm"
       >
         <div class="space-y-2">
           <p>{notice_text(@wizard.notice)}</p>
@@ -365,7 +365,7 @@ defmodule TreninoWeb.GaugeWizardComponent do
         :if={@wizard.interrupted}
         id={"#{@id}-interrupted"}
         role="alert"
-        class="alert alert-warning text-sm"
+        class="alert alert-soft alert-warning text-sm"
       >
         <div class="space-y-2">
           <.interruption
@@ -429,14 +429,14 @@ defmodule TreninoWeb.GaugeWizardComponent do
           phx-click="act"
           phx-value-do="stop"
           phx-target={@myself}
-          class="btn btn-error"
+          class="btn btn-neutral"
         >
-          Stop
+          <.icon name="hero-stop-solid" class="size-4" /> Stop
         </button>
         <span class="text-sm" role="status">The needle is moving. Press Stop at any time.</span>
       </div>
 
-      <p class="text-xs text-base-content/60">
+      <p class="text-xs text-muted">
         Closing at any point stops the gauge and gives control back. Steps already saved stay saved.
       </p>
     </section>
@@ -484,7 +484,7 @@ defmodule TreninoWeb.GaugeWizardComponent do
       :if={@wizard.warning}
       id={"#{@id}-allcall-warning"}
       role="alert"
-      class="alert alert-warning text-sm"
+      class="alert alert-soft alert-warning text-sm"
     >
       <.icon name="hero-exclamation-triangle" class="size-5 shrink-0" />
       <p>{@wizard.warning}</p>
@@ -497,7 +497,7 @@ defmodule TreninoWeb.GaugeWizardComponent do
         />
         <span>
           <span class="font-medium">{prerequisite_label(item)}</span>
-          <span :if={item in @missing} class="block text-base-content/70">{prerequisite_text(item)}</span>
+          <span :if={item in @missing} class="block text-muted">{prerequisite_text(item)}</span>
           <button
             :if={item == :applied and :applied in @missing and :device not in @missing}
             id={"#{@id}-apply"}
@@ -523,7 +523,7 @@ defmodule TreninoWeb.GaugeWizardComponent do
         </span>
       </li>
     </ul>
-    <p :if={:applied in @missing and :device not in @missing} class="text-xs text-base-content/70">
+    <p :if={:applied in @missing and :device not in @missing} class="text-xs text-muted">
       Sending settings only configures the controller. The motor does not move.
     </p>
     <form id={"#{@id}-wiring-form"} phx-change="wiring" phx-target={@myself}>
@@ -665,7 +665,7 @@ defmodule TreninoWeb.GaugeWizardComponent do
     <div :if={@moved? and not @moving?} id={"#{@id}-direction-question"} class="space-y-2">
       <p class="font-medium">Did the needle move up the dial?</p>
       <.yes_no id={@id} myself={@myself} yes="Yes, it moved up" no="No, it moved down" />
-      <p class="text-xs text-base-content/70">
+      <p class="text-xs text-muted">
         If not, Trenino flips the direction and sends it to the controller. You then line the needle up on 0 again and repeat this check.
       </p>
     </div>
@@ -733,7 +733,7 @@ defmodule TreninoWeb.GaugeWizardComponent do
     <p :if={@moving?} role="status" class="text-sm">
       Moving the needle to about where {format_value(@current.value)} {@unit} should be.
     </p>
-    <div :if={@current.blocked} id={"#{@id}-blocked"} class="alert alert-warning text-sm">
+    <div :if={@current.blocked} id={"#{@id}-blocked"} class="alert alert-soft alert-warning text-sm">
       <div class="space-y-2">
         <p>
           This mark is further than the needle's allowed travel. The travel can be extended to {GaugeWizard.extended_max(
@@ -761,7 +761,7 @@ defmodule TreninoWeb.GaugeWizardComponent do
           @current.value
         )} {@unit} mark, then enter what the dial reads and capture it.
       </p>
-      <p :if={@wizard.obs.position} class="text-xs text-base-content/70">
+      <p :if={@wizard.obs.position} class="text-xs text-muted">
         Needle position: {@wizard.obs.position} steps
         <span :if={@slope}> · about {@slope} steps per {@unit}</span>
       </p>
@@ -816,7 +816,7 @@ defmodule TreninoWeb.GaugeWizardComponent do
     <div :if={not @moving?} class="space-y-2">
       <p class="font-medium">Is the needle exactly on the 0 mark?</p>
       <.yes_no id={@id} myself={@myself} yes="Yes, exactly on 0" no="No, it is off" />
-      <p class="text-xs text-base-content/70">
+      <p class="text-xs text-muted">
         If it is off, the motor skipped steps somewhere. You will line it up again and recheck.
       </p>
     </div>
@@ -860,7 +860,7 @@ defmodule TreninoWeb.GaugeWizardComponent do
     <p class="text-sm">
       You will tune it once: Trenino sweeps, you nudge the needle onto 0, and Trenino remembers the distance. The motor may click against the stop; that is normal.
     </p>
-    <p :if={@plan} id={"#{@id}-home-plan"} class="text-xs text-base-content/70">
+    <p :if={@plan} id={"#{@id}-home-plan"} class="text-xs text-muted">
       Sweep of {@plan.home_steps} steps at speed {@plan.home_speed}, allowed up to {@plan.home_timeout_ms} ms.
     </p>
     <p :if={@plan && @wizard.axis.home_steps < @plan.home_steps} class="text-sm text-warning">
@@ -888,7 +888,7 @@ defmodule TreninoWeb.GaugeWizardComponent do
         Skip for now
       </button>
     </div>
-    <p class="text-xs text-base-content/70">
+    <p class="text-xs text-muted">
       Setting it up sends new motor settings to the controller, so you will press Home next. The needle moves only when you press it.
     </p>
     """
@@ -944,7 +944,7 @@ defmodule TreninoWeb.GaugeWizardComponent do
     <p class="text-sm">
       Nudge the needle up until it sits exactly on the 0 mark. Trenino remembers how far you moved it.
     </p>
-    <p id={"#{@id}-nudge-distance"} class="text-xs text-base-content/70">
+    <p id={"#{@id}-nudge-distance"} class="text-xs text-muted">
       Moved so far: {@moved} steps. Zeroing distance will become {@wizard.home.backoff + @moved} steps.
     </p>
     <.nudge_buttons id={@id} myself={@myself} nudges={[-5, -1, 1, 5, 20, 50]} />
@@ -959,7 +959,7 @@ defmodule TreninoWeb.GaugeWizardComponent do
     >
       The needle is on 0
     </button>
-    <p class="text-xs text-base-content/70">
+    <p class="text-xs text-muted">
       This changes a motor setting, so the settings are sent again before the next sweep.
     </p>
     """
@@ -970,7 +970,7 @@ defmodule TreninoWeb.GaugeWizardComponent do
     <h4 class="font-medium">Check the sweep</h4>
     <p class="font-medium">Did the needle land exactly on the 0 mark?</p>
     <.yes_no id={@id} myself={@myself} yes="Yes, exactly on 0" no="No, adjust again" />
-    <p class="text-xs text-base-content/70">
+    <p class="text-xs text-muted">
       Adjusting again starts over from the stop: run the sweep once more and nudge the needle up onto 0.
     </p>
     """
@@ -1168,8 +1168,8 @@ defmodule TreninoWeb.GaugeWizardComponent do
       </thead>
       <tbody>
         <tr :for={point <- @points}>
-          <td>{format_value(point.value)}</td>
-          <td>{point.position}</td>
+          <td class="font-mono">{format_value(point.value)}</td>
+          <td class="font-mono">{point.position}</td>
         </tr>
       </tbody>
     </table>

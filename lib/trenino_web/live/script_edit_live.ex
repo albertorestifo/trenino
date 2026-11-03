@@ -38,7 +38,7 @@ defmodule TreninoWeb.ScriptEditLive do
        |> assign(:train, train)
        |> assign(:script, script)
        |> assign(:new_mode, false)
-       |> assign(:page_title, "Edit Script - #{script.name}")
+       |> assign(:page_title, "Edit script - #{script.name}")
        |> assign(:form, to_form(changeset))
        |> assign(:triggers, script.triggers)
        |> assign(:new_trigger, "")
@@ -49,7 +49,7 @@ defmodule TreninoWeb.ScriptEditLive do
       {:error, :not_found} ->
         {:ok,
          socket
-         |> put_flash(:error, "Not found")
+         |> put_flash(:error, "That script no longer exists. Pick a train to see its scripts.")
          |> redirect(to: ~p"/trains")}
     end
   end
@@ -68,7 +68,7 @@ defmodule TreninoWeb.ScriptEditLive do
          |> assign(:train, train)
          |> assign(:script, script)
          |> assign(:new_mode, true)
-         |> assign(:page_title, "New Script")
+         |> assign(:page_title, "New script")
          |> assign(:form, to_form(changeset))
          |> assign(:triggers, [])
          |> assign(:new_trigger, "")
@@ -79,7 +79,7 @@ defmodule TreninoWeb.ScriptEditLive do
       {:error, :not_found} ->
         {:ok,
          socket
-         |> put_flash(:error, "Train not found")
+         |> put_flash(:error, "That train no longer exists. Pick another one from Trains.")
          |> redirect(to: ~p"/trains")}
     end
   end
@@ -148,7 +148,12 @@ defmodule TreninoWeb.ScriptEditLive do
            |> put_flash(:info, if(new_enabled, do: "Script enabled", else: "Script disabled"))}
 
         {:error, _changeset} ->
-          {:noreply, put_flash(socket, :error, "Failed to update script")}
+          {:noreply,
+           put_flash(
+             socket,
+             :error,
+             "The script could not be updated. Try again; if it keeps failing, reload the page."
+           )}
       end
     end
   end
@@ -202,7 +207,10 @@ defmodule TreninoWeb.ScriptEditLive do
           {:noreply,
            socket
            |> assign(:form, to_form(Map.put(changeset, :action, :validate)))
-           |> put_flash(:error, "Failed to create script")}
+           |> put_flash(
+             :error,
+             "The script could not be created. Fix the highlighted fields and try again."
+           )}
       end
     else
       case TrainContext.update_script(socket.assigns.script, atomize_params(params)) do
@@ -220,7 +228,10 @@ defmodule TreninoWeb.ScriptEditLive do
           {:noreply,
            socket
            |> assign(:form, to_form(Map.put(changeset, :action, :validate)))
-           |> put_flash(:error, "Failed to save script")}
+           |> put_flash(
+             :error,
+             "The script could not be saved. Fix the highlighted fields and try again."
+           )}
       end
     end
   end
@@ -279,7 +290,7 @@ defmodule TreninoWeb.ScriptEditLive do
                 field={@form[:name]}
                 type="text"
                 placeholder="Script name"
-                class="input input-bordered w-full text-lg font-semibold"
+                class="input input-bordered w-full text-xl font-semibold"
               />
             </div>
 
@@ -287,13 +298,13 @@ defmodule TreninoWeb.ScriptEditLive do
               <label class="label cursor-pointer gap-2">
                 <span class={[
                   "text-sm font-medium",
-                  if(@script.enabled, do: "text-success", else: "text-base-content/50")
+                  if(@script.enabled, do: "text-success", else: "text-muted")
                 ]}>
                   {if @script.enabled, do: "Enabled", else: "Disabled"}
                 </span>
                 <input
                   type="checkbox"
-                  class="toggle toggle-sm toggle-success"
+                  class="toggle toggle-sm toggle-primary"
                   checked={@script.enabled}
                   phx-click="toggle_enabled"
                 />
@@ -323,7 +334,7 @@ defmodule TreninoWeb.ScriptEditLive do
           <%!-- Code editor --%>
           <div class="bg-base-200/50 rounded-xl p-4 mb-4">
             <div class="flex items-center justify-between mb-2">
-              <h3 class="text-sm font-semibold text-base-content/70">Lua Code</h3>
+              <h3 class="text-sm font-semibold text-muted">Lua Code</h3>
             </div>
             <.input
               field={@form[:code]}
@@ -338,9 +349,9 @@ defmodule TreninoWeb.ScriptEditLive do
 
         <%!-- Triggers --%>
         <div class="bg-base-200/50 rounded-xl p-4 mb-4">
-          <h3 class="text-sm font-semibold text-base-content/70 mb-3">
+          <h3 class="text-sm font-semibold text-muted mb-3">
             Triggers
-            <span class="text-xs font-normal text-base-content/40 ml-1">
+            <span class="text-xs font-normal text-muted ml-1">
               Simulator endpoints that fire on_change when their value changes
             </span>
           </h3>
@@ -355,7 +366,7 @@ defmodule TreninoWeb.ScriptEditLive do
                 type="button"
                 phx-click="remove_trigger"
                 phx-value-index={index}
-                class="text-base-content/40 hover:text-error ml-1"
+                class="text-muted hover:text-error ml-1"
                 title="Remove trigger"
               >
                 <.icon name="hero-x-mark" class="w-3 h-3" />
@@ -364,7 +375,7 @@ defmodule TreninoWeb.ScriptEditLive do
 
             <div
               :if={Enum.empty?(@triggers)}
-              class="text-sm text-base-content/40 py-1"
+              class="text-sm text-muted py-1"
             >
               No triggers added. Script will only run when triggered manually.
             </div>
@@ -391,7 +402,7 @@ defmodule TreninoWeb.ScriptEditLive do
         <%!-- Console --%>
         <div :if={not @new_mode} class="bg-base-200/50 rounded-xl p-4 mb-4">
           <div class="flex items-center justify-between mb-2">
-            <h3 class="text-sm font-semibold text-base-content/70">Console</h3>
+            <h3 class="text-sm font-semibold text-muted">Console</h3>
             <button type="button" phx-click="refresh_log" class="btn btn-ghost btn-xs">
               <.icon name="hero-arrow-path" class="w-3 h-3" /> Refresh
             </button>
@@ -406,7 +417,7 @@ defmodule TreninoWeb.ScriptEditLive do
             ]}
           >
             <%= if Enum.empty?(@console_log) do %>
-              <span class="text-base-content/30">
+              <span class="text-muted">
                 No log output yet. Run the script to see output.
               </span>
             <% else %>
@@ -430,21 +441,21 @@ defmodule TreninoWeb.ScriptEditLive do
             phx-click="toggle_outputs"
             class="flex items-center justify-between w-full"
           >
-            <h3 class="text-sm font-semibold text-base-content/70">
+            <h3 class="text-sm font-semibold text-muted">
               Hardware Outputs Reference
-              <span class="text-xs font-normal text-base-content/40 ml-1">
+              <span class="text-xs font-normal text-muted ml-1">
                 Use output.set(id, true/false) in your script
               </span>
             </h3>
             <.icon
               name={if @show_outputs, do: "hero-chevron-up", else: "hero-chevron-down"}
-              class="w-4 h-4 text-base-content/40"
+              class="w-4 h-4 text-muted"
             />
           </button>
 
           <div :if={@show_outputs} class="mt-3">
             <%= if Enum.empty?(@outputs) do %>
-              <p class="text-sm text-base-content/40">No hardware outputs configured.</p>
+              <p class="text-sm text-muted">No hardware outputs configured.</p>
             <% else %>
               <div class="overflow-x-auto">
                 <table class="table table-xs bg-base-100 rounded-lg">
@@ -461,7 +472,7 @@ defmodule TreninoWeb.ScriptEditLive do
                       <td class="font-mono">{output.id}</td>
                       <td>{output.name || "-"}</td>
                       <td class="font-mono">{output.pin}</td>
-                      <td class="text-base-content/60">{output.device_name}</td>
+                      <td class="text-muted">{output.device_name}</td>
                     </tr>
                   </tbody>
                 </table>

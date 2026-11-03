@@ -14,7 +14,13 @@ Trenino bridges custom Arduino hardware to Train Sim World. It handles the hard 
 
 ## Brand Personality
 
-Approachable, clear, purposeful. The tool should feel like a knowledgeable friend who speaks plainly, not a product trying to impress. Confidence without jargon.
+**Precise, tactile, calm.** Public line: "Your controls. Your railway."
+
+- **Precise:** aligned geometry and honest labels. Show what is connected and what is next.
+- **Tactile:** the mark references the lever. Generous controls and clear borders.
+- **Calm:** color is scarce and functional. No glow, gradients or decoration.
+
+Confidence comes from clear feedback. Speak plainly: "Connect your controller", "Calibration saved". Errors explain the next step: "Controller disconnected. Check the USB cable and reconnect." Write "Trenino" in prose. See DESIGN.md for the full voice, color and identity rules.
 
 ## Anti-references
 

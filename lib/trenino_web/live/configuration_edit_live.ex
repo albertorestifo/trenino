@@ -10,6 +10,8 @@ defmodule TreninoWeb.ConfigurationEditLive do
 
   use TreninoWeb, :live_view
 
+  require Logger
+
   import TreninoWeb.NavComponents
   import TreninoWeb.SharedComponents
 
@@ -35,7 +37,10 @@ defmodule TreninoWeb.ConfigurationEditLive do
       {:error, :invalid} ->
         {:ok,
          socket
-         |> put_flash(:error, "Invalid configuration ID")
+         |> put_flash(
+           :error,
+           "That configuration link is not valid. Pick a configuration from Devices."
+         )
          |> redirect(to: ~p"/")}
     end
   end
@@ -64,6 +69,7 @@ defmodule TreninoWeb.ConfigurationEditLive do
          {:ok, outputs} <- Hardware.list_outputs(socket.assigns.device.id) do
       {:noreply,
        socket
+       |> assign(:page_title, socket.assigns.device.name)
        |> assign(:new_mode, false)
        |> assign(:inputs, inputs)
        |> assign(:matrices, matrices)
@@ -72,13 +78,19 @@ defmodule TreninoWeb.ConfigurationEditLive do
       {:error, :invalid} ->
         {:noreply,
          socket
-         |> put_flash(:error, "Invalid configuration ID")
+         |> put_flash(
+           :error,
+           "That configuration link is not valid. Pick a configuration from Devices."
+         )
          |> redirect(to: ~p"/")}
 
       false ->
         {:noreply,
          socket
-         |> put_flash(:error, "Configuration mismatch")
+         |> put_flash(
+           :error,
+           "That configuration changed while it was opening. Pick it again from Devices."
+         )
          |> redirect(to: ~p"/")}
     end
   end
@@ -93,6 +105,7 @@ defmodule TreninoWeb.ConfigurationEditLive do
 
     {:ok,
      socket
+     |> assign(:page_title, "New configuration")
      |> assign(:device, device)
      |> assign(:device_form, to_form(changeset))
      |> assign(:inputs, [])
@@ -143,6 +156,7 @@ defmodule TreninoWeb.ConfigurationEditLive do
 
         {:ok,
          socket
+         |> assign(:page_title, device.name)
          |> assign(:device, device)
          |> assign(:device_form, to_form(changeset))
          |> assign(:inputs, inputs)
@@ -181,7 +195,10 @@ defmodule TreninoWeb.ConfigurationEditLive do
       {:error, :not_found} ->
         {:ok,
          socket
-         |> put_flash(:error, "Configuration not found")
+         |> put_flash(
+           :error,
+           "That configuration no longer exists. Pick another one from Devices."
+         )
          |> redirect(to: ~p"/")}
     end
   end
@@ -372,7 +389,12 @@ defmodule TreninoWeb.ConfigurationEditLive do
         {:noreply, assign(socket, :inputs, inputs)}
 
       {:error, _reason} ->
-        {:noreply, put_flash(socket, :error, "Failed to delete input")}
+        {:noreply,
+         put_flash(
+           socket,
+           :error,
+           "The input could not be deleted. Try again; if it keeps failing, reload the page."
+         )}
     end
   end
 
@@ -425,7 +447,12 @@ defmodule TreninoWeb.ConfigurationEditLive do
         {:noreply, assign(socket, :outputs, outputs)}
 
       {:error, _reason} ->
-        {:noreply, put_flash(socket, :error, "Failed to delete output")}
+        {:noreply,
+         put_flash(
+           socket,
+           :error,
+           "The output could not be deleted. Try again; if it keeps failing, reload the page."
+         )}
     end
   end
 
@@ -464,7 +491,12 @@ defmodule TreninoWeb.ConfigurationEditLive do
         {:noreply, socket |> assign(:i2c_modal_open, true) |> assign(:i2c_modal_module, mod)}
 
       {:error, :not_found} ->
-        {:noreply, put_flash(socket, :error, "Module not found")}
+        {:noreply,
+         put_flash(
+           socket,
+           :error,
+           "That I2C module no longer exists. Reload the page to see the current list."
+         )}
     end
   end
 
@@ -481,7 +513,12 @@ defmodule TreninoWeb.ConfigurationEditLive do
         {:noreply, assign(socket, :i2c_delete_confirm, confirm)}
 
       {:error, :not_found} ->
-        {:noreply, put_flash(socket, :error, "Module not found")}
+        {:noreply,
+         put_flash(
+           socket,
+           :error,
+           "That I2C module no longer exists. Reload the page to see the current list."
+         )}
     end
   end
 
@@ -499,11 +536,21 @@ defmodule TreninoWeb.ConfigurationEditLive do
             {:noreply, reload_i2c_modules(socket)}
 
           {:error, _reason} ->
-            {:noreply, put_flash(socket, :error, "Failed to delete I2C module")}
+            {:noreply,
+             put_flash(
+               socket,
+               :error,
+               "The I2C module could not be deleted. Try again; if it keeps failing, reload the page."
+             )}
         end
 
       {:error, :not_found} ->
-        {:noreply, put_flash(socket, :error, "Module not found")}
+        {:noreply,
+         put_flash(
+           socket,
+           :error,
+           "That I2C module no longer exists. Reload the page to see the current list."
+         )}
     end
   end
 
@@ -576,10 +623,15 @@ defmodule TreninoWeb.ConfigurationEditLive do
          )}
 
       {:error, reason} ->
+        Logger.error("Failed to apply configuration to #{port}: #{inspect(reason)}")
+
         {:noreply,
          socket
          |> assign(:applying, false)
-         |> put_flash(:error, "Failed to apply: #{inspect(reason)}")}
+         |> put_flash(
+           :error,
+           "The configuration could not be applied. Check the USB cable and reconnect, then apply again."
+         )}
     end
   end
 
@@ -608,13 +660,21 @@ defmodule TreninoWeb.ConfigurationEditLive do
       {:error, :configuration_active} ->
         {:noreply,
          socket
-         |> put_flash(:error, "Cannot delete: configuration is active on a connected device")
+         |> put_flash(
+           :error,
+           "This configuration is active on a connected controller. Disconnect the controller, then delete it."
+         )
          |> assign(:show_delete_modal, false)}
 
       {:error, reason} ->
+        Logger.error("Failed to delete configuration #{device.id}: #{inspect(reason)}")
+
         {:noreply,
          socket
-         |> put_flash(:error, "Failed to delete: #{inspect(reason)}")
+         |> put_flash(
+           :error,
+           "The configuration could not be deleted. Try again; if it keeps failing, reload the page."
+         )
          |> assign(:show_delete_modal, false)}
     end
   end
@@ -671,7 +731,12 @@ defmodule TreninoWeb.ConfigurationEditLive do
         {:noreply, assign(socket, :matrices, matrices)}
 
       {:error, _reason} ->
-        {:noreply, put_flash(socket, :error, "Failed to delete matrix")}
+        {:noreply,
+         put_flash(
+           socket,
+           :error,
+           "The matrix could not be deleted. Try again; if it keeps failing, reload the page."
+         )}
     end
   end
 
@@ -686,7 +751,12 @@ defmodule TreninoWeb.ConfigurationEditLive do
           {:noreply, reload_inputs(socket)}
 
         {:error, _changeset} ->
-          {:noreply, put_flash(socket, :error, "Failed to update input name")}
+          {:noreply,
+           put_flash(
+             socket,
+             :error,
+             "The input name could not be saved. Try again; if it keeps failing, reload the page."
+           )}
       end
     else
       {:noreply, socket}
@@ -718,7 +788,12 @@ defmodule TreninoWeb.ConfigurationEditLive do
           {:noreply, assign(socket, :outputs, outputs)}
 
         {:error, _changeset} ->
-          {:noreply, put_flash(socket, :error, "Failed to update output name")}
+          {:noreply,
+           put_flash(
+             socket,
+             :error,
+             "The output name could not be saved. Try again; if it keeps failing, reload the page."
+           )}
       end
     else
       {:noreply, socket}
@@ -736,7 +811,12 @@ defmodule TreninoWeb.ConfigurationEditLive do
           {:noreply, assign(socket, :matrices, matrices)}
 
         {:error, _changeset} ->
-          {:noreply, put_flash(socket, :error, "Failed to update matrix name")}
+          {:noreply,
+           put_flash(
+             socket,
+             :error,
+             "The matrix name could not be saved. Try again; if it keeps failing, reload the page."
+           )}
       end
     else
       {:noreply, socket}
@@ -877,7 +957,32 @@ defmodule TreninoWeb.ConfigurationEditLive do
   defp calibration_failure_message(:rollover_needs_reference),
     do: TreninoWeb.CalibrationWizard.error_message({:error, :rollover_needs_reference})
 
-  defp calibration_failure_message(reason), do: "Calibration failed: #{inspect(reason)}"
+  defp calibration_failure_message(reason) do
+    Logger.error("Calibration failed: #{inspect(reason)}")
+
+    "Calibration failed. Start the calibration again; if it keeps failing, reconnect the controller."
+  end
+
+  @doc false
+  @spec configuration_failure_message(term()) :: String.t()
+  def configuration_failure_message(:timeout),
+    do: "The controller did not respond. Check the USB cable and reconnect, then apply again."
+
+  def configuration_failure_message(:device_rejected),
+    do: "The controller rejected the configuration. Update the firmware, then apply again."
+
+  def configuration_failure_message(:no_inputs),
+    do: "This configuration is empty. Add at least one input, then apply again."
+
+  def configuration_failure_message(reason) do
+    Logger.error("Configuration apply failed: #{inspect(reason)}")
+    "The configuration could not be applied. Check the USB cable and reconnect, then apply again."
+  end
+
+  defp calibration_start_failure_message(reason) do
+    Logger.error("Calibration could not start: #{inspect(reason)}")
+    "Calibration could not start. Check that the controller is connected, then try again."
+  end
 
   # handle_info callbacks
 
@@ -894,7 +999,7 @@ defmodule TreninoWeb.ConfigurationEditLive do
      socket
      |> reload_inputs()
      |> assign(:calibrating_input, nil)
-     |> put_flash(:info, "Calibration saved successfully")}
+     |> put_flash(:info, "Calibration saved")}
   end
 
   @impl true
@@ -915,7 +1020,7 @@ defmodule TreninoWeb.ConfigurationEditLive do
     {:noreply,
      socket
      |> assign(:calibrating_input, nil)
-     |> put_flash(:error, "Failed to start calibration: #{inspect(reason)}")}
+     |> put_flash(:error, calibration_start_failure_message(reason))}
   end
 
   @impl true
@@ -937,23 +1042,15 @@ defmodule TreninoWeb.ConfigurationEditLive do
      |> assign(:new_mode, false)
      |> assign(:active_port, port)
      |> assign(:applying, false)
-     |> put_flash(:info, "Configuration applied successfully")}
+     |> put_flash(:info, "Configuration applied")}
   end
 
   @impl true
   def handle_info({:configuration_failed, _port, _device_id, reason}, socket) do
-    message =
-      case reason do
-        :timeout -> "Configuration timed out - device did not respond"
-        :device_rejected -> "Device rejected the configuration"
-        :no_inputs -> "Cannot apply empty configuration"
-        _ -> "Failed to apply configuration"
-      end
-
     {:noreply,
      socket
      |> assign(:applying, false)
-     |> put_flash(:error, message)}
+     |> put_flash(:error, configuration_failure_message(reason))}
   end
 
   @impl true
@@ -1229,8 +1326,8 @@ defmodule TreninoWeb.ConfigurationEditLive do
       }
       phx-remove={JS.pop_focus()}
     >
-      <.focus_wrap id="i2c-display-focus" class="modal-box">
-        <h3 id="i2c-display-title" class="font-bold text-lg mb-4" tabindex="-1">
+      <.focus_wrap id="i2c-display-focus" class="modal-box bg-base-200">
+        <h3 id="i2c-display-title" class="text-xl font-semibold mb-4" tabindex="-1">
           {if @i2c_modal_module, do: "Edit I2C module", else: "Add I2C module"}
         </h3>
         <.live_component
@@ -1335,10 +1432,8 @@ defmodule TreninoWeb.ConfigurationEditLive do
           />
         </div>
         <div class="flex items-center gap-3 mt-4">
-          <span class="text-xs text-base-content/50 font-mono">ID: {@device.config_id}</span>
-          <span :if={@active_port} class="badge badge-success badge-sm gap-1">
-            <span class="w-1.5 h-1.5 rounded-full bg-success-content animate-pulse" /> Active
-          </span>
+          <span class="text-xs text-muted font-mono">ID: {@device.config_id}</span>
+          <.status_chip :if={@active_port} kind={:ok} label="Active" />
           <div class="ml-auto flex items-center gap-2">
             <button
               :if={@can_apply}
@@ -1347,7 +1442,7 @@ defmodule TreninoWeb.ConfigurationEditLive do
               disabled={@applying}
               class="btn btn-outline btn-sm"
             >
-              <.icon :if={@applying} name="hero-arrow-path" class="w-4 h-4 animate-spin" />
+              <.icon :if={@applying} name="hero-arrow-path" class="w-4 h-4 motion-safe:animate-spin" />
               <.icon :if={!@applying} name="hero-play" class="w-4 h-4" />
               {if @applying, do: "Applying...", else: "Apply to Device"}
             </button>
@@ -1356,7 +1451,7 @@ defmodule TreninoWeb.ConfigurationEditLive do
         <p
           :if={not @can_apply and not @new_mode}
           id="apply-unavailable-reason"
-          class="mt-2 text-xs text-base-content/60"
+          class="mt-2 text-xs text-muted"
         >
           {apply_unavailable_reason(@has_parts, @device_connected)}
         </p>
@@ -1446,15 +1541,11 @@ defmodule TreninoWeb.ConfigurationEditLive do
                 placeholder="Unnamed"
                 phx-blur="update_input_name"
                 phx-value-id={input.id}
-                class="input input-ghost input-xs w-full max-w-32 placeholder:italic placeholder:text-base-content/50"
+                class="input input-ghost input-xs w-full max-w-32 placeholder:text-muted"
               />
             </td>
             <td>
-              <span class={[
-                "badge badge-sm capitalize",
-                input.input_type == :analog && "badge-info",
-                input.input_type == :button && "badge-warning"
-              ]}>
+              <span class="badge badge-ghost badge-sm capitalize">
                 {input.input_type}
               </span>
             </td>
@@ -1544,7 +1635,7 @@ defmodule TreninoWeb.ConfigurationEditLive do
                 placeholder="Unnamed"
                 phx-blur="update_matrix_name"
                 phx-value-id={matrix.id}
-                class="input input-ghost input-xs w-full max-w-32 font-medium placeholder:italic placeholder:text-base-content/50 placeholder:font-normal"
+                class="input input-ghost input-xs w-full max-w-32 font-medium placeholder:text-muted placeholder:font-normal"
               />
             </td>
             <td class="font-mono text-sm">
@@ -1600,16 +1691,16 @@ defmodule TreninoWeb.ConfigurationEditLive do
 
     ~H"""
     <%!-- Not active --%>
-    <span :if={!@active} class="text-base-content/50 italic text-sm">
+    <span :if={!@active} class="text-muted text-sm">
       <.icon name="hero-lock-closed" class="w-3 h-3 inline mr-1" /> N/A
     </span>
     <%!-- Button inputs --%>
-    <span :if={@active && @input_type == :button && is_nil(@raw_value)} class="text-base-content/50">
+    <span :if={@active && @input_type == :button && is_nil(@raw_value)} class="text-muted">
       &mdash;
     </span>
     <span
       :if={@active && @input_type == :button && @raw_value == 1}
-      class="badge badge-success badge-xs"
+      class="badge badge-soft badge-success badge-xs"
     >
       Pressed
     </span>
@@ -1622,7 +1713,7 @@ defmodule TreninoWeb.ConfigurationEditLive do
     <%!-- Analog inputs --%>
     <span
       :if={@active && @input_type == :analog && is_nil(@raw_value)}
-      class="text-base-content/50"
+      class="text-muted"
     >
       &mdash;
     </span>
@@ -1630,10 +1721,10 @@ defmodule TreninoWeb.ConfigurationEditLive do
       :if={@active && @input_type == :analog && !is_nil(@raw_value)}
       class="font-mono tabular-nums"
     >
-      <span class="text-base-content/40 text-xs">{@raw_value}</span>
-      <span :if={@calibrated} class="text-base-content/40 text-xs">/</span>
+      <span class="text-muted text-xs">{@raw_value}</span>
+      <span :if={@calibrated} class="text-muted text-xs">/</span>
       <span :if={@calibrated}>{@calibrated}</span>
-      <span :if={is_nil(@calibration)} class="text-base-content/50 text-xs italic ml-1">
+      <span :if={is_nil(@calibration)} class="text-muted text-xs ml-1">
         (uncalibrated)
       </span>
     </span>
@@ -1696,7 +1787,7 @@ defmodule TreninoWeb.ConfigurationEditLive do
                 placeholder="Unnamed"
                 phx-blur="update_output_name"
                 phx-value-id={output.id}
-                class="input input-ghost input-xs w-full max-w-40 placeholder:italic placeholder:text-base-content/50"
+                class="input input-ghost input-xs w-full max-w-40 placeholder:text-muted"
               />
             </td>
             <td :if={@active_port} class="text-center">
@@ -1706,7 +1797,7 @@ defmodule TreninoWeb.ConfigurationEditLive do
                 class={[
                   "btn btn-xs",
                   if(Map.get(@output_states, output.id, false),
-                    do: "btn-success",
+                    do: "btn-primary",
                     else: "btn-ghost"
                   )
                 ]}
@@ -1753,7 +1844,7 @@ defmodule TreninoWeb.ConfigurationEditLive do
     ~H"""
     <div>
       <div class="flex items-center justify-between mb-4">
-        <h3 class="text-base font-semibold">I2C modules</h3>
+        <h3 class="text-xl font-semibold">I2C modules</h3>
         <button
           type="button"
           id="add-display"
@@ -1765,7 +1856,7 @@ defmodule TreninoWeb.ConfigurationEditLive do
         </button>
       </div>
 
-      <p :if={Enum.empty?(@i2c_modules)} class="py-3 text-sm text-base-content/60">
+      <p :if={Enum.empty?(@i2c_modules)} class="py-3 text-sm text-muted">
         No I2C modules configured. Add a display to show simulator values, or an input chip for more buttons and axes.
       </p>
 
@@ -1901,7 +1992,7 @@ defmodule TreninoWeb.ConfigurationEditLive do
                           aria-label={"Name of #{InputLabel.pin(%{input | i2c_module: mod})}"}
                           phx-blur="update_input_name"
                           phx-value-id={input.id}
-                          class="input input-ghost input-xs w-full max-w-32 placeholder:italic placeholder:text-base-content/50"
+                          class="input input-ghost input-xs w-full max-w-32 placeholder:text-muted"
                         />
                       </td>
                       <td>
@@ -1916,7 +2007,7 @@ defmodule TreninoWeb.ConfigurationEditLive do
                           phx-value-id={input.id}
                           class="input input-ghost input-xs w-16"
                         />
-                        <span :if={input.input_type == :button} class="text-base-content/40">—</span>
+                        <span :if={input.input_type == :button} class="text-muted">—</span>
                       </td>
                       <td class="min-w-24">
                         <.input_value
@@ -2008,7 +2099,7 @@ defmodule TreninoWeb.ConfigurationEditLive do
     ~H"""
     <div class="fixed inset-0 z-50 flex items-center justify-center">
       <div class="absolute inset-0 bg-black/50" phx-click="close_add_input_modal" />
-      <div class="relative bg-base-100 rounded-xl shadow-xl w-full max-w-md mx-4 p-6 max-h-[90vh] overflow-y-auto">
+      <div class="relative bg-base-200 rounded-xl shadow-xl w-full max-w-md mx-4 p-6 max-h-[90vh] overflow-y-auto">
         <h2 class="text-xl font-semibold mb-4">Add Input</h2>
 
         <.form id="add-input-form" for={@form} phx-change="validate_input" phx-submit="add_input">
@@ -2115,7 +2206,7 @@ defmodule TreninoWeb.ConfigurationEditLive do
     ~H"""
     <div class="fixed inset-0 z-50 flex items-center justify-center">
       <div class="absolute inset-0 bg-black/50" phx-click="close_add_matrix_modal" />
-      <div class="relative bg-base-100 rounded-xl shadow-xl w-full max-w-md mx-4 p-6 max-h-[90vh] overflow-y-auto">
+      <div class="relative bg-base-200 rounded-xl shadow-xl w-full max-w-md mx-4 p-6 max-h-[90vh] overflow-y-auto">
         <h2 class="text-xl font-semibold mb-4">Add Matrix</h2>
 
         <form
@@ -2124,8 +2215,8 @@ defmodule TreninoWeb.ConfigurationEditLive do
           phx-submit="add_matrix"
           class="space-y-4"
         >
-          <div class="bg-base-200 rounded-lg p-4">
-            <p class="text-sm text-base-content/70 mb-3">
+          <div class="bg-base-100 rounded-lg p-4">
+            <p class="text-sm text-muted mb-3">
               Enter GPIO pin numbers for rows and columns, separated by commas.
             </p>
 
@@ -2177,10 +2268,10 @@ defmodule TreninoWeb.ConfigurationEditLive do
           </div>
 
           <%!-- Grid Preview --%>
-          <div :if={@num_rows > 0 and @num_cols > 0} class="bg-base-200 rounded-lg p-4">
+          <div :if={@num_rows > 0 and @num_cols > 0} class="bg-base-100 rounded-lg p-4">
             <div class="flex items-center justify-between mb-3">
               <span class="text-sm font-medium">Grid Preview</span>
-              <span class="badge badge-secondary badge-sm">
+              <span class="badge badge-ghost badge-sm font-mono">
                 {@num_rows}x{@num_cols} = {@total_buttons} buttons
               </span>
             </div>
@@ -2192,19 +2283,19 @@ defmodule TreninoWeb.ConfigurationEditLive do
                     <th class="p-1"></th>
                     <th
                       :for={{col_pin, col_idx} <- Enum.with_index(@col_pins)}
-                      class="p-1 text-center font-mono text-base-content/70"
+                      class="p-1 text-center font-mono text-muted"
                     >
-                      C{col_idx}<br /><span class="text-[10px]">({col_pin})</span>
+                      C{col_idx}<br /><span class="text-xs">({col_pin})</span>
                     </th>
                   </tr>
                 </thead>
                 <tbody>
                   <tr :for={{row_pin, row_idx} <- Enum.with_index(@row_pins)}>
-                    <td class="p-1 font-mono text-base-content/70">
-                      R{row_idx} <span class="text-[10px]">({row_pin})</span>
+                    <td class="p-1 font-mono text-muted">
+                      R{row_idx} <span class="text-xs">({row_pin})</span>
                     </td>
                     <td :for={{_col_pin, col_idx} <- Enum.with_index(@col_pins)} class="p-1">
-                      <div class="w-8 h-6 bg-base-300 rounded flex items-center justify-center text-[10px] font-mono">
+                      <div class="w-9 h-7 bg-base-300 rounded flex items-center justify-center text-xs font-mono">
                         {128 + row_idx * @num_cols + col_idx}
                       </div>
                     </td>
@@ -2212,7 +2303,7 @@ defmodule TreninoWeb.ConfigurationEditLive do
                 </tbody>
               </table>
             </div>
-            <p class="text-[10px] text-base-content/50 mt-2">
+            <p class="text-xs text-muted mt-2">
               Virtual pin = 128 + (row x cols + col)
             </p>
           </div>
@@ -2237,7 +2328,7 @@ defmodule TreninoWeb.ConfigurationEditLive do
     ~H"""
     <div class="fixed inset-0 z-50 flex items-center justify-center">
       <div class="absolute inset-0 bg-black/50" phx-click="close_add_output_modal" />
-      <div class="relative bg-base-100 rounded-xl shadow-xl w-full max-w-md mx-4 p-6">
+      <div class="relative bg-base-200 rounded-xl shadow-xl w-full max-w-md mx-4 p-6">
         <h2 class="text-xl font-semibold mb-4">Add Output</h2>
 
         <.form id="add-output-form" for={@form} phx-change="validate_output" phx-submit="add_output">
@@ -2291,9 +2382,9 @@ defmodule TreninoWeb.ConfigurationEditLive do
     ~H"""
     <div class="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div class="fixed inset-0 bg-black/50" phx-click="close_apply_modal" />
-      <div class="relative bg-base-100 rounded-xl shadow-xl max-w-md w-full p-6">
-        <h3 class="text-lg font-semibold mb-4">Apply Configuration</h3>
-        <p class="text-sm text-base-content/70 mb-6">
+      <div class="relative bg-base-200 rounded-xl shadow-xl max-w-md w-full p-6">
+        <h3 class="text-xl font-semibold mb-4">Apply Configuration</h3>
+        <p class="text-sm text-muted mb-6">
           Select a device to apply "<span class="font-medium">{@device.name}</span>" to:
         </p>
 
@@ -2301,7 +2392,7 @@ defmodule TreninoWeb.ConfigurationEditLive do
           :if={@allcall_warning}
           id="apply-allcall-warning"
           role="alert"
-          class="alert alert-warning text-sm mb-4"
+          class="alert alert-soft alert-warning text-sm mb-4"
         >
           <.icon name="hero-exclamation-triangle" class="size-5 shrink-0" />
           <p>{@allcall_warning}</p>
@@ -2313,15 +2404,17 @@ defmodule TreninoWeb.ConfigurationEditLive do
             type="button"
             phx-click="apply_to_device"
             phx-value-port={device.port}
-            class="w-full flex items-center gap-3 p-3 rounded-lg border border-base-300 hover:bg-base-200 transition-colors text-left"
+            class="w-full flex items-center gap-3 p-3 rounded-lg border border-base-300 hover:bg-base-300 transition-colors text-left"
           >
-            <span class="w-2 h-2 rounded-full bg-success" />
             <div class="min-w-0 flex-1">
-              <p class="font-medium truncate">{device.port}</p>
-              <p :if={device.device_version} class="text-xs text-base-content/60">
+              <p class="font-medium font-mono truncate">{device.port}</p>
+              <p :if={device.device_version} class="text-xs text-muted font-mono">
                 v{device.device_version}
               </p>
             </div>
+            <span class="flex items-center gap-1 text-xs text-success">
+              <.icon name="hero-check-circle-mini" class="size-4" /> Connected
+            </span>
           </button>
         </div>
 
@@ -2342,15 +2435,15 @@ defmodule TreninoWeb.ConfigurationEditLive do
     ~H"""
     <div class="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div class="fixed inset-0 bg-black/50" phx-click="close_delete_modal" />
-      <div class="relative bg-base-100 rounded-xl shadow-xl max-w-md w-full p-6">
-        <h3 class="text-lg font-semibold mb-4 text-error">Delete Configuration</h3>
+      <div class="relative bg-base-200 rounded-xl shadow-xl max-w-md w-full p-6">
+        <h3 class="text-xl font-semibold mb-4 text-error">Delete Configuration</h3>
 
-        <div :if={@active} class="alert alert-warning mb-4">
+        <div :if={@active} class="alert alert-soft alert-warning mb-4">
           <.icon name="hero-exclamation-triangle" class="w-5 h-5" />
           <span class="text-sm">This configuration is currently active on a connected device.</span>
         </div>
 
-        <p class="text-sm text-base-content/70 mb-6">
+        <p class="text-sm text-muted mb-6">
           Are you sure you want to delete "<span class="font-medium">{@device.name}</span>"?
           This will permanently delete the configuration and all its inputs and calibration data.
         </p>

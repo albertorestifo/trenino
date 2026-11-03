@@ -153,7 +153,7 @@ defmodule TreninoWeb.StepperCommissioningComponent do
       >
         {@status.reason}
       </p>
-      <p :if={@runtime && @runtime.pending} class="text-sm text-base-content/70">
+      <p :if={@runtime && @runtime.pending} class="text-sm text-muted">
         Waiting for the device to confirm {@runtime.pending.command.operation}.
       </p>
       <p :if={@runtime && @runtime.error} role="alert" class="text-sm text-error">
@@ -214,7 +214,7 @@ defmodule TreninoWeb.StepperCommissioningComponent do
       </div>
 
       <.disclosure id={"stepper-advanced-#{@axis.id}"} summary="Advanced / manual controls">
-        <p :for={{term, meaning} <- @glossary} class="text-xs text-base-content/70">
+        <p :for={{term, meaning} <- @glossary} class="text-xs text-muted">
           <span class="font-medium">{term}</span> is {meaning}
         </p>
         <p :if={@runtime && @runtime.status} class="text-sm">
@@ -372,10 +372,10 @@ defmodule TreninoWeb.StepperCommissioningComponent do
       phx-click={if @token, do: "command", else: "stop_now"}
       phx-value-op="stop"
       phx-target={@myself}
-      class={["btn btn-error", @size]}
+      class={["btn btn-neutral", @size]}
       disabled={@offline or (@gated and is_nil(@token))}
     >
-      Stop
+      <.icon name="hero-stop-solid" class="size-4" /> Stop
     </button>
     """
   end

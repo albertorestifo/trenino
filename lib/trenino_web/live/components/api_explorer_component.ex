@@ -25,6 +25,8 @@ defmodule TreninoWeb.ApiExplorerComponent do
 
   use TreninoWeb, :live_component
 
+  require Logger
+
   alias Trenino.Simulator.Client
 
   @impl true
@@ -74,7 +76,7 @@ defmodule TreninoWeb.ApiExplorerComponent do
       {:error, reason} ->
         {:noreply,
          socket
-         |> assign(:error, "Failed to read endpoint: #{inspect(reason)}")}
+         |> assign(:error, api_error_message(:read, full_path, reason))}
     end
   end
 
@@ -155,7 +157,7 @@ defmodule TreninoWeb.ApiExplorerComponent do
         {:noreply,
          socket
          |> assign(:loading, false)
-         |> assign(:error, "Failed to navigate: #{inspect(reason)}")}
+         |> assign(:error, api_error_message(:navigate, reason))}
     end
   end
 
@@ -276,7 +278,7 @@ defmodule TreninoWeb.ApiExplorerComponent do
         {:noreply,
          socket
          |> assign(:loading, false)
-         |> assign(:error, "Failed to access: #{inspect(reason)}")}
+         |> assign(:error, api_error_message(:read, full_path, reason))}
     end
   end
 
@@ -299,14 +301,14 @@ defmodule TreninoWeb.ApiExplorerComponent do
       />
       <div class={
         unless @embedded,
-          do: "relative bg-base-100 rounded-xl shadow-xl w-full max-w-2xl max-h-[85vh] flex flex-col",
+          do: "relative bg-base-200 rounded-xl shadow-xl w-full max-w-2xl max-h-[85vh] flex flex-col",
           else: "flex-1 flex flex-col overflow-hidden"
       }>
         <div class="p-4 border-b border-base-300">
           <div :if={!@embedded} class="flex items-center justify-between mb-3">
             <div>
-              <h2 class="text-lg font-semibold">Browse Simulator API</h2>
-              <p class="text-sm text-base-content/60">Selecting: {format_field_name(@field)}</p>
+              <h2 class="text-xl font-semibold">Browse Simulator API</h2>
+              <p class="text-sm text-muted">Selecting: {format_field_name(@field)}</p>
             </div>
             <button
               type="button"
@@ -329,7 +331,7 @@ defmodule TreninoWeb.ApiExplorerComponent do
               <.icon name="hero-home" class="w-4 h-4" />
             </button>
             <span :for={{segment, index} <- Enum.with_index(@path)} class="flex items-center">
-              <span class="text-base-content/40">/</span>
+              <span class="text-muted">/</span>
               <button
                 type="button"
                 phx-click="go_back"
@@ -359,24 +361,24 @@ defmodule TreninoWeb.ApiExplorerComponent do
 
         <div
           :if={@lever_detection}
-          class="mx-4 mt-4 p-4 bg-primary/10 border border-primary/30 rounded-lg"
+          class="mx-4 mt-4 p-4 bg-base-200 border border-base-300 rounded-lg"
         >
           <div class="flex items-start gap-3">
-            <.icon name="hero-sparkles" class="w-5 h-5 text-primary flex-shrink-0 mt-0.5" />
+            <.icon name="hero-sparkles" class="w-5 h-5 flex-shrink-0 mt-0.5" />
             <div class="flex-1 min-w-0">
               <h3 class="font-semibold text-sm">
                 Lever Control Detected
                 <span
                   :if={@lever_detection.has_notches}
-                  class="text-xs font-normal text-base-content/60 ml-1"
+                  class="text-xs font-normal text-muted ml-1"
                 >
                   (with notches)
                 </span>
               </h3>
-              <p class="text-xs text-base-content/70 mt-1">
+              <p class="text-xs text-muted mt-1">
                 This node has standard lever endpoints. Auto-configure all fields?
               </p>
-              <div class="mt-2 text-xs text-base-content/60 space-y-0.5">
+              <div class="mt-2 text-xs text-muted space-y-0.5">
                 <div class="flex items-center gap-1.5">
                   <.icon name="hero-check" class="w-3 h-3 text-success" />
                   <span>Min/Max Value</span>
@@ -391,10 +393,10 @@ defmodule TreninoWeb.ApiExplorerComponent do
                     class={
                       if @lever_detection.has_notches,
                         do: "w-3 h-3 text-success",
-                        else: "w-3 h-3 text-base-content/40"
+                        else: "w-3 h-3 text-muted"
                     }
                   />
-                  <span class={unless @lever_detection.has_notches, do: "text-base-content/40"}>
+                  <span class={unless @lever_detection.has_notches, do: "text-muted"}>
                     Notch Count & Index
                   </span>
                 </div>
@@ -430,14 +432,14 @@ defmodule TreninoWeb.ApiExplorerComponent do
             <.icon name="hero-check-circle" class="w-5 h-5 text-success flex-shrink-0 mt-0.5" />
             <div class="flex-1 min-w-0">
               <h3 class="font-semibold text-sm">Button Endpoint Found</h3>
-              <p class="text-xs text-base-content/70 mt-1 font-mono">
+              <p class="text-xs text-muted mt-1 font-mono">
                 {@button_detection.endpoint}
               </p>
               <button
                 type="button"
                 phx-click="select_button_endpoint"
                 phx-target={@myself}
-                class="btn btn-success btn-sm mt-3"
+                class="btn btn-primary btn-sm mt-3"
               >
                 <.icon name="hero-check" class="w-4 h-4" /> Use This Endpoint
               </button>
@@ -446,7 +448,7 @@ defmodule TreninoWeb.ApiExplorerComponent do
         </div>
 
         <div class="flex-1 overflow-y-auto p-4">
-          <div :if={@error} class="alert alert-error mb-4">
+          <div :if={@error} class="alert alert-soft alert-error mb-4">
             <.icon name="hero-exclamation-circle" class="w-5 h-5" />
             <span>{@error}</span>
           </div>
@@ -457,9 +459,9 @@ defmodule TreninoWeb.ApiExplorerComponent do
 
           <div
             :if={not @loading and Enum.empty?(@filtered_items)}
-            class="text-center py-8 text-base-content/50"
+            class="text-center py-8 text-muted"
           >
-            <.icon name="hero-folder-open" class="w-12 h-12 mx-auto mb-2 opacity-30" />
+            <.icon name="hero-folder-open" class="w-12 h-12 mx-auto mb-2 text-muted" />
             <p class="text-sm">No items found</p>
           </div>
 
@@ -481,8 +483,8 @@ defmodule TreninoWeb.ApiExplorerComponent do
                     name={item_icon(item)}
                     class={
                       if item.type == :endpoint,
-                        do: "w-4 h-4 text-primary",
-                        else: "w-4 h-4 text-base-content/50"
+                        do: "w-4 h-4",
+                        else: "w-4 h-4 text-muted"
                     }
                   />
                   <span class="font-mono text-sm truncate">{item.name}</span>
@@ -491,7 +493,7 @@ defmodule TreninoWeb.ApiExplorerComponent do
                     class={[
                       "text-xs px-1.5 py-0.5 rounded",
                       item.writable && "bg-success/20 text-success",
-                      not item.writable && "bg-base-300 text-base-content/50"
+                      not item.writable && "bg-base-200 border border-base-300 text-muted"
                     ]}
                   >
                     {if item.writable, do: "RW", else: "RO"}
@@ -526,7 +528,7 @@ defmodule TreninoWeb.ApiExplorerComponent do
         <div :if={@preview} class="border-t border-base-300 p-4 bg-base-200/50">
           <div class="flex items-center justify-between mb-2">
             <h3 class="text-sm font-semibold">Preview</h3>
-            <span class="font-mono text-xs text-base-content/60">{@preview.path}</span>
+            <span class="font-mono text-xs text-muted">{@preview.path}</span>
           </div>
           <pre class="bg-base-300 rounded-lg p-3 text-xs font-mono overflow-x-auto max-h-32">{format_preview(@preview.value)}</pre>
           <div class="mt-3 flex justify-end">
@@ -579,7 +581,7 @@ defmodule TreninoWeb.ApiExplorerComponent do
         |> assign(:filtered_items, [])
         |> assign(:search, "")
         |> assign(:loading, false)
-        |> assign(:error, "Failed to load API nodes: #{inspect(reason)}")
+        |> assign(:error, api_error_message(:load, reason))
         |> assign(:preview, nil)
         |> assign(:lever_detection, nil)
         |> assign(:button_detection, nil)
@@ -672,6 +674,24 @@ defmodule TreninoWeb.ApiExplorerComponent do
     else
       "#{base_path}/#{name}"
     end
+  end
+
+  # Logs the raw reason and returns a plain sentence with a next step for the UI.
+  defp api_error_message(:read, path, reason) do
+    Logger.error("API explorer could not read #{path}: #{inspect(reason)}")
+
+    "This value could not be read from the simulator. Check that Train Sim World is running, then select it again."
+  end
+
+  defp api_error_message(:navigate, reason) do
+    Logger.error("API explorer could not open node: #{inspect(reason)}")
+    "This folder could not be opened. Check that Train Sim World is running, then try again."
+  end
+
+  defp api_error_message(:load, reason) do
+    Logger.error("API explorer could not load the root nodes: #{inspect(reason)}")
+
+    "The simulator API could not be loaded. Check that Train Sim World is running, then close and reopen this window."
   end
 
   defp format_preview(value) when is_map(value) do

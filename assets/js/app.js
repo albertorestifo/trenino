@@ -137,9 +137,18 @@ const liveSocket = new LiveSocket("/live", Socket, {
   hooks: {...colocatedHooks, ...Hooks},
 })
 
-// Show progress bar on live navigation and form submits
-topbar.config({barColors: {0: "#29d"}, shadowColor: "rgba(0, 0, 0, .3)"})
-window.addEventListener("phx:page-loading-start", _info => topbar.show(300))
+// Show progress bar on live navigation and form submits.
+// The bar uses the theme's action color (--color-primary), read when it is shown so it
+// follows light/dark changes. No shadow: the brand avoids glows.
+const configureTopbar = () => {
+  const primary = getComputedStyle(document.documentElement).getPropertyValue("--color-primary").trim()
+  topbar.config({barColors: {0: primary || "#4056B4"}, shadowBlur: 0, shadowColor: "transparent"})
+}
+configureTopbar()
+window.addEventListener("phx:page-loading-start", _info => {
+  configureTopbar()
+  topbar.show(300)
+})
 window.addEventListener("phx:page-loading-stop", _info => topbar.hide())
 
 // connect if there are any LiveViews on the page

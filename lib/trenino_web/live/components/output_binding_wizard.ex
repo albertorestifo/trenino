@@ -254,14 +254,14 @@ defmodule TreninoWeb.OutputBindingWizard do
     ~H"""
     <div class="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div class="absolute inset-0 bg-black/50" phx-click="cancel" phx-target={@myself} />
-      <div class="relative bg-base-100 rounded-xl shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col">
+      <div class="relative bg-base-200 rounded-xl shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col">
         <div class="p-4 border-b border-base-300">
           <div class="flex items-center justify-between">
             <div>
-              <h2 class="text-lg font-semibold">
+              <h2 class="text-xl font-semibold">
                 {if @binding, do: "Edit Output Binding", else: "Add Output Binding"}
               </h2>
-              <p class="text-sm text-base-content/60">
+              <p class="text-sm text-muted">
                 Configure an output to respond to API values
               </p>
             </div>
@@ -356,7 +356,7 @@ defmodule TreninoWeb.OutputBindingWizard do
         "w-6 h-6 rounded-full flex items-center justify-center text-xs font-medium",
         @active && "bg-primary text-primary-content",
         @completed && "bg-success text-success-content",
-        (not @active and not @completed) && "bg-base-300 text-base-content/50"
+        (not @active and not @completed) && "bg-base-200 border border-base-300 text-muted"
       ]}>
         <.icon :if={@completed} name="hero-check" class="w-4 h-4" />
         <span :if={not @completed}>{@step}</span>
@@ -364,7 +364,7 @@ defmodule TreninoWeb.OutputBindingWizard do
       <span class={[
         "text-sm",
         @active && "font-medium",
-        (not @active and not @completed) && "text-base-content/50"
+        (not @active and not @completed) && "text-muted"
       ]}>
         {@label}
       </span>
@@ -381,12 +381,12 @@ defmodule TreninoWeb.OutputBindingWizard do
     <div class="space-y-6">
       <div class="text-center mb-6">
         <h3 class="text-xl font-semibold mb-2">Select Output</h3>
-        <p class="text-base-content/60">
+        <p class="text-muted">
           Choose which hardware output to control
         </p>
       </div>
 
-      <div :if={@available_outputs == []} class="alert alert-warning">
+      <div :if={@available_outputs == []} class="alert alert-soft alert-warning">
         <.icon name="hero-exclamation-triangle" class="w-5 h-5" />
         <span>No outputs configured. Add outputs to a device configuration first.</span>
       </div>
@@ -416,8 +416,8 @@ defmodule TreninoWeb.OutputBindingWizard do
             </div>
             <div>
               <p class="font-medium">{output.name || "Output #{output.pin}"}</p>
-              <p class="text-xs text-base-content/60">
-                {output.device.name} - Pin {output.pin}
+              <p class="text-xs text-muted">
+                {output.device.name} - Pin <span class="font-mono">{output.pin}</span>
               </p>
             </div>
           </div>
@@ -441,7 +441,7 @@ defmodule TreninoWeb.OutputBindingWizard do
     <div class="space-y-6">
       <div class="text-center mb-6">
         <h3 class="text-xl font-semibold mb-2">Select Output Type</h3>
-        <p class="text-base-content/60">
+        <p class="text-muted">
           Choose how the output should behave
         </p>
       </div>
@@ -466,8 +466,8 @@ defmodule TreninoWeb.OutputBindingWizard do
             <.icon name="hero-light-bulb" class="w-8 h-8" />
           </div>
           <div>
-            <h4 class="font-semibold text-lg">LED (On/Off)</h4>
-            <p class="text-base-content/60 mt-1">
+            <h4 class="font-semibold text-xl">LED (On/Off)</h4>
+            <p class="text-muted mt-1">
               Digital output that turns on when condition is met, off otherwise.
               Ideal for indicator lights, warning LEDs, and status displays.
             </p>
@@ -475,7 +475,7 @@ defmodule TreninoWeb.OutputBindingWizard do
         </div>
       </button>
 
-      <div class="text-center text-sm text-base-content/50 mt-4">
+      <div class="text-center text-sm text-muted mt-4">
         For I2C display outputs, use Display Bindings instead
       </div>
 
@@ -508,11 +508,11 @@ defmodule TreninoWeb.OutputBindingWizard do
         <h3 class="font-semibold mb-2">Summary</h3>
         <div class="bg-base-200 rounded-lg p-4 space-y-2 text-sm">
           <div class="flex justify-between">
-            <span class="text-base-content/60">Endpoint:</span>
+            <span class="text-muted">Endpoint:</span>
             <span class="font-mono">{@endpoint}</span>
           </div>
           <div class="flex justify-between">
-            <span class="text-base-content/60">Output:</span>
+            <span class="text-muted">Output:</span>
             <span>
               {@selected_output.name || "Output #{@selected_output.pin}"} ({@selected_output.device.name})
             </span>
@@ -535,19 +535,19 @@ defmodule TreninoWeb.OutputBindingWizard do
             placeholder="e.g., Speed Warning LED"
             class="input input-bordered w-full"
           />
-          <p class="text-xs text-base-content/50 mt-1">
+          <p class="text-xs text-muted mt-1">
             A descriptive name for this output binding
           </p>
         </div>
 
         <div>
           <label class="label"><span class="label-text font-medium">Condition</span></label>
-          <p class="text-sm text-base-content/60 mb-3">
+          <p class="text-sm text-muted mb-3">
             Output turns ON when the API value meets this condition
           </p>
 
           <div class="flex items-center gap-3">
-            <span class="text-base-content/70">Value</span>
+            <span class="text-muted">Value</span>
             <select name="operator" class="select select-bordered">
               <optgroup label="Boolean">
                 <option value="eq_true" selected={@operator == :eq_true}>= true</option>
@@ -589,7 +589,7 @@ defmodule TreninoWeb.OutputBindingWizard do
                 placeholder="min"
                 class="input input-bordered w-32"
               />
-              <span class="text-base-content/70">and</span>
+              <span class="text-muted">and</span>
               <input
                 type="number"
                 name="value_b"
@@ -607,7 +607,7 @@ defmodule TreninoWeb.OutputBindingWizard do
             <.icon name="hero-information-circle" class="w-5 h-5 text-info shrink-0 mt-0.5" />
             <div class="text-sm">
               <p class="font-medium text-info">Preview</p>
-              <p class="text-base-content/70 mt-1">
+              <p class="text-muted mt-1">
                 {condition_preview(@operator, @value_a, @value_b)}
               </p>
             </div>

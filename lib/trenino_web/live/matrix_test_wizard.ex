@@ -132,7 +132,7 @@ defmodule TreninoWeb.MatrixTestWizard do
     ~H"""
     <div class="fixed inset-0 z-50 flex items-center justify-center">
       <div class="absolute inset-0 bg-black/50" phx-click="close" phx-target={@myself} />
-      <div class="relative bg-base-100 rounded-xl shadow-xl w-full max-w-2xl mx-4 p-6 max-h-[90vh] overflow-y-auto">
+      <div class="relative bg-base-200 rounded-xl shadow-xl w-full max-w-2xl mx-4 p-6 max-h-[90vh] overflow-y-auto">
         <.wizard_header
           title={@title}
           num_rows={@num_rows}
@@ -178,7 +178,7 @@ defmodule TreninoWeb.MatrixTestWizard do
     <div class="flex items-center justify-between mb-4">
       <div>
         <h2 class="text-xl font-semibold">{@title}</h2>
-        <p class="text-sm text-base-content/70">{@num_rows} rows x {@num_cols} columns</p>
+        <p class="text-sm text-muted">{@num_rows} rows x {@num_cols} columns</p>
       </div>
       <button
         phx-click="close"
@@ -200,15 +200,15 @@ defmodule TreninoWeb.MatrixTestWizard do
     ~H"""
     <div class="mb-6">
       <div class="flex items-center justify-between text-sm mb-2">
-        <span class="text-base-content/70">Progress</span>
-        <span class="font-medium">
+        <span class="text-muted">Progress</span>
+        <span class="font-medium tabular-nums">
           {@tested_count} / {@total_buttons} buttons tested
-          <span class="text-base-content/50">({trunc(@progress_percent)}%)</span>
+          <span class="text-muted font-mono">({trunc(@progress_percent)}%)</span>
         </span>
       </div>
-      <div class="w-full bg-base-300 rounded-full h-2">
+      <div class="w-full bg-base-100 border border-base-300 rounded-full h-2">
         <div
-          class="bg-success h-2 rounded-full transition-all duration-300"
+          class="bg-success h-2 rounded-full motion-safe:transition-all motion-safe:duration-300"
           style={"width: #{@progress_percent}%"}
         />
       </div>
@@ -225,25 +225,25 @@ defmodule TreninoWeb.MatrixTestWizard do
 
   defp button_grid(assigns) do
     ~H"""
-    <div class="bg-base-200 rounded-lg p-4 overflow-x-auto">
+    <div class="bg-base-100 rounded-lg p-4 overflow-x-auto">
       <table class="mx-auto">
         <thead>
           <tr>
             <th class="p-1"></th>
             <th
               :for={{col, col_idx} <- Enum.with_index(@cols)}
-              class="p-1 text-center text-xs font-mono text-base-content/70"
+              class="p-1 text-center text-xs font-mono text-muted"
             >
               C{col_idx}
               <br />
-              <span class="text-[10px]">({col})</span>
+              <span class="text-xs">({col})</span>
             </th>
           </tr>
         </thead>
         <tbody>
           <tr :for={{row, row_idx} <- Enum.with_index(@rows)}>
-            <td class="p-1 text-xs font-mono text-base-content/70 text-right pr-2">
-              R{row_idx} <span class="text-[10px]">({row})</span>
+            <td class="p-1 text-xs font-mono text-muted text-right pr-2">
+              R{row_idx} <span class="text-xs">({row})</span>
             </td>
             <td :for={{_col, col_idx} <- Enum.with_index(@cols)} class="p-1">
               <.matrix_button
@@ -282,29 +282,29 @@ defmodule TreninoWeb.MatrixTestWizard do
 
     ~H"""
     <div class={[
-      "w-12 h-10 rounded-lg flex flex-col items-center justify-center",
-      "border-2 transition-all duration-150 ease-out",
+      "w-12 h-12 rounded-lg flex flex-col items-center justify-center",
+      "border-2 motion-safe:transition-colors motion-safe:duration-150",
       button_class(@pressed, @tested)
     ]}>
-      <span :if={@pressed} class="text-lg">
-        <.icon name="hero-hand-raised" class="w-5 h-5" />
+      <span :if={@pressed}>
+        <.icon name="hero-hand-raised" class="w-4 h-4" />
       </span>
       <span :if={@tested and not @pressed}>
-        <.icon name="hero-check" class="w-5 h-5" />
+        <.icon name="hero-check" class="w-4 h-4" />
       </span>
-      <span class="text-[9px] font-mono opacity-60">{@virtual_pin}</span>
+      <span class="text-xs leading-none font-mono">{@virtual_pin}</span>
     </div>
     """
   end
 
   defp button_class(true, true) do
     # Tested and currently pressed
-    "bg-success text-success-content border-success ring-4 ring-success/30 scale-105"
+    "bg-success text-success-content border-success outline-2 outline-offset-2 outline-success"
   end
 
   defp button_class(true, false) do
     # Currently pressed (first time)
-    "bg-primary text-primary-content border-primary ring-4 ring-primary/30 scale-105"
+    "bg-primary text-primary-content border-primary outline-2 outline-offset-2 outline-primary"
   end
 
   defp button_class(false, true) do
@@ -314,32 +314,32 @@ defmodule TreninoWeb.MatrixTestWizard do
 
   defp button_class(false, false) do
     # Never pressed
-    "bg-base-300 border-base-300 text-base-content/30"
+    "bg-base-200 border-base-300 text-muted"
   end
 
   defp empty_state(assigns) do
     ~H"""
-    <div class="bg-base-200 rounded-lg p-8 text-center">
+    <div class="bg-base-100 rounded-lg p-8 text-center">
       <.icon name="hero-exclamation-triangle" class="w-10 h-10 mx-auto text-warning" />
-      <p class="mt-2 text-sm text-base-content/70">Matrix not configured</p>
-      <p class="text-xs text-base-content/50">Add row and column pins to use this feature</p>
+      <p class="mt-2 text-sm text-muted">Matrix not configured</p>
+      <p class="text-xs text-muted">Add row and column pins to use this feature</p>
     </div>
     """
   end
 
   defp legend(assigns) do
     ~H"""
-    <div class="flex flex-wrap items-center gap-4 mt-4 text-xs text-base-content/70">
+    <div class="flex flex-wrap items-center gap-4 mt-4 text-xs text-muted">
       <div class="flex items-center gap-2">
-        <div class="w-4 h-4 rounded bg-base-300 border border-base-300"></div>
+        <div class="w-4 h-4 rounded bg-base-200 border-2 border-base-300"></div>
         <span>Never pressed</span>
       </div>
       <div class="flex items-center gap-2">
-        <div class="w-4 h-4 rounded bg-primary border border-primary"></div>
+        <div class="w-4 h-4 rounded bg-primary border-2 border-primary"></div>
         <span>Currently pressed</span>
       </div>
       <div class="flex items-center gap-2">
-        <div class="w-4 h-4 rounded bg-success/20 border border-success"></div>
+        <div class="w-4 h-4 rounded bg-success/20 border-2 border-success"></div>
         <span>Tested</span>
       </div>
     </div>

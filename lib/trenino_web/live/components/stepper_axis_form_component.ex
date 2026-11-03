@@ -211,7 +211,7 @@ defmodule TreninoWeb.StepperAxisFormComponent do
     ~H"""
     <section id="stepper-axes" class="bg-base-200/50 rounded-xl p-6 mt-6 space-y-4">
       <div class="flex items-center justify-between gap-2">
-        <h2 class="text-lg font-semibold">Stepper axes</h2>
+        <h2 class="text-xl font-semibold">Stepper axes</h2>
         <button id="stepper-add" type="button" phx-click="add" phx-target={@myself} class="btn btn-sm">
           Add axis
         </button>
@@ -220,7 +220,7 @@ defmodule TreninoWeb.StepperAxisFormComponent do
         :if={@allcall_warning}
         id="stepper-allcall-warning"
         role="alert"
-        class="alert alert-warning text-sm"
+        class="alert alert-soft alert-warning text-sm"
       >
         <.icon name="hero-exclamation-triangle" class="size-5 shrink-0" />
         <div>
@@ -229,7 +229,7 @@ defmodule TreninoWeb.StepperAxisFormComponent do
           <p class="text-xs mt-1">This does not stop you from applying.</p>
         </div>
       </div>
-      <p :if={@axes == [] and is_nil(@form)} class="text-sm text-base-content/70">
+      <p :if={@axes == [] and is_nil(@form)} class="text-sm text-muted">
         Add an axis to drive a gauge needle with a stepper motor. Needs controller firmware 3.1.0 or newer.
       </p>
       <p :if={@notice} role="status" class="text-sm text-success">{@notice}</p>
@@ -244,7 +244,7 @@ defmodule TreninoWeb.StepperAxisFormComponent do
         class="space-y-3"
       >
         <div :if={is_nil(@editing.id)} class="flex flex-wrap items-center gap-2">
-          <span class="text-sm text-base-content/70">Start from</span>
+          <span class="text-sm text-muted">Start from</span>
           <button
             id="stepper-preset-x27"
             type="button"
@@ -265,7 +265,7 @@ defmodule TreninoWeb.StepperAxisFormComponent do
           >
             Class 323 speedometer
           </button>
-          <span class="text-xs text-base-content/70">
+          <span class="text-xs text-muted">
             Presets only fill in this form. Check direction and travel on the real motor.
           </span>
         </div>
@@ -325,8 +325,9 @@ defmodule TreninoWeb.StepperAxisFormComponent do
         <div class="flex flex-wrap items-start justify-between gap-x-3 gap-y-1">
           <div class="min-w-0 flex-1 basis-48">
             <h3 class="font-semibold break-words">{axis.name}</h3>
-            <p class="text-xs text-base-content/70">
-              Axis {axis.axis_index} · port {axis.motor_port}
+            <p class="text-xs text-muted">
+              Axis <span class="font-mono">{axis.axis_index}</span>
+              · port <span class="font-mono">{axis.motor_port}</span>
             </p>
           </div>
           <div class="ml-auto flex shrink-0 items-center gap-1">
@@ -343,7 +344,7 @@ defmodule TreninoWeb.StepperAxisFormComponent do
               >
                 <.icon name="hero-ellipsis-horizontal" class="size-5" />
               </summary>
-              <ul class="menu dropdown-content z-10 mt-1 w-56 rounded-box border border-base-300 bg-base-100 p-1 shadow">
+              <ul class="menu dropdown-content z-10 mt-1 w-56 rounded-box border border-base-300 bg-base-200 p-1 shadow">
                 <li :if={status.primary != :wizard}>
                   <button
                     id={"stepper-wizard-open-#{axis.id}"}

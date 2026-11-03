@@ -439,6 +439,20 @@ defmodule Trenino.Hardware do
   end
 
   @doc """
+  Map config_ids to their configuration names. Unknown config_ids are left out.
+  """
+  @spec configuration_names([integer()]) :: %{integer() => String.t()}
+  def configuration_names([]), do: %{}
+
+  def configuration_names(config_ids) when is_list(config_ids) do
+    Device
+    |> where([d], d.config_id in ^config_ids)
+    |> select([d], {d.config_id, d.name})
+    |> Repo.all()
+    |> Map.new()
+  end
+
+  @doc """
   Create a new device.
   """
   @spec create_device(map()) :: {:ok, Device.t()} | {:error, Ecto.Changeset.t()}

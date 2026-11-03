@@ -52,7 +52,7 @@ defmodule TreninoWeb.TrainEditLive do
       _ ->
         {:ok,
          socket
-         |> put_flash(:error, "Invalid train ID")
+         |> put_flash(:error, "That train link is not valid. Pick a train from Trains.")
          |> redirect(to: ~p"/trains")}
     end
   end
@@ -83,6 +83,7 @@ defmodule TreninoWeb.TrainEditLive do
 
     {:ok,
      socket
+     |> assign(:page_title, "New train")
      |> assign(:train, train)
      |> assign(:train_form, to_form(changeset))
      |> assign(:elements, [])
@@ -146,6 +147,7 @@ defmodule TreninoWeb.TrainEditLive do
 
         {:ok,
          socket
+         |> assign(:page_title, train.name)
          |> assign(:train, train)
          |> assign(:train_form, to_form(changeset))
          |> assign(:elements, train.elements)
@@ -187,7 +189,7 @@ defmodule TreninoWeb.TrainEditLive do
       {:error, :not_found} ->
         {:ok,
          socket
-         |> put_flash(:error, "Train not found")
+         |> put_flash(:error, "That train no longer exists. Pick another one from Trains.")
          |> redirect(to: ~p"/trains")}
     end
   end
@@ -350,11 +352,21 @@ defmodule TreninoWeb.TrainEditLive do
             {:noreply, assign(socket, :elements, elements)}
 
           {:error, _reason} ->
-            {:noreply, put_flash(socket, :error, "Failed to delete element")}
+            {:noreply,
+             put_flash(
+               socket,
+               :error,
+               "The element could not be deleted. Try again; if it keeps failing, reload the page."
+             )}
         end
 
       {:error, :not_found} ->
-        {:noreply, put_flash(socket, :error, "Element not found")}
+        {:noreply,
+         put_flash(
+           socket,
+           :error,
+           "That element no longer exists. Reload the page to see the current list."
+         )}
     end
   end
 
@@ -405,9 +417,14 @@ defmodule TreninoWeb.TrainEditLive do
          |> redirect(to: ~p"/trains")}
 
       {:error, reason} ->
+        Logger.error("Failed to delete train #{train.id}: #{inspect(reason)}")
+
         {:noreply,
          socket
-         |> put_flash(:error, "Failed to delete: #{inspect(reason)}")
+         |> put_flash(
+           :error,
+           "The train could not be deleted. Try again; if it keeps failing, reload the page."
+         )
          |> assign(:show_delete_modal, false)}
     end
   end
@@ -423,7 +440,12 @@ defmodule TreninoWeb.TrainEditLive do
        |> assign(:show_api_explorer, true)
        |> assign(:api_explorer_field, String.to_existing_atom(field))}
     else
-      {:noreply, put_flash(socket, :error, "Simulator not connected")}
+      {:noreply,
+       put_flash(
+         socket,
+         :error,
+         "Train Sim World is not connected. Start the game, then try again."
+       )}
     end
   end
 
@@ -463,7 +485,12 @@ defmodule TreninoWeb.TrainEditLive do
            |> assign(:output_wizard_binding, binding)}
 
         {:error, :not_found} ->
-          {:noreply, put_flash(socket, :error, "Output binding not found")}
+          {:noreply,
+           put_flash(
+             socket,
+             :error,
+             "That output binding no longer exists. Reload the page to see the current list."
+           )}
       end
     end
   end
@@ -479,11 +506,21 @@ defmodule TreninoWeb.TrainEditLive do
             {:noreply, assign(socket, :output_bindings, output_bindings)}
 
           {:error, _reason} ->
-            {:noreply, put_flash(socket, :error, "Failed to delete output binding")}
+            {:noreply,
+             put_flash(
+               socket,
+               :error,
+               "The output binding could not be deleted. Try again; if it keeps failing, reload the page."
+             )}
         end
 
       {:error, :not_found} ->
-        {:noreply, put_flash(socket, :error, "Output binding not found")}
+        {:noreply,
+         put_flash(
+           socket,
+           :error,
+           "That output binding no longer exists. Reload the page to see the current list."
+         )}
     end
   end
 
@@ -514,7 +551,12 @@ defmodule TreninoWeb.TrainEditLive do
          socket |> assign(:show_display_wizard, true) |> assign(:display_wizard_binding, binding)}
 
       {:error, :not_found} ->
-        {:noreply, put_flash(socket, :error, "Display binding not found")}
+        {:noreply,
+         put_flash(
+           socket,
+           :error,
+           "That display binding no longer exists. Reload the page to see the current list."
+         )}
     end
   end
 
@@ -529,11 +571,21 @@ defmodule TreninoWeb.TrainEditLive do
             {:noreply, assign(socket, :display_bindings, display_bindings)}
 
           {:error, _reason} ->
-            {:noreply, put_flash(socket, :error, "Failed to delete display binding")}
+            {:noreply,
+             put_flash(
+               socket,
+               :error,
+               "The display binding could not be deleted. Try again; if it keeps failing, reload the page."
+             )}
         end
 
       {:error, :not_found} ->
-        {:noreply, put_flash(socket, :error, "Display binding not found")}
+        {:noreply,
+         put_flash(
+           socket,
+           :error,
+           "That display binding no longer exists. Reload the page to see the current list."
+         )}
     end
   end
 
@@ -550,7 +602,12 @@ defmodule TreninoWeb.TrainEditLive do
         {:noreply, assign(socket, :scripts, scripts)}
 
       {:error, :not_found} ->
-        {:noreply, put_flash(socket, :error, "Script not found")}
+        {:noreply,
+         put_flash(
+           socket,
+           :error,
+           "That script no longer exists. Reload the page to see the current list."
+         )}
     end
   end
 
@@ -566,7 +623,12 @@ defmodule TreninoWeb.TrainEditLive do
         {:noreply, assign(socket, :scripts, scripts)}
 
       {:error, :not_found} ->
-        {:noreply, put_flash(socket, :error, "Script not found")}
+        {:noreply,
+         put_flash(
+           socket,
+           :error,
+           "That script no longer exists. Reload the page to see the current list."
+         )}
     end
   end
 
@@ -1078,7 +1140,7 @@ defmodule TreninoWeb.TrainEditLive do
      |> assign(:lever_setup_event, nil)
      |> put_flash(
        :info,
-       "Lever '#{get_element_name(elements, element_id)}' configured successfully"
+       "Lever '#{get_element_name(elements, element_id)}' configured"
      )}
   end
 
@@ -1336,6 +1398,7 @@ defmodule TreninoWeb.TrainEditLive do
 
         {:noreply,
          socket
+         |> assign(:page_title, train.name)
          |> assign(:train, train)
          |> assign(:train_form, to_form(changeset))
          |> put_flash(:info, "Train saved")}
@@ -1384,15 +1447,12 @@ defmodule TreninoWeb.TrainEditLive do
           simulator_connected={@nav_simulator_status.status == :connected}
         />
 
-        <div
-          :if={not @new_mode and @nav_simulator_status.status != :connected}
-          class="alert alert-warning mt-6"
-        >
-          <.icon name="hero-exclamation-triangle" class="w-5 h-5" />
-          <span>
-            Simulator not connected. Connect to the simulator to configure elements and test sequences.
-          </span>
-        </div>
+        <.simulator_notice
+          :if={not @new_mode}
+          simulator_status={@nav_simulator_status}
+          message="Element setup and sequence tests are paused."
+          class="mt-6"
+        />
 
         <nav
           :if={not @new_mode}
@@ -1410,7 +1470,7 @@ defmodule TreninoWeb.TrainEditLive do
           class="scroll-mt-36 mt-6"
           aria-labelledby="controls-title"
         >
-          <h2 id="controls-title" class="text-lg font-semibold mb-3">Controls</h2>
+          <h2 id="controls-title" class="text-xl font-semibold mb-3">Controls</h2>
           <div class="bg-base-200/50 rounded-xl p-4 sm:p-6">
             <.elements_section
               elements={@elements}
@@ -1426,7 +1486,7 @@ defmodule TreninoWeb.TrainEditLive do
           class="scroll-mt-36 mt-8"
           aria-labelledby="displays-lights-title"
         >
-          <h2 id="displays-lights-title" class="text-lg font-semibold mb-3">Displays &amp; lights</h2>
+          <h2 id="displays-lights-title" class="text-xl font-semibold mb-3">Displays &amp; lights</h2>
           <.live_component
             module={TreninoWeb.GaugeBindingWizard}
             id="gauge-setup"
@@ -1454,9 +1514,9 @@ defmodule TreninoWeb.TrainEditLive do
           class="scroll-mt-36 mt-8"
           aria-labelledby="automation-title"
         >
-          <h2 id="automation-title" class="text-lg font-semibold mb-3">Automation</h2>
+          <h2 id="automation-title" class="text-xl font-semibold mb-3">Automation</h2>
           <details open={not Enum.empty?(@sequences)} class="py-3">
-            <summary class="cursor-pointer text-base font-semibold">
+            <summary class="cursor-pointer text-xl font-semibold">
               Sequences ({length(@sequences)})
             </summary>
             <.live_component
@@ -1573,7 +1633,7 @@ defmodule TreninoWeb.TrainEditLive do
             label="Train Name"
             field={@train_form[:name]}
             type="text"
-            class="input input-bordered w-full text-lg font-semibold"
+            class="input input-bordered w-full text-xl font-semibold"
             placeholder="e.g., BR Class 66"
           />
         </div>
@@ -1588,12 +1648,12 @@ defmodule TreninoWeb.TrainEditLive do
           />
         </div>
         <div class="mt-3">
-          <h2 class="text-sm font-medium mb-2">Train Identifiers</h2>
-          <p id="train-identifiers-hint" class="text-xs text-base-content/60 mb-3">
+          <h2 class="text-sm font-semibold mb-2">Train Identifiers</h2>
+          <p id="train-identifiers-hint" class="text-xs text-muted mb-3">
             Use the simulator train ID shown on the Trains page, or connect to use it here. Each entry matches any train ID that starts with that text. Keep the full ID for one variant, or shorten the end to match several variants.
           </p>
           <div :if={@simulator_connected && @current_identifier} class="mb-3 space-y-2">
-            <p class="text-xs text-base-content/60">
+            <p class="text-xs text-muted">
               Current simulator train ID:
               <span class="font-mono break-all">{@current_identifier}</span>
             </p>
@@ -1604,7 +1664,7 @@ defmodule TreninoWeb.TrainEditLive do
               class="btn btn-outline btn-sm"
             >Use current train ID</button>
           </div>
-          <p :if={not @simulator_connected} class="text-xs text-base-content/60 mb-3">
+          <p :if={not @simulator_connected} class="text-xs text-muted mb-3">
             <.link navigate={~p"/settings"} class="link">Connect to the simulator</.link>
             to use the current train ID, or enter one below.
           </p>
@@ -1665,9 +1725,7 @@ defmodule TreninoWeb.TrainEditLive do
           </div>
         </div>
         <div class="flex items-center gap-3 mt-4">
-          <span :if={@is_active} class="badge badge-success badge-sm gap-1">
-            <span class="w-1.5 h-1.5 rounded-full bg-success-content animate-pulse" /> Active
-          </span>
+          <.status_chip :if={@is_active} kind={:ok} label="Active" />
           <button type="submit" class="btn btn-primary btn-sm ml-auto">
             <.icon name="hero-check" class="w-4 h-4" />
             {if @new_mode, do: "Create Train", else: "Save"}
@@ -1760,8 +1818,8 @@ defmodule TreninoWeb.TrainEditLive do
                 />
               </td>
               <td class="text-sm">
-                <span class="badge badge-info badge-sm">{binding.output_type}</span>
-                <span class="text-base-content/60 ml-1">
+                <span class="badge badge-ghost badge-sm">{binding.output_type}</span>
+                <span class="text-muted ml-1">
                   {binding.output.name || "Pin #{binding.output.pin}"}
                 </span>
               </td>
@@ -1801,7 +1859,7 @@ defmodule TreninoWeb.TrainEditLive do
     ~H"""
     <div>
       <div class="flex flex-wrap items-center justify-between gap-3 mb-3">
-        <h3 class="text-base font-semibold">Displays</h3>
+        <h3 class="text-xl font-semibold">Displays</h3>
         <button
           type="button"
           id="add-display-binding"
@@ -1813,7 +1871,7 @@ defmodule TreninoWeb.TrainEditLive do
           <.icon name="hero-plus" class="w-4 h-4" /> Add display binding
         </button>
       </div>
-      <div id="display-prerequisites" class="text-sm text-base-content/70 space-y-2">
+      <div id="display-prerequisites" class="text-sm text-muted space-y-2">
         <p :if={not @simulator_connected}>
           <.link navigate={~p"/settings"} class="link">Connect to the simulator</.link>
           to choose a value for your display.
@@ -1823,20 +1881,20 @@ defmodule TreninoWeb.TrainEditLive do
           before creating a binding.
         </p>
       </div>
-      <p :if={Enum.empty?(@display_bindings)} class="text-sm text-base-content/60 py-3">
+      <p :if={Enum.empty?(@display_bindings)} class="text-sm text-muted py-3">
         No display bindings configured. Show simulator values on your hardware displays.
       </p>
       <ul :if={not Enum.empty?(@display_bindings)} class="divide-y divide-base-300">
         <li :for={binding <- @display_bindings} class="py-4 space-y-3">
           <div class="min-w-0">
             <p class="font-medium break-words">{binding.name}</p>
-            <p class="text-xs text-base-content/60 mt-1 break-words">
+            <p class="text-xs text-muted mt-1 break-words">
               {if binding.i2c_module,
                 do: binding.i2c_module.name || "Display #{binding.i2c_module_id}",
                 else: "Display unavailable"}
             </p>
             <p class="font-mono text-xs break-all mt-2">{binding.endpoint}</p>
-            <p class="font-mono text-xs text-base-content/60 mt-1">
+            <p class="font-mono text-xs text-muted mt-1">
               {binding.format_string}
               <span :if={binding.unit == "kmh"} class="badge badge-xs ml-1">m/s → km/h</span>
               <span :if={binding.unit == "mph"} class="badge badge-xs ml-1">m/s → mph</span>
@@ -1873,7 +1931,7 @@ defmodule TreninoWeb.TrainEditLive do
 
   defp compact_empty_state(assigns) do
     ~H"""
-    <div class="py-3 text-sm text-base-content/60">
+    <div class="py-3 text-sm text-muted">
       <p>{@message}</p>
       <p :if={@submessage} class="text-xs mt-1">{@submessage}</p>
     </div>
@@ -1887,7 +1945,7 @@ defmodule TreninoWeb.TrainEditLive do
     ~H"""
     <div>
       <div class="flex items-center justify-between mb-4">
-        <h3 class="text-base font-semibold">Scripts</h3>
+        <h3 class="text-xl font-semibold">Scripts</h3>
         <.link navigate={~p"/trains/#{@train_id}/scripts/new"} class="btn btn-outline btn-sm">
           <.icon name="hero-plus" class="w-4 h-4" /> Add Script
         </.link>
@@ -1912,13 +1970,13 @@ defmodule TreninoWeb.TrainEditLive do
           <tbody>
             <tr :for={script <- @scripts} class="hover:bg-base-200/50">
               <td class="font-medium">{script.name}</td>
-              <td class="text-sm text-base-content/60">
+              <td class="text-sm text-muted">
                 {length(script.triggers)} trigger{if length(script.triggers) != 1, do: "s"}
               </td>
               <td>
                 <input
                   type="checkbox"
-                  class="toggle toggle-sm toggle-success"
+                  class="toggle toggle-sm toggle-primary"
                   checked={script.enabled}
                   phx-click="toggle_script_enabled"
                   phx-value-id={script.id}
@@ -2004,7 +2062,7 @@ defmodule TreninoWeb.TrainEditLive do
         <div class="flex items-center gap-2">
           <.icon
             name={element_type_icon(@element.type)}
-            class="w-4 h-4 text-base-content/50"
+            class="w-4 h-4 text-muted"
           />
           {@element.name}
         </div>
@@ -2015,7 +2073,7 @@ defmodule TreninoWeb.TrainEditLive do
       <td>
         <span
           :for={{variant, label} <- @status_badges}
-          class={["badge badge-sm", badge_variant_class(variant)]}
+          class={["badge badge-soft badge-sm", badge_variant_class(variant)]}
         >
           {label}
         </span>
@@ -2149,7 +2207,7 @@ defmodule TreninoWeb.TrainEditLive do
     ~H"""
     <div class="fixed inset-0 z-50 flex items-center justify-center">
       <div class="absolute inset-0 bg-black/50" phx-click="close_add_element_modal" />
-      <div class="relative bg-base-100 rounded-xl shadow-xl w-full max-w-md mx-4 p-6">
+      <div class="relative bg-base-200 rounded-xl shadow-xl w-full max-w-md mx-4 p-6">
         <h2 class="text-xl font-semibold mb-4">Add Element</h2>
 
         <.form
@@ -2181,7 +2239,7 @@ defmodule TreninoWeb.TrainEditLive do
                 options={[{"Lever", :lever}, {"Button", :button}]}
                 class="select select-bordered w-full"
               />
-              <p class="text-xs text-base-content/50 mt-1">
+              <p class="text-xs text-muted mt-1">
                 Lever for analog inputs, Button for digital inputs
               </p>
             </div>
