@@ -2,9 +2,8 @@ defmodule TreninoWeb.MatrixTestWizard do
   @moduledoc """
   LiveComponent for testing matrix button inputs.
 
-  Works for a board matrix and for an MCP23017 chip matrix: it takes row and
-  column labels and the first virtual pin, not a `Matrix`. Build the spec with
-  `matrix_spec/1` or `chip_matrix_spec/1`.
+  Takes row and column labels and the first virtual pin, not a `Matrix`.
+  Build the spec with `matrix_spec/1`.
 
   Displays a visual grid of all matrix button positions.
   Buttons light up when pressed and change color once pressed at least once.
@@ -30,8 +29,6 @@ defmodule TreninoWeb.MatrixTestWizard do
 
   use TreninoWeb, :live_component
 
-  alias Trenino.Hardware.I2cModule
-  alias Trenino.Hardware.InputLabel
   alias Trenino.Hardware.Matrix
 
   @impl true
@@ -71,17 +68,6 @@ defmodule TreninoWeb.MatrixTestWizard do
       base_pin: 128,
       rows: matrix.row_pins |> Enum.sort_by(& &1.position) |> Enum.map(&"Pin #{&1.pin}"),
       cols: matrix.col_pins |> Enum.sort_by(& &1.position) |> Enum.map(&"Pin #{&1.pin}")
-    }
-  end
-
-  @doc "Spec for the matrix of an MCP23017 chip, with its GPIO pin names."
-  @spec chip_matrix_spec(I2cModule.t()) :: spec()
-  def chip_matrix_spec(%I2cModule{params: %{} = params} = mod) do
-    %{
-      title: "Test Matrix · #{InputLabel.module(mod)}",
-      base_pin: params.matrix_base,
-      rows: InputLabel.gpio_names(params.row_mask),
-      cols: InputLabel.gpio_names(params.col_mask)
     }
   end
 

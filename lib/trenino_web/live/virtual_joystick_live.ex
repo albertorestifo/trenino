@@ -8,7 +8,6 @@ defmodule TreninoWeb.VirtualJoystickLive do
 
   alias Trenino.Hardware
   alias Trenino.Hardware.ConfigurationManager
-  alias Trenino.Hardware.InputLabel
   alias Trenino.Serial.Connection
   alias Trenino.VirtualJoystick
   alias Trenino.VirtualJoystick.Mapper
@@ -487,7 +486,7 @@ defmodule TreninoWeb.VirtualJoystickLive do
     ~H"""
     <span :if={is_nil(@mapping)} class="text-sm text-muted">Not assigned</span>
     <span :if={@mapping} class="flex min-w-0 flex-wrap items-center gap-2 text-sm"><span class="break-words">{@mapping.input.name ||
-      InputLabel.pin(@mapping.input)}{if @mapping.inverted, do: " · Inverted"}</span><button
+      "Pin #{@mapping.input.pin}"}{if @mapping.inverted, do: " · Inverted"}</span><button
       id={"edit-mapping-#{@mapping.id}"}
       data-testid={"edit-mapping-#{@mapping.id}"}
       phx-click="edit-mapping"

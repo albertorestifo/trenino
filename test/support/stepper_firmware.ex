@@ -1,12 +1,6 @@
 defmodule Trenino.Test.StepperFirmware do
   @moduledoc "In-memory firmware contract fixture. Never opens a UART."
-  alias Trenino.Serial.Protocol.{
-    ConfigurationStored,
-    Configure,
-    IdentityRequest,
-    StepperCommand,
-    StepperStatus
-  }
+  alias Trenino.Serial.Protocol.{ConfigurationStored, Configure, StepperCommand, StepperStatus}
 
   def start_link(opts),
     do:
@@ -38,8 +32,6 @@ defmodule Trenino.Test.StepperFirmware do
       Agent.update(pid, fn s ->
         %{s | connection: %{s.connection | device_config_id: config_id}}
       end)
-
-  def send_message(_pid, _port, %IdentityRequest{}), do: :ok
 
   def send_message(pid, port, %Configure{} = message) do
     owner = Agent.get(pid, & &1.owner)
