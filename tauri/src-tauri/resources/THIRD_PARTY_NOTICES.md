@@ -2,8 +2,10 @@
 
 ## vJoy 2.2.2.0
 
-Trenino's Windows package includes the signed vJoy driver installer and the
-vJoy feeder SDK from the BrunnerInnovation vJoy fork.
+Trenino's Windows package includes the vJoy configurator (`vJoyConfig.exe`,
+`vJoyInstall.dll`) and the vJoy feeder SDK (`vJoyInterface.dll`) from the
+BrunnerInnovation vJoy fork. The vJoy driver itself is not included; users
+install it from the release page below.
 
 - Release: https://github.com/BrunnerInnovation/vJoy/releases/tag/v2.2.2.0
 - Source: https://github.com/BrunnerInnovation/vJoy/tree/v2.2.2.0

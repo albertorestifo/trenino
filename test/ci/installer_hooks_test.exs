@@ -9,18 +9,30 @@ defmodule Trenino.CI.InstallerHooksTest do
                 "installer-hooks.nsh"
               ])
 
-  test "an incompatible shared vJoy driver warns without aborting Trenino installation" do
-    hooks = File.read!(@hooks_path)
+  test "installation never installs or claims the vJoy driver" do
+    post_install = macro_body(File.read!(@hooks_path), "NSIS_HOOK_POSTINSTALL")
 
-    refute hooks =~
-             ~s(Abort "A stale or incompatible vJoy ${VJOY_VERSION} installation was detected.)
+    refute post_install =~ "vJoySetup.exe"
+    refute post_install =~ "vJoyConfig.exe"
+    refute post_install =~ "VJoyInstalledByTrenino"
+    assert post_install =~ "vc_redist.x64.exe"
+  end
 
-    refute hooks =~
-             ~s(Abort "An existing vJoy driver could not be verified as the supported signed version.)
+  test "uninstall only offers driver removal when an earlier release installed it" do
+    pre_uninstall = macro_body(File.read!(@hooks_path), "NSIS_HOOK_PREUNINSTALL")
 
-    assert hooks =~ "Virtual joystick mode will remain unavailable"
+    assert pre_uninstall =~
+             ~s(ReadRegDWORD $0 HKLM "${TRENINO_REGISTRY_KEY}" "VJoyInstalledByTrenino")
 
-    assert hooks =~
-             ~s(WriteRegDWORD HKLM "${TRENINO_REGISTRY_KEY}" "VJoyInstalledByTrenino" 0)
+    assert pre_uninstall =~ "vJoy was not installed by Trenino; retaining the shared driver."
+
+    assert pre_uninstall =~
+             ~s(ReadRegDWORD $4 HKCU "${TRENINO_REGISTRY_KEY}" "${VJOY_DEVICE_MARKER}")
+  end
+
+  defp macro_body(hooks, name) do
+    [_, rest] = String.split(hooks, "!macro #{name}\n", parts: 2)
+    [body, _] = String.split(rest, "!macroend", parts: 2)
+    body
   end
 end

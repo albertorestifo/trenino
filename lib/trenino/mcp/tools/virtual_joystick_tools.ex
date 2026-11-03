@@ -54,7 +54,7 @@ defmodule Trenino.MCP.Tools.VirtualJoystickTools do
       ),
       tool(
         "check_virtual_joystick_installation",
-        "Recheck the vJoy installation after the user completes driver repair.",
+        "Recheck the vJoy driver after the user installs it from the install_url in the driver_missing reason.",
         empty_schema()
       )
     ]
@@ -330,6 +330,10 @@ defmodule Trenino.MCP.Tools.VirtualJoystickTools do
     do: {:ok, %{status: "error", reason: reason(reason)}}
 
   defp reason(nil), do: nil
+
+  defp reason(:driver_missing),
+    do: %{code: "driver_missing", install_url: VirtualJoystick.driver_install_url()}
+
   defp reason(reason) when is_atom(reason), do: %{code: Atom.to_string(reason)}
 
   defp reason({code, details}) when is_atom(code),

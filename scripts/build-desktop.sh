@@ -104,11 +104,12 @@ fi
 echo "Copied virtual joystick to: $BINARIES_DIR/virtual_joystick-$PLATFORM"
 
 # Step 7: Stage the pinned vJoy runtime for Windows. The release installer,
-# SDK and license are independently checksum verified before extraction.
+# SDK and license are independently checksum verified before extraction. The
+# installer itself is only a source for vJoyConfig.exe and is never bundled:
+# users install the vJoy driver themselves when they want joystick mode.
 if [ "$PLATFORM" = "x86_64-pc-windows-msvc" ]; then
     echo "==> Staging verified vJoy $VJOY_VERSION runtime..."
     mkdir -p "$RESOURCES_DIR"
-    powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PROJECT_DIR/scripts/download-vjoy.ps1" -Version "$VJOY_VERSION" -Url "$VJOY_RELEASE_BASE/vJoySetup_v2.2.2.0_Win10_Win11.exe" -ExpectedSha256 "$VJOY_INSTALLER_SHA256" -Destination "$RESOURCES_DIR/vJoySetup.exe"
     powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PROJECT_DIR/scripts/download-vjoy.ps1" -Version "$VJOY_VERSION-sdk" -Url "$VJOY_RELEASE_BASE/SDK.zip" -ExpectedSha256 "$VJOY_SDK_SHA256" -Destination "$RESOURCES_DIR/SDK.zip"
     powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PROJECT_DIR/scripts/download-vjoy.ps1" -Version "$VJOY_VERSION-license" -Url "https://raw.githubusercontent.com/BrunnerInnovation/vJoy/v$VJOY_VERSION/LICENSE.txt" -ExpectedSha256 "$VJOY_LICENSE_SHA256" -Destination "$RESOURCES_DIR/vJoy-LICENSE.txt"
 
@@ -118,6 +119,7 @@ if [ "$PLATFORM" = "x86_64-pc-windows-msvc" ]; then
         exit 1
     fi
     trap 'if [ -n "${VJOY_STAGE:-}" ] && [ -d "$VJOY_STAGE" ]; then rm -r "$VJOY_STAGE"; fi' EXIT
+    powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PROJECT_DIR/scripts/download-vjoy.ps1" -Version "$VJOY_VERSION" -Url "$VJOY_RELEASE_BASE/vJoySetup_v2.2.2.0_Win10_Win11.exe" -ExpectedSha256 "$VJOY_INSTALLER_SHA256" -Destination "$VJOY_STAGE/vJoySetup.exe"
 
     mkdir -p "$VJOY_STAGE/sdk"
     7z x -y -o"$VJOY_STAGE/sdk" "$RESOURCES_DIR/SDK.zip" >/dev/null
@@ -126,7 +128,7 @@ if [ "$PLATFORM" = "x86_64-pc-windows-msvc" ]; then
     # vJoySetup.exe is an Inno Setup installer, so use its dedicated extractor.
     # 7-Zip remains in use above for the SDK.zip archive.
     mkdir -p "$VJOY_STAGE/installer"
-    innoextract --silent --extract --output-dir "$VJOY_STAGE/installer" "$RESOURCES_DIR/vJoySetup.exe"
+    innoextract --silent --extract --output-dir "$VJOY_STAGE/installer" "$VJOY_STAGE/vJoySetup.exe"
     VJOY_CONFIG="$VJOY_STAGE/installer/app/x64/vJoyConfig.exe"
     if [ ! -f "$VJOY_CONFIG" ]; then
         echo "Error: vJoyConfig.exe was not found in the verified installer"

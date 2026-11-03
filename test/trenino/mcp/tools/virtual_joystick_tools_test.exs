@@ -33,6 +33,10 @@ defmodule Trenino.MCP.Tools.VirtualJoystickToolsTest do
     def delete, do: {:ok, :deleted}
   end
 
+  defmodule DriverMissingConfigurator do
+    def status, do: :driver_missing
+  end
+
   defmodule EmptySerial do
     def subscribe, do: :ok
     def list_devices, do: []
@@ -277,6 +281,26 @@ defmodule Trenino.MCP.Tools.VirtualJoystickToolsTest do
 
       assert {:ok, %{status: "error", reason: %{code: "runtime_unavailable"}}} =
                VirtualJoystickTools.execute("enable_virtual_joystick", %{})
+    end
+
+    test "a missing vJoy driver reports where to install it" do
+      {:ok, _manager} =
+        start_supervised(
+          {Trenino.VirtualJoystick.Manager,
+           name: Trenino.VirtualJoystick.Manager,
+           platform: WindowsPlatform,
+           context: OffContext,
+           configurator: DriverMissingConfigurator,
+           serial: EmptySerial,
+           inputs: EmptyInputs,
+           task_supervisor: Trenino.TaskSupervisor}
+        )
+
+      install_url = VirtualJoystick.driver_install_url()
+
+      assert {:ok,
+              %{status: "error", reason: %{code: "driver_missing", install_url: ^install_url}}} =
+               VirtualJoystickTools.execute("get_virtual_joystick_status", %{})
     end
 
     test "enable and disable return transition acceptance without waiting for completion" do

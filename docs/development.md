@@ -369,8 +369,8 @@ The desktop app bundles:
 - **avrdude.conf** - Configuration file for avrdude
 - **keystroke** - Keyboard input simulator for keystroke button bindings
 - **virtual_joystick** (Windows only) - persistent vJoy feeder sidecar
-- **vJoy runtime** (Windows only) - pinned signed installer, configurator, x64
-  feeder DLL, license, and third-party notices
+- **vJoy runtime** (Windows only) - configurator, x64 feeder DLL, license, and
+  third-party notices. The vJoy driver is not bundled; users install it.
 
 ### Updating the pinned vJoy release
 
@@ -393,8 +393,9 @@ checklist.
 ### Shared vJoy state during uninstall
 
 Trenino removes device 1 only when its persistent ownership marker and exact
-descriptor both match. It never removes a driver it did not install. Even when
-Trenino owns the driver and a healthy API probe reports zero devices, interactive
+descriptor both match. Current releases never install the driver, and uninstall never removes a driver
+unless an earlier release recorded that it installed it. Even when Trenino owns
+the driver and a healthy API probe reports zero devices, interactive
 uninstall asks the user and defaults to retaining the potentially shared driver;
 silent uninstall always retains it. Missing, disabled, incompatible, or otherwise
 ambiguous driver state is retained with an installer log entry.

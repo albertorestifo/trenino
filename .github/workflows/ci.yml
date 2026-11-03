@@ -125,11 +125,13 @@ jobs:
         shell: pwsh
         run: |
           $resources = "tauri/src-tauri/resources"
-          & ./scripts/download-vjoy.ps1 -Version 2.2.2.0 -Url https://github.com/BrunnerInnovation/vJoy/releases/download/v2.2.2.0/vJoySetup_v2.2.2.0_Win10_Win11.exe -ExpectedSha256 ef569a3105cd301b89580f18f60c66b339e95296acf2c0dfcaf4b4bbf8ab68fe -Destination "$resources/vJoySetup.exe"
+          # The driver installer is verified but never bundled; users install vJoy themselves.
+          $installer = "$env:RUNNER_TEMP/vJoySetup.exe"
+          & ./scripts/download-vjoy.ps1 -Version 2.2.2.0 -Url https://github.com/BrunnerInnovation/vJoy/releases/download/v2.2.2.0/vJoySetup_v2.2.2.0_Win10_Win11.exe -ExpectedSha256 ef569a3105cd301b89580f18f60c66b339e95296acf2c0dfcaf4b4bbf8ab68fe -Destination $installer
           & ./scripts/download-vjoy.ps1 -Version 2.2.2.0-sdk -Url https://github.com/BrunnerInnovation/vJoy/releases/download/v2.2.2.0/SDK.zip -ExpectedSha256 0e796b185b66819d5fbeae645f3f038ecbfbbde837d3d3f06cba82ae1db07c67 -Destination "$resources/SDK.zip"
           & ./scripts/download-vjoy.ps1 -Version 2.2.2.0-license -Url https://raw.githubusercontent.com/BrunnerInnovation/vJoy/v2.2.2.0/LICENSE.txt -ExpectedSha256 7f0ed151caab68bbfd1a37727c8fe75c94be45aff98a88d63bc7e46e3fb0c5e1 -Destination "$resources/vJoy-LICENSE.txt"
-          & ./scripts/download-vjoy.ps1 -Version 2.2.2.0 -Url https://invalid.example.invalid/unused -ExpectedSha256 ef569a3105cd301b89580f18f60c66b339e95296acf2c0dfcaf4b4bbf8ab68fe -Destination "$resources/vJoySetup.exe" -VerifyOnly
-          $signature = Get-AuthenticodeSignature -LiteralPath "$resources/vJoySetup.exe"
+          & ./scripts/download-vjoy.ps1 -Version 2.2.2.0 -Url https://invalid.example.invalid/unused -ExpectedSha256 ef569a3105cd301b89580f18f60c66b339e95296acf2c0dfcaf4b4bbf8ab68fe -Destination $installer -VerifyOnly
+          $signature = Get-AuthenticodeSignature -LiteralPath $installer
           if ($signature.Status -ne 'Valid') { throw "vJoy installer Authenticode status is $($signature.Status)" }
           if ($signature.SignerCertificate.Subject -notmatch 'BRUNNER') { throw "Unexpected vJoy signer: $($signature.SignerCertificate.Subject)" }
           Write-Host "Verified vJoy signer: $($signature.SignerCertificate.Subject)"
@@ -175,6 +177,7 @@ jobs:
           @('vJoyConfig.exe', 'vJoyInstall.dll', 'vJoyInterface.dll', 'vJoy-LICENSE.txt', 'THIRD_PARTY_NOTICES.md', 'virtual_joystick') | ForEach-Object {
             if ($listing -notmatch [regex]::Escape($_)) { throw "Packaged NSIS artifact does not contain $_" }
           }
+          if ($listing -match 'vJoySetup') { throw "Packaged NSIS artifact must not contain the vJoy driver installer" }
 
           # Read-only probe: catch missing loader dependencies even without a driver.
           $config = (Get-ChildItem $inspection -Recurse -Filter 'vJoyConfig.exe' -File | Select-Object -First 1).FullName

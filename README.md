@@ -44,16 +44,15 @@ Build your own train controls with real throttle levers, brake handles, switches
 - **Train Sim World 6 or 7** with the External Interface API enabled (see [below](#enabling-the-tsw-api))
 - **An Arduino board** — see [Supported Hardware](#supported-hardware)
 
-Virtual joystick mode additionally requires Windows 10 or 11. The signed vJoy
-runtime is included in the Windows NSIS `.exe`; no separate driver download is
-needed when that installer is used. The MSI does not manage the vJoy driver
-lifecycle. See [Getting Started](docs/getting-started.md#windows-virtual-joystick-mode).
+Virtual joystick mode is optional and additionally requires Windows 10 or 11
+and the [vJoy 2.2.2.0 driver](https://github.com/BrunnerInnovation/vJoy/releases/tag/v2.2.2.0), which you install separately. See
+[Getting Started](docs/getting-started.md#windows-virtual-joystick-mode).
 
 ### Installation
 
 Download the latest installer for your platform from the [Releases page](https://github.com/albertorestifo/trenino/releases):
 
-- **Windows 10/11**: use the NSIS installer (`.exe`), which installs the bundled Visual C++ Redistributable and manages vJoy when safe. The MSI does not run these prerequisite or shared-driver lifecycle hooks; its prerequisites must be installed separately.
+- **Windows 10/11**: use the NSIS installer (`.exe`), which installs the bundled Visual C++ Redistributable and removes Trenino's virtual joystick device on uninstall. The MSI does not run these hooks; its prerequisites must be installed separately.
 - **Linux**: AppImage (`.AppImage`) — download, mark as executable, and run
 
 macOS builds are not provided as pre-built releases. See the [Development Guide](docs/development.md#building-the-desktop-app) to build from source.
