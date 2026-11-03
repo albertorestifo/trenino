@@ -214,7 +214,7 @@ Logo files live in `priv/static/images/`:
 Rules:
 
 - **Theme pairing:** primary lockup on light, dark lockup on dark. Swap with `block dark:hidden` / `hidden dark:block`.
-- **Minimum size:** lockup at least 140px wide (at 40px tall, `h-10 w-auto`, it is about 145px). Below that, use the standalone symbol, at least 24px wide. At 16px use only the app tile / favicon; no wordmark at that size.
+- **Minimum size:** lockup at least 140px wide (at 40px tall, `h-10 w-auto`, it is about 150px). Below that, use the standalone symbol, at least 24px wide. At 16px use only the app tile / favicon; no wordmark at that size.
 - **Clear space:** at least 1/4 of the visible symbol height around the whole logo. The SVG canvas padding does not count toward it.
 - **Integrity:** do not flip or mirror, stretch, rotate, shade, outline, add shadows to, recolor or resize individual parts. Keep the right-leaning orientation. Place it on a solid neutral surface, never on busy imagery.
 - **Accessibility:** the nav logo link keeps a text label (`aria-label="Trenino, home"`).

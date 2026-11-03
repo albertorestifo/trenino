@@ -200,7 +200,7 @@ defmodule TreninoWeb.NavComponents do
 
   The primary lockup shows on light themes and the dark lockup on dark themes (the `dark:`
   variant follows both a forced `data-theme` and the OS preference). The lockup is 40px
-  high (145px wide), above the 140px minimum; below 360px viewport width it falls back to
+  high (150px wide), above the 140px minimum; below 360px viewport width it falls back to
   the symbol at 32px so it is never shrunk under the minimum. Never recolor these files.
   """
   attr :class, :string, default: nil
@@ -212,14 +212,14 @@ defmodule TreninoWeb.NavComponents do
         <img
           src={~p"/images/trenino-lockup-primary.svg"}
           alt=""
-          width="145"
+          width="150"
           height="40"
           class="h-10 w-auto block dark:hidden"
         />
         <img
           src={~p"/images/trenino-lockup-dark.svg"}
           alt=""
-          width="145"
+          width="150"
           height="40"
           class="h-10 w-auto hidden dark:block"
         />
