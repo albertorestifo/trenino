@@ -1,4 +1,6 @@
-use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
+use tauri::webview::NewWindowResponse;
+use tauri::{Manager, Url, WebviewUrl, WebviewWindowBuilder};
+use tauri_plugin_opener::OpenerExt;
 use tauri_plugin_shell::ShellExt;
 use tauri_plugin_shell::process::CommandChild;
 use std::sync::Mutex;
@@ -34,6 +36,26 @@ fn check_backend_ready() -> Result<bool, String> {
             // Server not yet responding
             Ok(false)
         }
+    }
+}
+
+/// Whether a URL points outside the app and should open in the system browser.
+/// Non-web schemes (about:, data:, blob:) stay in the webview.
+fn is_external_url(url: &Url) -> bool {
+    if !matches!(url.scheme(), "http" | "https") {
+        return false;
+    }
+
+    let is_backend = matches!(url.host_str(), Some("localhost" | "127.0.0.1"))
+        && url.port_or_known_default() == Some(BACKEND_PORT);
+
+    !is_backend
+}
+
+/// Hand an external URL to the system browser
+fn open_external(handle: &tauri::AppHandle, url: &Url) {
+    if let Err(e) = handle.opener().open_url(url.as_str(), None::<&str>) {
+        eprintln!("Failed to open {} in browser: {}", url, e);
     }
 }
 
@@ -170,12 +192,32 @@ pub fn run() {
                 if wait_for_backend(&handle) {
                     // Create the main window once backend is ready
                     let url = format!("http://localhost:{}", BACKEND_PORT);
+                    let new_window_handle = handle.clone();
+                    let navigation_handle = handle.clone();
 
                     let main_window = WebviewWindowBuilder::new(
                         &handle,
                         "main",
                         WebviewUrl::External(url.parse().unwrap()),
                     )
+                    // The webview can't open target="_blank" links itself, so
+                    // external ones go to the system browser.
+                    .on_new_window(move |url, _features| {
+                        if is_external_url(&url) {
+                            open_external(&new_window_handle, &url);
+                            NewWindowResponse::Deny
+                        } else {
+                            NewWindowResponse::Allow
+                        }
+                    })
+                    .on_navigation(move |url| {
+                        if is_external_url(url) {
+                            open_external(&navigation_handle, url);
+                            false
+                        } else {
+                            true
+                        }
+                    })
                     .title("Trenino")
                     .inner_size(1200.0, 800.0)
                     .min_inner_size(800.0, 600.0)
@@ -245,4 +287,35 @@ pub fn run() {
                 }
             }
         });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn external(url: &str) -> bool {
+        is_external_url(&url.parse().unwrap())
+    }
+
+    #[test]
+    fn backend_urls_stay_in_the_app() {
+        assert!(!external("http://localhost:4000"));
+        assert!(!external("http://localhost:4000/firmware"));
+        assert!(!external("http://127.0.0.1:4000/"));
+    }
+
+    #[test]
+    fn other_web_urls_are_external() {
+        assert!(external(
+            "https://github.com/albertorestifo/trenino/releases"
+        ));
+        assert!(external("http://localhost:5000/"));
+        assert!(external("http://localhost/"));
+    }
+
+    #[test]
+    fn webview_internal_schemes_are_not_external() {
+        assert!(!external("about:blank"));
+        assert!(!external("data:text/html,hi"));
+    }
 }

@@ -61,6 +61,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   still running.
 - Cancelling a firmware upload, or one timing out, now stops avrdude. It used
   to keep running in the background and hold the serial port.
+- **View Release** and the firmware release-notes links open in the system
+  browser in the desktop app. They used to do nothing when clicked.
 
 ## [0.8.2] - 2026-10-28
 
