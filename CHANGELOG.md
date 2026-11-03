@@ -51,6 +51,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Notched levers no longer bounce against the simulator while held on a notch.
   A value the simulator already received is not sent again, so input jitter
   cannot keep pulling the handle off the position it snapped to.
+- Connected stepper boards no longer keep the app busy while idle. The
+  once-a-second status poll used to query the database and refresh the
+  configuration page even when nothing had changed; it now does so only when
+  the motor's status actually changes.
 
 ## [0.8.2] - 2026-10-28
 
