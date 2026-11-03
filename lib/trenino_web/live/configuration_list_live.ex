@@ -123,13 +123,7 @@ defmodule TreninoWeb.ConfigurationListLive do
     ~H"""
     <.link
       navigate={~p"/configurations/#{@config.config_id}"}
-      class={[
-        "block rounded-xl transition-colors group cursor-pointer",
-        if(@active,
-          do: "border-2 border-success bg-success/5",
-          else: "border border-base-300 bg-base-200/50 hover:bg-base-200"
-        )
-      ]}
+      class="block rounded-xl transition-colors group cursor-pointer border border-base-300 bg-base-200/50 hover:bg-base-200"
     >
       <div class="flex items-start justify-between gap-4 p-5">
         <div class="flex-1">
