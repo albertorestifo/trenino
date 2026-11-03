@@ -14,6 +14,7 @@ defmodule TreninoWeb.SettingsLive do
   def mount(_params, _session, socket) do
     {:ok,
      socket
+     |> assign(:page_title, "Settings")
      |> assign(:error_reporting_enabled, Settings.error_reporting?())
      |> assign(:simulator_url, Settings.simulator_url())
      |> assign(:api_key_status, api_key_status())
@@ -176,16 +177,16 @@ defmodule TreninoWeb.SettingsLive do
         </header>
 
         <section>
-          <h2 class="text-base font-semibold mb-5">Error Reporting</h2>
+          <h2 class="text-xl font-semibold mb-5">Error Reporting</h2>
           <label class="flex items-start justify-between gap-6 cursor-pointer">
             <div>
               <div class="font-medium">Share anonymous error reports</div>
-              <div class="text-sm text-base-content/70 mt-1">
+              <div class="text-sm text-muted mt-1">
                 Crash reports are sent to help fix bugs. No personal data is included.
               </div>
               <.link
                 navigate={~p"/consent"}
-                class="text-sm text-base-content/60 underline underline-offset-2 hover:text-base-content transition-colors mt-3 inline-block"
+                class="text-sm text-muted underline underline-offset-2 hover:text-base-content transition-colors mt-3 inline-block"
               >
                 Review consent details
               </.link>
@@ -203,7 +204,7 @@ defmodule TreninoWeb.SettingsLive do
         <div class="border-t border-base-300 my-10"></div>
 
         <section>
-          <h2 class="text-base font-semibold mb-5">Simulator Connection</h2>
+          <h2 class="text-xl font-semibold mb-5">Simulator Connection</h2>
           <.form
             id="simulator-form"
             for={%{}}
@@ -240,20 +241,20 @@ defmodule TreninoWeb.SettingsLive do
               <%= case @api_key_status do %>
                 <% :found_in_file -> %>
                   <div class="flex items-center gap-2 px-3 py-2 mb-3 text-sm bg-base-200 rounded border border-base-300">
-                    <.icon name="hero-check-circle" class="w-4 h-4 text-base-content/70 shrink-0" />
-                    <span class="text-base-content/70">
+                    <.icon name="hero-check-circle" class="w-4 h-4 text-success shrink-0" />
+                    <span>
                       Found in your Train Sim World folder, updated automatically.
                     </span>
                   </div>
                 <% :missing -> %>
-                  <div class="alert alert-warning px-3 py-2 mb-3 text-sm">
+                  <div class="alert alert-soft alert-warning px-3 py-2 mb-3 text-sm">
                     <.icon name="hero-exclamation-triangle" class="w-4 h-4 shrink-0" />
                     <span>
                       Not found in your Train Sim World folder. Enter a key below.
                     </span>
                   </div>
                 <% :unsupported_platform -> %>
-                  <div class="alert px-3 py-2 mb-3 text-sm">
+                  <div class="alert alert-soft alert-info px-3 py-2 mb-3 text-sm">
                     <.icon name="hero-information-circle" class="w-4 h-4 shrink-0" />
                     <span>Auto-detection is only available on Windows. Enter a key below.</span>
                   </div>
@@ -265,7 +266,7 @@ defmodule TreninoWeb.SettingsLive do
                 placeholder="Leave blank to keep current value"
                 class="input input-bordered w-full font-mono"
               />
-              <div id="api-key-help" class="mt-1.5 text-xs text-base-content/70">
+              <div id="api-key-help" class="mt-1.5 text-xs text-muted">
                 <%= if @api_key_status == :unsupported_platform do %>
                   On the Windows PC running Train Sim World, copy the key from
                   <span class="font-mono break-all">Documents\My Games\TrainSimWorld7\Saved\Config\CommAPIKey.txt</span>
@@ -285,7 +286,7 @@ defmodule TreninoWeb.SettingsLive do
               id="simulator-connection-result"
               role="status"
               aria-live="polite"
-              class="mb-4 text-sm text-base-content/80"
+              class="mb-4 text-sm"
             >
               {@connection_result}
             </p>

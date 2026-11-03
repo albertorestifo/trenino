@@ -72,16 +72,17 @@ defmodule TreninoWeb.ConfigurationListLiveTest do
       refute html =~ "Simulator is offline"
     end
 
-    test "shows warning color when needs config", %{conn: conn} do
+    test "shows a neutral notice when needs config", %{conn: conn} do
       {:ok, view, _html} = live(conn, ~p"/")
 
       send(view.pid, {:simulator_status_changed, %ConnectionState{status: :needs_config}})
 
-      html = render(view)
-      assert html =~ "bg-warning"
+      render(view)
+      assert has_element?(view, "#simulator-status-banner", "Simulator not configured")
+      assert has_element?(view, "#simulator-status-banner a[href='/settings']", "Open Settings")
     end
 
-    test "shows error color on connection error", %{conn: conn} do
+    test "shows a solid error banner on connection error", %{conn: conn} do
       {:ok, view, _html} = live(conn, ~p"/")
 
       send(
@@ -89,8 +90,9 @@ defmodule TreninoWeb.ConfigurationListLiveTest do
         {:simulator_status_changed, %ConnectionState{status: :error, last_error: :timeout}}
       )
 
-      html = render(view)
-      assert html =~ "bg-error"
+      render(view)
+      assert has_element?(view, "#simulator-status-banner", "Simulator connection failed")
+      assert has_element?(view, "#simulator-status-banner .bg-error")
     end
 
     test "hides sim banner when connecting", %{conn: conn} do
@@ -104,46 +106,66 @@ defmodule TreninoWeb.ConfigurationListLiveTest do
       refute html =~ "Simulator is offline"
     end
 
-    test "shows disconnected color", %{conn: conn} do
+    test "shows offline notice when disconnected", %{conn: conn} do
       {:ok, view, _html} = live(conn, ~p"/")
 
       send(view.pid, {:simulator_status_changed, %ConnectionState{status: :disconnected}})
 
-      html = render(view)
-      assert html =~ "bg-base-content/20"
+      render(view)
+      assert has_element?(view, "#simulator-status-banner", "Simulator is offline")
+
+      assert has_element?(
+               view,
+               "#simulator-status-banner button[phx-click='nav_retry_simulator']"
+             )
     end
   end
 
-  describe "simulator_status_color/1 helper function" do
-    test "returns correct color classes for each status" do
-      # Test the color mapping logic
-      status_colors = [
-        {:connected, "bg-success"},
-        {:connecting, "bg-info animate-pulse"},
-        {:error, "bg-error"},
-        {:needs_config, "bg-warning"},
-        {:disconnected, "bg-base-content/20"}
+  describe "device status summary" do
+    test "labels every summary state with text, not color alone", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/")
+      summary = "button[phx-click='nav_toggle_dropdown']"
+
+      assert has_element?(view, summary, "No devices")
+
+      cases = [
+        {[device("COM1", :connected)], "1 connected", "hero-check-circle-mini"},
+        {[device("COM1", :connected), device("COM2", :connected)], "2 connected",
+         "hero-check-circle-mini"},
+        {[device("COM1", :discovering)], "Connecting", "hero-arrow-path-mini"},
+        {[device("COM1", :connected), device("COM2", :failed)], "Needs attention",
+         "hero-exclamation-triangle-mini"}
       ]
 
-      for {status, expected_class} <- status_colors do
-        color = simulator_status_color(status)
+      for {devices, label, icon} <- cases do
+        send(view.pid, {:devices_updated, devices})
+        render(view)
 
-        assert color == expected_class,
-               "Expected #{expected_class} for status #{status}, got #{color}"
+        assert has_element?(view, summary, label)
+        assert has_element?(view, "#{summary}[aria-label='Devices: #{label}'] .#{icon}")
       end
     end
-  end
 
-  # Helper that mirrors the LiveView implementation
-  defp simulator_status_color(status) do
-    case status do
-      :connected -> "bg-success"
-      :connecting -> "bg-info animate-pulse"
-      :error -> "bg-error"
-      :needs_config -> "bg-warning"
-      :disconnected -> "bg-base-content/20"
+    test "device rows use the status vocabulary", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      send(
+        view.pid,
+        {:devices_updated,
+         [device("COM1", :connected), device("COM2", :discovering), device("COM3", :failed)]}
+      )
+
+      html = view |> element("button[phx-click='nav_toggle_dropdown']") |> render_click()
+
+      assert html =~ "Connected"
+      assert html =~ "Connecting"
+      assert html =~ "Failed"
+      refute html =~ "Discovering"
     end
   end
+
+  defp device(port, status),
+    do: %Trenino.Serial.Connection.DeviceConnection{port: port, status: status}
 
   describe "device scanning" do
     test "scan button shows scanning state when clicked", %{conn: conn} do

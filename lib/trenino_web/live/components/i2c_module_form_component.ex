@@ -524,14 +524,14 @@ defmodule TreninoWeb.I2cModuleFormComponent do
   defp chip_field(%{chip: "ht16k33"} = assigns) do
     ~H"""
     <input type="hidden" name="i2c_module[module_chip]" value="ht16k33" />
-    <p class="text-xs text-base-content/60">Uses an HT16K33 display driver.</p>
+    <p class="text-xs text-muted">Uses an HT16K33 display driver.</p>
     """
   end
 
   defp chip_field(assigns) do
     ~H"""
     <input type="hidden" name="i2c_module[module_chip]" value={@chip} />
-    <p class="text-xs text-base-content/60">{chip_title(@chip)}</p>
+    <p class="text-xs text-muted">{chip_title(@chip)}</p>
     """
   end
 
@@ -558,7 +558,7 @@ defmodule TreninoWeb.I2cModuleFormComponent do
       aria-describedby="chip-address-hint"
       errors={@errors}
     />
-    <p id="chip-address-hint" class="text-xs text-base-content/60">{@hint}</p>
+    <p id="chip-address-hint" class="text-xs text-muted">{@hint}</p>
     """
   end
 
@@ -627,10 +627,10 @@ defmodule TreninoWeb.I2cModuleFormComponent do
       <ul class="text-sm space-y-1">
         <li :for={item <- @impact}>
           <span class="font-medium">{item.name}</span>
-          <span class="text-base-content/70">{item.binding}</span>
+          <span class="text-muted">{item.binding}</span>
         </li>
       </ul>
-      <p class="text-xs text-base-content/60">
+      <p class="text-xs text-muted">
         Save again to confirm. Their bindings and calibration will be deleted.
       </p>
     </div>
@@ -672,7 +672,7 @@ defmodule TreninoWeb.I2cModuleFormComponent do
         aria-describedby="display-address-hint"
         errors={Enum.map(@form[:i2c_address].errors, &TreninoWeb.CoreComponents.translate_error/1)}
       />
-      <p id="display-address-hint" class="text-xs text-base-content/60">
+      <p id="display-address-hint" class="text-xs text-muted">
         Find this on the display board or its wiring guide. Enter decimal (112) or hex (0x70).
       </p>
       <.input
@@ -697,7 +697,7 @@ defmodule TreninoWeb.I2cModuleFormComponent do
         ]}
         aria-describedby="display-orientation-hint"
       />
-      <p id="display-orientation-hint" class="text-xs text-base-content/60">
+      <p id="display-orientation-hint" class="text-xs text-muted">
         Use if the display is mounted upside down or mirrored.
       </p>
       <details
@@ -726,7 +726,7 @@ defmodule TreninoWeb.I2cModuleFormComponent do
             label="Minimum value"
             aria-describedby="display-minimum-hint"
           />
-          <p id="display-minimum-hint" class="text-xs text-base-content/60">
+          <p id="display-minimum-hint" class="text-xs text-muted">
             Values below this limit are shown at the limit. Leave blank for no limit.
           </p>
           <.input
@@ -796,10 +796,10 @@ defmodule TreninoWeb.I2cModuleFormComponent do
           />
         </fieldset>
       </div>
-      <p id="pin-output-only-note" class="text-xs text-base-content/60">
+      <p id="pin-output-only-note" class="text-xs text-muted">
         GPA7 and GPB7 are output-only on this chip, so they can only be matrix rows.
       </p>
-      <div id="mcp-summary" class="rounded-lg bg-base-200/50 p-3 text-sm space-y-1" aria-live="polite">
+      <div id="mcp-summary" class="rounded-lg bg-base-100 p-3 text-sm space-y-1" aria-live="polite">
         <p :if={@summary.direct > 0} id="mcp-direct-count">
           {@summary.direct} {if @summary.direct == 1, do: "button", else: "buttons"} on their own pins
         </p>
@@ -810,7 +810,7 @@ defmodule TreninoWeb.I2cModuleFormComponent do
             A matrix needs at least one row and one column.
           <% end %>
         </p>
-        <p id="mcp-pins-left" class="text-base-content/70">
+        <p id="mcp-pins-left" class="text-muted">
           <%= if @summary.left >= 0 do %>
             {@summary.left} virtual {if @summary.left == 1, do: "pin", else: "pins"} left on this device
           <% else %>
@@ -829,7 +829,7 @@ defmodule TreninoWeb.I2cModuleFormComponent do
         max="255"
         aria-describedby="mcp-debounce-hint"
       />
-      <p id="mcp-debounce-hint" class="text-xs text-base-content/60">
+      <p id="mcp-debounce-hint" class="text-xs text-muted">
         How many samples in a row a pin must agree before a press counts. It follows the layout until you change it.
       </p>
       <.chip_errors form={@form} />
@@ -932,7 +932,7 @@ defmodule TreninoWeb.I2cModuleFormComponent do
         options={@reference_options}
         aria-describedby="ads-reference-hint"
       />
-      <p id="ads-reference-hint" class="text-xs text-base-content/60">
+      <p id="ads-reference-hint" class="text-xs text-muted">
         Wrapping sensors need a supply reference, which uses one channel. All sensors on this chip must share the supply wired to it.
       </p>
       <.chip_errors form={@form} />

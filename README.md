@@ -1,8 +1,9 @@
-<p align="center">
-  <img src="icon.png" alt="trenino" width="128" height="128">
-</p>
-
-<h1 align="center">Trenino</h1>
+<h1 align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="priv/static/images/trenino-lockup-dark.svg">
+    <img src="priv/static/images/trenino-lockup-primary.svg" alt="Trenino" width="280">
+  </picture>
+</h1>
 <p align="center"><em>Train Sim World + Arduino · "Model train" in Italian</em></p>
 
 <p align="center">

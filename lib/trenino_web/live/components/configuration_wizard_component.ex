@@ -593,12 +593,12 @@ defmodule TreninoWeb.ConfigurationWizardComponent do
     ~H"""
     <div class="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div class="absolute inset-0 bg-black/50" phx-click="cancel" phx-target={@myself} />
-      <div class="relative bg-base-100 rounded-xl shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col">
+      <div class="relative bg-base-200 rounded-xl shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col">
         <div class="p-4 border-b border-base-300">
           <div class="flex items-center justify-between">
             <div>
-              <h2 class="text-lg font-semibold">Configure Button</h2>
-              <p class="text-sm text-base-content/60">{@element.name}</p>
+              <h2 class="text-xl font-semibold">Configure Button</h2>
+              <p class="text-sm text-muted">{@element.name}</p>
             </div>
             <button
               type="button"
@@ -647,7 +647,7 @@ defmodule TreninoWeb.ConfigurationWizardComponent do
           <div :if={@wizard_step == :choosing_type} class="flex-1 p-6">
             <div class="max-w-xl mx-auto">
               <div class="text-center mb-6">
-                <h3 class="text-lg font-semibold">What should this button do?</h3>
+                <h3 class="text-xl font-semibold">What should this button do?</h3>
               </div>
 
               <div class="space-y-3">
@@ -655,21 +655,21 @@ defmodule TreninoWeb.ConfigurationWizardComponent do
                   type="button"
                   phx-click="choose_simulator_binding"
                   phx-target={@myself}
-                  class="w-full p-4 rounded-lg border border-base-300 hover:border-primary hover:bg-primary/5 transition-all text-left group"
+                  class="w-full p-4 rounded-lg border border-base-300 hover:border-primary hover:bg-base-100 transition-colors text-left group"
                 >
                   <div class="flex items-center gap-3">
-                    <div class="p-2 rounded-lg bg-primary/10 text-primary group-hover:bg-primary group-hover:text-primary-content transition-colors">
+                    <div class="p-2 rounded-lg bg-base-300 text-base-content">
                       <.icon name="hero-cpu-chip" class="w-5 h-5" />
                     </div>
                     <div class="flex-1 min-w-0">
                       <h4 class="font-medium">Simulator Control</h4>
-                      <p class="text-sm text-base-content/60">
+                      <p class="text-sm text-muted">
                         Control a function via the simulator API
                       </p>
                     </div>
                     <.icon
                       name="hero-chevron-right"
-                      class="w-5 h-5 text-base-content/30 group-hover:text-primary transition-colors"
+                      class="w-5 h-5 text-muted group-hover:text-primary transition-colors"
                     />
                   </div>
                 </button>
@@ -678,21 +678,21 @@ defmodule TreninoWeb.ConfigurationWizardComponent do
                   type="button"
                   phx-click="choose_sequence_binding"
                   phx-target={@myself}
-                  class="w-full p-4 rounded-lg border border-base-300 hover:border-accent hover:bg-accent/5 transition-all text-left group"
+                  class="w-full p-4 rounded-lg border border-base-300 hover:border-primary hover:bg-base-100 transition-colors text-left group"
                 >
                   <div class="flex items-center gap-3">
-                    <div class="p-2 rounded-lg bg-accent/10 text-accent group-hover:bg-accent group-hover:text-accent-content transition-colors">
+                    <div class="p-2 rounded-lg bg-base-300 text-base-content">
                       <.icon name="hero-list-bullet" class="w-5 h-5" />
                     </div>
                     <div class="flex-1 min-w-0">
                       <h4 class="font-medium">Trigger Sequence</h4>
-                      <p class="text-sm text-base-content/60">
+                      <p class="text-sm text-muted">
                         Execute a sequence of commands
                       </p>
                     </div>
                     <.icon
                       name="hero-chevron-right"
-                      class="w-5 h-5 text-base-content/30 group-hover:text-accent transition-colors"
+                      class="w-5 h-5 text-muted group-hover:text-primary transition-colors"
                     />
                   </div>
                 </button>
@@ -701,21 +701,21 @@ defmodule TreninoWeb.ConfigurationWizardComponent do
                   type="button"
                   phx-click="choose_keystroke_binding"
                   phx-target={@myself}
-                  class="w-full p-4 rounded-lg border border-base-300 hover:border-secondary hover:bg-secondary/5 transition-all text-left group"
+                  class="w-full p-4 rounded-lg border border-base-300 hover:border-primary hover:bg-base-100 transition-colors text-left group"
                 >
                   <div class="flex items-center gap-3">
-                    <div class="p-2 rounded-lg bg-secondary/10 text-secondary group-hover:bg-secondary group-hover:text-secondary-content transition-colors">
+                    <div class="p-2 rounded-lg bg-base-300 text-base-content">
                       <.icon name="hero-cursor-arrow-ripple" class="w-5 h-5" />
                     </div>
                     <div class="flex-1 min-w-0">
                       <h4 class="font-medium">Keyboard Key</h4>
-                      <p class="text-sm text-base-content/60">
+                      <p class="text-sm text-muted">
                         Simulate a keyboard press
                       </p>
                     </div>
                     <.icon
                       name="hero-chevron-right"
-                      class="w-5 h-5 text-base-content/30 group-hover:text-secondary transition-colors"
+                      class="w-5 h-5 text-muted group-hover:text-primary transition-colors"
                     />
                   </div>
                 </button>
@@ -724,10 +724,10 @@ defmodule TreninoWeb.ConfigurationWizardComponent do
           </div>
 
           <div :if={@wizard_step == :browsing && !@show_auto_detect} class="flex-1 flex flex-col">
-            <div class="p-4 border-b border-base-300 bg-base-200/50">
+            <div class="p-4 border-b border-base-300 bg-base-100">
               <div class="flex items-center justify-between">
                 <div class="flex items-center gap-2">
-                  <.icon name="hero-sparkles" class="w-5 h-5 text-primary" />
+                  <.icon name="hero-sparkles" class="w-5 h-5 text-base-content" />
                   <span class="font-medium">Quick Setup</span>
                 </div>
                 <button
@@ -739,7 +739,7 @@ defmodule TreninoWeb.ConfigurationWizardComponent do
                   <.icon name="hero-cursor-arrow-rays" class="w-4 h-4" /> Auto-Detect Control
                 </button>
               </div>
-              <p class="text-xs text-base-content/60 mt-1">
+              <p class="text-xs text-muted mt-1">
                 Interact with a control in the simulator to automatically detect it, or browse below
               </p>
             </div>
@@ -803,7 +803,7 @@ defmodule TreninoWeb.ConfigurationWizardComponent do
         "w-6 h-6 rounded-full flex items-center justify-center text-xs font-medium",
         @active && "bg-primary text-primary-content",
         @completed && "bg-success text-success-content",
-        (not @active and not @completed) && "bg-base-300 text-base-content/50"
+        (not @active and not @completed) && "bg-base-200 border border-base-300 text-muted"
       ]}>
         <.icon :if={@completed} name="hero-check" class="w-4 h-4" />
         <span :if={not @completed}>{@step}</span>
@@ -811,7 +811,7 @@ defmodule TreninoWeb.ConfigurationWizardComponent do
       <span class={[
         "text-sm",
         @active && "font-medium",
-        (not @active and not @completed) && "text-base-content/50"
+        (not @active and not @completed) && "text-muted"
       ]}>
         {@label}
       </span>
@@ -849,7 +849,7 @@ defmodule TreninoWeb.ConfigurationWizardComponent do
     <div class="space-y-6">
       <div :if={@binding_mode not in [:keystroke, :sequence]}>
         <h3 class="font-semibold mb-2">Selected Endpoint</h3>
-        <div class="bg-base-200 rounded-lg p-3 font-mono text-sm">
+        <div class="bg-base-100 rounded-lg p-3 font-mono text-sm">
           {@detected_endpoints[:endpoint]}
         </div>
       </div>
@@ -857,20 +857,20 @@ defmodule TreninoWeb.ConfigurationWizardComponent do
       <div>
         <h3 class="font-semibold mb-2">Hardware Input</h3>
 
-        <div :if={@available_inputs == []} class="bg-base-200 rounded-lg p-4">
-          <p class="text-sm text-base-content/60 italic">
+        <div :if={@available_inputs == []} class="bg-base-100 rounded-lg p-4">
+          <p class="text-sm text-muted">
             No button inputs configured. Add button inputs in device settings first.
           </p>
         </div>
 
         <div
           :if={@available_inputs != [] && !@detecting_button && is_nil(@selected_input)}
-          class="bg-base-200 rounded-lg p-4"
+          class="bg-base-100 rounded-lg p-4"
         >
           <div class="flex items-center justify-between">
             <div>
-              <p class="text-sm text-base-content/70">No button selected</p>
-              <p class="text-xs text-base-content/50">
+              <p class="text-sm text-muted">No button selected</p>
+              <p class="text-xs text-muted">
                 Press "Detect" and then press a button on your device
               </p>
             </div>
@@ -887,10 +887,10 @@ defmodule TreninoWeb.ConfigurationWizardComponent do
 
         <div :if={@detecting_button} class="bg-primary/10 border border-primary rounded-lg p-4">
           <div class="flex items-center gap-3">
-            <span class="loading loading-dots loading-md text-primary"></span>
+            <span class="loading loading-dots loading-md"></span>
             <div>
-              <p class="font-medium text-primary">Waiting for button press...</p>
-              <p class="text-xs text-base-content/60">Press a button on your hardware device</p>
+              <p class="font-medium">Waiting for button press...</p>
+              <p class="text-xs text-muted">Press a button on your hardware device</p>
             </div>
           </div>
           <button
@@ -912,7 +912,7 @@ defmodule TreninoWeb.ConfigurationWizardComponent do
               <.icon name="hero-check-circle" class="w-6 h-6 text-success" />
               <div>
                 <p class="font-medium">{@selected_input.name || "Button #{@selected_input.pin}"}</p>
-                <p class="text-xs text-base-content/60">
+                <p class="text-xs text-muted">
                   {@selected_input.device.name} - {InputLabel.pin(@selected_input)}
                 </p>
               </div>
@@ -943,7 +943,7 @@ defmodule TreninoWeb.ConfigurationWizardComponent do
               Latching (toggle switch)
             </option>
           </select>
-          <p class="text-xs text-base-content/50 mt-1">
+          <p class="text-xs text-muted mt-1">
             {hardware_type_description(@hardware_type)}
           </p>
         </div>
@@ -971,7 +971,7 @@ defmodule TreninoWeb.ConfigurationWizardComponent do
                 Keystroke (keyboard key)
               </option>
             </select>
-            <p class="text-xs text-base-content/50 mt-1">
+            <p class="text-xs text-muted mt-1">
               {mode_description(@binding_mode)}
             </p>
           </div>
@@ -990,14 +990,14 @@ defmodule TreninoWeb.ConfigurationWizardComponent do
                 Latching (toggle switch)
               </option>
             </select>
-            <p class="text-xs text-base-content/50 mt-1">
+            <p class="text-xs text-muted mt-1">
               {hardware_type_description(@hardware_type)}
             </p>
           </div>
         </div>
 
-        <div :if={@binding_mode == :sequence} class="bg-base-200/50 rounded-lg p-4 space-y-4 mt-4">
-          <div :if={Enum.empty?(@sequences)} class="alert alert-warning">
+        <div :if={@binding_mode == :sequence} class="bg-base-100 rounded-lg p-4 space-y-4 mt-4">
+          <div :if={Enum.empty?(@sequences)} class="alert alert-soft alert-warning">
             <.icon name="hero-exclamation-triangle" class="w-5 h-5" />
             <div>
               <span>No sequences defined.</span>
@@ -1029,7 +1029,7 @@ defmodule TreninoWeb.ConfigurationWizardComponent do
                 {seq.name} ({length(seq.commands)} commands)
               </option>
             </select>
-            <p class="text-xs text-base-content/50 mt-1">
+            <p class="text-xs text-muted mt-1">
               Sequence to execute when button is pressed
             </p>
           </div>
@@ -1051,7 +1051,7 @@ defmodule TreninoWeb.ConfigurationWizardComponent do
                 {seq.name} ({length(seq.commands)} commands)
               </option>
             </select>
-            <p class="text-xs text-base-content/50 mt-1">
+            <p class="text-xs text-muted mt-1">
               Sequence to execute when toggle is turned off
             </p>
           </div>
@@ -1064,7 +1064,7 @@ defmodule TreninoWeb.ConfigurationWizardComponent do
           </p>
         </div>
 
-        <div :if={@binding_mode == :keystroke} class="bg-base-200/50 rounded-lg p-4 mt-4">
+        <div :if={@binding_mode == :keystroke} class="bg-base-100 rounded-lg p-4 mt-4">
           <label class="label">
             <span class="label-text font-medium">Keystroke</span>
           </label>
@@ -1072,8 +1072,8 @@ defmodule TreninoWeb.ConfigurationWizardComponent do
           <div :if={!@capturing_keystroke && is_nil(@keystroke)} class="bg-base-200 rounded-lg p-4">
             <div class="flex items-center justify-between">
               <div>
-                <p class="text-sm text-base-content/70">No keystroke configured</p>
-                <p class="text-xs text-base-content/50">
+                <p class="text-sm text-muted">No keystroke configured</p>
+                <p class="text-xs text-muted">
                   Click "Capture" and press the key combination
                 </p>
               </div>
@@ -1094,12 +1094,12 @@ defmodule TreninoWeb.ConfigurationWizardComponent do
             phx-hook="KeystrokeCapture"
             phx-target={@myself}
             tabindex="0"
-            class="bg-primary/10 border-2 border-primary rounded-lg p-6 text-center cursor-pointer focus:ring-2 focus:ring-primary"
+            class="bg-primary/10 border-2 border-primary rounded-lg p-6 text-center cursor-pointer focus:outline-2 focus:outline-offset-2 focus:outline-primary"
           >
             <div class="flex flex-col items-center gap-2">
-              <.icon name="hero-cursor-arrow-ripple" class="w-8 h-8 text-primary animate-pulse" />
-              <p class="font-medium text-primary">Press any key combination...</p>
-              <p class="text-xs text-base-content/60">e.g., W, Ctrl+S, Shift+F1</p>
+              <.icon name="hero-cursor-arrow-ripple" class="w-8 h-8 text-base-content" />
+              <p class="font-medium">Press any key combination...</p>
+              <p class="text-xs text-muted">e.g., W, Ctrl+S, Shift+F1</p>
             </div>
             <button
               type="button"
@@ -1120,7 +1120,7 @@ defmodule TreninoWeb.ConfigurationWizardComponent do
                 <.icon name="hero-check-circle" class="w-6 h-6 text-success" />
                 <div>
                   <p class="font-medium font-mono text-lg">{@keystroke}</p>
-                  <p class="text-xs text-base-content/60">Key will be held while button is pressed</p>
+                  <p class="text-xs text-muted">Key will be held while button is pressed</p>
                 </div>
               </div>
               <div class="flex gap-2">
@@ -1158,7 +1158,7 @@ defmodule TreninoWeb.ConfigurationWizardComponent do
             </span>
             <input
               type="checkbox"
-              class="toggle toggle-sm"
+              class="toggle toggle-primary toggle-sm"
               checked={@value_config_mode == :manual}
               phx-click="set_value_config_mode"
               phx-value-mode={if @value_config_mode == :manual, do: "auto", else: "manual"}
@@ -1198,11 +1198,11 @@ defmodule TreninoWeb.ConfigurationWizardComponent do
         </div>
 
         <div :if={@value_config_mode == :auto}>
-          <div :if={@value_detection_status == :idle} class="bg-base-200 rounded-lg p-4">
+          <div :if={@value_detection_status == :idle} class="bg-base-100 rounded-lg p-4">
             <div class="flex items-center justify-between">
               <div>
                 <p class="font-medium">Detect ON/OFF Values</p>
-                <p class="text-xs text-base-content/60">
+                <p class="text-xs text-muted">
                   Interact with the control in the simulator to detect values
                 </p>
               </div>
@@ -1222,24 +1222,24 @@ defmodule TreninoWeb.ConfigurationWizardComponent do
             class="bg-primary/10 border border-primary rounded-lg p-4"
           >
             <div class="flex items-center gap-3 mb-3">
-              <span class="loading loading-dots loading-md text-primary"></span>
+              <span class="loading loading-dots loading-md"></span>
               <div>
-                <p class="font-medium text-primary">Detecting values...</p>
-                <p class="text-xs text-base-content/60">
+                <p class="font-medium">Detecting values...</p>
+                <p class="text-xs text-muted">
                   Interact with the control in the simulator
                 </p>
               </div>
             </div>
 
             <div class="grid grid-cols-2 gap-4 mb-3">
-              <div class="bg-base-100 rounded p-2 text-center">
-                <p class="text-xs text-base-content/60">OFF (resting)</p>
+              <div class="bg-base-200 rounded p-2 text-center">
+                <p class="text-xs text-muted">OFF (resting)</p>
                 <p class="font-mono text-lg">
                   {if @detected_off_value, do: @detected_off_value, else: "..."}
                 </p>
               </div>
-              <div class="bg-base-100 rounded p-2 text-center">
-                <p class="text-xs text-base-content/60">ON (active)</p>
+              <div class="bg-base-200 rounded p-2 text-center">
+                <p class="text-xs text-muted">ON (active)</p>
                 <p class="font-mono text-lg">
                   {if @detected_on_value, do: @detected_on_value, else: "..."}
                 </p>
@@ -1266,12 +1266,12 @@ defmodule TreninoWeb.ConfigurationWizardComponent do
             </div>
 
             <div class="grid grid-cols-2 gap-4 mb-4">
-              <div class="bg-base-100 rounded p-3 text-center">
-                <p class="text-xs text-base-content/60">OFF Value</p>
+              <div class="bg-base-200 rounded p-3 text-center">
+                <p class="text-xs text-muted">OFF Value</p>
                 <p class="font-mono text-2xl">{@detected_off_value}</p>
               </div>
-              <div class="bg-base-100 rounded p-3 text-center">
-                <p class="text-xs text-base-content/60">ON Value</p>
+              <div class="bg-base-200 rounded p-3 text-center">
+                <p class="text-xs text-muted">ON Value</p>
                 <p class="font-mono text-2xl">{@detected_on_value}</p>
               </div>
             </div>
@@ -1289,7 +1289,7 @@ defmodule TreninoWeb.ConfigurationWizardComponent do
                 type="button"
                 phx-click="confirm_detected_values"
                 phx-target={@myself}
-                class="btn btn-success btn-sm"
+                class="btn btn-primary btn-sm"
               >
                 <.icon name="hero-check" class="w-4 h-4" /> Confirm
               </button>
@@ -1298,17 +1298,17 @@ defmodule TreninoWeb.ConfigurationWizardComponent do
 
           <div
             :if={@value_detection_status == :confirmed}
-            class="bg-base-200 rounded-lg p-4"
+            class="bg-base-100 rounded-lg p-4"
           >
             <div class="flex items-center justify-between">
               <div class="flex items-center gap-4">
                 <div class="text-center">
-                  <p class="text-xs text-base-content/60">OFF</p>
+                  <p class="text-xs text-muted">OFF</p>
                   <p class="font-mono font-medium">{@off_value}</p>
                 </div>
-                <.icon name="hero-arrow-right" class="w-4 h-4 text-base-content/30" />
+                <.icon name="hero-arrow-right" class="w-4 h-4 text-muted" />
                 <div class="text-center">
-                  <p class="text-xs text-base-content/60">ON</p>
+                  <p class="text-xs text-muted">ON</p>
                   <p class="font-mono font-medium">{@on_value}</p>
                 </div>
               </div>

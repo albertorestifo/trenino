@@ -19,40 +19,46 @@
 
 /* daisyUI theme plugin. You can update this file by fetching the latest version with:
   curl -sLO https://github.com/saadeghi/daisyui/releases/latest/download/daisyui-theme.js
-  We ship with two themes, a light one inspired on Phoenix colors and a dark one inspired
-  on Elixir colors. Build your own at: https://daisyui.com/theme-generator/ */
+  Both themes map the Trenino brand tokens (Brand Guide v1.1, p06/p07) onto daisyUI roles:
+  base-100 = background, base-200 = surface, base-300 = border, primary/accent = action,
+  secondary = muted, neutral = ink. Every fill/-content pair is at least 4.5:1.
+  Light is the default; dark follows the OS (prefersdark) or [data-theme=dark].
+  Status colors are foregrounds on neutral surfaces: prefer the soft variants.
+  Rail red (#D93920) is reserved for the logo and installer icon and is never a UI role.
+  `--trenino-muted` is passed through to each theme selector and exposed as `text-muted`. */
 @plugin "../vendor/daisyui-theme" {
   name: "dark";
   default: false;
   prefersdark: true;
   color-scheme: "dark";
-  --color-base-100: oklch(30.33% 0.016 252.42);
-  --color-base-200: oklch(25.26% 0.014 253.1);
-  --color-base-300: oklch(20.15% 0.012 254.09);
-  --color-base-content: oklch(97.807% 0.029 256.847);
-  --color-primary: oklch(58% 0.233 277.117);
-  --color-primary-content: oklch(96% 0.018 272.314);
-  --color-secondary: oklch(58% 0.233 277.117);
-  --color-secondary-content: oklch(96% 0.018 272.314);
-  --color-accent: oklch(60% 0.25 292.717);
-  --color-accent-content: oklch(96% 0.016 293.756);
-  --color-neutral: oklch(37% 0.044 257.287);
-  --color-neutral-content: oklch(98% 0.003 247.858);
-  --color-info: oklch(58% 0.158 241.966);
-  --color-info-content: oklch(97% 0.013 236.62);
-  --color-success: oklch(60% 0.118 184.704);
-  --color-success-content: oklch(98% 0.014 180.72);
-  --color-warning: oklch(66% 0.179 58.318);
-  --color-warning-content: oklch(98% 0.022 95.277);
-  --color-error: oklch(58% 0.253 17.585);
-  --color-error-content: oklch(96% 0.015 12.422);
+  --color-base-100: #20262C;
+  --color-base-200: #2A323A;
+  --color-base-300: #65717D;
+  --color-base-content: #F5F7FA;
+  --color-primary: #AFBCFF;
+  --color-primary-content: #20262C;
+  --color-secondary: #B7C0C9;
+  --color-secondary-content: #20262C;
+  --color-accent: #AFBCFF;
+  --color-accent-content: #20262C;
+  --color-neutral: #3A444D;
+  --color-neutral-content: #F5F7FA;
+  --color-info: #91C8F6;
+  --color-info-content: #20262C;
+  --color-success: #68D6AC;
+  --color-success-content: #20262C;
+  --color-warning: #F3C36B;
+  --color-warning-content: #20262C;
+  --color-error: #FF9AA4;
+  --color-error-content: #20262C;
+  --trenino-muted: #B7C0C9;
   --radius-selector: 0.25rem;
   --radius-field: 0.25rem;
   --radius-box: 0.5rem;
   --size-selector: 0.21875rem;
   --size-field: 0.21875rem;
   --border: 1.5px;
-  --depth: 1;
+  --depth: 0;
   --noise: 0;
 }
 
@@ -61,34 +67,78 @@
   default: true;
   prefersdark: false;
   color-scheme: "light";
-  --color-base-100: oklch(98% 0 0);
-  --color-base-200: oklch(96% 0.001 286.375);
-  --color-base-300: oklch(92% 0.004 286.32);
-  --color-base-content: oklch(21% 0.006 285.885);
-  --color-primary: oklch(70% 0.213 47.604);
-  --color-primary-content: oklch(98% 0.016 73.684);
-  --color-secondary: oklch(55% 0.027 264.364);
-  --color-secondary-content: oklch(98% 0.002 247.839);
-  --color-accent: oklch(0% 0 0);
-  --color-accent-content: oklch(100% 0 0);
-  --color-neutral: oklch(44% 0.017 285.786);
-  --color-neutral-content: oklch(98% 0 0);
-  --color-info: oklch(62% 0.214 259.815);
-  --color-info-content: oklch(97% 0.014 254.604);
-  --color-success: oklch(70% 0.14 182.503);
-  --color-success-content: oklch(98% 0.014 180.72);
-  --color-warning: oklch(66% 0.179 58.318);
-  --color-warning-content: oklch(98% 0.022 95.277);
-  --color-error: oklch(58% 0.253 17.585);
-  --color-error-content: oklch(96% 0.015 12.422);
+  --color-base-100: #F7F6F2;
+  --color-base-200: #FFFFFF;
+  --color-base-300: #C4C9CE;
+  --color-base-content: #20262C;
+  --color-primary: #4056B4;
+  --color-primary-content: #FFFFFF;
+  --color-secondary: #58616B;
+  --color-secondary-content: #FFFFFF;
+  --color-accent: #4056B4;
+  --color-accent-content: #FFFFFF;
+  --color-neutral: #20262C;
+  --color-neutral-content: #F5F7FA;
+  --color-info: #245A8D;
+  --color-info-content: #FFFFFF;
+  --color-success: #146C53;
+  --color-success-content: #FFFFFF;
+  --color-warning: #8A4B08;
+  --color-warning-content: #FFFFFF;
+  --color-error: #B42332;
+  --color-error-content: #FFFFFF;
+  --trenino-muted: #58616B;
   --radius-selector: 0.25rem;
   --radius-field: 0.25rem;
   --radius-box: 0.5rem;
   --size-selector: 0.21875rem;
   --size-field: 0.21875rem;
   --border: 1.5px;
-  --depth: 1;
+  --depth: 0;
   --noise: 0;
+}
+
+/* Brand muted text color, theme-aware (text-muted, border-muted, placeholder:text-muted) */
+@theme inline {
+  --color-muted: var(--trenino-muted);
+}
+
+/* Brand type: system UI stack for prose, system monospace with tabular numbers for values */
+@theme {
+  --font-sans: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --text-sm--line-height: 1.6;
+  --text-xs--line-height: 1.5;
+}
+
+@layer base {
+  html {
+    font-family: var(--font-sans);
+  }
+
+  body {
+    font-size: 0.875rem;
+    line-height: 1.6;
+  }
+
+  .font-mono,
+  code,
+  kbd,
+  samp,
+  output {
+    font-variant-numeric: tabular-nums;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
+  }
 }
 
 /* Add variants based on LiveView classes */
@@ -96,8 +146,19 @@
 @custom-variant phx-submit-loading (.phx-submit-loading&, .phx-submit-loading &);
 @custom-variant phx-change-loading (.phx-change-loading&, .phx-change-loading &);
 
-/* Use the data attribute for dark mode  */
-@custom-variant dark (&:where([data-theme=dark], [data-theme=dark] *));
+/* Dark mode: an explicit [data-theme=dark], or the OS preference unless light is forced.
+   Mirrors the daisyUI prefersdark theme so `dark:` utilities match the active theme. */
+@custom-variant dark {
+  &:where([data-theme=dark], [data-theme=dark] *) {
+    @slot;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    &:where(:not([data-theme=light], [data-theme=light] *)) {
+      @slot;
+    }
+  }
+}
 
 /* Make LiveView wrapper divs transparent for layout */
 [data-phx-session], [data-phx-teleported-src] { display: contents }

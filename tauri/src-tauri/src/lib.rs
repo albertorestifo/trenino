@@ -52,7 +52,7 @@ fn wait_for_backend(handle: &tauri::AppHandle) -> bool {
                 // Update splash screen status
                 if let Some(ref window) = splash_window {
                     let status = if attempt < 10 {
-                        "Starting server..."
+                        "Starting Trenino"
                     } else if attempt < 30 {
                         "Running database migrations..."
                     } else {
@@ -189,8 +189,8 @@ pub fn run() {
                     eprintln!("Backend failed to start after {} attempts", MAX_RETRIES);
                     // Show error on splash screen before exiting
                     let _ = splash_handle.eval(
-                        "document.getElementById('status').textContent = 'Failed to start. Please restart the app.';\
-                         document.getElementById('status').style.color = '#ef4444';"
+                        "document.getElementById('status').textContent = 'Trenino could not start. Quit and open Trenino again.';\
+                         document.getElementById('status').style.color = '#FF9AA4';"
                     );
                     std::thread::sleep(Duration::from_secs(3));
                     std::process::exit(1);

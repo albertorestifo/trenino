@@ -15,7 +15,10 @@ defmodule TreninoWeb.ConfigurationListLive do
   def mount(_params, _session, socket) do
     configurations = Hardware.list_configurations(preload: [:inputs])
 
-    {:ok, assign(socket, :configurations, configurations)}
+    {:ok,
+     socket
+     |> assign(:page_title, "Devices")
+     |> assign(:configurations, configurations)}
   end
 
   @impl true
@@ -72,7 +75,7 @@ defmodule TreninoWeb.ConfigurationListLive do
         <header class="mb-8 flex items-center justify-between">
           <div>
             <h1 class="text-2xl font-semibold">Configurations</h1>
-            <p class="text-sm text-base-content/70 mt-1">
+            <p class="text-sm text-muted mt-1">
               Manage device configurations
             </p>
           </div>
@@ -100,7 +103,7 @@ defmodule TreninoWeb.ConfigurationListLive do
     <div class="flex flex-col items-center justify-center py-20 text-center">
       <.icon name="hero-cog-6-tooth" class="w-16 h-16 text-base-content/20" />
       <h2 class="mt-6 text-xl font-semibold">No Configurations</h2>
-      <p class="mt-2 text-base-content/70 max-w-sm">
+      <p class="mt-2 text-muted max-w-sm">
         Create a configuration to set up inputs for your TWS devices.
       </p>
       <.link navigate={~p"/configurations/new"} class="btn btn-primary mt-6">
@@ -131,20 +134,15 @@ defmodule TreninoWeb.ConfigurationListLive do
       <div class="flex items-start justify-between gap-4 p-5">
         <div class="flex-1">
           <div class="flex items-center gap-2">
-            <h3 class="font-medium truncate group-hover:text-primary transition-colors">
+            <h3 class="font-medium truncate">
               {@config.name}
             </h3>
-            <span
-              :if={@active}
-              class="badge badge-success badge-sm flex items-center gap-1"
-            >
-              <span class="w-1.5 h-1.5 rounded-full bg-success-content animate-pulse" /> Active
-            </span>
+            <.status_chip :if={@active} kind={:ok} label="Active" />
           </div>
-          <p :if={@config.description} class="text-sm text-base-content/70 mt-1 line-clamp-2">
+          <p :if={@config.description} class="text-sm text-muted mt-1 line-clamp-2">
             {@config.description}
           </p>
-          <div class="mt-2 flex items-center gap-4 text-xs text-base-content/60">
+          <div class="mt-2 flex items-center gap-4 text-xs text-muted">
             <span class="font-mono">ID: {@config.config_id}</span>
             <span>{input_count_text(@input_count)}</span>
           </div>
@@ -152,7 +150,7 @@ defmodule TreninoWeb.ConfigurationListLive do
 
         <.icon
           name="hero-chevron-right"
-          class="w-5 h-5 text-base-content/30 group-hover:text-base-content/50 transition-colors flex-shrink-0"
+          class="w-5 h-5 text-muted group-hover:text-base-content transition-colors flex-shrink-0"
         />
       </div>
     </.link>

@@ -26,6 +26,7 @@ defmodule TreninoWeb.TrainListLive do
 
     {:ok,
      socket
+     |> assign(:page_title, "Trains")
      |> assign(:trains, trains)
      |> assign(:current_identifier, current_identifier)
      |> assign(:active_train, active_train)
@@ -158,18 +159,18 @@ defmodule TreninoWeb.TrainListLive do
 
   defp multiple_matches_banner(assigns) do
     ~H"""
-    <div class="alert alert-error mb-6">
+    <div class="alert alert-soft alert-error mb-6">
       <.icon name="hero-exclamation-triangle" class="w-5 h-5" />
       <div class="flex-1">
         <h3 class="font-semibold">Multiple Trains Match</h3>
         <p class="text-sm">
           The detected identifier "<span class="font-mono">{@identifier}</span>" matches multiple train configurations.
-          Identifiers must not match more than one train profile.
+          Edit these trains so that each identifier belongs to only one of them.
         </p>
         <ul class="text-sm mt-2 list-disc list-inside">
           <li :for={train <- @trains}>
             <span class="font-semibold">{train.name}</span>
-            <span class="text-base-content/60">
+            <span class="text-muted font-mono">
               ({Enum.join(Train.identifier_values(train), ", ")})
             </span>
           </li>
@@ -183,7 +184,7 @@ defmodule TreninoWeb.TrainListLive do
 
   defp unconfigured_banner(assigns) do
     ~H"""
-    <div class="alert alert-info mb-6">
+    <div class="alert alert-soft alert-info mb-6">
       <.icon name="hero-information-circle" class="w-5 h-5" />
       <div class="flex-1">
         <h3 class="font-semibold">Train Detected</h3>

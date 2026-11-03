@@ -27,6 +27,8 @@ defmodule TreninoWeb.AutoDetectComponent do
 
   use TreninoWeb, :live_component
 
+  require Logger
+
   alias Trenino.Simulator.ControlDetectionSession
 
   @impl true
@@ -140,10 +142,10 @@ defmodule TreninoWeb.AutoDetectComponent do
     ~H"""
     <div class="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div class="absolute inset-0 bg-black/50" phx-click="cancel" phx-target={@myself} />
-      <div class="relative bg-base-100 rounded-xl shadow-xl w-full max-w-md">
+      <div class="relative bg-base-200 rounded-xl shadow-xl w-full max-w-md">
         <div class="p-4 border-b border-base-300">
           <div class="flex items-center justify-between">
-            <h2 class="text-lg font-semibold">Auto-Detect Control</h2>
+            <h2 class="text-xl font-semibold">Auto-Detect Control</h2>
             <button
               type="button"
               phx-click="cancel"
@@ -178,12 +180,10 @@ defmodule TreninoWeb.AutoDetectComponent do
   defp idle_state(assigns) do
     ~H"""
     <div class="text-center space-y-4">
-      <div class="text-5xl">
-        <.icon name="hero-cursor-arrow-rays" class="w-16 h-16 mx-auto text-primary" />
-      </div>
+      <.icon name="hero-cursor-arrow-rays" class="size-10 mx-auto text-base-content" />
       <div>
-        <h3 class="font-semibold text-lg">Ready to Detect</h3>
-        <p class="text-sm text-base-content/60 mt-1">
+        <h3 class="font-semibold text-xl">Ready to Detect</h3>
+        <p class="text-sm text-muted mt-1">
           Click start, then interact with a control in the simulator
         </p>
       </div>
@@ -198,11 +198,11 @@ defmodule TreninoWeb.AutoDetectComponent do
     ~H"""
     <div class="text-center space-y-4">
       <div class="relative">
-        <span class="loading loading-spinner loading-lg text-primary"></span>
+        <span class="loading loading-spinner loading-lg"></span>
       </div>
       <div>
-        <h3 class="font-semibold text-lg">Setting Up...</h3>
-        <p class="text-sm text-base-content/60 mt-1">
+        <h3 class="font-semibold text-xl">Setting Up...</h3>
+        <p class="text-sm text-muted mt-1">
           Discovering controls in the simulator
         </p>
       </div>
@@ -216,18 +216,18 @@ defmodule TreninoWeb.AutoDetectComponent do
     ~H"""
     <div class="text-center space-y-4">
       <div class="relative">
-        <span class="loading loading-ring loading-lg text-primary"></span>
+        <span class="loading loading-ring loading-lg"></span>
       </div>
       <div>
-        <h3 class="font-semibold text-lg">Listening...</h3>
-        <p class="text-sm text-base-content/60 mt-1">
+        <h3 class="font-semibold text-xl">Listening...</h3>
+        <p class="text-sm text-muted mt-1">
           Interact with a control in Train Sim World
         </p>
-        <p class="text-sm text-base-content/60">
+        <p class="text-sm text-muted">
           Press a button, move a lever, or flip a switch
         </p>
       </div>
-      <div class="text-xs text-base-content/40">
+      <div class="text-xs text-muted tabular-nums">
         Timeout in: {@timeout_remaining}s
       </div>
     </div>
@@ -247,10 +247,10 @@ defmodule TreninoWeb.AutoDetectComponent do
       <div class="flex items-center gap-3 text-success">
         <.icon name="hero-check-circle" class="w-8 h-8" />
         <div>
-          <h3 class="font-semibold text-lg">
+          <h3 class="font-semibold text-xl">
             {if @single_change, do: "Control Detected!", else: "Multiple Controls Detected"}
           </h3>
-          <p :if={not @single_change} class="text-sm text-base-content/60">
+          <p :if={not @single_change} class="text-sm text-muted">
             Select the control you want to use
           </p>
         </div>
@@ -262,7 +262,7 @@ defmodule TreninoWeb.AutoDetectComponent do
           class={[
             "flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors",
             @selected_index == index && "border-primary bg-primary/10",
-            @selected_index != index && "border-base-300 hover:border-base-content/30"
+            @selected_index != index && "border-base-300 hover:border-muted"
           ]}
         >
           <input
@@ -277,8 +277,8 @@ defmodule TreninoWeb.AutoDetectComponent do
           />
           <div class="flex-1">
             <div class="font-medium">{change.control_name}</div>
-            <div class="text-xs text-base-content/60 font-mono">{change.endpoint}</div>
-            <div class="text-xs text-base-content/50 mt-1">
+            <div class="text-xs text-muted font-mono">{change.endpoint}</div>
+            <div class="text-xs text-muted font-mono mt-1">
               Value changed: {Float.round(change.previous_value * 1.0, 2)} -> {Float.round(
                 change.current_value * 1.0,
                 2
@@ -310,15 +310,13 @@ defmodule TreninoWeb.AutoDetectComponent do
   defp timeout_state(assigns) do
     ~H"""
     <div class="text-center space-y-4">
-      <div class="text-5xl">
-        <.icon name="hero-clock" class="w-16 h-16 mx-auto text-warning" />
-      </div>
+      <.icon name="hero-clock" class="size-10 mx-auto text-warning" />
       <div>
-        <h3 class="font-semibold text-lg">Detection Timed Out</h3>
-        <p class="text-sm text-base-content/60 mt-1">
+        <h3 class="font-semibold text-xl">Detection Timed Out</h3>
+        <p class="text-sm text-muted mt-1">
           No control changes were detected within 30 seconds
         </p>
-        <p class="text-sm text-base-content/60">
+        <p class="text-sm text-muted">
           Make sure you're in the cab of the active train
         </p>
       </div>
@@ -340,12 +338,10 @@ defmodule TreninoWeb.AutoDetectComponent do
   defp error_state(assigns) do
     ~H"""
     <div class="text-center space-y-4">
-      <div class="text-5xl">
-        <.icon name="hero-exclamation-triangle" class="w-16 h-16 mx-auto text-error" />
-      </div>
+      <.icon name="hero-exclamation-triangle" class="size-10 mx-auto text-error" />
       <div>
-        <h3 class="font-semibold text-lg">Detection Failed</h3>
-        <p class="text-sm text-base-content/60 mt-1">
+        <h3 class="font-semibold text-xl">Detection Failed</h3>
+        <p class="text-sm text-muted mt-1">
           {@error_message}
         </p>
       </div>
@@ -363,8 +359,20 @@ defmodule TreninoWeb.AutoDetectComponent do
 
   # Private functions
 
-  defp format_error(:no_client), do: "Simulator not connected"
-  defp format_error({:list_failed, _}), do: "Failed to query simulator controls"
-  defp format_error(:no_subscriptions_created), do: "No controls found to monitor"
-  defp format_error(reason), do: "Error: #{inspect(reason)}"
+  defp format_error(:no_client),
+    do: "Train Sim World is not connected. Start the game, then try again."
+
+  defp format_error({:list_failed, reason}) do
+    Logger.error("Auto-detect could not list simulator controls: #{inspect(reason)}")
+
+    "Trenino could not read the controls from Train Sim World. Make sure you are in a cab, then try again."
+  end
+
+  defp format_error(:no_subscriptions_created),
+    do: "No controls were found to watch. Sit in the cab of the active train, then try again."
+
+  defp format_error(reason) do
+    Logger.error("Auto-detect failed: #{inspect(reason)}")
+    "Something unexpected happened. Try again; if it keeps failing, restart Train Sim World."
+  end
 end

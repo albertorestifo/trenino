@@ -19,15 +19,15 @@ defmodule TreninoWeb.NavComponents do
     ~H"""
     <div
       :if={@update && @update.available}
-      class="bg-info text-info-content px-4 sm:px-8"
+      class="bg-base-200 border-b border-base-300 text-base-content px-4 sm:px-8"
       role="alert"
     >
       <div class="max-w-2xl mx-auto py-2 flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
         <div class="flex min-w-0 items-center gap-3">
-          <.icon name="hero-arrow-up-circle" class="w-5 h-5 flex-shrink-0" />
+          <.icon name="hero-arrow-up-circle" class="w-5 h-5 flex-shrink-0 text-info" />
           <div class="min-w-0 break-words text-sm">
             <span class="font-medium">New version available:</span>
-            <span class="ml-1">v{@update.version}</span>
+            <span class="ml-1 font-mono">v{@update.version}</span>
           </div>
         </div>
 
@@ -36,14 +36,14 @@ defmodule TreninoWeb.NavComponents do
             href={Trenino.AppVersion.releases_url()}
             target="_blank"
             rel="noopener noreferrer"
-            class="btn btn-sm btn-ghost text-info-content hover:bg-info-content/10"
+            class="btn btn-sm btn-ghost"
           >
             <.icon name="hero-arrow-top-right-on-square" class="w-4 h-4" /> View Release
           </a>
 
           <button
             phx-click="dismiss_app_version_update"
-            class="btn btn-sm btn-ghost btn-circle text-info-content hover:bg-info-content/10"
+            class="btn btn-sm btn-ghost btn-circle"
             aria-label="Dismiss"
           >
             <.icon name="hero-x-mark" class="w-4 h-4" />
@@ -66,29 +66,29 @@ defmodule TreninoWeb.NavComponents do
     ~H"""
     <div
       :if={@update && @update.available}
-      class="bg-primary text-primary-content px-4 sm:px-8"
+      class="bg-base-200 border-b border-base-300 text-base-content px-4 sm:px-8"
       role="alert"
     >
       <div class="max-w-2xl mx-auto py-2 flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
         <div class="flex min-w-0 items-center gap-3">
-          <.icon name="hero-arrow-down-tray" class="w-5 h-5 flex-shrink-0" />
+          <.icon name="hero-arrow-down-tray" class="w-5 h-5 flex-shrink-0 text-info" />
           <div class="min-w-0 break-words text-sm">
             <span class="font-medium">Firmware update available:</span>
-            <span class="ml-1">v{@update.version}</span>
+            <span class="ml-1 font-mono">v{@update.version}</span>
           </div>
         </div>
 
         <div class="flex items-center gap-2">
           <.link
             navigate="/firmware"
-            class="btn btn-sm btn-ghost text-primary-content hover:bg-primary-content/10"
+            class="btn btn-sm btn-ghost"
           >
             View Update
           </.link>
 
           <button
             phx-click="dismiss_firmware_update"
-            class="btn btn-sm btn-ghost btn-circle text-primary-content hover:bg-primary-content/10"
+            class="btn btn-sm btn-ghost btn-circle"
             aria-label="Dismiss"
           >
             <.icon name="hero-x-mark" class="w-4 h-4" />
@@ -118,11 +118,17 @@ defmodule TreninoWeb.NavComponents do
     ~H"""
     <.app_version_update_banner update={@app_version_update} />
     <.firmware_update_banner update={@firmware_update} checking={@firmware_checking} />
-    <header class="bg-base-100 border-b border-base-300 sticky top-0 z-50">
+    <header class="bg-base-200 border-b border-base-300 sticky top-0 z-50">
       <div class="px-4 sm:px-8">
         <div class="max-w-2xl mx-auto py-3 flex flex-wrap items-center gap-y-3">
           <div class="contents">
-            <.link navigate={~p"/"} class="flex-1 sm:flex-none sm:mr-6 text-lg font-semibold">Trenino</.link>
+            <.link
+              navigate={~p"/"}
+              aria-label="Trenino, home"
+              class="flex-1 sm:flex-none sm:mr-6 py-1 rounded-lg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+            >
+              <.brand_lockup />
+            </.link>
             <nav
               aria-label="Primary navigation"
               class="order-last w-full sm:order-none sm:w-auto flex items-center gap-1"
@@ -136,7 +142,7 @@ defmodule TreninoWeb.NavComponents do
           <div class="sm:ml-auto flex-none flex items-center gap-2">
             <.link
               navigate={~p"/settings"}
-              class="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-base-200 hover:bg-base-300 transition-colors duration-150"
+              class="flex items-center gap-1.5 px-3 py-2 rounded-lg bg-base-100 hover:bg-base-300 transition-colors duration-150"
               title="Settings"
               aria-label="Settings"
             >
@@ -147,16 +153,22 @@ defmodule TreninoWeb.NavComponents do
             <div class="relative">
               <button
                 phx-click="nav_toggle_dropdown"
-                class="flex items-center gap-2 px-3 py-2 rounded-lg bg-base-200 hover:bg-base-300 transition-colors duration-150"
-                aria-label="Connected devices"
+                class="flex items-center gap-2 px-3 py-2 rounded-lg bg-base-100 hover:bg-base-300 transition-colors duration-150"
+                aria-label={"Devices: #{elem(devices_summary(@devices), 1)}"}
                 aria-expanded={@dropdown_open}
                 aria-haspopup="menu"
               >
-                <span class={["w-2 h-2 rounded-full", devices_status_color(@devices)]} />
-                <span class="text-sm font-medium hidden sm:inline">
-                  {device_count_text(@devices)}
-                </span>
-                <span class="text-sm font-medium sm:hidden">
+                <.status_indicator
+                  kind={elem(devices_summary(@devices), 0)}
+                  label={elem(devices_summary(@devices), 1)}
+                  class="text-sm font-medium"
+                  label_class="hidden sm:inline"
+                />
+                <span
+                  :if={connected_count(@devices) > 0}
+                  class="text-sm font-medium tabular-nums sm:hidden"
+                  aria-hidden="true"
+                >
                   {connected_count(@devices)}
                 </span>
                 <.icon
@@ -180,6 +192,46 @@ defmodule TreninoWeb.NavComponents do
         status={@simulator_status.status}
       />
     </header>
+    """
+  end
+
+  @doc """
+  The Trenino lockup, for use inside a link or heading that carries the accessible name.
+
+  The primary lockup shows on light themes and the dark lockup on dark themes (the `dark:`
+  variant follows both a forced `data-theme` and the OS preference). The lockup is 40px
+  high (145px wide), above the 140px minimum; below 360px viewport width it falls back to
+  the symbol at 32px so it is never shrunk under the minimum. Never recolor these files.
+  """
+  attr :class, :string, default: nil
+
+  def brand_lockup(assigns) do
+    ~H"""
+    <span class={["inline-flex items-center", @class]}>
+      <span class="max-[359px]:hidden">
+        <img
+          src={~p"/images/trenino-lockup-primary.svg"}
+          alt=""
+          width="145"
+          height="40"
+          class="h-10 w-auto block dark:hidden"
+        />
+        <img
+          src={~p"/images/trenino-lockup-dark.svg"}
+          alt=""
+          width="145"
+          height="40"
+          class="h-10 w-auto hidden dark:block"
+        />
+      </span>
+      <img
+        src={~p"/images/trenino-symbol-red.svg"}
+        alt=""
+        width="32"
+        height="32"
+        class="h-8 w-auto hidden max-[359px]:block"
+      />
+    </span>
     """
   end
 
@@ -208,7 +260,7 @@ defmodule TreninoWeb.NavComponents do
         "px-3 py-2.5 sm:py-1.5 rounded-lg text-sm font-medium transition-colors",
         if(@is_active,
           do: "bg-primary text-primary-content",
-          else: "text-base-content/70 hover:text-base-content hover:bg-base-200"
+          else: "text-muted hover:text-base-content hover:bg-base-300"
         )
       ]}
     >
@@ -228,25 +280,28 @@ defmodule TreninoWeb.NavComponents do
       aria-live="polite"
     >
       <div class={["px-4 sm:px-8", sim_banner_bg(@status)]}>
-        <div class="max-w-2xl mx-auto py-1 flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
+        <div class="max-w-2xl mx-auto py-2 flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
           <div class="flex items-center gap-2">
-            <.icon name={sim_banner_icon(@status)} class="w-3.5 h-3.5 flex-shrink-0 opacity-75" />
-            <span class="text-xs">{sim_banner_message(@status)}</span>
+            <.icon
+              name={sim_banner_icon(@status)}
+              class={"w-4 h-4 flex-shrink-0 #{sim_banner_icon_class(@status)}"}
+            />
+            <span class="text-sm">{sim_banner_message(@status)}</span>
           </div>
 
           <div class="flex items-center">
             <button
               :if={@status in [:error, :disconnected]}
               phx-click="nav_retry_simulator"
-              class={["btn btn-xs btn-ghost", sim_banner_btn_class(@status)]}
+              class={["btn btn-sm btn-ghost", sim_banner_btn_class(@status)]}
             >
-              <.icon name="hero-arrow-path" class="w-3.5 h-3.5" /> Retry
+              <.icon name="hero-arrow-path" class="w-4 h-4" /> Retry
             </button>
 
             <.link
               :if={@status == :needs_config}
               navigate={~p"/settings"}
-              class={["btn btn-xs btn-ghost", sim_banner_btn_class(@status)]}
+              class={["btn btn-sm btn-ghost", sim_banner_btn_class(@status)]}
             >
               Open Settings
             </.link>
@@ -281,13 +336,13 @@ defmodule TreninoWeb.NavComponents do
             <.icon
               :if={index > 0}
               name="hero-chevron-right-mini"
-              class="w-4 h-4 text-base-content/40"
+              class="w-4 h-4 text-muted"
             />
 
             <.link
               :if={item[:path]}
               navigate={item.path}
-              class="text-base-content/70 hover:text-base-content transition-colors"
+              class="text-muted hover:text-base-content transition-colors"
             >
               {item.label}
             </.link>
@@ -310,7 +365,7 @@ defmodule TreninoWeb.NavComponents do
   defp device_dropdown(assigns) do
     ~H"""
     <div
-      class="absolute top-full right-0 mt-1 w-80 max-w-[calc(100vw-2rem)] bg-base-100 border border-base-300 rounded-xl shadow-xl z-50"
+      class="absolute top-full right-0 mt-1 w-80 max-w-[calc(100vw-2rem)] bg-base-200 border border-base-300 rounded-xl shadow-xl z-50"
       phx-click-away="nav_close_dropdown"
     >
       <div class="p-4 border-b border-base-300 space-y-2">
@@ -322,7 +377,7 @@ defmodule TreninoWeb.NavComponents do
           <.icon
             :if={@scanning}
             name="hero-arrow-path"
-            class="w-4 h-4 animate-spin"
+            class="w-4 h-4 motion-safe:animate-spin"
           />
           <.icon
             :if={!@scanning}
@@ -339,7 +394,7 @@ defmodule TreninoWeb.NavComponents do
         >
           <.icon
             name="hero-arrow-path"
-            class={if @firmware_checking, do: "w-4 h-4 animate-spin", else: "w-4 h-4"}
+            class={if @firmware_checking, do: "w-4 h-4 motion-safe:animate-spin", else: "w-4 h-4"}
           />
           {if @firmware_checking, do: "Checking...", else: "Check for Firmware Updates"}
         </button>
@@ -356,9 +411,9 @@ defmodule TreninoWeb.NavComponents do
   defp empty_device_list(assigns) do
     ~H"""
     <div class="p-8 text-center">
-      <.icon name="hero-signal-slash" class="w-8 h-8 mx-auto text-base-content/30" />
-      <p class="mt-2 text-sm text-base-content/70">No devices found</p>
-      <p class="text-xs text-base-content/50">Click scan to discover devices</p>
+      <.icon name="hero-signal-slash" class="w-8 h-8 mx-auto text-muted" />
+      <p class="mt-2 text-sm">No devices found</p>
+      <p class="text-xs text-muted">Connect a controller over USB, then scan for devices.</p>
     </div>
     """
   end
@@ -367,11 +422,10 @@ defmodule TreninoWeb.NavComponents do
 
   defp device_list_item(assigns) do
     ~H"""
-    <div class="px-4 py-3 border-b border-base-300 last:border-b-0 hover:bg-base-200/50">
+    <div class="px-4 py-3 border-b border-base-300 last:border-b-0 hover:bg-base-300/40">
       <div class="flex items-center justify-between">
         <div class="flex items-center gap-2 min-w-0">
-          <span class={["w-2 h-2 rounded-full flex-shrink-0", device_status_color(@device.status)]} />
-          <span class="text-sm font-medium truncate">{@device.port}</span>
+          <span class="text-sm font-medium font-mono truncate">{@device.port}</span>
         </div>
         <button
           :if={@device.status == :connected}
@@ -383,19 +437,23 @@ defmodule TreninoWeb.NavComponents do
           <.icon name="hero-x-mark" class="w-4 h-4" />
         </button>
       </div>
-      <div class="mt-1 text-xs text-base-content/60 pl-4">
-        <span :if={@device.device_version}>v{@device.device_version}</span>
-        <span :if={@device.device_version}> · </span>
-        <span class="capitalize">{@device.status}</span>
+      <div class="mt-1 flex items-center gap-2 text-xs text-muted">
+        <.status_indicator
+          kind={elem(device_status(@device.status), 0)}
+          label={elem(device_status(@device.status), 1)}
+          class="text-base-content"
+        />
+        <span :if={@device.device_version} aria-hidden="true">·</span>
+        <span :if={@device.device_version} class="font-mono">v{@device.device_version}</span>
       </div>
       <div
         :if={@device.status == :failed and @device.error_reason}
-        class="mt-1 text-xs text-error/80 pl-4 flex items-start gap-1"
+        class="mt-1 text-xs text-error flex items-start gap-1"
       >
         <.icon name="hero-exclamation-circle-mini" class="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
         <span>{@device.error_reason}</span>
       </div>
-      <div :if={@device.status == :failed and flashable_error?(@device.error_type)} class="mt-2 pl-4">
+      <div :if={@device.status == :failed and flashable_error?(@device.error_type)} class="mt-2">
         <.link
           navigate={~p"/firmware?port=#{@device.port}"}
           class="btn btn-xs btn-outline btn-primary"
@@ -413,38 +471,16 @@ defmodule TreninoWeb.NavComponents do
     error_type in [:no_valid_response, :timeout]
   end
 
-  defp devices_status_color(devices) do
-    connected = Enum.filter(devices, &(&1.status == :connected))
-    discovering = Enum.filter(devices, &(&1.status in [:connecting, :discovering]))
-    failed = Enum.filter(devices, &(&1.status == :failed))
+  # Header summary of all tracked devices, in the shared status vocabulary.
+  # A failure anywhere rolls up to "Needs attention"; the row itself says "Failed".
+  defp devices_summary(devices) do
+    connected = connected_count(devices)
 
     cond do
-      Enum.empty?(devices) -> "bg-base-content/20"
-      connected != [] and Enum.empty?(discovering) -> "bg-success"
-      discovering != [] -> "bg-info animate-pulse"
-      failed != [] -> "bg-warning"
-      true -> "bg-base-content/40"
-    end
-  end
-
-  defp device_status_color(status) do
-    case status do
-      :connected -> "bg-success"
-      :connecting -> "bg-info animate-pulse"
-      :discovering -> "bg-info animate-pulse"
-      :disconnecting -> "bg-warning"
-      :failed -> "bg-error"
-      _ -> "bg-base-content/20"
-    end
-  end
-
-  defp device_count_text(devices) do
-    connected = Enum.count(devices, &(&1.status == :connected))
-
-    case connected do
-      0 -> "No Devices"
-      1 -> "1 Device"
-      n -> "#{n} Devices"
+      Enum.any?(devices, &(&1.status in [:connecting, :discovering])) -> {:busy, "Connecting"}
+      Enum.any?(devices, &(&1.status == :failed)) -> {:warn, "Needs attention"}
+      connected > 0 -> {:ok, "#{connected} connected"}
+      true -> {:muted, "No devices"}
     end
   end
 
@@ -452,14 +488,13 @@ defmodule TreninoWeb.NavComponents do
     Enum.count(devices, &(&1.status == :connected))
   end
 
-  defp sim_banner_bg(status) do
-    case status do
-      :error -> "bg-error text-error-content"
-      :disconnected -> "bg-warning text-warning-content"
-      :needs_config -> "bg-warning text-warning-content"
-      _ -> "bg-base-100"
-    end
-  end
+  # The error banner stays a solid fill so a failed connection stands out; the other
+  # notices use a neutral strip with a status-colored icon.
+  defp sim_banner_bg(:error), do: "bg-error text-error-content"
+  defp sim_banner_bg(_status), do: "bg-base-200 border-t border-base-300 text-base-content"
+
+  defp sim_banner_icon_class(:error), do: ""
+  defp sim_banner_icon_class(_status), do: "text-warning"
 
   defp sim_banner_icon(status) do
     case status do
@@ -479,10 +514,6 @@ defmodule TreninoWeb.NavComponents do
     end
   end
 
-  defp sim_banner_btn_class(status) do
-    case status do
-      :error -> "text-error-content hover:bg-error-content/10"
-      _ -> "text-warning-content hover:bg-warning-content/10"
-    end
-  end
+  defp sim_banner_btn_class(:error), do: "text-error-content hover:bg-error-content/10"
+  defp sim_banner_btn_class(_status), do: ""
 end

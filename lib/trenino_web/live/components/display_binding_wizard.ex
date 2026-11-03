@@ -228,15 +228,15 @@ defmodule TreninoWeb.DisplayBindingWizard do
       />
       <.focus_wrap
         id="display-binding-focus"
-        class="relative bg-base-100 rounded-xl shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col min-h-0"
+        class="relative bg-base-200 rounded-xl shadow-xl w-full max-w-4xl max-h-[90vh] flex flex-col min-h-0"
       >
         <div class="p-4 border-b border-base-300">
           <div class="flex items-center justify-between gap-3">
             <div class="min-w-0">
-              <h2 id="display-binding-title" tabindex="-1" class="text-lg font-semibold">
+              <h2 id="display-binding-title" tabindex="-1" class="text-xl font-semibold">
                 {if @binding, do: "Edit display binding", else: "Add display binding"}
               </h2>
-              <p class="text-sm text-base-content/60">
+              <p class="text-sm text-muted">
                 Show a simulator value on a hardware display.
               </p>
             </div>
@@ -287,7 +287,7 @@ defmodule TreninoWeb.DisplayBindingWizard do
             class="w-full p-4 rounded-lg border border-base-300 text-left hover:bg-base-200 focus-visible:outline-2 focus-visible:outline-primary"
           >
             <span class="block font-medium break-words">{mod.name || "Display"}</span>
-            <span class="block text-xs text-base-content/60 break-words">
+            <span class="block text-xs text-muted break-words">
               {mod.device.name} · {mod.params.num_digits} digits ·
               <span class="font-mono">{Hardware.I2cModule.format_i2c_address(mod.i2c_address)}</span>
             </span>
@@ -317,12 +317,12 @@ defmodule TreninoWeb.DisplayBindingWizard do
         <div :if={@wizard_step == :configure} class="p-4 sm:p-6 overflow-y-auto space-y-4">
           <dl class="text-sm space-y-2">
             <div :if={@selected_module}>
-              <dt class="text-base-content/60">Display</dt><dd class="break-words">
+              <dt class="text-muted">Display</dt><dd class="break-words">
                 {@selected_module.name} ({@selected_module.device.name})
               </dd>
             </div>
             <div>
-              <dt class="text-base-content/60">Simulator value</dt><dd class="font-mono text-xs break-all">
+              <dt class="text-muted">Simulator value</dt><dd class="font-mono text-xs break-all">
                 {@endpoint}
               </dd>
             </div>
@@ -387,7 +387,7 @@ defmodule TreninoWeb.DisplayBindingWizard do
                   disabled={@format_mode != "custom"}
                   aria-describedby="display-format-hint display-format-error"
                 />
-                <p id="display-format-hint" class="text-xs text-base-content/60">
+                <p id="display-format-hint" class="text-xs text-muted">
                   Use {"{value}"} for the raw value or {"{value:.2f}"} for two decimals (0–10 supported).
                 </p>
               </div>
@@ -396,7 +396,7 @@ defmodule TreninoWeb.DisplayBindingWizard do
               {@format_error}
             </p>
             <div class="bg-base-200 rounded-lg p-4" aria-live="polite">
-              <p class="text-xs text-base-content/60 mb-2">Preview · sample value 42.5</p>
+              <p class="text-xs text-muted mb-2">Preview · sample value 42.5</p>
               <output id="display-format-preview" class="font-mono text-2xl break-all">{@preview}</output>
               <p :if={@preview_overflow} class="mt-2 text-sm">
                 This sample is longer than your display's {@selected_module.params.num_digits} digits. Use fewer decimal places or a shorter format.

@@ -37,8 +37,8 @@ defmodule TreninoWeb.SharedComponents do
     ~H"""
     <div class="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div class="fixed inset-0 bg-black/50" phx-click={@on_close} />
-      <div class="relative bg-base-100 rounded-xl shadow-xl max-w-md w-full p-6">
-        <h3 class="text-lg font-semibold mb-4">{@title}</h3>
+      <div class="relative bg-base-200 rounded-xl shadow-xl max-w-md w-full p-6">
+        <h3 class="text-xl font-semibold mb-4">{@title}</h3>
 
         {render_slot(@inner_block)}
 
@@ -78,15 +78,15 @@ defmodule TreninoWeb.SharedComponents do
     ~H"""
     <div class="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div class="fixed inset-0 bg-black/50" phx-click={@on_close} />
-      <div class="relative bg-base-100 rounded-xl shadow-xl max-w-md w-full p-6">
-        <h3 class="text-lg font-semibold mb-4 text-error">{@title}</h3>
+      <div class="relative bg-base-200 rounded-xl shadow-xl max-w-md w-full p-6">
+        <h3 class="text-xl font-semibold mb-4 text-error">{@title}</h3>
 
-        <div :if={@is_active && @active_warning} class="alert alert-warning mb-4">
+        <div :if={@is_active && @active_warning} class="alert alert-soft alert-warning mb-4">
           <.icon name="hero-exclamation-triangle" class="w-5 h-5" />
           <span class="text-sm">{@active_warning}</span>
         </div>
 
-        <p class="text-sm text-base-content/70 mb-6">
+        <p class="text-sm text-muted mb-6">
           Are you sure you want to delete "<span class="font-medium">{@item_name}</span>"? {@description}
         </p>
 
@@ -138,7 +138,7 @@ defmodule TreninoWeb.SharedComponents do
     <div class="flex flex-col items-center justify-center py-20 text-center">
       <.icon name={@icon} class="w-16 h-16 text-base-content/20" />
       <h2 class="mt-6 text-xl font-semibold">{@heading}</h2>
-      <p class="mt-2 text-base-content/70 max-w-sm">
+      <p class="mt-2 text-muted max-w-sm">
         {@description}
       </p>
       <.link :if={@action_path} navigate={@action_path} class="btn btn-primary mt-6">
@@ -168,8 +168,8 @@ defmodule TreninoWeb.SharedComponents do
     ~H"""
     <div class="bg-base-100 rounded-lg p-8 text-center">
       <.icon name={@icon} class="w-10 h-10 mx-auto text-base-content/30" />
-      <p class="mt-2 text-sm text-base-content/70">{@message}</p>
-      <p :if={@submessage} class="text-xs text-base-content/50">{@submessage}</p>
+      <p class="mt-2 text-sm">{@message}</p>
+      <p :if={@submessage} class="text-xs text-muted">{@submessage}</p>
     </div>
     """
   end
@@ -207,7 +207,7 @@ defmodule TreninoWeb.SharedComponents do
         <div class="flex items-center justify-between gap-4">
           <div>
             <p class="font-medium text-sm">{@action_label}</p>
-            <p class="text-xs text-base-content/70 mt-1">{@action_description}</p>
+            <p class="text-xs text-muted mt-1">{@action_description}</p>
           </div>
           <button
             type="button"
@@ -269,24 +269,19 @@ defmodule TreninoWeb.SharedComponents do
             <h2 class="font-medium truncate transition-colors">
               {@title}
             </h2>
-            <span
-              :if={@active}
-              class="badge badge-success badge-sm flex items-center gap-1"
-            >
-              <span class="w-1.5 h-1.5 rounded-full bg-success-content animate-pulse" /> Active
-            </span>
+            <.status_chip :if={@active} kind={:ok} label="Active" />
           </div>
-          <p :if={@description} class="text-sm text-base-content/70 mt-1 line-clamp-2">
+          <p :if={@description} class="text-sm text-muted mt-1 line-clamp-2">
             {@description}
           </p>
-          <div :if={@metadata != []} class="mt-2 flex items-center gap-4 text-xs text-base-content/60">
+          <div :if={@metadata != []} class="mt-2 flex items-center gap-4 text-xs text-muted">
             <span :for={item <- @metadata} class="font-mono">{item}</span>
           </div>
         </div>
 
         <.icon
           name="hero-chevron-right"
-          class="w-5 h-5 text-base-content/30 group-hover:text-base-content/50 transition-colors flex-shrink-0"
+          class="w-5 h-5 text-muted group-hover:text-base-content transition-colors flex-shrink-0"
         />
       </div>
     </.link>
@@ -317,7 +312,7 @@ defmodule TreninoWeb.SharedComponents do
   def section_header(assigns) do
     ~H"""
     <div class="flex items-center justify-between mb-4">
-      <h3 class="text-base font-semibold">{@title}</h3>
+      <h3 class="text-xl font-semibold">{@title}</h3>
       <button
         :if={@action_label && @on_action}
         phx-click={@on_action}
@@ -358,7 +353,7 @@ defmodule TreninoWeb.SharedComponents do
     <header class="mb-8 flex flex-wrap items-center justify-between gap-4">
       <div>
         <h1 class="text-2xl font-semibold">{@title}</h1>
-        <p class="text-sm text-base-content/70 mt-1">{@subtitle}</p>
+        <p class="text-sm text-muted mt-1">{@subtitle}</p>
       </div>
       <.link :if={@action_path} navigate={@action_path} class="btn btn-primary">
         <.icon name={@action_icon} class="w-4 h-4" /> {@action_text}

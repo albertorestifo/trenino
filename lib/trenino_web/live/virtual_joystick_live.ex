@@ -4,6 +4,8 @@ defmodule TreninoWeb.VirtualJoystickLive do
 
   import TreninoWeb.Live.Components.VirtualJoystickMappingForm
 
+  require Logger
+
   alias Trenino.Hardware
   alias Trenino.Hardware.ConfigurationManager
   alias Trenino.Hardware.InputLabel
@@ -34,6 +36,7 @@ defmodule TreninoWeb.VirtualJoystickLive do
 
     {:ok,
      socket
+     |> assign(:page_title, "Joystick")
      |> assign(:status, details.status)
      |> assign(:status_reason, details.reason)
      |> assign(:axes, @axes)
@@ -194,8 +197,8 @@ defmodule TreninoWeb.VirtualJoystickLive do
         {:noreply, assign(socket, :mapping_error, "That joystick target is already assigned.")}
 
       {:error, reason} ->
-        {:noreply,
-         assign(socket, :mapping_error, "Mapping could not be saved: #{inspect(reason)}")}
+        Logger.error("Virtual joystick mapping could not be saved: #{inspect(reason)}")
+        {:noreply, assign(socket, :mapping_error, mapping_save_error())}
     end
   end
 
@@ -213,10 +216,12 @@ defmodule TreninoWeb.VirtualJoystickLive do
          |> close_form()}
 
       {:error, reason} ->
+        Logger.error("Virtual joystick mapping could not be replaced: #{inspect(reason)}")
+
         {:noreply,
          socket
          |> assign(:pending_replacement, nil)
-         |> assign(:mapping_error, "Mapping could not be saved: #{inspect(reason)}")}
+         |> assign(:mapping_error, mapping_save_error())}
     end
   end
 
@@ -257,7 +262,7 @@ defmodule TreninoWeb.VirtualJoystickLive do
       <div class="mx-auto max-w-2xl">
         <header class="mb-8">
           <h1 class="text-2xl font-semibold">Virtual joystick</h1>
-          <p class="mt-2 max-w-prose text-sm text-base-content/70">
+          <p class="mt-2 max-w-prose text-sm text-muted">
             Send selected hardware controls to games as one standard Windows joystick.
           </p>
         </header>
@@ -265,15 +270,15 @@ defmodule TreninoWeb.VirtualJoystickLive do
         <section class="rounded-xl border border-base-300 bg-base-200/50 p-5">
           <div class="flex flex-wrap items-center justify-between gap-4">
             <div>
-              <p class="text-xs uppercase tracking-wide text-base-content/60">Status</p>
+              <p class="text-xs uppercase tracking-wide text-muted">Status</p>
               <p
                 data-testid="virtual-joystick-status"
                 aria-live="polite"
-                class="mt-1 text-lg font-semibold"
+                class="mt-1 text-xl font-semibold"
               >
                 {@status_ui.label}
               </p>
-              <p class="mt-1 text-sm text-base-content/70">{@status_ui.help}</p>
+              <p class="mt-1 text-sm text-muted">{@status_ui.help}</p>
             </div>
             <button
               :if={@status != :unsupported}
@@ -293,12 +298,14 @@ defmodule TreninoWeb.VirtualJoystickLive do
           >{@status_ui.recovery}</button>
         </section>
 
-        <p id="offline-mapping-help" class="mt-4 text-sm text-base-content/70">
+        <p id="offline-mapping-help" class="mt-4 text-sm text-muted">
           You can configure mappings with hardware disconnected and the joystick off.
           Train Sim World is not needed for joystick mode.
         </p>
 
-        <p :if={@mapping_error} role="alert" class="alert alert-error mt-5">{@mapping_error}</p>
+        <p :if={@mapping_error} role="alert" class="alert alert-soft alert-error mt-5">
+          {@mapping_error}
+        </p>
 
         <section class="mt-8" aria-labelledby="mappings-heading">
           <div class="flex flex-wrap items-center justify-between gap-3">
@@ -313,7 +320,7 @@ defmodule TreninoWeb.VirtualJoystickLive do
               class="btn btn-primary btn-sm"
             >Add mapping</button>
           </div>
-          <p id="mapping-capacity" class="mt-2 text-sm text-base-content/70">
+          <p id="mapping-capacity" class="mt-2 text-sm text-muted tabular-nums">
             {Enum.count(@mappings, &(&1.target_type == :axis))} of 8 axes · {Enum.count(
               @mappings,
               &(&1.target_type == :button)
@@ -340,7 +347,7 @@ defmodule TreninoWeb.VirtualJoystickLive do
           </div>
           <p
             :if={@mappings == [] and not @show_unused_targets}
-            class="mt-5 text-sm text-base-content/70"
+            class="mt-5 text-sm text-muted"
           >
             No mappings yet. Add an axis for a lever or a button for a switch.
           </p>
@@ -349,7 +356,7 @@ defmodule TreninoWeb.VirtualJoystickLive do
             :if={@show_unused_targets or Enum.any?(@mappings, &(&1.target_type == :axis))}
             class="mt-5"
           >
-            <h3 class="text-base font-semibold">Axes</h3>
+            <h3 class="text-xl font-semibold">Axes</h3>
             <div class="mt-2 divide-y divide-base-300 rounded-xl border border-base-300">
               <div
                 :for={{axis, label} <- @axes}
@@ -366,7 +373,7 @@ defmodule TreninoWeb.VirtualJoystickLive do
             :if={@show_unused_targets or Enum.any?(@mappings, &(&1.target_type == :button))}
             class="mt-5"
           >
-            <h3 class="text-base font-semibold">Buttons</h3>
+            <h3 class="text-xl font-semibold">Buttons</h3>
             <div class="mt-2 divide-y divide-base-300 rounded-xl border border-base-300">
               <div
                 :for={number <- 1..32}
@@ -420,9 +427,9 @@ defmodule TreninoWeb.VirtualJoystickLive do
       >
         <.focus_wrap
           id="transition-dialog-focus"
-          class="w-full max-w-md rounded-xl bg-base-100 p-6 shadow-xl"
+          class="w-full max-w-md rounded-xl bg-base-200 p-6 shadow-xl"
         >
-          <h2 id="transition-title" tabindex="-1" class="text-lg font-semibold">
+          <h2 id="transition-title" tabindex="-1" class="text-xl font-semibold">
             {if @status == :active, do: "Disable virtual joystick?", else: "Enable virtual joystick?"}
           </h2><p class="mt-3 text-sm">
             Windows will request administrator permission to change the virtual joystick device.
@@ -449,9 +456,9 @@ defmodule TreninoWeb.VirtualJoystickLive do
       >
         <.focus_wrap
           id="replacement-dialog-focus"
-          class="w-full max-w-md rounded-xl bg-base-100 p-6 shadow-xl"
+          class="w-full max-w-md rounded-xl bg-base-200 p-6 shadow-xl"
         >
-          <h2 id="replacement-title" tabindex="-1" class="text-lg font-semibold">
+          <h2 id="replacement-title" tabindex="-1" class="text-xl font-semibold">
             Replace existing binding?
           </h2><p class="mt-3 text-sm">
             This input already controls a simulator or API binding. Replacing it will move the input to the virtual joystick.
@@ -478,7 +485,7 @@ defmodule TreninoWeb.VirtualJoystickLive do
 
   defp mapping_value(assigns) do
     ~H"""
-    <span :if={is_nil(@mapping)} class="text-sm text-base-content/50">Not assigned</span>
+    <span :if={is_nil(@mapping)} class="text-sm text-muted">Not assigned</span>
     <span :if={@mapping} class="flex min-w-0 flex-wrap items-center gap-2 text-sm"><span class="break-words">{@mapping.input.name ||
       InputLabel.pin(@mapping.input)}{if @mapping.inverted, do: " · Inverted"}</span><button
       id={"edit-mapping-#{@mapping.id}"}
@@ -497,6 +504,9 @@ defmodule TreninoWeb.VirtualJoystickLive do
     >Delete</button></span>
     """
   end
+
+  defp mapping_save_error,
+    do: "The mapping could not be saved. Try again; if it keeps failing, restart Trenino."
 
   defp open_form(socket, kind, mapping) do
     subscribe_connected_ports(Connection.list_devices())

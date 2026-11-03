@@ -29,9 +29,9 @@ defmodule TreninoWeb.Live.Components.VirtualJoystickMappingForm do
     >
       <.focus_wrap
         id="mapping-dialog-focus"
-        class="max-h-[calc(100dvh-2rem)] overflow-y-auto w-full max-w-md rounded-xl border border-base-300 bg-base-100 p-6 shadow-xl"
+        class="max-h-[calc(100dvh-2rem)] overflow-y-auto w-full max-w-md rounded-xl border border-base-300 bg-base-200 p-6 shadow-xl"
       >
-        <h2 id="mapping-title" tabindex="-1" class="text-lg font-semibold">
+        <h2 id="mapping-title" tabindex="-1" class="text-xl font-semibold">
           {if @mapping, do: "Edit mapping", else: "Add mapping"}
         </h2>
         <form
@@ -43,7 +43,7 @@ defmodule TreninoWeb.Live.Components.VirtualJoystickMappingForm do
         >
           <input :if={@mapping} type="hidden" name="mapping[id]" value={@mapping.id} />
           <input type="hidden" name="mapping[target_type]" value={@kind} />
-          <p :if={@inputs == []} class="text-sm text-base-content/70">
+          <p :if={@inputs == []} class="text-sm text-muted">
             {if @kind == :axis,
               do: "No analog inputs are configured yet.",
               else: "No button inputs are configured yet."}
@@ -103,7 +103,7 @@ defmodule TreninoWeb.Live.Components.VirtualJoystickMappingForm do
             />
             <span>Invert direction</span>
           </label>
-          <p data-testid="input-preview" class="text-sm text-base-content/70">
+          <p data-testid="input-preview" class="text-sm text-muted tabular-nums">
             Live input: {if is_binary(@preview),
               do: @preview,
               else: @preview_hint}

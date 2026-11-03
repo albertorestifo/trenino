@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>trenino</title>
+  <title>Trenino</title>
   <style>
     body {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
@@ -12,17 +12,23 @@
       align-items: center;
       height: 100vh;
       margin: 0;
-      background: #1a1a2e;
-      color: #eee;
+      background: #20262C;
+      color: #F5F7FA;
     }
     .loading {
       text-align: center;
     }
+    .loading p {
+      font-size: 0.875rem;
+      line-height: 1.6;
+      color: #B7C0C9;
+    }
     .spinner {
       width: 40px;
       height: 40px;
-      border: 4px solid #333;
-      border-top-color: #6366f1;
+      box-sizing: border-box;
+      border: 3px solid #65717D;
+      border-top-color: #AFBCFF;
       border-radius: 50%;
       animation: spin 1s linear infinite;
       margin: 0 auto 20px;
@@ -30,12 +36,17 @@
     @keyframes spin {
       to { transform: rotate(360deg); }
     }
+    @media (prefers-reduced-motion: reduce) {
+      .spinner {
+        animation: none;
+      }
+    }
   </style>
 </head>
 <body>
   <div class="loading">
-    <div class="spinner"></div>
-    <p>Starting trenino...</p>
+    <div class="spinner" aria-hidden="true"></div>
+    <p role="status">Starting Trenino</p>
   </div>
 </body>
 </html>

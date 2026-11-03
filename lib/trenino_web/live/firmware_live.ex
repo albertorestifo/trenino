@@ -11,6 +11,8 @@ defmodule TreninoWeb.FirmwareLive do
 
   use TreninoWeb, :live_view
 
+  require Logger
+
   alias Trenino.Firmware
   alias Trenino.Firmware.{Compatibility, DeviceRegistry, FirmwareFile}
   alias Trenino.Serial.Connection
@@ -27,6 +29,7 @@ defmodule TreninoWeb.FirmwareLive do
 
     {:ok,
      socket
+     |> assign(:page_title, "Firmware")
      |> assign(:releases, releases)
      |> assign(:upload_history, upload_history)
      |> assign(:current_upload, current_upload)
@@ -83,7 +86,7 @@ defmodule TreninoWeb.FirmwareLive do
   end
 
   @impl true
-  def handle_info({:upload_completed, _upload_id, duration_ms}, socket) do
+  def handle_info({:upload_completed, _upload_id, _duration_ms}, socket) do
     {:noreply,
      socket
      |> assign(:current_upload, nil)
@@ -93,7 +96,7 @@ defmodule TreninoWeb.FirmwareLive do
        :upload_history,
        Firmware.list_upload_history(limit: 10, preload: [:firmware_file])
      )
-     |> put_flash(:info, "Firmware uploaded successfully in #{duration_ms}ms")}
+     |> put_flash(:info, "Firmware uploaded")}
   end
 
   @impl true
@@ -163,10 +166,15 @@ defmodule TreninoWeb.FirmwareLive do
          |> put_flash(:info, "Firmware releases updated")}
 
       {:error, reason} ->
+        Logger.error("Firmware update check failed: #{inspect(reason)}")
+
         {:noreply,
          socket
          |> assign(:checking_updates, false)
-         |> put_flash(:error, "Failed to check for updates: #{inspect(reason)}")}
+         |> put_flash(
+           :error,
+           "Could not check for firmware updates. Check your internet connection and try again."
+         )}
     end
   end
 
@@ -233,7 +241,14 @@ defmodule TreninoWeb.FirmwareLive do
         {:noreply, assign(socket, :upload_error, "No firmware available for this device.")}
 
       {:error, reason} ->
-        {:noreply, assign(socket, :upload_error, "Failed to start upload: #{inspect(reason)}")}
+        Logger.error("Firmware upload could not start: #{inspect(reason)}")
+
+        {:noreply,
+         assign(
+           socket,
+           :upload_error,
+           "The upload could not start. Check that the device is still connected, then try again."
+         )}
     end
   end
 
@@ -268,8 +283,6 @@ defmodule TreninoWeb.FirmwareLive do
   end
 
   defp ensure_file_downloaded(file) do
-    require Logger
-
     if FirmwareFile.downloaded?(file) do
       Logger.debug("Firmware already downloaded")
       {:ok, file}
@@ -279,7 +292,6 @@ defmodule TreninoWeb.FirmwareLive do
   end
 
   defp download_firmware_file(file) do
-    require Logger
     Logger.info("Downloading firmware file #{file.id}...")
 
     case Firmware.download_firmware(file.id) do
@@ -323,7 +335,7 @@ defmodule TreninoWeb.FirmwareLive do
         <header class="mb-8 flex items-center justify-between">
           <div>
             <h1 class="text-2xl font-semibold">Firmware</h1>
-            <p class="text-sm text-base-content/70 mt-1">
+            <p class="text-sm text-muted mt-1">
               Download and upload firmware to your devices
             </p>
           </div>
@@ -334,7 +346,7 @@ defmodule TreninoWeb.FirmwareLive do
           >
             <.icon
               name="hero-arrow-path"
-              class={if @checking_updates, do: "w-4 h-4 animate-spin", else: "w-4 h-4"}
+              class={if @checking_updates, do: "w-4 h-4 motion-safe:animate-spin", else: "w-4 h-4"}
             />
             {if @checking_updates, do: "Checking...", else: "Check for Updates"}
           </button>
@@ -344,7 +356,7 @@ defmodule TreninoWeb.FirmwareLive do
 
         <div :if={not Enum.empty?(@releases)} class="space-y-8">
           <section>
-            <h2 class="text-lg font-medium mb-4">Available Releases</h2>
+            <h2 class="text-xl font-semibold mb-4">Available Releases</h2>
             <div class="space-y-4">
               <%!-- Latest release with emphasis --%>
               <.release_card :if={@latest_release} release={@latest_release} is_latest={true} />
@@ -353,7 +365,7 @@ defmodule TreninoWeb.FirmwareLive do
               <div :if={not Enum.empty?(@older_releases)}>
                 <button
                   phx-click="toggle_older_releases"
-                  class="btn btn-ghost btn-sm w-full justify-start text-base-content/70 hover:text-base-content"
+                  class="btn btn-ghost btn-sm w-full justify-start text-muted hover:text-base-content"
                 >
                   <.icon
                     name="hero-chevron-down"
@@ -387,7 +399,7 @@ defmodule TreninoWeb.FirmwareLive do
           </section>
 
           <section :if={not Enum.empty?(@upload_history)}>
-            <h2 class="text-lg font-medium mb-4">Upload History</h2>
+            <h2 class="text-xl font-semibold mb-4">Upload History</h2>
             <.history_table history={@upload_history} />
           </section>
         </div>
@@ -414,7 +426,7 @@ defmodule TreninoWeb.FirmwareLive do
     <div class="flex flex-col items-center justify-center py-20 text-center">
       <.icon name="hero-cpu-chip" class="w-16 h-16 text-base-content/20" />
       <h2 class="mt-6 text-xl font-semibold">No Firmware Releases</h2>
-      <p class="mt-2 text-base-content/70 max-w-sm">
+      <p class="mt-2 text-muted max-w-sm">
         {if @checking,
           do: "Checking for updates...",
           else: "Click 'Check for Updates' to fetch available firmware versions from GitHub."}
@@ -451,24 +463,21 @@ defmodule TreninoWeb.FirmwareLive do
 
     ~H"""
     <div class={[
-      "border rounded-xl overflow-hidden",
-      if(@is_latest,
-        do: "border-2 border-primary/30 bg-base-200/80 shadow-lg shadow-primary/5 p-6",
-        else: "border-base-300 bg-base-200/50 p-5"
-      )
+      "border border-base-300 rounded-xl overflow-hidden bg-base-200",
+      if(@is_latest, do: "p-6", else: "p-5")
     ]}>
       <div class="flex items-start justify-between gap-4">
         <div>
           <div class="flex items-center gap-2 flex-wrap">
-            <h3 class="font-medium">v{@release.version}</h3>
-            <span class="badge badge-ghost badge-sm">{@release.tag_name}</span>
-            <span :if={@is_latest} class="badge badge-success badge-sm">Latest</span>
-            <span :if={not @compatible} class="badge badge-warning badge-sm">Incompatible</span>
+            <h3 class="font-semibold font-mono">v{@release.version}</h3>
+            <span class="badge badge-ghost badge-sm font-mono">{@release.tag_name}</span>
+            <span :if={@is_latest} class="badge badge-ghost badge-sm">Latest</span>
+            <.status_chip :if={not @compatible} kind={:warn} label="Incompatible" />
           </div>
-          <p :if={@release.published_at} class="text-xs text-base-content/60 mt-1">
+          <p :if={@release.published_at} class="text-xs text-muted mt-1">
             Released {Calendar.strftime(@release.published_at, "%B %d, %Y")}
           </p>
-          <p class="text-xs text-base-content/50 mt-2">
+          <p class="text-xs text-muted mt-2">
             Supported boards: {Enum.join(@board_names, ", ")}
           </p>
           <p :if={not @compatible} class="text-xs text-warning mt-2">
@@ -494,7 +503,9 @@ defmodule TreninoWeb.FirmwareLive do
             :if={@release.release_url}
             href={@release.release_url}
             target="_blank"
+            rel="noopener noreferrer"
             class="btn btn-ghost btn-sm"
+            aria-label={"View v#{@release.version} release notes"}
           >
             <.icon name="hero-arrow-top-right-on-square" class="w-3 h-3" />
           </a>
@@ -526,10 +537,10 @@ defmodule TreninoWeb.FirmwareLive do
             <td>
               <.status_badge status={entry.status} />
             </td>
-            <td>
+            <td class="font-mono text-xs">
               {if entry.duration_ms, do: "#{entry.duration_ms}ms", else: "-"}
             </td>
-            <td class="text-xs text-base-content/60">
+            <td class="font-mono text-xs text-muted">
               {if entry.started_at, do: Calendar.strftime(entry.started_at, "%H:%M:%S"), else: "-"}
             </td>
           </tr>
@@ -542,18 +553,18 @@ defmodule TreninoWeb.FirmwareLive do
   attr :status, :atom, required: true
 
   defp status_badge(assigns) do
-    {class, text} =
+    {kind, label} =
       case assigns.status do
-        :completed -> {"badge-success", "Success"}
-        :failed -> {"badge-error", "Failed"}
-        :cancelled -> {"badge-warning", "Cancelled"}
-        :started -> {"badge-info", "In Progress"}
+        :completed -> {:ok, "Completed"}
+        :failed -> {:error, "Failed"}
+        :cancelled -> {:muted, "Cancelled"}
+        :started -> {:busy, "In progress"}
       end
 
-    assigns = assign(assigns, class: class, text: text)
+    assigns = assign(assigns, kind: kind, label: label)
 
     ~H"""
-    <span class={"badge badge-sm #{@class}"}>{@text}</span>
+    <.status_chip kind={@kind} label={@label} />
     """
   end
 
@@ -580,25 +591,26 @@ defmodule TreninoWeb.FirmwareLive do
 
     ~H"""
     <div class="modal modal-open">
-      <div class="modal-box">
+      <div class="modal-box bg-base-200">
         <button
           :if={!@uploading}
           phx-click="close_upload_modal"
           class="btn btn-sm btn-circle btn-ghost absolute right-2 top-2"
+          aria-label="Close"
         >
           <.icon name="hero-x-mark" class="w-4 h-4" />
         </button>
 
-        <h3 class="font-bold text-lg">Upload Firmware</h3>
-        <p class="text-sm text-base-content/70 mt-1">
-          Version: <span class="font-semibold">v{@release.version}</span>
+        <h3 class="font-semibold text-xl">Upload Firmware</h3>
+        <p class="text-sm text-muted mt-1">
+          Version: <span class="font-semibold font-mono">v{@release.version}</span>
         </p>
 
         <%!-- No devices available state --%>
         <div :if={@no_ports && !@uploading} class="mt-6 text-center py-8">
           <.icon name="hero-exclamation-circle" class="w-12 h-12 text-warning mx-auto" />
           <h4 class="font-medium mt-4">No Devices Available</h4>
-          <p class="text-sm text-base-content/70 mt-2">
+          <p class="text-sm text-muted mt-2">
             Connect a device via USB and scan for ports.
           </p>
           <button phx-click="nav_scan_devices" class="btn btn-sm btn-primary mt-4">
@@ -626,7 +638,7 @@ defmodule TreninoWeb.FirmwareLive do
               </option>
             </select>
             <label class="label">
-              <span class="label-text-alt text-base-content/60">
+              <span class="label-text-alt text-muted">
                 Select the port your device is connected to
               </span>
             </label>
@@ -650,22 +662,22 @@ defmodule TreninoWeb.FirmwareLive do
               </option>
             </select>
             <label class="label">
-              <span class="label-text-alt text-base-content/60">
+              <span class="label-text-alt text-muted">
                 Make sure this matches your physical board
               </span>
             </label>
           </form>
 
-          <div :if={@error} class="alert alert-error">
+          <div :if={@error} class="alert alert-soft alert-error">
             <.icon name="hero-exclamation-triangle" class="w-5 h-5" />
             <span class="text-sm whitespace-pre-wrap">{@error}</span>
           </div>
 
-          <div class="alert alert-warning">
+          <div class="alert alert-soft alert-warning">
             <.icon name="hero-exclamation-triangle" class="w-5 h-5" />
             <div class="text-sm">
               <p class="font-medium">Do not disconnect the device during upload</p>
-              <p class="text-base-content/70">
+              <p class="text-base-content">
                 Interrupting the upload may corrupt the firmware.
               </p>
             </div>
@@ -674,8 +686,8 @@ defmodule TreninoWeb.FirmwareLive do
 
         <div :if={@uploading} class="mt-4 space-y-4">
           <div class="text-center py-4">
-            <.icon name="hero-cpu-chip" class="w-12 h-12 text-primary mx-auto animate-pulse" />
-            <p class="mt-2 text-sm text-base-content/70">
+            <.icon name="hero-cpu-chip" class="w-12 h-12 mx-auto" />
+            <p class="mt-2 text-sm" role="status" aria-live="polite">
               {(@progress && @progress.message) || "Uploading..."}
             </p>
           </div>
@@ -687,7 +699,7 @@ defmodule TreninoWeb.FirmwareLive do
             max="100"
           ></progress>
 
-          <p class="text-center text-xs text-base-content/60">
+          <p class="text-center text-xs text-muted">
             Uploading to <span class="font-mono">{@selected_port}</span> - Do not disconnect
           </p>
         </div>
@@ -711,13 +723,13 @@ defmodule TreninoWeb.FirmwareLive do
           <button
             :if={@uploading}
             phx-click="cancel_upload"
-            class="btn btn-error"
+            class="btn btn-outline"
           >
             Cancel Upload
           </button>
         </div>
       </div>
-      <div class="modal-backdrop bg-base-300/80" phx-click="close_upload_modal"></div>
+      <div class="modal-backdrop bg-black/50" phx-click="close_upload_modal"></div>
     </div>
     """
   end

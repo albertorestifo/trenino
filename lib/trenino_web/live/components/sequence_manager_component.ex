@@ -421,12 +421,12 @@ defmodule TreninoWeb.SequenceManagerComponent do
     <tr class="hover:bg-base-200/50">
       <td class="font-medium">
         <div class="flex items-center gap-2">
-          <.icon name="hero-list-bullet" class="w-4 h-4 text-base-content/50" />
+          <.icon name="hero-list-bullet" class="w-4 h-4 text-muted" />
           {@sequence.name}
         </div>
       </td>
       <td>
-        <span class="text-sm text-base-content/60">
+        <span class="text-sm text-muted">
           {@command_count} command{if @command_count != 1, do: "s"}
         </span>
       </td>
@@ -474,8 +474,8 @@ defmodule TreninoWeb.SequenceManagerComponent do
     ~H"""
     <div class="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div class="absolute inset-0 bg-black/50" phx-click="close_add_modal" phx-target={@myself} />
-      <div class="relative bg-base-100 rounded-xl shadow-xl w-full max-w-sm p-6">
-        <h2 class="text-lg font-semibold mb-4">New Sequence</h2>
+      <div class="relative bg-base-200 rounded-xl shadow-xl w-full max-w-sm p-6">
+        <h2 class="text-xl font-semibold mb-4">New Sequence</h2>
 
         <div class="mb-4">
           <label class="label">
@@ -526,10 +526,10 @@ defmodule TreninoWeb.SequenceManagerComponent do
     ~H"""
     <div class="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div class="absolute inset-0 bg-black/50" phx-click="close_edit" phx-target={@myself} />
-      <div class="relative bg-base-100 rounded-xl shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col">
+      <div class="relative bg-base-200 rounded-xl shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col">
         <div class="p-6 border-b border-base-300">
-          <h2 class="text-lg font-semibold">{@sequence.name}</h2>
-          <p class="text-sm text-base-content/60">
+          <h2 class="text-xl font-semibold">{@sequence.name}</h2>
+          <p class="text-sm text-muted">
             Commands execute in order. Delay specifies wait time after each command.
           </p>
         </div>
@@ -542,7 +542,7 @@ defmodule TreninoWeb.SequenceManagerComponent do
             >
               <div class="flex items-start gap-3">
                 <div class="flex-none w-8 pt-2 text-center">
-                  <span class="text-sm font-semibold text-base-content/50">{index + 1}</span>
+                  <span class="text-sm font-semibold text-muted">{index + 1}</span>
                 </div>
 
                 <div class="flex-1 grid grid-cols-3 gap-3">

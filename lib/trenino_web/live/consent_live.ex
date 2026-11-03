@@ -10,7 +10,8 @@ defmodule TreninoWeb.ConsentLive do
   alias Trenino.Settings
 
   @impl true
-  def mount(_params, _session, socket), do: {:ok, socket, layout: false}
+  def mount(_params, _session, socket),
+    do: {:ok, assign(socket, :page_title, "Error reports"), layout: false}
 
   @impl true
   def handle_event("accept", _params, socket) do
@@ -27,14 +28,13 @@ defmodule TreninoWeb.ConsentLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <div class="min-h-screen flex items-center justify-center bg-base-200 p-4">
-      <div class="card max-w-md w-full bg-base-100 shadow-xl">
+    <div class="min-h-screen flex flex-col items-center justify-center gap-8 p-4">
+      <TreninoWeb.NavComponents.brand_lockup />
+      <div class="card max-w-md w-full bg-base-200 border border-base-300">
         <div class="card-body items-center text-center">
-          <div class="rounded-full bg-primary/10 p-3 mb-2">
-            <.icon name="hero-shield-check" class="w-8 h-8 text-primary" />
-          </div>
-          <h2 class="card-title text-lg">Help improve Trenino</h2>
-          <p class="text-sm text-base-content/70">
+          <.icon name="hero-shield-check" class="w-8 h-8 mb-2" />
+          <h1 class="card-title text-xl font-semibold">Help improve Trenino</h1>
+          <p class="text-sm text-muted">
             Share anonymous error reports so bugs can be found and fixed faster. No personal data, no usage tracking — only crash reports.
           </p>
           <div class="card-actions w-full flex flex-col gap-2 mt-4">
