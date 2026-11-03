@@ -1447,15 +1447,12 @@ defmodule TreninoWeb.TrainEditLive do
           simulator_connected={@nav_simulator_status.status == :connected}
         />
 
-        <div
-          :if={not @new_mode and @nav_simulator_status.status != :connected}
-          class="alert alert-soft alert-warning mt-6"
-        >
-          <.icon name="hero-exclamation-triangle" class="w-5 h-5" />
-          <span>
-            Simulator not connected. Connect to the simulator to configure elements and test sequences.
-          </span>
-        </div>
+        <.simulator_notice
+          :if={not @new_mode}
+          simulator_status={@nav_simulator_status}
+          message="Element setup and sequence tests are paused."
+          class="mt-6"
+        />
 
         <nav
           :if={not @new_mode}

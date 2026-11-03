@@ -274,12 +274,12 @@ Structured inside a `fieldset` wrapper with a `label` above. The label is a smal
 
 ### Navigation
 
-Sticky top bar on `bg-base-200` with a 1px base-300 bottom border. Trenino lockup at the leading edge (see Identity). Content constrained to max-w-2xl. Navigation tabs (text links with active state) and icon-labeled control buttons for Settings and Devices.
+Sticky top bar on `bg-base-200` with a 1px base-300 bottom border. Trenino lockup at the leading edge (see Identity). Header content is constrained to max-w-4xl (wider than the max-w-2xl page content) so it stays on one row. Navigation tabs for Devices, Trains, Joystick and Settings, then the connections button at the trailing edge.
 
 - **Tab style:** Inactive: base-content text, transparent background, hover reveals base-300 tint. Active: primary background, primary-content text (current state). 8px radius. No underlines, no side borders.
-- **Control buttons** (Settings, Devices): base-200 background, hover reveals base-300. Icon + label (hidden on mobile, with `sr-only` text). 8px radius.
-- **Device status:** A dot is never the only signal. Each state shows an icon and a text label from the shared vocabulary: Connected (`hero-check-circle-mini`, success), Connecting (`hero-arrow-path-mini motion-safe:animate-spin`, info), Needs attention (`hero-exclamation-triangle-mini`, warning), Failed (`hero-x-circle-mini`, error). The idle state also has text ("No controllers"). At summary level a failed device reads "Needs attention"; the device row reads "Failed" with the next step. No pulsing dots.
-- **Device Dropdown:** Absolute panel below the Devices button. `bg-base-200`, 12px radius, `shadow-xl`, 1px base-300 border. Scrollable device list with a hover tint on each row. Ports and versions in `font-mono`.
+- **Connections button:** base-100 background, hover reveals base-300. Status icon + label (label hidden on mobile, kept in `aria-label`). 8px radius. It rolls up devices and the simulator: Connecting while anything connects, Needs attention when a device failed or the simulator is not connected (including not set up), otherwise "N connected" or "No devices".
+- **Device status:** A dot is never the only signal. Each state shows an icon and a text label from the shared vocabulary: Connected (`hero-check-circle-mini`, success), Connecting (`hero-arrow-path-mini motion-safe:animate-spin`, info), Needs attention (`hero-exclamation-triangle-mini`, warning), Failed (`hero-x-circle-mini`, error). The idle state also has text ("No controllers"). At summary level a failure reads "Needs attention"; the row reads "Failed" with the next step. No pulsing dots.
+- **Connections dropdown:** Absolute panel below the connections button. `bg-base-200`, 12px radius, `shadow-xl`, 1px base-300 border. The Train Sim World row comes first: status, a one-line next step, and Retry or Open Settings. Then a Devices label with compact ghost Scan and Check firmware actions, and a scrollable device list with a hover tint on each row. Each device is named after its configuration when known, with the port second; ports and versions in `font-mono`. A failed row adds one muted line with the reason and an inline Install firmware action when flashing helps.
 
 ### Breadcrumbs
 
@@ -289,7 +289,7 @@ Slim secondary bar directly beneath the nav header. base-200 background, 1px bas
 
 DaisyUI `alert` in the soft variant: `alert alert-soft alert-info|success|warning|error`. Flash messages sit inside a `toast toast-top toast-end` container. Each includes a leading heroicon (information-circle or exclamation-circle), optional title in semibold, body text, and a dismiss button. Info alerts auto-dismiss after 5 seconds. Max width 24rem (max-w-96).
 
-Header banners (app update, firmware update) are notices, not actions: they use the info role in the soft treatment, with a status-colored icon and base-content text at `text-sm`. The simulator error banner may keep a solid error fill so it stands out; it is the only solid status fill.
+Header banners (app update, firmware update) are notices, not actions: they use the info role in the soft treatment, with a status-colored icon and base-content text at `text-sm`. There is no simulator banner: simulator state lives in the connections dropdown, and only pages that need the simulator (Trains, train edit) show `<.simulator_notice>`, a soft warning alert with the next step and its action. No solid status fills.
 
 ### Status Badges
 

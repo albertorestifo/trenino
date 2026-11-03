@@ -3,7 +3,24 @@ defmodule TreninoWeb.TrainListLiveTest do
 
   import Phoenix.LiveViewTest
 
+  alias Trenino.Simulator.ConnectionState
   alias Trenino.Train, as: TrainContext
+
+  test "shows a simulator notice with its action until the simulator connects", %{conn: conn} do
+    {:ok, view, _html} = live(conn, ~p"/trains")
+
+    send(view.pid, {:simulator_status_changed, %ConnectionState{status: :needs_config}})
+    render(view)
+    assert has_element?(view, "#simulator-notice a[href='/settings']", "Open Settings")
+
+    send(view.pid, {:simulator_status_changed, %ConnectionState{status: :disconnected}})
+    render(view)
+    assert has_element?(view, "#simulator-notice button[phx-click='nav_retry_simulator']")
+
+    send(view.pid, {:simulator_status_changed, %ConnectionState{status: :connected}})
+    render(view)
+    refute has_element?(view, "#simulator-notice")
+  end
 
   test "lists every identifier for a train profile", %{conn: conn} do
     {:ok, _train} =

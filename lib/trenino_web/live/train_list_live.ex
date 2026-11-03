@@ -8,6 +8,7 @@ defmodule TreninoWeb.TrainListLive do
 
   use TreninoWeb, :live_view
 
+  import TreninoWeb.NavComponents, only: [simulator_notice: 1]
   import TreninoWeb.SharedComponents
 
   alias Trenino.Serial.Connection
@@ -117,6 +118,12 @@ defmodule TreninoWeb.TrainListLive do
           subtitle="Manage train configurations"
           action_path={~p"/trains/new"}
           action_text="New Train"
+        />
+
+        <.simulator_notice
+          simulator_status={@nav_simulator_status}
+          message="Active train detection is paused."
+          class="mb-6"
         />
 
         <.multiple_matches_banner

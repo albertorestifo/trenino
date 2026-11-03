@@ -53,36 +53,18 @@ defmodule TreninoWeb.ConfigurationListLiveTest do
     end
   end
 
-  describe "simulator status indicator" do
-    test "shows settings link in header", %{conn: conn} do
-      {:ok, _view, html} = live(conn, ~p"/")
-
-      assert html =~ "Settings"
-      assert html =~ ~s(href="/settings")
-    end
-
-    test "updates simulator status on PubSub event", %{conn: conn} do
+  describe "simulator status in the connections dropdown" do
+    test "shows settings as a navigation tab", %{conn: conn} do
       {:ok, view, _html} = live(conn, ~p"/")
 
-      # Send connected status — banner is hidden, no error message shown
-      send(view.pid, {:simulator_status_changed, %ConnectionState{status: :connected}})
-
-      html = render(view)
-      refute html =~ "Simulator connection failed"
-      refute html =~ "Simulator is offline"
+      assert has_element?(
+               view,
+               "nav[aria-label='Primary navigation'] a[href='/settings']",
+               "Settings"
+             )
     end
 
-    test "shows a neutral notice when needs config", %{conn: conn} do
-      {:ok, view, _html} = live(conn, ~p"/")
-
-      send(view.pid, {:simulator_status_changed, %ConnectionState{status: :needs_config}})
-
-      render(view)
-      assert has_element?(view, "#simulator-status-banner", "Simulator not configured")
-      assert has_element?(view, "#simulator-status-banner a[href='/settings']", "Open Settings")
-    end
-
-    test "shows a solid error banner on connection error", %{conn: conn} do
+    test "never renders a simulator banner", %{conn: conn} do
       {:ok, view, _html} = live(conn, ~p"/")
 
       send(
@@ -91,58 +73,74 @@ defmodule TreninoWeb.ConfigurationListLiveTest do
       )
 
       render(view)
-      assert has_element?(view, "#simulator-status-banner", "Simulator connection failed")
-      assert has_element?(view, "#simulator-status-banner .bg-error")
+      refute has_element?(view, "#simulator-status-banner")
+      refute has_element?(view, "header .bg-error")
+      refute has_element?(view, "#simulator-notice")
     end
 
-    test "hides sim banner when connecting", %{conn: conn} do
+    test "shows each simulator state with its next step and action", %{conn: conn} do
       {:ok, view, _html} = live(conn, ~p"/")
+      open_dropdown(view)
+      row = "#simulator-status-row"
 
-      # Banner is hidden while connecting — no error message shown
-      send(view.pid, {:simulator_status_changed, %ConnectionState{status: :connecting}})
+      cases = [
+        {%ConnectionState{status: :connected}, "Connected", nil, nil},
+        {%ConnectionState{status: :connecting}, "Connecting", nil, nil},
+        {%ConnectionState{status: :needs_config}, "Needs attention", "API key",
+         "a[href='/settings']"},
+        {%ConnectionState{status: :disconnected}, "Needs attention", "Start Train Sim World",
+         "button[phx-click='nav_retry_simulator']"},
+        {%ConnectionState{status: :error, last_error: :timeout}, "Failed", "did not respond",
+         "button[phx-click='nav_retry_simulator']"},
+        {%ConnectionState{status: :error, last_error: :invalid_key}, "Failed",
+         "API key was rejected", "a[href='/settings']"}
+      ]
 
-      html = render(view)
-      refute html =~ "Simulator connection failed"
-      refute html =~ "Simulator is offline"
-    end
+      for {state, label, hint, action} <- cases do
+        send(view.pid, {:simulator_status_changed, state})
+        render(view)
 
-    test "shows offline notice when disconnected", %{conn: conn} do
-      {:ok, view, _html} = live(conn, ~p"/")
+        assert has_element?(view, row, label)
+        if hint, do: assert(has_element?(view, row, hint))
 
-      send(view.pid, {:simulator_status_changed, %ConnectionState{status: :disconnected}})
-
-      render(view)
-      assert has_element?(view, "#simulator-status-banner", "Simulator is offline")
-
-      assert has_element?(
-               view,
-               "#simulator-status-banner button[phx-click='nav_retry_simulator']"
-             )
+        if action,
+          do: assert(has_element?(view, "#{row} #{action}")),
+          else: refute(has_element?(view, "#{row} a, #{row} button"))
+      end
     end
   end
 
-  describe "device status summary" do
+  describe "connections summary" do
     test "labels every summary state with text, not color alone", %{conn: conn} do
       {:ok, view, _html} = live(conn, ~p"/")
       summary = "button[phx-click='nav_toggle_dropdown']"
-
-      assert has_element?(view, summary, "No devices")
+      connected_sim = %ConnectionState{status: :connected}
 
       cases = [
-        {[device("COM1", :connected)], "1 connected", "hero-check-circle-mini"},
-        {[device("COM1", :connected), device("COM2", :connected)], "2 connected",
+        {[], connected_sim, "No devices", "hero-minus-circle-mini"},
+        {[device("COM1", :connected)], connected_sim, "1 connected", "hero-check-circle-mini"},
+        {[device("COM1", :connected), device("COM2", :connected)], connected_sim, "2 connected",
          "hero-check-circle-mini"},
-        {[device("COM1", :discovering)], "Connecting", "hero-arrow-path-mini"},
-        {[device("COM1", :connected), device("COM2", :failed)], "Needs attention",
+        {[device("COM1", :discovering)], connected_sim, "Connecting", "hero-arrow-path-mini"},
+        {[device("COM1", :connected)], %ConnectionState{status: :connecting}, "Connecting",
+         "hero-arrow-path-mini"},
+        {[device("COM1", :connected), device("COM2", :failed)], connected_sim, "Needs attention",
+         "hero-exclamation-triangle-mini"},
+        {[device("COM1", :connected)], %ConnectionState{status: :error, last_error: :timeout},
+         "Needs attention", "hero-exclamation-triangle-mini"},
+        {[], %ConnectionState{status: :needs_config}, "Needs attention",
+         "hero-exclamation-triangle-mini"},
+        {[device("COM1", :connected)], %ConnectionState{status: :disconnected}, "Needs attention",
          "hero-exclamation-triangle-mini"}
       ]
 
-      for {devices, label, icon} <- cases do
+      for {devices, sim, label, icon} <- cases do
+        send(view.pid, {:simulator_status_changed, sim})
         send(view.pid, {:devices_updated, devices})
         render(view)
 
         assert has_element?(view, summary, label)
-        assert has_element?(view, "#{summary}[aria-label='Devices: #{label}'] .#{icon}")
+        assert has_element?(view, "#{summary}[aria-label='Connections: #{label}'] .#{icon}")
       end
     end
 
@@ -155,13 +153,37 @@ defmodule TreninoWeb.ConfigurationListLiveTest do
          [device("COM1", :connected), device("COM2", :discovering), device("COM3", :failed)]}
       )
 
-      html = view |> element("button[phx-click='nav_toggle_dropdown']") |> render_click()
+      html = open_dropdown(view)
 
       assert html =~ "Connected"
       assert html =~ "Connecting"
       assert html =~ "Failed"
       refute html =~ "Discovering"
     end
+
+    test "device rows are named after their configuration, port second", %{conn: conn} do
+      {:ok, config} = Hardware.create_device(%{name: "Class 66 desk"})
+      {:ok, view, _html} = live(conn, ~p"/")
+
+      send(
+        view.pid,
+        {:devices_updated,
+         [
+           %{device("/dev/cu.usbserial-A1", :connected) | device_config_id: config.config_id},
+           device("/dev/cu.usbmodem2", :connected)
+         ]}
+      )
+
+      open_dropdown(view)
+
+      assert has_element?(view, "button[aria-label='Disconnect from Class 66 desk']")
+      assert has_element?(view, "span.font-mono", "/dev/cu.usbserial-A1")
+      assert has_element?(view, "button[aria-label='Disconnect from /dev/cu.usbmodem2']")
+    end
+  end
+
+  defp open_dropdown(view) do
+    view |> element("button[phx-click='nav_toggle_dropdown']") |> render_click()
   end
 
   defp device(port, status),
@@ -176,8 +198,8 @@ defmodule TreninoWeb.ConfigurationListLiveTest do
 
       html = render(view)
 
-      # Dropdown is open and shows "Scan for Devices"
-      assert html =~ "Scan for Devices"
+      # Dropdown is open and shows the scan action
+      assert has_element?(view, "button[phx-click='nav_scan_devices']", "Scan")
       refute html =~ "Scanning..."
 
       # Click the scan button
@@ -185,7 +207,6 @@ defmodule TreninoWeb.ConfigurationListLiveTest do
 
       # Now shows "Scanning..."
       assert html =~ "Scanning..."
-      refute html =~ "Scan for Devices"
     end
 
     test "scan button resets after scan_complete event", %{conn: conn} do
@@ -202,8 +223,8 @@ defmodule TreninoWeb.ConfigurationListLiveTest do
 
       html = render(view)
 
-      # Button should be reset to "Scan for Devices"
-      assert html =~ "Scan for Devices"
+      # Button is reset to "Scan"
+      assert has_element?(view, "button[phx-click='nav_scan_devices']", "Scan")
       refute html =~ "Scanning..."
     end
   end

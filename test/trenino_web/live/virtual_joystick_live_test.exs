@@ -101,7 +101,7 @@ defmodule TreninoWeb.VirtualJoystickLiveTest do
     {:ok, view, _} = live(conn, ~p"/virtual-joystick")
     send(view.pid, {:simulator_status_changed, %{status: :error}})
     refute has_element?(view, "#simulator-status-banner")
-    refute has_element?(view, "header [role='status']", "Simulator connection failed")
+    refute has_element?(view, "#simulator-notice")
     assert has_element?(view, "nav[aria-label='Primary navigation'] a[href='/trains']")
   end
 

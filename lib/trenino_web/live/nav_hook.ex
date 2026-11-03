@@ -12,6 +12,7 @@ defmodule TreninoWeb.NavHook do
 
   alias Trenino.AppVersion
   alias Trenino.Firmware
+  alias Trenino.Hardware
   alias Trenino.Serial.Connection
   alias Trenino.Simulator
   alias Trenino.Simulator.ConnectionState
@@ -32,6 +33,7 @@ defmodule TreninoWeb.NavHook do
     {:cont,
      socket
      |> assign(:nav_devices, [])
+     |> assign(:nav_device_names, %{})
      |> assign(:nav_simulator_status, ConnectionState.new())
      |> assign(:nav_firmware_update, nil)
      |> assign(:nav_app_version_update, nil)
@@ -77,7 +79,7 @@ defmodule TreninoWeb.NavHook do
 
     {:cont,
      socket
-     |> assign(:nav_devices, devices)
+     |> assign_devices(devices)
      |> assign(:nav_simulator_status, simulator_status)
      |> assign(:nav_firmware_update, format_update_status(firmware_update_status))
      |> assign(:nav_app_version_update, format_update_status(app_version_update_status))}
@@ -85,7 +87,7 @@ defmodule TreninoWeb.NavHook do
 
   # Device update events
   defp handle_info({:devices_updated, devices}, socket) do
-    {:cont, assign(socket, :nav_devices, devices)}
+    {:cont, assign_devices(socket, devices)}
   end
 
   defp handle_info(:scan_complete, socket) do
@@ -121,6 +123,20 @@ defmodule TreninoWeb.NavHook do
 
   defp handle_info(_msg, socket) do
     {:cont, socket}
+  end
+
+  # Devices are named after the configuration they run, when it is known.
+  defp assign_devices(socket, devices) do
+    names =
+      devices
+      |> Enum.map(& &1.device_config_id)
+      |> Enum.reject(&is_nil/1)
+      |> Enum.uniq()
+      |> Hardware.configuration_names()
+
+    socket
+    |> assign(:nav_devices, devices)
+    |> assign(:nav_device_names, names)
   end
 
   defp format_update_status({:update_available, version}) do
