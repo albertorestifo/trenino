@@ -59,6 +59,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   no longer hang with no output. The upload now waits for the board to reset
   into its bootloader instead of starting avrdude while the old firmware was
   still running.
+- Cancelling a firmware upload, or one timing out, now stops avrdude. It used
+  to keep running in the background and hold the serial port.
 
 ## [0.8.2] - 2026-10-28
 
