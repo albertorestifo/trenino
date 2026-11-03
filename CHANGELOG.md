@@ -32,6 +32,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   with the port second.
 - Settings is now a nav tab next to Devices, Trains and Joystick.
 
+### Removed
+
+- I2C input chips (MCP23017 and ADS1115), which were never released. Connect
+  more boards for extra buttons and axes instead. Firmware 3.2.1 drops them
+  too.
+
 ### Fixed
 
 - 14-segment display glyphs for `0` and `7` no longer light the middle
