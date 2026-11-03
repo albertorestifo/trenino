@@ -419,6 +419,24 @@ defmodule Trenino.Hardware.StepperSessionTest do
     reply(pid, poll, %{configured: true, known: true, state: :idle})
   end
 
+  test "an idle poll reply broadcasts only when the axis status changes", %{pid: pid} do
+    referenced(pid)
+    Phoenix.PubSub.subscribe(Trenino.PubSub, "hardware:steppers:1")
+    epoch = StepperSession.snapshot(pid).timer_epoch
+
+    send(pid, {:tick, epoch, :poll})
+    assert_receive {:sent, %StepperCommand{operation: :get_status} = poll}
+    before = StepperSession.snapshot(pid).axes[1].updated_at
+    reply(pid, poll, %{configured: true, known: true, state: :idle})
+    refute_received {:stepper_updated, 1, %{timer_epoch: ^epoch}}
+    assert StepperSession.snapshot(pid).axes[1].updated_at >= before
+
+    send(pid, {:tick, epoch, :poll})
+    assert_receive {:sent, %StepperCommand{operation: :get_status} = poll}
+    reply(pid, poll, %{configured: true, known: true, state: :idle, position: 5})
+    assert_received {:stepper_updated, 1, %{timer_epoch: ^epoch}}
+  end
+
   defp move_acked(pid, position) do
     assert :ok = StepperSession.set_target(pid, 1, position, :train)
     assert_receive {:sent, %StepperCommand{operation: :move_to, position: ^position} = move}

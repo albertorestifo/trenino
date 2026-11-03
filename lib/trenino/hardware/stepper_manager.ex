@@ -648,6 +648,11 @@ defmodule Trenino.Hardware.StepperManager do
     :exit, _ -> %{lifecycle: :disconnected, axes: %{}}
   end
 
+  # Runs on every session broadcast (each idle status poll), so skip the axis lookup when
+  # nothing is leased.
+  defp revoke_stale_leases(%{leases: leases} = s, _id, _snapshot) when map_size(leases) == 0,
+    do: s
+
   defp revoke_stale_leases(s, id, snapshot) do
     ids = Hardware.list_stepper_axes(id) |> Enum.map(& &1.id)
 

@@ -181,7 +181,8 @@ defmodule Trenino.Hardware.StepperSession do
 
   @impl true
   def handle_info({:serial_message, port, %StepperStatus{} = status}, %State{port: port} = s) do
-    {:noreply, publish(receive_status(s, status))}
+    next = receive_status(s, status)
+    {:noreply, if(observable(next) == observable(s), do: next, else: publish(next))}
   end
 
   def handle_info({:retry, epoch, id, request}, %State{timer_epoch: epoch} = s) do
@@ -713,6 +714,18 @@ defmodule Trenino.Hardware.StepperSession do
   end
 
   defp now, do: System.monotonic_time(:millisecond)
+
+  # Every idle poll reply refreshes request ids and timestamps; only a change subscribers can
+  # see is worth a broadcast. Freshness checks read `updated_at` from a live snapshot instead.
+  defp observable(%State{} = s) do
+    axes =
+      Map.new(s.axes, fn {id, a} ->
+        status = a.status && %{a.status | request_id: nil}
+        {id, %{a | status: status, updated_at: nil, reference_poll: nil}}
+      end)
+
+    %{s | axes: axes, next_id: nil}
+  end
 
   defp publish(s) do
     Phoenix.PubSub.broadcast(
