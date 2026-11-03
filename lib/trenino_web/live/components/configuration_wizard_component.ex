@@ -31,7 +31,6 @@ defmodule TreninoWeb.ConfigurationWizardComponent do
 
   require Logger
 
-  alias Trenino.Hardware.InputLabel
   alias Trenino.Train
   alias Trenino.Train.Element
 
@@ -913,7 +912,7 @@ defmodule TreninoWeb.ConfigurationWizardComponent do
               <div>
                 <p class="font-medium">{@selected_input.name || "Button #{@selected_input.pin}"}</p>
                 <p class="text-xs text-muted">
-                  {@selected_input.device.name} - {InputLabel.pin(@selected_input)}
+                  {@selected_input.device.name} - Pin {@selected_input.pin}
                 </p>
               </div>
             </div>

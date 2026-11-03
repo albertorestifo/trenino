@@ -522,38 +522,4 @@ defmodule Trenino.HardwareTest do
       assert length(inputs) == 5
     end
   end
-
-  describe "list_all_display_modules/0" do
-    test "list_all_display_modules excludes input chips" do
-      {:ok, device} = Hardware.create_device(%{name: "Display Dev"})
-
-      {:ok, display} =
-        Hardware.create_i2c_module(device.id, %{
-          module_chip: :ht16k33,
-          i2c_address: 0x70,
-          params: %{display_type: :seven_segment, num_digits: 4}
-        })
-
-      {:ok, mcp} =
-        Hardware.create_i2c_module(device.id, %{
-          module_chip: :mcp23017,
-          i2c_address: 0x20,
-          params: %{direct_mask: 1, row_mask: 0, col_mask: 0}
-        })
-
-      {:ok, ads} =
-        Hardware.create_i2c_module(device.id, %{
-          module_chip: :ads1115,
-          i2c_address: 0x48,
-          params: %{channel_mask: 1, gain: 0}
-        })
-
-      ids = Enum.map(Hardware.list_all_display_modules(), & &1.id)
-      assert display.id in ids
-      refute mcp.id in ids
-      refute ads.id in ids
-      assert Enum.all?(Hardware.list_all_display_modules(), &match?(%{device: %{}}, &1))
-      assert length(Hardware.list_all_i2c_modules()) == 3
-    end
-  end
 end

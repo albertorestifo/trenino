@@ -23,7 +23,6 @@ defmodule Trenino.Hardware.ConfigurationManager do
   alias Trenino.Serial.Protocol.ConfigurationError
   alias Trenino.Serial.Protocol.ConfigurationStored
   alias Trenino.Serial.Protocol.Configure
-  alias Trenino.Serial.Protocol.IdentityRequest
   alias Trenino.Serial.Protocol.InputValue
   alias Trenino.Serial.Protocol.ModuleError
 
@@ -32,9 +31,6 @@ defmodule Trenino.Hardware.ConfigurationManager do
   @config_timeout_ms 10_000
   @config_topic "hardware:configuration"
   @input_values_topic "hardware:input_values"
-  @i2c_status_topic "hardware:i2c_status"
-
-  @type i2c_status :: :init_failed | :communication_lost | :reference_lost
 
   defmodule State do
     @moduledoc false
@@ -47,19 +43,13 @@ defmodule Trenino.Hardware.ConfigurationManager do
 
     @type t :: %__MODULE__{
             in_flight: %{integer() => in_flight_info()},
-            failed_i2c: %{
-              String.t() => %{integer() => Trenino.Hardware.ConfigurationManager.i2c_status()}
-            },
             input_values: %{String.t() => %{integer() => integer()}},
-            subscribed_ports: MapSet.t(String.t()),
-            connected_ports: MapSet.t(String.t())
+            subscribed_ports: MapSet.t(String.t())
           }
 
     defstruct in_flight: %{},
-              failed_i2c: %{},
               input_values: %{},
-              subscribed_ports: MapSet.new(),
-              connected_ports: MapSet.new()
+              subscribed_ports: MapSet.new()
   end
 
   # Client API
@@ -93,19 +83,6 @@ defmodule Trenino.Hardware.ConfigurationManager do
     # Ensure ConfigurationManager is listening to serial messages for this port
     GenServer.cast(__MODULE__, {:ensure_port_subscription, port})
     Phoenix.PubSub.subscribe(Trenino.PubSub, "#{@input_values_topic}:#{port}")
-  end
-
-  @doc "Subscribe to failed input chip changes for a port (`{:i2c_module_status, port, failed_map}`)"
-  @spec subscribe_i2c_status(String.t()) :: :ok | {:error, term()}
-  def subscribe_i2c_status(port) do
-    GenServer.cast(__MODULE__, {:ensure_port_subscription, port})
-    Phoenix.PubSub.subscribe(Trenino.PubSub, "#{@i2c_status_topic}:#{port}")
-  end
-
-  @doc "Input chips currently reported failed on a port, keyed by I2C address"
-  @spec failed_i2c_modules(String.t()) :: %{integer() => i2c_status()}
-  def failed_i2c_modules(port) do
-    GenServer.call(__MODULE__, {:failed_i2c_modules, port})
   end
 
   @doc "Get current input values for a port"
@@ -166,11 +143,6 @@ defmodule Trenino.Hardware.ConfigurationManager do
   end
 
   @impl true
-  def handle_call({:failed_i2c_modules, port}, _from, %State{} = state) do
-    {:reply, Map.get(state.failed_i2c, port, %{}), state}
-  end
-
-  @impl true
   def handle_cast({:ensure_port_subscription, port}, %State{} = state) do
     {:noreply, maybe_subscribe_to_port(state, port)}
   end
@@ -205,24 +177,7 @@ defmodule Trenino.Hardware.ConfigurationManager do
       broadcast_config_event({:configuration_failed, info.port, info.device_id, :disconnected})
     end)
 
-    state =
-      state.failed_i2c
-      |> Map.keys()
-      |> Enum.reject(&MapSet.member?(connected_ports, &1))
-      |> Enum.reduce(state, &set_failed_i2c(&2, &1, %{}))
-
-    state =
-      connected_ports
-      |> MapSet.difference(state.connected_ports)
-      |> Enum.reduce(state, &announce_connected_port(&2, &1))
-
-    {:noreply,
-     %{
-       state
-       | input_values: new_input_values,
-         in_flight: Map.new(active),
-         connected_ports: connected_ports
-     }}
+    {:noreply, %{state | input_values: new_input_values, in_flight: Map.new(active)}}
   end
 
   @impl true
@@ -307,14 +262,14 @@ defmodule Trenino.Hardware.ConfigurationManager do
 
   @impl true
   def handle_info(
-        {:serial_message, port, %ModuleError{i2c_address: addr, error_code: code}},
+        {:serial_message, _port, %ModuleError{i2c_address: addr, error_code: code}},
         %State{} = state
       ) do
     Logger.warning(
-      "ModuleError: I2C module at #{I2cModule.format_i2c_address(addr)} #{ModuleError.describe(code)} (error_code=#{code})"
+      "ModuleError: I2C module at #{I2cModule.format_i2c_address(addr)} failed init (error_code=#{code})"
     )
 
-    {:noreply, track_module_error(state, port, addr, code)}
+    {:noreply, state}
   end
 
   @impl true
@@ -343,73 +298,6 @@ defmodule Trenino.Hardware.ConfigurationManager do
   end
 
   # Private helpers
-
-  # Failures reported while the port was still discovering were lost. A fresh identity
-  # request makes the firmware report the active ones again.
-  defp announce_connected_port(%State{} = state, port) do
-    state = maybe_subscribe_to_port(state, port)
-    request = %IdentityRequest{request_id: :erlang.unique_integer([:positive])}
-
-    try do
-      case Connection.send_message(port, request) do
-        :ok -> :ok
-        error -> Logger.debug("Identity request to #{port} failed: #{inspect(error)}")
-      end
-    catch
-      :exit, reason -> Logger.debug("Identity request to #{port} failed: #{inspect(reason)}")
-    end
-
-    state
-  end
-
-  defp track_module_error(%State{} = state, port, addr, code) do
-    status = ModuleError.status(code)
-
-    if status != nil and input_chip_address?(port, addr) do
-      current = Map.get(state.failed_i2c, port, %{})
-
-      updated =
-        if status == :recovered,
-          do: Map.delete(current, addr),
-          else: Map.put(current, addr, status)
-
-      set_failed_i2c(state, port, updated)
-    else
-      state
-    end
-  end
-
-  defp input_chip_address?(port, addr) do
-    with %{device_config_id: config_id} when is_integer(config_id) <-
-           Enum.find(Connection.connected_devices(), &(&1.port == port)),
-         {:ok, device} <- Hardware.get_device_by_config_id(config_id) do
-      device.id
-      |> Hardware.list_i2c_modules()
-      |> Enum.any?(&(&1.i2c_address == addr and I2cModule.input_chip?(&1)))
-    else
-      _ -> false
-    end
-  end
-
-  # Stores the port's failures and broadcasts only when they changed.
-  defp set_failed_i2c(%State{} = state, port, failed) do
-    if Map.get(state.failed_i2c, port, %{}) == failed do
-      state
-    else
-      Phoenix.PubSub.broadcast(
-        Trenino.PubSub,
-        "#{@i2c_status_topic}:#{port}",
-        {:i2c_module_status, port, failed}
-      )
-
-      failed_i2c =
-        if failed == %{},
-          do: Map.delete(state.failed_i2c, port),
-          else: Map.put(state.failed_i2c, port, failed)
-
-      %{state | failed_i2c: failed_i2c}
-    end
-  end
 
   defp maybe_subscribe_to_port(%State{} = state, port) do
     if MapSet.member?(state.subscribed_ports, port) do
@@ -449,7 +337,6 @@ defmodule Trenino.Hardware.ConfigurationManager do
           }
 
           new_in_flight = Map.put(state.in_flight, config_id, in_flight_info)
-          state = set_failed_i2c(state, port, %{})
           {:ok, config_id, %{state | in_flight: new_in_flight}}
 
         error ->
@@ -462,43 +349,22 @@ defmodule Trenino.Hardware.ConfigurationManager do
     end
   end
 
-  @max_modules 8
-  @stepper_min_version "3.1.0"
-  @chip_min_version "3.2.0"
-
-  # Stepper axes need firmware 3.1+ and input chips 3.2+. Without these checks an older
-  # device would accept the configuration while ignoring or mishandling the new parts.
+  # Stepper axes need firmware 3.1+. Without this check a pre-3.1 device would accept the
+  # configuration while StepperManager silently declines to start a session.
   defp validate_configuration(port, device_id, inputs, matrices, i2c_modules) do
-    axes = Hardware.list_stepper_axes(device_id)
-
-    cond do
-      axes == [] and inputs == [] and matrices == [] and i2c_modules == [] ->
-        {:error, :no_inputs}
-
-      length(inputs) + length(matrices) + length(i2c_modules) > @max_modules ->
-        {:error, :too_many_modules}
-
-      true ->
-        required =
-          [
-            if(axes != [], do: @stepper_min_version),
-            if(Enum.any?(i2c_modules, &I2cModule.input_chip?/1), do: @chip_min_version)
-          ]
-          |> Enum.reject(&is_nil/1)
-          |> Enum.max(Version, fn -> nil end)
-
-        validate_firmware(port, required)
+    case {Hardware.list_stepper_axes(device_id), inputs ++ matrices ++ i2c_modules} do
+      {[], []} -> {:error, :no_inputs}
+      {[], _} -> :ok
+      {_axes, _} -> validate_stepper_firmware(port)
     end
   end
 
-  defp validate_firmware(_port, nil), do: :ok
-
-  defp validate_firmware(port, minimum) do
+  defp validate_stepper_firmware(port) do
     conn = Enum.find(Connection.connected_devices(), &(&1.port == port))
 
     with %{device_version: version} when is_binary(version) <- conn,
          {:ok, parsed} <- Version.parse(version),
-         true <- Version.compare(parsed, minimum) != :lt and parsed.pre == [] do
+         true <- Version.compare(parsed, "3.1.0") != :lt and parsed.pre == [] do
       :ok
     else
       _ -> {:error, :firmware_update_required}
@@ -615,51 +481,6 @@ defmodule Trenino.Hardware.ConfigurationManager do
       i2c_address: mod.i2c_address,
       brightness: mod.params.brightness,
       num_digits: mod.params.num_digits
-    }
-  end
-
-  defp build_configure_message(
-         config_id,
-         total_parts,
-         part_number,
-         {:i2c_module, %I2cModule{module_chip: :mcp23017} = mod}
-       ) do
-    p = mod.params
-
-    %Configure{
-      config_id: config_id,
-      total_parts: total_parts,
-      part_number: part_number,
-      input_type: :mcp23017,
-      i2c_address: mod.i2c_address,
-      direct_base: p.direct_base,
-      matrix_base: p.matrix_base,
-      debounce: p.debounce,
-      direct_mask: p.direct_mask,
-      row_mask: p.row_mask,
-      col_mask: p.col_mask
-    }
-  end
-
-  defp build_configure_message(
-         config_id,
-         total_parts,
-         part_number,
-         {:i2c_module, %I2cModule{module_chip: :ads1115} = mod}
-       ) do
-    p = mod.params
-
-    %Configure{
-      config_id: config_id,
-      total_parts: total_parts,
-      part_number: part_number,
-      input_type: :ads1115,
-      i2c_address: mod.i2c_address,
-      pin_base: p.pin_base,
-      channel_mask: p.channel_mask,
-      gain: p.gain,
-      ref_channel: p.ref_channel,
-      sensitivities: Hardware.chip_sensitivities(mod)
     }
   end
 

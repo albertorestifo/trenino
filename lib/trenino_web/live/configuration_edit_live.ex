@@ -17,9 +17,7 @@ defmodule TreninoWeb.ConfigurationEditLive do
 
   alias Trenino.Hardware
   alias Trenino.Hardware.Calibration.Session
-  alias Trenino.Hardware.{ConfigId, Device, HT16K33, I2cModule, Input, InputLabel, Output}
-  alias Trenino.Hardware.ConfigurationManager
-  alias Trenino.Hardware.MCP23017.Params, as: MCP23017Params
+  alias Trenino.Hardware.{ConfigId, Device, HT16K33, I2cModule, Input, Output}
   alias Trenino.Serial.Connection
   alias TreninoWeb.MatrixTestWizard
 
@@ -131,8 +129,6 @@ defmodule TreninoWeb.ConfigurationEditLive do
      |> assign(:show_apply_modal, false)
      |> assign(:show_delete_modal, false)
      |> assign(:i2c_modules, [])
-     |> assign(:i2c_delete_confirm, nil)
-     |> assign(:failed_chips, %{})
      |> assign(:stepper_count, 0)
      |> assign(:stepper_axes, [])
      |> assign(:i2c_modal_open, false)
@@ -150,7 +146,6 @@ defmodule TreninoWeb.ConfigurationEditLive do
         {:ok, outputs} = Hardware.list_outputs(device.id)
         i2c_modules = Hardware.list_i2c_modules(device.id)
         active_port = find_active_port(config_id)
-        failed_chips = track_failed_chips(socket, active_port)
         input_values = if active_port, do: Hardware.get_input_values(active_port), else: %{}
         changeset = Device.changeset(device, %{})
 
@@ -185,8 +180,6 @@ defmodule TreninoWeb.ConfigurationEditLive do
          |> assign(:show_apply_modal, false)
          |> assign(:show_delete_modal, false)
          |> assign(:i2c_modules, i2c_modules)
-         |> assign(:i2c_delete_confirm, nil)
-         |> assign(:failed_chips, failed_chips)
          |> assign(:stepper_count, length(Hardware.list_stepper_axes(device.id)))
          |> assign(:stepper_axes, Hardware.list_stepper_axes(device.id))
          |> assign(:i2c_modal_open, false)
@@ -210,37 +203,6 @@ defmodule TreninoWeb.ConfigurationEditLive do
       nil -> nil
       device -> device.port
     end)
-  end
-
-  # Subscribes to chip failures on a port (once connected) and returns the current ones.
-  defp track_failed_chips(_socket, nil), do: %{}
-
-  defp track_failed_chips(socket, port) do
-    if connected?(socket), do: ConfigurationManager.subscribe_i2c_status(port)
-    ConfigurationManager.failed_i2c_modules(port)
-  end
-
-  defp reload_i2c_modules(socket) do
-    modules = Hardware.list_i2c_modules(socket.assigns.device.id)
-
-    socket
-    |> assign(:i2c_modules, modules)
-    |> assign(:i2c_delete_confirm, nil)
-  end
-
-  # Child inputs of input chips, with their module attached for labels.
-  defp chip_input(modules, input_id) do
-    Enum.find_value(modules, fn mod ->
-      case Enum.find(mod.inputs, &(&1.id == input_id)) do
-        nil -> nil
-        input -> %{input | i2c_module: %{mod | inputs: []}}
-      end
-    end)
-  end
-
-  defp find_input(socket, input_id) do
-    Enum.find(socket.assigns.inputs, &(&1.id == input_id)) ||
-      chip_input(socket.assigns.i2c_modules, input_id)
   end
 
   defp maybe_subscribe_on_connect(socket, config_id) do
@@ -506,34 +468,13 @@ defmodule TreninoWeb.ConfigurationEditLive do
   end
 
   @impl true
-  def handle_event("ask_delete_i2c_module", %{"id" => id_str}, socket) do
-    case Hardware.get_i2c_module(String.to_integer(id_str)) do
-      {:ok, mod} ->
-        confirm = %{id: mod.id, impact: Hardware.i2c_module_impact(mod)}
-        {:noreply, assign(socket, :i2c_delete_confirm, confirm)}
-
-      {:error, :not_found} ->
-        {:noreply,
-         put_flash(
-           socket,
-           :error,
-           "That I2C module no longer exists. Reload the page to see the current list."
-         )}
-    end
-  end
-
-  @impl true
-  def handle_event("cancel_delete_i2c_module", _params, socket) do
-    {:noreply, assign(socket, :i2c_delete_confirm, nil)}
-  end
-
-  @impl true
   def handle_event("delete_i2c_module", %{"id" => id_str}, socket) do
     case Hardware.get_i2c_module(String.to_integer(id_str)) do
       {:ok, mod} ->
         case Hardware.delete_i2c_module(mod) do
           {:ok, _} ->
-            {:noreply, reload_i2c_modules(socket)}
+            i2c_modules = Hardware.list_i2c_modules(socket.assigns.device.id)
+            {:noreply, assign(socket, :i2c_modules, i2c_modules)}
 
           {:error, _reason} ->
             {:noreply,
@@ -558,7 +499,7 @@ defmodule TreninoWeb.ConfigurationEditLive do
   def handle_event("test_display", %{"id" => id_str}, socket) do
     mod = Enum.find(socket.assigns.i2c_modules, &(&1.id == String.to_integer(id_str)))
 
-    if match?(%I2cModule{params: %HT16K33.Params{}}, mod) && socket.assigns.active_port do
+    if mod && socket.assigns.active_port do
       port = socket.assigns.active_port
       texts = display_test_texts(mod.params.num_digits)
       first = List.first(texts)
@@ -604,22 +545,13 @@ defmodule TreninoWeb.ConfigurationEditLive do
          |> assign(:applying, false)
          |> put_flash(:error, "Cannot apply empty configuration. Add at least one input.")}
 
-      {:error, :too_many_modules} ->
-        {:noreply,
-         socket
-         |> assign(:applying, false)
-         |> put_flash(
-           :error,
-           "A configuration supports at most 8 modules (inputs, matrices and I2C modules together)."
-         )}
-
       {:error, :firmware_update_required} ->
         {:noreply,
          socket
          |> assign(:applying, false)
          |> put_flash(
            :error,
-           "This configuration needs newer firmware. Update the device firmware, then apply again."
+           "Stepper gauges need firmware 3.1 or newer. Update the device firmware, then apply again."
          )}
 
       {:error, reason} ->
@@ -682,9 +614,9 @@ defmodule TreninoWeb.ConfigurationEditLive do
   # Calibration
   @impl true
   def handle_event("start_calibration", %{"id" => id}, socket) do
-    input = find_input(socket, String.to_integer(id))
+    input = Enum.find(socket.assigns.inputs, &(&1.id == String.to_integer(id)))
 
-    if input && input.input_type == :analog && socket.assigns.active_port do
+    if input && socket.assigns.active_port do
       Session.subscribe(input.id)
       {:noreply, assign(socket, :calibrating_input, input)}
     else
@@ -698,25 +630,7 @@ defmodule TreninoWeb.ConfigurationEditLive do
     matrix = Enum.find(socket.assigns.matrices, &(&1.id == String.to_integer(id)))
 
     if matrix && socket.assigns.active_port do
-      {:noreply,
-       socket
-       |> assign(:testing_matrix, MatrixTestWizard.matrix_spec(matrix))
-       |> assign(:matrix_tested_buttons, MapSet.new())}
-    else
-      {:noreply, put_flash(socket, :error, "Apply configuration to a device before testing")}
-    end
-  end
-
-  @impl true
-  def handle_event("start_chip_matrix_test", %{"id" => id}, socket) do
-    mod = Enum.find(socket.assigns.i2c_modules, &(&1.id == String.to_integer(id)))
-
-    if match?(%I2cModule{params: %MCP23017Params{row_mask: rows}} when rows != 0, mod) and
-         socket.assigns.active_port do
-      {:noreply,
-       socket
-       |> assign(:testing_matrix, MatrixTestWizard.chip_matrix_spec(mod))
-       |> assign(:matrix_tested_buttons, MapSet.new())}
+      {:noreply, assign(socket, :testing_matrix, MatrixTestWizard.matrix_spec(matrix))}
     else
       {:noreply, put_flash(socket, :error, "Apply configuration to a device before testing")}
     end
@@ -743,12 +657,13 @@ defmodule TreninoWeb.ConfigurationEditLive do
   # Inline name editing
   @impl true
   def handle_event("update_input_name", %{"id" => id, "value" => name}, socket) do
-    input = find_input(socket, String.to_integer(id))
+    input = Enum.find(socket.assigns.inputs, &(&1.id == String.to_integer(id)))
 
     if input do
       case Hardware.update_input(input, %{name: name}) do
         {:ok, _updated} ->
-          {:noreply, reload_inputs(socket)}
+          {:ok, inputs} = Hardware.list_inputs(socket.assigns.device.id)
+          {:noreply, assign(socket, :inputs, inputs)}
 
         {:error, _changeset} ->
           {:noreply,
@@ -760,20 +675,6 @@ defmodule TreninoWeb.ConfigurationEditLive do
       end
     else
       {:noreply, socket}
-    end
-  end
-
-  @impl true
-  def handle_event("update_input_sensitivity", %{"id" => id, "value" => value}, socket) do
-    input = find_input(socket, String.to_integer(id))
-
-    with %Input{input_type: :analog} <- input,
-         {sensitivity, ""} <- Integer.parse(String.trim(value)),
-         {:ok, _updated} <- Hardware.update_input(input, %{sensitivity: sensitivity}) do
-      {:noreply, reload_inputs(socket)}
-    else
-      nil -> {:noreply, socket}
-      _ -> {:noreply, put_flash(socket, :error, "Sensitivity must be a number from 1 to 10")}
     end
   end
 
@@ -821,12 +722,6 @@ defmodule TreninoWeb.ConfigurationEditLive do
     else
       {:noreply, socket}
     end
-  end
-
-  # A child input edit changes the chip's fingerprint, so the chips reload with it.
-  defp reload_inputs(socket) do
-    {:ok, inputs} = Hardware.list_inputs(socket.assigns.device.id)
-    socket |> assign(:inputs, inputs) |> reload_i2c_modules()
   end
 
   # Private helpers for input creation
@@ -954,9 +849,6 @@ defmodule TreninoWeb.ConfigurationEditLive do
 
   defp parse_pins(_), do: []
 
-  defp calibration_failure_message(:rollover_needs_reference),
-    do: TreninoWeb.CalibrationWizard.error_message({:error, :rollover_needs_reference})
-
   defp calibration_failure_message(reason) do
     Logger.error("Calibration failed: #{inspect(reason)}")
 
@@ -995,9 +887,11 @@ defmodule TreninoWeb.ConfigurationEditLive do
 
   @impl true
   def handle_info({:calibration_result, {:ok, _calibration}}, socket) do
+    {:ok, inputs} = Hardware.list_inputs(socket.assigns.device.id)
+
     {:noreply,
      socket
-     |> reload_inputs()
+     |> assign(:inputs, inputs)
      |> assign(:calibrating_input, nil)
      |> put_flash(:info, "Calibration saved")}
   end
@@ -1033,11 +927,9 @@ defmodule TreninoWeb.ConfigurationEditLive do
   def handle_info({:configuration_applied, port, device, _config_id}, socket) do
     # Subscribe to input values for the new active port
     Hardware.subscribe_input_values(port)
-    failed_chips = track_failed_chips(socket, port)
 
     {:noreply,
      socket
-     |> assign(:failed_chips, failed_chips)
      |> assign(:device, device)
      |> assign(:new_mode, false)
      |> assign(:active_port, port)
@@ -1060,7 +952,7 @@ defmodule TreninoWeb.ConfigurationEditLive do
 
     # Track tested buttons for matrix (virtual pins >= 128) when pressed
     socket =
-      if value == 1 and in_tested_matrix?(socket.assigns.testing_matrix, pin) do
+      if pin >= 128 and value == 1 and socket.assigns.testing_matrix do
         update(socket, :matrix_tested_buttons, &MapSet.put(&1, pin))
       else
         socket
@@ -1091,14 +983,10 @@ defmodule TreninoWeb.ConfigurationEditLive do
       if active_port != socket.assigns.active_port do
         if active_port do
           Hardware.subscribe_input_values(active_port)
-
-          socket
-          |> assign(:active_port, active_port)
-          |> assign(:failed_chips, track_failed_chips(socket, active_port))
+          assign(socket, :active_port, active_port)
         else
           socket
           |> assign(:active_port, nil)
-          |> assign(:failed_chips, %{})
           |> assign(:input_values, %{})
         end
       else
@@ -1110,27 +998,20 @@ defmodule TreninoWeb.ConfigurationEditLive do
 
   @impl true
   def handle_info(:i2c_module_saved, socket) do
+    i2c_modules = Hardware.list_i2c_modules(socket.assigns.device.id)
+
     {:noreply,
      socket
-     |> reload_i2c_modules()
+     |> assign(:i2c_modules, i2c_modules)
      |> assign(:i2c_modal_open, false)
      |> assign(:i2c_modal_module, nil)}
-  end
-
-  @impl true
-  def handle_info({:i2c_module_status, port, failed}, socket) do
-    if port == socket.assigns.active_port do
-      {:noreply, assign(socket, :failed_chips, failed)}
-    else
-      {:noreply, socket}
-    end
   end
 
   @impl true
   def handle_info({:display_test_step, mod_id, step}, socket) do
     mod = Enum.find(socket.assigns.i2c_modules, &(&1.id == mod_id))
 
-    if match?(%I2cModule{params: %HT16K33.Params{}}, mod) && socket.assigns.active_port do
+    if mod && socket.assigns.active_port do
       texts = display_test_texts(mod.params.num_digits)
 
       case Enum.at(texts, step) do
@@ -1175,11 +1056,6 @@ defmodule TreninoWeb.ConfigurationEditLive do
   end
 
   def handle_info(_msg, socket), do: {:noreply, socket}
-
-  defp in_tested_matrix?(nil, _pin), do: false
-
-  defp in_tested_matrix?(%{base_pin: base, rows: rows, cols: cols}, pin),
-    do: pin in base..(base + max(length(rows) * length(cols), 1) - 1)
 
   defp display_test_texts(4), do: ["8888", "1234", "ABCD", "    "]
   defp display_test_texts(8), do: ["88888888", "12345678", "ABCDEFGH", "        "]
@@ -1257,9 +1133,6 @@ defmodule TreninoWeb.ConfigurationEditLive do
         <div class="bg-base-200/50 rounded-xl p-6 mt-6">
           <.i2c_modules_section
             i2c_modules={@i2c_modules}
-            i2c_delete_confirm={@i2c_delete_confirm}
-            failed_chips={@failed_chips}
-            input_values={@input_values}
             new_mode={@new_mode}
             active_port={@active_port}
           />
@@ -1328,7 +1201,7 @@ defmodule TreninoWeb.ConfigurationEditLive do
     >
       <.focus_wrap id="i2c-display-focus" class="modal-box bg-base-200">
         <h3 id="i2c-display-title" class="text-xl font-semibold mb-4" tabindex="-1">
-          {if @i2c_modal_module, do: "Edit I2C module", else: "Add I2C module"}
+          {if @i2c_modal_module, do: "Edit display", else: "Add display"}
         </h3>
         <.live_component
           module={TreninoWeb.I2cModuleFormComponent}
@@ -1480,7 +1353,7 @@ defmodule TreninoWeb.ConfigurationEditLive do
   end
 
   defp apply_unavailable_reason(false, _),
-    do: "Apply is unavailable: add at least one input, matrix, I2C module or stepper axis first."
+    do: "Apply is unavailable: add at least one input, matrix, display or stepper axis first."
 
   defp apply_unavailable_reason(true, false),
     do:
@@ -1834,9 +1707,6 @@ defmodule TreninoWeb.ConfigurationEditLive do
   end
 
   attr :i2c_modules, :list, required: true
-  attr :i2c_delete_confirm, :map, default: nil
-  attr :failed_chips, :map, default: %{}
-  attr :input_values, :map, default: %{}
   attr :new_mode, :boolean, required: true
   attr :active_port, :string, default: nil
 
@@ -1844,7 +1714,7 @@ defmodule TreninoWeb.ConfigurationEditLive do
     ~H"""
     <div>
       <div class="flex items-center justify-between mb-4">
-        <h3 class="text-xl font-semibold">I2C modules</h3>
+        <h3 class="text-xl font-semibold">Displays</h3>
         <button
           type="button"
           id="add-display"
@@ -1852,12 +1722,12 @@ defmodule TreninoWeb.ConfigurationEditLive do
           class="btn btn-outline btn-sm"
           disabled={@new_mode}
         >
-          <.icon name="hero-plus" class="w-4 h-4" /> Add I2C module
+          <.icon name="hero-plus" class="w-4 h-4" /> Add display
         </button>
       </div>
 
       <p :if={Enum.empty?(@i2c_modules)} class="py-3 text-sm text-muted">
-        No I2C modules configured. Add a display to show simulator values, or an input chip for more buttons and axes.
+        No displays configured. Add a display to show simulator values.
       </p>
 
       <div :if={not Enum.empty?(@i2c_modules)} class="overflow-x-auto">
@@ -1867,20 +1737,21 @@ defmodule TreninoWeb.ConfigurationEditLive do
               <th>Name</th>
               <th>Chip</th>
               <th>Address</th>
-              <th>Details</th>
+              <th>Digits</th>
+              <th>Brightness</th>
               <th :if={@active_port} class="text-center">Test</th>
               <th class="w-20"></th>
             </tr>
           </thead>
-          <tbody :for={mod <- @i2c_modules} id={"i2c-module-#{mod.id}"}>
-            <tr class="hover:bg-base-200/50">
+          <tbody>
+            <tr :for={mod <- @i2c_modules} class="hover:bg-base-200/50">
               <td>{mod.name || "—"}</td>
               <td class="uppercase text-xs">{mod.module_chip}</td>
               <td class="font-mono">{I2cModule.format_i2c_address(mod.i2c_address)}</td>
-              <td class="text-sm">{module_details(mod)}</td>
+              <td>{mod.params.num_digits}</td>
+              <td>{round(mod.params.brightness * 100 / 15)}%</td>
               <td :if={@active_port} class="text-center">
                 <button
-                  :if={display_module?(mod)}
                   phx-click="test_display"
                   phx-value-id={mod.id}
                   class="btn btn-ghost btn-xs text-primary hover:bg-primary/10"
@@ -1888,148 +1759,28 @@ defmodule TreninoWeb.ConfigurationEditLive do
                 >
                   <.icon name="hero-play" class="w-3.5 h-3.5" /> Test
                 </button>
-                <button
-                  :if={chip_matrix?(mod)}
-                  id={"test-chip-matrix-#{mod.id}"}
-                  phx-click="start_chip_matrix_test"
-                  phx-value-id={mod.id}
-                  class="btn btn-ghost btn-xs text-primary hover:bg-primary/10"
-                  title="Test the chip matrix"
-                >
-                  <.icon name="hero-squares-2x2" class="w-3.5 h-3.5" /> Test matrix
-                </button>
               </td>
               <td>
                 <div class="flex gap-1">
                   <button
                     id={"edit-display-#{mod.id}"}
                     phx-click="open_edit_i2c_modal"
-                    aria-label={"Edit I2C module #{mod.name || I2cModule.format_i2c_address(mod.i2c_address)}"}
+                    aria-label={"Edit display #{mod.name || I2cModule.format_i2c_address(mod.i2c_address)}"}
                     phx-value-id={mod.id}
                     class="btn btn-ghost btn-xs"
                   >
                     <.icon name="hero-pencil" class="w-3.5 h-3.5" />
                   </button>
                   <button
-                    phx-click={
-                      if I2cModule.input_chip?(mod),
-                        do: "ask_delete_i2c_module",
-                        else: "delete_i2c_module"
-                    }
-                    aria-label={"Delete I2C module #{mod.name || I2cModule.format_i2c_address(mod.i2c_address)}"}
+                    phx-click="delete_i2c_module"
+                    aria-label={"Delete display #{mod.name || I2cModule.format_i2c_address(mod.i2c_address)}"}
                     phx-value-id={mod.id}
-                    data-confirm={if not I2cModule.input_chip?(mod), do: "Delete this I2C module?"}
+                    data-confirm="Delete this display?"
                     class="btn btn-ghost btn-xs text-error"
                   >
                     <.icon name="hero-trash" class="w-3.5 h-3.5" />
                   </button>
                 </div>
-              </td>
-            </tr>
-            <tr :if={match?(%{id: id} when id == mod.id, @i2c_delete_confirm)}>
-              <td colspan="6" class="pt-0">
-                <div
-                  id={"delete-confirm-#{mod.id}"}
-                  role="alert"
-                  class="rounded-md border border-error/40 bg-error/10 px-3 py-2 text-sm flex items-center justify-between gap-3"
-                >
-                  <span>{delete_confirmation(@i2c_delete_confirm.impact)}</span>
-                  <span class="flex gap-2">
-                    <button
-                      type="button"
-                      id={"cancel-delete-#{mod.id}"}
-                      phx-click="cancel_delete_i2c_module"
-                      class="btn btn-ghost btn-xs"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="button"
-                      id={"confirm-delete-#{mod.id}"}
-                      phx-click="delete_i2c_module"
-                      phx-value-id={mod.id}
-                      class="btn btn-error btn-xs"
-                    >
-                      Confirm
-                    </button>
-                  </span>
-                </div>
-              </td>
-            </tr>
-            <tr :if={Map.has_key?(@failed_chips, mod.i2c_address)}>
-              <td colspan="6" class="pt-0">
-                <p
-                  id={"chip-failure-#{mod.id}"}
-                  role="status"
-                  class="rounded-md border border-error/40 bg-error/10 px-3 py-2 text-sm"
-                >
-                  <.icon name="hero-exclamation-triangle" class="w-4 h-4 inline text-error" />
-                  {chip_failure_message(mod, Map.fetch!(@failed_chips, mod.i2c_address))}
-                </p>
-              </td>
-            </tr>
-            <tr :if={chip_inputs(mod) != []}>
-              <td colspan="6" class="pt-0 pl-8">
-                <table id={"chip-inputs-#{mod.id}"} class="table table-xs">
-                  <caption class="sr-only">Inputs of {InputLabel.module(mod)}</caption>
-                  <thead>
-                    <tr>
-                      <th>Pin</th>
-                      <th>Name</th>
-                      <th>Sensitivity</th>
-                      <th>Value</th>
-                      <th class="w-24"></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr :for={input <- chip_inputs(mod)} id={"chip-input-#{input.id}"}>
-                      <td class="font-mono text-xs">{InputLabel.pin(%{input | i2c_module: mod})}</td>
-                      <td>
-                        <input
-                          type="text"
-                          value={input.name || ""}
-                          placeholder="Unnamed"
-                          aria-label={"Name of #{InputLabel.pin(%{input | i2c_module: mod})}"}
-                          phx-blur="update_input_name"
-                          phx-value-id={input.id}
-                          class="input input-ghost input-xs w-full max-w-32 placeholder:text-muted"
-                        />
-                      </td>
-                      <td>
-                        <input
-                          :if={input.input_type == :analog}
-                          type="number"
-                          min="1"
-                          max="10"
-                          value={input.sensitivity}
-                          aria-label={"Sensitivity of #{InputLabel.pin(%{input | i2c_module: mod})}"}
-                          phx-blur="update_input_sensitivity"
-                          phx-value-id={input.id}
-                          class="input input-ghost input-xs w-16"
-                        />
-                        <span :if={input.input_type == :button} class="text-muted">—</span>
-                      </td>
-                      <td class="min-w-24">
-                        <.input_value
-                          raw_value={Map.get(@input_values, input.pin)}
-                          calibration={input.calibration}
-                          active={@active_port != nil}
-                          input_type={input.input_type}
-                        />
-                      </td>
-                      <td>
-                        <button
-                          :if={@active_port != nil && input.input_type == :analog}
-                          phx-click="start_calibration"
-                          phx-value-id={input.id}
-                          class="btn btn-ghost btn-xs text-primary hover:bg-primary/10"
-                        >
-                          <.icon name="hero-adjustments-horizontal" class="w-4 h-4" /> Calibrate
-                        </button>
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
               </td>
             </tr>
           </tbody>
@@ -2038,60 +1789,6 @@ defmodule TreninoWeb.ConfigurationEditLive do
     </div>
     """
   end
-
-  defp display_module?(%I2cModule{params: %HT16K33.Params{}}), do: true
-  defp display_module?(%I2cModule{}), do: false
-
-  defp chip_matrix?(%I2cModule{params: %MCP23017Params{row_mask: rows, col_mask: cols}}),
-    do: rows != 0 and cols != 0
-
-  defp chip_matrix?(%I2cModule{}), do: false
-
-  defp chip_inputs(%I2cModule{inputs: inputs}) when is_list(inputs),
-    do: Enum.sort_by(inputs, & &1.pin)
-
-  defp chip_inputs(%I2cModule{}), do: []
-
-  defp module_details(%I2cModule{params: %HT16K33.Params{} = params}),
-    do: "#{params.num_digits} digits, #{round(params.brightness * 100 / 15)}% brightness"
-
-  defp module_details(%I2cModule{params: %MCP23017Params{} = params}) do
-    direct = MCP23017Params.pin_count(params.direct_mask)
-    rows = MCP23017Params.pin_count(params.row_mask)
-    cols = MCP23017Params.pin_count(params.col_mask)
-
-    [
-      direct > 0 && "#{direct} #{if direct == 1, do: "button", else: "buttons"}",
-      rows > 0 && cols > 0 && "#{rows}x#{cols} matrix"
-    ]
-    |> Enum.filter(& &1)
-    |> Enum.join(", ")
-  end
-
-  defp module_details(%I2cModule{inputs: inputs}) when is_list(inputs) do
-    "#{length(inputs)} #{if length(inputs) == 1, do: "channel", else: "channels"}"
-  end
-
-  defp module_details(%I2cModule{}), do: ""
-
-  defp delete_confirmation([]), do: "Delete this I2C module?"
-
-  defp delete_confirmation(impact) do
-    bound = Enum.map_join(impact, ", ", &"#{&1.name} (#{&1.binding})")
-    "Delete this I2C module? Its inputs are in use and their bindings will be removed: #{bound}."
-  end
-
-  @wiring_hint "Check wiring and the address jumpers."
-
-  defp chip_failure_message(%I2cModule{} = mod, :init_failed),
-    do: "#{InputLabel.module(mod)} did not respond at startup. #{@wiring_hint}"
-
-  defp chip_failure_message(%I2cModule{} = mod, :communication_lost),
-    do: "#{InputLabel.module(mod)} stopped responding. #{@wiring_hint}"
-
-  defp chip_failure_message(%I2cModule{} = mod, :reference_lost),
-    do:
-      "#{InputLabel.module(mod)}: Supply reference lost. Check the wire to the reference channel."
 
   attr :form, :map, required: true
 

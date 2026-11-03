@@ -30,7 +30,6 @@ defmodule TreninoWeb.LeverSetupWizard do
   require Logger
 
   alias Trenino.Hardware
-  alias Trenino.Hardware.InputLabel
   alias Trenino.Train
   alias Trenino.Train.Calibration.NotchMappingSession
   alias Trenino.Train.Element
@@ -99,7 +98,7 @@ defmodule TreninoWeb.LeverSetupWizard do
   # Initialize wizard state
   defp initialize_wizard(socket, %Element{} = element) do
     available_inputs =
-      Hardware.list_all_inputs(include_chip_inputs: true)
+      Hardware.list_all_inputs()
       |> Enum.filter(&(&1.input_type == :analog))
 
     # Check for existing lever config
@@ -1109,7 +1108,7 @@ defmodule TreninoWeb.LeverSetupWizard do
             <div class="flex-1">
               <div class="font-medium">{input.name || "Unnamed Input"}</div>
               <div class="text-sm text-muted">
-                {input.device.name} · <span class="font-mono">{InputLabel.pin(input)}</span>
+                {input.device.name} · <span class="font-mono">Pin {input.pin}</span>
                 <span :if={input.calibration} class="text-success">
                   — Calibrated
                 </span>

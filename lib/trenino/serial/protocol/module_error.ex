@@ -1,5 +1,5 @@
 defmodule Trenino.Serial.Protocol.ModuleError do
-  @moduledoc "ModuleError (0x0F) — Device → Host. Codes: 0 init failed, 1 communication lost, 2 recovered, 3 supply reference lost."
+  @moduledoc "ModuleError (0x0F) — Device → Host. Sent after ConfigurationStored for each I2C module that failed init."
 
   alias Trenino.Serial.Protocol.Message
 
@@ -7,27 +7,6 @@ defmodule Trenino.Serial.Protocol.ModuleError do
 
   @type t() :: %__MODULE__{i2c_address: integer(), error_code: integer()}
   defstruct [:i2c_address, :error_code]
-
-  @doc "The meaning of an error code, or `nil` for an unknown code."
-  @spec status(integer()) ::
-          :init_failed | :communication_lost | :recovered | :reference_lost | nil
-  def status(0), do: :init_failed
-  def status(1), do: :communication_lost
-  def status(2), do: :recovered
-  def status(3), do: :reference_lost
-  def status(_), do: nil
-
-  @doc "Log wording for an error code."
-  @spec describe(integer()) :: String.t()
-  def describe(code) do
-    case status(code) do
-      :init_failed -> "failed init"
-      :communication_lost -> "lost communication"
-      :recovered -> "recovered"
-      :reference_lost -> "lost its supply reference"
-      nil -> "reported an unknown error"
-    end
-  end
 
   @impl Message
   def encode(%__MODULE__{i2c_address: addr, error_code: code})

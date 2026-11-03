@@ -10,7 +10,7 @@ defmodule Trenino.VirtualJoystick do
   alias Trenino.Train.{ButtonController, ButtonInputBinding, LeverController, LeverInputBinding}
   alias Trenino.VirtualJoystick.{Configuration, Manager, Mapping}
 
-  @mapping_preloads [input: [:device, :calibration, :i2c_module]]
+  @mapping_preloads [input: [:device, :calibration]]
   @driver_install_url "https://github.com/BrunnerInnovation/vJoy/releases/tag/v2.2.2.0"
 
   @spec get_configuration() :: Configuration.t()

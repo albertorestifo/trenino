@@ -8,12 +8,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
-- I2C input chips: **MCP23017** (up to 14 digital inputs or an 8x8 switch matrix)
-  and **ADS1115** (up to 4 analog inputs, with an optional supply reference for
-  rollover sensors). Chip inputs can be named, calibrated and bound like board
-  pins, and a failed chip is reported and recovers by itself. Requires firmware
-  3.2.0. `create_i2c_module`, `update_i2c_module`, `list_i2c_modules` and
-  `list_device_inputs` MCP tools support the new chips.
 - Display bindings support optional speed unit conversion (`m/s → km/h` or
   `m/s → mph`) applied before formatting — also available as `unit` in the
   `create_display_binding`/`update_display_binding` MCP tools.
@@ -42,6 +36,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the release when the driver is missing. The installer is smaller and never
   changes system drivers. If an earlier Trenino installed vJoy for you, it
   stays installed; remove it from Windows Settings if you no longer need it.
+
+### Removed
+
+- I2C input chips (MCP23017 and ADS1115), which were never released. Connect
+  more boards for extra buttons and axes instead. Firmware 3.2.1 drops them
+  too.
 
 ### Fixed
 

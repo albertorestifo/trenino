@@ -2,7 +2,6 @@ defmodule Trenino.Train.ButtonControllerTest do
   use Trenino.DataCase, async: false
 
   alias Trenino.Hardware
-  alias Trenino.Serial.Connection.DeviceConnection
   alias Trenino.Train, as: TrainContext
   alias Trenino.Train.ButtonController
   alias Trenino.Train.Detection
@@ -30,45 +29,6 @@ defmodule Trenino.Train.ButtonControllerTest do
       assert state.active_train == nil
       assert state.binding_lookup == %{}
       assert state.last_sent_values == %{}
-    end
-  end
-
-  describe "chip edits" do
-    setup :set_mimic_global
-
-    test "a moved pin reaches the right input" do
-      Mimic.stub(Trenino.Serial.Connection, :list_devices, fn -> [] end)
-      start_supervised!(ButtonController)
-
-      {:ok, device} = Hardware.create_device(%{name: "Moving Chip Device"})
-
-      {:ok, mod} =
-        Hardware.create_i2c_module(device.id, %{
-          module_chip: :mcp23017,
-          i2c_address: 0x20,
-          params: %{direct_mask: 0, row_mask: 0x03, col_mask: 0x0300}
-        })
-
-      moved = Enum.find(mod.inputs, &(&1.i2c_channel == 16 + 16 + 9))
-
-      device_conn = %DeviceConnection{
-        port: "/dev/cu.usbmodemmove#{System.unique_integer([:positive])}",
-        status: :connected,
-        device_config_id: device.config_id
-      }
-
-      Mimic.stub(Trenino.Serial.Connection, :list_devices, fn -> [device_conn] end)
-      send(Process.whereis(ButtonController), {:devices_updated, [device_conn]})
-      assert ButtonController.get_state().input_lookup[{device_conn.port, 255}] == moved.id
-
-      {:ok, updated} =
-        Hardware.update_i2c_module(mod, %{
-          params: %{direct_mask: 0, row_mask: 0x03, col_mask: 0x0700}
-        })
-
-      new_pin = Enum.find(updated.inputs, &(&1.id == moved.id)).pin
-      assert new_pin != 255
-      assert ButtonController.get_state().input_lookup[{device_conn.port, new_pin}] == moved.id
     end
   end
 
