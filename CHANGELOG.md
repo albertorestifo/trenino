@@ -6,8 +6,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.8.3] - 2026-11-04
+
 ### Added
 
+- Stepper-driven gauges. Configure stepper axes on a board, bind them to
+  train telemetry such as speed or brake pressure, and set each one up with a
+  guided wizard that homes the needle and calibrates the dial. Gauges are also
+  available through new MCP tools.
+- AI assistants can discover and install Trenino's MCP server on their own.
+  The app serves `/llms.txt` with an install command for each client, an MCP
+  server card and an AI catalog, and accepts Streamable HTTP at `POST /mcp`
+  alongside SSE. The setup guide now covers Claude Desktop, Codex, Gemini CLI,
+  VS Code and Cursor.
+- The lever setup wizard shows which way your lever moves compared to the
+  simulator, with a "Your lever" strip and a **Reversed vs. simulator** badge.
+  Levers whose direction can't be detected let you pick it by hand.
 - Display bindings support optional speed unit conversion (`m/s → km/h` or
   `m/s → mph`) applied before formatting — also available as `unit` in the
   `create_display_binding`/`update_display_binding` MCP tools.
@@ -66,8 +80,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   more boards for extra buttons and axes instead. Firmware 3.2.1 drops them
   too.
 
+### Security
+
+- The MCP endpoint and the web UI only accept requests from this computer
+  (local Host and Origin), and cross-origin requests are no longer allowed.
+- Updated Bandit to fix an HTTP/2 memory amplification advisory.
+- Updated phoenix_html to 4.4.0 to fix an attribute injection advisory
+  (CVE-2026-117645).
+
 ### Fixed
 
+- Levers mapped with narrow gate notches can now reach those notches, and
+  reversed levers interpolate their linear ranges in the right direction.
 - 14-segment display glyphs for `0` and `7` no longer light the middle
   vertical segments.
 - MCP `create_i2c_module`/`update_i2c_module` silently dropped `brightness`
