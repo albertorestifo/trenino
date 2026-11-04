@@ -14,12 +14,21 @@
   <a href="#features">Features</a> ·
   <a href="#getting-started">Getting Started</a> ·
   <a href="#supported-hardware">Supported Hardware</a> ·
-  <a href="#development">Development</a>
+  <a href="#development">Development</a> ·
+  <a href="https://discord.gg/d75tmjwUav">Discord</a>
 </p>
 
 <p align="center">
   <img src="https://img.shields.io/badge/Train_Sim_World-6_%26_7-blue" alt="TSW6 and TSW7">
   <img src="https://img.shields.io/badge/License-CC%20BY--NC-green" alt="License">
+</p>
+
+<p align="center">
+  <a href="https://discord.gg/d75tmjwUav">
+    <img src="https://img.shields.io/badge/Join_the_Trenino_Discord-5865F2?style=for-the-badge&logo=discord&logoColor=white" alt="Join the Trenino Discord" height="40">
+  </a>
+  <br>
+  <sub>Share your builds, get help with wiring and setup, and follow what's coming next.</sub>
 </p>
 
 ## Features
@@ -34,6 +43,7 @@ Build your own train controls with real throttle levers, brake handles, switches
 - **Visual control mapping** — map any hardware input to simulator controls using the built-in API explorer
 - **Windows virtual joystick** — expose selected calibrated levers and buttons as one removable DirectInput joystick with eight axes and 32 buttons, independently of Train Sim World
 - **I2C display modules** — show live simulator data (speed, brake pressure, gear position) on HT16K33 7- or 14-segment LED displays wired to your Arduino
+- **Physical stepper gauges** — drive real needle gauges with stepper motors and bind them to live simulator data such as speed or brake pressure ([stepper gauges guide](docs/stepper-gauges.md))
 - **Lua scripting** — write custom logic to flash warning LEDs, react to speed changes, automate sequences, and more ([scripting guide](docs/lua-scripting.md))
 - **AI-assisted setup** — describe what you want in plain language and let Claude configure your train via [MCP integration](docs/mcp-setup.md). With Trenino open, a coding agent such as Claude Code or Codex can set itself up when you ask it to "install the Trenino MCP" (setup guide for agents at `http://localhost:4000/llms.txt`, in releases newer than 0.8.2)
 
@@ -111,7 +121,3 @@ For commercial licensing, contact [alberto@restifo.dev](mailto:alberto@restifo.d
 ## Acknowledgment
 
 Inspired by [MobiFlight](https://www.mobiflight.com/en/index.html).
-
-### Physical stepper gauges
-
-Configure and commission generic electrical axes in the hardware editor, then bind measured dial calibrations to train telemetry. See [Stepper gauges](docs/stepper-gauges.md). Physical travel, wiring, homing and needle fit require real hardware verification.
