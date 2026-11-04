@@ -3,46 +3,107 @@ defmodule TreninoWeb.StepperSetupTest do
   import Phoenix.LiveViewTest
   alias Trenino.Hardware
 
-  test "axis setup is editable and saving never commands hardware", %{conn: conn} do
+  test "adding a gauge asks only for a name and port, saves defaults and opens the setup", %{
+    conn: conn
+  } do
     {:ok, device} = Hardware.create_device(%{name: "Panel"})
     {:ok, view, _} = live(conn, ~p"/configurations/#{device.config_id}")
     assert has_element?(view, "#stepper-axes")
     view |> element("#stepper-add") |> render_click()
     assert has_element?(view, "#stepper-axis-form")
+    refute has_element?(view, "#stepper-axis-form [name='stepper_axis[idle_behavior]']")
+    refute has_element?(view, "#stepper-axis-form [name='stepper_axis[watchdog_ms]']")
+    refute has_element?(view, "#stepper-axis-form [name='stepper_axis[shield_address]']")
 
     view
-    |> form("#stepper-axis-form", stepper_axis: %{name: "Speed", shield_address: "0x60"})
+    |> form("#stepper-axis-form", stepper_axis: %{name: "Speed", motor_port: "2"})
     |> render_submit()
 
-    assert [%{name: "Speed", commissioned: false, startup_reference: :manual}] =
-             Hardware.list_stepper_axes(device.id)
+    assert [
+             %{
+               name: "Speed",
+               motor_port: 2,
+               axis_index: 1,
+               mode: :x27_six_state,
+               idle_behavior: :hold,
+               commissioned: false,
+               startup_reference: :manual
+             } = axis
+           ] = Hardware.list_stepper_axes(device.id)
 
-    assert has_element?(view, "#stepper-axes", "Speed")
-    assert has_element?(view, "#stepper-axes", "Device not connected")
+    # Saving never moves anything; it opens the guided setup for the new gauge.
+    assert has_element?(view, "#gauge-wizard-#{axis.id}")
+    assert has_element?(view, "#stepper-status-#{axis.id}", "Offline")
   end
 
-  test "quick setup fills X27 defaults and flip direction says to apply", %{conn: conn} do
-    {:ok, device} = Hardware.create_device(%{name: "Panel"})
-    {:ok, view, _} = live(conn, ~p"/configurations/#{device.config_id}")
-    # Presets live inside the Add axis flow, not on the resting panel.
-    refute has_element?(view, "#stepper-preset-x27")
-    view |> element("#stepper-add") |> render_click()
-    view |> element("#stepper-preset-x27") |> render_click()
-    assert render(view) =~ "X27.168 gauge motor"
-    view |> form("#stepper-axis-form") |> render_submit()
-    assert [%{reverse: false, motor_port: 1} = axis] = Hardware.list_stepper_axes(device.id)
-
-    view |> element("button[id^=stepper-flip-]") |> render_click()
-    assert has_element?(view, "[role=status]", "Click Apply to Device")
-    html = render(view)
-    assert [%{reverse: true}] = Hardware.list_stepper_axes(device.id)
-    refute Hardware.allcall_conflict_possible?(axis.device_id)
-    refute html =~ "stepper-allcall-warning"
-  end
-
-  test "0x70 display with a stepper axis shows a non-blocking warning, no confirmation", %{
+  test "a port in use cannot be picked and a full shield cannot take another gauge", %{
     conn: conn
   } do
+    {:ok, device} = Hardware.create_device(%{name: "Panel"})
+    {:ok, _} = Hardware.create_stepper_axis(device.id, %{"name" => "Speed"})
+    {:ok, view, _} = live(conn, ~p"/configurations/#{device.config_id}")
+
+    view |> element("#stepper-add") |> render_click()
+    assert has_element?(view, "#stepper-axis-form option[value='1'][disabled]", "in use")
+    assert has_element?(view, "#stepper-axis-form option[value='2'][selected]")
+
+    view |> form("#stepper-axis-form", stepper_axis: %{name: "Brake"}) |> render_submit()
+    assert length(Hardware.list_stepper_axes(device.id)) == 2
+    assert has_element?(view, "#stepper-add[disabled]")
+  end
+
+  test "the shield address is one line until the operator asks to change it", %{conn: conn} do
+    {:ok, device} = Hardware.create_device(%{name: "Panel"})
+    {:ok, _} = Hardware.create_stepper_axis(device.id, %{"name" => "Speed"})
+    {:ok, view, _} = live(conn, ~p"/configurations/#{device.config_id}")
+
+    assert has_element?(view, "#stepper-shield", "0x60")
+    refute has_element?(view, "#stepper-recommission-address")
+
+    view |> element("#stepper-change-address") |> render_click()
+
+    assert has_element?(
+             view,
+             "#stepper-recommission-address",
+             "Unplug any display at address 0x70"
+           )
+
+    refute has_element?(view, "#stepper-recommission-address input[type=checkbox]")
+    assert has_element?(view, "#stepper-recommission-address button[type=submit][disabled]")
+  end
+
+  test "renaming a set-up gauge keeps it set up, even on a legacy index/port pairing", %{
+    conn: conn
+  } do
+    {:ok, device} = Hardware.create_device(%{name: "Panel"})
+
+    {:ok, axis} =
+      Hardware.create_stepper_axis(device.id, %{name: "Speed", axis_index: 0, motor_port: 2})
+
+    {:ok, _} = Hardware.commission_stepper_axis(axis)
+    {:ok, view, _} = live(conn, ~p"/configurations/#{device.config_id}")
+
+    view |> element("#stepper-edit-#{axis.id}") |> render_click()
+    view |> form("#stepper-axis-form", stepper_axis: %{name: "Speedo"}) |> render_submit()
+
+    assert [%{name: "Speedo", axis_index: 0, motor_port: 2, commissioned: true}] =
+             Hardware.list_stepper_axes(device.id)
+  end
+
+  test "an address outside the shield range is refused with a clear message", %{conn: conn} do
+    {:ok, device} = Hardware.create_device(%{name: "Panel"})
+    {:ok, _} = Hardware.create_stepper_axis(device.id, %{"name" => "Speed"})
+    {:ok, view, _} = live(conn, ~p"/configurations/#{device.config_id}")
+    view |> element("#stepper-change-address") |> render_click()
+
+    view
+    |> form("#stepper-recommission-address", %{address: "0x78"})
+    |> render_submit()
+
+    assert has_element?(view, "#stepper-axes [role=alert]", "0x60 to 0x77")
+  end
+
+  test "0x70 display with a gauge still to set up shows a non-blocking warning", %{conn: conn} do
     {:ok, device} = Hardware.create_device(%{name: "Panel"})
     {:ok, _} = Hardware.create_stepper_axis(device.id, %{"name" => "Speed"})
 
@@ -93,7 +154,9 @@ defmodule TreninoWeb.StepperSetupTest do
       send(view.pid, {:configuration_applied, "tty", applied, device.config_id})
       refute has_element?(view, "#apply-needed-banner")
 
-      view |> element("button[id^=stepper-flip-]") |> render_click()
+      [axis] = Hardware.list_stepper_axes(device.id)
+      {:ok, _} = Hardware.update_stepper_axis(axis, %{reverse: true})
+      send(view.pid, {:stepper_axis_saved, axis})
       assert has_element?(view, "#apply-needed-banner", "Apply needed")
     end
 

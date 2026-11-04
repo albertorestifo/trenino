@@ -838,6 +838,193 @@ defmodule Trenino.Hardware.StepperManagerTest do
     end
   end
 
+  describe "rezero" do
+    defp commissioned(ctx, attrs) do
+      {:ok, axis} = Hardware.update_stepper_axis(ctx.axis, attrs)
+      {:ok, axis} = Hardware.commission_stepper_axis(axis)
+      axis
+    end
+
+    defp paused?(ctx, axis), do: MapSet.member?(:sys.get_state(ctx.pid).paused_axes, axis.id)
+
+    test "refuses an axis that was never set up", ctx do
+      prepare(ctx)
+      assert {:error, :not_commissioned} = StepperManager.rezero(ctx.axis.id)
+      refute_receive {:sent, %StepperCommand{operation: :home}}, 50
+      refute_receive {:sent, %StepperCommand{operation: :reference}}, 10
+    end
+
+    test "Homes an unreferenced internal-stop axis, then resumes train control", ctx do
+      axis = commissioned(ctx, %{reference_strategy: :internal_stop})
+      :sys.replace_state(ctx.pid, &%{&1 | paused_axes: MapSet.new([axis.id])})
+      prepare(ctx)
+      refute_receive {:sent, %StepperCommand{operation: :home}}, 50
+
+      assert {:ok, _} = StepperManager.rezero(axis.id)
+      assert_receive {:sent, %StepperCommand{operation: :home}}
+      refute paused?(ctx, axis)
+      GenServer.stop(StepperManager)
+    end
+
+    test "a host-reference axis only takes a reference once the needle is lined up", ctx do
+      axis = commissioned(ctx, %{home_position: 0})
+      prepare(ctx)
+      assert {:error, :alignment_required} = StepperManager.rezero(axis.id)
+      refute_receive {:sent, %StepperCommand{operation: :reference}}, 50
+
+      assert {:ok, _} = StepperManager.rezero(axis.id, aligned: true)
+      assert_receive {:sent, %StepperCommand{operation: :reference, position: 0}}
+      GenServer.stop(StepperManager)
+    end
+
+    test "a referenced axis is only handed back; nothing moves", ctx do
+      axis = commissioned(ctx, %{})
+      prepare(ctx)
+      assert {:ok, _} = StepperManager.rezero(axis.id, aligned: true)
+      assert_receive {:sent, %StepperCommand{operation: :reference} = reference}
+      publish(ctx, %{status(reference) | known: true, energized: true})
+      assert_receive {:sent, %StepperCommand{operation: :get_status} = poll}
+      publish(ctx, %{status(poll) | configured: true, known: true, energized: true})
+      Process.sleep(5)
+      assert StepperManager.snapshot(ctx.device.id).axes[axis.id].ready
+
+      assert {:ok, token} = StepperManager.claim_manual(axis.id, self())
+      assert :ok = StepperManager.release_manual(axis.id, token)
+      assert paused?(ctx, axis)
+      flush_sent()
+
+      assert {:ok, :resumed} = StepperManager.rezero(axis.id)
+      refute paused?(ctx, axis)
+      refute_receive {:sent, %StepperCommand{operation: :home}}, 50
+      refute_receive {:sent, %StepperCommand{operation: :reference}}, 10
+      GenServer.stop(StepperManager)
+    end
+
+    test "refused while someone holds manual control", ctx do
+      axis = commissioned(ctx, %{reference_strategy: :internal_stop})
+      prepare(ctx)
+      assert {:ok, _token} = StepperManager.claim_manual(axis.id, self())
+      assert {:error, {:lease_held, %{action: :rezero}}} = StepperManager.rezero(axis.id)
+      refute_receive {:sent, %StepperCommand{operation: :home}}, 50
+      GenServer.stop(StepperManager)
+    end
+
+    test "after a fault, reconfigures and then Homes even without home-on-connect", ctx do
+      axis = commissioned(ctx, %{reference_strategy: :internal_stop})
+      assert axis.startup_reference == :manual
+      prepare(ctx)
+
+      publish(ctx, %{
+        status(%StepperCommand{operation: :get_status, axis: 0, request_id: 0})
+        | fault: :driver_i2c,
+          state: :fault
+      })
+
+      Process.sleep(10)
+      assert StepperManager.snapshot(ctx.device.id).lifecycle == :fault
+      flush_sent()
+
+      assert {:ok, :recovering} = StepperManager.rezero(axis.id)
+      refute_receive {:sent, %StepperCommand{operation: :home}}, 20
+
+      for operation <- [:get_status, :reset, :configure] do
+        assert_receive {:sent, %StepperCommand{operation: ^operation} = cmd}
+        publish(ctx, status(cmd))
+        Process.sleep(5)
+      end
+
+      assert_receive {:sent, %StepperCommand{operation: :home}}, 200
+      refute paused?(ctx, axis)
+      GenServer.stop(StepperManager)
+    end
+
+    test "after a fault, only the requested axis is Homed", ctx do
+      axis = commissioned(ctx, %{reference_strategy: :internal_stop})
+
+      {:ok, other} =
+        Hardware.create_stepper_axis(ctx.device.id, %{
+          name: "Brake",
+          axis_index: 1,
+          motor_port: 2,
+          reference_strategy: :internal_stop
+        })
+
+      {:ok, _} = Hardware.commission_stepper_axis(other)
+      send(ctx.pid, {:devices_updated, [ctx.conn]})
+      settle(ctx)
+      fault(ctx)
+
+      assert {:ok, :recovering} = StepperManager.rezero(axis.id)
+      sent = settle(ctx)
+      assert [%StepperCommand{axis: 0}] = Enum.filter(sent, &(&1.operation == :home))
+      GenServer.stop(StepperManager)
+    end
+
+    test "an Apply started before the device is ready cancels the pending Home", ctx do
+      axis = commissioned(ctx, %{reference_strategy: :internal_stop})
+      prepare(ctx)
+      fault(ctx)
+
+      assert {:ok, :recovering} = StepperManager.rezero(axis.id)
+      assert :sys.get_state(ctx.pid).sessions[ctx.conn.port].rezero == axis.id
+
+      test_pid = self()
+
+      spawn_link(fn ->
+        send(test_pid, {:began, StepperManager.begin_deployment(ctx.conn.port)})
+        Process.sleep(:infinity)
+      end)
+
+      settle(ctx)
+      assert_receive {:began, {:ok, token}}
+      assert :sys.get_state(ctx.pid).sessions[ctx.conn.port].rezero == nil
+      assert :ok = StepperManager.finish_deployment(ctx.conn.port, token, :ok)
+      refute Enum.any?(settle(ctx), &(&1.operation == :home))
+    end
+
+    test "a host-reference axis in a fault is only reconfigured", ctx do
+      axis = commissioned(ctx, %{})
+      prepare(ctx)
+      fault(ctx)
+      assert {:ok, :reconfigured} = StepperManager.rezero(axis.id)
+      refute Enum.any?(settle(ctx), &(&1.operation in [:home, :reference]))
+      GenServer.stop(StepperManager)
+    end
+
+    defp fault(ctx) do
+      publish(ctx, %{
+        status(%StepperCommand{operation: :get_status, axis: 0, request_id: 0})
+        | fault: :driver_i2c,
+          state: :fault
+      })
+
+      Process.sleep(10)
+      assert StepperManager.snapshot(ctx.device.id).lifecycle == :fault
+      flush_sent()
+    end
+
+    # Answers every command the session sends until it goes quiet; returns them in order.
+    defp settle(ctx, acc \\ []) do
+      receive do
+        {:sent, cmd} ->
+          publish(ctx, status(cmd))
+          Process.sleep(5)
+          settle(ctx, [cmd | acc])
+      after
+        100 -> Enum.reverse(acc)
+      end
+    end
+
+    test "a plain Recover still never Homes", ctx do
+      commissioned(ctx, %{reference_strategy: :internal_stop})
+      prepare(ctx)
+      assert :ok = StepperManager.recover(ctx.device.id)
+      prepare(ctx)
+      refute_receive {:sent, %StepperCommand{operation: :home}}, 100
+      GenServer.stop(StepperManager)
+    end
+  end
+
   defp prepare(ctx) do
     send(ctx.pid, {:devices_updated, [ctx.conn]})
 

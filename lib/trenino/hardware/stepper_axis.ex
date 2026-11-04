@@ -58,8 +58,14 @@ defmodule Trenino.Hardware.StepperAxis do
     |> clear_commissioning()
     |> validate_startup()
     |> foreign_key_constraint(:device_id)
-    |> unique_constraint([:device_id, :axis_index])
-    |> unique_constraint([:device_id, :motor_port])
+    |> unique_constraint([:device_id, :axis_index],
+      error_key: :motor_port,
+      message: "is used by another gauge"
+    )
+    |> unique_constraint([:device_id, :motor_port],
+      error_key: :motor_port,
+      message: "is used by another gauge"
+    )
   end
 
   @doc """

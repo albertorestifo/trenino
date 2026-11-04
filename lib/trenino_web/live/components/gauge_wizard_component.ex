@@ -35,7 +35,7 @@ defmodule TreninoWeb.GaugeWizardComponent do
   alias Trenino.Hardware.GaugeWizard
   alias Trenino.Hardware.GaugeWizard.Runner
   alias Trenino.Train
-  alias TreninoWeb.{DialCalibrationComponent, GaugeFeedback}
+  alias TreninoWeb.GaugeFeedback
 
   @nudges [-20, -5, -1, 1, 5, 20]
   @max_rounds 8
@@ -186,7 +186,7 @@ defmodule TreninoWeb.GaugeWizardComponent do
 
   def error_text({:lease_held, _}),
     do:
-      "Manual control is already open elsewhere on this page. Use Resume train control in the axis controls, then try again."
+      "Manual control is already open elsewhere on this page. Resume it under Diagnostics in the axis menu, then try again."
 
   def error_text({:leave_failed, _reason}),
     do:
@@ -706,7 +706,7 @@ defmodule TreninoWeb.GaugeWizardComponent do
         field={@form[:unit]}
         type="select"
         label="Dial shows"
-        options={DialCalibrationComponent.unit_options()}
+        options={GaugeFeedback.unit_options()}
       />
       <.input field={@form[:marks]} type="number" min="1" max="30" label="Marks to measure" />
       <button id={"#{@id}-range-submit"} type="submit" class="btn btn-primary sm:col-span-2">

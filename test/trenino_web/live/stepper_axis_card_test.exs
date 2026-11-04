@@ -1,7 +1,7 @@
 defmodule TreninoWeb.StepperAxisCardTest do
   @moduledoc """
-  The axis card at rest is one name, one state and at most one action. Everything manual
-  sits behind "Advanced / manual controls", except the controls the state makes urgent.
+  The axis card at rest is one name, one state and at most one action. Manual controls
+  live in Diagnostics, shown only on request; Stop is never hidden while the needle moves.
   """
   use TreninoWeb.ConnCase, async: false
   import Phoenix.LiveViewTest
@@ -14,11 +14,14 @@ defmodule TreninoWeb.StepperAxisCardTest do
     {:ok, device} = Hardware.create_device(%{name: "Panel"})
     {:ok, axis} = Hardware.create_stepper_axis(device.id, %{name: "Speed"})
     {:ok, axis} = Hardware.commission_stepper_axis(axis)
-    test = self()
 
-    # Applied to the device: the page has no "apply needed" state to show.
-    fingerprint = Hardware.config_fingerprint([], [], [], Hardware.list_stepper_axes(device.id))
-    {:ok, _} = Hardware.confirm_configuration(device.id, device.config_id, fingerprint)
+    {:ok, _} =
+      Hardware.save_dial_calibration(axis, %{
+        reviewed: true,
+        points: [%{value: 0, position: 0}, %{value: 100, position: 720}]
+      })
+
+    test = self()
 
     claim = fn ->
       send(test, :claimed)
@@ -40,9 +43,9 @@ defmodule TreninoWeb.StepperAxisCardTest do
 
     stub(StepperManager, :release_manual, fn _, _ -> :ok end)
 
-    stub(StepperManager, :recover, fn _ ->
-      send(test, :recovered)
-      :ok
+    stub(StepperManager, :rezero, fn _, opts ->
+      send(test, {:rezero, opts})
+      {:ok, :accepted}
     end)
 
     %{device: device, axis: axis}
@@ -78,35 +81,40 @@ defmodule TreninoWeb.StepperAxisCardTest do
     view
   end
 
-  # Present on the card face, not only inside the Advanced disclosure.
-  defp promoted?(view, axis, name),
-    do:
-      has_element?(view, "##{name}-#{axis.id}") and
-        not has_element?(view, "#stepper-advanced-#{axis.id} ##{name}-#{axis.id}")
+  defp diagnostics(view, axis),
+    do: view |> element("#stepper-diagnostics-toggle-#{axis.id}") |> render_click()
 
-  test "a working axis shows its name, Ready and nothing else to do", ctx do
+  test "a working axis shows its name, Ready and nothing else", ctx do
     view = open_page(ctx.conn, ctx.device, ctx.axis, %{lifecycle: :ready})
     assert has_element?(view, "#stepper-status-#{ctx.axis.id}[role=status]", "Ready")
     refute has_element?(view, "#stepper-next-step-#{ctx.axis.id}")
-    refute promoted?(view, ctx.axis, "stepper-stop")
-    refute promoted?(view, ctx.axis, "stepper-resume")
-    refute promoted?(view, ctx.axis, "stepper-recover")
-    refute has_element?(view, "#stepper-wizard-open-#{ctx.axis.id}.btn-primary")
+    refute has_element?(view, "#stepper-stop-#{ctx.axis.id}")
+    refute has_element?(view, "#stepper-rezero-#{ctx.axis.id}")
+    refute has_element?(view, "#stepper-wizard-open-#{ctx.axis.id}")
+    refute has_element?(view, "#stepper-diagnostics-#{ctx.axis.id}")
 
-    # The resting view carries no jargon outside the disclosure.
     html = view |> element("#stepper-axis-#{ctx.axis.id}") |> render()
     refute html =~ "x27_six_state"
-    refute html =~ "commutation"
-
-    # Every manual control stays reachable inside the disclosure.
-    for id <- ~w(claim stop release enable resume recover reference) do
-      assert has_element?(view, "#stepper-advanced-#{ctx.axis.id} #stepper-#{id}-#{ctx.axis.id}")
-    end
-
-    assert has_element?(view, "#stepper-advanced-#{ctx.axis.id}", "complete commissioning")
+    refute html =~ ~r/>[^<]*(commission|reference)/i
   end
 
-  test "Stop is promoted as soon as the needle moves, and one click stops it", ctx do
+  test "Diagnostics opens from the menu with every manual control", ctx do
+    view = open_page(ctx.conn, ctx.device, ctx.axis, %{lifecycle: :ready})
+    diagnostics(view, ctx.axis)
+
+    for id <- ~w(claim stop release enable resume recover reference) do
+      assert has_element?(
+               view,
+               "#stepper-diagnostics-#{ctx.axis.id} #stepper-#{id}-#{ctx.axis.id}"
+             )
+    end
+
+    refute render(view) =~ "complete commissioning"
+    diagnostics(view, ctx.axis)
+    refute has_element?(view, "#stepper-diagnostics-#{ctx.axis.id}")
+  end
+
+  test "Stop appears as soon as the needle moves, and one click stops it", ctx do
     moving = runtime(%{status: %{runtime().status | state: :moving}})
 
     view =
@@ -116,32 +124,85 @@ defmodule TreninoWeb.StepperAxisCardTest do
       })
 
     assert has_element?(view, "#stepper-status-#{ctx.axis.id}", "Moving")
-    assert promoted?(view, ctx.axis, "stepper-stop")
     refute has_element?(view, "#stepper-stop-#{ctx.axis.id}[disabled]")
 
     view |> element("#stepper-stop-#{ctx.axis.id}") |> render_click()
     assert_received :claimed
     assert_received {:command, :stop}
-    # Having taken manual control to stop, the operator is told how to hand it back.
-    assert promoted?(view, ctx.axis, "stepper-resume")
+    # Having taken manual control to stop, the operator is shown how to hand it back.
+    assert has_element?(view, "#stepper-handback-#{ctx.axis.id}", "Resume train output")
+    view |> element("#stepper-handback-#{ctx.axis.id}") |> render_click()
+    assert_received :resumed
   end
 
-  test "Stop stays promoted while the operator holds manual control", ctx do
+  test "Stop claims again when the card's manual control was revoked", ctx do
+    test = self()
     view = open_page(ctx.conn, ctx.device, ctx.axis, %{lifecycle: :ready})
-    refute promoted?(view, ctx.axis, "stepper-stop")
-
+    diagnostics(view, ctx.axis)
     view |> element("#stepper-claim-#{ctx.axis.id}") |> render_click()
     assert_received :claimed
-    assert promoted?(view, ctx.axis, "stepper-stop")
-    assert promoted?(view, ctx.axis, "stepper-resume")
-    assert has_element?(view, "#stepper-commissioning-#{ctx.axis.id}", "You have manual control")
+
+    stub(StepperManager, :command, fn _, op, _, token ->
+      send(test, {:command, op, token})
+      if Process.get(:revoked), do: {:ok, :accepted}, else: {:error, :invalid_lease}
+    end)
 
     view |> element("#stepper-stop-#{ctx.axis.id}") |> render_click()
-    assert_received {:command, :stop}
-    refute_received :claimed
+    assert_received {:command, :stop, _stale}
+    assert_received :claimed
+    assert_received {:command, :stop, _fresh}
   end
 
-  test "Resume train control is promoted when the axis is paused", ctx do
+  test "zeroing shows its own state and Stop", ctx do
+    homing = runtime(%{ready: false, status: %{runtime().status | state: :homing}})
+
+    view =
+      open_page(ctx.conn, ctx.device, ctx.axis, %{
+        lifecycle: :awaiting_reference,
+        axes: %{ctx.axis.id => homing}
+      })
+
+    assert has_element?(view, "#stepper-status-#{ctx.axis.id}", "Zeroing")
+    assert has_element?(view, "#stepper-stop-#{ctx.axis.id}")
+    refute has_element?(view, "#stepper-rezero-#{ctx.axis.id}")
+  end
+
+  test "a lost position on a set-up gauge asks for Re-zero, not the full setup", ctx do
+    {:ok, axis} = Hardware.update_stepper_axis(ctx.axis, %{reference_strategy: :internal_stop})
+    {:ok, axis} = Hardware.commission_stepper_axis(axis)
+
+    {:ok, _} =
+      Hardware.save_dial_calibration(axis, %{
+        reviewed: true,
+        points: [%{value: 0, position: 0}, %{value: 100, position: 720}]
+      })
+
+    view =
+      open_page(ctx.conn, ctx.device, axis, %{
+        lifecycle: :awaiting_reference,
+        axes: %{axis.id => runtime(%{ready: false})}
+      })
+
+    assert has_element?(view, "#stepper-status-#{axis.id}", "Needs re-zero")
+    refute has_element?(view, "#stepper-wizard-open-#{axis.id}")
+    assert has_element?(view, "#stepper-rezero-#{axis.id}.btn-primary", "Re-zero")
+    view |> element("#stepper-rezero-#{axis.id}") |> render_click()
+    assert_received {:rezero, [aligned: false]}
+  end
+
+  test "a host-reference gauge is lined up by hand before re-zeroing", ctx do
+    view =
+      open_page(ctx.conn, ctx.device, ctx.axis, %{
+        lifecycle: :awaiting_reference,
+        axes: %{ctx.axis.id => runtime(%{ready: false})}
+      })
+
+    assert has_element?(view, "#stepper-next-step-#{ctx.axis.id}", "by hand")
+    view |> element("#stepper-rezero-#{ctx.axis.id}", "The needle is on 0") |> render_click()
+    assert_received {:rezero, [aligned: true]}
+  end
+
+  test "a paused gauge offers to resume train output", ctx do
     view =
       open_page(ctx.conn, ctx.device, ctx.axis, %{
         lifecycle: :ready,
@@ -149,15 +210,11 @@ defmodule TreninoWeb.StepperAxisCardTest do
       })
 
     assert has_element?(view, "#stepper-status-#{ctx.axis.id}", "Paused")
-    assert promoted?(view, ctx.axis, "stepper-resume")
-    assert has_element?(view, "#stepper-resume-#{ctx.axis.id}.btn-primary")
-    assert has_element?(view, "#stepper-next-step-#{ctx.axis.id}", "Resume train control")
-
-    view |> element("#stepper-resume-#{ctx.axis.id}") |> render_click()
-    assert_received :resumed
+    view |> element("#stepper-rezero-#{ctx.axis.id}", "Resume train output") |> render_click()
+    assert_received {:rezero, _}
   end
 
-  test "fault recovery is the primary action when the axis is faulted", ctx do
+  test "a fault on a set-up gauge offers Re-zero with the reason", ctx do
     view =
       open_page(ctx.conn, ctx.device, ctx.axis, %{
         lifecycle: :fault,
@@ -167,37 +224,36 @@ defmodule TreninoWeb.StepperAxisCardTest do
 
     assert has_element?(view, "#stepper-status-#{ctx.axis.id}", "Fault")
     assert has_element?(view, "#stepper-next-step-#{ctx.axis.id}[role=alert]", "Motor driver")
-    assert promoted?(view, ctx.axis, "stepper-recover")
-    assert has_element?(view, "#stepper-recover-#{ctx.axis.id}.btn-primary")
-
-    view |> element("#stepper-recover-#{ctx.axis.id}") |> render_click()
-    assert_received :recovered
+    view |> element("#stepper-rezero-#{ctx.axis.id}", "Re-zero") |> render_click()
+    assert_received {:rezero, _}
   end
 
-  test "a disconnected device says so and offers nothing urgent", ctx do
+  test "a disconnected device says Offline and offers nothing urgent", ctx do
     view = open_page(ctx.conn, ctx.device, ctx.axis, %{lifecycle: :disconnected, axes: %{}})
-    assert has_element?(view, "#stepper-status-#{ctx.axis.id}", "Device not connected")
-    refute promoted?(view, ctx.axis, "stepper-stop")
-    refute promoted?(view, ctx.axis, "stepper-resume")
-    refute promoted?(view, ctx.axis, "stepper-recover")
+    assert has_element?(view, "#stepper-status-#{ctx.axis.id}", "Offline")
+    refute has_element?(view, "#stepper-stop-#{ctx.axis.id}")
+    refute has_element?(view, "#stepper-rezero-#{ctx.axis.id}")
   end
 
-  test "an unreferenced axis needs setup and the wizard is the primary action", ctx do
-    view =
-      open_page(ctx.conn, ctx.device, ctx.axis, %{
-        lifecycle: :awaiting_reference,
-        axes: %{ctx.axis.id => runtime(%{ready: false, status: nil})}
+  test "an unreviewed dial means the gauge still needs setup, whatever the axis says", ctx do
+    {:ok, _} =
+      Hardware.save_dial_calibration(ctx.axis, %{
+        reviewed: false,
+        points: [%{value: 0, position: 0}, %{value: 100, position: 720}]
       })
 
+    view = open_page(ctx.conn, ctx.device, ctx.axis, %{lifecycle: :ready})
     assert has_element?(view, "#stepper-status-#{ctx.axis.id}", "Needs setup")
     assert has_element?(view, "#stepper-wizard-open-#{ctx.axis.id}.btn-primary", "Set up gauge")
   end
 
-  test "edit, flip and delete live in a small menu, not on the card face", ctx do
+  test "setup again, edit, diagnostics and delete live in a small menu", ctx do
     view = open_page(ctx.conn, ctx.device, ctx.axis, %{lifecycle: :ready})
 
-    for id <- ~w(edit flip delete) do
+    for id <- ~w(setup-again edit diagnostics-toggle delete) do
       assert has_element?(view, "#stepper-menu-#{ctx.axis.id} #stepper-#{id}-#{ctx.axis.id}")
     end
+
+    assert has_element?(view, "#stepper-delete-#{ctx.axis.id}[data-confirm]")
   end
 end

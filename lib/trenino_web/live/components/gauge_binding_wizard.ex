@@ -2,8 +2,8 @@ defmodule TreninoWeb.GaugeBindingWizard do
   @moduledoc """
   Human-field gauge binding workflow, usable offline. A train's gauge only chooses its
   speed source (axis, endpoint, units) and whether it is enabled; the dial itself is
-  calibrated once per axis in the hardware configuration
-  (`TreninoWeb.DialCalibrationComponent`).
+  calibrated once per axis by the guided gauge setup in the hardware configuration
+  (`TreninoWeb.GaugeWizardComponent`).
   """
   use TreninoWeb, :live_component
   alias Phoenix.HTML.Form
@@ -12,7 +12,7 @@ defmodule TreninoWeb.GaugeBindingWizard do
   alias Trenino.Hardware.StepperManager
   alias Trenino.Train
   alias Trenino.Train.{Detection, GaugeBinding, GaugePresets}
-  alias TreninoWeb.{DialCalibrationComponent, GaugeFeedback, GaugeGuidance}
+  alias TreninoWeb.{GaugeFeedback, GaugeGuidance}
 
   @impl true
   def update(%{runtime_event: {id, status}}, socket) do
@@ -196,14 +196,14 @@ defmodule TreninoWeb.GaugeBindingWizard do
         "Choose a hardware axis in step 1."
 
       not axis.commissioned ->
-        "Complete physical commissioning of this axis first (Stepper axes in Hardware configurations)."
+        "Set up this gauge first (Stepper axes in the hardware configuration)."
 
       axis.idle_behavior != :hold ->
         "Continuous gauges need the axis idle behavior set to hold."
 
       match?({:missing, _}, dial_status(axis)) ->
         {_, reason} = dial_status(axis)
-        "#{reason} Calibrate and review the dial on the axis first."
+        "#{reason} Run the gauge setup on the axis first."
 
       form[:input_unit].errors != [] ->
         "Fix the units in step 2 first."
@@ -260,9 +260,9 @@ defmodule TreninoWeb.GaugeBindingWizard do
     <p id={@id} class={["text-sm", match?({:missing, _}, @status) && "text-warning"]}>
       {elem(@status, 1)}
       <.link
-        navigate={"/configurations/#{@axis.device.config_id}#dial-calibration-#{@axis.id}"}
+        navigate={"/configurations/#{@axis.device.config_id}#stepper-axis-#{@axis.id}"}
         class="link"
-      >{if match?({:ok, _}, @status), do: "Review the dial", else: "Calibrate the dial"}</.link>
+      >{if match?({:ok, _}, @status), do: "Open axis", else: "Set up gauge"}</.link>
     </p>
     """
   end
@@ -357,13 +357,10 @@ defmodule TreninoWeb.GaugeBindingWizard do
     """
   end
 
-  defp action_path(:dial, axis, config_id),
-    do: ~p"/configurations/#{config_id}" <> "#dial-calibration-#{axis.id}"
-
-  defp action_path(:axis, axis, config_id),
+  defp action_path(_, axis, config_id),
     do: ~p"/configurations/#{config_id}" <> "#stepper-axis-#{axis.id}"
 
-  defp action_label(:dial), do: "Calibrate the dial"
+  defp action_label(:dial), do: "Set up gauge"
   defp action_label(:axis), do: "Open axis"
 
   # Exactly one reason wins, in order of how directly it explains a still needle.
@@ -459,7 +456,7 @@ defmodule TreninoWeb.GaugeBindingWizard do
     assigns =
       assigns
       |> assign(:axis, axis)
-      |> assign(:unit_options, DialCalibrationComponent.unit_options())
+      |> assign(:unit_options, GaugeFeedback.unit_options())
       |> assign(:train_hint, train_hint(assigns))
 
     ~H"""
@@ -616,7 +613,7 @@ defmodule TreninoWeb.GaugeBindingWizard do
   defp unit_label(unit),
     do:
       Enum.find_value(
-        DialCalibrationComponent.unit_options(),
+        GaugeFeedback.unit_options(),
         &(elem(&1, 1) == unit && elem(&1, 0))
       )
 

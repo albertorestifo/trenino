@@ -20,6 +20,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- Stepper axes are much simpler. Adding a gauge asks only for a name and a
+  shield port, then goes straight into the guided gauge setup. Each card shows
+  one status (Needs setup, Ready, Moving, Zeroing, Needs re-zero, Paused,
+  Fault, Offline) and at most one action. A new **Re-zero** action hands a set-up
+  gauge back to the train after a reconnect, stop or fault, homing it if it has
+  an end stop. Manual controls moved to **Diagnostics** in the card menu, and
+  the shield address is a single line with a guided **Change** panel. The
+  stepper presets and the separate dial calibration panel are gone: the guided
+  setup covers both.
 - New Trenino identity (brand guide v1.1): a throttle-lever logo with an
   Inter Bold wordmark, a new app icon, favicon and splash screen, and a
   refreshed theme with one indigo action color and labelled statuses

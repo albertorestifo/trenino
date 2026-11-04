@@ -1143,7 +1143,6 @@ defmodule TreninoWeb.ConfigurationEditLive do
           module={TreninoWeb.StepperAxisFormComponent}
           id="stepper-setup"
           device_id={@device.id}
-          apply_needed={@apply_needed}
         />
 
         <.danger_zone
