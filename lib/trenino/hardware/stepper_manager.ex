@@ -39,6 +39,23 @@ defmodule Trenino.Hardware.StepperManager do
   def recover(id), do: call({:recover, id})
   def complete_commissioning(id, token), do: call({:complete_commissioning, id, token})
 
+  @doc """
+  Hands a set-up gauge back to the train after its position was lost (reconnect, a moving
+  Stop, Release or a fault). Unlike Recover or Apply this is an explicit operator request,
+  so it may Home:
+
+    * device fault: reconfigures the device; an internal-stop axis is then Homed once the
+      device awaits a reference (only this axis, and only if nobody holds it by then), a
+      host-reference axis waits to be lined up and re-zeroed again;
+    * internal stop, unreferenced: Homes now;
+    * host reference, unreferenced: needs `aligned: true` (the operator lined the needle up
+      on zero by hand) and assigns the reference at the home position;
+    * already referenced: only resumes train control, nothing moves.
+
+  Refused for an axis that is not commissioned or that someone holds in manual control.
+  """
+  def rezero(id, opts \\ []), do: call({:rezero, id, opts})
+
   def recommission_address(id, address, acknowledged?),
     do: call({:recommission_address, id, address, acknowledged?})
 
@@ -109,6 +126,18 @@ defmodule Trenino.Hardware.StepperManager do
         else: {:error, :requires_fresh_reference_and_manual_lease}
 
     {:reply, result, s}
+  end
+
+  def handle_call({:rezero, id, opts}, _, s) do
+    with {:ok, axis} <- Hardware.get_stepper_axis(id),
+         true <- axis.commissioned || {:error, :not_commissioned},
+         :ok <- unleased(s, id),
+         %{} = session <- find_session(s, axis.device_id) || {:error, :disconnected} do
+      {result, s} = rezero(s, session, axis, safe_snapshot(session.pid), opts)
+      {:reply, result, s}
+    else
+      error -> {:reply, error, s}
+    end
   end
 
   def handle_call({:claim_mcp, id}, _, s) do
@@ -411,19 +440,19 @@ defmodule Trenino.Hardware.StepperManager do
     rearmed? = rollovers > session.rollovers
     session = %{session | rollovers: rollovers, auto_home: session.auto_home or rearmed?}
 
-    session =
-      cond do
-        Map.get(snapshot, :lifecycle) == :fault ->
-          %{session | auto_home: false}
+    case Map.get(snapshot, :lifecycle) do
+      :fault ->
+        put_in(s.sessions[session.port], %{session | auto_home: false, rezero: nil})
 
-        session.auto_home and Map.get(snapshot, :lifecycle) == :awaiting_reference ->
-          home_axes(s, session)
+      :awaiting_reference when session.rezero != nil ->
+        rezero_axis(s, %{session | auto_home: false, rezero: nil}, session.rezero)
 
-        true ->
-          session
-      end
+      :awaiting_reference when session.auto_home ->
+        put_in(s.sessions[session.port], home_axes(s, session))
 
-    put_in(s.sessions[session.port], session)
+      _ ->
+        put_in(s.sessions[session.port], session)
+    end
   end
 
   # A paused or leased axis misses this Home: it stays unreferenced until the next genuine
@@ -439,6 +468,88 @@ defmodule Trenino.Hardware.StepperManager do
 
   defp homeable?(s, id),
     do: not Map.has_key?(s.leases, id) and not MapSet.member?(s.paused_axes, id)
+
+  defp unleased(s, id) do
+    case Map.get(s.leases, id) do
+      nil -> :ok
+      lease -> {:error, lease_refusal(lease, :rezero)}
+    end
+  end
+
+  # A fault needs the device reconfigured first; the replacement session Homes the axis
+  # once it awaits a reference (see `maybe_auto_home`). Reconfiguring revokes every lease on
+  # the device, so only the requested axis is ever Homed.
+  defp rezero(s, session, axis, %{lifecycle: :fault}, _opts) do
+    s = s |> drop_session(session.port, session) |> reconcile(Map.values(s.connections), false)
+    home = if axis.reference_strategy == :internal_stop, do: axis.id
+
+    case s.sessions[session.port] do
+      nil -> {{:error, :disconnected}, s}
+      fresh when is_nil(home) -> {{:ok, :reconfigured}, put_in(s.sessions[session.port], fresh)}
+      fresh -> {{:ok, :recovering}, put_in(s.sessions[session.port], %{fresh | rezero: home})}
+    end
+  end
+
+  defp rezero(s, session, axis, %{lifecycle: lifecycle} = snapshot, opts)
+       when lifecycle in [:ready, :awaiting_reference] do
+    case snapshot.axes[axis.id] do
+      %{ready: true} ->
+        resume_axis(s, axis.id)
+        {{:ok, :resumed}, s |> drop_watch(axis.id) |> unpause(axis.id)}
+
+      %{pending: pending} when pending != nil ->
+        {{:error, :busy}, s}
+
+      %{} ->
+        with :ok <- applied_configuration(s, axis.id, session.pid),
+             {:ok, op, params} <- rezero_command(axis, opts),
+             do: reference_and_resume(s, session.pid, axis.id, op, params),
+             else: (error -> {error, s})
+
+      nil ->
+        {{:error, :needs_apply}, s}
+    end
+  end
+
+  defp rezero(s, _session, _axis, %{lifecycle: lifecycle}, _opts), do: {{:error, lifecycle}, s}
+
+  defp rezero_command(%StepperAxis{reference_strategy: :internal_stop}, _opts),
+    do: {:ok, :home, %{}}
+
+  defp rezero_command(%StepperAxis{} = axis, opts) do
+    if Keyword.get(opts, :aligned, false),
+      do: {:ok, :reference, %{position: axis.home_position}},
+      else: {:error, :alignment_required}
+  end
+
+  # The reference command goes out while the axis is still paused, so no train target can
+  # slip in first; train control resumes only once the device accepted it.
+  defp reference_and_resume(s, pid, id, op, params) do
+    case StepperSession.command(pid, id, op, params, :manual) do
+      {:ok, _} = ok ->
+        StepperSession.pause(pid, id, false)
+        {ok, s |> drop_watch(id) |> unpause(id)}
+
+      error ->
+        {error, s}
+    end
+  end
+
+  # The Home an explicit Re-zero asked for after a fault. Skipped if someone claimed the
+  # axis in the meantime or it is no longer a set-up internal-stop axis.
+  defp rezero_axis(s, session, id) do
+    s = put_in(s.sessions[session.port], session)
+
+    case Hardware.get_stepper_axis(id) do
+      {:ok, %StepperAxis{commissioned: true, reference_strategy: :internal_stop}} ->
+        if Map.has_key?(s.leases, id),
+          do: s,
+          else: s |> reference_and_resume(session.pid, id, :home, %{}) |> elem(1)
+
+      _ ->
+        s
+    end
+  end
 
   # A Recover, like an Apply, never authorizes a Home.
   defp consume_home_on_recover(s, pid, :recover) do
@@ -456,7 +567,7 @@ defmodule Trenino.Hardware.StepperManager do
         s
 
       session ->
-        put_in(s.sessions[port], %{session | auto_home: false})
+        put_in(s.sessions[port], %{session | auto_home: false, rezero: nil})
     end
   end
 
@@ -520,6 +631,7 @@ defmodule Trenino.Hardware.StepperManager do
         generation: generation(conn),
         device_id: device.id,
         auto_home: auto_home,
+        rezero: nil,
         rollovers: 0
       }
 

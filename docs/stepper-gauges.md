@@ -84,50 +84,58 @@ axis stays paused.
 ## Configure and commission
 
 1. In Hardware configurations, select a panel and open **Stepper axes**. Click
-   **Add axis**, then **X27.168 motor** under "Start from" (six-state, shield port 1, address 0x60; the second
-   axis gets port 2) and give it a name. The form shows only the common fields (axis,
-   port, mode, direction, limits, speed, acceleration). Home sweep, backoff, timeouts,
-   watchdog, idle/host-loss behavior, reference strategy and shield address are under
-   **Advanced** and keep safe defaults. Both axes must share one shield address;
-   display address collisions are rejected.
-2. Save, then **Apply to Device**. Saving never Home/Move commands a motor and does
-   not reach the device by itself: the form tells you to Apply, and an **Apply needed**
-   banner stays on the page until the device confirms the saved configuration (Trenino
-   records a fingerprint of what the device last confirmed and compares it with what is
-   saved; names and calibration do not count). With no device connected the page says
-   why Apply is unavailable instead of hiding the button. Apply is never blocked;
-   with a display at 0x70 it only shows the warning described above. To reverse direction click
-   **Flip direction** on the axis (or update `reverse` over MCP), Apply, then
-   re-align the needle by hand and Assign reference again. An axis-only panel uses the canonical eight-byte empty legacy configuration
+   **Add gauge**, give it a name and pick the shield port (Motor 1 or 2; a port in
+   use is disabled). The defaults suit an X27 gauge motor (six-state, steps 0-720,
+   idle hold, shield address 0x60). **Motor settings** holds the motor type, travel
+   limits, speed and acceleration for other motors. Direction, the zero reference and
+   homing are not form fields: the guided setup sets them on the real dial. There are
+   no presets.
+2. **Add and set up** saves the axis and opens the guided gauge setup (see above),
+   which applies the configuration, lines up zero, checks direction, marks the dial,
+   offers homing against the end stop and records commissioning. Saving never moves a
+   motor. Editing a motion setting later clears commissioning, so the card asks for
+   setup again. An **Apply needed** banner stays on the page until the device confirms
+   the saved configuration (Trenino records a fingerprint of what the device last
+   confirmed; names and calibration do not count). With a display at 0x70 a warning
+   explains the shield-alone order; Apply is never blocked. An axis-only panel uses the
+   canonical eight-byte empty legacy configuration
    `02 <configuration id, little endian> 00 00 ff`. ConfigurationStored must confirm
    its identity before axis setup. It removes old modules and resets/releases
    axes; independent SetOutput pins and removed display contents are not cleared.
-   Each axis card shows one state chip (Ready, Needs setup, Paused, Moving, Device
-   not connected, Fault), one reason line when something needs attention, and the
-   single action that moves you forward (Set up gauge, Resume train control or
-   Recover configuration). **Stop** appears on the card face whenever the needle is
-   moving or you hold manual control. Every manual control (take manual control, Stop,
-   Release, Enable, Home, Resume, Recover, reference, Move to target, jog, complete
-   commissioning) and the glossary for reference, manual control and commissioning are
-   under **Advanced / manual controls**. Edit, Flip direction and Delete are in the
-   ⋯ menu, and shield-address recommissioning is under the panel's **Advanced**. A fault is shown only while the session is
-   faulted; it clears once the session reconfigures or an acknowledgement succeeds.
-3. Under **Advanced / manual controls**, take manual control. Automatic targets pause. For **host reference**, physically
-   align the pointer and explicitly Assign reference to the entered coordinate.
-   Enable energizes a phase; it does not create a reference.
-4. Use small jog increments and conservative speed/acceleration to verify direction
-   and travel. Jog requires a fresh stationary known estimate. Stop cancels command
-   generation immediately; a moving Stop may lose reference. Release disables
-   bridges and always loses reference.
-5. For deliberately selected **internal stop**, physically verify direction, sweep,
-   backoff, speed and timeout before Home. Home runs a bounded sweep/backoff without
-   a sensor. Acceptance is separate from completion. Completion means **Assumed
-   internal-stop reference**, never detection of a stop or proof of shaft movement.
-6. Record physical commissioning only after checking the real dial. Continuous
-   gauges require **idle hold**; idle release loses reference after every completion.
-7. Release manual control and explicitly Resume train control. Outside the guided
-   wizard, browser/process loss stops manual motion and leaves automatic output paused
-   until Resume.
+3. Each axis card shows its name, one status chip and, only when something needs
+   attention, one reason and one action:
+
+   | Status | Action |
+   | --- | --- |
+   | Needs setup (not commissioned, dial missing/unreviewed/blocked, or idle release) | **Set up gauge** |
+   | Apply needed (the device runs different settings) | Apply from the page banner |
+   | Needs re-zero (position lost: reconnect, moving Stop, Release, fault) | **Re-zero** (internal stop) or **The needle is on 0** (host reference, after lining it up by hand) |
+   | Paused (referenced, train output paused) | **Resume train output** |
+   | Fault | **Re-zero** (reconfigures the device first) |
+   | Zeroing, Moving | **Stop** |
+   | Ready, Starting, Manual control, Offline, Update firmware | none |
+
+   **Re-zero** (`StepperManager.rezero/2`) is an explicit operator action, so unlike
+   Recover or Apply it may Home: an internal-stop axis Homes now, or after a fault once
+   the reconfigured device awaits a reference (only that axis, and only if nobody holds
+   it by then; starting an Apply or an MCP recover cancels it). A host-reference axis
+   takes its reference at the home position once the operator confirms the needle is on
+   0. A referenced axis is only handed back. Re-zero is refused while anyone holds manual
+   control. Train output resumes only after the device accepted the Home or reference.
+4. **Stop** is on the card whenever the needle moves or you hold manual control. Without
+   manual control it claims it first; train output then stays paused until you resume.
+5. The ⋯ menu holds **Run gauge setup again**, **Edit**, **Diagnostics** and **Delete**
+   (with confirmation). Diagnostics shows the raw status line and every manual control:
+   take manual control, Resume train control, Stop, Release, Enable, Home, Reconfigure
+   device, Assign reference, Move to and jog. Jog requires a fresh stationary known
+   estimate. A moving Stop may lose reference; Release disables bridges and always loses
+   reference. Home runs a bounded sweep/backoff without a sensor; completion means
+   **assumed internal-stop reference**, never detection of a stop.
+6. The shield address is one line under the cards. **Change** opens a short panel with
+   the shield-alone order (unplug a 0x70 display, change the address, reconnect and
+   apply again); confirming it resets the shield and both gauges need re-zeroing.
+   Commissioning itself is recorded only by the guided setup (or MCP
+   `complete_commissioning`).
 
 An axis paused or under manual control when the device connects misses that Home. It
 stays unreferenced until the next connection or a deliberate Home, so handing it back
@@ -153,16 +161,10 @@ Wrapping without a Reset is only acceptable once firmware is shown to allow it.
 
 ## Dial calibration (per axis)
 
-The dial belongs to the hardware, not the train. Calibrate it once per axis under
-**Stepper axes** on the configuration page (**Calibrate dial** on the axis card, below the
-commissioning controls); every train gauge on that axis shares it. A refit of the needle
-is measured once, not per train.
-
-The editor holds the dial unit ("Dial shows": raw, m/s, km/h or mph), the measured points
-and the review checkbox. Measuring needs no saved gauge. Preview shows the target for a
-dial value without moving anything. **Take manual control**, **Move to test value** and
-**Capture stationary estimated position** are enabled only when possible and each states
-what is missing. Saving never moves the motor.
+The dial belongs to the hardware, not the train. The guided gauge setup measures it once
+per axis under **Stepper axes** on the configuration page (**Run gauge setup again** in the
+axis menu re-measures it); every train gauge on that axis shares it. A refit of the needle
+is measured once, not per train. MCP `update_dial_calibration` edits it directly.
 
 Record 2-32 strictly increasing dial values with strictly monotonic positions (increasing
 or decreasing), inside axis soft limits. Add/edit/remove/reorder rows. Capture records the
@@ -179,7 +181,7 @@ In the train editor, each saved gauge shows its name, the dial it drives, one st
 something is wrong, the one reason plus one link to fix it on the axis. Turn it on or off with
 the switch; Edit and Delete are quiet buttons, and the endpoint and raw values are under
 **Details**. To add one, choose **Gauges -> Add gauge**. The form has three numbered steps:
-(1) axis (shows whether its dial is calibrated, with a link to calibrate it), (2) endpoint
+(1) axis (shows whether its dial is calibrated, with a link to set up the gauge), (2) endpoint
 and "Simulator reports in" unit, (3) save/enable. Multiplier, offset, stale time,
 out-of-range and inactive behavior are under **Advanced**. Every disabled control states
 what is missing. Save never moves the motor; you can save disabled, finish commissioning and

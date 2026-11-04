@@ -111,9 +111,11 @@ If your panel has a stepper motor driving a needle, Trenino can walk you through
 whole setup, including the dial marks, without knowing any of the settings in advance.
 For wiring and background see [Physical stepper gauges](stepper-gauges.md).
 
-1. Open your configuration, find **Stepper axes**, and click **Add axis** and
-   choose **X27.168 motor** under "Start from". Save it, then click **Apply to Device**.
-2. On the axis card click **Set up gauge**.
+1. Open your configuration, find **Stepper axes**, click **Add gauge**, give it a name
+   and pick the shield port. Click **Add and set up**: the guided setup opens right away.
+   (Later, **Set up gauge** on the card or **Run gauge setup again** in its menu opens it.)
+2. If Trenino later loses track of the needle (after a reconnect or a fault), the card
+   says **Needs re-zero**: click **Re-zero** and it hands the gauge back to the train.
 3. **Check**: the wizard confirms the controller is connected, the settings are on it
    and the motor is wired. It sends the settings if they are not. If you have a display
    at address 0x70, it repeats the warning about registering the shield first.

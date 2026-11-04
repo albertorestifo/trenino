@@ -79,8 +79,8 @@ defmodule TreninoWeb.GaugeSetupTest do
       refute has_element?(view, "#gauge-claim")
       refute has_element?(view, "input[name='gauge_binding[points][0][value]']")
 
-      assert has_element?(view, "#gauge-dial-status a", "Calibrate the dial")
-      assert has_element?(view, "#gauge-enable-reason", "commissioning")
+      assert has_element?(view, "#gauge-dial-status a", "Set up gauge")
+      assert has_element?(view, "#gauge-enable-reason", "Set up this gauge first")
       assert has_element?(view, "#gauge-advanced input[name='gauge_binding[multiplier]']")
 
       refute has_element?(
@@ -136,7 +136,7 @@ defmodule TreninoWeb.GaugeSetupTest do
       {:ok, _} = Hardware.commission_stepper_axis(axis)
       {:ok, view, _} = live(conn, ~p"/trains/#{train.id}")
       view |> element("#gauge-add") |> render_click()
-      assert has_element?(view, "#gauge-enable-reason", "Calibrate and review the dial")
+      assert has_element?(view, "#gauge-enable-reason", "Run the gauge setup")
     end
 
     test "numbers are rendered with a dot decimal separator", %{conn: conn, train: train} do
@@ -220,7 +220,7 @@ defmodule TreninoWeb.GaugeSetupTest do
       b = %GaugeBinding{enabled: true, stepper_axis: axis}
       snap = %{lifecycle: :ready, axes: %{}}
       assert TreninoWeb.GaugeGuidance.blocker(b, snap, false) =~ "simulator"
-      assert TreninoWeb.GaugeGuidance.blocker(b, snap, true) =~ "not commissioned"
+      assert TreninoWeb.GaugeGuidance.blocker(b, snap, true) =~ "not set up"
       axis = %{axis | commissioned: true}
       b = %{b | stepper_axis: axis}
 
@@ -233,7 +233,7 @@ defmodule TreninoWeb.GaugeSetupTest do
                b,
                %{snap | axes: %{1 => %{ready: false, paused: false}}},
                true
-             ) =~ "reference"
+             ) =~ "re-zero"
 
       assert TreninoWeb.GaugeGuidance.blocker(
                b,
@@ -260,37 +260,58 @@ defmodule TreninoWeb.GaugeSetupTest do
       assert TreninoWeb.GaugeGuidance.train_hint(train, "Class323_DMS_B") =~ "\"Class323_DMS_B\""
     end
 
-    test "next step per lifecycle" do
-      axis = %Trenino.Hardware.StepperAxis{
-        id: 1,
-        commissioned: false,
-        reference_strategy: :host_reference
-      }
+    test "axis status: one state and one action" do
+      alias Trenino.Hardware.{DialCalibration, StepperAxis}
 
-      step = &TreninoWeb.GaugeGuidance.next_step(axis, &1, &2, &3)
-      assert step.(%{lifecycle: :disconnected, axes: %{}}, false, true) =~ "Apply needed"
-      assert step.(%{lifecycle: :fault, axes: %{}}, false, false) =~ "Recover"
+      dial = %DialCalibration{valid: true, reviewed: true}
+      axis = %StepperAxis{id: 1, commissioned: true, dial_calibration: dial}
+      status = &TreninoWeb.GaugeGuidance.axis_status(axis, &1)
+      runtime = %{ready: true, paused: false, lease: nil, pending: nil, status: nil}
 
-      assert step.(
-               %{lifecycle: :awaiting_reference, axes: %{1 => %{ready: false, paused: true}}},
-               false,
-               false
-             ) =~ "take manual control"
+      assert %{state: :offline, primary: nil} = status.(%{lifecycle: :disconnected, axes: %{}})
+      assert %{state: :fault, primary: :rezero} = status.(%{lifecycle: :fault, axes: %{}})
 
-      assert step.(
-               %{lifecycle: :awaiting_reference, axes: %{1 => %{ready: false, paused: true}}},
-               true,
-               false
-             ) =~ "Assign reference"
+      assert %{state: :ready, primary: nil} =
+               status.(%{lifecycle: :ready, axes: %{1 => runtime}})
 
-      commissioned = %{axis | commissioned: true}
+      assert %{state: :needs_rezero, primary: :rezero} =
+               status.(%{lifecycle: :ready, axes: %{1 => %{runtime | ready: false}}})
 
-      assert TreninoWeb.GaugeGuidance.next_step(
-               commissioned,
-               %{lifecycle: :ready, axes: %{1 => %{ready: true, paused: true}}},
-               false,
-               false
-             ) =~ "Resume train control"
+      assert %{state: :paused, primary: :resume} =
+               status.(%{lifecycle: :ready, axes: %{1 => %{runtime | paused: true}}})
+
+      assert %{state: :manual, primary: nil} =
+               status.(%{lifecycle: :ready, axes: %{1 => %{runtime | lease: %{owner: :mcp}}}})
+
+      assert %{state: :needs_apply, primary: nil} = status.(%{lifecycle: :ready, axes: %{}})
+
+      moved = %{axis | max_position: 900}
+
+      assert %{state: :needs_apply} =
+               TreninoWeb.GaugeGuidance.axis_status(moved, %{
+                 lifecycle: :ready,
+                 axes: %{1 => Map.put(runtime, :config, axis)}
+               })
+
+      for unset <- [
+            %{axis | idle_behavior: :release},
+            %{axis | commissioned: false},
+            %{axis | dial_calibration: nil},
+            %{axis | dial_calibration: %{dial | reviewed: false}},
+            %{axis | dial_calibration: %{dial | valid: false}}
+          ] do
+        assert %{state: :needs_setup, primary: :wizard} =
+                 TreninoWeb.GaugeGuidance.axis_status(unset, %{
+                   lifecycle: :ready,
+                   axes: %{1 => runtime}
+                 })
+      end
+
+      assert %{state: :fault, primary: :wizard} =
+               TreninoWeb.GaugeGuidance.axis_status(%{axis | commissioned: false}, %{
+                 lifecycle: :fault,
+                 axes: %{}
+               })
     end
   end
 end

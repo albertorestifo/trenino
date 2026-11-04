@@ -25,7 +25,7 @@ defmodule Trenino.Hardware.StepperLease do
   end
 
   @doc "Refusal reason for an action blocked by an existing lease."
-  @spec refusal(map(), integer(), :claim | :resume) :: {:lease_held, map()}
+  @spec refusal(map(), integer(), :claim | :resume | :rezero) :: {:lease_held, map()}
   def refusal(lease, now, action),
     do: {:lease_held, lease |> info(now) |> Map.put(:action, action)}
 
@@ -33,6 +33,8 @@ defmodule Trenino.Hardware.StepperLease do
   @spec message(map()) :: String.t()
   def message(%{action: :resume} = info),
     do: "Cannot resume train control: " <> reason(info)
+
+  def message(%{action: :rezero} = info), do: "Cannot re-zero: " <> reason(info)
 
   def message(info), do: "Cannot take manual control: " <> reason(info)
 
@@ -47,8 +49,8 @@ defmodule Trenino.Hardware.StepperLease do
   end
 
   defp reason(%{owner: :ui}) do
-    "the Trenino UI holds manual control. Use Resume train control there (or close " <>
-      "that page) first."
+    "the Trenino UI holds manual control. Finish or close the gauge setup or diagnostics " <>
+      "there first."
   end
 
   defp expiry_hint(ms) when is_integer(ms), do: " (expires in #{div(ms + 999, 1000)} s)"
