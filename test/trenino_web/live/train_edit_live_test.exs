@@ -135,6 +135,110 @@ defmodule TreninoWeb.TrainEditLiveTest do
     end
   end
 
+  describe "section nav and groups" do
+    setup do
+      {:ok, device} = Hardware.create_device(%{name: "Panel"})
+      {:ok, axis} = Hardware.create_stepper_axis(device.id, %{name: "Speed"})
+
+      {:ok, train} =
+        TrainContext.create_train(%{name: "Class 323", identifiers: [%{identifier: "Class323"}]})
+
+      {:ok, binding} =
+        TrainContext.create_gauge_binding(train.id, %{
+          name: "Speedometer",
+          stepper_axis_id: axis.id,
+          endpoint: "VerifiedSpeed",
+          input_unit: :mps
+        })
+
+      %{train: train, binding: binding}
+    end
+
+    test "groups have muted h2 headings and the nav links to each section with its count", %{
+      conn: conn,
+      train: train,
+      binding: binding
+    } do
+      {:ok, view, _} = live(conn, ~p"/trains/#{train.id}")
+
+      assert has_element?(view, "nav#section-nav[aria-label='Train configuration sections']")
+
+      for {id, label} <- [
+            {"controls", "Controls"},
+            {"displays-lights", "Displays & lights"},
+            {"automation", "Automation"}
+          ] do
+        assert has_element?(
+                 view,
+                 "div##{id}[data-section-group] > " <>
+                   "h2##{id}-title.uppercase.tracking-wide.text-muted",
+                 label
+               )
+      end
+
+      for {id, label} <- [
+            {"elements", "Elements"},
+            {"gauge-bindings", "Gauge bindings"},
+            {"display-bindings", "Display bindings"},
+            {"output-bindings", "Output bindings"},
+            {"sequences", "Sequences"},
+            {"scripts", "Scripts"}
+          ] do
+        assert has_element?(view, "#section-nav a[href='##{id}']", label)
+      end
+
+      assert has_element?(view, "div#controls section#elements[data-section-card]")
+      assert has_element?(view, "div#displays-lights section#gauge-bindings")
+      assert has_element?(view, "div#automation section#sequences")
+      refute has_element?(view, "#section-nav a[href='#elements'] .badge")
+      assert has_element?(view, "#section-nav a[href='#gauge-bindings'] .badge", "1")
+      assert has_element?(view, "#gauge-bindings-title + .badge", "1")
+
+      view |> element("#gauge-delete-#{binding.id}") |> render_click()
+
+      assert TrainContext.list_gauge_bindings(train.id) == []
+      refute has_element?(view, "#section-nav a[href='#gauge-bindings'] .badge")
+    end
+
+    test "the gauge bindings nav count follows a saved binding", %{conn: conn, train: train} do
+      {:ok, view, _} = live(conn, ~p"/trains/#{train.id}")
+      assert has_element?(view, "#section-nav a[href='#gauge-bindings'] .badge", "1")
+
+      # A train binds each axis once, so the second binding needs its own axis.
+      {:ok, device} = Hardware.create_device(%{name: "Second panel"})
+      {:ok, axis} = Hardware.create_stepper_axis(device.id, %{name: "Brake"})
+
+      {:ok, second} =
+        TrainContext.create_gauge_binding(train.id, %{
+          name: "Brake gauge",
+          stepper_axis_id: axis.id,
+          endpoint: "VerifiedBrake",
+          input_unit: :mps
+        })
+
+      send(view.pid, {:gauge_binding_saved, second})
+
+      assert has_element?(view, "#section-nav a[href='#gauge-bindings'] .badge", "2")
+    end
+
+    test "the sequences nav count follows the sequence manager", %{conn: conn, train: train} do
+      {:ok, view, _} = live(conn, ~p"/trains/#{train.id}")
+      refute has_element?(view, "#section-nav a[href='#sequences'] .badge")
+
+      {:ok, _} = TrainContext.create_sequence(train.id, %{name: "Door open"})
+      send(view.pid, {TreninoWeb.SequenceManagerComponent, :sequences_changed})
+
+      assert has_element?(view, "#section-nav a[href='#sequences'] .badge", "1")
+    end
+
+    test "new train hides the nav and the groups", %{conn: conn} do
+      {:ok, view, _} = live(conn, ~p"/trains/new")
+
+      refute has_element?(view, "#section-nav")
+      refute has_element?(view, "#controls")
+    end
+  end
+
   describe "new train form" do
     test "pre-fills identifier from query params when configuring detected train", %{conn: conn} do
       # When a train is detected but not configured, the user clicks "Configure"
@@ -150,7 +254,7 @@ defmodule TreninoWeb.TrainEditLiveTest do
       {:ok, _view, html} = live(conn, ~p"/trains/new")
 
       # The identifier field should be empty when no identifier is passed
-      assert html =~ "Train Identifiers"
+      assert html =~ "Train identifiers"
       assert html =~ ~s(placeholder="e.g., BR_Class_66")
       assert html =~ ~s(name="train[identifiers][0][identifier]")
     end
@@ -352,7 +456,7 @@ defmodule TreninoWeb.TrainEditLiveTest do
       {:ok, view, _html} = live(conn, ~p"/trains/#{train.id}")
 
       # Open the add element modal
-      view |> element("button", "Add Element") |> render_click()
+      view |> element("#add-element", "Add element") |> render_click()
 
       # Submit the form with button type
       view
@@ -383,6 +487,12 @@ defmodule TreninoWeb.TrainEditLiveTest do
 
       # Load the view
       {:ok, view, _html} = live(conn, ~p"/trains/#{train.id}")
+
+      # Delete asks for confirmation and names the element
+      assert has_element?(
+               view,
+               "[phx-click='delete_element'][phx-value-id='#{elem.id}'][data-confirm='Delete Horn?'][aria-label='Delete Horn']"
+             )
 
       # Delete it
       view
@@ -480,6 +590,50 @@ defmodule TreninoWeb.TrainEditLiveTest do
       assert html =~ "phx-value-id=\"#{element.id}\""
       # Button always shows "Configure"
       assert html =~ "Configure"
+    end
+  end
+
+  describe "add actions" do
+    setup do
+      {:ok, train} =
+        TrainContext.create_train(%{name: "Class 43", identifiers: [%{identifier: "Class43"}]})
+
+      {:ok, script} =
+        TrainContext.create_script(train.id, %{
+          name: "Speed watcher",
+          code: "function on_change(event) end"
+        })
+
+      %{train: train, script: script}
+    end
+
+    test "script add and edit are real links", %{conn: conn, train: train, script: script} do
+      {:ok, view, _} = live(conn, ~p"/trains/#{train.id}")
+
+      assert has_element?(
+               view,
+               "a#add-script[href='/trains/#{train.id}/scripts/new'][data-phx-link='redirect']"
+             )
+
+      assert has_element?(
+               view,
+               "a#edit-script-#{script.id}[href='/trains/#{train.id}/scripts/#{script.id}']"
+             )
+    end
+
+    test "add output binding is disabled with a visible reason while offline", %{
+      conn: conn,
+      train: train
+    } do
+      {:ok, view, _} = live(conn, ~p"/trains/#{train.id}")
+
+      assert has_element?(
+               view,
+               "#add-output-binding[disabled][aria-describedby='output-prerequisites']"
+             )
+
+      assert has_element?(view, "#output-prerequisites", "Connect to the simulator")
+      refute has_element?(view, "#add-output-binding-reason")
     end
   end
 

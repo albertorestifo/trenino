@@ -90,7 +90,7 @@ Once Trenino is running and your hardware is connected:
 2. In Trenino, click **Trains**
 3. The detected train appears — click **Create Configuration**
 4. Add elements:
-   - Click **Add Element**, name it (e.g., "Throttle"), choose type: Lever
+   - Click **Add element**, name it (e.g., "Throttle"), choose type: Lever
 5. Click **Configure** → the app suggests the matching simulator endpoint automatically
 
 ### Step 5: Bind Input to Lever
@@ -111,7 +111,7 @@ If your panel has a stepper motor driving a needle, Trenino can walk you through
 whole setup, including the dial marks, without knowing any of the settings in advance.
 For wiring and background see [Physical stepper gauges](stepper-gauges.md).
 
-1. Open your configuration, find **Stepper axes**, click **Add gauge**, give it a name
+1. Open your configuration, find **Gauges**, click **Add gauge**, give it a name
    and pick the shield port. Click **Add and set up**: the guided setup opens right away.
    (Later, **Set up gauge** on the card or **Run gauge setup again** in its menu opens it.)
 2. If Trenino later loses track of the needle (after a reconnect or a fault), the card
@@ -132,7 +132,7 @@ For wiring and background see [Physical stepper gauges](stepper-gauges.md).
    find zero by itself. Trenino lengthens the sweep if needed, you nudge the needle onto
    0 once, and Trenino remembers the distance.
 8. **Finish**: confirm the gauge works, give it a name, and the wizard shows the trains
-   that already use it. Add the gauge to a train from **Trains > Gauges > Add gauge**.
+   that already use it. Add the gauge to a train from **Trains > Gauge bindings > Add gauge binding**.
 
 A **Stop** button is visible whenever the needle moves. Closing the wizard at any point
 stops the gauge and gives control back; steps that were already saved stay saved.

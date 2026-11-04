@@ -14,7 +14,7 @@ before connecting each winding to a shield bridge. Check actual motor/shield
 electrical ratings, power and wiring.
 
 An unregistered PCA9685 responds to ALLCALL 0x70. When the panel has a stepper axis
-and a configured module at 0x70, Trenino shows a non-blocking warning (Stepper axes
+and a configured module at 0x70, Trenino shows a non-blocking warning (the Gauges section
 and the Apply dialog); Apply is never blocked and needs no confirmation. **To be
 safe, unplug the 0x70 display, apply with the shield alone, reconnect the display and
 apply again.**
@@ -26,7 +26,7 @@ conflicts never automatically ForgetDriver.
 
 The quickest route to a working speedometer is **Set up gauge** on the axis card
 (**Guided gauge setup** in its ⋯ menu once the axis is ready)
-(**Stepper axes** on the configuration page). It chains the manual steps below into one
+(the **Gauges** section on the configuration page). It chains the manual steps below into one
 flow and needs no knowledge of the parameters. It uses the same operations as the manual
 controls (`StepperManager` claim/command/release, `Hardware.save_dial_calibration`,
 `complete_commissioning`) and adds no protocol or firmware changes. Every safety rule
@@ -83,7 +83,7 @@ axis stays paused.
 
 ## Configure and commission
 
-1. In Hardware configurations, select a panel and open **Stepper axes**. Click
+1. In Hardware configurations, select a panel and go to **Gauges**. Click
    **Add gauge**, give it a name and pick the shield port (Motor 1 or 2; a port in
    use is disabled). The defaults suit an X27 gauge motor (six-state, steps 0-720,
    idle hold, shield address 0x60). **Motor settings** holds the motor type, travel
@@ -162,7 +162,7 @@ Wrapping without a Reset is only acceptable once firmware is shown to allow it.
 ## Dial calibration (per axis)
 
 The dial belongs to the hardware, not the train. The guided gauge setup measures it once
-per axis under **Stepper axes** on the configuration page (**Run gauge setup again** in the
+per axis under **Gauges** on the configuration page (**Run gauge setup again** in the
 axis menu re-measures it); every train gauge on that axis shares it. A refit of the needle
 is measured once, not per train. MCP `update_dial_calibration` edits it directly.
 
@@ -176,16 +176,16 @@ Saving candidate points does not certify physical calibration.
 
 ## Train binding
 
-In the train editor, each saved gauge shows its name, the dial it drives, one status chip
+In the train editor, each saved gauge binding shows its name, the dial it drives, one status chip
 (Live with the current dial value, Ready, Off, Not moving, Needs setup) and, only when
 something is wrong, the one reason plus one link to fix it on the axis. Turn it on or off with
-the switch; Edit and Delete are quiet buttons, and the endpoint and raw values are under
-**Details**. To add one, choose **Gauges -> Add gauge**. The form has three numbered steps:
-(1) axis (shows whether its dial is calibrated, with a link to set up the gauge), (2) endpoint
+the switch; **Edit** is a quiet button and Delete is the trash icon (it asks first), and the endpoint and raw values are under
+**Details**. To add one, choose **Gauge bindings -> Add gauge binding**. The form has three numbered steps:
+(1) hardware gauge (shows whether its dial is calibrated, with a link to set up the gauge), (2) endpoint
 and "Simulator reports in" unit, (3) save/enable. Multiplier, offset, stale time,
 out-of-range and inactive behavior are under **Advanced**. Every disabled control states
 what is missing. Save never moves the motor; you can save disabled, finish commissioning and
-the dial, then enable from the saved gauge. Enabling needs a commissioned hold axis with a
+the dial, then enable from the saved gauge binding. Enabling needs a commissioned hold axis with a
 valid, reviewed dial. A raw simulator unit only fits a raw dial. An enabled gauge that
 cannot move shows a reason (simulator not connected, not commissioned, device
 disconnected, fault, needs reference, manual pause), and a hint names the detected train

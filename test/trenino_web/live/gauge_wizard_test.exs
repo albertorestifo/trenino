@@ -119,7 +119,17 @@ defmodule TreninoWeb.GaugeWizardTest do
     assert has_element?(view, "##{id}-step-prerequisites")
     assert has_element?(view, "##{id}-checklist", "Controller connected")
     assert log(fake) == []
+
+    # The wizard sits inside the axis card (h4), so its headings rank below it.
+    card = "#stepper-axis-#{axis.id}"
+    assert has_element?(view, "#{card} h5", "Guided gauge setup")
+    assert has_element?(view, "#{card} h6")
+    refute has_element?(view, "#{card} h1, #{card} h2, #{card} h3")
+    assert view |> element(card) |> render() |> count_tags("h4") == 1
   end
+
+  defp count_tags(html, tag),
+    do: html |> LazyHTML.from_fragment() |> LazyHTML.query(tag) |> Enum.count()
 
   test "the checklist gates Continue and never mentions leases", %{
     view: view,

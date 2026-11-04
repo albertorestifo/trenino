@@ -75,4 +75,24 @@ defmodule Trenino.Hardware.Matrix do
   def virtual_pin(row_index, col_index, num_cols) do
     128 + row_index * num_cols + col_index
   end
+
+  @doc """
+  Parses a comma-separated pin list such as `"2, 3, 4"` into integers,
+  dropping blank and non-numeric entries.
+  """
+  @spec parse_pins(String.t() | nil) :: [integer()]
+  def parse_pins(pins_str) when is_binary(pins_str) do
+    pins_str
+    |> String.split(",")
+    |> Enum.map(&String.trim/1)
+    |> Enum.reject(&(&1 == ""))
+    |> Enum.flat_map(fn s ->
+      case Integer.parse(s) do
+        {n, ""} -> [n]
+        _ -> []
+      end
+    end)
+  end
+
+  def parse_pins(_), do: []
 end

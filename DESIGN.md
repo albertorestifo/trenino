@@ -270,7 +270,7 @@ Structured inside a `fieldset` wrapper with a `label` above. The label is a smal
 - **List Card** (signature component): Used in train and device list views. 12px radius (`rounded-xl`), 1px base-300 border, base-200 surface. Hover deepens the fill. The active state uses a 2px success border, a faint success/5 tint and an "Active" status chip. The card title shifts to primary on hover (`group-hover:text-primary`) as an action affordance. Chevron right icon in the trailing position.
 - **Modal:** Fixed overlay with a 50% black scrim (`bg-black/50`). Content panel is `bg-base-200`, 12px radius, `shadow-xl`. Max width 28rem (max-w-md). Internal padding 24px.
 - **Danger Zone:** Not a card. A section within an edit page, separated by a top border in base-300. The action area inside has a 30% opacity error-colored border and 5% error tint background: enough to register "destructive territory" without alarming.
-- **Empty State Panel:** base-100 background, 8px radius, 32px internal padding, centered. Icon in `text-muted`. Message in body, sub-message in metadata (`text-xs text-muted`). Empty states say what to do next ("Click scan to discover devices"). No border.
+- **Empty State Panel:** Inside an edit-page section, the empty state is one compact row (`<.section_empty>`, rendered by `config_section` when `empty?`): base-100 background, 8px radius, 16px by 12px padding, icon (`size-5 text-muted`) leading, message in `text-sm`, hint in metadata (`text-xs text-muted`). Empty states say what to do next ("Add an input to start reading a pin."). No border, no large centered box. A whole page with nothing in it uses the full-page `<.empty_state>` instead: centered, large muted icon, heading, description and a primary action.
 
 ### Navigation
 

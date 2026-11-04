@@ -285,11 +285,16 @@ defmodule TreninoWeb.SequenceManagerComponent do
   defp run_sequence_test(socket, sequence) do
     commands = sequence.commands || []
 
-    if Enum.empty?(commands) do
-      put_flash(socket, :error, "Sequence has no commands to test")
-    else
-      spawn(fn -> execute_test_sequence(commands) end)
-      put_flash(socket, :info, "Testing sequence: #{sequence.name}")
+    cond do
+      Enum.empty?(commands) ->
+        put_flash(socket, :error, "Sequence has no commands to test")
+
+      is_nil(socket.assigns.client) ->
+        put_flash(socket, :error, "Connect the simulator to test a sequence.")
+
+      true ->
+        spawn(fn -> execute_test_sequence(commands) end)
+        put_flash(socket, :info, "Testing sequence: #{sequence.name}")
     end
   end
 
@@ -347,39 +352,44 @@ defmodule TreninoWeb.SequenceManagerComponent do
   @impl true
   def render(assigns) do
     ~H"""
-    <div class="bg-base-200/50 rounded-xl p-6 mt-6">
-      <.section_header
+    <div>
+      <.config_section
+        id="sequences"
         title="Sequences"
-        action_label="New Sequence"
-        on_action="open_add_modal"
-        target={@myself}
-      />
-
-      <.empty_collection_state
-        :if={Enum.empty?(@sequences)}
-        icon="hero-list-bullet"
-        message="No sequences defined"
-        submessage="Execute multiple commands from a single button press"
-      />
-
-      <div :if={not Enum.empty?(@sequences)} class="overflow-x-auto">
-        <table class="table table-sm bg-base-100 rounded-lg">
-          <thead>
-            <tr class="bg-base-200">
-              <th>Name</th>
-              <th>Commands</th>
-              <th class="w-32"></th>
-            </tr>
-          </thead>
-          <tbody>
-            <.sequence_row
-              :for={sequence <- @sequences}
-              sequence={sequence}
-              myself={@myself}
-            />
-          </tbody>
-        </table>
-      </div>
+        count={length(@sequences)}
+        empty?={@sequences == []}
+        empty_icon="hero-list-bullet"
+        empty_message="No sequences configured"
+        empty_hint="Execute multiple commands from a single button press."
+      >
+        <:actions>
+          <.section_action
+            id="add-sequence"
+            label="Add sequence"
+            on_click="open_add_modal"
+            target={@myself}
+          />
+        </:actions>
+        <div class="overflow-x-auto">
+          <table class="table table-sm bg-base-100 rounded-lg">
+            <thead>
+              <tr class="bg-base-200">
+                <th>Name</th>
+                <th>Commands</th>
+                <th class="text-right"><span class="sr-only">Actions</span></th>
+              </tr>
+            </thead>
+            <tbody>
+              <.sequence_row
+                :for={sequence <- @sequences}
+                sequence={sequence}
+                connected={not is_nil(@client)}
+                myself={@myself}
+              />
+            </tbody>
+          </table>
+        </div>
+      </.config_section>
 
       <.add_sequence_modal
         :if={@show_add_modal}
@@ -411,6 +421,7 @@ defmodule TreninoWeb.SequenceManagerComponent do
   end
 
   attr :sequence, :map, required: true
+  attr :connected, :boolean, required: true
   attr :myself, :any, required: true
 
   defp sequence_row(assigns) do
@@ -431,37 +442,33 @@ defmodule TreninoWeb.SequenceManagerComponent do
         </span>
       </td>
       <td>
-        <div class="flex gap-1">
-          <button
-            phx-click="test_sequence"
-            phx-value-id={@sequence.id}
-            phx-target={@myself}
-            class="btn btn-ghost btn-xs text-success"
-            title="Test sequence"
-            disabled={@command_count == 0}
-          >
-            <.icon name="hero-play" class="w-4 h-4" />
-          </button>
-          <button
-            phx-click="edit_sequence"
-            phx-value-id={@sequence.id}
-            phx-target={@myself}
-            class="btn btn-ghost btn-xs"
-            title="Edit"
-          >
-            <.icon name="hero-pencil" class="w-4 h-4" />
-          </button>
-          <button
-            phx-click="delete_sequence"
-            phx-value-id={@sequence.id}
-            phx-target={@myself}
-            class="btn btn-ghost btn-xs text-error"
-            title="Delete"
-            data-confirm="Delete this sequence?"
-          >
-            <.icon name="hero-trash" class="w-4 h-4" />
-          </button>
-        </div>
+        <.row_actions id={"sequence-actions-#{@sequence.id}"} name={@sequence.name}>
+          <:action
+            id={"test-sequence-#{@sequence.id}"}
+            event="test_sequence"
+            values={%{id: @sequence.id}}
+            target={@myself}
+            icon="hero-play"
+            label="Test"
+            disabled={@command_count == 0 or not @connected}
+          />
+          <:action
+            id={"edit-sequence-#{@sequence.id}"}
+            event="edit_sequence"
+            values={%{id: @sequence.id}}
+            target={@myself}
+            icon="hero-pencil-square"
+            label="Edit"
+          />
+          <:action
+            event="delete_sequence"
+            values={%{id: @sequence.id}}
+            target={@myself}
+            kind={:danger}
+            label={"Delete #{@sequence.name}"}
+            confirm={"Delete #{@sequence.name}?"}
+          />
+        </.row_actions>
       </td>
     </tr>
     """
@@ -474,14 +481,15 @@ defmodule TreninoWeb.SequenceManagerComponent do
     ~H"""
     <div class="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div class="absolute inset-0 bg-black/50" phx-click="close_add_modal" phx-target={@myself} />
-      <div class="relative bg-base-200 rounded-xl shadow-xl w-full max-w-sm p-6">
-        <h2 class="text-xl font-semibold mb-4">New Sequence</h2>
+      <div class="relative bg-base-200 rounded-xl shadow-xl w-full max-w-md mx-4 p-6">
+        <h2 class="text-xl font-semibold mb-4">Add sequence</h2>
 
         <div class="mb-4">
-          <label class="label">
+          <label for="add-sequence-name" class="label">
             <span class="label-text">Name</span>
           </label>
           <input
+            id="add-sequence-name"
             type="text"
             value={@name}
             phx-keyup="update_name"
@@ -508,7 +516,7 @@ defmodule TreninoWeb.SequenceManagerComponent do
             disabled={String.trim(@name) == ""}
             class="btn btn-primary"
           >
-            Create
+            Add sequence
           </button>
         </div>
       </div>
@@ -614,7 +622,7 @@ defmodule TreninoWeb.SequenceManagerComponent do
               phx-target={@myself}
               class="btn btn-ghost btn-sm w-full"
             >
-              <.icon name="hero-plus" class="w-4 h-4" /> Add Command
+              <.icon name="hero-plus" class="w-4 h-4" /> Add command
             </button>
           </div>
         </div>

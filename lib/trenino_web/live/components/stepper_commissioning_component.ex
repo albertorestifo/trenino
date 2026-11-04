@@ -211,7 +211,7 @@ defmodule TreninoWeb.StepperCommissioningComponent do
         class="space-y-3 rounded-lg border border-base-300 p-3"
       >
         <div>
-          <h4 class="text-sm font-medium">Diagnostics</h4>
+          <h5 class="text-sm font-medium">Diagnostics</h5>
           <p class="text-xs text-muted">
             For troubleshooting. Taking manual control pauses train output until you resume it.
           </p>

@@ -51,7 +51,7 @@ An exact identifier can belong to only one train profile. If prefixes from diffe
 ### Creating a Lever Element
 
 1. Open your train configuration
-2. Click **Add Element**
+2. Click **Add element**
 3. Enter element name (e.g., "Throttle", "Reverser")
 4. Select type: **Lever**
 5. Save the element
@@ -308,7 +308,7 @@ Sequences are reusable lists of simulator commands with configurable delays betw
 **Creating a sequence:**
 
 1. Open your train configuration
-2. Scroll to the **Sequences** section and click **New Sequence**
+2. Scroll to the **Sequences** section and click **Add sequence**
 3. Name the sequence (e.g., "Cold Start")
 4. Add commands:
    - **Endpoint** — the simulator API path to write to
@@ -363,4 +363,4 @@ Common paths to explore:
 
 ## Physical gauges
 
-The train editor's Gauges section chooses which simulator value drives each physical dial; the dial itself is calibrated once per axis on the hardware configuration page. See [Stepper gauges](stepper-gauges.md) for hardware registration, commissioning, calibration, reference loss, Class 323 starter and MCP control. Firmware 3.1.0 or newer is required.
+The train editor's Gauge bindings section chooses which simulator value drives each physical dial; the dial itself is calibrated once per axis on the hardware configuration page. See [Stepper gauges](stepper-gauges.md) for hardware registration, commissioning, calibration, reference loss, Class 323 starter and MCP control. Firmware 3.1.0 or newer is required.

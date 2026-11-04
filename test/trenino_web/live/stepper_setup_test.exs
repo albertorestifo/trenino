@@ -49,7 +49,8 @@ defmodule TreninoWeb.StepperSetupTest do
 
     view |> form("#stepper-axis-form", stepper_axis: %{name: "Brake"}) |> render_submit()
     assert length(Hardware.list_stepper_axes(device.id)) == 2
-    assert has_element?(view, "#stepper-add[disabled]")
+    assert has_element?(view, "#stepper-add[disabled][aria-describedby='stepper-add-reason']")
+    assert has_element?(view, "#stepper-add-reason", "Both motor ports are in use")
   end
 
   test "the shield address is one line until the operator asks to change it", %{conn: conn} do

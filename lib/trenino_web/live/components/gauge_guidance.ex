@@ -165,7 +165,7 @@ defmodule TreninoWeb.GaugeGuidance do
         "Not moving: the simulator is not connected."
 
       not axis.commissioned ->
-        "Not moving: the gauge is not set up. Run the gauge setup on its stepper axis first."
+        "Not moving: the gauge is not set up. Run its gauge setup in the hardware configuration first."
 
       match?(%DialCalibration{valid: false}, GaugeBinding.calibration(axis)) ->
         "Not moving: the dial is blocked because the axis changed or a homing setup was left unfinished. Run the gauge wizard again."
@@ -179,7 +179,8 @@ defmodule TreninoWeb.GaugeGuidance do
     do: "Not moving: the device is not connected."
 
   defp lifecycle_blocker(%{lifecycle: :fault}, _),
-    do: "Not moving: the axis is in a fault state. Re-zero it on its stepper axis."
+    do:
+      "Not moving: the axis is in a fault state. Re-zero it on its gauge in the hardware configuration."
 
   defp lifecycle_blocker(%{lifecycle: :unsupported}, _),
     do: "Not moving: the controller firmware does not support steppers."
@@ -188,10 +189,12 @@ defmodule TreninoWeb.GaugeGuidance do
     do: "Not moving: the device is still being configured."
 
   defp lifecycle_blocker(_, %{ready: false}),
-    do: "Not moving: the needle needs re-zeroing. Re-zero it on its stepper axis."
+    do:
+      "Not moving: the needle needs re-zeroing. Re-zero it on its gauge in the hardware configuration."
 
   defp lifecycle_blocker(_, %{paused: true}),
-    do: "Not moving: train output is paused. Resume it on its stepper axis."
+    do:
+      "Not moving: train output is paused. Resume it on its gauge in the hardware configuration."
 
   defp lifecycle_blocker(_, _), do: nil
 

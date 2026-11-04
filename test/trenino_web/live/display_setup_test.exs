@@ -174,6 +174,15 @@ defmodule TreninoWeb.DisplaySetupTest do
     {:ok, view, _} = live(conn, ~p"/trains/#{train.id}")
     assert has_element?(view, "#display-prerequisites a[href='/settings']")
     assert has_element?(view, "#display-prerequisites a[href='/']")
+
+    # The notice with the links is the one visible explanation of the disabled button.
+    assert has_element?(
+             view,
+             "#add-display-binding[disabled][aria-describedby='display-prerequisites']"
+           )
+
+    assert has_element?(view, "#display-prerequisites", "before creating a binding")
+    refute has_element?(view, "#add-display-binding-reason")
     refute has_element?(view, "[role='dialog'][aria-labelledby='display-binding-title']")
   end
 

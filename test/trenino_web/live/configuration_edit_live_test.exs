@@ -149,6 +149,168 @@ defmodule TreninoWeb.ConfigurationEditLiveTest do
     end
   end
 
+  describe "sections" do
+    setup do
+      {:ok, device} = Hardware.create_device(%{name: "Section panel"})
+
+      {:ok, input} =
+        Hardware.create_input(device.id, %{
+          pin: 5,
+          name: "Throttle",
+          input_type: :analog,
+          sensitivity: 5
+        })
+
+      {:ok, matrix} =
+        Hardware.create_matrix(device.id, %{name: "Panel keys", row_pins: [2, 3], col_pins: [4]})
+
+      {:ok, output} = Hardware.create_output(device.id, %{pin: 13})
+
+      %{device: device, input: input, matrix: matrix, output: output}
+    end
+
+    test "each section is a titled card with an add action", %{conn: conn, device: device} do
+      {:ok, view, _} = live(conn, ~p"/configurations/#{device.config_id}")
+
+      for {id, title, add} <- [
+            {"inputs", "Inputs", "Add input"},
+            {"matrices", "Matrices", "Add matrix"},
+            {"outputs", "Outputs", "Add output"},
+            {"displays", "Displays", "Add display"},
+            {"stepper-axes", "Gauges", "Add gauge"}
+          ] do
+        assert has_element?(view, "section##{id}[data-section-card] h3##{id}-title", title)
+        assert has_element?(view, "section##{id} button", add)
+      end
+
+      assert has_element?(view, "#displays [data-section-empty]", "No displays configured")
+      assert has_element?(view, "#stepper-axes [data-section-empty]", "No gauges configured")
+    end
+
+    test "sections sit in Controls and Feedback groups behind a per-section counted nav", %{
+      conn: conn,
+      device: device,
+      output: output
+    } do
+      {:ok, view, _} = live(conn, ~p"/configurations/#{device.config_id}")
+
+      assert has_element?(view, "nav#section-nav[aria-label='Hardware configuration sections']")
+
+      for {id, label} <- [
+            {"inputs", "Inputs"},
+            {"matrices", "Matrices"},
+            {"outputs", "Outputs"},
+            {"displays", "Displays"},
+            {"stepper-axes", "Gauges"}
+          ] do
+        assert has_element?(view, "#section-nav a[href='##{id}']", label)
+      end
+
+      # Each nav count is the count on its section: one input, one matrix, one output,
+      # and no displays or gauges.
+      for id <- ["inputs", "matrices", "outputs"] do
+        assert has_element?(view, "#section-nav a[href='##{id}'] .badge", "1")
+        assert has_element?(view, "##{id}-title + .badge", "1")
+      end
+
+      refute has_element?(view, "#section-nav a[href='#displays'] .badge")
+      refute has_element?(view, "#section-nav a[href='#stepper-axes'] .badge")
+
+      for {group, title, sections} <- [
+            {"controls-group", "Controls", ["inputs", "matrices"]},
+            {"feedback-group", "Feedback", ["outputs", "displays", "stepper-axes"]}
+          ] do
+        assert has_element?(
+                 view,
+                 "div##{group}[data-section-group] > " <>
+                   "h2##{group}-title.uppercase.tracking-wide.text-muted",
+                 title
+               )
+
+        for id <- sections do
+          assert has_element?(view, "div##{group} section##{id}[data-section-card]")
+        end
+      end
+
+      view
+      |> element("#output-actions-#{output.id} button[phx-click='delete_output']")
+      |> render_click()
+
+      refute has_element?(view, "#section-nav a[href='#outputs'] .badge")
+      assert has_element?(view, "#section-nav a[href='#inputs'] .badge", "1")
+    end
+
+    test "the page has one h1 above the group headings", %{conn: conn, device: device} do
+      {:ok, view, _} = live(conn, ~p"/configurations/#{device.config_id}")
+
+      assert has_element?(view, "h1", "Edit configuration")
+
+      assert view |> render() |> LazyHTML.from_fragment() |> LazyHTML.query("h1") |> Enum.count() ==
+               1
+    end
+
+    test "new configuration hides the anchor nav but keeps the groups", %{conn: conn} do
+      {:ok, view, _} = live(conn, ~p"/configurations/new")
+
+      assert has_element?(view, "h1", "New configuration")
+      refute has_element?(view, "#section-nav")
+      assert has_element?(view, "div#controls-group h2", "Controls")
+      assert has_element?(view, "div#feedback-group h2", "Feedback")
+    end
+
+    test "new configuration shows Displays and Gauges the same way", %{conn: conn} do
+      {:ok, view, _} = live(conn, ~p"/configurations/new")
+
+      for {section, button, reason} <- [
+            {"displays", "add-display", "Name the configuration first to add a display."},
+            {"stepper-axes", "stepper-add", "Name the configuration first to add a gauge."}
+          ] do
+        assert has_element?(view, "div#feedback-group section##{section}[data-section-card]")
+
+        assert has_element?(
+                 view,
+                 "##{section} button##{button}[disabled][aria-describedby='#{button}-reason']"
+               )
+
+        assert has_element?(view, "##{section} p##{button}-reason", reason)
+      end
+    end
+
+    test "input, matrix and output deletes ask for confirmation", %{
+      conn: conn,
+      device: device,
+      input: input,
+      matrix: matrix,
+      output: output
+    } do
+      {:ok, view, _} = live(conn, ~p"/configurations/#{device.config_id}")
+
+      assert has_element?(
+               view,
+               "#input-actions-#{input.id} button[phx-click='delete_input']" <>
+                 "[aria-label='Delete Throttle'][data-confirm='Delete Throttle?']"
+             )
+
+      assert has_element?(
+               view,
+               "#matrix-actions-#{matrix.id} button[phx-click='delete_matrix']" <>
+                 "[aria-label='Delete Panel keys'][data-confirm^='Delete Panel keys?']"
+             )
+
+      assert has_element?(
+               view,
+               "#output-actions-#{output.id} button[phx-click='delete_output']" <>
+                 "[aria-label='Delete output on pin 13'][data-confirm='Delete output on pin 13?']"
+             )
+
+      view
+      |> element("#output-actions-#{output.id} button[phx-click='delete_output']")
+      |> render_click()
+
+      refute has_element?(view, "#output-actions-#{output.id}")
+    end
+  end
+
   describe "Hardware context integration" do
     setup do
       {:ok, device} = Hardware.create_device(%{name: "Test Device"})

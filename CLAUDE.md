@@ -30,6 +30,7 @@ When adding or removing a tool:
 - Keep protocol structs atom-based and convert to integers only on the wire. Each message module implements `encode` and `decode_body` with binary pattern matching; dispatch lives in `lib/trenino/serial/protocol/message.ex`.
 - GenServers keep their state in a nested `State` struct.
 - Define macros only when explicitly requested.
+- Edit-page sections (hardware configuration and train pages) use `section_group`, `config_section`, `section_action`, `row_actions` and `section_empty` from `TreninoWeb.SharedComponents`; see the "Edit-page sections" block in the phoenix-liveview skill.
 
 ## Tests
 

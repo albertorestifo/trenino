@@ -77,7 +77,7 @@ defmodule TreninoWeb.SequenceManagerComponentTest do
           client: client
         )
 
-      assert html =~ "No sequences defined"
+      assert html =~ "No sequences configured"
       assert html =~ "Execute multiple commands from a single button press"
     end
 
@@ -95,7 +95,7 @@ defmodule TreninoWeb.SequenceManagerComponentTest do
         )
 
       assert html =~ "phx-click=\"edit_sequence\""
-      assert html =~ "hero-pencil"
+      assert html =~ "hero-pencil-square"
     end
 
     test "shows delete button for each sequence", %{
@@ -132,7 +132,13 @@ defmodule TreninoWeb.SequenceManagerComponentTest do
       # Test button should be present for sequence with commands
       assert html =~ "phx-click=\"test_sequence\""
       assert html =~ "phx-value-id=\"#{sequence1.id}\""
-      assert html =~ "title=\"Test sequence\""
+
+      test_button =
+        html |> LazyHTML.from_fragment() |> LazyHTML.query("#test-sequence-#{sequence1.id}")
+
+      assert Enum.count(test_button) == 1
+      assert LazyHTML.attribute(test_button, "aria-label") == ["Test Horn Sequence"]
+      assert LazyHTML.attribute(test_button, "disabled") == []
     end
 
     test "disables test button for sequences without commands", %{
@@ -149,9 +155,14 @@ defmodule TreninoWeb.SequenceManagerComponentTest do
           client: client
         )
 
-      # Find the test button for sequence2 - it should be disabled
-      # Look for the pattern: phx-value-id matching sequence2.id followed by disabled attribute
-      assert html =~ ~r/phx-value-id="#{sequence2.id}"[^>]*disabled/
+      # The test button for sequence2 (no commands) must be disabled
+      doc = LazyHTML.from_fragment(html)
+
+      assert doc
+             |> LazyHTML.query(
+               "button[phx-click='test_sequence'][phx-value-id='#{sequence2.id}'][disabled]"
+             )
+             |> Enum.count() == 1
     end
 
     test "shows new sequence button", %{train: train, sequences: sequences, client: client} do
@@ -164,7 +175,7 @@ defmodule TreninoWeb.SequenceManagerComponentTest do
         )
 
       assert html =~ "phx-click=\"open_add_modal\""
-      assert html =~ "New Sequence"
+      assert html =~ "Add sequence"
     end
   end
 
@@ -258,6 +269,25 @@ defmodule TreninoWeb.SequenceManagerComponentTest do
   end
 
   describe "client handling" do
+    test "disables the test button while the simulator is offline", %{
+      train: train,
+      sequences: sequences,
+      sequence1: sequence1
+    } do
+      html =
+        render_component(SequenceManagerComponent,
+          id: "sequence-manager",
+          train_id: train.id,
+          sequences: sequences,
+          client: nil
+        )
+
+      assert html
+             |> LazyHTML.from_fragment()
+             |> LazyHTML.query("#test-sequence-#{sequence1.id}[disabled]")
+             |> Enum.count() == 1
+    end
+
     test "renders without client (client can be nil)", %{train: train, sequences: sequences} do
       html =
         render_component(SequenceManagerComponent,

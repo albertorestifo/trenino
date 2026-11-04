@@ -20,6 +20,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- The hardware configuration and train pages share one section layout. Each
+  page scrolls as one, with sections grouped under headings (Inputs and
+  Outputs on the hardware page; Controls, Displays & lights and Automation on
+  the train page) and a sticky row of links to jump between sections. Every
+  section has the same header with a count and one **Add ...** button, the
+  same compact empty state, and the same row actions: labelled buttons such as
+  **Edit**, **Test** or **Calibrate**, a "..." menu when a row has three or
+  more, and a trash button that always asks before deleting (inputs, matrices,
+  outputs, elements and output bindings used to delete without asking). A
+  disabled add button now says why. Renames: **Stepper axes** is now
+  **Gauges**; the train page's gauge section is **Gauge bindings** with
+  **Add gauge binding**; **New Sequence** is **Add sequence**; Sequences is no
+  longer a collapsible panel. A sequence's **Test** is disabled while the
+  simulator is offline.
 - Stepper axes are much simpler. Adding a gauge asks only for a name and a
   shield port, then goes straight into the guided gauge setup. Each card shows
   one status (Needs setup, Ready, Moving, Zeroing, Needs re-zero, Paused,

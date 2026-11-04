@@ -212,7 +212,10 @@ defmodule TreninoWeb.CoreComponents do
 
   @doc """
   A real on/off switch. State lives on the server: `aria-checked` follows `checked`, and
-  nothing flips on the client until the server confirms.
+  nothing flips on the client until the server confirms. It looks like daisyUI's
+  `toggle toggle-sm toggle-primary` (on is primary, not success: it is a control, not a
+  state indicator), so it sits beside checkbox toggles without standing out, inside a
+  44px hit target.
 
   ## Examples
 
@@ -235,14 +238,14 @@ defmodule TreninoWeb.CoreComponents do
       {@rest}
     >
       <span class={[
-        "relative inline-flex h-6 w-11 shrink-0 items-center rounded-full border transition-colors motion-reduce:transition-none",
-        @checked && "border-success bg-success",
+        "relative inline-flex h-5 w-9 shrink-0 items-center rounded-full border transition-colors motion-reduce:transition-none",
+        @checked && "border-primary bg-primary",
         !@checked && "border-base-content/30 bg-base-300"
       ]}>
         <span class={[
-          "inline-block size-4 rounded-full bg-base-100 transition-transform motion-reduce:transition-none",
-          @checked && "translate-x-6",
-          !@checked && "translate-x-1"
+          "inline-block size-3.5 rounded-full transition-transform motion-reduce:transition-none",
+          @checked && "translate-x-[1.125rem] bg-primary-content",
+          !@checked && "translate-x-0.5 bg-base-content/60"
         ]}></span>
       </span>
     </button>

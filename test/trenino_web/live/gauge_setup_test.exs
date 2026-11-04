@@ -70,7 +70,7 @@ defmodule TreninoWeb.GaugeSetupTest do
       html = render(view)
 
       positions =
-        for n <- ["Hardware axis", "Simulator endpoint and units", "Save, then enable"],
+        for n <- ["Hardware gauge", "Simulator endpoint and units", "Save, then enable"],
             do: :binary.match(html, n) |> elem(0)
 
       assert positions == Enum.sort(positions)
@@ -193,7 +193,7 @@ defmodule TreninoWeb.GaugeSetupTest do
       assert has_element?(view, "#gauge-blocker-#{id}", "simulator is not connected")
       assert has_element?(view, "#gauge-binding-#{id} p", "simulator is not connected")
       # No axis link when the axis is not the problem.
-      refute has_element?(view, "#gauge-binding-#{id} a", "Open axis")
+      refute has_element?(view, "#gauge-binding-#{id} a", "Open gauge")
     end
   end
 

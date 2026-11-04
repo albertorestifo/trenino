@@ -310,7 +310,7 @@ defmodule TreninoWeb.GaugeWizardComponent do
       aria-label="Guided gauge setup"
     >
       <header class="flex flex-wrap items-center justify-between gap-2">
-        <h3 class="text-xl font-semibold">Guided gauge setup: {@wizard.axis.name}</h3>
+        <h5 class="text-xl font-semibold">Guided gauge setup: {@wizard.axis.name}</h5>
         <button
           id={"#{@id}-close"}
           type="button"
@@ -476,7 +476,7 @@ defmodule TreninoWeb.GaugeWizardComponent do
 
   defp step_body(%{wizard: %{step: :prerequisites}} = assigns) do
     ~H"""
-    <h4 class="font-medium">Get ready</h4>
+    <h6 class="font-medium">Get ready</h6>
     <p class="text-sm">
       This wizard walks you through direction, dial marks and (optionally) automatic zeroing. Nothing moves until you press a button that says it will.
     </p>
@@ -505,7 +505,7 @@ defmodule TreninoWeb.GaugeWizardComponent do
             phx-click="act"
             phx-value-do="apply"
             phx-target={@myself}
-            class="btn btn-xs ml-2"
+            class="btn btn-xs text-xs ml-2"
           >
             Send settings
           </button>
@@ -516,7 +516,7 @@ defmodule TreninoWeb.GaugeWizardComponent do
             phx-click="act"
             phx-value-do="fix_idle_hold"
             phx-target={@myself}
-            class="btn btn-xs ml-2"
+            class="btn btn-xs text-xs ml-2"
           >
             Turn on and send
           </button>
@@ -562,7 +562,7 @@ defmodule TreninoWeb.GaugeWizardComponent do
 
   defp step_body(%{wizard: %{step: :applying}} = assigns) do
     ~H"""
-    <h4 class="font-medium">Sending the new settings to the controller</h4>
+    <h6 class="font-medium">Sending the new settings to the controller</h6>
     <p class="text-sm" role="status">
       Waiting for the controller to confirm. This takes a few seconds and the motor does not move.
     </p>
@@ -581,7 +581,7 @@ defmodule TreninoWeb.GaugeWizardComponent do
 
   defp step_body(%{wizard: %{step: :align}} = assigns) do
     ~H"""
-    <h4 class="font-medium">Start with the needle on zero</h4>
+    <h6 class="font-medium">Start with the needle on zero</h6>
     <p
       :if={@wizard.flips > 0 and @wizard.return_to == :jog_test}
       id={"#{@id}-flipped"}
@@ -647,7 +647,7 @@ defmodule TreninoWeb.GaugeWizardComponent do
       )
 
     ~H"""
-    <h4 class="font-medium">Check the direction</h4>
+    <h6 class="font-medium">Check the direction</h6>
     <p class="text-sm">
       Trenino will move the needle a small way ({GaugeWizard.jog_distance()} steps). Watch which way it goes.
     </p>
@@ -689,7 +689,7 @@ defmodule TreninoWeb.GaugeWizardComponent do
       )
 
     ~H"""
-    <h4 class="font-medium">Describe the dial</h4>
+    <h6 class="font-medium">Describe the dial</h6>
     <p class="text-sm">
       Tell Trenino what the printed dial shows, for example 0 to 100 mph. You will then move the needle to evenly spaced marks and confirm what it reads at each one.
     </p>
@@ -727,9 +727,9 @@ defmodule TreninoWeb.GaugeWizardComponent do
       |> assign(:total, length(wizard.marks))
 
     ~H"""
-    <h4 class="font-medium">
+    <h6 class="font-medium">
       Mark {min(@wizard.mark_index + 1, @total)} of {@total}: {format_value(@current.value)} {@unit}
-    </h4>
+    </h6>
     <p :if={@moving?} role="status" class="text-sm">
       Moving the needle to about where {format_value(@current.value)} {@unit} should be.
     </p>
@@ -791,7 +791,7 @@ defmodule TreninoWeb.GaugeWizardComponent do
     assigns = assign(assigns, :unit, unit_label(assigns.wizard.range.unit))
 
     ~H"""
-    <h4 class="font-medium">All marks measured</h4>
+    <h6 class="font-medium">All marks measured</h6>
     <.points_table points={@wizard.points} unit={@unit} />
     <p class="text-sm">
       Next you check the marks on the real dial. Nothing is saved until you confirm them, so any dial saved earlier stays as it was if you stop now.
@@ -811,7 +811,7 @@ defmodule TreninoWeb.GaugeWizardComponent do
 
   defp step_body(%{wizard: %{step: :verify_zero}} = assigns) do
     ~H"""
-    <h4 class="font-medium">Check zero</h4>
+    <h6 class="font-medium">Check zero</h6>
     <p :if={@moving?} role="status" class="text-sm">Sending the needle back to 0.</p>
     <div :if={not @moving?} class="space-y-2">
       <p class="font-medium">Is the needle exactly on the 0 mark?</p>
@@ -827,7 +827,7 @@ defmodule TreninoWeb.GaugeWizardComponent do
     assigns = assign(assigns, :unit, unit_label(assigns.wizard.range.unit))
 
     ~H"""
-    <h4 class="font-medium">Check a mark in between</h4>
+    <h6 class="font-medium">Check a mark in between</h6>
     <p :if={@moving?} role="status" class="text-sm">
       Moving to {format_value(@wizard.current.value)} {@unit}.
     </p>
@@ -853,7 +853,7 @@ defmodule TreninoWeb.GaugeWizardComponent do
     assigns = assign(assigns, :plan, home_preview(assigns.wizard))
 
     ~H"""
-    <h4 class="font-medium">Automatic zeroing (recommended)</h4>
+    <h6 class="font-medium">Automatic zeroing (recommended)</h6>
     <p class="text-sm">
       With automatic zeroing the needle finds zero by itself every time the controller starts: it sweeps gently down into its end stop, then backs off to the 0 mark. You will not have to line it up by hand again.
     </p>
@@ -896,9 +896,9 @@ defmodule TreninoWeb.GaugeWizardComponent do
 
   defp step_body(%{wizard: %{step: :home_run}} = assigns) do
     ~H"""
-    <h4 class="font-medium">
+    <h6 class="font-medium">
       {if @wizard.home.phase == :first, do: "Run the first sweep", else: "Run the sweep again"}
-    </h4>
+    </h6>
     <p
       :for={warning <- @wizard.home.warnings}
       :if={@wizard.home.phase == :first}
@@ -940,7 +940,7 @@ defmodule TreninoWeb.GaugeWizardComponent do
       )
 
     ~H"""
-    <h4 class="font-medium">Nudge the needle onto 0</h4>
+    <h6 class="font-medium">Nudge the needle onto 0</h6>
     <p class="text-sm">
       Nudge the needle up until it sits exactly on the 0 mark. Trenino remembers how far you moved it.
     </p>
@@ -967,7 +967,7 @@ defmodule TreninoWeb.GaugeWizardComponent do
 
   defp step_body(%{wizard: %{step: :home_confirm}} = assigns) do
     ~H"""
-    <h4 class="font-medium">Check the sweep</h4>
+    <h6 class="font-medium">Check the sweep</h6>
     <p class="font-medium">Did the needle land exactly on the 0 mark?</p>
     <.yes_no id={@id} myself={@myself} yes="Yes, exactly on 0" no="No, adjust again" />
     <p class="text-xs text-muted">
@@ -981,7 +981,7 @@ defmodule TreninoWeb.GaugeWizardComponent do
       assign(assigns, :rename_form, to_form(%{"name" => assigns.wizard.axis.name}, as: :axis))
 
     ~H"""
-    <h4 class="font-medium">Finish</h4>
+    <h6 class="font-medium">Finish</h6>
     <.points_table points={@wizard.points} unit={unit_label(@wizard.range.unit)} />
     <form
       id={"#{@id}-rename-form"}
@@ -1037,7 +1037,7 @@ defmodule TreninoWeb.GaugeWizardComponent do
       )
 
     ~H"""
-    <h4 class="font-medium">Your gauge is set up</h4>
+    <h6 class="font-medium">Your gauge is set up</h6>
     <ul class="list-disc pl-5 text-sm space-y-1">
       <li>Direction checked and zero confirmed on the real dial.</li>
       <li>Dial saved and reviewed ({length(@wizard.points)} marks).</li>
@@ -1050,7 +1050,7 @@ defmodule TreninoWeb.GaugeWizardComponent do
     </ul>
     <div id={"#{@id}-bindings"} class="space-y-1 text-sm">
       <p :if={@bindings == []}>
-        No train uses this gauge yet. Open a train, choose Gauges, then Add gauge to make it show the speed.
+        No train uses this gauge yet. Open a train, go to Gauge bindings, then Add gauge binding to make it show the speed.
       </p>
       <p :if={@bindings != []} class="font-medium">Trains using this gauge:</p>
       <p :for={binding <- @bindings}>

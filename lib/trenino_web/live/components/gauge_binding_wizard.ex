@@ -6,6 +6,9 @@ defmodule TreninoWeb.GaugeBindingWizard do
   (`TreninoWeb.GaugeWizardComponent`).
   """
   use TreninoWeb, :live_component
+
+  import TreninoWeb.SharedComponents, only: [config_section: 1, section_action: 1, row_actions: 1]
+
   alias Phoenix.HTML.Form
   alias Trenino.Hardware
   alias Trenino.Hardware.DialCalibration
@@ -95,7 +98,7 @@ defmodule TreninoWeb.GaugeBindingWizard do
            form: nil,
            editing: nil,
            bindings: Train.list_gauge_bindings(binding.train_id),
-           message: "Gauge saved. Commission and reference hardware before enabling."
+           message: "Gauge binding saved. Commission and reference hardware before enabling."
          )}
 
       {:error, cs} ->
@@ -109,6 +112,7 @@ defmodule TreninoWeb.GaugeBindingWizard do
   def handle_event("delete", %{"id" => id}, socket) do
     with %GaugeBinding{} = b <- own_binding(socket, id),
          {:ok, _} <- Train.delete_gauge_binding(b) do
+      send(self(), {:gauge_binding_deleted, b})
       {:noreply, assign(socket, :bindings, Train.list_gauge_bindings(b.train_id))}
     else
       error -> {:noreply, assign(socket, :message, GaugeFeedback.result(error))}
@@ -193,10 +197,10 @@ defmodule TreninoWeb.GaugeBindingWizard do
   defp enable_reason(form, axis) do
     cond do
       is_nil(axis) ->
-        "Choose a hardware axis in step 1."
+        "Choose a hardware gauge in step 1."
 
       not axis.commissioned ->
-        "Set up this gauge first (Stepper axes in the hardware configuration)."
+        "Set up this gauge first (Gauges, in the Feedback group of the hardware configuration)."
 
       axis.idle_behavior != :hold ->
         "Continuous gauges need the axis idle behavior set to hold."
@@ -233,9 +237,9 @@ defmodule TreninoWeb.GaugeBindingWizard do
   defp step(assigns) do
     ~H"""
     <section class="rounded-lg border border-base-300 p-4 space-y-3">
-      <h3 class="font-semibold flex items-center gap-2">
+      <h4 class="font-semibold flex items-center gap-2">
         <span class="badge badge-sm badge-neutral">{@number}</span>{@title}
-      </h3>
+      </h4>
       {render_slot(@inner_block)}
     </section>
     """
@@ -262,7 +266,7 @@ defmodule TreninoWeb.GaugeBindingWizard do
       <.link
         navigate={"/configurations/#{@axis.device.config_id}#stepper-axis-#{@axis.id}"}
         class="link"
-      >{if match?({:ok, _}, @status), do: "Open axis", else: "Set up gauge"}</.link>
+      >{if match?({:ok, _}, @status), do: "Open gauge", else: "Set up gauge"}</.link>
     </p>
     """
   end
@@ -285,20 +289,44 @@ defmodule TreninoWeb.GaugeBindingWizard do
       |> assign(:config_id, b.stepper_axis.device.config_id)
 
     ~H"""
-    <article id={"gauge-binding-#{@b.id}"} class="space-y-2 rounded-lg border border-base-300 p-4">
+    <article
+      id={"gauge-binding-#{@b.id}"}
+      class="space-y-2 rounded-lg border border-base-300 bg-base-100 p-4"
+    >
       <div class="flex items-start justify-between gap-3">
         <div class="min-w-0">
-          <h3 class="font-semibold break-words">{@b.name}</h3>
+          <h4 class="font-semibold break-words">{@b.name}</h4>
           <p class="text-sm text-muted">{@axis.device.name} · {@axis.name}</p>
         </div>
-        <.switch
-          id={"gauge-toggle-#{@b.id}"}
-          checked={@b.enabled}
-          label={"#{@b.name} on"}
-          phx-click="toggle"
-          phx-value-id={@b.id}
-          phx-target={@myself}
-        />
+        <div class="ml-auto flex shrink-0 items-center gap-2">
+          <.switch
+            id={"gauge-toggle-#{@b.id}"}
+            checked={@b.enabled}
+            label={"#{@b.name} on"}
+            phx-click="toggle"
+            phx-value-id={@b.id}
+            phx-target={@myself}
+          />
+          <.row_actions id={"gauge-actions-#{@b.id}"} name={@b.name}>
+            <:action
+              id={"gauge-edit-#{@b.id}"}
+              event="edit"
+              values={%{id: @b.id}}
+              target={@myself}
+              icon="hero-pencil-square"
+              label="Edit"
+            />
+            <:action
+              id={"gauge-delete-#{@b.id}"}
+              event="delete"
+              values={%{id: @b.id}}
+              target={@myself}
+              kind={:danger}
+              label={"Delete #{@b.name}"}
+              confirm={"Delete #{@b.name}?"}
+            />
+          </.row_actions>
+        </div>
       </div>
       <div class="flex flex-wrap items-center gap-x-3 gap-y-1">
         <.status_chip id={"gauge-status-#{@b.id}"} kind={@card.kind} label={@card.label} />
@@ -314,26 +342,6 @@ defmodule TreninoWeb.GaugeBindingWizard do
       >
         {action_label(@card.action)}
       </.link>
-      <div class="flex flex-wrap items-center gap-1 pt-1">
-        <button
-          type="button"
-          phx-click="edit"
-          phx-value-id={@b.id}
-          phx-target={@myself}
-          class="btn btn-ghost btn-sm"
-        >
-          Edit
-        </button>
-        <button
-          type="button"
-          phx-click="delete"
-          phx-value-id={@b.id}
-          phx-target={@myself}
-          class="btn btn-ghost btn-sm"
-        >
-          Delete
-        </button>
-      </div>
       <.disclosure id={"gauge-details-#{@b.id}"} summary="Details">
         <p class="break-all text-sm">
           {@b.endpoint} · {unit_label(@b.input_unit)}
@@ -361,7 +369,7 @@ defmodule TreninoWeb.GaugeBindingWizard do
     do: ~p"/configurations/#{config_id}" <> "#stepper-axis-#{axis.id}"
 
   defp action_label(:dial), do: "Set up gauge"
-  defp action_label(:axis), do: "Open axis"
+  defp action_label(:axis), do: "Open gauge"
 
   # Exactly one reason wins, in order of how directly it explains a still needle.
   defp card_state(b, runtime, client) do
@@ -460,153 +468,177 @@ defmodule TreninoWeb.GaugeBindingWizard do
       |> assign(:train_hint, train_hint(assigns))
 
     ~H"""
-    <section id="gauge-bindings" class="bg-base-200/50 rounded-xl p-6 mt-6 space-y-4">
-      <div class="flex justify-between">
-        <h2 class="text-xl font-semibold">Gauges</h2><button
-          id="gauge-add"
-          type="button"
-          phx-click="add"
-          phx-target={@myself}
-          class="btn btn-sm"
-          disabled={@axes == []}
-        >Add gauge</button>
-      </div>
-      <p :if={@axes == []}>
-        Create a stepper axis in <.link navigate={~p"/"} class="link">Hardware configurations</.link>, Apply it, commission the physical dial and calibrate it there.
-      </p>
-      <p :if={@message && is_nil(@form)} role="status" class="text-sm">{@message}</p>
-      <div :if={@form} class="space-y-4">
-        <p class="text-sm">
-          Choose which simulator value drives which hardware dial. Saving never moves hardware.
-        </p>
-        <.form
-          for={@form}
-          id="gauge-binding-form"
-          phx-change="validate"
-          phx-submit="submit"
-          phx-target={@myself}
-          class="space-y-4"
-        >
-          <.step number={1} title="Hardware axis">
-            <.input
-              field={@form[:stepper_axis_id]}
-              type="select"
-              label="Hardware axis"
-              options={Enum.map(@axes, &{"#{&1.device.name} · #{&1.name}", &1.id})}
-            />
-            <.dial_line :if={@axis} id="gauge-dial-status" axis={@axis} />
-          </.step>
-
-          <.step number={2} title="Simulator endpoint and units">
-            <button
-              id="gauge-class323"
-              type="button"
-              phx-click="preset"
-              phx-target={@myself}
-              class="btn btn-sm"
-            >Fill with Class 323 speedometer starter</button>
-            <p class="text-xs text-warning">
-              The starter only suggests the units (m/s in). Verify the endpoint and units; no endpoint is guessed.
-            </p>
-            <.input field={@form[:name]} label="Name" />
-            <.input field={@form[:endpoint]} label="Simulator endpoint (verify units)" />
-            <button
-              :if={@client}
-              type="button"
-              phx-click="explore"
-              phx-target={@myself}
-              class="btn btn-sm"
-            >Browse simulator API</button>
-            <.live_component
-              :if={@client && @explorer_open}
-              module={TreninoWeb.ApiExplorerComponent}
-              id="gauge-api-explorer"
-              client={@client}
-              field={@explorer_field}
-              mode={:none}
-              embedded={true}
-            />
-            <p :if={is_nil(@client)} class="text-sm">
-              Offline editing: enter the exact endpoint now, or connect the simulator to browse it.
-            </p>
-            <.input field={@form[:value_key]} label="Value key (blank requires one numeric value)" />
-            <.input
-              field={@form[:input_unit]}
-              type="select"
-              label="Simulator reports in"
-              options={@unit_options}
-            />
-            <p :if={@axis && GaugeBinding.calibration(@axis)} id="gauge-dial-unit" class="text-xs">
-              The dial unit is set on the axis: {unit_label(
-                GaugeBinding.calibration(@axis).output_unit
-              )}.
-            </p>
-          </.step>
-
-          <.step number={3} title="Save, then enable">
-            <.input
-              field={@form[:enabled]}
-              type="checkbox"
-              label="Enable continuous gauge"
-              disabled={enable_reason(@form, @axis) != nil and not checked?(@form[:enabled])}
-            />
-            <.why_disabled
-              :if={not checked?(@form[:enabled])}
-              id="gauge-enable-reason"
-              reason={enable_reason(@form, @axis)}
-            />
-            <p class="text-xs">
-              Saving never moves the motor. If you cannot enable yet, save it disabled, finish commissioning and the dial calibration, then use Enable on the saved gauge.
-            </p>
-            <button id="gauge-save" type="submit" name="intent" value="save" class="btn btn-primary">
-              {if checked?(@form[:enabled]),
-                do: "Save and enable gauge",
-                else: "Save gauge (disabled)"}
-            </button>
-            <button type="button" phx-click="cancel" phx-target={@myself} class="btn btn-ghost">
-              Cancel
-            </button>
-          </.step>
-
-          <details id="gauge-advanced" class="border border-base-300 rounded p-3">
-            <summary class="cursor-pointer">
-              Advanced (multiplier, offset, stale time, out of range)
-            </summary>
-            <div class="grid sm:grid-cols-2 gap-3 mt-3">
-              <.input field={@form[:multiplier]} type="number" step="0.01" label="Multiplier" />
-              <.input field={@form[:offset]} type="number" step="0.01" label="Offset" />
+    <div>
+      <.config_section
+        id="gauge-bindings"
+        title="Gauge bindings"
+        count={length(@bindings)}
+        empty?={@bindings == [] and is_nil(@form)}
+        empty_icon="hero-arrow-trending-up"
+        empty_message="No gauge bindings configured"
+        empty_hint="Add a gauge binding to drive a hardware gauge from a simulator value."
+      >
+        <:actions>
+          <.section_action
+            id="gauge-add"
+            label="Add gauge binding"
+            on_click="add"
+            target={@myself}
+            disabled={@axes == []}
+            describedby="gauge-prerequisites"
+          />
+        </:actions>
+        <:notice :if={@axes == []}>
+          <p id="gauge-prerequisites" class="text-sm text-muted">
+            Add a gauge to a <.link navigate={~p"/"} class="link">hardware configuration</.link>
+            first, Apply it, then run its gauge setup and calibrate the dial there.
+          </p>
+        </:notice>
+        <:notice :if={@message && is_nil(@form)}>
+          <p role="status" class="text-sm">{@message}</p>
+        </:notice>
+        <:notice :if={@train_hint}>
+          <div
+            id="gauge-train-hint"
+            role="status"
+            class="alert alert-soft alert-warning text-sm"
+          >
+            <.icon name="hero-exclamation-triangle" class="size-5 shrink-0" />
+            <p>{@train_hint}</p>
+          </div>
+        </:notice>
+        <div :if={@form} class="space-y-4">
+          <p class="text-sm">
+            Choose which simulator value drives which hardware dial. Saving never moves hardware.
+          </p>
+          <.form
+            for={@form}
+            id="gauge-binding-form"
+            phx-change="validate"
+            phx-submit="submit"
+            phx-target={@myself}
+            class="space-y-4"
+          >
+            <.step number={1} title="Hardware gauge">
               <.input
-                field={@form[:stale_after_ms]}
-                type="number"
-                step="1"
-                label="Sample stale after (ms)"
-              />
-              <.input
-                field={@form[:out_of_range]}
+                field={@form[:stepper_axis_id]}
                 type="select"
-                label="Out of range"
-                options={[{"Clamp to the ends", :clamp}, {"Reject the value", :reject}]}
+                label="Hardware gauge"
+                options={Enum.map(@axes, &{"#{&1.device.name} · #{&1.name}", &1.id})}
               />
-            </div>
-            <.input
-              field={@form[:absolute_value]}
-              type="checkbox"
-              label="Use absolute input value (negative speed becomes positive)"
-            />
-          </details>
-        </.form>
-      </div>
-      <p :if={@train_hint} id="gauge-train-hint" role="status" class="text-sm text-warning">
-        {@train_hint}
-      </p>
-      <.gauge_card
-        :for={b <- @bindings}
-        b={b}
-        runtime={@runtime[b.id]}
-        client={@client}
-        myself={@myself}
-      />
-    </section>
+              <.dial_line :if={@axis} id="gauge-dial-status" axis={@axis} />
+            </.step>
+
+            <.step number={2} title="Simulator endpoint and units">
+              <button
+                id="gauge-class323"
+                type="button"
+                phx-click="preset"
+                phx-target={@myself}
+                class="btn btn-sm"
+              >Fill with Class 323 speedometer starter</button>
+              <p class="text-xs text-warning">
+                The starter only suggests the units (m/s in). Verify the endpoint and units; no endpoint is guessed.
+              </p>
+              <.input field={@form[:name]} label="Name" />
+              <.input field={@form[:endpoint]} label="Simulator endpoint (verify units)" />
+              <button
+                :if={@client}
+                type="button"
+                phx-click="explore"
+                phx-target={@myself}
+                class="btn btn-sm"
+              >Browse simulator API</button>
+              <.live_component
+                :if={@client && @explorer_open}
+                module={TreninoWeb.ApiExplorerComponent}
+                id="gauge-api-explorer"
+                client={@client}
+                field={@explorer_field}
+                mode={:none}
+                embedded={true}
+              />
+              <p :if={is_nil(@client)} class="text-sm">
+                Offline editing: enter the exact endpoint now, or connect the simulator to browse it.
+              </p>
+              <.input field={@form[:value_key]} label="Value key (blank requires one numeric value)" />
+              <.input
+                field={@form[:input_unit]}
+                type="select"
+                label="Simulator reports in"
+                options={@unit_options}
+              />
+              <p :if={@axis && GaugeBinding.calibration(@axis)} id="gauge-dial-unit" class="text-xs">
+                The dial unit is set on the axis: {unit_label(
+                  GaugeBinding.calibration(@axis).output_unit
+                )}.
+              </p>
+            </.step>
+
+            <.step number={3} title="Save, then enable">
+              <.input
+                field={@form[:enabled]}
+                type="checkbox"
+                label="Enable continuous gauge"
+                disabled={enable_reason(@form, @axis) != nil and not checked?(@form[:enabled])}
+              />
+              <.why_disabled
+                :if={not checked?(@form[:enabled])}
+                id="gauge-enable-reason"
+                reason={enable_reason(@form, @axis)}
+              />
+              <p class="text-xs">
+                Saving never moves the motor. If you cannot enable yet, save it disabled, finish commissioning and the dial calibration, then use Enable on the saved gauge binding.
+              </p>
+              <button id="gauge-save" type="submit" name="intent" value="save" class="btn btn-primary">
+                {if checked?(@form[:enabled]),
+                  do: "Save and enable gauge binding",
+                  else: "Save gauge binding (disabled)"}
+              </button>
+              <button type="button" phx-click="cancel" phx-target={@myself} class="btn btn-ghost">
+                Cancel
+              </button>
+            </.step>
+
+            <.disclosure
+              id="gauge-advanced"
+              summary="Advanced (multiplier, offset, stale time, out of range)"
+            >
+              <div class="grid sm:grid-cols-2 gap-3">
+                <.input field={@form[:multiplier]} type="number" step="0.01" label="Multiplier" />
+                <.input field={@form[:offset]} type="number" step="0.01" label="Offset" />
+                <.input
+                  field={@form[:stale_after_ms]}
+                  type="number"
+                  step="1"
+                  label="Sample stale after (ms)"
+                />
+                <.input
+                  field={@form[:out_of_range]}
+                  type="select"
+                  label="Out of range"
+                  options={[{"Clamp to the ends", :clamp}, {"Reject the value", :reject}]}
+                />
+              </div>
+              <.input
+                field={@form[:absolute_value]}
+                type="checkbox"
+                label="Use absolute input value (negative speed becomes positive)"
+              />
+            </.disclosure>
+          </.form>
+        </div>
+        <div :if={@bindings != []} class={["space-y-3", @form && "mt-4"]}>
+          <.gauge_card
+            :for={b <- @bindings}
+            b={b}
+            runtime={@runtime[b.id]}
+            client={@client}
+            myself={@myself}
+          />
+        </div>
+      </.config_section>
+    </div>
     """
   end
 

@@ -11,7 +11,7 @@ Scripts are sandboxed — they can only interact with the simulator and your har
 ## Creating a Script
 
 1. Open your train configuration
-2. Scroll to the **Scripts** section and click **New Script**
+2. Scroll to the **Scripts** section and click **Add script**
 3. Give it a name, write your code, add triggers, and click **Create**
 
 ## Your First Script

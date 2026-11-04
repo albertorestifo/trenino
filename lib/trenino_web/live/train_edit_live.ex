@@ -14,6 +14,7 @@ defmodule TreninoWeb.TrainEditLive do
 
   import TreninoWeb.NavComponents
   import TreninoWeb.SharedComponents
+  import TreninoWeb.TrainEditLive.Sections
 
   alias Trenino.Hardware
   alias Trenino.Hardware.ConfigurationManager
@@ -26,9 +27,8 @@ defmodule TreninoWeb.TrainEditLive do
     ButtonController,
     DisplayController,
     Element,
+    GaugeBinding,
     Identifier,
-    LeverConfig,
-    LeverInputBinding,
     OutputController,
     Train,
     TrainIdentifier
@@ -117,7 +117,8 @@ defmodule TreninoWeb.TrainEditLive do
      |> assign(:display_wizard_event, nil)
      |> assign(:sequence_manager_event, nil)
      |> assign(:value_polling_target, nil)
-     |> assign(:scripts, [])}
+     |> assign(:scripts, [])
+     |> assign(:gauge_binding_count, 0)}
   end
 
   defp mount_existing(socket, train_id) do
@@ -179,7 +180,8 @@ defmodule TreninoWeb.TrainEditLive do
          |> assign(:display_wizard_event, nil)
          |> assign(:sequence_manager_event, nil)
          |> assign(:value_polling_target, nil)
-         |> assign(:scripts, scripts)}
+         |> assign(:scripts, scripts)
+         |> assign(:gauge_binding_count, length(TrainContext.list_gauge_bindings(train.id)))}
 
       {:error, :not_found} ->
         {:ok,
@@ -1219,9 +1221,32 @@ defmodule TreninoWeb.TrainEditLive do
     {:noreply, socket}
   end
 
+  # The gauge binding wizard owns its list; the page only keeps the count for the nav.
+  def handle_info({event, %GaugeBinding{train_id: train_id}}, socket)
+      when event in [:gauge_binding_saved, :gauge_binding_deleted] do
+    {:noreply,
+     assign(socket, :gauge_binding_count, length(TrainContext.list_gauge_bindings(train_id)))}
+  end
+
   def handle_info(_msg, socket), do: {:noreply, socket}
 
   # Private functions
+
+  # Anchor nav entries, one per section, each counting what its section's badge counts.
+  defp nav_items(assigns) do
+    [
+      %{id: "elements", label: "Elements", count: length(assigns.elements)},
+      %{id: "gauge-bindings", label: "Gauge bindings", count: assigns.gauge_binding_count},
+      %{
+        id: "display-bindings",
+        label: "Display bindings",
+        count: length(assigns.display_bindings)
+      },
+      %{id: "output-bindings", label: "Output bindings", count: length(assigns.output_bindings)},
+      %{id: "sequences", label: "Sequences", count: length(assigns.sequences)},
+      %{id: "scripts", label: "Scripts", count: length(assigns.scripts)}
+    ]
+  end
 
   defp send_polled_value_to_component(:config_wizard, value) do
     send_update(TreninoWeb.ConfigurationWizardComponent,
@@ -1396,7 +1421,10 @@ defmodule TreninoWeb.TrainEditLive do
         assigns.train.id != nil and
         assigns.active_train.id == assigns.train.id
 
-    assigns = assign(assigns, :is_active, is_active)
+    assigns =
+      assigns
+      |> assign(:is_active, is_active)
+      |> assign(:nav_items, nav_items(assigns))
 
     ~H"""
     <.breadcrumb items={[
@@ -1407,7 +1435,6 @@ defmodule TreninoWeb.TrainEditLive do
     <main class="flex-1 p-4 sm:p-8">
       <div class="max-w-2xl mx-auto">
         <.train_header
-          train={@train}
           train_form={@train_form}
           is_active={@is_active}
           new_mode={@new_mode}
@@ -1422,84 +1449,51 @@ defmodule TreninoWeb.TrainEditLive do
           class="mt-6"
         />
 
-        <nav
+        <.section_nav
           :if={not @new_mode}
-          aria-label="Train configuration sections"
-          class="flex flex-wrap gap-2 mt-6 border-b border-base-300 pb-3 text-sm"
-        >
-          <a href="#controls" class="btn btn-ghost btn-sm">Controls</a>
-          <a href="#displays-lights" class="btn btn-ghost btn-sm">Displays &amp; lights</a>
-          <a href="#automation" class="btn btn-ghost btn-sm">Automation</a>
-        </nav>
+          label="Train configuration sections"
+          items={@nav_items}
+          class="mt-6"
+        />
 
-        <section
-          :if={not @new_mode}
-          id="controls"
-          class="scroll-mt-36 mt-6"
-          aria-labelledby="controls-title"
-        >
-          <h2 id="controls-title" class="text-xl font-semibold mb-3">Controls</h2>
-          <div class="bg-base-200/50 rounded-xl p-4 sm:p-6">
-            <.elements_section elements={@elements} is_active={@is_active} />
-          </div>
-        </section>
+        <.section_group :if={not @new_mode} id="controls" title="Controls">
+          <.elements_section elements={@elements} />
+        </.section_group>
 
-        <section
-          :if={not @new_mode}
-          id="displays-lights"
-          class="scroll-mt-36 mt-8"
-          aria-labelledby="displays-lights-title"
-        >
-          <h2 id="displays-lights-title" class="text-xl font-semibold mb-3">Displays &amp; lights</h2>
+        <.section_group :if={not @new_mode} id="displays-lights" title="Displays & lights">
           <.live_component
             module={TreninoWeb.GaugeBindingWizard}
             id="gauge-setup"
             train_id={@train.id}
             client={@nav_simulator_status.client}
           />
-          <div class="mt-4 bg-base-200/50 rounded-xl p-4 sm:p-6 space-y-6">
-            <.display_bindings_section
-              display_bindings={@display_bindings}
-              simulator_connected={@nav_simulator_status.status == :connected}
-              hardware_available={@display_hardware_available}
-            />
-            <div class="border-t border-base-300 pt-6">
-              <.output_bindings_section
-                output_bindings={@output_bindings}
-                simulator_connected={@nav_simulator_status.status == :connected}
-              />
-            </div>
-          </div>
-        </section>
+          <.display_bindings_section
+            display_bindings={@display_bindings}
+            simulator_connected={@nav_simulator_status.status == :connected}
+            hardware_available={@display_hardware_available}
+          />
+          <.output_bindings_section
+            output_bindings={@output_bindings}
+            simulator_connected={@nav_simulator_status.status == :connected}
+            outputs_available={@available_outputs != []}
+          />
+        </.section_group>
 
-        <section
-          :if={not @new_mode}
-          id="automation"
-          class="scroll-mt-36 mt-8"
-          aria-labelledby="automation-title"
-        >
-          <h2 id="automation-title" class="text-xl font-semibold mb-3">Automation</h2>
-          <details open={not Enum.empty?(@sequences)} class="py-3">
-            <summary class="cursor-pointer text-xl font-semibold">
-              Sequences ({length(@sequences)})
-            </summary>
-            <.live_component
-              module={SequenceManagerComponent}
-              id="sequence-manager"
-              train_id={@train.id}
-              sequences={@sequences}
-              client={@nav_simulator_status.client}
-              explorer_event={@sequence_manager_event}
-            />
-          </details>
-          <div class="bg-base-200/50 rounded-xl p-4 sm:p-6 mt-4">
-            <.scripts_section scripts={@scripts} train_id={@train.id} />
-          </div>
-        </section>
+        <.section_group :if={not @new_mode} id="automation" title="Automation">
+          <.live_component
+            module={SequenceManagerComponent}
+            id="sequence-manager"
+            train_id={@train.id}
+            sequences={@sequences}
+            client={@nav_simulator_status.client}
+            explorer_event={@sequence_manager_event}
+          />
+          <.scripts_section scripts={@scripts} train_id={@train.id} />
+        </.section_group>
 
         <.danger_zone
           :if={not @new_mode}
-          action_label="Delete Train"
+          action_label="Delete train"
           action_description="Permanently remove this train and all associated elements and calibration data"
           on_action="show_delete_modal"
           disabled={@is_active}
@@ -1514,7 +1508,7 @@ defmodule TreninoWeb.TrainEditLive do
       :if={@show_delete_modal}
       on_close="close_delete_modal"
       on_confirm="confirm_delete"
-      title="Delete Train"
+      title="Delete train"
       item_name={@train.name}
       description="This will permanently delete the train configuration and all its elements and calibration data."
       is_active={@is_active}
@@ -1569,634 +1563,6 @@ defmodule TreninoWeb.TrainEditLive do
       binding={@display_wizard_binding}
       explorer_event={@display_wizard_event}
     />
-    """
-  end
-
-  # Components
-
-  attr :train, :map, required: true
-  attr :train_form, :map, required: true
-  attr :is_active, :boolean, required: true
-  attr :new_mode, :boolean, required: true
-
-  attr :current_identifier, :string, default: nil
-  attr :simulator_connected, :boolean, default: false
-
-  defp train_header(assigns) do
-    ~H"""
-    <header>
-      <h1 class="text-2xl font-semibold mb-4">{if @new_mode, do: "New train", else: "Edit train"}</h1>
-      <.form
-        id="train-form"
-        for={@train_form}
-        phx-change="validate_train"
-        phx-submit="save_train"
-      >
-        <div>
-          <.input
-            label="Train Name"
-            field={@train_form[:name]}
-            type="text"
-            class="input input-bordered w-full text-xl font-semibold"
-            placeholder="e.g., BR Class 66"
-          />
-        </div>
-        <div class="mt-3">
-          <.input
-            label="Description"
-            field={@train_form[:description]}
-            type="textarea"
-            class="textarea textarea-bordered w-full resize-none"
-            placeholder="Add a description (optional)"
-            rows="2"
-          />
-        </div>
-        <div class="mt-3">
-          <h2 class="text-sm font-semibold mb-2">Train Identifiers</h2>
-          <p id="train-identifiers-hint" class="text-xs text-muted mb-3">
-            Use the simulator train ID shown on the Trains page, or connect to use it here. Each entry matches any train ID that starts with that text. Keep the full ID for one variant, or shorten the end to match several variants.
-          </p>
-          <div :if={@simulator_connected && @current_identifier} class="mb-3 space-y-2">
-            <p class="text-xs text-muted">
-              Current simulator train ID:
-              <span class="font-mono break-all">{@current_identifier}</span>
-            </p>
-            <button
-              id="use-current-train-id"
-              type="button"
-              phx-click="use_current_train_id"
-              class="btn btn-outline btn-sm"
-            >Use current train ID</button>
-          </div>
-          <p :if={not @simulator_connected} class="text-xs text-muted mb-3">
-            <.link navigate={~p"/settings"} class="link">Connect to the simulator</.link>
-            to use the current train ID, or enter one below.
-          </p>
-          <div class="space-y-2">
-            <.inputs_for :let={identifier_form} field={@train_form[:identifiers]}>
-              <div class="flex items-start gap-2">
-                <input
-                  type="hidden"
-                  name="train[identifiers_sort][]"
-                  value={identifier_form.index}
-                />
-                <div class="flex-1 min-w-0">
-                  <.input
-                    field={identifier_form[:identifier]}
-                    type="text"
-                    label={"Identifier #{identifier_form.index + 1}"}
-                    aria-describedby="train-identifiers-hint"
-                    class="input input-bordered w-full font-mono"
-                    placeholder="e.g., BR_Class_66"
-                  />
-                </div>
-                <button
-                  type="button"
-                  name="train[identifiers_drop][]"
-                  value={identifier_form.index}
-                  phx-click={Phoenix.LiveView.JS.dispatch("change")}
-                  class="btn btn-ghost btn-sm text-error mt-6 shrink-0"
-                  disabled={
-                    length(Ecto.Changeset.get_field(@train_form.source, :identifiers, [])) <= 1
-                  }
-                  title={
-                    if length(Ecto.Changeset.get_field(@train_form.source, :identifiers, [])) <= 1,
-                      do: "Keep at least one identifier",
-                      else: "Remove identifier"
-                  }
-                  aria-label={"Remove identifier #{identifier_form.index + 1}"}
-                >
-                  <.icon name="hero-trash" class="w-4 h-4" />
-                </button>
-              </div>
-            </.inputs_for>
-            <input type="hidden" name="train[identifiers_drop][]" />
-            <button
-              type="button"
-              name="train[identifiers_sort][]"
-              value="new"
-              phx-click={Phoenix.LiveView.JS.dispatch("change")}
-              class="btn btn-ghost btn-sm"
-            >
-              <.icon name="hero-plus" class="w-4 h-4" /> Add identifier
-            </button>
-            <p
-              :for={{message, options} <- @train_form[:identifiers].errors}
-              class="text-sm text-error"
-            >
-              {TreninoWeb.CoreComponents.translate_error({message, options})}
-            </p>
-          </div>
-        </div>
-        <div class="flex items-center gap-3 mt-4">
-          <.status_chip :if={@is_active} kind={:ok} label="Active" />
-          <button type="submit" class="btn btn-primary btn-sm ml-auto">
-            <.icon name="hero-check" class="w-4 h-4" />
-            {if @new_mode, do: "Create Train", else: "Save"}
-          </button>
-        </div>
-      </.form>
-    </header>
-    """
-  end
-
-  attr :elements, :list, required: true
-  attr :is_active, :boolean, required: true
-
-  defp elements_section(assigns) do
-    ~H"""
-    <div>
-      <.section_header title="Elements" action_label="Add Element" on_action="open_add_element_modal" />
-
-      <.compact_empty_state
-        :if={Enum.empty?(@elements)}
-        message="No elements configured"
-        submessage="Add elements to control train functions"
-      />
-
-      <div :if={not Enum.empty?(@elements)} class="overflow-x-auto">
-        <table class="table table-sm bg-base-100 rounded-lg">
-          <thead>
-            <tr class="bg-base-200">
-              <th>Name</th>
-              <th>Type</th>
-              <th>Status</th>
-              <th class="w-24"></th>
-            </tr>
-          </thead>
-          <tbody>
-            <.element_row
-              :for={element <- @elements}
-              element={element}
-              is_active={@is_active}
-            />
-          </tbody>
-        </table>
-      </div>
-    </div>
-    """
-  end
-
-  attr :output_bindings, :list, required: true
-  attr :simulator_connected, :boolean, required: true
-
-  defp output_bindings_section(assigns) do
-    ~H"""
-    <div>
-      <.section_header
-        title="Outputs"
-        action_label="Add Output Binding"
-        on_action="open_add_output_binding"
-      />
-
-      <.compact_empty_state
-        :if={Enum.empty?(@output_bindings)}
-        message="No output bindings configured"
-        submessage="Bind outputs to API values to control LEDs based on simulator data"
-      />
-
-      <div :if={not Enum.empty?(@output_bindings)} class="overflow-x-auto">
-        <table class="table table-sm bg-base-100 rounded-lg">
-          <thead>
-            <tr class="bg-base-200">
-              <th>Name</th>
-              <th>Endpoint</th>
-              <th>Condition</th>
-              <th>Output</th>
-              <th class="w-24"></th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr :for={binding <- @output_bindings} class="hover:bg-base-200/50">
-              <td class="font-medium">{binding.name}</td>
-              <td class="font-mono text-xs max-w-[200px] truncate" title={binding.endpoint}>
-                {binding.endpoint}
-              </td>
-              <td class="text-sm">
-                <.condition_display
-                  operator={binding.operator}
-                  value_a={binding.value_a}
-                  value_b={binding.value_b}
-                />
-              </td>
-              <td class="text-sm">
-                <span class="badge badge-ghost badge-sm">{binding.output_type}</span>
-                <span class="text-muted ml-1">
-                  {binding.output.name || "Pin #{binding.output.pin}"}
-                </span>
-              </td>
-              <td>
-                <div class="flex gap-1">
-                  <button
-                    phx-click="configure_output_binding"
-                    phx-value-id={binding.id}
-                    class="btn btn-ghost btn-xs"
-                    title="Configure"
-                  >
-                    <.icon name="hero-cog-6-tooth" class="w-4 h-4" />
-                  </button>
-                  <button
-                    phx-click="delete_output_binding"
-                    phx-value-id={binding.id}
-                    class="btn btn-ghost btn-xs text-error"
-                    title="Delete"
-                  >
-                    <.icon name="hero-trash" class="w-4 h-4" />
-                  </button>
-                </div>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    </div>
-    """
-  end
-
-  attr :display_bindings, :list, required: true
-  attr :simulator_connected, :boolean, required: true
-  attr :hardware_available, :boolean, required: true
-
-  defp display_bindings_section(assigns) do
-    ~H"""
-    <div>
-      <div class="flex flex-wrap items-center justify-between gap-3 mb-3">
-        <h3 class="text-xl font-semibold">Displays</h3>
-        <button
-          type="button"
-          id="add-display-binding"
-          phx-click="open_add_display_binding"
-          class="btn btn-outline btn-sm"
-          disabled={not @simulator_connected or not @hardware_available}
-          aria-describedby="display-prerequisites"
-        >
-          <.icon name="hero-plus" class="w-4 h-4" /> Add display binding
-        </button>
-      </div>
-      <div id="display-prerequisites" class="text-sm text-muted space-y-2">
-        <p :if={not @simulator_connected}>
-          <.link navigate={~p"/settings"} class="link">Connect to the simulator</.link>
-          to choose a value for your display.
-        </p>
-        <p :if={not @hardware_available}>
-          <.link navigate={~p"/"} class="link">Add a display to a hardware configuration</.link>
-          before creating a binding.
-        </p>
-      </div>
-      <p :if={Enum.empty?(@display_bindings)} class="text-sm text-muted py-3">
-        No display bindings configured. Show simulator values on your hardware displays.
-      </p>
-      <ul :if={not Enum.empty?(@display_bindings)} class="divide-y divide-base-300">
-        <li :for={binding <- @display_bindings} class="py-4 space-y-3">
-          <div class="min-w-0">
-            <p class="font-medium break-words">{binding.name}</p>
-            <p class="text-xs text-muted mt-1 break-words">
-              {if binding.i2c_module,
-                do: binding.i2c_module.name || "Display #{binding.i2c_module_id}",
-                else: "Display unavailable"}
-            </p>
-            <p class="font-mono text-xs break-all mt-2">{binding.endpoint}</p>
-            <p class="font-mono text-xs text-muted mt-1">
-              {binding.format_string}
-              <span :if={binding.unit == "kmh"} class="badge badge-xs ml-1">m/s → km/h</span>
-              <span :if={binding.unit == "mph"} class="badge badge-xs ml-1">m/s → mph</span>
-            </p>
-          </div>
-          <div class="flex flex-wrap gap-2">
-            <button
-              id={"edit-display-binding-#{binding.id}"}
-              phx-click="configure_display_binding"
-              phx-value-id={binding.id}
-              class="btn btn-ghost btn-sm"
-              aria-label={"Edit display binding #{binding.name}"}
-            >
-              <.icon name="hero-pencil" class="w-4 h-4" /> Edit
-            </button>
-            <button
-              phx-click="delete_display_binding"
-              phx-value-id={binding.id}
-              class="btn btn-ghost btn-sm text-error"
-              aria-label={"Delete display binding #{binding.name}"}
-              data-confirm="Delete this display binding?"
-            >
-              <.icon name="hero-trash" class="w-4 h-4" /> Delete
-            </button>
-          </div>
-        </li>
-      </ul>
-    </div>
-    """
-  end
-
-  attr :message, :string, required: true
-  attr :submessage, :string, default: nil
-
-  defp compact_empty_state(assigns) do
-    ~H"""
-    <div class="py-3 text-sm text-muted">
-      <p>{@message}</p>
-      <p :if={@submessage} class="text-xs mt-1">{@submessage}</p>
-    </div>
-    """
-  end
-
-  attr :scripts, :list, required: true
-  attr :train_id, :integer, required: true
-
-  defp scripts_section(assigns) do
-    ~H"""
-    <div>
-      <div class="flex items-center justify-between mb-4">
-        <h3 class="text-xl font-semibold">Scripts</h3>
-        <.link navigate={~p"/trains/#{@train_id}/scripts/new"} class="btn btn-outline btn-sm">
-          <.icon name="hero-plus" class="w-4 h-4" /> Add Script
-        </.link>
-      </div>
-
-      <.compact_empty_state
-        :if={Enum.empty?(@scripts)}
-        message="No scripts configured"
-        submessage="Add Lua scripts to automate actions based on simulator data"
-      />
-
-      <div :if={not Enum.empty?(@scripts)} class="overflow-x-auto">
-        <table class="table table-sm bg-base-100 rounded-lg">
-          <thead>
-            <tr class="bg-base-200">
-              <th>Name</th>
-              <th>Triggers</th>
-              <th>Enabled</th>
-              <th class="w-24"></th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr :for={script <- @scripts} class="hover:bg-base-200/50">
-              <td class="font-medium">{script.name}</td>
-              <td class="text-sm text-muted">
-                {length(script.triggers)} trigger{if length(script.triggers) != 1, do: "s"}
-              </td>
-              <td>
-                <input
-                  type="checkbox"
-                  class="toggle toggle-sm toggle-primary"
-                  checked={script.enabled}
-                  phx-click="toggle_script_enabled"
-                  phx-value-id={script.id}
-                />
-              </td>
-              <td>
-                <div class="flex gap-1">
-                  <.link
-                    navigate={~p"/trains/#{@train_id}/scripts/#{script.id}"}
-                    class="btn btn-ghost btn-xs"
-                    title="Edit"
-                  >
-                    <.icon name="hero-pencil-square" class="w-4 h-4" />
-                  </.link>
-                  <button
-                    phx-click="delete_script"
-                    phx-value-id={script.id}
-                    class="btn btn-ghost btn-xs text-error"
-                    title="Delete"
-                    data-confirm="Are you sure you want to delete this script?"
-                  >
-                    <.icon name="hero-trash" class="w-4 h-4" />
-                  </button>
-                </div>
-              </td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    </div>
-    """
-  end
-
-  attr :operator, :atom, required: true
-  attr :value_a, :float, default: nil
-  attr :value_b, :float, default: nil
-
-  defp condition_display(assigns) do
-    ~H"""
-    <span class="font-mono">
-      <%= case @operator do %>
-        <% :eq_true -> %>
-          = true
-        <% :eq_false -> %>
-          = false
-        <% :gt -> %>
-          &gt; {@value_a}
-        <% :gte -> %>
-          &ge; {@value_a}
-        <% :lt -> %>
-          &lt; {@value_a}
-        <% :lte -> %>
-          &le; {@value_a}
-        <% :between -> %>
-          {@value_a} - {@value_b}
-      <% end %>
-    </span>
-    """
-  end
-
-  attr :element, :map, required: true
-  attr :is_active, :boolean, required: true
-
-  defp element_row(assigns) do
-    {status_badges, configure_action} = element_status(assigns.element)
-
-    assigns =
-      assigns
-      |> assign(:status_badges, status_badges)
-      |> assign(:configure_action, configure_action)
-
-    ~H"""
-    <tr class="hover:bg-base-200/50">
-      <td class="font-medium">
-        <div class="flex items-center gap-2">
-          <.icon
-            name={element_type_icon(@element.type)}
-            class="w-4 h-4 text-muted"
-          />
-          {@element.name}
-        </div>
-      </td>
-      <td>
-        <span class="badge badge-ghost badge-sm capitalize">{@element.type}</span>
-      </td>
-      <td>
-        <span
-          :for={{variant, label} <- @status_badges}
-          class={["badge badge-soft badge-sm", badge_variant_class(variant)]}
-        >
-          {label}
-        </span>
-      </td>
-      <td>
-        <div class="flex gap-1">
-          <button
-            :if={@configure_action}
-            phx-click={@configure_action}
-            phx-value-id={@element.id}
-            class="btn btn-ghost btn-xs"
-            title="Configure"
-          >
-            <.icon name="hero-cog-6-tooth" class="w-4 h-4" />
-          </button>
-          <button
-            phx-click="delete_element"
-            phx-value-id={@element.id}
-            class="btn btn-ghost btn-xs text-error"
-            title="Delete"
-          >
-            <.icon name="hero-trash" class="w-4 h-4" />
-          </button>
-        </div>
-      </td>
-    </tr>
-    """
-  end
-
-  defp element_status(%{type: :lever} = element) do
-    {lever_status_badge(element), "configure_lever"}
-  end
-
-  defp element_status(%{type: :button} = element) do
-    {button_status_badge(element), "configure_button"}
-  end
-
-  defp element_status(_element) do
-    {[{:ghost, "Unknown"}], nil}
-  end
-
-  defp lever_status_badge(element) do
-    lever_config = get_lever_config(element)
-    input_binding = get_input_binding(lever_config)
-    has_input_ranges = has_notch_input_ranges?(lever_config)
-
-    cond do
-      has_input_ranges -> [{:success, "Ready"}]
-      input_binding -> [{:info, "Needs mapping"}]
-      lever_config -> [{:warning, "Needs input"}]
-      true -> [{:ghost, "Not configured"}]
-    end
-  end
-
-  defp button_status_badge(element) do
-    button_binding = get_button_binding(element)
-
-    cond do
-      button_binding && button_fully_configured?(button_binding) -> [{:success, "Ready"}]
-      button_binding -> [{:info, "Partial"}]
-      true -> [{:ghost, "Not configured"}]
-    end
-  end
-
-  defp element_type_icon(:lever), do: "hero-adjustments-vertical"
-  defp element_type_icon(:button), do: "hero-cursor-arrow-rays"
-  defp element_type_icon(_), do: "hero-cube"
-
-  defp badge_variant_class(:success), do: "badge-success"
-  defp badge_variant_class(:warning), do: "badge-warning"
-  defp badge_variant_class(:info), do: "badge-info"
-  defp badge_variant_class(:error), do: "badge-error"
-  defp badge_variant_class(_), do: "badge-ghost"
-
-  defp button_fully_configured?(%{mode: :sequence} = binding) do
-    binding.on_sequence_id != nil or binding.off_sequence_id != nil
-  end
-
-  defp button_fully_configured?(%{mode: :keystroke} = binding) do
-    binding.keystroke != nil and binding.keystroke != ""
-  end
-
-  defp button_fully_configured?(binding) do
-    binding.endpoint != nil
-  end
-
-  defp get_lever_config(%Element{lever_config: %Ecto.Association.NotLoaded{}}), do: nil
-  defp get_lever_config(%Element{lever_config: config}), do: config
-
-  defp get_input_binding(nil), do: nil
-  defp get_input_binding(%LeverConfig{input_binding: %Ecto.Association.NotLoaded{}}), do: nil
-  defp get_input_binding(%LeverConfig{input_binding: nil}), do: nil
-
-  defp get_input_binding(%LeverConfig{
-         input_binding: %LeverInputBinding{input: %Ecto.Association.NotLoaded{}}
-       }),
-       do: nil
-
-  defp get_input_binding(%LeverConfig{input_binding: binding}), do: binding
-
-  defp has_notch_input_ranges?(nil), do: false
-
-  defp has_notch_input_ranges?(%LeverConfig{notches: notches}) when is_list(notches) do
-    Enum.any?(notches, fn notch ->
-      notch.input_min != nil and notch.input_max != nil
-    end)
-  end
-
-  defp has_notch_input_ranges?(_), do: false
-
-  defp get_button_binding(%Element{button_binding: %Ecto.Association.NotLoaded{}}), do: nil
-  defp get_button_binding(%Element{button_binding: nil}), do: nil
-  defp get_button_binding(%Element{button_binding: binding}), do: binding
-
-  attr :form, :map, required: true
-
-  defp add_element_modal(assigns) do
-    ~H"""
-    <div class="fixed inset-0 z-50 flex items-center justify-center">
-      <div class="absolute inset-0 bg-black/50" phx-click="close_add_element_modal" />
-      <div class="relative bg-base-200 rounded-xl shadow-xl w-full max-w-md mx-4 p-6">
-        <h2 class="text-xl font-semibold mb-4">Add Element</h2>
-
-        <.form
-          id="add-element-form"
-          for={@form}
-          phx-change="validate_element"
-          phx-submit="add_element"
-        >
-          <div class="space-y-4">
-            <div>
-              <label class="label">
-                <span class="label-text">Element Name</span>
-              </label>
-              <.input
-                field={@form[:name]}
-                type="text"
-                placeholder="e.g., Throttle, Reverser"
-                class="input input-bordered w-full"
-              />
-            </div>
-
-            <div>
-              <label class="label">
-                <span class="label-text">Type</span>
-              </label>
-              <.input
-                field={@form[:type]}
-                type="select"
-                options={[{"Lever", :lever}, {"Button", :button}]}
-                class="select select-bordered w-full"
-              />
-              <p class="text-xs text-muted mt-1">
-                Lever for analog inputs, Button for digital inputs
-              </p>
-            </div>
-          </div>
-
-          <div class="flex justify-end gap-2 mt-6">
-            <button type="button" phx-click="close_add_element_modal" class="btn btn-ghost">
-              Cancel
-            </button>
-            <button type="submit" class="btn btn-primary">
-              Add Element
-            </button>
-          </div>
-        </.form>
-      </div>
-    </div>
     """
   end
 end

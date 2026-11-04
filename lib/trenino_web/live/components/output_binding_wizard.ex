@@ -259,7 +259,7 @@ defmodule TreninoWeb.OutputBindingWizard do
           <div class="flex items-center justify-between">
             <div>
               <h2 class="text-xl font-semibold">
-                {if @binding, do: "Edit Output Binding", else: "Add Output Binding"}
+                {if @binding, do: "Edit output binding", else: "Add output binding"}
               </h2>
               <p class="text-sm text-muted">
                 Configure an output to respond to API values
@@ -380,7 +380,7 @@ defmodule TreninoWeb.OutputBindingWizard do
     ~H"""
     <div class="space-y-6">
       <div class="text-center mb-6">
-        <h3 class="text-xl font-semibold mb-2">Select Output</h3>
+        <h3 class="text-xl font-semibold mb-2">Select output</h3>
         <p class="text-muted">
           Choose which hardware output to control
         </p>
@@ -440,7 +440,7 @@ defmodule TreninoWeb.OutputBindingWizard do
     ~H"""
     <div class="space-y-6">
       <div class="text-center mb-6">
-        <h3 class="text-xl font-semibold mb-2">Select Output Type</h3>
+        <h3 class="text-xl font-semibold mb-2">Select output type</h3>
         <p class="text-muted">
           Choose how the output should behave
         </p>

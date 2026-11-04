@@ -110,6 +110,12 @@ defmodule TreninoWeb.StepperAxisCardTest do
     end
 
     refute render(view) =~ "complete commissioning"
+
+    # Diagnostics ranks below the card's own h4 name.
+    card = "#stepper-axis-#{ctx.axis.id}"
+    assert has_element?(view, "#{card} h5", "Diagnostics")
+    refute has_element?(view, "#{card} h1, #{card} h2, #{card} h3")
+
     diagnostics(view, ctx.axis)
     refute has_element?(view, "#stepper-diagnostics-#{ctx.axis.id}")
   end
@@ -247,13 +253,43 @@ defmodule TreninoWeb.StepperAxisCardTest do
     assert has_element?(view, "#stepper-wizard-open-#{ctx.axis.id}.btn-primary", "Set up gauge")
   end
 
-  test "setup again, edit, diagnostics and delete live in a small menu", ctx do
+  test "setup again, edit and diagnostics live in a small menu, delete stays visible", ctx do
     view = open_page(ctx.conn, ctx.device, ctx.axis, %{lifecycle: :ready})
+    id = ctx.axis.id
 
-    for id <- ~w(setup-again edit diagnostics-toggle delete) do
-      assert has_element?(view, "#stepper-menu-#{ctx.axis.id} #stepper-#{id}-#{ctx.axis.id}")
+    for action <- ~w(setup-again edit diagnostics-toggle) do
+      assert has_element?(view, "#stepper-menu-#{id} #stepper-#{action}-#{id}")
     end
 
-    assert has_element?(view, "#stepper-delete-#{ctx.axis.id}[data-confirm]")
+    refute has_element?(view, "#stepper-menu-#{id} #stepper-delete-#{id}")
+
+    assert has_element?(
+             view,
+             "#stepper-actions-#{id} > #stepper-delete-#{id}[data-confirm][aria-label='Delete #{ctx.axis.name}']"
+           )
+  end
+
+  test "a gauge that still needs setup keeps the same menu, without setup again", ctx do
+    {:ok, _} =
+      Hardware.save_dial_calibration(ctx.axis, %{
+        reviewed: false,
+        points: [%{value: 0, position: 0}, %{value: 100, position: 720}]
+      })
+
+    view = open_page(ctx.conn, ctx.device, ctx.axis, %{lifecycle: :ready})
+    id = ctx.axis.id
+    assert has_element?(view, "#stepper-status-#{id}", "Needs setup")
+
+    for action <- ~w(edit diagnostics-toggle) do
+      assert has_element?(view, "#stepper-menu-#{id} #stepper-#{action}-#{id}")
+    end
+
+    refute has_element?(view, "#stepper-setup-again-#{id}")
+    assert has_element?(view, "#stepper-actions-#{id} > #stepper-delete-#{id}[data-confirm]")
+  end
+
+  test "the card clears the sticky header and nav when linked to", ctx do
+    view = open_page(ctx.conn, ctx.device, ctx.axis, %{lifecycle: :ready})
+    assert has_element?(view, "article#stepper-axis-#{ctx.axis.id}.scroll-mt-36")
   end
 end

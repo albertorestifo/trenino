@@ -1,10 +1,13 @@
 defmodule TreninoWeb.StepperAxisFormComponent do
   @moduledoc """
-  The Stepper axes section: one card per axis, the add/edit form and the shared shield
+  The Gauges section (stepper axes): one card per axis, the add/edit form and the shared shield
   address. Validation and persistence never issue motion; the guided gauge setup does the
   physical part (zero, direction, dial).
   """
   use TreninoWeb, :live_component
+
+  import TreninoWeb.SharedComponents
+
   alias Trenino.Hardware
   alias Trenino.Hardware.I2cModule
   alias Trenino.Hardware.{StepperAxis, StepperManager}
@@ -247,223 +250,232 @@ defmodule TreninoWeb.StepperAxisFormComponent do
       )
 
     ~H"""
-    <section id="stepper-axes" class="bg-base-200/50 rounded-xl p-6 mt-6 space-y-4">
-      <div class="flex items-center justify-between gap-2">
-        <h2 class="text-xl font-semibold">Stepper axes</h2>
-        <button
-          id="stepper-add"
-          type="button"
-          phx-click="add"
-          phx-target={@myself}
-          class="btn btn-sm"
-          disabled={length(@axes) >= 2}
-          title={if length(@axes) >= 2, do: "Both motor ports are in use"}
-        >
-          Add gauge
-        </button>
-      </div>
-      <div
-        :if={@show_allcall}
-        id="stepper-allcall-warning"
-        role="alert"
-        class="alert alert-soft alert-warning text-sm"
+    <div>
+      <.config_section
+        id="stepper-axes"
+        title="Gauges"
+        count={length(@axes)}
+        description="Stepper-motor gauges driven by the motor shield."
+        empty?={@axes == [] and is_nil(@form)}
+        empty_icon="hero-cog-6-tooth"
+        empty_message="No gauges configured"
+        empty_hint="Drive a gauge needle from the sim with a stepper motor. Needs controller firmware 3.1.0 or newer."
       >
-        <.icon name="hero-exclamation-triangle" class="size-5 shrink-0" />
-        <div>
-          <p class="font-semibold">Display at 0x70 and a new motor shield</p>
-          <p>{@allcall_warning}</p>
-        </div>
-      </div>
-      <p :if={@axes == [] and is_nil(@form)} class="text-sm text-muted">
-        Drive a gauge needle from the sim with a stepper motor. Needs controller firmware 3.1.0 or newer.
-      </p>
-      <p :if={@notice} role="status" class="text-sm text-success">{@notice}</p>
-      <p :if={@error} role="alert" class="text-error">{@error}</p>
-      <.form
-        :if={@form}
-        for={@form}
-        id="stepper-axis-form"
-        phx-change="validate"
-        phx-submit="save"
-        phx-target={@myself}
-        class="space-y-3 rounded-lg border border-base-300 p-4"
-      >
-        <div class="grid sm:grid-cols-2 gap-3">
-          <.input field={@form[:name]} label="Name" placeholder="Speedometer" />
-          <.input
-            field={@form[:motor_port]}
-            label="Shield port"
-            type="select"
-            options={port_options(@axes, @editing)}
+        <:actions>
+          <.section_action
+            id="stepper-add"
+            label="Add gauge"
+            on_click="add"
+            target={@myself}
+            disabled={length(@axes) >= 2}
+            disabled_reason="Both motor ports are in use."
           />
-        </div>
-        <.disclosure id="stepper-form-motor" summary="Motor settings">
-          <p class="text-xs text-muted">
-            The defaults suit an X27 gauge motor. Changing them means running the gauge setup again.
-          </p>
-          <div class="grid sm:grid-cols-2 gap-3">
-            <.input field={@form[:mode]} label="Motor type" type="select" options={@modes} />
-            <.input
-              :for={{field, label} <- @motor_numbers}
-              field={@form[field]}
-              label={label}
-              type="number"
-            />
-          </div>
-        </.disclosure>
-        <div class="flex gap-2">
-          <button type="submit" class="btn btn-primary">
-            {if @editing.id, do: "Save", else: "Add and set up"}
-          </button>
-          <button type="button" phx-click="cancel" phx-target={@myself} class="btn btn-ghost">
-            Cancel
-          </button>
-        </div>
-      </.form>
-      <article
-        :for={axis <- @axes}
-        id={"stepper-axis-#{axis.id}"}
-        class="border border-base-300 rounded-lg p-4 space-y-3"
-      >
-        <% status = GaugeGuidance.axis_status(axis, @snapshot) %>
-        <div class="flex flex-wrap items-start justify-between gap-x-3 gap-y-1">
-          <div class="min-w-0 flex-1 basis-48">
-            <h3 class="font-semibold break-words">{axis.name}</h3>
-            <p class="text-xs text-muted">Motor {axis.motor_port}</p>
-          </div>
-          <div class="ml-auto flex shrink-0 items-center gap-1">
-            <.status_chip id={"stepper-status-#{axis.id}"} kind={status.kind} label={status.label} />
-            <details
-              :if={@wizard_axis_id != axis.id}
-              id={"stepper-menu-#{axis.id}"}
-              phx-mounted={JS.ignore_attributes("open")}
-              class="dropdown dropdown-end"
+        </:actions>
+        <:settings :if={@axes != []}>
+          <div id="stepper-shield" class="flex flex-wrap items-center gap-x-3 gap-y-1">
+            <span>Motor shield address</span>
+            <span class="font-mono text-base-content">{hex(shield_address(@axes))}</span>
+            <button
+              :if={not @changing_address}
+              id="stepper-change-address"
+              type="button"
+              phx-click="change_address"
+              phx-target={@myself}
+              class="btn btn-ghost btn-xs text-xs"
             >
-              <summary
-                aria-label={"More actions for #{axis.name}"}
-                class="btn btn-ghost btn-square list-none"
-              >
-                <.icon name="hero-ellipsis-horizontal" class="size-5" />
-              </summary>
-              <ul class="menu dropdown-content z-10 mt-1 w-56 rounded-box border border-base-300 bg-base-200 p-1 shadow">
-                <li :if={status.primary != :wizard}>
-                  <button
-                    id={"stepper-setup-again-#{axis.id}"}
-                    type="button"
-                    phx-click={menu_action("open_wizard", axis, @myself)}
-                  >
-                    Run gauge setup again
-                  </button>
-                </li>
-                <li>
-                  <button
-                    id={"stepper-edit-#{axis.id}"}
-                    type="button"
-                    phx-click={menu_action("edit", axis, @myself)}
-                  >
-                    Edit
-                  </button>
-                </li>
-                <li>
-                  <button
-                    id={"stepper-diagnostics-toggle-#{axis.id}"}
-                    type="button"
-                    phx-click={menu_action("toggle_diagnostics", axis, @myself)}
-                  >
-                    {if MapSet.member?(@diagnostics, axis.id),
-                      do: "Hide diagnostics",
-                      else: "Diagnostics"}
-                  </button>
-                </li>
-                <li>
-                  <button
-                    id={"stepper-delete-#{axis.id}"}
-                    type="button"
-                    data-confirm={"Delete #{axis.name}? Train gauges using it stop working."}
-                    phx-click={menu_action("delete", axis, @myself)}
-                  >
-                    Delete
-                  </button>
-                </li>
-              </ul>
-            </details>
+              <.icon name="hero-pencil-square" class="size-4" /> Change
+            </button>
           </div>
-        </div>
-        <.live_component
-          :if={@wizard_axis_id == axis.id}
-          module={TreninoWeb.GaugeWizardComponent}
-          id={"gauge-wizard-#{axis.id}"}
-          axis={axis}
-          snapshot={@snapshot}
-        />
-        <.live_component
-          :if={@wizard_axis_id != axis.id}
-          module={TreninoWeb.StepperCommissioningComponent}
-          id={"stepper-commissioning-#{axis.id}"}
-          axis={axis}
-          snapshot={@snapshot}
-          diagnostics={MapSet.member?(@diagnostics, axis.id)}
-          wizard_target={@myself}
-        />
-      </article>
-      <div
-        :if={@axes != []}
-        id="stepper-shield"
-        class="flex flex-wrap items-center gap-x-3 gap-y-1 text-sm"
-      >
-        <span class="text-muted">Motor shield address</span>
-        <span class="font-mono">{hex(shield_address(@axes))}</span>
-        <button
-          :if={not @changing_address}
-          id="stepper-change-address"
-          type="button"
-          phx-click="change_address"
-          phx-target={@myself}
-          class="btn btn-ghost btn-xs"
-        >
-          Change
-        </button>
-      </div>
-      <.form
-        :if={@changing_address and @axes != []}
-        for={to_form(%{})}
-        id="stepper-recommission-address"
-        phx-submit="recommission"
-        phx-target={@myself}
-        class="space-y-3 rounded-lg border border-base-300 p-4"
-      >
-        <p class="text-sm">
-          Only needed if you moved the address jumpers on the shield. Every gauge on it will need re-zeroing.
-        </p>
-        <p :if={@allcall_warning} role="alert" class="text-sm text-warning">{@allcall_warning}</p>
-        <ol class="list-decimal pl-5 text-sm space-y-1">
-          <li>Unplug any display at address 0x70.</li>
-          <li>Enter the new address and press Change address, with the shield alone connected.</li>
-          <li>Plug the display back in and apply the configuration again.</li>
-        </ol>
-        <.input name="address" value={hex(shield_address(@axes))} label="New shield address" />
-        <div class="flex gap-2">
-          <button type="submit" class="btn btn-sm" disabled={@snapshot.lifecycle == :disconnected}>
-            Change address
-          </button>
-          <button
-            type="button"
-            phx-click="cancel_address"
-            phx-target={@myself}
-            class="btn btn-sm btn-ghost"
+        </:settings>
+        <:notice :if={@show_allcall}>
+          <div
+            id="stepper-allcall-warning"
+            role="alert"
+            class="alert alert-soft alert-warning text-sm"
           >
-            Cancel
-          </button>
+            <.icon name="hero-exclamation-triangle" class="size-5 shrink-0" />
+            <div>
+              <p class="font-semibold">Display at 0x70 and a new motor shield</p>
+              <p>{@allcall_warning}</p>
+            </div>
+          </div>
+        </:notice>
+        <:notice :if={@notice}>
+          <p role="status" class="text-sm text-success">{@notice}</p>
+        </:notice>
+        <:notice :if={@error}>
+          <div role="alert" class="alert alert-soft alert-error text-sm">
+            <.icon name="hero-exclamation-circle" class="size-5 shrink-0" />
+            <p>{@error}</p>
+          </div>
+        </:notice>
+        <div class="space-y-4">
+          <.form
+            :if={@changing_address and @axes != []}
+            for={to_form(%{})}
+            id="stepper-recommission-address"
+            phx-submit="recommission"
+            phx-target={@myself}
+            class="space-y-3 rounded-lg border border-base-300 bg-base-100 p-4"
+          >
+            <p class="text-sm">
+              Only needed if you moved the address jumpers on the shield. Every gauge on it will need re-zeroing.
+            </p>
+            <p :if={@allcall_warning} role="alert" class="text-sm text-warning">
+              {@allcall_warning}
+            </p>
+            <ol class="list-decimal pl-5 text-sm space-y-1">
+              <li>Unplug any display at address 0x70.</li>
+              <li>
+                Enter the new address and press Change address, with the shield alone connected.
+              </li>
+              <li>Plug the display back in and apply the configuration again.</li>
+            </ol>
+            <.input name="address" value={hex(shield_address(@axes))} label="New shield address" />
+            <div class="flex gap-2">
+              <button
+                type="submit"
+                class="btn btn-sm"
+                disabled={@snapshot.lifecycle == :disconnected}
+              >
+                Change address
+              </button>
+              <button
+                type="button"
+                phx-click="cancel_address"
+                phx-target={@myself}
+                class="btn btn-sm btn-ghost"
+              >
+                Cancel
+              </button>
+            </div>
+          </.form>
+          <.form
+            :if={@form}
+            for={@form}
+            id="stepper-axis-form"
+            phx-change="validate"
+            phx-submit="save"
+            phx-target={@myself}
+            class="space-y-3 rounded-lg border border-base-300 bg-base-100 p-4"
+          >
+            <div class="grid sm:grid-cols-2 gap-3">
+              <.input field={@form[:name]} label="Name" placeholder="Speedometer" />
+              <.input
+                field={@form[:motor_port]}
+                label="Shield port"
+                type="select"
+                options={port_options(@axes, @editing)}
+              />
+            </div>
+            <.disclosure id="stepper-form-motor" summary="Motor settings">
+              <p class="text-xs text-muted">
+                The defaults suit an X27 gauge motor. Changing them means running the gauge setup again.
+              </p>
+              <div class="grid sm:grid-cols-2 gap-3">
+                <.input field={@form[:mode]} label="Motor type" type="select" options={@modes} />
+                <.input
+                  :for={{field, label} <- @motor_numbers}
+                  field={@form[field]}
+                  label={label}
+                  type="number"
+                />
+              </div>
+            </.disclosure>
+            <div class="flex gap-2">
+              <button type="submit" class="btn btn-primary">
+                {if @editing.id, do: "Save", else: "Add and set up"}
+              </button>
+              <button type="button" phx-click="cancel" phx-target={@myself} class="btn btn-ghost">
+                Cancel
+              </button>
+            </div>
+          </.form>
+          <article
+            :for={axis <- @axes}
+            id={"stepper-axis-#{axis.id}"}
+            class="bg-base-100 border border-base-300 rounded-lg p-4 space-y-3 scroll-mt-36"
+          >
+            <% status = GaugeGuidance.axis_status(axis, @snapshot) %>
+            <div class="flex flex-wrap items-start justify-between gap-x-3 gap-y-1">
+              <div class="min-w-0 flex-1 basis-48">
+                <h4 class="font-semibold break-words">{axis.name}</h4>
+                <p class="text-xs text-muted">Motor {axis.motor_port}</p>
+              </div>
+              <div class="ml-auto flex shrink-0 items-center gap-1">
+                <.status_chip
+                  id={"stepper-status-#{axis.id}"}
+                  kind={status.kind}
+                  label={status.label}
+                />
+                <.row_actions
+                  :if={@wizard_axis_id != axis.id}
+                  id={"stepper-actions-#{axis.id}"}
+                  menu_id={"stepper-menu-#{axis.id}"}
+                  menu={:always}
+                  name={axis.name}
+                >
+                  <:action
+                    :if={status.primary != :wizard}
+                    id={"stepper-setup-again-#{axis.id}"}
+                    event="open_wizard"
+                    values={%{id: axis.id}}
+                    target={@myself}
+                    icon="hero-arrow-path"
+                    label="Run gauge setup again"
+                  />
+                  <:action
+                    id={"stepper-edit-#{axis.id}"}
+                    event="edit"
+                    values={%{id: axis.id}}
+                    target={@myself}
+                    icon="hero-pencil-square"
+                    label="Edit"
+                  />
+                  <:action
+                    id={"stepper-diagnostics-toggle-#{axis.id}"}
+                    event="toggle_diagnostics"
+                    values={%{id: axis.id}}
+                    target={@myself}
+                    icon="hero-wrench-screwdriver"
+                    label={
+                      if MapSet.member?(@diagnostics, axis.id),
+                        do: "Hide diagnostics",
+                        else: "Diagnostics"
+                    }
+                  />
+                  <:action
+                    id={"stepper-delete-#{axis.id}"}
+                    event="delete"
+                    values={%{id: axis.id}}
+                    target={@myself}
+                    kind={:danger}
+                    label={"Delete #{axis.name}"}
+                    confirm={"Delete #{axis.name}? Train gauge bindings using it stop working."}
+                  />
+                </.row_actions>
+              </div>
+            </div>
+            <.live_component
+              :if={@wizard_axis_id == axis.id}
+              module={TreninoWeb.GaugeWizardComponent}
+              id={"gauge-wizard-#{axis.id}"}
+              axis={axis}
+              snapshot={@snapshot}
+            />
+            <.live_component
+              :if={@wizard_axis_id != axis.id}
+              module={TreninoWeb.StepperCommissioningComponent}
+              id={"stepper-commissioning-#{axis.id}"}
+              axis={axis}
+              snapshot={@snapshot}
+              diagnostics={MapSet.member?(@diagnostics, axis.id)}
+              wizard_target={@myself}
+            />
+          </article>
         </div>
-      </.form>
-    </section>
+      </.config_section>
+    </div>
     """
-  end
-
-  # Runs the event, then closes the menu it was clicked in.
-  defp menu_action(event, axis, target) do
-    event
-    |> JS.push(value: %{id: axis.id}, target: target)
-    |> JS.remove_attribute("open", to: {:closest, "details"})
   end
 end

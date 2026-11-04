@@ -31,7 +31,8 @@ defmodule TreninoWeb.GaugeFeedback do
   def error(:needs_reference), do: "Reference the axis before moving it."
 
   def error(:manual_pause),
-    do: "Train output is paused for this gauge. Resume it on its stepper axis."
+    do:
+      "Train output is paused for this gauge. Resume it on its gauge in the hardware configuration."
 
   def error(:outside_limits), do: "The requested position is outside the configured limits."
   def error(:out_of_range), do: "The value is outside the calibration range."
