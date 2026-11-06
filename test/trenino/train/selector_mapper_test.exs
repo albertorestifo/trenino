@@ -6,7 +6,7 @@ defmodule Trenino.Train.SelectorMapperTest do
   doctest SelectorMapper
 
   @positions [
-    %{index: 0, input_min: 0.0, input_max: 0.3},
+    %{index: 0, input_min: +0.0, input_max: 0.3},
     %{index: 1, input_min: 0.37, input_max: 0.63},
     %{index: 2, input_min: 0.7, input_max: 1.0}
   ]
@@ -98,6 +98,58 @@ defmodule Trenino.Train.SelectorMapperTest do
     end
   end
 
+  describe "ranges_from_detents/2" do
+    test "meets halfway between detents with a dead zone" do
+      assert {:ok,
+              [
+                %{index: 0, input_min: +0.0, input_max: 0.26},
+                %{index: 1, input_min: 0.34, input_max: 0.66},
+                %{index: 2, input_min: 0.74, input_max: 1.0}
+              ]} = SelectorMapper.ranges_from_detents([0.1, 0.5, 0.9])
+    end
+
+    test "follows uneven detent spacing" do
+      {:ok, [a, b, c]} = SelectorMapper.ranges_from_detents([0.05, 0.2, 0.9])
+
+      # Boundaries sit halfway: 0.125 and 0.55
+      assert a.input_max < 0.125 and b.input_min > 0.125
+      assert b.input_max < 0.55 and c.input_min > 0.55
+    end
+
+    test "works for a pot wired in reverse" do
+      assert {:ok, [first, _middle, last]} = SelectorMapper.ranges_from_detents([0.9, 0.5, 0.1])
+
+      assert %{index: 0, input_min: 0.74, input_max: 1.0} = first
+      assert %{index: 2, input_min: +0.0, input_max: 0.26} = last
+    end
+
+    test "keeps each detent inside its own range" do
+      detents = [0.0, 0.07, 0.31, 0.62, 0.69, 1.0]
+      {:ok, ranges} = SelectorMapper.ranges_from_detents(detents)
+
+      for {detent, range} <- Enum.zip(detents, ranges) do
+        assert detent >= range.input_min and detent <= range.input_max
+      end
+
+      assert SelectorMapper.validate_layout(ranges) == :ok
+    end
+
+    test "always produces a valid layout for spaced detents" do
+      for count <- 2..12, dead_zone <- [0.05, 0.2, 0.5] do
+        detents = for i <- 0..(count - 1), do: Float.round(i / (count - 1), 2)
+        {:ok, ranges} = SelectorMapper.ranges_from_detents(detents, dead_zone)
+
+        assert SelectorMapper.validate_layout(ranges) == :ok
+        assert Enum.all?(ranges, &(&1.input_min <= &1.input_max))
+      end
+    end
+
+    test "rejects detents closer than 0.06" do
+      assert SelectorMapper.ranges_from_detents([0.1, 0.15, 0.9]) == {:error, :too_close}
+      assert SelectorMapper.ranges_from_detents([0.5, 0.5]) == {:error, :too_close}
+    end
+  end
+
   describe "validate_layout/1" do
     test "accepts separated ranges in any order" do
       assert SelectorMapper.validate_layout(Enum.reverse(@positions)) == :ok
@@ -105,32 +157,32 @@ defmodule Trenino.Train.SelectorMapperTest do
 
     test "rejects ranges that share a boundary" do
       assert SelectorMapper.validate_layout([
-               %{input_min: 0.0, input_max: 0.5},
+               %{input_min: +0.0, input_max: 0.5},
                %{input_min: 0.5, input_max: 1.0}
              ]) == {:error, :overlap}
     end
 
     test "requires a gap of at least 0.02" do
       assert SelectorMapper.validate_layout([
-               %{input_min: 0.0, input_max: 0.3},
+               %{input_min: +0.0, input_max: 0.3},
                %{input_min: 0.31, input_max: 1.0}
              ]) == {:error, :overlap}
 
       assert SelectorMapper.validate_layout([
-               %{input_min: 0.0, input_max: 0.3},
+               %{input_min: +0.0, input_max: 0.3},
                %{input_min: 0.32, input_max: 1.0}
              ]) == :ok
     end
 
     test "rejects overlapping ranges" do
       assert SelectorMapper.validate_layout([
-               %{input_min: 0.0, input_max: 0.6},
+               %{input_min: +0.0, input_max: 0.6},
                %{input_min: 0.4, input_max: 1.0}
              ]) == {:error, :overlap}
     end
 
     test "accepts a single range and an empty layout" do
-      assert SelectorMapper.validate_layout([%{input_min: 0.0, input_max: 1.0}]) == :ok
+      assert SelectorMapper.validate_layout([%{input_min: +0.0, input_max: 1.0}]) == :ok
       assert SelectorMapper.validate_layout([]) == :ok
     end
   end

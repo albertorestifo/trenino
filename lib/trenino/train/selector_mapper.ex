@@ -30,6 +30,7 @@ defmodule Trenino.Train.SelectorMapper do
   @min_dead_zone 0.05
   @max_dead_zone 0.5
   @min_gap 0.02
+  @min_detent_distance 0.06
 
   @doc """
   The smallest gap allowed between two neighbouring positions.
@@ -91,6 +92,68 @@ defmodule Trenino.Train.SelectorMapper do
         if index == count - 1, do: 100, else: floor_hundredths((index + 1) * slot - half_gap)
 
       %{index: index, input_min: input_min / 100, input_max: input_max / 100}
+    end
+  end
+
+  @doc """
+  Build position ranges around captured detents.
+
+  `detents` holds one normalized reading per position, in index order: where
+  the knob rests at that detent. Neighbouring positions meet halfway between
+  their detents, with a `dead_zone` fraction of the distance between them
+  (default #{@default_dead_zone}, never narrower than `min_gap/0`) left as a
+  gap. The positions at either end extend to 0.0 and 1.0.
+
+  Detents may be captured in either physical direction (a pot wired in
+  reverse puts index 0 at the high end). They must be at least
+  #{@min_detent_distance} apart, or the positions would be too narrow to hold.
+
+  ## Examples
+
+      iex> SelectorMapper.ranges_from_detents([0.1, 0.5, 0.9])
+      {:ok,
+       [
+         %{index: 0, input_min: 0.0, input_max: 0.26},
+         %{index: 1, input_min: 0.34, input_max: 0.66},
+         %{index: 2, input_min: 0.74, input_max: 1.0}
+       ]}
+
+  """
+  @spec ranges_from_detents([number()], float()) :: {:ok, [split_range()]} | {:error, :too_close}
+  def ranges_from_detents(detents, dead_zone \\ @default_dead_zone)
+      when is_list(detents) and is_float(dead_zone) and dead_zone >= @min_dead_zone and
+             dead_zone <= @max_dead_zone do
+    sorted =
+      detents
+      |> Enum.with_index()
+      |> Enum.map(fn {value, index} -> {index, value * 100} end)
+      |> Enum.sort_by(&elem(&1, 1))
+
+    pairs = Enum.chunk_every(sorted, 2, 1, :discard)
+
+    if Enum.any?(pairs, fn [{_, a}, {_, b}] -> b - a < @min_detent_distance * 100 end) do
+      {:error, :too_close}
+    else
+      # One boundary between each pair of neighbours: {upper end of the lower
+      # position, lower end of the upper position}, in hundredths.
+      boundaries =
+        Enum.map(pairs, fn [{_, a}, {_, b}] ->
+          middle = (a + b) / 2
+          half_gap = max((b - a) * dead_zone / 2, @min_gap * 100 / 2)
+          {floor_hundredths(middle - half_gap), ceil_hundredths(middle + half_gap)}
+        end)
+
+      lows = [0 | Enum.map(boundaries, &elem(&1, 1))]
+      highs = Enum.map(boundaries, &elem(&1, 0)) ++ [100]
+
+      ranges =
+        [sorted, lows, highs]
+        |> Enum.zip_with(fn [{index, _value}, low, high] ->
+          %{index: index, input_min: low / 100, input_max: high / 100}
+        end)
+        |> Enum.sort_by(& &1.index)
+
+      {:ok, ranges}
     end
   end
 

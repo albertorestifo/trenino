@@ -54,7 +54,7 @@ defmodule Trenino.MCP.Tools.SelectorToolsTest do
       assert selector.enabled
 
       assert [
-               %{index: 0, label: "Off", input_min: 0.0, input_max: 0.3},
+               %{index: 0, label: "Off", input_min: +0.0, input_max: 0.3},
                %{index: 1, label: "Dim", input_min: 0.37, input_max: 0.63},
                %{index: 2, label: "Full", input_min: 0.7, input_max: 1.0} = full
              ] = selector.positions
@@ -96,7 +96,7 @@ defmodule Trenino.MCP.Tools.SelectorToolsTest do
         ]
       }
 
-      assert {:ok, %{selector: %{positions: [%{input_min: 0.0}, %{input_max: 1.0}]}}} =
+      assert {:ok, %{selector: %{positions: [%{input_min: +0.0}, %{input_max: 1.0}]}}} =
                configure(element, args)
     end
 
@@ -241,7 +241,7 @@ defmodule Trenino.MCP.Tools.SelectorToolsTest do
       assert {:ok, %{selector: %{positions: [off, on]}}} =
                SelectorTools.execute("set_selector_even_split", %{"element_id" => element.id})
 
-      assert %{label: "Off", input_min: 0.0, input_max: 0.45, enter: %{value: +0.0}} = off
+      assert %{label: "Off", input_min: +0.0, input_max: 0.45, enter: %{value: +0.0}} = off
       assert %{label: "On", input_min: 0.55, input_max: 1.0, enter: %{value: 1.0}} = on
     end
 
