@@ -155,11 +155,12 @@ Claude has access to dozens of tools for interacting with Trenino (the client li
 |----------|-------|
 | Simulator | Browse endpoints, read values, write values |
 | Trains | List trains, get full train configuration |
-| Elements | List, create, delete buttons and levers |
+| Elements | List, create, delete buttons, levers and selectors |
 | Devices | List devices, list inputs, list outputs; list, create, update, delete I2C modules |
 | Detection | Detect hardware inputs (button/lever) |
 | Output Bindings | List, create, update, delete |
 | Button Bindings | Get, create, update, delete |
+| Selectors | Get, configure, split evenly, delete |
 | Sequences | List, create, update, delete |
 | Scripts | List, get, create, update, delete Lua scripts |
 | Display Bindings | List, create, update, delete display bindings |

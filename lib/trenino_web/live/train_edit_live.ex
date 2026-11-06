@@ -110,6 +110,7 @@ defmodule TreninoWeb.TrainEditLive do
      |> assign(:selector_inputs, [])
      |> assign(:selector_lever_input_ids, MapSet.new())
      |> assign(:selector_watch, nil)
+     |> assign(:selector_watch_input_id, nil)
      |> assign(:watched_ports, MapSet.new())
      |> assign(:lever_setup_element, nil)
      |> assign(:lever_setup_event, nil)
@@ -181,15 +182,8 @@ defmodule TreninoWeb.TrainEditLive do
          |> assign(:selector_wizard_element, nil)
          |> assign(:selector_inputs, [])
          |> assign(:selector_lever_input_ids, MapSet.new())
-         |> assign(:selector_lever_input_ids, MapSet.new())
          |> assign(:selector_watch, nil)
-         |> assign(:watched_ports, MapSet.new())
-         |> assign(:show_selector_wizard, false)
-         |> assign(:selector_wizard_element, nil)
-         |> assign(:selector_inputs, [])
-         |> assign(:selector_lever_input_ids, MapSet.new())
-         |> assign(:selector_lever_input_ids, MapSet.new())
-         |> assign(:selector_watch, nil)
+         |> assign(:selector_watch_input_id, nil)
          |> assign(:watched_ports, MapSet.new())
          |> assign(:lever_setup_element, nil)
          |> assign(:lever_setup_event, nil)
@@ -644,7 +638,13 @@ defmodule TreninoWeb.TrainEditLive do
   # PubSub events
   @impl true
   def handle_info({:devices_updated, devices}, socket) do
-    {:noreply, assign(socket, :nav_devices, devices)}
+    socket = assign(socket, :nav_devices, devices)
+
+    # A device appearing or disappearing changes what the selector wizard can read
+    case socket.assigns.selector_watch_input_id do
+      nil -> {:noreply, socket}
+      input_id -> {:noreply, watch_selector_input(socket, input_id)}
+    end
   end
 
   @impl true
@@ -1149,12 +1149,6 @@ defmodule TreninoWeb.TrainEditLive do
      socket
      |> assign(:elements, elements)
      |> assign(:show_lever_setup_wizard, false)
-     |> assign(:show_selector_wizard, false)
-     |> assign(:selector_wizard_element, nil)
-     |> assign(:selector_inputs, [])
-     |> assign(:selector_lever_input_ids, MapSet.new())
-     |> assign(:selector_watch, nil)
-     |> assign(:watched_ports, MapSet.new())
      |> assign(:lever_setup_element, nil)
      |> assign(:lever_setup_event, nil)
      |> put_flash(
@@ -1168,12 +1162,6 @@ defmodule TreninoWeb.TrainEditLive do
     {:noreply,
      socket
      |> assign(:show_lever_setup_wizard, false)
-     |> assign(:show_selector_wizard, false)
-     |> assign(:selector_wizard_element, nil)
-     |> assign(:selector_inputs, [])
-     |> assign(:selector_lever_input_ids, MapSet.new())
-     |> assign(:selector_watch, nil)
-     |> assign(:watched_ports, MapSet.new())
      |> assign(:lever_setup_element, nil)
      |> assign(:lever_setup_event, nil)}
   end
@@ -1211,7 +1199,7 @@ defmodule TreninoWeb.TrainEditLive do
       |> Enum.map(&ConfigurationManager.config_id_to_port/1)
       |> Enum.reject(&is_nil/1)
 
-    Enum.each(ports, &Hardware.subscribe_input_values/1)
+    socket = Enum.reduce(ports, socket, &subscribe_port(&2, &1))
 
     # Build a lookup map: {config_id, pin} -> input_id
     input_lookup =
@@ -1265,28 +1253,7 @@ defmodule TreninoWeb.TrainEditLive do
   # Selector wizard events
   @impl true
   def handle_info({:selector_wizard_watch, input_id}, socket) do
-    with %{} = input <- Enum.find(socket.assigns.selector_inputs, &(&1.id == input_id)),
-         port when is_binary(port) <-
-           ConfigurationManager.config_id_to_port(input.device.config_id) do
-      socket =
-        if MapSet.member?(socket.assigns.watched_ports, port) do
-          socket
-        else
-          Hardware.subscribe_input_values(port)
-          update(socket, :watched_ports, &MapSet.put(&1, port))
-        end
-
-      case Map.fetch(ConfigurationManager.get_input_values(port), input.pin) do
-        {:ok, raw} -> send_update(SelectorWizard, id: "selector-wizard", reading: raw)
-        :error -> :ok
-      end
-
-      {:noreply, assign(socket, :selector_watch, {port, input.pin})}
-    else
-      _ ->
-        send_update(SelectorWizard, id: "selector-wizard", reading: :offline)
-        {:noreply, assign(socket, :selector_watch, nil)}
-    end
+    {:noreply, watch_selector_input(socket, input_id)}
   end
 
   def handle_info({:selector_wizard_saved, _element_id}, socket) do
@@ -1296,6 +1263,7 @@ defmodule TreninoWeb.TrainEditLive do
      socket
      |> close_selector_wizard()
      |> assign(:elements, elements)
+     |> assign(:selector_positions, selector_positions(elements))
      |> put_flash(:info, "Selector saved")}
   end
 
@@ -1453,11 +1421,47 @@ defmodule TreninoWeb.TrainEditLive do
         do: binding.input_id
   end
 
+  # Streams the input's readings to the selector wizard: the cached value
+  # now, live values through the PubSub subscription. Tells the wizard when
+  # the input's device is not connected.
+  defp watch_selector_input(socket, input_id) do
+    socket = assign(socket, :selector_watch_input_id, input_id)
+
+    with %{} = input <- Enum.find(socket.assigns.selector_inputs, &(&1.id == input_id)),
+         port when is_binary(port) <-
+           ConfigurationManager.config_id_to_port(input.device.config_id) do
+      case Map.fetch(ConfigurationManager.get_input_values(port), input.pin) do
+        {:ok, raw} -> send_update(SelectorWizard, id: "selector-wizard", reading: raw)
+        :error -> :ok
+      end
+
+      socket
+      |> subscribe_port(port)
+      |> assign(:selector_watch, {port, input.pin})
+    else
+      _ ->
+        send_update(SelectorWizard, id: "selector-wizard", reading: :offline)
+        assign(socket, :selector_watch, nil)
+    end
+  end
+
+  # PubSub subscriptions last as long as the page, so each port is
+  # subscribed to once.
+  defp subscribe_port(socket, port) do
+    if MapSet.member?(socket.assigns.watched_ports, port) do
+      socket
+    else
+      Hardware.subscribe_input_values(port)
+      update(socket, :watched_ports, &MapSet.put(&1, port))
+    end
+  end
+
   defp close_selector_wizard(socket) do
     socket
     |> assign(:show_selector_wizard, false)
     |> assign(:selector_wizard_element, nil)
     |> assign(:selector_watch, nil)
+    |> assign(:selector_watch_input_id, nil)
   end
 
   defp selector_positions(elements) do

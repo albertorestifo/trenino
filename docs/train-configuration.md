@@ -47,6 +47,7 @@ An exact identifier can belong to only one train profile. If prefixes from diffe
 |------|-------------|----------|
 | Lever | Analog control with notches | Throttle, Reverser, Dynamic Brake |
 | Button | Momentary or latching input | Horn, Bell, Headlights, Wipers, Sander |
+| Selector | Potentiometer used as a switch with fixed positions, each with its own actions | Lights selector, Wiper speed, Cab heating |
 
 ### Creating a Lever Element
 
@@ -326,6 +327,33 @@ Sequences are reusable lists of simulator commands with configurable delays betw
 | 3 | `CurrentDrivableActor/MainBreaker.InputValue` | `1.0` | `0` |
 
 Assign this sequence to a button in Sequence mode to trigger the full startup with one button press.
+
+## Configuring Selectors
+
+A selector turns a potentiometer into a multi-position switch. Its travel is split into 2 to 12 positions, and each position runs its own actions. A three-position lights selector could set the headlights to Off, Dim and Full.
+
+Selectors work without the simulator; connect it to browse endpoints or read values while you set them up.
+
+1. Click **Add element**, enter a name and select type **Selector**. The setup opens.
+2. **Input**: pick the potentiometer. It must be calibrated on its hardware page first. If the same input already drives a lever on this train, both react when it moves.
+3. **Positions**: choose how many positions the knob has, then either:
+   - **Split evenly**, or
+   - turn the knob into each detent and click **Capture** on its row. Once every detent is captured, the ranges are placed halfway between neighbouring detents.
+
+   Ranges stay editable. Gaps between positions are dead zones: the selector keeps its last position there, so jitter never switches it. Leave at least 0.02 between positions.
+4. **Actions**: for each position choose what happens **when entering** and **when leaving**:
+   - **Set a simulator value**: an endpoint and a value. Click **Use the simulator's current value** after setting the control in the game.
+   - **Run a sequence**
+   - **Tap a key**: pressed and released once
+   - **Do nothing**
+5. Save the selector.
+
+### How Selectors Behave
+
+- Moving into a new position runs the old position's exit action, then the new position's enter action.
+- When a train loads or the simulator reconnects, the current position's enter action runs again so the game matches the knob. Key taps are skipped there, because they usually toggle.
+- While the simulator is disconnected the selector follows the knob but runs no actions.
+- The Elements table shows the selector's current position.
 
 ## API Explorer
 

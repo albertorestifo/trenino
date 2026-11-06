@@ -6,8 +6,11 @@ defmodule Trenino.Train.SelectorBinding do
   normalized range is split into positions (`SelectorPosition`), each with its
   own enter and exit actions.
 
-  Each selector element has at most one binding. Positions are always written
-  as a complete set through `changeset/2`, which replaces the previous set.
+  Each selector element has at most one binding. When `changeset/2` is given
+  positions, they replace the previous set; without them the existing
+  positions are kept. Indexes run from 0 to count - 1, in the order the knob
+  passes through the positions. Ranges may run either way, so a pot wired in
+  reverse puts index 0 at the high end.
   """
 
   use Ecto.Schema
@@ -60,6 +63,41 @@ defmodule Trenino.Train.SelectorBinding do
     |> unique_constraint(:element_id)
   end
 
+  @typedoc """
+  A validation error: `nil` for the binding, or the position index it
+  belongs to.
+  """
+  @type error :: {non_neg_integer() | nil, atom(), String.t()}
+
+  @doc """
+  List a changeset's errors with the position each belongs to.
+
+  Positions being replaced are skipped, and binding-level `:positions`
+  errors are kept next to the positions' own errors. Callers format the
+  list for their audience.
+  """
+  @spec errors(Ecto.Changeset.t()) :: [error()]
+  def errors(%Ecto.Changeset{} = changeset) do
+    binding_errors = for {field, error} <- changeset.errors, do: {nil, field, message(error)}
+
+    position_errors =
+      changeset.changes
+      |> Map.get(:positions, [])
+      |> Enum.reject(&(&1.action == :replace))
+      |> Enum.flat_map(fn %Ecto.Changeset{} = position ->
+        index = Ecto.Changeset.get_field(position, :index)
+        for {field, error} <- position.errors, do: {index, field, message(error)}
+      end)
+
+    binding_errors ++ position_errors
+  end
+
+  defp message({message, opts}) do
+    Regex.replace(~r"%{(\w+)}", message, fn _, key ->
+      opts |> Keyword.get(String.to_existing_atom(key), key) |> to_string()
+    end)
+  end
+
   defp validate_positions(changeset) do
     positions =
       changeset
@@ -78,8 +116,8 @@ defmodule Trenino.Train.SelectorBinding do
         # Per-position errors already explain what is missing
         changeset
 
-      length(Enum.uniq_by(positions, & &1.index)) != length(positions) ->
-        add_error(changeset, :positions, "must have unique indexes")
+      Enum.sort(Enum.map(positions, & &1.index)) != Enum.to_list(0..(length(positions) - 1)) ->
+        add_error(changeset, :positions, "must be numbered 0 to #{length(positions) - 1}")
 
       SelectorMapper.validate_layout(positions) == {:error, :overlap} ->
         add_error(

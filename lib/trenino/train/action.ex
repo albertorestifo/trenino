@@ -19,12 +19,11 @@ defmodule Trenino.Train.Action do
           endpoint: String.t() | nil,
           value: float() | nil,
           keystroke: String.t() | nil,
-          sequence_id: integer() | nil,
           commands: [command()]
         }
 
   @enforce_keys [:kind]
-  defstruct [:kind, :endpoint, :value, :keystroke, :sequence_id, commands: []]
+  defstruct [:kind, :endpoint, :value, :keystroke, commands: []]
 
   @doc """
   Build the enter or exit action of a selector position.
@@ -60,11 +59,10 @@ defmodule Trenino.Train.Action do
   defp build(:keystroke, _endpoint, _value, keystroke, _sequence),
     do: %__MODULE__{kind: :keystroke, keystroke: keystroke}
 
-  defp build(:sequence, _endpoint, _value, _keystroke, %Sequence{commands: commands} = sequence)
+  defp build(:sequence, _endpoint, _value, _keystroke, %Sequence{commands: commands})
        when is_list(commands) do
     %__MODULE__{
       kind: :sequence,
-      sequence_id: sequence.id,
       commands: Enum.map(commands, &Map.take(&1, [:endpoint, :value, :delay_ms]))
     }
   end

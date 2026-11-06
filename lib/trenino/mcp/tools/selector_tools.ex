@@ -275,13 +275,15 @@ defmodule Trenino.MCP.Tools.SelectorTools do
   defp split_count(_args, %SelectorBinding{positions: positions}), do: {:ok, length(positions)}
 
   defp dead_zone(%{"dead_zone" => dead_zone}) when is_number(dead_zone) do
-    if dead_zone >= 0.05 and dead_zone <= 0.5,
+    {min, max} = SelectorMapper.dead_zone_limits()
+
+    if dead_zone >= min and dead_zone <= max,
       do: {:ok, dead_zone * 1.0},
-      else: {:error, "dead_zone must be between 0.05 and 0.5"}
+      else: {:error, "dead_zone must be between #{min} and #{max}"}
   end
 
   defp dead_zone(%{"dead_zone" => _dead_zone}), do: {:error, "dead_zone must be a number"}
-  defp dead_zone(_args), do: {:ok, 0.2}
+  defp dead_zone(_args), do: {:ok, SelectorMapper.default_dead_zone()}
 
   defp build_attrs(args) do
     base =
@@ -388,30 +390,16 @@ defmodule Trenino.MCP.Tools.SelectorTools do
   defp not_found(element_id), do: "No selector binding found for element #{element_id}"
 
   # Binding errors read "input_id must be calibrated first"; position errors
-  # name the caller's list index: "positions[1].enter_endpoint can't be blank".
-  # Positions being replaced are skipped, and binding-level positions errors
-  # are kept even when positions have their own errors.
+  # name the position's index: "positions[1].enter_endpoint can't be blank".
   defp format_changeset_errors(%Ecto.Changeset{} = changeset) do
-    binding_errors =
-      for {field, error} <- changeset.errors, do: "#{field} #{error_message(error)}"
-
-    position_errors =
-      changeset.changes
-      |> Map.get(:positions, [])
-      |> Enum.reject(&(&1.action == :replace))
-      |> Enum.flat_map(fn %Ecto.Changeset{} = position ->
-        index = Ecto.Changeset.get_field(position, :index)
-
-        for {field, error} <- position.errors,
-            do: "positions[#{index}].#{field} #{error_message(error)}"
+    errors =
+      changeset
+      |> SelectorBinding.errors()
+      |> Enum.map(fn
+        {nil, field, message} -> "#{field} #{message}"
+        {index, field, message} -> "positions[#{index}].#{field} #{message}"
       end)
 
-    "Validation failed: " <> Enum.join(binding_errors ++ position_errors, "; ")
-  end
-
-  defp error_message({message, opts}) do
-    Regex.replace(~r"%{(\w+)}", message, fn _, key ->
-      opts |> Keyword.get(String.to_existing_atom(key), key) |> to_string()
-    end)
+    "Validation failed: " <> Enum.join(errors, "; ")
   end
 end

@@ -42,6 +42,14 @@ defmodule Trenino.Train.SelectorMapper do
   @spec min_gap() :: float()
   def min_gap, do: @min_gap
 
+  @doc "The dead zone used when none is given."
+  @spec default_dead_zone() :: float()
+  def default_dead_zone, do: @default_dead_zone
+
+  @doc "The smallest and largest dead zone `even_split/2` and `ranges_from_detents/2` accept."
+  @spec dead_zone_limits() :: {float(), float()}
+  def dead_zone_limits, do: {@min_dead_zone, @max_dead_zone}
+
   @doc """
   Find the position whose range contains `input_value`.
 
@@ -175,7 +183,7 @@ defmodule Trenino.Train.SelectorMapper do
     ranges
     |> Enum.sort_by(& &1.input_min)
     |> Enum.chunk_every(2, 1, :discard)
-    |> Enum.all?(fn [a, b] -> Float.round((b.input_min - a.input_max) / 1, 2) >= @min_gap end)
+    |> Enum.all?(fn [a, b] -> Float.round((b.input_min - a.input_max) * 1.0, 2) >= @min_gap end)
     |> if(do: :ok, else: {:error, :overlap})
   end
 end

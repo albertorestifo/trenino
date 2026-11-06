@@ -65,7 +65,12 @@ defmodule TreninoWeb.SelectorWizard do
       |> assign(:inputs, assigns.inputs)
       |> assign(:lever_input_ids, Map.get(assigns, :lever_input_ids, MapSet.new()))
 
-    socket = if socket.assigns[:initialized], do: socket, else: initialize(socket)
+    # The component id is fixed, so opening another selector re-initializes it
+    socket =
+      if socket.assigns[:initialized_for] == assigns.element.id,
+        do: socket,
+        else: initialize(socket)
+
     {:ok, socket}
   end
 
@@ -92,7 +97,8 @@ defmodule TreninoWeb.SelectorWizard do
       |> assign(:explorer_field, nil)
       |> assign(:error, nil)
       |> assign(:conflict, false)
-      |> assign(:initialized, true)
+      |> assign(:enabled, if(binding, do: binding.enabled, else: true))
+      |> assign(:initialized_for, socket.assigns.element.id)
 
     if binding, do: watch_input(binding.input_id)
     socket
@@ -214,7 +220,7 @@ defmodule TreninoWeb.SelectorWizard do
   end
 
   def handle_event("capture", %{"index" => index}, socket) do
-    with {index, ""} <- Integer.parse(index),
+    with {:ok, index} <- position_index(socket, index),
          value when is_float(value) <- socket.assigns.reading do
       positions = List.update_at(socket.assigns.positions, index, &%{&1 | detent: value})
       {:noreply, apply_detents(socket, positions)}
@@ -223,23 +229,12 @@ defmodule TreninoWeb.SelectorWizard do
     end
   end
 
-  def handle_event("update_positions", %{"positions" => params}, socket) do
+  def handle_event("update_positions", %{"positions" => %{} = params}, socket) do
     positions =
       socket.assigns.positions
       |> Enum.with_index()
       |> Enum.map(fn {position, index} ->
-        case Map.get(params, to_string(index)) do
-          nil ->
-            position
-
-          row ->
-            %{
-              position
-              | label: Map.get(row, "label", position.label),
-                input_min: Map.get(row, "input_min", position.input_min),
-                input_max: Map.get(row, "input_max", position.input_max)
-            }
-        end
+        update_position_fields(position, Map.get(params, to_string(index)))
       end)
 
     {:noreply, assign(socket, :positions, positions)}
@@ -247,16 +242,16 @@ defmodule TreninoWeb.SelectorWizard do
 
   def handle_event("update_positions", _params, socket), do: {:noreply, socket}
 
-  def handle_event("update_actions", %{"positions" => params}, socket) do
+  def handle_event("update_actions", %{"positions" => %{} = params}, socket) do
     socket =
       Enum.reduce(params, socket, fn {index, row}, acc ->
-        case Integer.parse(index) do
-          {index, ""} ->
+        case {position_index(acc, index), row} do
+          {{:ok, index}, %{} = row} ->
             acc
-            |> update_action(index, "enter", Map.get(row, "enter", %{}))
-            |> update_action(index, "exit", Map.get(row, "exit", %{}))
+            |> update_action(index, "enter", Map.get(row, "enter"))
+            |> update_action(index, "exit", Map.get(row, "exit"))
 
-          _ ->
+          _invalid ->
             acc
         end
       end)
@@ -266,15 +261,20 @@ defmodule TreninoWeb.SelectorWizard do
 
   def handle_event("update_actions", _params, socket), do: {:noreply, socket}
 
-  def handle_event("browse", %{"index" => index, "prefix" => prefix}, socket) do
-    {:noreply, assign(socket, :explorer_field, "selector:#{index}:#{prefix}")}
+  def handle_event("browse", %{"index" => index, "prefix" => prefix}, socket)
+      when prefix in ["enter", "exit"] do
+    case position_index(socket, index) do
+      {:ok, index} -> {:noreply, assign(socket, :explorer_field, "selector:#{index}:#{prefix}")}
+      :error -> {:noreply, socket}
+    end
   end
 
   def handle_event("close_browser", _params, socket),
     do: {:noreply, assign(socket, :explorer_field, nil)}
 
-  def handle_event("read_value", %{"index" => index, "prefix" => prefix}, socket) do
-    with {index, ""} <- Integer.parse(index),
+  def handle_event("read_value", %{"index" => index, "prefix" => prefix}, socket)
+      when prefix in ["enter", "exit"] do
+    with {:ok, index} <- position_index(socket, index),
          %{} = position <- Enum.at(socket.assigns.positions, index),
          %SimulatorClient{} = client <- socket.assigns.client,
          endpoint when endpoint != "" <- position[String.to_existing_atom(prefix)]["endpoint"] do
@@ -300,10 +300,21 @@ defmodule TreninoWeb.SelectorWizard do
     end
   end
 
-  def handle_event("go", %{"step" => step}, socket) when step in ~w(input positions actions) do
+  # Ranges are checked before moving on, so layout errors show next to them
+  def handle_event("go", %{"step" => "actions"}, socket) do
+    case layout_error(socket.assigns.positions) do
+      nil -> {:noreply, assign(socket, step: :actions, error: nil, explorer_field: nil)}
+      message -> {:noreply, assign(socket, :error, message)}
+    end
+  end
+
+  def handle_event("go", %{"step" => step}, socket) when step in ~w(input positions) do
     {:noreply,
      assign(socket, step: String.to_existing_atom(step), error: nil, explorer_field: nil)}
   end
+
+  def handle_event("toggle_enabled", params, socket),
+    do: {:noreply, assign(socket, :enabled, Map.get(params, "enabled") == "true")}
 
   def handle_event("save", _params, socket), do: {:noreply, save(socket, [])}
 
@@ -315,7 +326,52 @@ defmodule TreninoWeb.SelectorWizard do
     {:noreply, socket}
   end
 
-  defp update_action(socket, index, prefix, changes) do
+  defp update_position_fields(position, %{} = row) do
+    %{
+      position
+      | label: Map.get(row, "label", position.label),
+        input_min: Map.get(row, "input_min", position.input_min),
+        input_max: Map.get(row, "input_max", position.input_max)
+    }
+  end
+
+  defp update_position_fields(position, _not_a_row), do: position
+
+  # Index of an existing position from event params
+  defp position_index(socket, index) when is_binary(index) do
+    case Integer.parse(index) do
+      {index, ""} when index >= 0 and index < length(socket.assigns.positions) -> {:ok, index}
+      _invalid -> :error
+    end
+  end
+
+  defp position_index(_socket, _index), do: :error
+
+  defp layout_error(positions) do
+    ranges =
+      Enum.map(
+        positions,
+        &%{input_min: parse_number(&1.input_min), input_max: parse_number(&1.input_max)}
+      )
+
+    cond do
+      Enum.any?(ranges, &(is_nil(&1.input_min) or is_nil(&1.input_max))) ->
+        "Give every position a start and an end."
+
+      Enum.any?(ranges, &(&1.input_min > &1.input_max)) ->
+        "A position starts after it ends. Check the From and To values."
+
+      SelectorMapper.validate_layout(ranges) != :ok ->
+        "Positions overlap or are too close. Leave a gap of at least #{SelectorMapper.min_gap()} between them."
+
+      true ->
+        nil
+    end
+  end
+
+  defp update_action(socket, _index, _prefix, nil), do: socket
+
+  defp update_action(socket, index, prefix, changes) when is_map(changes) do
     key = String.to_existing_atom(prefix)
     changes = Map.take(changes, @action_fields)
 
@@ -376,6 +432,7 @@ defmodule TreninoWeb.SelectorWizard do
   defp save(socket, opts) do
     attrs = %{
       "input_id" => socket.assigns.input_id,
+      "enabled" => socket.assigns.enabled,
       "positions" =>
         socket.assigns.positions
         |> Enum.with_index()
@@ -423,34 +480,14 @@ defmodule TreninoWeb.SelectorWizard do
 
   defp blank_to_nil(value), do: value
 
-  # "Position 2: enter endpoint can't be blank" style messages. Positions
-  # being replaced are skipped so numbers match the rows on screen.
+  # "Position 2: enter endpoint can't be blank" style messages
   defp describe_errors(%Ecto.Changeset{} = changeset) do
-    binding_errors =
-      for {field, error} <- changeset.errors do
-        prefix = if field == :positions, do: "Positions", else: humanize(field)
-        "#{prefix} #{error_message(error)}"
-      end
-
-    position_errors =
-      changeset.changes
-      |> Map.get(:positions, [])
-      |> Enum.reject(&(&1.action == :replace))
-      |> Enum.flat_map(&position_errors/1)
-
-    Enum.join(binding_errors ++ position_errors, ". ")
-  end
-
-  defp position_errors(%Ecto.Changeset{} = position) do
-    number = Ecto.Changeset.get_field(position, :index) + 1
-
-    for {field, error} <- position.errors,
-        do: "Position #{number}: #{humanize(field)} #{error_message(error)}"
-  end
-
-  defp error_message({message, opts}) do
-    Regex.replace(~r"%{(\w+)}", message, fn _, key ->
-      opts |> Keyword.get(String.to_existing_atom(key), key) |> to_string()
+    changeset
+    |> SelectorBinding.errors()
+    |> Enum.map_join(". ", fn
+      {nil, :positions, message} -> "Positions #{message}"
+      {nil, field, message} -> "#{humanize(field)} #{message}"
+      {index, field, message} -> "Position #{index + 1}: #{humanize(field)} #{message}"
     end)
   end
 
@@ -488,6 +525,11 @@ defmodule TreninoWeb.SelectorWizard do
 
   defp live_position(_assigns), do: nil
 
+  defp count_options do
+    {min, max} = SelectorBinding.position_limits()
+    Enum.map(min..max, &{to_string(&1), to_string(&1)})
+  end
+
   defp position_name(position, index) do
     if position.label in [nil, ""], do: "Position #{index + 1}", else: position.label
   end
@@ -508,7 +550,7 @@ defmodule TreninoWeb.SelectorWizard do
       |> assign(:kind_options, @kind_options)
       |> assign(:selected_input, selected_input(assigns))
       |> assign(:live_index, live_position(assigns))
-      |> assign(:count_options, Enum.map(2..12, &{to_string(&1), to_string(&1)}))
+      |> assign(:count_options, count_options())
       |> assign(:sequence_options, Enum.map(assigns.sequences, &{&1.name, to_string(&1.id)}))
 
     ~H"""
@@ -518,7 +560,7 @@ defmodule TreninoWeb.SelectorWizard do
       aria-modal="true"
       aria-labelledby="selector-wizard-title"
       class="fixed inset-0 z-50 flex items-center justify-center p-4"
-      phx-window-keydown="cancel"
+      phx-window-keydown={is_nil(@explorer_field) && "cancel"}
       phx-key="Escape"
       phx-target={@myself}
       phx-mounted={JS.focus(to: "#selector-wizard-title")}
@@ -633,10 +675,22 @@ defmodule TreninoWeb.SelectorWizard do
         <div :if={@step == :positions} class="p-4 sm:p-6 overflow-y-auto space-y-4">
           <h3 class="font-semibold">Define the positions</h3>
           <p class="text-sm text-muted">
-            Split the range evenly, or turn the knob into each detent and capture it. Gaps between positions are dead zones: the selector keeps its last position there.
+            Split the range evenly, or turn the knob into each detent and capture it. Gaps between positions are dead zones: the selector keeps its last position there. Leave at least 0.02 between positions.
           </p>
 
-          <div id="selector-live" class="bg-base-100 rounded-lg p-3 space-y-2" aria-live="polite">
+          <div id="selector-live" class="bg-base-100 rounded-lg p-3 space-y-2">
+            <p class="sr-only" aria-live="polite">
+              {cond do
+                is_nil(@reading) ->
+                  ""
+
+                @live_index ->
+                  "Knob in #{position_name(Enum.at(@positions, @live_index), @live_index)}"
+
+                true ->
+                  "Knob in a dead zone"
+              end}
+            </p>
             <div class="flex flex-wrap items-center justify-between gap-2 text-sm">
               <span :if={@reading}>
                 Reading <span class="font-mono">{format_number(@reading)}</span>
@@ -780,8 +834,27 @@ defmodule TreninoWeb.SelectorWizard do
         <div :if={@step == :actions} class="p-4 sm:p-6 overflow-y-auto space-y-4">
           <h3 class="font-semibold">Choose what each position does</h3>
           <p class="text-sm text-muted">
-            Enter actions run when the knob moves into a position, exit actions when it leaves. When a train loads or the simulator reconnects, the current position's enter action runs again, except key taps.
+            Enter actions run when the knob moves into a position, exit actions when it leaves. When a train loads or the simulator reconnects, the current position's enter action runs again, except key taps; exit actions do not.
           </p>
+          <.form
+            for={to_form(%{})}
+            id="selector-enabled-form"
+            phx-change="toggle_enabled"
+            phx-target={@myself}
+          >
+            <input type="hidden" name="enabled" value="false" />
+            <label class="flex items-center gap-3 text-sm">
+              <input
+                id="selector-enabled"
+                type="checkbox"
+                name="enabled"
+                value="true"
+                checked={@enabled}
+                class="toggle toggle-sm toggle-primary"
+                aria-label={"Enable #{@element.name}"}
+              /> Enabled
+            </label>
+          </.form>
           <.form
             for={to_form(%{})}
             id="selector-actions-form"

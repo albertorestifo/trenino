@@ -388,13 +388,169 @@ defmodule TreninoWeb.SelectorSetupTest do
       element_id = ctx.element.id
 
       send(view.pid, {:selector_position_changed, element_id, %{index: 1, label: "On"}})
-      assert view |> element("#selector-position-#{element_id}") |> render() =~ "At On"
+      assert view |> element("#selector-live-position-#{element_id}") |> render() =~ "At On"
 
       send(view.pid, {:selector_position_changed, element_id, %{index: 0, label: nil}})
-      assert view |> element("#selector-position-#{element_id}") |> render() =~ "At position 1"
+
+      assert view |> element("#selector-live-position-#{element_id}") |> render() =~
+               "At position 1"
 
       send(view.pid, {:selector_position_changed, element_id, nil})
-      refute has_element?(view, "#selector-position-#{element_id}")
+      refute has_element?(view, "#selector-live-position-#{element_id}")
+    end
+  end
+
+  describe "review fixes" do
+    test "the table position and the wizard rows never share an id", ctx do
+      element = create_selector(ctx.train)
+      {:ok, view, _html} = live(ctx.conn, ~p"/trains/#{ctx.train.id}")
+
+      send(view.pid, {:selector_position_changed, element.id, %{index: 0, label: nil}})
+      settle(view)
+
+      view
+      |> element("button[phx-click='configure_selector'][phx-value-id='#{element.id}']")
+      |> render_click()
+
+      pick_input(view, ctx.input)
+
+      # LiveViewTest raises on duplicate ids when rendering
+      assert has_element?(view, "#selector-live-position-#{element.id}")
+      assert has_element?(view, "#selector-position-0")
+    end
+
+    test "a device connecting mid-flow starts the live reading", ctx do
+      Mimic.stub(Trenino.Serial.Connection, :connected_devices, fn -> [] end)
+      view = open_wizard(ctx.conn, ctx.train, create_selector(ctx.train))
+      pick_input(view, ctx.input)
+      assert render(view) =~ "The device is not connected."
+
+      device = Trenino.Repo.get!(Trenino.Hardware.Device, ctx.input.device_id)
+      port = ctx.port
+
+      Mimic.stub(Trenino.Serial.Connection, :connected_devices, fn ->
+        [%DeviceConnection{port: port, status: :connected, device_config_id: device.config_id}]
+      end)
+
+      send(view.pid, {:devices_updated, []})
+      settle(view)
+
+      assert read(view, ctx, 500) =~ "in Position 2"
+    end
+
+    test "a device disconnecting mid-flow stops capture", ctx do
+      view = open_wizard(ctx.conn, ctx.train, create_selector(ctx.train))
+      pick_input(view, ctx.input)
+      read(view, ctx, 500)
+      assert has_element?(view, "#selector-capture-0:not([disabled])")
+
+      Mimic.stub(Trenino.Serial.Connection, :connected_devices, fn -> [] end)
+      send(view.pid, {:devices_updated, []})
+      settle(view)
+
+      assert render(view) =~ "The device is not connected."
+      assert has_element?(view, "#selector-capture-0[disabled]")
+    end
+
+    test "re-opening the wizard does not subscribe to the port twice", ctx do
+      element = create_selector(ctx.train)
+      view = open_wizard(ctx.conn, ctx.train, element)
+      pick_input(view, ctx.input)
+      view |> element("button[aria-label='Close selector setup']") |> render_click()
+
+      view
+      |> element("button[phx-click='configure_selector'][phx-value-id='#{element.id}']")
+      |> render_click()
+
+      pick_input(view, ctx.input)
+
+      subscriptions =
+        Registry.lookup(Trenino.PubSub, "hardware:input_values:#{ctx.port}")
+        |> Enum.count(fn {pid, _} -> pid == view.pid end)
+
+      assert subscriptions == 1
+    end
+
+    test "opening another selector starts from its own configuration", ctx do
+      first = create_selector(ctx.train)
+
+      {:ok, second} =
+        TrainContext.create_element(ctx.train.id, %{name: "Wipers", type: :selector})
+
+      view = open_wizard(ctx.conn, ctx.train, first)
+      pick_input(view, ctx.input)
+
+      view
+      |> element("#selector-positions-form")
+      |> render_change(%{"positions" => %{"0" => %{"label" => "From first"}}})
+
+      view
+      |> element("button[phx-click='configure_selector'][phx-value-id='#{second.id}']")
+      |> render_click()
+
+      assert render(view) =~ "Configure Wipers"
+      refute has_element?(view, "input[value='From first']")
+    end
+
+    test "crafted params do not crash the page", ctx do
+      view = open_wizard(ctx.conn, ctx.train, create_selector(ctx.train))
+      pick_input(view, ctx.input)
+
+      view
+      |> element("#selector-positions-form")
+      |> render_change(%{"positions" => %{"0" => "x"}})
+
+      view |> element("#selector-positions-form") |> render_change(%{"positions" => "x"})
+      view |> element("#selector-next") |> render_click()
+
+      view |> element("#selector-actions-form") |> render_change(%{"positions" => %{"0" => "x"}})
+
+      view
+      |> element("#selector-actions-form")
+      |> render_change(%{"positions" => %{"-1" => %{"enter" => %{"kind" => "keystroke"}}}})
+
+      assert Process.alive?(view.pid)
+      refute has_element?(view, "#selector-2-enter-keystroke")
+    end
+
+    test "overlapping ranges are reported before the actions step", ctx do
+      view = open_wizard(ctx.conn, ctx.train, create_selector(ctx.train))
+      pick_input(view, ctx.input)
+
+      view
+      |> element("#selector-positions-form")
+      |> render_change(%{"positions" => %{"0" => %{"input_max" => "0.50"}}})
+
+      view |> element("#selector-next") |> render_click()
+
+      assert render(view) =~ "Positions overlap or are too close"
+      assert has_element?(view, "#selector-positions-form")
+      refute has_element?(view, "#selector-actions-form")
+    end
+
+    test "a selector can be disabled and enabled again", ctx do
+      element = create_selector(ctx.train)
+      view = open_wizard(ctx.conn, ctx.train, element)
+      pick_input(view, ctx.input)
+      view |> element("#selector-next") |> render_click()
+
+      view |> element("#selector-enabled-form") |> render_change(%{"enabled" => "false"})
+      view |> element("#selector-save") |> render_click()
+
+      assert {:ok, %{enabled: false}} = TrainContext.get_selector_binding(element.id)
+      assert render(view) =~ "Disabled"
+
+      view
+      |> element("button[phx-click='configure_selector'][phx-value-id='#{element.id}']")
+      |> render_click()
+
+      view |> element("#selector-next") |> render_click()
+      refute has_element?(view, "#selector-enabled[checked]")
+
+      view |> element("#selector-enabled-form") |> render_change(%{"enabled" => "true"})
+      view |> element("#selector-save") |> render_click()
+
+      assert {:ok, %{enabled: true}} = TrainContext.get_selector_binding(element.id)
     end
   end
 end

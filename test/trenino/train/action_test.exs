@@ -39,7 +39,6 @@ defmodule Trenino.Train.ActionTest do
 
     assert %Action{
              kind: :sequence,
-             sequence_id: 7,
              commands: [
                %{endpoint: "A.InputValue", value: 1.0, delay_ms: 100},
                %{endpoint: "B.InputValue", value: +0.0, delay_ms: 0}

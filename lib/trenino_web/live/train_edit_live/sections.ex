@@ -513,7 +513,7 @@ defmodule TreninoWeb.TrainEditLive.Sections do
         <.status_chip :for={{kind, label} <- @status_badges} kind={kind} label={label} />
         <span
           :if={@position}
-          id={"selector-position-#{@element.id}"}
+          id={"selector-live-position-#{@element.id}"}
           class="ml-2 text-xs text-muted"
         >
           At {@position.label || "position #{@position.index + 1}"}

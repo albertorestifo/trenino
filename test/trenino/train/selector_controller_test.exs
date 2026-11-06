@@ -679,7 +679,7 @@ defmodule Trenino.Train.SelectorControllerTest do
       controller = start_controller()
       activate(controller, ctx.train)
       %{runners: %{} = runners} = read(controller, ctx, @pos1)
-      %Task{pid: pid} = Map.fetch!(runners, ctx.element.id)
+      %{task: %Task{pid: pid}} = Map.fetch!(runners, ctx.element.id)
       ref = Process.monitor(pid)
       assert_receive {:DOWN, ^ref, :process, ^pid, _reason}
 
@@ -712,6 +712,110 @@ defmodule Trenino.Train.SelectorControllerTest do
 
       assert state.runners == %{}
       refute_receive {:set, "B", _}, 500
+    end
+  end
+
+  describe "interrupted transitions" do
+    test "an exit cut short runs in the next transition", %{train: train} = ctx do
+      {:ok, sequence} = TrainContext.create_sequence(train.id, %{name: "Reset"})
+
+      {:ok, _} =
+        TrainContext.set_sequence_commands(sequence, [
+          %{endpoint: "Reset", value: 1.0, delay_ms: 300}
+        ])
+
+      configure(ctx, %{0 => %{exit_kind: :sequence, exit_sequence_id: sequence.id}})
+      controller = start_controller()
+      activate(controller, ctx.train)
+      read(controller, ctx, @pos0)
+      assert_receive {:set, @endpoint, +0.0}
+
+      # 0 -> 1 starts the slow exit; 1 -> 2 interrupts it
+      read(controller, ctx, @pos1)
+      assert_receive {:set, "Reset", 1.0}
+      read(controller, ctx, @pos2)
+
+      assert_receive {:set, "Reset", 1.0}, 1_000
+      assert_receive {:set, @endpoint, 2.0}, 1_000
+      refute_received {:set, @endpoint, 1.0}
+    end
+
+    test "a finished exit does not run again", ctx do
+      configure(ctx, %{0 => %{exit_kind: :keystroke, exit_keystroke: "X"}})
+      controller = start_controller()
+      activate(controller, ctx.train)
+      read(controller, ctx, @pos0)
+      assert_receive {:set, @endpoint, +0.0}
+
+      read(controller, ctx, @pos1)
+      assert_receive {:tap, "X"}
+      assert_receive {:set, @endpoint, 1.0}
+
+      read(controller, ctx, @pos2)
+      assert_receive {:set, @endpoint, 2.0}
+      refute_received {:tap, "X"}
+    end
+  end
+
+  describe "layouts" do
+    test "a pot wired in reverse runs the right position's actions", ctx do
+      {:ok, _} =
+        TrainContext.save_selector(ctx.element.id, %{
+          input_id: ctx.input.id,
+          positions: [
+            %{
+              index: 0,
+              input_min: 0.7,
+              input_max: 1.0,
+              enter_kind: :keystroke,
+              enter_keystroke: "A"
+            },
+            %{
+              index: 1,
+              input_min: 0.37,
+              input_max: 0.63,
+              enter_kind: :keystroke,
+              enter_keystroke: "B"
+            },
+            %{
+              index: 2,
+              input_min: 0.0,
+              input_max: 0.3,
+              enter_kind: :keystroke,
+              enter_keystroke: "C",
+              exit_kind: :keystroke,
+              exit_keystroke: "Z"
+            }
+          ]
+        })
+
+      controller = start_controller()
+      activate(controller, ctx.train)
+
+      read(controller, ctx, @pos0)
+      assert_receive {:tap, "C"}
+
+      state = read(controller, ctx, @pos2)
+      assert_receive message
+      assert message == {:tap, "Z"}
+      assert_receive {:tap, "A"}
+      assert %{index: 0} = state.current[ctx.element.id]
+    end
+
+    test "a label change keeps the position and broadcasts the new label", ctx do
+      configure(ctx)
+      controller = start_controller()
+      activate(controller, ctx.train)
+      read(controller, ctx, @pos1)
+      assert_receive {:set, @endpoint, 1.0}
+
+      SelectorController.subscribe()
+      element_id = ctx.element.id
+      configure(ctx, %{1 => %{label: "Dim"}})
+      SelectorController.get_state()
+
+      assert_receive {:selector_position_changed, ^element_id, %{index: 1, label: "Dim"}}
+      refute_receive {:set, _, _}, 100
     end
   end
 end

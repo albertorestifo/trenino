@@ -4,7 +4,7 @@ defmodule Trenino.Train.SelectorBindingTest do
   import Trenino.VirtualJoystickFixtures
 
   alias Trenino.Train, as: TrainContext
-  alias Trenino.Train.{SelectorMapper, SelectorPosition}
+  alias Trenino.Train.{SelectorBinding, SelectorMapper, SelectorPosition}
   alias Trenino.VirtualJoystick
 
   setup do
@@ -173,7 +173,30 @@ defmodule Trenino.Train.SelectorBindingTest do
       assert {:error, changeset} =
                TrainContext.save_selector(element.id, %{input_id: input.id, positions: positions})
 
-      assert ["must have unique indexes"] = errors_on(changeset).positions
+      assert ["must be numbered 0 to 2"] = errors_on(changeset).positions
+    end
+
+    test "rejects index gaps", %{element: element, input: input} do
+      positions = three_positions() |> List.update_at(2, &Map.put(&1, :index, 5))
+
+      assert {:error, changeset} =
+               TrainContext.save_selector(element.id, %{input_id: input.id, positions: positions})
+
+      assert ["must be numbered 0 to 2"] = errors_on(changeset).positions
+    end
+
+    test "lists errors with their position index" do
+      changeset =
+        SelectorBinding.changeset(
+          %SelectorBinding{positions: []},
+          %{positions: [%{index: 0, input_min: 0.0, input_max: 0.3, enter_kind: :set_value}]}
+        )
+
+      errors = SelectorBinding.errors(changeset)
+
+      assert {nil, :element_id, "can't be blank"} in errors
+      assert {nil, :positions, "must have between 2 and 12 positions"} in errors
+      assert {0, :enter_endpoint, "can't be blank"} in errors
     end
 
     test "rejects too few or too many positions", %{element: element, input: input} do
