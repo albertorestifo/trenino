@@ -250,11 +250,13 @@ defmodule Trenino.Train.LeverController do
         add_device_inputs(device_conn, acc)
       end)
 
+    # PubSub subscriptions outlive a device disconnect, so a port that comes
+    # back must not be subscribed a second time.
     new_ports
     |> MapSet.difference(old_ports)
     |> Enum.each(&ConfigurationManager.subscribe_input_values/1)
 
-    %{state | input_lookup: input_lookup, subscribed_ports: new_ports}
+    %{state | input_lookup: input_lookup, subscribed_ports: MapSet.union(old_ports, new_ports)}
   end
 
   defp add_device_inputs(device_conn, {lookup, ports}) do

@@ -2,6 +2,7 @@ defmodule Trenino.Train.ButtonControllerTest do
   use Trenino.DataCase, async: false
 
   alias Trenino.Hardware
+  alias Trenino.Serial.Connection.DeviceConnection
   alias Trenino.Train, as: TrainContext
   alias Trenino.Train.ButtonController
   alias Trenino.Train.Detection
@@ -844,6 +845,49 @@ defmodule Trenino.Train.ButtonControllerTest do
       # Controller should still be running and not crash
       state = ButtonController.get_state()
       assert state.active_train.id == ctx.train.id
+    end
+  end
+
+  describe "device reconnects" do
+    setup :set_mimic_global
+
+    test "subscribes to each port once across a disconnect and reconnect" do
+      test_pid = self()
+
+      Mimic.stub(Trenino.Hardware.ConfigurationManager, :subscribe_input_values, fn port ->
+        send(test_pid, {:subscribed, port})
+        :ok
+      end)
+
+      {:ok, device} = Hardware.create_device(%{name: "Reconnect Device"})
+
+      {:ok, _input} =
+        Hardware.create_input(device.id, %{pin: 5, input_type: :button, debounce: 20})
+
+      device_conn = %DeviceConnection{
+        port: "/dev/cu.usbmodem#{System.unique_integer([:positive])}",
+        status: :connected,
+        device_config_id: device.config_id
+      }
+
+      port = device_conn.port
+
+      Mimic.stub(Trenino.Serial.Connection, :subscribe, fn -> :ok end)
+      Mimic.stub(Trenino.Serial.Connection, :list_devices, fn -> [device_conn] end)
+      controller = start_supervised!(ButtonController)
+      ButtonController.get_state()
+      assert_received {:subscribed, ^port}
+
+      Mimic.stub(Trenino.Serial.Connection, :list_devices, fn -> [] end)
+      send(controller, {:devices_updated, []})
+      ButtonController.get_state()
+
+      Mimic.stub(Trenino.Serial.Connection, :list_devices, fn -> [device_conn] end)
+      send(controller, {:devices_updated, [device_conn]})
+      state = ButtonController.get_state()
+
+      refute_received {:subscribed, ^port}
+      assert MapSet.member?(state.subscribed_ports, port)
     end
   end
 end
