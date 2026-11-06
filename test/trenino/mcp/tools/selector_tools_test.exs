@@ -72,18 +72,76 @@ defmodule Trenino.MCP.Tools.SelectorToolsTest do
       assert hd(selector.positions).exit.kind == :none
     end
 
-    test "uses explicit ranges and orders positions physically", %{element: element, input: input} do
+    test "keeps explicit ranges in the order given", %{element: element, input: input} do
+      # A pot wired in reverse: the first position sits at the high end
       args = %{
         "input_id" => input.id,
         "positions" => [
-          %{"label" => "High", "input_min" => 0.6, "input_max" => 1.0},
-          %{"label" => "Low", "input_min" => 0.0, "input_max" => 0.4}
+          %{"label" => "Off", "input_min" => 0.6, "input_max" => 1.0},
+          %{"label" => "On", "input_min" => "0.0", "input_max" => "0.4"}
         ]
       }
 
-      assert {:ok, %{selector: %{positions: [low, high]}}} = configure(element, args)
-      assert %{index: 0, label: "Low", input_max: 0.4} = low
-      assert %{index: 1, label: "High", input_min: 0.6} = high
+      assert {:ok, %{selector: %{positions: [off, on]}}} = configure(element, args)
+      assert %{index: 0, label: "Off", input_min: 0.6} = off
+      assert %{index: 1, label: "On", input_max: 0.4} = on
+    end
+
+    test "treats null ranges as not given", %{element: element, input: input} do
+      args = %{
+        "input_id" => input.id,
+        "positions" => [
+          %{"input_min" => nil, "input_max" => nil},
+          %{"input_min" => nil, "input_max" => nil}
+        ]
+      }
+
+      assert {:ok, %{selector: %{positions: [%{input_min: 0.0}, %{input_max: 1.0}]}}} =
+               configure(element, args)
+    end
+
+    test "names the caller's position in errors after an update",
+         %{element: element, input: input} do
+      {:ok, _} = configure(element, %{"input_id" => input.id, "positions" => [%{}, %{}]})
+
+      args = %{"positions" => [%{"enter" => %{"kind" => "set_value"}}, %{}]}
+
+      assert {:error, message} = configure(element, args)
+      assert message =~ "positions[0].enter_endpoint can't be blank"
+      refute message =~ "positions[2]"
+    end
+
+    test "keeps binding-level position errors next to nested ones",
+         %{element: element, input: input} do
+      positions = for _ <- 1..13, do: %{"enter" => %{"kind" => "keystroke"}}
+      ranged = Enum.map(positions, &Map.merge(&1, %{"input_min" => 0.0, "input_max" => 0.01}))
+
+      assert {:error, message} =
+               configure(element, %{"input_id" => input.id, "positions" => ranged})
+
+      assert message =~ "positions must have between 2 and 12 positions"
+      assert message =~ "positions[0].enter_keystroke can't be blank"
+    end
+
+    test "rejects an uncalibrated input", %{element: element} do
+      {:ok, input} =
+        Trenino.Hardware.create_input(device_fixture().id, %{
+          pin: 9,
+          input_type: :analog,
+          sensitivity: 5
+        })
+
+      assert {:error, message} =
+               configure(element, %{"input_id" => input.id, "positions" => [%{}, %{}]})
+
+      assert message =~ "input_id must be calibrated first"
+    end
+
+    test "rejects a null enabled flag", %{element: element, input: input} do
+      {:ok, _} = configure(element, %{"input_id" => input.id, "positions" => [%{}, %{}]})
+
+      assert {:error, message} = configure(element, %{"enabled" => nil})
+      assert message =~ "enabled can't be blank"
     end
 
     test "rejects ranges on only some positions", %{element: element, input: input} do
@@ -235,6 +293,21 @@ defmodule Trenino.MCP.Tools.SelectorToolsTest do
                SelectorTools.execute("set_selector_even_split", %{"element_id" => other.id})
 
       assert message =~ "No selector binding"
+    end
+  end
+
+  describe "element_id validation" do
+    for tool <- ~w(get_selector configure_selector set_selector_even_split delete_selector),
+        element_id <- ["1", nil, 1.5] do
+      test "#{tool} rejects element_id #{inspect(element_id)}" do
+        assert {:error, "element_id is required and must be an integer"} =
+                 SelectorTools.execute(unquote(tool), %{"element_id" => unquote(element_id)})
+      end
+    end
+
+    test "rejects a missing element_id" do
+      assert {:error, "element_id is required and must be an integer"} =
+               SelectorTools.execute("configure_selector", %{})
     end
   end
 

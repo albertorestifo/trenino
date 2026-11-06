@@ -247,6 +247,31 @@ defmodule Trenino.Train.SelectorBindingTest do
       assert "must be an analog input" in errors_on(changeset).input_id
     end
 
+    test "rejects an uncalibrated input", %{element: element} do
+      {:ok, input} =
+        Trenino.Hardware.create_input(device_fixture().id, %{
+          pin: 9,
+          input_type: :analog,
+          sensitivity: 5
+        })
+
+      assert {:error, changeset} =
+               TrainContext.save_selector(element.id, %{
+                 input_id: input.id,
+                 positions: three_positions()
+               })
+
+      assert "must be calibrated first" in errors_on(changeset).input_id
+    end
+
+    test "rejects a nil enabled flag", %{element: element, input: input} do
+      {:ok, _} =
+        TrainContext.save_selector(element.id, %{input_id: input.id, positions: three_positions()})
+
+      assert {:error, changeset} = TrainContext.save_selector(element.id, %{enabled: nil})
+      assert "can't be blank" in errors_on(changeset).enabled
+    end
+
     test "rejects an element that is not a selector", %{train: train, input: input} do
       {:ok, lever} = TrainContext.create_element(train.id, %{name: "Throttle", type: :lever})
 
@@ -374,7 +399,9 @@ defmodule Trenino.Train.SelectorBindingTest do
                  positions: with_sequences(foreign.id)
                })
 
-      assert "can only run sequences of this train" in errors_on(changeset).positions
+      assert "refer to a sequence that does not exist or belongs to another train" in errors_on(
+               changeset
+             ).positions
     end
   end
 

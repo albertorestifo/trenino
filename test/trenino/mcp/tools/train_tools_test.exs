@@ -109,6 +109,13 @@ defmodule Trenino.MCP.Tools.TrainToolsTest do
       {:ok, input} =
         Hardware.create_input(device.id, %{pin: 0, input_type: :analog, sensitivity: 5})
 
+      {:ok, _} =
+        Hardware.save_calibration(input.id, %{
+          min_value: 0,
+          max_value: 1023,
+          max_hardware_value: 1023
+        })
+
       positions =
         2
         |> SelectorMapper.even_split()

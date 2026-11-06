@@ -11,6 +11,7 @@ defmodule Trenino.MCP.Tools.SelectorTools do
   alias Trenino.Train.{SelectorBinding, SelectorMapper, SelectorPosition}
 
   @action_kinds ~w(none set_value sequence keystroke)
+  @tool_names ~w(get_selector configure_selector set_selector_even_split delete_selector)
 
   @action_schema %{
     type: "object",
@@ -65,7 +66,7 @@ defmodule Trenino.MCP.Tools.SelectorTools do
         description:
           "Create or update a selector element's binding. A selector turns a calibrated " <>
             "potentiometer into a multi-position switch: its 0.0-1.0 range is split into " <>
-            "2-12 positions in physical order (index 0 is at 0.0), and each position runs " <>
+            "2-12 positions, listed in the order the knob passes through them, and each position runs " <>
             "its enter action when the knob moves into it and its exit action when it " <>
             "leaves. Readings between positions are dead zones and change nothing.\n\n" <>
             "positions replaces the whole set. Give input_min/input_max for every position " <>
@@ -132,21 +133,23 @@ defmodule Trenino.MCP.Tools.SelectorTools do
     ]
   end
 
-  def execute("get_selector", %{"element_id" => element_id}) do
+  def execute("get_selector", %{"element_id" => element_id}) when is_integer(element_id) do
     case TrainContext.get_selector_binding(element_id) do
       {:ok, binding} -> {:ok, %{selector: serialize(binding)}}
       {:error, :not_found} -> {:error, not_found(element_id)}
     end
   end
 
-  def execute("configure_selector", %{"element_id" => element_id} = args) do
+  def execute("configure_selector", %{"element_id" => element_id} = args)
+      when is_integer(element_id) do
     with {:ok, attrs} <- build_attrs(args) do
       opts = [replace?: Map.get(args, "replace_joystick_mapping", false) == true]
       save(element_id, attrs, opts)
     end
   end
 
-  def execute("set_selector_even_split", %{"element_id" => element_id} = args) do
+  def execute("set_selector_even_split", %{"element_id" => element_id} = args)
+      when is_integer(element_id) do
     with {:ok, binding} <- fetch_binding(element_id),
          {:ok, count} <- split_count(args, binding),
          {:ok, dead_zone} <- dead_zone(args) do
@@ -166,12 +169,15 @@ defmodule Trenino.MCP.Tools.SelectorTools do
     end
   end
 
-  def execute("delete_selector", %{"element_id" => element_id}) do
+  def execute("delete_selector", %{"element_id" => element_id}) when is_integer(element_id) do
     case TrainContext.delete_selector_binding(element_id) do
       :ok -> {:ok, %{deleted: true, element_id: element_id}}
       {:error, :not_found} -> {:error, not_found(element_id)}
     end
   end
+
+  def execute(name, _args) when name in @tool_names,
+    do: {:error, "element_id is required and must be an integer"}
 
   @doc """
   Serialize a selector binding with its positions for MCP responses.
@@ -336,30 +342,30 @@ defmodule Trenino.MCP.Tools.SelectorTools do
   defp field_key(:enter, name), do: :"enter_#{name}"
   defp field_key(:exit, name), do: :"exit_#{name}"
 
-  # Index follows list order. Ranges come from the caller for every position,
-  # or from an even split for all of them.
+  # Index follows list order: the order the knob passes through the positions.
+  # Ranges come from the caller for every position, or from an even split for
+  # all of them (null bounds count as not given).
   defp apply_ranges(positions) do
     with_range =
-      Enum.count(positions, &(Map.has_key?(&1, :input_min) or Map.has_key?(&1, :input_max)))
+      Enum.count(positions, &(Map.get(&1, :input_min) != nil or Map.get(&1, :input_max) != nil))
 
     {min, max} = SelectorBinding.position_limits()
 
     cond do
       with_range == 0 and length(positions) in min..max ->
         ranges = SelectorMapper.even_split(length(positions))
-        {:ok, Enum.zip_with(positions, ranges, &Map.merge/2)}
+
+        {:ok,
+         Enum.zip_with(positions, ranges, fn position, range ->
+           position |> Map.drop([:input_min, :input_max]) |> Map.merge(range)
+         end)}
 
       with_range == 0 ->
         {:error, "positions must have between #{min} and #{max} entries"}
 
       with_range == length(positions) ->
-        indexed =
-          positions
-          |> Enum.sort_by(&Map.get(&1, :input_min))
-          |> Enum.with_index()
-          |> Enum.map(fn {position, index} -> Map.put(position, :index, index) end)
-
-        {:ok, indexed}
+        {:ok,
+         Enum.with_index(positions, fn position, index -> Map.put(position, :index, index) end)}
 
       true ->
         {:error, "give input_min and input_max for every position, or for none"}
@@ -381,34 +387,31 @@ defmodule Trenino.MCP.Tools.SelectorTools do
 
   defp not_found(element_id), do: "No selector binding found for element #{element_id}"
 
-  # Flattens nested position errors to "positions[1].enter_endpoint can't be blank".
-  defp format_changeset_errors(changeset) do
-    errors =
-      changeset
-      |> Ecto.Changeset.traverse_errors(fn {msg, opts} ->
-        Regex.replace(~r"%{(\w+)}", msg, fn _, key ->
-          opts |> Keyword.get(String.to_existing_atom(key), key) |> to_string()
-        end)
+  # Binding errors read "input_id must be calibrated first"; position errors
+  # name the caller's list index: "positions[1].enter_endpoint can't be blank".
+  # Positions being replaced are skipped, and binding-level positions errors
+  # are kept even when positions have their own errors.
+  defp format_changeset_errors(%Ecto.Changeset{} = changeset) do
+    binding_errors =
+      for {field, error} <- changeset.errors, do: "#{field} #{error_message(error)}"
+
+    position_errors =
+      changeset.changes
+      |> Map.get(:positions, [])
+      |> Enum.reject(&(&1.action == :replace))
+      |> Enum.flat_map(fn %Ecto.Changeset{} = position ->
+        index = Ecto.Changeset.get_field(position, :index)
+
+        for {field, error} <- position.errors,
+            do: "positions[#{index}].#{field} #{error_message(error)}"
       end)
-      |> flatten_errors("")
 
-    "Validation failed: " <> Enum.join(errors, "; ")
+    "Validation failed: " <> Enum.join(binding_errors ++ position_errors, "; ")
   end
 
-  defp flatten_errors(errors, path) when is_map(errors) do
-    Enum.flat_map(errors, fn {field, value} -> flatten_errors(value, join_path(path, field)) end)
+  defp error_message({message, opts}) do
+    Regex.replace(~r"%{(\w+)}", message, fn _, key ->
+      opts |> Keyword.get(String.to_existing_atom(key), key) |> to_string()
+    end)
   end
-
-  defp flatten_errors([%{} | _] = nested, path) do
-    nested
-    |> Enum.with_index()
-    |> Enum.flat_map(fn {errors, index} -> flatten_errors(errors, "#{path}[#{index}]") end)
-  end
-
-  defp flatten_errors(messages, path) when is_list(messages) do
-    Enum.map(messages, &"#{path} #{&1}")
-  end
-
-  defp join_path("", field), do: to_string(field)
-  defp join_path(path, field), do: "#{path}.#{field}"
 end

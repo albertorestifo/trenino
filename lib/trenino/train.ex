@@ -1121,9 +1121,14 @@ defmodule Trenino.Train do
     input_id = Ecto.Changeset.get_field(changeset, :input_id)
     element_id = Ecto.Changeset.get_field(changeset, :element_id)
 
+    input = Input |> Repo.get(input_id) |> Repo.preload(:calibration)
+
     cond do
-      not match?(%Input{input_type: :analog}, Repo.get(Input, input_id)) ->
+      not match?(%Input{input_type: :analog}, input) ->
         Ecto.Changeset.add_error(changeset, :input_id, "must be an analog input")
+
+      is_nil(input.calibration) ->
+        Ecto.Changeset.add_error(changeset, :input_id, "must be calibrated first")
 
       selector_input_taken?(element_id, input_id) ->
         Ecto.Changeset.add_error(
@@ -1133,7 +1138,11 @@ defmodule Trenino.Train do
         )
 
       not selector_sequences_on_train?(changeset, element_id) ->
-        Ecto.Changeset.add_error(changeset, :positions, "can only run sequences of this train")
+        Ecto.Changeset.add_error(
+          changeset,
+          :positions,
+          "refer to a sequence that does not exist or belongs to another train"
+        )
 
       true ->
         changeset

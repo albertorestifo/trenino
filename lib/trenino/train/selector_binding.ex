@@ -52,7 +52,7 @@ defmodule Trenino.Train.SelectorBinding do
   def changeset(%__MODULE__{} = binding, attrs) do
     binding
     |> cast(attrs, [:element_id, :input_id, :enabled])
-    |> validate_required([:element_id, :input_id])
+    |> validate_required([:element_id, :input_id, :enabled])
     |> cast_assoc(:positions, with: &SelectorPosition.changeset/2)
     |> validate_positions()
     |> foreign_key_constraint(:element_id)
