@@ -361,6 +361,47 @@ defmodule Trenino.Train.LeverControllerTest do
     end
   end
 
+  describe "device reconnects" do
+    test "subscribes to each port once across a disconnect and reconnect", %{test: test} do
+      test_pid = self()
+
+      Mimic.stub(Trenino.Hardware.ConfigurationManager, :subscribe_input_values, fn port ->
+        send(test_pid, {:subscribed, port})
+        :ok
+      end)
+
+      {:ok, device} = Hardware.create_device(%{name: "Pro Micro #{test}"})
+
+      {:ok, _input} =
+        Hardware.create_input(device.id, %{pin: 2, input_type: :analog, sensitivity: 1})
+
+      device_conn = %DeviceConnection{
+        port: "/dev/cu.usbmodem#{System.unique_integer([:positive])}",
+        status: :connected,
+        device_config_id: device.config_id
+      }
+
+      port = device_conn.port
+      controller = Process.whereis(LeverController)
+
+      Mimic.stub(Trenino.Serial.Connection, :list_devices, fn -> [device_conn] end)
+      send(controller, {:devices_updated, [device_conn]})
+      LeverController.get_state()
+      assert_received {:subscribed, ^port}
+
+      Mimic.stub(Trenino.Serial.Connection, :list_devices, fn -> [] end)
+      send(controller, {:devices_updated, []})
+      LeverController.get_state()
+
+      Mimic.stub(Trenino.Serial.Connection, :list_devices, fn -> [device_conn] end)
+      send(controller, {:devices_updated, [device_conn]})
+      state = LeverController.get_state()
+
+      refute_received {:subscribed, ^port}
+      assert MapSet.member?(state.subscribed_ports, port)
+    end
+  end
+
   defp connect_simulator do
     client = %Client{base_url: "http://localhost:31270", api_key: "test"}
 
