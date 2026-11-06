@@ -28,6 +28,7 @@ defmodule Trenino.Train do
     OutputBinding,
     Script,
     SelectorBinding,
+    SelectorController,
     SelectorPosition,
     Sequence,
     Train
@@ -969,6 +970,8 @@ defmodule Trenino.Train do
   end
 
   defp maybe_notify_virtual_joystick_replacement(true, %SelectorBinding{}) do
+    if Process.whereis(SelectorController), do: SelectorController.reload_bindings()
+
     if Process.whereis(Manager), do: Manager.reload_mappings()
   end
 
@@ -1188,14 +1191,19 @@ defmodule Trenino.Train do
   @doc """
   List all selector bindings for a train.
 
-  Returns bindings with their element, positions and input preloaded.
+  Returns bindings with their element, input and positions preloaded, and each
+  position's enter and exit sequences with their commands.
   """
   @spec list_selector_bindings_for_train(integer()) :: [SelectorBinding.t()]
   def list_selector_bindings_for_train(train_id) do
     SelectorBinding
     |> join(:inner, [b], e in Element, on: b.element_id == e.id)
     |> where([b, e], e.train_id == ^train_id)
-    |> preload([b], [:element, :positions, input: :device])
+    |> preload([b], [
+      :element,
+      input: :device,
+      positions: [enter_sequence: :commands, exit_sequence: :commands]
+    ])
     |> Repo.all()
   end
 

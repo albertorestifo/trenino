@@ -13,7 +13,8 @@ defmodule Trenino.VirtualJoystick do
     ButtonInputBinding,
     LeverController,
     LeverInputBinding,
-    SelectorBinding
+    SelectorBinding,
+    SelectorController
   }
 
   alias Trenino.VirtualJoystick.{Configuration, Manager, Mapping}
@@ -165,10 +166,11 @@ defmodule Trenino.VirtualJoystick do
     count > 0
   end
 
+  # The controllers' reload_bindings/0 are no-ops when they are not running.
   defp maybe_notify_replacement(%{lever?: lever?, button?: button?, selector?: selector?}) do
-    if lever? and Process.whereis(LeverController), do: LeverController.reload_bindings()
-
-    if button? and Process.whereis(ButtonController), do: ButtonController.reload_bindings()
+    if lever?, do: LeverController.reload_bindings()
+    if button?, do: ButtonController.reload_bindings()
+    if selector?, do: SelectorController.reload_bindings()
 
     if (lever? or button? or selector?) and Process.whereis(Manager),
       do: Manager.reload_mappings()

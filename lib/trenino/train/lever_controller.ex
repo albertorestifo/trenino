@@ -37,9 +37,9 @@ defmodule Trenino.Train.LeverController do
   require Logger
 
   alias Trenino.Hardware
-  alias Trenino.Hardware.Calibration.Calculator
   alias Trenino.Hardware.ConfigurationManager
   alias Trenino.Hardware.Input.Calibration
+  alias Trenino.Hardware.InputNormalizer
   alias Trenino.Serial.Connection, as: SerialConnection
   alias Trenino.Simulator.Client, as: SimulatorClient
   alias Trenino.Simulator.Connection, as: SimulatorConnection
@@ -315,7 +315,7 @@ defmodule Trenino.Train.LeverController do
   defp resolve_simulator_value(%State{} = state, port, pin, raw_value) do
     with {:ok, input_info} <- Map.fetch(state.input_lookup, {port, pin}),
          {:ok, binding_info} <- Map.fetch(state.binding_lookup, input_info.input_id),
-         {:ok, normalized} <- normalize_value(raw_value, input_info.calibration),
+         {:ok, normalized} <- InputNormalizer.normalize(raw_value, input_info.calibration),
          {:ok, sim_value} <- LeverMapper.map_input(binding_info.lever_config, normalized) do
       {:ok, binding_info.lever_config, sim_value}
     else
@@ -430,32 +430,6 @@ defmodule Trenino.Train.LeverController do
     end)
 
     %{cancel_retry_timers(state) | pending: %{}, retries: %{}, last_written: %{}}
-  end
-
-  # Normalizes a raw hardware value to a 0.0-1.0 float for lever mapping.
-  #
-  # The calibration system works in two stages:
-  # 1. Calculator.normalize/2 converts raw ADC value to calibrated integer (0 to total_travel)
-  # 2. This function divides by total_travel to get a 0.0-1.0 normalized float
-  #
-  # Example:
-  #   Raw value: 512 (from 10-bit ADC)
-  #   Calibration: min=100, max=900 (total_travel = 800)
-  #   Normalized integer: 512 - 100 = 412
-  #   Normalized float: 412 / 800 = 0.515 (51.5% of travel)
-  defp normalize_value(_raw_value, nil) do
-    {:error, :no_calibration}
-  end
-
-  defp normalize_value(raw_value, %Calibration{} = calibration) do
-    normalized = Calculator.normalize(raw_value, calibration)
-    total = Calculator.total_travel(calibration)
-
-    if total > 0 do
-      {:ok, Float.round(normalized / total, 2)}
-    else
-      {:error, :invalid_calibration}
-    end
   end
 
   defp send_to_simulator(client, %LeverConfig{value_endpoint: endpoint}, value) do
