@@ -157,4 +157,14 @@ defmodule TreninoWeb.SettingsLiveTest do
       assert {:ok, "existing"} = Settings.api_key()
     end
   end
+
+  test "shows a quiet Discord link that opens outside the app", %{conn: conn} do
+    {:ok, view, _} = live(conn, ~p"/settings")
+
+    assert has_element?(
+             view,
+             "#community-footer a[href='https://discord.gg/d75tmjwUav'][target='_blank'][rel~='noopener']",
+             "Join the Trenino Discord"
+           )
+  end
 end

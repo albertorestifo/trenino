@@ -20,6 +20,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   also available through new MCP tools (`get_selector`,
   `configure_selector`, `set_selector_even_split`, `delete_selector`), and
   `list_device_inputs` now reports whether an input is calibrated.
+- A quiet footer at the bottom of every page links to the Trenino Discord
+  community, for questions, ideas and sharing setups.
 
 ### Fixed
 

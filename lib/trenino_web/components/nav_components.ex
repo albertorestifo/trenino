@@ -99,6 +99,45 @@ defmodule TreninoWeb.NavComponents do
     """
   end
 
+  @discord_url "https://discord.gg/d75tmjwUav"
+
+  @doc """
+  Invite URL of the Trenino Discord community.
+  """
+  @spec discord_url() :: String.t()
+  def discord_url, do: @discord_url
+
+  @doc """
+  Quiet one-line footer pointing to the Discord community.
+
+  Sits at the bottom of the page flow (not sticky, never over content), stays muted and
+  is always present, so there is nothing to dismiss. The link opens in the system browser
+  like the other external links.
+  """
+  def community_footer(assigns) do
+    assigns = assign(assigns, :url, @discord_url)
+
+    ~H"""
+    <footer id="community-footer" class="mt-auto px-4 sm:px-8 pb-6 pt-2">
+      <p class="max-w-2xl mx-auto text-xs text-muted">
+        Questions or ideas?
+        <a
+          href={@url}
+          target="_blank"
+          rel="noopener noreferrer"
+          class="underline underline-offset-2 hover:text-base-content transition-colors"
+        >
+          Join the Trenino Discord<.icon
+            name="hero-arrow-top-right-on-square-mini"
+            class="w-3 h-3 ml-1 align-text-bottom"
+          />
+          <span class="sr-only">(opens in your browser)</span>
+        </a>
+      </p>
+    </footer>
+    """
+  end
+
   @doc """
   Persistent navigation header with status indicators.
 
