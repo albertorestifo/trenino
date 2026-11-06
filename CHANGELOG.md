@@ -26,6 +26,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Editing or deleting a sequence now takes effect on button bindings right
   away. Before, buttons kept running the old commands until the train was
   reloaded.
+- Reconnecting a device no longer makes levers and buttons receive each
+  reading more than once. Every reconnect used to add another subscription to
+  the device's input values.
 
 ## [0.8.3] - 2026-11-04
 
