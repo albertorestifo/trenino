@@ -6,6 +6,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- Selectors: use a potentiometer as a rotary switch with fixed positions,
+  such as a lights selector. Split its travel evenly into 2 to 12 positions,
+  or turn the knob into each detent and capture it. The gaps between
+  positions are dead zones, so jitter never switches it. Each position runs
+  its own action when the knob enters it and when it leaves: set a simulator
+  value, run a sequence, or tap a key. Selectors are set up from the train
+  page without the simulator running. When a train loads or the simulator
+  reconnects, the current position's action runs again so the game matches
+  the knob. The elements table shows each selector's position. Selectors are
+  also available through new MCP tools (`get_selector`,
+  `configure_selector`, `set_selector_even_split`, `delete_selector`), and
+  `list_device_inputs` now reports whether an input is calibrated.
+
+### Fixed
+
+- Editing or deleting a sequence now takes effect on button bindings right
+  away. Before, buttons kept running the old commands until the train was
+  reloaded.
+
 ## [0.8.3] - 2026-11-04
 
 ### Added
