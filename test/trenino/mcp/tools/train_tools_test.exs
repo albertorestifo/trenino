@@ -1,8 +1,10 @@
 defmodule Trenino.MCP.Tools.TrainToolsTest do
   use Trenino.DataCase, async: true
 
+  alias Trenino.Hardware
   alias Trenino.MCP.Tools.TrainTools
   alias Trenino.Train, as: TrainContext
+  alias Trenino.Train.SelectorMapper
 
   describe "list_trains" do
     test "returns empty list when no trains" do
@@ -93,7 +95,40 @@ defmodule Trenino.MCP.Tools.TrainToolsTest do
 
       assert result.output_bindings == []
       assert result.button_bindings == []
+      assert result.selectors == []
       assert result.sequences == []
+    end
+
+    test "includes selectors with their positions" do
+      {:ok, train} =
+        TrainContext.create_train(%{name: "Test", identifiers: [%{identifier: "sel"}]})
+
+      {:ok, element} = TrainContext.create_element(train.id, %{name: "Lights", type: :selector})
+      {:ok, device} = Hardware.create_device(%{name: "Board"})
+
+      {:ok, input} =
+        Hardware.create_input(device.id, %{pin: 0, input_type: :analog, sensitivity: 5})
+
+      positions =
+        2
+        |> SelectorMapper.even_split()
+        |> Enum.map(&Map.merge(&1, %{enter_kind: :keystroke, enter_keystroke: "L"}))
+
+      {:ok, _} =
+        TrainContext.save_selector(element.id, %{input_id: input.id, positions: positions})
+
+      {:ok, %{train: result}} = TrainTools.execute("get_train", %{"train_id" => train.id})
+
+      assert [%{element_id: element_id, positions: [first, _]}] = result.selectors
+      assert element_id == element.id
+
+      assert first.enter == %{
+               kind: :keystroke,
+               keystroke: "L",
+               endpoint: nil,
+               value: nil,
+               sequence_id: nil
+             }
     end
   end
 end

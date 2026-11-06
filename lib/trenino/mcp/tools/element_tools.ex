@@ -1,6 +1,6 @@
 defmodule Trenino.MCP.Tools.ElementTools do
   @moduledoc """
-  MCP tools for managing train elements (buttons and levers).
+  MCP tools for managing train elements (buttons, levers and selectors).
   """
 
   alias Trenino.Train, as: TrainContext
@@ -10,7 +10,7 @@ defmodule Trenino.MCP.Tools.ElementTools do
       %{
         name: "list_elements",
         description:
-          "List all elements (buttons and levers) for a train. Returns id, name, and type for each element.",
+          "List all elements (buttons, levers and selectors) for a train. Returns id, name, and type for each element.",
         input_schema: %{
           type: "object",
           properties: %{
@@ -22,9 +22,11 @@ defmodule Trenino.MCP.Tools.ElementTools do
       %{
         name: "create_element",
         description:
-          "Create a new element (button or lever) on a train. " <>
+          "Create a new element (button, lever or selector) on a train. " <>
             "Elements represent controls that can be bound to hardware inputs. " <>
-            "After creating a button element, use create_button_binding to bind it to a hardware input.",
+            "After creating a button element, use create_button_binding to bind it to a hardware input. " <>
+            "After creating a selector element, use configure_selector to bind it to a calibrated " <>
+            "analog input and define its positions.",
         input_schema: %{
           type: "object",
           properties: %{
@@ -32,8 +34,10 @@ defmodule Trenino.MCP.Tools.ElementTools do
             name: %{type: "string", description: "Human-readable name, e.g. 'Horn Hi'"},
             type: %{
               type: "string",
-              enum: ["button", "lever"],
-              description: "Element type: 'button' for push buttons, 'lever' for analog controls"
+              enum: ["button", "lever", "selector"],
+              description:
+                "Element type: 'button' for push buttons, 'lever' for analog controls, " <>
+                  "'selector' for a potentiometer used as a multi-position switch"
             }
           },
           required: ["train_id", "name", "type"]
@@ -42,7 +46,7 @@ defmodule Trenino.MCP.Tools.ElementTools do
       %{
         name: "delete_element",
         description:
-          "Delete an element from a train. This will also delete any associated button binding or lever config.",
+          "Delete an element from a train. This will also delete any associated button binding, lever config or selector binding.",
         input_schema: %{
           type: "object",
           properties: %{
@@ -67,7 +71,8 @@ defmodule Trenino.MCP.Tools.ElementTools do
   end
 
   def execute("create_element", %{"train_id" => train_id, "name" => name, "type" => type}) do
-    attrs = %{name: name, type: String.to_existing_atom(type)}
+    # Ecto.Enum casts the string and rejects unknown types with a changeset error
+    attrs = %{name: name, type: type}
 
     case TrainContext.create_element(train_id, attrs) do
       {:ok, element} ->

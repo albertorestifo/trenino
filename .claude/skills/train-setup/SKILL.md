@@ -1,6 +1,6 @@
 ---
 name: train-setup
-description: Use when configuring a train in Trenino through its MCP tools, including elements, button or output bindings, display bindings, sequences, Lua scripts, or virtual joystick mappings.
+description: Use when configuring a train in Trenino through its MCP tools, including elements, button or output bindings, selectors (multi-position switches), display bindings, sequences, Lua scripts, or virtual joystick mappings.
 ---
 
 # Train Setup
@@ -18,11 +18,18 @@ Tool schemas carry parameters, modes and operators. This skill covers the order 
 1. **Identify the train.** Read `CurrentFormation.DrivableIndex`, then `CurrentFormation/<index>.ObjectClass`, and strip any trailing `_C`. Identifiers are prefixes, and a train can have several.
 2. **Create the train in the UI if it is missing.** Neither MCP nor the REST API can create trains.
 3. **Discover controls.** Explore `list_simulator_endpoints` breadth-first from `CurrentDrivableActor`. Names vary by train (for example `Throttle(Lever)`), so never assume them.
-4. **Create elements.** Use `lever` for analog controls and `button` for digital ones.
+4. **Create elements.** Use `lever` for analog controls, `button` for digital ones, and `selector` for a potentiometer that acts as a multi-position switch (for example a lights selector).
 5. **Bind inputs.** Use `detect_hardware_input` rather than asking for IDs, one call at a time.
 6. **Bind buttons** with `create_button_binding`. Send levers to the Lever Setup Wizard in the UI, because lever binding and calibration are UI-only.
-7. **Add optional behaviour:** output bindings, I2C modules with display bindings, sequences, Lua scripts, or virtual joystick mappings.
-8. **Test with the user.** After each binding, debug with `get_simulator_value` and `set_simulator_value`.
+7. **Configure selectors** with `configure_selector`. The input must be an analog input with `calibrated: true` in `list_device_inputs`; calibration is UI-only. Give positions in physical order. Omit ranges for an even split, or ask the user to capture detents in the UI when the knob's detents are uneven. Each position has an enter action and an optional exit action (`set_value`, `sequence`, `keystroke`, `none`).
+8. **Add optional behaviour:** output bindings, I2C modules with display bindings, sequences, Lua scripts, or virtual joystick mappings.
+9. **Test with the user.** After each binding, debug with `get_simulator_value` and `set_simulator_value`.
+
+## Selectors
+
+- Find the simulator value of each position first: move the control in the game and read it with `get_simulator_value`.
+- Keystroke actions are tapped once. They are skipped when the selector syncs (train activation, simulator reconnect), because a second tap would toggle the state back. Prefer `set_value` when the control has an endpoint.
+- While the simulator is disconnected the selector tracks its position but runs no actions.
 
 ## Lua Scripts
 
