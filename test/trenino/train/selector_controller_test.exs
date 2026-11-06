@@ -740,6 +740,92 @@ defmodule Trenino.Train.SelectorControllerTest do
       refute_received {:set, @endpoint, 1.0}
     end
 
+    test "a finished exit is not handed over again", %{train: train} = ctx do
+      {:ok, slow} = TrainContext.create_sequence(train.id, %{name: "Slow"})
+
+      {:ok, _} =
+        TrainContext.set_sequence_commands(slow, [%{endpoint: "S", value: 1.0, delay_ms: 200}])
+
+      {:ok, slow_enter} = TrainContext.create_sequence(train.id, %{name: "Slow enter"})
+
+      {:ok, _} =
+        TrainContext.set_sequence_commands(slow_enter, [
+          %{endpoint: "E", value: 1.0, delay_ms: 2_000}
+        ])
+
+      configure(ctx, %{
+        0 => %{exit_kind: :sequence, exit_sequence_id: slow.id},
+        1 => %{exit_kind: :keystroke, exit_keystroke: "Y"},
+        2 => %{enter_kind: :sequence, enter_sequence_id: slow_enter.id}
+      })
+
+      controller = start_controller()
+      activate(controller, ctx.train)
+      read(controller, ctx, @pos0)
+
+      # 0 -> 1 -> 2: the cut-short exit of 0 and the exit of 1 both run,
+      # then the slow enter of 2 starts
+      read(controller, ctx, @pos1)
+      assert_receive {:set, "S", 1.0}
+      read(controller, ctx, @pos2)
+      # The cut-short exit of 0 runs again from the start, then exit(1)
+      assert_receive {:set, "S", 1.0}, 1_000
+      assert_receive {:tap, "Y"}, 1_000
+      assert_receive {:set, "E", 1.0}, 1_000
+
+      # Interrupting the enter must not hand the finished exits over again
+      read(controller, ctx, @pos0)
+      assert_receive {:set, @endpoint, +0.0}, 1_000
+
+      refute_received {:tap, "Y"}
+      refute_received {:set, "S", _}
+    end
+
+    test "carried exits never exceed one per position", %{train: train} = ctx do
+      {:ok, slow} = TrainContext.create_sequence(train.id, %{name: "Slow"})
+
+      {:ok, _} =
+        TrainContext.set_sequence_commands(slow, [%{endpoint: "S", value: 1.0, delay_ms: 300}])
+
+      configure(ctx, %{
+        0 => %{exit_kind: :sequence, exit_sequence_id: slow.id},
+        1 => %{exit_kind: :sequence, exit_sequence_id: slow.id},
+        2 => %{exit_kind: :sequence, exit_sequence_id: slow.id}
+      })
+
+      controller = start_controller()
+      activate(controller, ctx.train)
+
+      state =
+        [@pos0, @pos1, @pos2]
+        |> Stream.cycle()
+        |> Enum.take(50)
+        |> Enum.reduce(nil, fn raw, _ -> read(controller, ctx, raw) end)
+
+      assert length(state.runners[ctx.element.id].exits) <= 2
+    end
+
+    test "returning to a position drops its carried exit", %{train: train} = ctx do
+      {:ok, slow} = TrainContext.create_sequence(train.id, %{name: "Slow"})
+
+      {:ok, _} =
+        TrainContext.set_sequence_commands(slow, [%{endpoint: "S", value: 1.0, delay_ms: 300}])
+
+      configure(ctx, %{0 => %{exit_kind: :sequence, exit_sequence_id: slow.id}})
+      controller = start_controller()
+      activate(controller, ctx.train)
+      read(controller, ctx, @pos0)
+      assert_receive {:set, @endpoint, +0.0}
+
+      read(controller, ctx, @pos1)
+      assert_receive {:set, "S", 1.0}
+
+      # Back to 0 before its exit finished: re-entering 0 replaces it
+      read(controller, ctx, @pos0)
+      assert_receive {:set, @endpoint, +0.0}
+      refute_receive {:set, "S", _}, 500
+    end
+
     test "a finished exit does not run again", ctx do
       configure(ctx, %{0 => %{exit_kind: :keystroke, exit_keystroke: "X"}})
       controller = start_controller()

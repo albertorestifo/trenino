@@ -23,9 +23,13 @@ defmodule Trenino.Train.SelectorController do
   inside it, so a long exit sequence finishes before the enter action starts.
   A new transition kills the selector's running task first, so actions from
   two transitions never interleave: the knob's latest position wins, and an
-  interrupted enter action does not resume. Exit actions the killed task had
-  not finished run first in the next transition, so a fast sweep still runs
-  every exit (one that was cut short may run twice).
+  interrupted enter action does not resume. Each exit is confirmed as it
+  finishes; exits the killed task had not finished run first in the next
+  transition, so a fast sweep still runs every exit (one that was cut short
+  runs again from the start). Carried exits keep one per position, and the
+  exit of the position the knob returns to is dropped, so the queue never
+  grows past the number of positions. A reload, a train change or a
+  simulator disconnect discards them.
 
   ## Simulator connection
 
@@ -95,8 +99,11 @@ defmodule Trenino.Train.SelectorController do
 
     @type binding_info :: %{element_id: integer(), positions: [SelectorPosition.t()]}
 
+    @typedoc "An exit action tagged with the index of the position it leaves."
+    @type exit_action :: {non_neg_integer(), Trenino.Train.Action.t()}
+
     @typedoc "A running task and the exit actions it has not confirmed yet."
-    @type runner :: %{task: Task.t(), token: reference(), exits: [Trenino.Train.Action.t()]}
+    @type runner :: %{task: Task.t(), token: reference(), exits: [exit_action()]}
 
     @type t :: %__MODULE__{
             active_train: Trenino.Train.Train.t() | nil,
@@ -250,11 +257,11 @@ defmodule Trenino.Train.SelectorController do
     {:noreply, apply_reading(state, port, pin, raw_value)}
   end
 
-  # A runner finished its exit actions
-  def handle_info({:selector_exits_done, element_id, token}, %State{} = state) do
+  # A runner finished one of its exit actions, the first one still listed
+  def handle_info({:selector_exit_done, element_id, token}, %State{} = state) do
     case Map.fetch(state.runners, element_id) do
-      {:ok, %{token: ^token} = runner} ->
-        {:noreply, put_in(state.runners[element_id], %{runner | exits: []})}
+      {:ok, %{token: ^token, exits: [_done | rest]} = runner} ->
+        {:noreply, put_in(state.runners[element_id], %{runner | exits: rest})}
 
       _stale ->
         {:noreply, state}
@@ -421,7 +428,7 @@ defmodule Trenino.Train.SelectorController do
       {:ok, %SelectorPosition{} = previous} ->
         Logger.debug("[SelectorController] Element #{element_id}: #{previous.index} -> #{index}")
 
-        exits = [Action.from_position(previous, :exit)]
+        exits = [{previous.index, Action.from_position(previous, :exit)}]
         transition(state, element_id, position, exits, [Action.from_position(position, :enter)])
 
       :error ->
@@ -434,7 +441,12 @@ defmodule Trenino.Train.SelectorController do
   # simulator is connected, after any exits an interrupted runner left.
   defp transition(%State{} = state, element_id, %SelectorPosition{} = position, exits, enters) do
     {leftover_exits, state} = stop_runner(state, element_id)
-    exits = leftover_exits ++ Enum.reject(exits, &is_nil/1)
+
+    exits =
+      (leftover_exits ++ exits)
+      |> Enum.reject(fn {index, action} -> is_nil(action) or index == position.index end)
+      |> Enum.uniq_by(fn {index, _action} -> index end)
+
     enters = Enum.reject(enters, &is_nil/1)
 
     state =
@@ -525,17 +537,29 @@ defmodule Trenino.Train.SelectorController do
 
     task =
       Task.Supervisor.async_nolink(Trenino.TaskSupervisor, fn ->
-        exit_result = ActionExecutor.run_all(exits, owner: owner)
-        send(owner, {:selector_exits_done, element_id, token})
-
-        case ActionExecutor.run_all(enters, owner: owner) do
-          :ok -> exit_result
-          error -> error
+        with :ok <- run_exits(exits, element_id, owner, token) do
+          ActionExecutor.run_all(enters, owner: owner)
         end
       end)
 
     runner = %{task: task, token: token, exits: exits}
     %{state | runners: Map.put(state.runners, element_id, runner)}
+  end
+
+  # Runs exits one at a time, confirming each to the owner so a killed runner
+  # hands over only the ones that did not finish.
+  defp run_exits(exits, element_id, owner, token) do
+    Enum.reduce_while(exits, :ok, fn {_index, action}, acc ->
+      case ActionExecutor.run(action, owner: owner) do
+        {:error, :owner_down} = error ->
+          {:halt, error}
+
+        # A failed exit is logged by the executor; the enter actions still run
+        _result ->
+          send(owner, {:selector_exit_done, element_id, token})
+          {:cont, acc}
+      end
+    end)
   end
 
   # Kills the element's runner and returns the exit actions it had not
