@@ -6,6 +6,7 @@ defmodule Trenino.MCP.Tools.DeviceTools do
   alias Trenino.Hardware
   alias Trenino.Hardware.HT16K33.Params, as: HT16K33Params
   alias Trenino.Hardware.I2cModule
+  alias Trenino.Hardware.Input.Calibration
   alias Trenino.Repo
 
   # Chip params accepted by create/update_i2c_module. display_type and has_dot
@@ -137,7 +138,8 @@ defmodule Trenino.MCP.Tools.DeviceTools do
              id: i.id,
              name: i.name,
              pin: i.pin,
-             input_type: i.input_type
+             input_type: i.input_type,
+             calibrated: match?(%Calibration{}, i.calibration)
            }
          end)
      }}

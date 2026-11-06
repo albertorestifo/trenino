@@ -51,6 +51,9 @@ config :trenino, :start_lever_controller, false
 # Disable ButtonController GenServer in tests to avoid pubsub conflicts.
 config :trenino, :start_button_controller, false
 
+# Disable SelectorController in tests (tests start it explicitly)
+config :trenino, :start_selector_controller, false
+
 # Disable OutputController GenServer in tests to avoid pubsub conflicts.
 config :trenino, :start_output_controller, false
 

@@ -3,6 +3,7 @@ defmodule Trenino.MCP.Tools.TrainTools do
   MCP tools for listing and inspecting train configurations.
   """
 
+  alias Trenino.MCP.Tools.SelectorTools
   alias Trenino.Train, as: TrainContext
   alias Trenino.Train.Train
 
@@ -20,7 +21,7 @@ defmodule Trenino.MCP.Tools.TrainTools do
       %{
         name: "get_train",
         description:
-          "Get a train's full configuration including its elements (levers and buttons) " <>
+          "Get a train's full configuration including its elements (levers, buttons and selectors) " <>
             "and output bindings. Use this to understand the train's current setup before making changes.",
         input_schema: %{
           type: "object",
@@ -59,6 +60,10 @@ defmodule Trenino.MCP.Tools.TrainTools do
           TrainContext.list_button_bindings_for_train(train.id)
           |> Enum.map(&serialize_button_binding/1)
 
+        selectors =
+          TrainContext.list_selector_bindings_for_train(train.id)
+          |> Enum.map(&SelectorTools.serialize/1)
+
         sequences =
           TrainContext.list_sequences(train.id)
           |> Enum.map(&serialize_sequence/1)
@@ -76,6 +81,7 @@ defmodule Trenino.MCP.Tools.TrainTools do
                end),
              output_bindings: output_bindings,
              button_bindings: button_bindings,
+             selectors: selectors,
              sequences: sequences
            }
          }}

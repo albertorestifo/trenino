@@ -27,6 +27,10 @@ defmodule Trenino.Train do
     Notch,
     OutputBinding,
     Script,
+    SelectorBinding,
+    SelectorController,
+    SelectorPosition,
+    Sequence,
     Train
   }
 
@@ -166,7 +170,8 @@ defmodule Trenino.Train do
       |> order_by([e], e.name)
       |> preload(
         lever_config: [:notches, input_binding: [input: :device]],
-        button_binding: [input: :device]
+        button_binding: [input: :device],
+        selector_binding: [:positions, input: :device]
       )
       |> Repo.all()
 
@@ -205,7 +210,11 @@ defmodule Trenino.Train do
   """
   @spec delete_element(Element.t()) :: {:ok, Element.t()} | {:error, Ecto.Changeset.t()}
   def delete_element(%Element{} = element) do
-    Repo.delete(element)
+    result = Repo.delete(element)
+
+    if match?({:ok, %Element{type: :selector}}, result), do: SelectorController.reload_bindings()
+
+    result
   end
 
   # ===================
@@ -964,6 +973,12 @@ defmodule Trenino.Train do
     if Process.whereis(Manager), do: Manager.reload_mappings()
   end
 
+  defp maybe_notify_virtual_joystick_replacement(true, %SelectorBinding{}) do
+    if Process.whereis(SelectorController), do: SelectorController.reload_bindings()
+
+    if Process.whereis(Manager), do: Manager.reload_mappings()
+  end
+
   defp maybe_notify_virtual_joystick_replacement(false, _binding), do: :ok
 
   @doc """
@@ -1034,11 +1049,186 @@ defmodule Trenino.Train do
     |> Repo.all()
   end
 
+  # ===================
+  # Selector Binding Operations
+  # ===================
+
+  @selector_preloads [:positions, input: :device]
+
+  @doc """
+  Get the selector binding for an element, with positions and input preloaded.
+  """
+  @spec get_selector_binding(integer()) :: {:ok, SelectorBinding.t()} | {:error, :not_found}
+  def get_selector_binding(element_id) do
+    case Repo.get_by(SelectorBinding, element_id: element_id) do
+      nil -> {:error, :not_found}
+      binding -> {:ok, Repo.preload(binding, @selector_preloads)}
+    end
+  end
+
+  @doc """
+  Create or update the selector binding for a selector element.
+
+  `attrs` holds `input_id`, optionally `enabled`, and `positions`: the complete
+  list of position attrs. When `positions` is given it replaces every existing
+  position; when it is omitted the existing positions are kept.
+
+  The input must be analog, and no other selector on the same train may use
+  it. An enabled binding conflicts with a virtual joystick mapping on the same
+  input, like lever and button bindings do; pass `replace?: true` to remove the
+  mapping instead of failing with `:destination_conflict`.
+  """
+  @spec save_selector(integer(), map(), keyword()) ::
+          {:ok, SelectorBinding.t()} | {:error, :destination_conflict | Ecto.Changeset.t()}
+  def save_selector(element_id, attrs, opts \\ []) do
+    binding =
+      case Repo.get_by(SelectorBinding, element_id: element_id) do
+        nil -> %SelectorBinding{element_id: element_id, positions: []}
+        existing -> Repo.preload(existing, :positions)
+      end
+
+    params = Map.drop(attrs, [:element_id, "element_id"])
+
+    binding
+    |> SelectorBinding.changeset(params)
+    |> Ecto.Changeset.put_change(:element_id, element_id)
+    |> validate_selector_element()
+    |> validate_selector_input()
+    |> save_binding(opts)
+    |> case do
+      {:ok, binding} ->
+        SelectorController.reload_bindings()
+        {:ok, Repo.preload(binding, @selector_preloads, force: true)}
+
+      {:error, _reason} = error ->
+        error
+    end
+  end
+
+  defp validate_selector_element(changeset) do
+    element_id = Ecto.Changeset.get_field(changeset, :element_id)
+
+    case Repo.get(Element, element_id) do
+      %Element{type: :selector} -> changeset
+      %Element{} -> Ecto.Changeset.add_error(changeset, :element_id, "must be a selector element")
+      nil -> Ecto.Changeset.add_error(changeset, :element_id, "does not exist")
+    end
+  end
+
+  defp validate_selector_input(%Ecto.Changeset{valid?: false} = changeset), do: changeset
+
+  defp validate_selector_input(changeset) do
+    input_id = Ecto.Changeset.get_field(changeset, :input_id)
+    element_id = Ecto.Changeset.get_field(changeset, :element_id)
+
+    input = Input |> Repo.get(input_id) |> Repo.preload(:calibration)
+
+    cond do
+      not match?(%Input{input_type: :analog}, input) ->
+        Ecto.Changeset.add_error(changeset, :input_id, "must be an analog input")
+
+      is_nil(input.calibration) ->
+        Ecto.Changeset.add_error(changeset, :input_id, "must be calibrated first")
+
+      selector_input_taken?(element_id, input_id) ->
+        Ecto.Changeset.add_error(
+          changeset,
+          :input_id,
+          "is already used by another selector on this train"
+        )
+
+      not selector_sequences_on_train?(changeset, element_id) ->
+        Ecto.Changeset.add_error(
+          changeset,
+          :positions,
+          "refer to a sequence that does not exist or belongs to another train"
+        )
+
+      true ->
+        changeset
+    end
+  end
+
+  defp selector_sequences_on_train?(changeset, element_id) do
+    sequence_ids =
+      changeset
+      |> Ecto.Changeset.get_assoc(:positions, :struct)
+      |> Enum.flat_map(&[&1.enter_sequence_id, &1.exit_sequence_id])
+      |> Enum.reject(&is_nil/1)
+      |> Enum.uniq()
+
+    train_id = from(e in Element, where: e.id == ^element_id, select: e.train_id)
+
+    found =
+      Sequence
+      |> where([s], s.id in ^sequence_ids and s.train_id == subquery(train_id))
+      |> Repo.aggregate(:count)
+
+    found == length(sequence_ids)
+  end
+
+  defp selector_input_taken?(element_id, input_id) do
+    train_id = from(e in Element, where: e.id == ^element_id, select: e.train_id)
+
+    SelectorBinding
+    |> join(:inner, [b], e in Element, on: b.element_id == e.id)
+    |> where([b, e], b.input_id == ^input_id and b.element_id != ^element_id)
+    |> where([b, e], e.train_id == subquery(train_id))
+    |> Repo.exists?()
+  end
+
+  @doc """
+  Enable or disable a selector binding.
+  """
+  @spec set_selector_binding_enabled(integer(), boolean(), keyword()) ::
+          {:ok, SelectorBinding.t()}
+          | {:error, :destination_conflict | :not_found | Ecto.Changeset.t()}
+  def set_selector_binding_enabled(element_id, enabled, opts \\ []) do
+    case Repo.get_by(SelectorBinding, element_id: element_id) do
+      nil -> {:error, :not_found}
+      _binding -> save_selector(element_id, %{enabled: enabled}, opts)
+    end
+  end
+
+  @doc """
+  Delete the selector binding of an element, with its positions.
+  """
+  @spec delete_selector_binding(integer()) :: :ok | {:error, :not_found}
+  def delete_selector_binding(element_id) do
+    case Repo.get_by(SelectorBinding, element_id: element_id) do
+      nil ->
+        {:error, :not_found}
+
+      binding ->
+        {:ok, _deleted} = Repo.delete(binding)
+        SelectorController.reload_bindings()
+        :ok
+    end
+  end
+
+  @doc """
+  List all selector bindings for a train.
+
+  Returns bindings with their element, input and positions preloaded, and each
+  position's enter and exit sequences with their commands.
+  """
+  @spec list_selector_bindings_for_train(integer()) :: [SelectorBinding.t()]
+  def list_selector_bindings_for_train(train_id) do
+    SelectorBinding
+    |> join(:inner, [b], e in Element, on: b.element_id == e.id)
+    |> where([b, e], e.train_id == ^train_id)
+    |> preload([b], [
+      :element,
+      input: :device,
+      positions: [enter_sequence: :commands, exit_sequence: :commands]
+    ])
+    |> Repo.all()
+  end
+
   # =============================================================================
   # Sequence functions
   # =============================================================================
 
-  alias Trenino.Train.Sequence
   alias Trenino.Train.SequenceCommand
 
   @doc """
@@ -1087,7 +1277,37 @@ defmodule Trenino.Train do
   """
   @spec delete_sequence(Sequence.t()) :: {:ok, Sequence.t()} | {:error, Ecto.Changeset.t()}
   def delete_sequence(%Sequence{} = sequence) do
-    Repo.delete(sequence)
+    Repo.transaction(fn ->
+      reset_selector_sequence_actions(sequence.id)
+
+      case Repo.delete(sequence) do
+        {:ok, deleted} -> deleted
+        {:error, changeset} -> Repo.rollback(changeset)
+      end
+    end)
+    |> notify_sequence_change()
+  end
+
+  # Button and selector controllers cache sequence commands with their
+  # bindings, so any change to a sequence reloads them.
+  defp notify_sequence_change({:ok, _result} = result) do
+    ButtonController.reload_bindings()
+    SelectorController.reload_bindings()
+    result
+  end
+
+  defp notify_sequence_change(result), do: result
+
+  # Selector actions that ran this sequence become :none, so the positions
+  # stay valid and can be re-saved as a set.
+  defp reset_selector_sequence_actions(sequence_id) do
+    SelectorPosition
+    |> where([p], p.enter_sequence_id == ^sequence_id)
+    |> Repo.update_all(set: [enter_kind: :none, enter_sequence_id: nil])
+
+    SelectorPosition
+    |> where([p], p.exit_sequence_id == ^sequence_id)
+    |> Repo.update_all(set: [exit_kind: :none, exit_sequence_id: nil])
   end
 
   @doc """
@@ -1133,6 +1353,7 @@ defmodule Trenino.Train do
         {:error, changeset} -> Repo.rollback(changeset)
       end
     end)
+    |> notify_sequence_change()
   end
 
   defp insert_sequence_commands(sequence_id, commands) do
@@ -1171,6 +1392,7 @@ defmodule Trenino.Train do
     %SequenceCommand{}
     |> SequenceCommand.changeset(params)
     |> Repo.insert()
+    |> notify_sequence_change()
   end
 
   @doc """
@@ -1179,7 +1401,9 @@ defmodule Trenino.Train do
   @spec delete_sequence_command(SequenceCommand.t()) ::
           {:ok, SequenceCommand.t()} | {:error, Ecto.Changeset.t()}
   def delete_sequence_command(%SequenceCommand{} = command) do
-    Repo.delete(command)
+    command
+    |> Repo.delete()
+    |> notify_sequence_change()
   end
 
   # =============================================================================

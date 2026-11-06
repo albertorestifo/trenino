@@ -84,6 +84,23 @@ defmodule Trenino.MCP.Tools.ElementToolsTest do
       assert message =~ "Validation failed"
     end
 
+    test "creates a selector element", %{train: train} do
+      args = %{"train_id" => train.id, "name" => "Lights", "type" => "selector"}
+
+      assert {:ok, %{element: %{type: :selector}}} = ElementTools.execute("create_element", args)
+    end
+
+    test "returns error for a type that is not an existing atom", %{train: train} do
+      args = %{
+        "train_id" => train.id,
+        "name" => "Horn",
+        "type" => "no_such_type_#{System.unique_integer()}"
+      }
+
+      assert {:error, message} = ElementTools.execute("create_element", args)
+      assert message =~ "Validation failed"
+    end
+
     test "returns error for invalid type", %{train: train} do
       args = %{"train_id" => train.id, "name" => "Horn", "type" => "invalid"}
 

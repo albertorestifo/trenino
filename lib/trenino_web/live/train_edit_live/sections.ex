@@ -10,7 +10,7 @@ defmodule TreninoWeb.TrainEditLive.Sections do
 
   import TreninoWeb.SharedComponents
 
-  alias Trenino.Train.{DisplayBinding, Element, LeverConfig, LeverInputBinding}
+  alias Trenino.Train.{DisplayBinding, Element, LeverConfig, LeverInputBinding, SelectorBinding}
 
   attr :train_form, :map, required: true
   attr :is_active, :boolean, required: true
@@ -138,6 +138,7 @@ defmodule TreninoWeb.TrainEditLive.Sections do
   end
 
   attr :elements, :list, required: true
+  attr :selector_positions, :map, default: %{}
 
   def elements_section(assigns) do
     ~H"""
@@ -167,6 +168,7 @@ defmodule TreninoWeb.TrainEditLive.Sections do
             <.element_row
               :for={element <- @elements}
               element={element}
+              position={Map.get(@selector_positions, element.id)}
             />
           </tbody>
         </table>
@@ -483,6 +485,7 @@ defmodule TreninoWeb.TrainEditLive.Sections do
   end
 
   attr :element, :map, required: true
+  attr :position, :map, default: nil
 
   defp element_row(assigns) do
     {status_badges, configure_action} = element_status(assigns.element)
@@ -508,6 +511,13 @@ defmodule TreninoWeb.TrainEditLive.Sections do
       </td>
       <td>
         <.status_chip :for={{kind, label} <- @status_badges} kind={kind} label={label} />
+        <span
+          :if={@position}
+          id={"selector-live-position-#{@element.id}"}
+          class="ml-2 text-xs text-muted"
+        >
+          At {@position.label || "position #{@position.index + 1}"}
+        </span>
       </td>
       <td>
         <.row_actions id={"element-actions-#{@element.id}"} name={@element.name}>
@@ -539,6 +549,10 @@ defmodule TreninoWeb.TrainEditLive.Sections do
     {button_status_badge(element), "configure_button"}
   end
 
+  defp element_status(%{type: :selector} = element) do
+    {selector_status_badge(element), "configure_selector"}
+  end
+
   defp element_status(_element) do
     {[{:muted, "Unknown"}], nil}
   end
@@ -566,8 +580,15 @@ defmodule TreninoWeb.TrainEditLive.Sections do
     end
   end
 
+  defp selector_status_badge(%Element{selector_binding: %SelectorBinding{enabled: false}}),
+    do: [{:muted, "Disabled"}]
+
+  defp selector_status_badge(%Element{selector_binding: %SelectorBinding{}}), do: [{:ok, "Ready"}]
+  defp selector_status_badge(_element), do: [{:muted, "Not configured"}]
+
   defp element_type_icon(:lever), do: "hero-adjustments-vertical"
   defp element_type_icon(:button), do: "hero-cursor-arrow-rays"
+  defp element_type_icon(:selector), do: "hero-queue-list"
   defp element_type_icon(_), do: "hero-cube"
 
   defp button_fully_configured?(%{mode: :sequence} = binding) do
@@ -641,11 +662,11 @@ defmodule TreninoWeb.TrainEditLive.Sections do
                 label="Type"
                 field={@form[:type]}
                 type="select"
-                options={[{"Lever", :lever}, {"Button", :button}]}
+                options={[{"Lever", :lever}, {"Button", :button}, {"Selector", :selector}]}
                 class="select select-bordered w-full"
               />
               <p class="text-xs text-muted mt-1">
-                Lever for analog inputs, Button for digital inputs
+                Lever for analog inputs, Button for digital inputs, Selector for a potentiometer with fixed positions
               </p>
             </div>
           </div>

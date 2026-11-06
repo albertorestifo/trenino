@@ -37,6 +37,7 @@ defmodule Trenino.Application do
         simulator_connection_child() ++
           lever_controller_child() ++
           button_controller_child() ++
+          selector_controller_child() ++
           output_controller_child() ++
           display_controller_child() ++
           gauge_controller_child() ++
@@ -108,6 +109,17 @@ defmodule Trenino.Application do
   defp button_controller_child do
     if Application.get_env(:trenino, :start_button_controller, true) do
       [Trenino.Train.ButtonController]
+    else
+      []
+    end
+  end
+
+  # Returns the SelectorController child spec only in non-test environments.
+  # In test, this GenServer subscribes to multiple pubsub topics and
+  # interacts with other GenServers that may not be running.
+  defp selector_controller_child do
+    if Application.get_env(:trenino, :start_selector_controller, true) do
+      [Trenino.Train.SelectorController]
     else
       []
     end

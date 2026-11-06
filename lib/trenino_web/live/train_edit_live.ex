@@ -30,12 +30,14 @@ defmodule TreninoWeb.TrainEditLive do
     GaugeBinding,
     Identifier,
     OutputController,
+    SelectorController,
     Train,
     TrainIdentifier
   }
 
   alias Trenino.Train.LeverController
   alias Trenino.Train.ScriptRunner
+  alias TreninoWeb.SelectorWizard
   alias TreninoWeb.SequenceManagerComponent
 
   @impl true
@@ -103,6 +105,13 @@ defmodule TreninoWeb.TrainEditLive do
      |> assign(:config_wizard_mode, nil)
      |> assign(:config_wizard_event, nil)
      |> assign(:show_lever_setup_wizard, false)
+     |> assign(:show_selector_wizard, false)
+     |> assign(:selector_wizard_element, nil)
+     |> assign(:selector_inputs, [])
+     |> assign(:selector_lever_input_ids, MapSet.new())
+     |> assign(:selector_watch, nil)
+     |> assign(:selector_watch_input_id, nil)
+     |> assign(:watched_ports, MapSet.new())
      |> assign(:lever_setup_element, nil)
      |> assign(:lever_setup_event, nil)
      |> assign(:sequences, [])
@@ -118,7 +127,8 @@ defmodule TreninoWeb.TrainEditLive do
      |> assign(:sequence_manager_event, nil)
      |> assign(:value_polling_target, nil)
      |> assign(:scripts, [])
-     |> assign(:gauge_binding_count, 0)}
+     |> assign(:gauge_binding_count, 0)
+     |> assign(:selector_positions, %{})}
   end
 
   defp mount_existing(socket, train_id) do
@@ -127,13 +137,15 @@ defmodule TreninoWeb.TrainEditLive do
              :identifiers,
              elements: [
                lever_config: [:notches, input_binding: [input: :device]],
-               button_binding: [input: :device]
+               button_binding: [input: :device],
+               selector_binding: [:positions, input: :device]
              ]
            ]
          ) do
       {:ok, train} ->
         if connected?(socket) do
           TrainContext.subscribe()
+          SelectorController.subscribe()
         end
 
         changeset = Train.changeset(train, %{})
@@ -166,6 +178,13 @@ defmodule TreninoWeb.TrainEditLive do
          |> assign(:config_wizard_mode, nil)
          |> assign(:config_wizard_event, nil)
          |> assign(:show_lever_setup_wizard, false)
+         |> assign(:show_selector_wizard, false)
+         |> assign(:selector_wizard_element, nil)
+         |> assign(:selector_inputs, [])
+         |> assign(:selector_lever_input_ids, MapSet.new())
+         |> assign(:selector_watch, nil)
+         |> assign(:selector_watch_input_id, nil)
+         |> assign(:watched_ports, MapSet.new())
          |> assign(:lever_setup_element, nil)
          |> assign(:lever_setup_event, nil)
          |> assign(:sequences, sequences)
@@ -181,7 +200,8 @@ defmodule TreninoWeb.TrainEditLive do
          |> assign(:sequence_manager_event, nil)
          |> assign(:value_polling_target, nil)
          |> assign(:scripts, scripts)
-         |> assign(:gauge_binding_count, length(TrainContext.list_gauge_bindings(train.id)))}
+         |> assign(:gauge_binding_count, length(TrainContext.list_gauge_bindings(train.id)))
+         |> assign(:selector_positions, selector_positions(train.elements))}
 
       {:error, :not_found} ->
         {:ok,
@@ -303,10 +323,12 @@ defmodule TreninoWeb.TrainEditLive do
           |> assign(:modal_open, false)
           |> assign(:element_form, to_form(Element.changeset(%Element{}, %{type: :lever})))
 
-        # Automatically open configuration wizard if simulator is connected
+        # Open the configuration wizard if the simulator is connected. Selectors
+        # are configured offline, so their wizard always opens.
         simulator_status = socket.assigns.nav_simulator_status
 
-        if simulator_status.status == :connected and simulator_status.client != nil do
+        if element.type == :selector or
+             (simulator_status.status == :connected and simulator_status.client != nil) do
           open_config_wizard_for_element(socket, element)
         else
           {:noreply, socket}
@@ -367,6 +389,12 @@ defmodule TreninoWeb.TrainEditLive do
     else
       open_button_config_wizard(socket, String.to_integer(id))
     end
+  end
+
+  # Selector configuration - works without the simulator
+  @impl true
+  def handle_event("configure_selector", %{"id" => id}, socket) do
+    open_selector_wizard(socket, String.to_integer(id))
   end
 
   # Delete train
@@ -610,7 +638,13 @@ defmodule TreninoWeb.TrainEditLive do
   # PubSub events
   @impl true
   def handle_info({:devices_updated, devices}, socket) do
-    {:noreply, assign(socket, :nav_devices, devices)}
+    socket = assign(socket, :nav_devices, devices)
+
+    # A device appearing or disappearing changes what the selector wizard can read
+    case socket.assigns.selector_watch_input_id do
+      nil -> {:noreply, socket}
+      input_id -> {:noreply, watch_selector_input(socket, input_id)}
+    end
   end
 
   @impl true
@@ -828,6 +862,11 @@ defmodule TreninoWeb.TrainEditLive do
     {:noreply, socket}
   end
 
+  def handle_info({:api_explorer_select, "selector:" <> _ = field, path}, socket) do
+    send_update(SelectorWizard, id: "selector-wizard", explorer_event: {field, path})
+    {:noreply, socket}
+  end
+
   def handle_info({:api_explorer_select, field, path}, socket) do
     cond do
       socket.assigns.show_lever_setup_wizard ->
@@ -859,6 +898,10 @@ defmodule TreninoWeb.TrainEditLive do
   @impl true
   def handle_info({:api_explorer_close}, socket) do
     cond do
+      socket.assigns.show_selector_wizard ->
+        send_update(SelectorWizard, id: "selector-wizard", explorer_event: :close)
+        {:noreply, socket}
+
       socket.assigns.show_lever_setup_wizard ->
         {:noreply, assign(socket, :lever_setup_event, :close)}
 
@@ -1156,7 +1199,7 @@ defmodule TreninoWeb.TrainEditLive do
       |> Enum.map(&ConfigurationManager.config_id_to_port/1)
       |> Enum.reject(&is_nil/1)
 
-    Enum.each(ports, &Hardware.subscribe_input_values/1)
+    socket = Enum.reduce(ports, socket, &subscribe_port(&2, &1))
 
     # Build a lookup map: {config_id, pin} -> input_id
     input_lookup =
@@ -1175,6 +1218,14 @@ defmodule TreninoWeb.TrainEditLive do
   end
 
   @impl true
+  def handle_info(
+        {:input_value_updated, port, pin, value},
+        %{assigns: %{selector_watch: {port, pin}}} = socket
+      ) do
+    send_update(SelectorWizard, id: "selector-wizard", reading: value)
+    {:noreply, socket}
+  end
+
   def handle_info({:input_value_updated, port, pin, value}, socket) do
     # Check if we're in button detection mode and a button was pressed
     if socket.assigns[:button_detection_inputs] && value == 1 do
@@ -1197,6 +1248,35 @@ defmodule TreninoWeb.TrainEditLive do
     else
       {:noreply, socket}
     end
+  end
+
+  # Selector wizard events
+  @impl true
+  def handle_info({:selector_wizard_watch, input_id}, socket) do
+    {:noreply, watch_selector_input(socket, input_id)}
+  end
+
+  def handle_info({:selector_wizard_saved, _element_id}, socket) do
+    {:ok, elements} = TrainContext.list_elements(socket.assigns.train.id)
+
+    {:noreply,
+     socket
+     |> close_selector_wizard()
+     |> assign(:elements, elements)
+     |> assign(:selector_positions, selector_positions(elements))
+     |> put_flash(:info, "Selector saved")}
+  end
+
+  def handle_info({:selector_wizard_cancelled, _element_id}, socket) do
+    {:noreply, close_selector_wizard(socket)}
+  end
+
+  def handle_info({:selector_position_changed, element_id, nil}, socket) do
+    {:noreply, update(socket, :selector_positions, &Map.delete(&1, element_id))}
+  end
+
+  def handle_info({:selector_position_changed, element_id, info}, socket) do
+    {:noreply, update(socket, :selector_positions, &Map.put(&1, element_id, info))}
   end
 
   # Sequence manager component events
@@ -1306,6 +1386,89 @@ defmodule TreninoWeb.TrainEditLive do
 
   defp open_config_wizard_for_element(socket, %Element{type: :button} = element) do
     open_button_config_wizard(socket, element.id)
+  end
+
+  defp open_config_wizard_for_element(socket, %Element{type: :selector} = element) do
+    open_selector_wizard(socket, element.id)
+  end
+
+  defp open_selector_wizard(socket, element_id) do
+    case TrainContext.get_element(element_id) do
+      {:ok, %Element{type: :selector} = element} ->
+        inputs =
+          [include_uncalibrated: true]
+          |> Hardware.list_all_inputs()
+          |> Enum.filter(&(&1.input_type == :analog))
+
+        {:noreply,
+         socket
+         |> assign(:show_selector_wizard, true)
+         |> assign(:selector_wizard_element, element)
+         |> assign(:selector_inputs, inputs)
+         |> assign(:selector_lever_input_ids, lever_input_ids(socket.assigns.train.id))
+         |> assign(:sequences, TrainContext.list_sequences(socket.assigns.train.id))}
+
+      _ ->
+        {:noreply, socket}
+    end
+  end
+
+  # Inputs that already drive an enabled lever on this train
+  defp lever_input_ids(train_id) do
+    for binding <- TrainContext.list_bindings_for_train(train_id),
+        binding.enabled,
+        into: MapSet.new(),
+        do: binding.input_id
+  end
+
+  # Streams the input's readings to the selector wizard: the cached value
+  # now, live values through the PubSub subscription. Tells the wizard when
+  # the input's device is not connected.
+  defp watch_selector_input(socket, input_id) do
+    socket = assign(socket, :selector_watch_input_id, input_id)
+
+    with %{} = input <- Enum.find(socket.assigns.selector_inputs, &(&1.id == input_id)),
+         port when is_binary(port) <-
+           ConfigurationManager.config_id_to_port(input.device.config_id) do
+      case Map.fetch(ConfigurationManager.get_input_values(port), input.pin) do
+        {:ok, raw} -> send_update(SelectorWizard, id: "selector-wizard", reading: raw)
+        :error -> :ok
+      end
+
+      socket
+      |> subscribe_port(port)
+      |> assign(:selector_watch, {port, input.pin})
+    else
+      _ ->
+        send_update(SelectorWizard, id: "selector-wizard", reading: :offline)
+        assign(socket, :selector_watch, nil)
+    end
+  end
+
+  # PubSub subscriptions last as long as the page, so each port is
+  # subscribed to once.
+  defp subscribe_port(socket, port) do
+    if MapSet.member?(socket.assigns.watched_ports, port) do
+      socket
+    else
+      Hardware.subscribe_input_values(port)
+      update(socket, :watched_ports, &MapSet.put(&1, port))
+    end
+  end
+
+  defp close_selector_wizard(socket) do
+    socket
+    |> assign(:show_selector_wizard, false)
+    |> assign(:selector_wizard_element, nil)
+    |> assign(:selector_watch, nil)
+    |> assign(:selector_watch_input_id, nil)
+  end
+
+  defp selector_positions(elements) do
+    for %Element{type: :selector, id: id} <- elements,
+        {:ok, info} <- [SelectorController.get_position(id)],
+        into: %{},
+        do: {id, info}
   end
 
   defp open_lever_config_wizard(socket, element_id) do
@@ -1457,7 +1620,7 @@ defmodule TreninoWeb.TrainEditLive do
         />
 
         <.section_group :if={not @new_mode} id="controls" title="Controls">
-          <.elements_section elements={@elements} />
+          <.elements_section elements={@elements} selector_positions={@selector_positions} />
         </.section_group>
 
         <.section_group :if={not @new_mode} id="displays-lights" title="Displays & lights">
@@ -1541,6 +1704,18 @@ defmodule TreninoWeb.TrainEditLive do
       element={@lever_setup_element}
       client={@nav_simulator_status.client}
       explorer_event={@lever_setup_event}
+    />
+
+    <.live_component
+      :if={@show_selector_wizard}
+      module={SelectorWizard}
+      id="selector-wizard"
+      element={@selector_wizard_element}
+      train_id={@train.id}
+      client={if @nav_simulator_status.status == :connected, do: @nav_simulator_status.client}
+      sequences={@sequences}
+      inputs={@selector_inputs}
+      lever_input_ids={@selector_lever_input_ids}
     />
 
     <.live_component

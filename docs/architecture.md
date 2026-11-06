@@ -194,6 +194,7 @@ Application
 ├── Trenino.Train.Detection (train polling with two-layer defense)
 ├── Trenino.Train.LeverController (hardware value → simulator mapping)
 ├── Trenino.Train.ButtonController (button input to simulator)
+├── Trenino.Train.SelectorController (potentiometer positions to actions)
 ├── Trenino.Train.OutputController (LED/output bindings)
 ├── Trenino.Train.DisplayController (I2C display bindings, 200ms poll)
 ├── Trenino.Train.ScriptRunner (Lua script execution)

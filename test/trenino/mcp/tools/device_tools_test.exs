@@ -65,6 +65,26 @@ defmodule Trenino.MCP.Tools.DeviceToolsTest do
       assert result.name == "Button 3"
       assert result.pin == 3
       assert result.input_type == :button
+      assert result.calibrated == false
+    end
+
+    test "reports whether an input is calibrated" do
+      {:ok, device} = Hardware.create_device(%{name: "Test Device"})
+
+      {:ok, input} =
+        Hardware.create_input(device.id, %{pin: 0, input_type: :analog, sensitivity: 5})
+
+      {:ok, _} =
+        Hardware.save_calibration(input.id, %{
+          min_value: 0,
+          max_value: 1023,
+          max_hardware_value: 1023
+        })
+
+      {:ok, %{inputs: [result]}} =
+        DeviceTools.execute("list_device_inputs", %{"device_id" => device.id})
+
+      assert result.calibrated == true
     end
   end
 
