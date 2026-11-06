@@ -7,7 +7,15 @@ defmodule Trenino.VirtualJoystick do
 
   alias Trenino.Hardware.Input
   alias Trenino.Repo
-  alias Trenino.Train.{ButtonController, ButtonInputBinding, LeverController, LeverInputBinding}
+
+  alias Trenino.Train.{
+    ButtonController,
+    ButtonInputBinding,
+    LeverController,
+    LeverInputBinding,
+    SelectorBinding
+  }
+
   alias Trenino.VirtualJoystick.{Configuration, Manager, Mapping}
 
   @mapping_preloads [input: [:device, :calibration]]
@@ -115,14 +123,15 @@ defmodule Trenino.VirtualJoystick do
   defp maybe_replace_simulator_bindings(input_id, true) do
     %{
       lever?: delete_enabled_bindings(LeverInputBinding, input_id),
-      button?: delete_enabled_bindings(ButtonInputBinding, input_id)
+      button?: delete_enabled_bindings(ButtonInputBinding, input_id),
+      selector?: delete_enabled_bindings(SelectorBinding, input_id)
     }
   end
 
   defp maybe_replace_simulator_bindings(input_id, false) do
     if simulator_binding_exists?(input_id), do: Repo.rollback(:destination_conflict)
 
-    %{lever?: false, button?: false}
+    %{lever?: false, button?: false, selector?: false}
   end
 
   # SQLite does not support `SELECT ... FOR UPDATE`. The surrounding immediate
@@ -137,7 +146,8 @@ defmodule Trenino.VirtualJoystick do
 
   defp simulator_binding_exists?(input_id) do
     enabled_binding_exists?(LeverInputBinding, input_id) or
-      enabled_binding_exists?(ButtonInputBinding, input_id)
+      enabled_binding_exists?(ButtonInputBinding, input_id) or
+      enabled_binding_exists?(SelectorBinding, input_id)
   end
 
   defp enabled_binding_exists?(binding, input_id) do
@@ -155,12 +165,13 @@ defmodule Trenino.VirtualJoystick do
     count > 0
   end
 
-  defp maybe_notify_replacement(%{lever?: lever?, button?: button?}) do
+  defp maybe_notify_replacement(%{lever?: lever?, button?: button?, selector?: selector?}) do
     if lever? and Process.whereis(LeverController), do: LeverController.reload_bindings()
 
     if button? and Process.whereis(ButtonController), do: ButtonController.reload_bindings()
 
-    if (lever? or button?) and Process.whereis(Manager), do: Manager.reload_mappings()
+    if (lever? or button? or selector?) and Process.whereis(Manager),
+      do: Manager.reload_mappings()
   end
 
   @spec delete_mapping(integer() | Mapping.t()) ::
