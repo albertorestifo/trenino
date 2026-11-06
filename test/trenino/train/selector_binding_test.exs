@@ -40,10 +40,16 @@ defmodule Trenino.Train.SelectorBindingTest do
       assert position_changeset(set_value("A.InputValue", 1.0)).valid?
     end
 
-    test "requires an enter action" do
-      changeset = position_changeset(%{enter_kind: :none})
+    test "allows a position with no actions" do
+      changeset = position_changeset(%{})
 
-      assert "enter action is required" in errors_on(changeset).enter_kind
+      assert changeset.valid?
+      assert Ecto.Changeset.get_field(changeset, :enter_kind) == :none
+      assert Ecto.Changeset.get_field(changeset, :exit_kind) == :none
+    end
+
+    test "accepts a single-point range" do
+      assert position_changeset(%{input_min: 0.5, input_max: 0.5}).valid?
     end
 
     test "requires the fields of each action kind" do
@@ -57,6 +63,11 @@ defmodule Trenino.Train.SelectorBindingTest do
                errors_on(
                  position_changeset(Map.merge(set_value("A", 1.0), %{exit_kind: :keystroke}))
                )
+
+      assert %{exit_endpoint: _, exit_value: _} =
+               errors_on(position_changeset(%{exit_kind: :set_value}))
+
+      assert %{exit_sequence_id: _} = errors_on(position_changeset(%{exit_kind: :sequence}))
     end
 
     test "defaults the exit action to none" do
@@ -152,7 +163,8 @@ defmodule Trenino.Train.SelectorBindingTest do
       assert {:error, changeset} =
                TrainContext.save_selector(element.id, %{input_id: input.id, positions: positions})
 
-      assert ["must not overlap; leave a gap between positions"] = errors_on(changeset).positions
+      assert ["must not overlap and need a gap of at least 0.02 between them"] =
+               errors_on(changeset).positions
     end
 
     test "rejects duplicate indexes", %{element: element, input: input} do
@@ -177,8 +189,50 @@ defmodule Trenino.Train.SelectorBindingTest do
         |> SelectorMapper.even_split()
         |> Enum.map(&Map.merge(&1, set_value("A", 1.0)))
 
-      assert {:error, _} =
+      assert {:error, changeset} =
                TrainContext.save_selector(element.id, %{input_id: input.id, positions: thirteen})
+
+      assert ["must have between 2 and 12 positions"] = errors_on(changeset).positions
+    end
+
+    test "rejects a gap narrower than 0.02", %{element: element, input: input} do
+      positions = [
+        Map.merge(%{index: 0, input_min: 0.0, input_max: 0.5}, set_value("A", 0.0)),
+        Map.merge(%{index: 1, input_min: 0.51, input_max: 1.0}, set_value("A", 1.0))
+      ]
+
+      assert {:error, changeset} =
+               TrainContext.save_selector(element.id, %{input_id: input.id, positions: positions})
+
+      assert [_] = errors_on(changeset).positions
+
+      positions = List.update_at(positions, 1, &Map.put(&1, :input_min, 0.52))
+
+      assert {:ok, _} =
+               TrainContext.save_selector(element.id, %{input_id: input.id, positions: positions})
+    end
+
+    test "rejects ranges that only touch after rounding", %{element: element, input: input} do
+      positions = [
+        Map.merge(%{index: 0, input_min: 0.0, input_max: 0.304}, set_value("A", 0.0)),
+        Map.merge(%{index: 1, input_min: 0.306, input_max: 1.0}, set_value("A", 1.0))
+      ]
+
+      assert {:error, changeset} =
+               TrainContext.save_selector(element.id, %{input_id: input.id, positions: positions})
+
+      assert [_] = errors_on(changeset).positions
+    end
+
+    test "moves the binding to another input", %{element: element, input: input} do
+      {:ok, _} =
+        TrainContext.save_selector(element.id, %{input_id: input.id, positions: three_positions()})
+
+      other = analog_input_fixture(%{pin: 7})
+
+      assert {:ok, binding} = TrainContext.save_selector(element.id, %{input_id: other.id})
+      assert binding.input_id == other.id
+      assert length(binding.positions) == 3
     end
 
     test "rejects a button input", %{element: element} do
@@ -268,23 +322,85 @@ defmodule Trenino.Train.SelectorBindingTest do
   end
 
   describe "sequence actions" do
-    test "clears the sequence when it is deleted", %{train: train, element: element, input: input} do
+    setup %{train: train} do
       {:ok, sequence} = TrainContext.create_sequence(train.id, %{name: "Lights on"})
+      %{sequence: sequence}
+    end
 
-      positions =
-        three_positions()
-        |> List.update_at(
-          0,
-          &Map.merge(&1, %{enter_kind: :sequence, enter_sequence_id: sequence.id})
-        )
+    defp with_sequences(sequence_id) do
+      List.update_at(
+        three_positions(),
+        0,
+        &Map.merge(&1, %{
+          enter_kind: :sequence,
+          enter_sequence_id: sequence_id,
+          exit_kind: :sequence,
+          exit_sequence_id: sequence_id
+        })
+      )
+    end
 
+    test "resets actions to none when the sequence is deleted",
+         %{element: element, input: input, sequence: sequence} do
       {:ok, _} =
-        TrainContext.save_selector(element.id, %{input_id: input.id, positions: positions})
+        TrainContext.save_selector(element.id, %{
+          input_id: input.id,
+          positions: with_sequences(sequence.id)
+        })
 
-      {:ok, _} = TrainContext.delete_sequence(sequence)
+      assert {:ok, _} = TrainContext.delete_sequence(sequence)
 
-      assert {:ok, %{positions: [%{enter_kind: :sequence, enter_sequence_id: nil} | _]}} =
+      assert {:ok, %{positions: [first, second | _]} = binding} =
                TrainContext.get_selector_binding(element.id)
+
+      assert %{enter_kind: :none, enter_sequence_id: nil} = first
+      assert %{exit_kind: :none, exit_sequence_id: nil} = first
+      assert second.enter_kind == :set_value
+
+      # The reset positions are still a valid set
+      positions = Enum.map(binding.positions, &Map.from_struct/1)
+      assert {:ok, _} = TrainContext.save_selector(element.id, %{positions: positions})
+    end
+
+    test "rejects a sequence of another train", %{element: element, input: input} do
+      {:ok, other_train} =
+        TrainContext.create_train(%{name: "Other", identifiers: [%{identifier: "other_seq"}]})
+
+      {:ok, foreign} = TrainContext.create_sequence(other_train.id, %{name: "Foreign"})
+
+      assert {:error, changeset} =
+               TrainContext.save_selector(element.id, %{
+                 input_id: input.id,
+                 positions: with_sequences(foreign.id)
+               })
+
+      assert "can only run sequences of this train" in errors_on(changeset).positions
+    end
+  end
+
+  describe "enabling and disabling" do
+    test "returns not_found without a binding", %{element: element} do
+      assert {:error, :not_found} = TrainContext.set_selector_binding_enabled(element.id, true)
+    end
+
+    test "a disabled binding can share its input with a virtual joystick mapping",
+         %{element: element, input: input} do
+      {:ok, _} = VirtualJoystick.put_mapping(input.id, %{target_type: :axis, axis: :slider_1})
+
+      assert {:ok, %{enabled: false}} =
+               TrainContext.save_selector(element.id, %{
+                 input_id: input.id,
+                 enabled: false,
+                 positions: three_positions()
+               })
+
+      assert {:error, :destination_conflict} =
+               TrainContext.set_selector_binding_enabled(element.id, true)
+
+      assert {:ok, %{enabled: true}} =
+               TrainContext.set_selector_binding_enabled(element.id, true, replace?: true)
+
+      assert VirtualJoystick.list_mappings() == []
     end
   end
 
@@ -296,8 +412,16 @@ defmodule Trenino.Train.SelectorBindingTest do
       %{binding: binding}
     end
 
-    test "list_selector_bindings_for_train/1 returns the train's bindings",
-         %{train: train, binding: binding} do
+    test "list_selector_bindings_for_train/1 returns only the train's bindings",
+         %{train: train, binding: binding, input: input} do
+      {:ok, other_train} =
+        TrainContext.create_train(%{name: "Other", identifiers: [%{identifier: "other_list"}]})
+
+      {:ok, other} = TrainContext.create_element(other_train.id, %{name: "X", type: :selector})
+
+      {:ok, _} =
+        TrainContext.save_selector(other.id, %{input_id: input.id, positions: three_positions()})
+
       assert [listed] = TrainContext.list_selector_bindings_for_train(train.id)
       assert listed.id == binding.id
       assert listed.element.type == :selector

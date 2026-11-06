@@ -12,12 +12,14 @@ defmodule Trenino.Train.SelectorPosition do
   ## Actions
 
   Each position has an **enter** action, run when the selector moves into it,
-  and an optional **exit** action, run when it moves out. An action is one of:
+  and an **exit** action, run when it moves out. An action is one of:
 
   - `:set_value` - set `endpoint` to `value` in the simulator
   - `:sequence` - run the sequence `sequence_id`
   - `:keystroke` - tap `keystroke` (e.g. "L", "CTRL+L")
-  - `:none` - do nothing (exit action only)
+  - `:none` - do nothing (the default for both)
+
+  Deleting a sequence resets every action that ran it to `:none`.
 
   Fields are stored flat with an `enter_` or `exit_` prefix.
   """
@@ -36,7 +38,7 @@ defmodule Trenino.Train.SelectorPosition do
           label: String.t() | nil,
           input_min: float() | nil,
           input_max: float() | nil,
-          enter_kind: action_kind() | nil,
+          enter_kind: action_kind(),
           enter_endpoint: String.t() | nil,
           enter_value: float() | nil,
           enter_sequence_id: integer() | nil,
@@ -61,7 +63,7 @@ defmodule Trenino.Train.SelectorPosition do
     field :input_min, :float
     field :input_max, :float
 
-    field :enter_kind, Ecto.Enum, values: @action_kinds
+    field :enter_kind, Ecto.Enum, values: @action_kinds, default: :none
     field :enter_endpoint, :string
     field :enter_value, :float
     field :enter_keystroke, :string
@@ -106,7 +108,6 @@ defmodule Trenino.Train.SelectorPosition do
     |> validate_length(:label, max: 40)
     |> round_float_fields([:input_min, :input_max, :enter_value, :exit_value])
     |> validate_input_range()
-    |> validate_exclusion(:enter_kind, [:none], message: "enter action is required")
     |> validate_action(:enter)
     |> validate_action(:exit)
     |> foreign_key_constraint(:selector_binding_id)
@@ -134,7 +135,7 @@ defmodule Trenino.Train.SelectorPosition do
   # Requires the fields of the chosen action kind. Fields of other kinds are
   # cleared, so switching kind never leaves a stale endpoint or sequence behind.
   defp validate_action(changeset, prefix) do
-    kind_field = field(prefix, :kind)
+    kind_field = action_field(prefix, :kind)
     required = required_fields(get_field(changeset, kind_field), prefix)
     stale = action_fields(prefix) -- required
 
@@ -143,13 +144,15 @@ defmodule Trenino.Train.SelectorPosition do
     |> clear_fields(stale)
   end
 
-  defp required_fields(:set_value, prefix), do: [field(prefix, :endpoint), field(prefix, :value)]
-  defp required_fields(:sequence, prefix), do: [field(prefix, :sequence_id)]
-  defp required_fields(:keystroke, prefix), do: [field(prefix, :keystroke)]
+  defp required_fields(:set_value, prefix),
+    do: [action_field(prefix, :endpoint), action_field(prefix, :value)]
+
+  defp required_fields(:sequence, prefix), do: [action_field(prefix, :sequence_id)]
+  defp required_fields(:keystroke, prefix), do: [action_field(prefix, :keystroke)]
   defp required_fields(_kind, _prefix), do: []
 
   defp action_fields(prefix),
-    do: Enum.map([:endpoint, :value, :sequence_id, :keystroke], &field(prefix, &1))
+    do: Enum.map([:endpoint, :value, :sequence_id, :keystroke], &action_field(prefix, &1))
 
   defp clear_fields(changeset, fields) do
     Enum.reduce(fields, changeset, fn field, cs ->
@@ -157,8 +160,8 @@ defmodule Trenino.Train.SelectorPosition do
     end)
   end
 
-  defp field(:enter, name), do: :"enter_#{name}"
-  defp field(:exit, name), do: :"exit_#{name}"
+  defp action_field(:enter, name), do: :"enter_#{name}"
+  defp action_field(:exit, name), do: :"exit_#{name}"
 
   defp round_float_fields(changeset, fields) do
     Enum.reduce(fields, changeset, fn field, cs ->

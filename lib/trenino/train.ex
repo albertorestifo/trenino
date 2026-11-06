@@ -28,6 +28,8 @@ defmodule Trenino.Train do
     OutputBinding,
     Script,
     SelectorBinding,
+    SelectorPosition,
+    Sequence,
     Train
   }
 
@@ -1119,9 +1121,30 @@ defmodule Trenino.Train do
           "is already used by another selector on this train"
         )
 
+      not selector_sequences_on_train?(changeset, element_id) ->
+        Ecto.Changeset.add_error(changeset, :positions, "can only run sequences of this train")
+
       true ->
         changeset
     end
+  end
+
+  defp selector_sequences_on_train?(changeset, element_id) do
+    sequence_ids =
+      changeset
+      |> Ecto.Changeset.get_assoc(:positions, :struct)
+      |> Enum.flat_map(&[&1.enter_sequence_id, &1.exit_sequence_id])
+      |> Enum.reject(&is_nil/1)
+      |> Enum.uniq()
+
+    train_id = from(e in Element, where: e.id == ^element_id, select: e.train_id)
+
+    found =
+      Sequence
+      |> where([s], s.id in ^sequence_ids and s.train_id == subquery(train_id))
+      |> Repo.aggregate(:count)
+
+    found == length(sequence_ids)
   end
 
   defp selector_input_taken?(element_id, input_id) do
@@ -1180,7 +1203,6 @@ defmodule Trenino.Train do
   # Sequence functions
   # =============================================================================
 
-  alias Trenino.Train.Sequence
   alias Trenino.Train.SequenceCommand
 
   @doc """
@@ -1229,7 +1251,26 @@ defmodule Trenino.Train do
   """
   @spec delete_sequence(Sequence.t()) :: {:ok, Sequence.t()} | {:error, Ecto.Changeset.t()}
   def delete_sequence(%Sequence{} = sequence) do
-    Repo.delete(sequence)
+    Repo.transaction(fn ->
+      reset_selector_sequence_actions(sequence.id)
+
+      case Repo.delete(sequence) do
+        {:ok, deleted} -> deleted
+        {:error, changeset} -> Repo.rollback(changeset)
+      end
+    end)
+  end
+
+  # Selector actions that ran this sequence become :none, so the positions
+  # stay valid and can be re-saved as a set.
+  defp reset_selector_sequence_actions(sequence_id) do
+    SelectorPosition
+    |> where([p], p.enter_sequence_id == ^sequence_id)
+    |> Repo.update_all(set: [enter_kind: :none, enter_sequence_id: nil])
+
+    SelectorPosition
+    |> where([p], p.exit_sequence_id == ^sequence_id)
+    |> Repo.update_all(set: [exit_kind: :none, exit_sequence_id: nil])
   end
 
   @doc """

@@ -82,7 +82,11 @@ defmodule Trenino.Train.SelectorBinding do
         add_error(changeset, :positions, "must have unique indexes")
 
       SelectorMapper.validate_layout(positions) == {:error, :overlap} ->
-        add_error(changeset, :positions, "must not overlap; leave a gap between positions")
+        add_error(
+          changeset,
+          :positions,
+          "must not overlap and need a gap of at least #{SelectorMapper.min_gap()} between them"
+        )
 
       true ->
         changeset

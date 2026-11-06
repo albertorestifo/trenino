@@ -22,7 +22,7 @@ defmodule Trenino.Repo.Migrations.CreateSelectors do
       add :input_min, :float, null: false
       add :input_max, :float, null: false
 
-      add :enter_kind, :string, null: false
+      add :enter_kind, :string, null: false, default: "none"
       add :enter_endpoint, :string
       add :enter_value, :float
       add :enter_sequence_id, references(:sequences, on_delete: :nilify_all)
