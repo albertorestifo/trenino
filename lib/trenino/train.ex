@@ -210,7 +210,11 @@ defmodule Trenino.Train do
   """
   @spec delete_element(Element.t()) :: {:ok, Element.t()} | {:error, Ecto.Changeset.t()}
   def delete_element(%Element{} = element) do
-    Repo.delete(element)
+    result = Repo.delete(element)
+
+    if match?({:ok, %Element{type: :selector}}, result), do: SelectorController.reload_bindings()
+
+    result
   end
 
   # ===================
@@ -1092,8 +1096,12 @@ defmodule Trenino.Train do
     |> validate_selector_input()
     |> save_binding(opts)
     |> case do
-      {:ok, binding} -> {:ok, Repo.preload(binding, @selector_preloads, force: true)}
-      {:error, _reason} = error -> error
+      {:ok, binding} ->
+        SelectorController.reload_bindings()
+        {:ok, Repo.preload(binding, @selector_preloads, force: true)}
+
+      {:error, _reason} = error ->
+        error
     end
   end
 
@@ -1183,7 +1191,8 @@ defmodule Trenino.Train do
         {:error, :not_found}
 
       binding ->
-        Repo.delete(binding)
+        {:ok, _deleted} = Repo.delete(binding)
+        SelectorController.reload_bindings()
         :ok
     end
   end
@@ -1267,7 +1276,18 @@ defmodule Trenino.Train do
         {:error, changeset} -> Repo.rollback(changeset)
       end
     end)
+    |> notify_sequence_change()
   end
+
+  # Button and selector controllers cache sequence commands with their
+  # bindings, so any change to a sequence reloads them.
+  defp notify_sequence_change({:ok, _result} = result) do
+    ButtonController.reload_bindings()
+    SelectorController.reload_bindings()
+    result
+  end
+
+  defp notify_sequence_change(result), do: result
 
   # Selector actions that ran this sequence become :none, so the positions
   # stay valid and can be re-saved as a set.
@@ -1324,6 +1344,7 @@ defmodule Trenino.Train do
         {:error, changeset} -> Repo.rollback(changeset)
       end
     end)
+    |> notify_sequence_change()
   end
 
   defp insert_sequence_commands(sequence_id, commands) do
@@ -1362,6 +1383,7 @@ defmodule Trenino.Train do
     %SequenceCommand{}
     |> SequenceCommand.changeset(params)
     |> Repo.insert()
+    |> notify_sequence_change()
   end
 
   @doc """
@@ -1370,7 +1392,9 @@ defmodule Trenino.Train do
   @spec delete_sequence_command(SequenceCommand.t()) ::
           {:ok, SequenceCommand.t()} | {:error, Ecto.Changeset.t()}
   def delete_sequence_command(%SequenceCommand{} = command) do
-    Repo.delete(command)
+    command
+    |> Repo.delete()
+    |> notify_sequence_change()
   end
 
   # =============================================================================

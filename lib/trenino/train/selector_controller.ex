@@ -22,22 +22,31 @@ defmodule Trenino.Train.SelectorController do
   Each selector has at most one runner task. Exit and enter run in order
   inside it, so a long exit sequence finishes before the enter action starts.
   A new transition kills the selector's running task first, so actions from
-  two transitions never interleave.
+  two transitions never interleave: the knob's latest position wins, and an
+  interrupted sequence does not resume.
+
+  ## Simulator connection
+
+  While the simulator is disconnected the selector still tracks and
+  broadcasts its position, but runs no actions, so keystrokes never reach
+  another application. Running tasks stop when the simulator disconnects.
 
   ## Sync
 
   The simulator should match the physical knob without the user touching it.
-  The current position's enter action (enter only, since the previous
-  position is unknown) runs:
+  A sync runs the current position's enter action only (the previous position
+  is unknown), and only its `:set_value` and `:sequence` actions: keystrokes
+  are usually toggles, and tapping one again would flip the state instead of
+  restoring it. A sync happens:
 
-  - when a train activates or its bindings reload
-  - when the simulator connects
-  - when a device connects and a selector has no position yet
+  - for every selector when a train activates and when the simulator connects
+  - for selectors without a known position when bindings reload or a device
+    connects (a reload keeps the position of selectors whose configuration
+    did not change)
 
   The reading comes from the last value `ConfigurationManager` received for
-  the input. A selector with no reading yet waits for the first live update.
-  Sync runs only while the simulator is connected, so keystrokes never go to
-  another application.
+  the input. A reading in a dead zone keeps the known position, if any. A
+  selector with no reading and no position waits for the first live update.
   """
 
   use GenServer
@@ -55,6 +64,24 @@ defmodule Trenino.Train.SelectorController do
 
   @topic "train:selector_positions"
 
+  # Fields that define what a position does. A reload keeps the current
+  # position of a selector only when these are unchanged.
+  @position_config_fields [
+    :index,
+    :input_min,
+    :input_max,
+    :enter_kind,
+    :enter_endpoint,
+    :enter_value,
+    :enter_sequence_id,
+    :enter_keystroke,
+    :exit_kind,
+    :exit_endpoint,
+    :exit_value,
+    :exit_sequence_id,
+    :exit_keystroke
+  ]
+
   defmodule State do
     @moduledoc false
 
@@ -70,7 +97,7 @@ defmodule Trenino.Train.SelectorController do
             input_lookup: %{{port :: String.t(), pin :: integer()} => input_info()},
             binding_lookup: %{(input_id :: integer()) => binding_info()},
             subscribed_ports: MapSet.t(String.t()),
-            current: %{(element_id :: integer()) => non_neg_integer()},
+            current: %{(element_id :: integer()) => SelectorPosition.t()},
             runners: %{(element_id :: integer()) => Task.t()},
             sim_connected: boolean()
           }
@@ -84,6 +111,9 @@ defmodule Trenino.Train.SelectorController do
               sim_connected: false
   end
 
+  @typedoc "A selector's position as reported to subscribers."
+  @type position_info :: %{index: non_neg_integer(), label: String.t() | nil}
+
   # Client API
 
   def start_link(_opts) do
@@ -95,9 +125,27 @@ defmodule Trenino.Train.SelectorController do
   def get_state, do: GenServer.call(__MODULE__, :get_state)
 
   @doc """
-  Reload bindings for the active train and re-sync every selector.
+  Get the current position of a selector element.
 
-  Call this when selector bindings are modified.
+  Returns `:none` when the selector has no known position, or when the
+  controller is not running. Subscribe with `subscribe/0` before calling this
+  so no change is missed in between.
+  """
+  @spec get_position(integer()) :: {:ok, position_info()} | :none
+  def get_position(element_id) do
+    if Process.whereis(__MODULE__),
+      do: GenServer.call(__MODULE__, {:get_position, element_id}),
+      else: :none
+  catch
+    :exit, _reason -> :none
+  end
+
+  @doc """
+  Reload the active train's selector bindings.
+
+  Selectors whose configuration is unchanged keep their position; the others
+  are synced to the current reading. Call this when bindings, or sequences
+  they run, change. A no-op when the controller is not running.
   """
   @spec reload_bindings() :: :ok
   def reload_bindings do
@@ -109,8 +157,9 @@ defmodule Trenino.Train.SelectorController do
   @doc """
   Subscribe to selector position changes.
 
-  Subscribers receive
-  `{:selector_position_changed, element_id, %{index: integer(), label: String.t() | nil}}`.
+  Subscribers receive `{:selector_position_changed, element_id, info}`, where
+  `info` is a `t:position_info/0`, or `nil` when the selector's position
+  became unknown (its binding was removed or changed, or the train changed).
   """
   @spec subscribe() :: :ok | {:error, term()}
   def subscribe, do: Phoenix.PubSub.subscribe(Trenino.PubSub, @topic)
@@ -123,36 +172,55 @@ defmodule Trenino.Train.SelectorController do
     SimulatorConnection.subscribe()
     SerialConnection.subscribe()
 
+    {:ok, %State{}, {:continue, :load}}
+  end
+
+  @impl true
+  def handle_continue(:load, %State{} = state) do
     state =
-      %State{sim_connected: sim_connected?(SimulatorConnection.get_status())}
+      %{state | sim_connected: sim_connected?(SimulatorConnection.get_status())}
       |> rebuild_input_lookup()
 
-    state =
-      case Train.get_active_train() do
-        nil -> state
-        train -> state |> load_bindings(train) |> sync_all()
-      end
-
-    {:ok, state}
+    case Train.get_active_train() do
+      nil -> {:noreply, state}
+      train -> {:noreply, activate(state, train)}
+    end
   end
 
   @impl true
   def handle_call(:get_state, _from, %State{} = state), do: {:reply, state, state}
 
+  def handle_call({:get_position, element_id}, _from, %State{} = state) do
+    case Map.fetch(state.current, element_id) do
+      {:ok, %SelectorPosition{} = position} -> {:reply, {:ok, position_info(position)}, state}
+      :error -> {:reply, :none, state}
+    end
+  end
+
   @impl true
   def handle_cast(:reload_bindings, %State{active_train: nil} = state), do: {:noreply, state}
 
   def handle_cast(:reload_bindings, %State{active_train: train} = state) do
-    {:noreply, state |> load_bindings(train) |> sync_all()}
+    state =
+      state
+      |> rebuild_input_lookup()
+      |> stop_runners()
+      |> load_bindings(train)
+      |> sync_unpositioned()
+
+    {:noreply, state}
   end
 
   @impl true
   def handle_info({:train_changed, nil}, %State{} = state) do
-    {:noreply, %{stop_runners(state) | active_train: nil, binding_lookup: %{}, current: %{}}}
+    Logger.info("[SelectorController] Train deactivated, clearing selectors")
+
+    state = state |> stop_runners() |> clear_positions()
+    {:noreply, %{state | active_train: nil, binding_lookup: %{}}}
   end
 
   def handle_info({:train_changed, train}, %State{} = state) do
-    {:noreply, state |> load_bindings(train) |> sync_all()}
+    {:noreply, activate(state, train)}
   end
 
   def handle_info({:simulator_status_changed, %ConnectionState{} = status}, %State{} = state) do
@@ -160,11 +228,12 @@ defmodule Trenino.Train.SelectorController do
     was_connected = state.sim_connected
     state = %{state | sim_connected: connected}
 
-    # Only the disconnected -> connected edge re-syncs; the connection may
-    # broadcast :connected more than once.
-    if connected and not was_connected,
-      do: {:noreply, sync_all(state)},
-      else: {:noreply, state}
+    # Act only on edges: the connection may broadcast the same status twice.
+    cond do
+      connected and not was_connected -> {:noreply, sync_all(state)}
+      was_connected and not connected -> {:noreply, stop_runners(state)}
+      true -> {:noreply, state}
+    end
   end
 
   def handle_info({:devices_updated, _devices}, %State{} = state) do
@@ -190,9 +259,20 @@ defmodule Trenino.Train.SelectorController do
 
   # Bindings and inputs
 
-  defp load_bindings(%State{} = state, train) do
-    state = stop_runners(state)
+  defp activate(%State{} = state, train) do
+    Logger.info("[SelectorController] Train activated: #{train.name}")
 
+    state
+    |> stop_runners()
+    |> clear_positions()
+    |> load_bindings(train)
+    |> sync_all()
+  end
+
+  # Loads the train's enabled bindings. A current position survives only when
+  # its selector is still bound and the position's configuration is unchanged;
+  # it is then swapped for the fresh struct so edited sequence commands apply.
+  defp load_bindings(%State{} = state, train) do
     binding_lookup =
       train.id
       |> Train.list_selector_bindings_for_train()
@@ -201,24 +281,59 @@ defmodule Trenino.Train.SelectorController do
         {binding.input_id, %{element_id: binding.element_id, positions: binding.positions}}
       end)
 
+    positions_by_element =
+      Map.new(binding_lookup, fn {_input_id, info} -> {info.element_id, info.positions} end)
+
+    {kept, dropped} =
+      Enum.reduce(state.current, {%{}, []}, fn {element_id, position}, {kept, dropped} ->
+        case find_unchanged(Map.get(positions_by_element, element_id, []), position) do
+          nil -> {kept, [element_id | dropped]}
+          fresh -> {Map.put(kept, element_id, fresh), dropped}
+        end
+      end)
+
+    Enum.each(dropped, &broadcast(&1, nil))
+    warn_uncalibrated(state, binding_lookup)
+
     Logger.info(
       "[SelectorController] Loaded #{map_size(binding_lookup)} selectors for train #{train.name}"
     )
 
-    %{state | active_train: train, binding_lookup: binding_lookup, current: %{}}
+    %{state | active_train: train, binding_lookup: binding_lookup, current: kept}
   end
 
-  defp rebuild_input_lookup(%State{subscribed_ports: old_ports} = state) do
+  defp find_unchanged(positions, %SelectorPosition{} = current) do
+    config = Map.take(current, @position_config_fields)
+    Enum.find(positions, &(Map.take(&1, @position_config_fields) == config))
+  end
+
+  defp warn_uncalibrated(%State{} = state, binding_lookup) do
+    for {_port_pin, %{input_id: input_id, calibration: nil}} <- state.input_lookup,
+        Map.has_key?(binding_lookup, input_id) do
+      Logger.warning(
+        "[SelectorController] Input #{input_id} has no calibration; its selector will not move"
+      )
+    end
+  end
+
+  defp clear_positions(%State{} = state) do
+    Enum.each(Map.keys(state.current), &broadcast(&1, nil))
+    %{state | current: %{}}
+  end
+
+  defp rebuild_input_lookup(%State{subscribed_ports: subscribed} = state) do
     {input_lookup, ports} =
       SerialConnection.list_devices()
       |> Enum.filter(&(&1.status == :connected and &1.device_config_id != nil))
       |> Enum.reduce({%{}, MapSet.new()}, &add_device_inputs/2)
 
+    # PubSub subscriptions outlive a device disconnect, so a port that comes
+    # back must not be subscribed a second time.
     ports
-    |> MapSet.difference(old_ports)
+    |> MapSet.difference(subscribed)
     |> Enum.each(&ConfigurationManager.subscribe_input_values/1)
 
-    %{state | input_lookup: input_lookup, subscribed_ports: ports}
+    %{state | input_lookup: input_lookup, subscribed_ports: MapSet.union(subscribed, ports)}
   end
 
   defp add_device_inputs(device_conn, {lookup, ports}) do
@@ -251,61 +366,60 @@ defmodule Trenino.Train.SelectorController do
   defp apply_reading(%State{active_train: nil} = state, _port, _pin, _raw), do: state
 
   defp apply_reading(%State{} = state, port, pin, raw_value) do
-    case resolve(state, port, pin, raw_value) do
-      {:ok, element_id, position} -> move_to(state, element_id, position)
-      :skip -> state
+    with {:ok, element_id, positions} <- binding_for(state, port, pin),
+         %SelectorPosition{} = position <- resolve(state, port, pin, raw_value, positions) do
+      move_to(state, element_id, position)
+    else
+      _no_position -> state
     end
   end
 
-  defp resolve(%State{} = state, port, pin, raw_value) do
-    with {:ok, %{input_id: input_id, calibration: calibration}} <-
-           Map.fetch(state.input_lookup, {port, pin}),
+  defp binding_for(%State{} = state, port, pin) do
+    with {:ok, %{input_id: input_id}} <- Map.fetch(state.input_lookup, {port, pin}),
          {:ok, %{element_id: element_id, positions: positions}} <-
-           Map.fetch(state.binding_lookup, input_id),
-         {:ok, value} <- InputNormalizer.normalize(raw_value, calibration),
-         %SelectorPosition{} = position <- SelectorMapper.find_position(positions, value) do
-      {:ok, element_id, position}
-    else
-      _no_position -> :skip
+           Map.fetch(state.binding_lookup, input_id) do
+      {:ok, element_id, positions}
+    end
+  end
+
+  defp resolve(%State{} = state, port, pin, raw_value, positions) do
+    %{calibration: calibration} = Map.fetch!(state.input_lookup, {port, pin})
+
+    case InputNormalizer.normalize(raw_value, calibration) do
+      {:ok, value} -> SelectorMapper.find_position(positions, value)
+      {:error, _reason} -> nil
     end
   end
 
   defp move_to(%State{} = state, element_id, %SelectorPosition{index: index} = position) do
     case Map.fetch(state.current, element_id) do
-      {:ok, ^index} ->
+      {:ok, %SelectorPosition{index: ^index}} ->
         state
 
-      {:ok, previous_index} ->
-        previous = find_by_index(state, element_id, previous_index)
-        exit_action = previous && Action.from_position(previous, :exit)
-        enter_action = Action.from_position(position, :enter)
-        transition(state, element_id, position, [exit_action, enter_action])
+      {:ok, %SelectorPosition{} = previous} ->
+        Logger.debug("[SelectorController] Element #{element_id}: #{previous.index} -> #{index}")
+
+        actions = [Action.from_position(previous, :exit), Action.from_position(position, :enter)]
+        transition(state, element_id, position, actions)
 
       :error ->
+        Logger.debug("[SelectorController] Element #{element_id}: entered #{index}")
         transition(state, element_id, position, [Action.from_position(position, :enter)])
     end
   end
 
-  defp find_by_index(%State{} = state, element_id, index) do
-    state.binding_lookup
-    |> Map.values()
-    |> Enum.find_value(fn
-      %{element_id: ^element_id, positions: positions} ->
-        Enum.find(positions, &(&1.index == index))
-
-      _other ->
-        nil
-    end)
-  end
-
+  # Records and broadcasts the new position. Actions run only while the
+  # simulator is connected.
   defp transition(%State{} = state, element_id, %SelectorPosition{} = position, actions) do
-    state =
-      state
-      |> stop_runner(element_id)
-      |> start_runner(element_id, Enum.reject(actions, &is_nil/1))
+    state = stop_runner(state, element_id)
 
-    broadcast(element_id, position)
-    %{state | current: Map.put(state.current, element_id, position.index)}
+    state =
+      if state.sim_connected,
+        do: start_runner(state, element_id, Enum.reject(actions, &is_nil/1)),
+        else: state
+
+    broadcast(element_id, position_info(position))
+    %{state | current: Map.put(state.current, element_id, position)}
   end
 
   # Sync
@@ -316,25 +430,44 @@ defmodule Trenino.Train.SelectorController do
     do: sync(state, &(not Map.has_key?(state.current, &1)))
 
   defp sync(%State{active_train: nil} = state, _select?), do: state
-  defp sync(%State{sim_connected: false} = state, _select?), do: state
 
   defp sync(%State{} = state, select?) do
     readings = current_readings(state)
 
     Enum.reduce(state.input_lookup, state, fn {{port, pin}, %{input_id: input_id}}, acc ->
-      with {:ok, %{element_id: element_id}} <- Map.fetch(acc.binding_lookup, input_id),
+      with {:ok, %{element_id: element_id, positions: positions}} <-
+             Map.fetch(acc.binding_lookup, input_id),
            true <- select?.(element_id),
-           {:ok, raw_value} <- Map.fetch(readings, {port, pin}),
-           {:ok, ^element_id, position} <- resolve(acc, port, pin, raw_value) do
-        current = Map.delete(acc.current, element_id)
-
-        transition(%{acc | current: current}, element_id, position, [
-          Action.from_position(position, :enter)
-        ])
+           %SelectorPosition{} = position <-
+             sync_target(acc, element_id, {port, pin}, positions, readings) do
+        sync_element(acc, element_id, position)
       else
-        _ -> acc
+        _skip -> acc
       end
     end)
+  end
+
+  # The position the reading is in, or the known position when the knob
+  # rests in a dead zone or has no cached reading.
+  defp sync_target(%State{} = state, element_id, {port, pin}, positions, readings) do
+    reading_position =
+      case Map.fetch(readings, {port, pin}) do
+        {:ok, raw_value} -> resolve(state, port, pin, raw_value, positions)
+        :error -> nil
+      end
+
+    reading_position || Map.get(state.current, element_id)
+  end
+
+  defp sync_element(%State{} = state, element_id, %SelectorPosition{} = position) do
+    enter =
+      case Action.from_position(position, :enter) do
+        %Action{kind: :keystroke} -> nil
+        action -> action
+      end
+
+    Logger.debug("[SelectorController] Element #{element_id}: synced to #{position.index}")
+    transition(state, element_id, position, [enter])
   end
 
   defp current_readings(%State{} = state) do
@@ -344,11 +477,18 @@ defmodule Trenino.Train.SelectorController do
           uniq: true,
           do: port
 
-    Map.new(bound_ports, fn port -> {port, ConfigurationManager.get_input_values(port)} end)
-    |> Enum.flat_map(fn {port, values} ->
-      Enum.map(values, fn {pin, v} -> {{port, pin}, v} end)
-    end)
-    |> Map.new()
+    for port <- bound_ports,
+        {pin, value} <- cached_input_values(port),
+        into: %{},
+        do: {{port, pin}, value}
+  end
+
+  defp cached_input_values(port) do
+    ConfigurationManager.get_input_values(port)
+  catch
+    :exit, reason ->
+      Logger.warning("[SelectorController] No cached readings for #{port}: #{inspect(reason)}")
+      %{}
   end
 
   # Runners
@@ -387,11 +527,14 @@ defmodule Trenino.Train.SelectorController do
     %{state | runners: runners}
   end
 
-  defp broadcast(element_id, %SelectorPosition{index: index, label: label}) do
+  defp position_info(%SelectorPosition{index: index, label: label}),
+    do: %{index: index, label: label}
+
+  defp broadcast(element_id, info) do
     Phoenix.PubSub.broadcast(
       Trenino.PubSub,
       @topic,
-      {:selector_position_changed, element_id, %{index: index, label: label}}
+      {:selector_position_changed, element_id, info}
     )
   end
 

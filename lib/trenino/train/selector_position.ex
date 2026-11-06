@@ -16,7 +16,8 @@ defmodule Trenino.Train.SelectorPosition do
 
   - `:set_value` - set `endpoint` to `value` in the simulator
   - `:sequence` - run the sequence `sequence_id`
-  - `:keystroke` - tap `keystroke` (e.g. "L", "CTRL+L")
+  - `:keystroke` - tap `keystroke` once (e.g. "L", "CTRL+L"), unlike a button
+    binding, which holds the key while the button is down
   - `:none` - do nothing (the default for both)
 
   Deleting a sequence resets every action that ran it to `:none`.

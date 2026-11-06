@@ -112,7 +112,7 @@ defmodule Trenino.Train.ActionExecutorTest do
 
       action =
         sequence([
-          %{endpoint: "A", value: 1.0, delay_ms: 200},
+          %{endpoint: "A", value: 1.0, delay_ms: 5_000},
           %{endpoint: "B", value: 2.0, delay_ms: 0}
         ])
 
@@ -149,6 +149,23 @@ defmodule Trenino.Train.ActionExecutorTest do
 
       assert {:error, :boom} = ActionExecutor.run_all(actions)
       assert_received {:set, "A", 1.0}
+    end
+
+    test "stops at the next action when the owner goes down" do
+      owner = spawn(fn -> Process.sleep(:infinity) end)
+
+      actions = [
+        sequence([%{endpoint: "A", value: 1.0, delay_ms: 5_000}]),
+        %Action{kind: :set_value, endpoint: "B", value: 2.0}
+      ]
+
+      task = Task.async(fn -> ActionExecutor.run_all(actions, owner: owner) end)
+
+      assert_receive {:set, "A", 1.0}
+      Process.exit(owner, :kill)
+
+      assert {:error, :owner_down} = Task.await(task)
+      refute_received {:set, "B", _}
     end
 
     test "returns :ok for no actions" do

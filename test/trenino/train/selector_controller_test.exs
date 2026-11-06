@@ -148,7 +148,7 @@ defmodule Trenino.Train.SelectorControllerTest do
       state = read(ctx.controller, ctx, @pos1)
 
       assert_receive {:set, @endpoint, 1.0}
-      assert state.current == %{ctx.element.id => 1}
+      assert %{index: 1} = state.current[ctx.element.id]
     end
 
     test "runs the exit action before the enter action", ctx do
@@ -181,7 +181,7 @@ defmodule Trenino.Train.SelectorControllerTest do
 
       state = read(ctx.controller, ctx, @gap)
       refute_receive {:set, _, _}, 100
-      assert state.current == %{ctx.element.id => 0}
+      assert %{index: 0} = state.current[ctx.element.id]
 
       # Back into the same position from the gap: still nothing
       read(ctx.controller, ctx, @pos0)
@@ -272,7 +272,7 @@ defmodule Trenino.Train.SelectorControllerTest do
 
       assert_receive {:set, @endpoint, 2.0}
       refute_receive {:tap, _}, 100
-      assert state.current == %{ctx.element.id => 2}
+      assert %{index: 2} = state.current[ctx.element.id]
     end
 
     test "waits for a live reading when none is cached", ctx do
@@ -336,7 +336,7 @@ defmodule Trenino.Train.SelectorControllerTest do
       assert_receive {:set, @endpoint, 1.0}
     end
 
-    test "re-syncs when bindings reload", ctx do
+    test "a reload keeps the position of an unchanged selector", ctx do
       configure(ctx)
       pin = ctx.pin
       Mimic.stub(ConfigurationManager, :get_input_values, fn _port -> %{pin => @pos2} end)
@@ -346,9 +346,134 @@ defmodule Trenino.Train.SelectorControllerTest do
       assert_receive {:set, @endpoint, 2.0}
 
       SelectorController.reload_bindings()
+      state = SelectorController.get_state()
+
+      refute_receive {:set, _, _}, 100
+      assert %{index: 2} = state.current[ctx.element.id]
+    end
+
+    test "a reload re-syncs a selector whose positions changed", ctx do
+      configure(ctx)
+      pin = ctx.pin
+      Mimic.stub(ConfigurationManager, :get_input_values, fn _port -> %{pin => @pos2} end)
+
+      controller = start_controller()
+      activate(controller, ctx.train)
+      assert_receive {:set, @endpoint, 2.0}
+
+      # save_selector reloads the controller itself
+      configure(ctx, %{2 => %{enter_value: 5.0}})
       SelectorController.get_state()
 
-      assert_receive {:set, @endpoint, 2.0}
+      assert_receive {:set, @endpoint, 5.0}
+    end
+
+    test "a reload applies edited sequence commands", %{train: train} = ctx do
+      {:ok, sequence} = TrainContext.create_sequence(train.id, %{name: "Lights"})
+      {:ok, _} = TrainContext.set_sequence_commands(sequence, [%{endpoint: "Z", value: 1.0}])
+
+      configure(ctx, %{1 => %{enter_kind: :sequence, enter_sequence_id: sequence.id}})
+      controller = start_controller()
+      activate(controller, ctx.train)
+
+      {:ok, _} = TrainContext.set_sequence_commands(sequence, [%{endpoint: "Y", value: 2.0}])
+      SelectorController.get_state()
+
+      read(controller, ctx, @pos1)
+      assert_receive {:set, "Y", 2.0}
+      refute_received {:set, "Z", _}
+    end
+
+    test "a deleted sequence no longer runs", %{train: train} = ctx do
+      {:ok, sequence} = TrainContext.create_sequence(train.id, %{name: "Lights"})
+      {:ok, _} = TrainContext.set_sequence_commands(sequence, [%{endpoint: "Z", value: 1.0}])
+
+      configure(ctx, %{1 => %{enter_kind: :sequence, enter_sequence_id: sequence.id}})
+      controller = start_controller()
+      activate(controller, ctx.train)
+
+      {:ok, _} = TrainContext.delete_sequence(sequence)
+      SelectorController.get_state()
+
+      state = read(controller, ctx, @pos1)
+      refute_receive {:set, "Z", _}, 100
+      assert %{index: 1} = state.current[ctx.element.id]
+    end
+
+    test "a deleted binding stops the selector and clears its position", ctx do
+      configure(ctx)
+      controller = start_controller()
+      activate(controller, ctx.train)
+      read(controller, ctx, @pos1)
+      assert_receive {:set, @endpoint, 1.0}
+
+      SelectorController.subscribe()
+      element_id = ctx.element.id
+      :ok = TrainContext.delete_selector_binding(element_id)
+      SelectorController.get_state()
+
+      assert_receive {:selector_position_changed, ^element_id, nil}
+      read(controller, ctx, @pos2)
+      refute_receive {:set, _, _}, 100
+    end
+
+    test "deleting the element stops the selector", ctx do
+      configure(ctx)
+      controller = start_controller()
+      activate(controller, ctx.train)
+
+      {:ok, _} = TrainContext.delete_element(ctx.element)
+      state = SelectorController.get_state()
+
+      assert state.binding_lookup == %{}
+    end
+
+    test "a sync keeps the known position when the knob rests in a dead zone", ctx do
+      configure(ctx)
+      pin = ctx.pin
+      controller = start_controller()
+      activate(controller, ctx.train)
+      read(controller, ctx, @pos1)
+      assert_receive {:set, @endpoint, 1.0}
+
+      Mimic.stub(ConfigurationManager, :get_input_values, fn _port -> %{pin => @gap} end)
+      send(controller, {:simulator_status_changed, ConnectionState.new()})
+      send(controller, {:simulator_status_changed, connected_status()})
+      state = SelectorController.get_state()
+
+      assert_receive {:set, @endpoint, 1.0}
+      assert %{index: 1} = state.current[ctx.element.id]
+    end
+
+    test "a sync does not tap keystrokes", ctx do
+      configure(ctx, %{1 => %{enter_kind: :keystroke, enter_keystroke: "L"}})
+      pin = ctx.pin
+      Mimic.stub(ConfigurationManager, :get_input_values, fn _port -> %{pin => @pos1} end)
+
+      controller = start_controller()
+      state = activate(controller, ctx.train)
+
+      refute_receive {:tap, _}, 100
+      assert %{index: 1} = state.current[ctx.element.id]
+
+      # A live move still taps
+      read(controller, ctx, @pos2)
+      read(controller, ctx, @pos1)
+      assert_receive {:tap, "L"}
+    end
+
+    test "survives ConfigurationManager not answering", ctx do
+      configure(ctx)
+
+      Mimic.stub(ConfigurationManager, :get_input_values, fn _port ->
+        exit({:timeout, {GenServer, :call, []}})
+      end)
+
+      controller = start_controller()
+      state = activate(controller, ctx.train)
+
+      assert Process.alive?(controller)
+      assert state.current == %{}
     end
 
     test "syncs selectors without a position when a device connects", ctx do
@@ -362,7 +487,7 @@ defmodule Trenino.Train.SelectorControllerTest do
       state = SelectorController.get_state()
 
       assert_receive {:set, @endpoint, +0.0}
-      assert state.current == %{ctx.element.id => 0}
+      assert %{index: 0} = state.current[ctx.element.id]
 
       # Already positioned: another device update does not re-fire
       send(controller, {:devices_updated, []})
@@ -390,10 +515,44 @@ defmodule Trenino.Train.SelectorControllerTest do
         %{state | active_train: train}
       end)
 
+      pin = ctx.pin
+      Mimic.stub(ConfigurationManager, :get_input_values, fn _port -> %{pin => @pos1} end)
+
       start_controller()
       state = SelectorController.get_state()
 
       assert Map.has_key?(state.binding_lookup, ctx.input.id)
+      assert_receive {:set, @endpoint, 1.0}
+    end
+
+    test "subscribes to each port once across device reconnects", ctx do
+      test_pid = self()
+
+      Mimic.stub(ConfigurationManager, :subscribe_input_values, fn port ->
+        send(test_pid, {:subscribed, port})
+        :ok
+      end)
+
+      configure(ctx)
+      controller = start_controller()
+      port = ctx.port
+      assert_receive {:subscribed, ^port}
+
+      Mimic.stub(Trenino.Serial.Connection, :list_devices, fn -> [] end)
+      send(controller, {:devices_updated, []})
+      SelectorController.get_state()
+
+      device_conn = %DeviceConnection{
+        port: port,
+        status: :connected,
+        device_config_id: Repo.get!(Trenino.Hardware.Device, ctx.input.device_id).config_id
+      }
+
+      Mimic.stub(Trenino.Serial.Connection, :list_devices, fn -> [device_conn] end)
+      send(controller, {:devices_updated, [device_conn]})
+      SelectorController.get_state()
+
+      refute_received {:subscribed, ^port}
     end
 
     test "skips inputs without calibration", ctx do
@@ -415,7 +574,144 @@ defmodule Trenino.Train.SelectorControllerTest do
       state = read(controller, ctx, @pos1)
 
       refute_receive {:set, _, _}, 100
-      assert state.current == %{ctx.element.id => 1}
+      assert %{index: 1} = state.current[ctx.element.id]
+    end
+  end
+
+  describe "simulator connection" do
+    setup ctx do
+      configure(ctx, %{0 => %{exit_kind: :keystroke, exit_keystroke: "X"}})
+      %{controller: start_controller()}
+    end
+
+    test "tracks positions but runs no actions while disconnected", ctx do
+      stub_simulator(:disconnected)
+      send(ctx.controller, {:simulator_status_changed, ConnectionState.new()})
+      activate(ctx.controller, ctx.train)
+      SelectorController.subscribe()
+      element_id = ctx.element.id
+
+      read(ctx.controller, ctx, @pos0)
+      state = read(ctx.controller, ctx, @pos1)
+
+      assert_receive {:selector_position_changed, ^element_id, %{index: 1}}
+      refute_receive {:tap, _}, 100
+      refute_received {:set, _, _}
+      assert %{index: 1} = state.current[element_id]
+    end
+
+    test "stops running actions when the simulator disconnects", %{train: train} = ctx do
+      {:ok, sequence} = TrainContext.create_sequence(train.id, %{name: "Slow"})
+
+      {:ok, _} =
+        TrainContext.set_sequence_commands(sequence, [
+          %{endpoint: "A", value: 1.0, delay_ms: 2_000},
+          %{endpoint: "B", value: 1.0}
+        ])
+
+      configure(ctx, %{1 => %{enter_kind: :sequence, enter_sequence_id: sequence.id}})
+      SelectorController.reload_bindings()
+      activate(ctx.controller, ctx.train)
+
+      read(ctx.controller, ctx, @pos1)
+      assert_receive {:set, "A", 1.0}
+
+      send(ctx.controller, {:simulator_status_changed, ConnectionState.new()})
+      state = SelectorController.get_state()
+
+      assert state.runners == %{}
+    end
+  end
+
+  describe "get_position/1" do
+    test "returns :none when the controller is not running", ctx do
+      assert SelectorController.get_position(ctx.element.id) == :none
+    end
+
+    test "returns the current position and clears it on train change", ctx do
+      configure(ctx)
+      controller = start_controller()
+      activate(controller, ctx.train)
+
+      assert SelectorController.get_position(ctx.element.id) == :none
+
+      read(controller, ctx, @pos2)
+      assert SelectorController.get_position(ctx.element.id) == {:ok, %{index: 2, label: "P2"}}
+
+      SelectorController.subscribe()
+      element_id = ctx.element.id
+      send(controller, {:train_changed, nil})
+      SelectorController.get_state()
+
+      assert_receive {:selector_position_changed, ^element_id, nil}
+      assert SelectorController.get_position(element_id) == :none
+    end
+  end
+
+  describe "runners" do
+    test "an exit sequence finishes before the enter action", %{train: train} = ctx do
+      {:ok, sequence} = TrainContext.create_sequence(train.id, %{name: "Off"})
+
+      {:ok, _} =
+        TrainContext.set_sequence_commands(sequence, [
+          %{endpoint: "Off1", value: 1.0, delay_ms: 50},
+          %{endpoint: "Off2", value: 1.0}
+        ])
+
+      configure(ctx, %{0 => %{exit_kind: :sequence, exit_sequence_id: sequence.id}})
+      controller = start_controller()
+      activate(controller, ctx.train)
+      read(controller, ctx, @pos0)
+      assert_receive {:set, @endpoint, +0.0}
+
+      read(controller, ctx, @pos1)
+
+      for expected <- [{:set, "Off1", 1.0}, {:set, "Off2", 1.0}, {:set, @endpoint, 1.0}] do
+        assert_receive message, 1_000
+        assert message == expected
+      end
+    end
+
+    test "recovers after a runner crashes", ctx do
+      configure(ctx, %{1 => %{enter_kind: :keystroke, enter_keystroke: "L"}})
+      Mimic.stub(Keyboard, :tap, fn _ -> raise "boom" end)
+
+      controller = start_controller()
+      activate(controller, ctx.train)
+      %{runners: %{} = runners} = read(controller, ctx, @pos1)
+      %Task{pid: pid} = Map.fetch!(runners, ctx.element.id)
+      ref = Process.monitor(pid)
+      assert_receive {:DOWN, ^ref, :process, ^pid, _reason}
+
+      # The controller handled the same :DOWN and dropped the runner
+      assert SelectorController.get_state().runners == %{}
+
+      read(controller, ctx, @pos2)
+      assert_receive {:set, @endpoint, 2.0}
+    end
+
+    test "a train change kills running actions", %{train: train} = ctx do
+      {:ok, sequence} = TrainContext.create_sequence(train.id, %{name: "Slow"})
+
+      {:ok, _} =
+        TrainContext.set_sequence_commands(sequence, [
+          %{endpoint: "A", value: 1.0, delay_ms: 300},
+          %{endpoint: "B", value: 1.0}
+        ])
+
+      configure(ctx, %{1 => %{enter_kind: :sequence, enter_sequence_id: sequence.id}})
+      controller = start_controller()
+      activate(controller, ctx.train)
+      read(controller, ctx, @pos1)
+      assert_receive {:set, "A", 1.0}
+
+      {:ok, other} =
+        TrainContext.create_train(%{name: "Other", identifiers: [%{identifier: "other_rt"}]})
+
+      state = activate(controller, other)
+
+      assert state.runners == %{}
+      refute_receive {:set, "B", _}, 500
     end
   end
 end
