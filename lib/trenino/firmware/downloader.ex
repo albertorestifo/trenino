@@ -65,11 +65,11 @@ defmodule Trenino.Firmware.Downloader do
         {:ok, body}
 
       {:ok, %{status: status, body: body}} ->
-        Logger.error("GitHub API error: #{status} - #{inspect(body)}")
+        Logger.warning("GitHub API error: #{status} - #{inspect(body)}")
         {:error, {:github_api_error, status}}
 
       {:error, reason} ->
-        Logger.error("Failed to fetch GitHub releases: #{inspect(reason)}")
+        Logger.warning("Failed to fetch GitHub releases: #{inspect(reason)}")
         {:error, reason}
     end
   end
@@ -139,7 +139,7 @@ defmodule Trenino.Firmware.Downloader do
             manifest
 
           {:error, reason} ->
-            Logger.error("Failed to fetch manifest for #{tag_name}: #{inspect(reason)}")
+            Logger.warning("Failed to fetch manifest for #{tag_name}: #{inspect(reason)}")
             nil
         end
     end
@@ -179,7 +179,7 @@ defmodule Trenino.Firmware.Downloader do
       {:ok, data}
     else
       {:error, reason} ->
-        Logger.warning("Invalid manifest structure: #{inspect(reason)}")
+        Logger.error("Invalid manifest structure: #{inspect(reason)}")
         {:error, reason}
     end
   end
@@ -260,7 +260,7 @@ defmodule Trenino.Firmware.Downloader do
           environment: environment
         }
       else
-        Logger.warning("Manifest references missing asset: #{filename}")
+        Logger.error("Manifest references missing asset: #{filename}")
         nil
       end
     end)

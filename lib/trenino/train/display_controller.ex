@@ -310,9 +310,7 @@ defmodule Trenino.Train.DisplayController do
   # i2c_module not preloaded — this should not happen since list_enabled_display_bindings/1
   # always preloads i2c_module: :device
   defp blank_display(%DisplayBinding{}) do
-    Logger.warning(
-      "[DisplayController] blank_display called with unloaded i2c_module association"
-    )
+    Logger.error("[DisplayController] blank_display called with unloaded i2c_module association")
   end
 
   defp chip_module(:ht16k33), do: HT16K33

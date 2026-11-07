@@ -299,7 +299,7 @@ defmodule Trenino.Serial.Connection do
         {:noreply, updated_state}
 
       {%DeviceConnection{status: :discovering}, {:error, reason}} ->
-        Logger.error("Failed to discover device on port #{port}: #{inspect(reason)}")
+        Logger.warning("Failed to discover device on port #{port}: #{inspect(reason)}")
         updated_state = State.update(state, port, &DeviceConnection.set_error_reason(&1, reason))
         GenServer.cast(self(), {:disconnect, port})
         {:noreply, updated_state}
@@ -366,7 +366,7 @@ defmodule Trenino.Serial.Connection do
 
   @impl true
   def handle_info({:circuits_uart, port, {:error, reason}}, state) do
-    Logger.error("Error on port #{port}: #{inspect(reason)}")
+    Logger.warning("Error on port #{port}: #{inspect(reason)}")
     # Store the error reason before disconnecting
     updated_state =
       State.update(state, port, &DeviceConnection.set_error_reason(&1, reason))
@@ -554,7 +554,7 @@ defmodule Trenino.Serial.Connection do
         {:noreply, updated_state}
 
       {:error, reason} ->
-        Logger.error("Failed to open port #{port}: #{inspect(reason)}")
+        Logger.warning("Failed to open port #{port}: #{inspect(reason)}")
         # Mark as disconnecting with error reason and cleanup
         updated_state =
           State.update(state_with_conn, port, fn conn ->

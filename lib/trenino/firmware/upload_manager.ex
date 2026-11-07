@@ -169,6 +169,7 @@ defmodule Trenino.Firmware.UploadManager do
     case state.current_upload do
       %{upload_id: ^upload_id} = upload ->
         Logger.warning("Upload timed out: #{upload_id}")
+        report_upload_failure("firmware_upload_failed", upload, :timeout, %{})
         do_cancel_upload(upload)
         broadcast({:upload_failed, upload_id, :timeout, Uploader.error_message(:timeout)})
         {:noreply, %{state | current_upload: nil}}
@@ -279,19 +280,11 @@ defmodule Trenino.Firmware.UploadManager do
       _ -> :ok
     end
 
-    Sentry.capture_message("firmware_upload_failed",
-      level: :error,
-      extra: %{
-        upload_id: upload.upload_id,
-        port: upload.port,
-        environment: upload.environment,
-        error_reason: reason,
-        avrdude_output: output
-      }
-    )
+    report_upload_failure("firmware_upload_failed", upload, reason, %{avrdude_output: output})
 
     broadcast({:upload_failed, upload.upload_id, reason, error_message})
-    Logger.error("Failed firmware upload #{upload.upload_id}: #{reason}")
+    # Reported to Sentry above; a Logger.error here would send a duplicate event.
+    Logger.warning("Failed firmware upload #{upload.upload_id}: #{inspect(reason)}")
   end
 
   defp handle_upload_result(upload, {:error, reason}) do
@@ -307,19 +300,34 @@ defmodule Trenino.Firmware.UploadManager do
       _ -> :ok
     end
 
-    Sentry.capture_message("firmware_upload_crashed",
-      level: :error,
-      extra: %{
-        upload_id: upload.upload_id,
-        port: upload.port,
-        environment: upload.environment,
-        error_reason: :crash,
-        crash_reason: inspect(reason)
-      }
-    )
+    report_upload_failure("firmware_upload_crashed", upload, :crash, %{
+      crash_reason: inspect(reason)
+    })
 
     broadcast({:upload_failed, upload.upload_id, :crash, "Upload task crashed unexpectedly"})
-    Logger.error("Upload task crashed: #{inspect(reason)}")
+    Logger.warning("Upload task crashed: #{inspect(reason)}")
+  end
+
+  # One Sentry issue per failure reason, so a new kind of failure is not hidden
+  # inside an existing issue.
+  defp report_upload_failure(message, upload, reason, extra) do
+    reason_tag = if is_atom(reason), do: Atom.to_string(reason), else: inspect(reason)
+
+    Sentry.capture_message(message,
+      level: :error,
+      fingerprint: [message, reason_tag],
+      tags: %{error_reason: reason_tag, board: upload.environment},
+      extra:
+        Map.merge(
+          %{
+            upload_id: upload.upload_id,
+            port: upload.port,
+            environment: upload.environment,
+            error_reason: reason
+          },
+          extra
+        )
+    )
   end
 
   defp broadcast(event) do

@@ -69,6 +69,17 @@ defmodule Trenino.SettingsTest do
       event = %{message: "boom"}
       assert ^event = Settings.sentry_before_send(event)
     end
+
+    test "drops the event instead of raising when the setting cannot be read" do
+      {:ok, _} = Settings.set_error_reporting(:enabled)
+      parent = self()
+
+      # A bare spawn has no sandbox access (the test is async, so not shared),
+      # so the Repo query raises DBConnection.OwnershipError.
+      spawn(fn -> send(parent, {:result, Settings.sentry_before_send(%{message: "boom"})}) end)
+
+      assert_receive {:result, false}
+    end
   end
 
   describe "simulator_url/0" do

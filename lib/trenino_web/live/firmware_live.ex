@@ -166,7 +166,7 @@ defmodule TreninoWeb.FirmwareLive do
          |> put_flash(:info, "Firmware releases updated")}
 
       {:error, reason} ->
-        Logger.error("Firmware update check failed: #{inspect(reason)}")
+        Logger.warning("Firmware update check failed: #{inspect(reason)}")
 
         {:noreply,
          socket

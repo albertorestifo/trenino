@@ -1,4 +1,7 @@
 defmodule TreninoWeb.Endpoint do
+  # Sentry's logger handler ignores the :bandit log domain, so exceptions raised
+  # while serving a request (controllers, /mcp) are only reported through this.
+  use Sentry.PlugCapture
   use Phoenix.Endpoint, otp_app: :trenino
 
   alias TreninoWeb.Plugs.LocalOnly

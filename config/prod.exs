@@ -12,3 +12,32 @@ config :logger, level: :info
 
 # Runtime production configuration, including reading
 # of environment variables, is done on config/runtime.exs.
+
+# Sentry error tracking (Better Stack). CI exports SENTRY_DSN while building the
+# release, so the DSN is written into the release's sys.config here. It cannot
+# live in config/runtime.exs: that file runs on the user's machine at boot, where
+# SENTRY_DSN is not set. Without a DSN at build time Sentry stays inactive.
+# Events are still gated by the user's consent in Trenino.Settings.sentry_before_send/1.
+# GitHub Actions expands a missing secret to "", which must also mean "off".
+sentry_dsn = System.get_env("SENTRY_DSN", "")
+
+if sentry_dsn != "" do
+  config :sentry,
+    dsn: sentry_dsn,
+    environment_name: System.get_env("SENTRY_ENVIRONMENT", "production"),
+    release: Mix.Project.config()[:version],
+    before_send: {Trenino.Settings, :sentry_before_send}
+
+  config :trenino, :logger, [
+    {:handler, :sentry_handler, Sentry.LoggerHandler,
+     %{
+       config: %{
+         metadata: [:file, :line, :request_id],
+         capture_log_messages: true,
+         level: :error,
+         # A failing loop (a serial port, a simulator poll) must not flood Sentry.
+         rate_limiting: [max_events: 10, interval: 60_000]
+       }
+     }}
+  ]
+end

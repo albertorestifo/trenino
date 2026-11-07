@@ -127,8 +127,8 @@ defmodule Trenino.Firmware.Uploader do
 
       {:error, output} ->
         error_type = parse_error(output)
-        Logger.error("Avrdude failed with error: #{error_type}")
-        Logger.error("Avrdude output:\n#{output}")
+        Logger.warning("Avrdude failed with error: #{error_type}")
+        Logger.warning("Avrdude output:\n#{output}")
         {:error, error_type, output}
     end
   end
@@ -267,7 +267,7 @@ defmodule Trenino.Firmware.Uploader do
         {:ok, original_port}
 
       elapsed_ms >= @bootloader_poll_deadline_ms ->
-        Logger.error("No ports available after bootloader trigger")
+        Logger.warning("No ports available after bootloader trigger")
         {:error, :bootloader_port_not_found}
 
       true ->

@@ -421,7 +421,7 @@ defmodule Trenino.Train.ButtonController do
 
   # Catch-all for unexpected modes (should never happen, but helps debug)
   defp handle_button_press(%State{} = _state, element_id, binding_info) do
-    Logger.warning(
+    Logger.error(
       "[ButtonController] Unknown button mode: element=#{element_id}, mode=#{inspect(binding_info.mode)}"
     )
 

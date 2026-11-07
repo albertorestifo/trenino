@@ -146,7 +146,7 @@ defmodule Trenino.Firmware.DeviceRegistry do
             Logger.warning("Background manifest fetch failed: #{inspect(reason)}")
         end
       rescue
-        e -> Logger.warning("Background manifest fetch error: #{Exception.message(e)}")
+        e -> Logger.error("Background manifest fetch error: #{Exception.message(e)}")
       end
     end)
 
@@ -163,7 +163,7 @@ defmodule Trenino.Firmware.DeviceRegistry do
         {:reply, :ok, state}
 
       {:error, reason} ->
-        Logger.error("Failed to load devices from manifest: #{inspect(reason)}")
+        Logger.warning("Failed to load devices from manifest: #{inspect(reason)}")
         {:reply, {:error, reason}, state}
     end
   end
@@ -209,13 +209,13 @@ defmodule Trenino.Firmware.DeviceRegistry do
   end
 
   defp handle_empty_manifest do
-    Logger.warning("Manifest contains no devices, falling back")
+    Logger.error("Manifest contains no devices, falling back")
     load_fallback_devices()
     {:error, :no_devices}
   end
 
   defp apply_device_configs([]) do
-    Logger.warning("No valid devices in manifest, falling back")
+    Logger.error("No valid devices in manifest, falling back")
     load_fallback_devices()
     {:error, :no_valid_devices}
   end
@@ -282,7 +282,7 @@ defmodule Trenino.Firmware.DeviceRegistry do
     upload_config = Map.get(device, "uploadConfig")
 
     if upload_config do
-      Logger.warning("Manifest device missing required fields: #{inspect(device)}")
+      Logger.error("Manifest device missing required fields: #{inspect(device)}")
     else
       Logger.warning(
         "Manifest device '#{env}' missing uploadConfig - device will be skipped. " <>

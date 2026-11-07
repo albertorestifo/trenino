@@ -57,10 +57,18 @@ defmodule Trenino.Settings do
   user has not opted in to error reporting; otherwise returns the event
   unchanged. Sentry treats a falsy return as "exclude" and a truthy return
   as "send".
+
+  When the setting cannot be read (the Repo is not running yet, or the
+  database is unavailable) the event is dropped: consent is unknown, and an
+  exception here would crash whichever process called Sentry.
   """
   @spec sentry_before_send(event) :: event | false when event: term()
   def sentry_before_send(event) do
     if error_reporting?(), do: event, else: false
+  rescue
+    _ -> false
+  catch
+    :exit, _ -> false
   end
 
   # Private helpers

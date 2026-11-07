@@ -66,6 +66,8 @@ jobs:
 
   build-elixir:
     name: Build Elixir (${{ matrix.target }})
+    # SENTRY_DSN is stored as a secret of the Release environment, not the repository.
+    environment: Release
     needs: [check-changes]
     if: needs.check-changes.outputs.should_build == 'true'
     runs-on: ${{ matrix.os }}
@@ -119,11 +121,23 @@ jobs:
         if: runner.os == 'Linux'
         run: ln -sf src/Makefile deps/circuits_uart/Makefile
 
+      # Sentry is configured at build time (config/prod.exs): `mix release` writes
+      # SENTRY_DSN into the release's sys.config. This step compiles too, so it gets
+      # the same env to keep the config identical and avoid a second full compile.
+      # Source context is only enrichment, so a failure here must not block a release.
+      - name: Package source code for Sentry
+        continue-on-error: true
+        run: mix sentry.package_source_code
+        env:
+          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+          SENTRY_ENVIRONMENT: nightly
+
       - name: Build Elixir release
         run: mix release trenino_desktop
         env:
           BURRITO_TARGET: ${{ matrix.target }}
           SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+          SENTRY_ENVIRONMENT: nightly
 
       - name: Upload Elixir binary
         uses: actions/upload-artifact@v7

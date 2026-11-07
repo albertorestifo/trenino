@@ -678,18 +678,18 @@ defmodule TreninoWeb.ApiExplorerComponent do
 
   # Logs the raw reason and returns a plain sentence with a next step for the UI.
   defp api_error_message(:read, path, reason) do
-    Logger.error("API explorer could not read #{path}: #{inspect(reason)}")
+    Logger.warning("API explorer could not read #{path}: #{inspect(reason)}")
 
     "This value could not be read from the simulator. Check that Train Sim World is running, then select it again."
   end
 
   defp api_error_message(:navigate, reason) do
-    Logger.error("API explorer could not open node: #{inspect(reason)}")
+    Logger.warning("API explorer could not open node: #{inspect(reason)}")
     "This folder could not be opened. Check that Train Sim World is running, then try again."
   end
 
   defp api_error_message(:load, reason) do
-    Logger.error("API explorer could not load the root nodes: #{inspect(reason)}")
+    Logger.warning("API explorer could not load the root nodes: #{inspect(reason)}")
 
     "The simulator API could not be loaded. Check that Train Sim World is running, then close and reopen this window."
   end

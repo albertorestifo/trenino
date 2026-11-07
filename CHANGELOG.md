@@ -61,6 +61,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   the sequence is still running is ignored.
 - Gauges no longer read the stepper axis from the database on every
   simulator sample while the needle is still, which filled the debug log.
+- Error reporting now works in released builds. Before, no error report ever
+  reached us, even with error reporting turned on: the reporting address was
+  missing from every desktop build. Reports still go out only if you opted in.
+  Errors from the local API and MCP server are now reported too, failed
+  firmware uploads send one report instead of up to four, and upload timeouts
+  are reported. Everyday problems you can fix yourself, such as an unplugged
+  cable, a serial port from another device, Train Sim World not running or
+  being offline, are no longer reported as errors.
 
 ## [0.8.3] - 2026-11-04
 

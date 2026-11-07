@@ -27,24 +27,8 @@ if System.get_env("TRENINO_DISTRIBUTION") == "tauri-updater" do
   config :trenino, :start_app_version_checker, false
 end
 
-# Sentry error tracking (Better Stack) — only active when SENTRY_DSN is set.
-# Set SENTRY_DSN during the release build in CI.
-if sentry_dsn = System.get_env("SENTRY_DSN") do
-  config :sentry,
-    dsn: sentry_dsn,
-    before_send: {Trenino.Settings, :sentry_before_send}
-
-  config :trenino, :logger, [
-    {:handler, :sentry_handler, Sentry.LoggerHandler,
-     %{
-       config: %{
-         metadata: [:file, :line, :request_id],
-         capture_log_messages: true,
-         level: :error
-       }
-     }}
-  ]
-end
+# Sentry is configured at build time in config/prod.exs, not here: this file runs
+# on the user's machine, where CI's SENTRY_DSN is not set.
 
 if config_env() == :prod do
   # Determine platform-specific data directory for the database.
