@@ -77,6 +77,14 @@ defmodule Trenino.MCP.Tools.GaugeSerialization do
     do:
       "The lease expired but an accepted move or home is still finishing; only renew, stop or release_lease work now. Claim again once the axis is stationary."
 
+  defp plain(:no_inputs),
+    do:
+      "This configuration is empty. Add at least one input, matrix, output, display or gauge, then apply again."
+
+  defp plain(:firmware_update_required),
+    do:
+      "This configuration needs firmware 3.1 or newer. Update the device firmware, then apply again."
+
   defp plain(reason) when is_atom(reason),
     do: reason |> Atom.to_string() |> String.replace("_", " ")
 

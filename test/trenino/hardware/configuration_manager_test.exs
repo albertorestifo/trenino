@@ -134,6 +134,60 @@ defmodule Trenino.Hardware.ConfigurationManagerTest do
     :sys.get_state(ConfigurationManager)
   end
 
+  describe "outputs-only configuration" do
+    setup do
+      Mimic.set_mimic_global()
+      Mimic.stub(Circuits.UART, :enumerate, fn -> %{} end)
+      {:ok, device} = Hardware.create_device(%{name: "Outputs only"})
+      {:ok, _} = Hardware.create_output(device.id, %{pin: 13, name: "Brake lamp"})
+      %{device: device, port: unique_port()}
+    end
+
+    test "sends the empty Configure and completes on ConfigurationStored", %{
+      device: device,
+      port: port
+    } do
+      test_pid = self()
+
+      Mimic.stub(Trenino.Serial.Connection, :connected_devices, fn ->
+        [%{port: port, device_version: "3.1.0"}]
+      end)
+
+      Mimic.stub(Trenino.Serial.Connection, :send_message, fn ^port, message ->
+        send(test_pid, {:configuration_message, message})
+        :ok
+      end)
+
+      Phoenix.PubSub.subscribe(Trenino.PubSub, @config_topic)
+
+      assert {:ok, config_id} = ConfigurationManager.apply_configuration(port, device.id)
+
+      assert_receive {:configuration_message,
+                      %Trenino.Serial.Protocol.Configure{
+                        config_id: ^config_id,
+                        total_parts: 0,
+                        part_number: 0,
+                        input_type: :empty
+                      }}
+
+      send(
+        ConfigurationManager,
+        {:serial_message, port, %ConfigurationStored{config_id: config_id}}
+      )
+
+      assert_receive {:configuration_applied, ^port, _device, ^config_id}
+    end
+
+    test "refuses the empty Configure on firmware below 3.1", %{device: device, port: port} do
+      Mimic.stub(Trenino.Serial.Connection, :connected_devices, fn ->
+        [%{port: port, device_version: "3.0.0"}]
+      end)
+
+      assert {:error, :firmware_update_required} =
+               ConfigurationManager.apply_configuration(port, device.id)
+    end
+  end
+
   describe "get_input_values/1" do
     test "returns empty map when no values stored" do
       port = unique_port()

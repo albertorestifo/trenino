@@ -99,7 +99,7 @@ defmodule TreninoWeb.ConfigurationEditLive.Sections do
   end
 
   defp apply_unavailable_reason(false, _),
-    do: "Apply is unavailable: add at least one input, matrix, display or gauge first."
+    do: "Apply is unavailable: add at least one input, matrix, output, display or gauge first."
 
   defp apply_unavailable_reason(true, false),
     do:

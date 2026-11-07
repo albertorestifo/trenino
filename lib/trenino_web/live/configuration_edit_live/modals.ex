@@ -283,6 +283,10 @@ defmodule TreninoWeb.ConfigurationEditLive.Modals do
   attr :connected_devices, :list, required: true
   attr :allcall_warning, :string, default: nil
 
+  attr :device_names, :map,
+    default: %{},
+    doc: "config_id => configuration name, for the configurations devices report running"
+
   def apply_modal(assigns) do
     ~H"""
     <div class="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -309,7 +313,14 @@ defmodule TreninoWeb.ConfigurationEditLive.Modals do
             type="button"
             phx-click="apply_to_device"
             phx-value-port={device.port}
-            class="w-full flex items-center gap-3 p-3 rounded-lg border border-base-300 hover:bg-base-300 transition-colors text-left"
+            id={"apply-device-#{device_dom_id(device.port)}"}
+            class={[
+              "w-full flex items-center gap-3 p-3 rounded-lg border hover:bg-base-300 transition-colors text-left",
+              if(association(device, @device.config_id, @device_names) == :current,
+                do: "border-success/60",
+                else: "border-base-300"
+              )
+            ]}
           >
             <div class="min-w-0 flex-1">
               <p class="font-medium font-mono truncate">{device.port}</p>
@@ -317,9 +328,7 @@ defmodule TreninoWeb.ConfigurationEditLive.Modals do
                 v{device.device_version}
               </p>
             </div>
-            <span class="flex items-center gap-1 text-xs text-success">
-              <.icon name="hero-check-circle-mini" class="size-4" /> Connected
-            </span>
+            <.device_association association={association(device, @device.config_id, @device_names)} />
           </button>
         </div>
 
@@ -330,6 +339,59 @@ defmodule TreninoWeb.ConfigurationEditLive.Modals do
         </div>
       </div>
     </div>
+    """
+  end
+
+  @typedoc "What a connected device reports running, relative to the configuration being applied."
+  @type association :: :current | {:other, String.t()} | :unknown | :none
+
+  @spec association(map(), integer(), %{integer() => String.t()}) :: association()
+  defp association(%{device_config_id: id}, _current_id, _names) when id in [nil, 0], do: :none
+  defp association(%{device_config_id: id}, id, _names), do: :current
+
+  defp association(%{device_config_id: id}, _current_id, names) do
+    case Map.fetch(names, id) do
+      {:ok, name} -> {:other, name}
+      :error -> :unknown
+    end
+  end
+
+  defp device_dom_id(port), do: String.replace(port, ~r/[^A-Za-z0-9_-]/, "-")
+
+  attr :association, :any, required: true
+
+  defp device_association(%{association: :current} = assigns) do
+    ~H"""
+    <span class="flex items-center gap-1 text-xs text-success shrink-0">
+      <.icon name="hero-check-circle-mini" class="size-4" /> Running this configuration
+    </span>
+    """
+  end
+
+  defp device_association(%{association: {:other, name}} = assigns) do
+    assigns = assign(assigns, :name, name)
+
+    ~H"""
+    <span class="flex items-center gap-1 text-xs text-warning min-w-0 max-w-[50%]">
+      <.icon name="hero-arrow-path-mini" class="size-4 shrink-0" />
+      <span class="truncate">Running <span class="font-medium">{@name}</span></span>
+    </span>
+    """
+  end
+
+  defp device_association(%{association: :unknown} = assigns) do
+    ~H"""
+    <span class="flex items-center gap-1 text-xs text-muted shrink-0">
+      <.icon name="hero-question-mark-circle-mini" class="size-4" /> Unknown configuration
+    </span>
+    """
+  end
+
+  defp device_association(%{association: :none} = assigns) do
+    ~H"""
+    <span class="flex items-center gap-1 text-xs text-muted shrink-0">
+      <.icon name="hero-minus-circle-mini" class="size-4" /> No configuration
+    </span>
     """
   end
 

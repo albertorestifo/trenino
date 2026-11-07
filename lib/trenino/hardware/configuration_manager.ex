@@ -315,7 +315,8 @@ defmodule Trenino.Hardware.ConfigurationManager do
          {:ok, inputs} <- Hardware.list_inputs(device_id),
          {:ok, matrices} <- Hardware.list_matrices(device_id),
          i2c_modules = Hardware.list_i2c_modules(device_id),
-         :ok <- validate_configuration(port, device_id, inputs, matrices, i2c_modules),
+         {:ok, outputs} <- Hardware.list_outputs(device_id),
+         :ok <- validate_configuration(port, device_id, inputs, matrices, i2c_modules, outputs),
          config_id = device.config_id,
          {:ok, token} <- StepperManager.begin_deployment(port) do
       case send_configuration_messages(port, config_id, inputs, matrices, i2c_modules) do
@@ -350,16 +351,19 @@ defmodule Trenino.Hardware.ConfigurationManager do
   end
 
   # Stepper axes need firmware 3.1+. Without this check a pre-3.1 device would accept the
-  # configuration while StepperManager silently declines to start a session.
-  defp validate_configuration(port, device_id, inputs, matrices, i2c_modules) do
-    case {Hardware.list_stepper_axes(device_id), inputs ++ matrices ++ i2c_modules} do
-      {[], []} -> {:error, :no_inputs}
-      {[], _} -> :ok
-      {_axes, _} -> validate_stepper_firmware(port)
+  # configuration while StepperManager silently declines to start a session. The empty
+  # Configure packet sent for an outputs-only configuration (outputs need no device-side
+  # parts, but the device must still learn the config_id) also needs firmware 3.1+.
+  defp validate_configuration(port, device_id, inputs, matrices, i2c_modules, outputs) do
+    case {Hardware.list_stepper_axes(device_id), inputs ++ matrices ++ i2c_modules, outputs} do
+      {[], [], []} -> {:error, :no_inputs}
+      {[], [], _outputs} -> validate_firmware_floor(port)
+      {[], _parts, _} -> :ok
+      {_axes, _, _} -> validate_firmware_floor(port)
     end
   end
 
-  defp validate_stepper_firmware(port) do
+  defp validate_firmware_floor(port) do
     conn = Enum.find(Connection.connected_devices(), &(&1.port == port))
 
     with %{device_version: version} when is_binary(version) <- conn,

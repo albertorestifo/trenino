@@ -545,16 +545,13 @@ defmodule TreninoWeb.ConfigurationEditLive do
         {:noreply,
          socket
          |> assign(:applying, false)
-         |> put_flash(:error, "Cannot apply empty configuration. Add at least one input.")}
+         |> put_flash(:error, configuration_failure_message(:no_inputs))}
 
       {:error, :firmware_update_required} ->
         {:noreply,
          socket
          |> assign(:applying, false)
-         |> put_flash(
-           :error,
-           "Stepper gauges need firmware 3.1 or newer. Update the device firmware, then apply again."
-         )}
+         |> put_flash(:error, configuration_failure_message(:firmware_update_required))}
 
       {:error, reason} ->
         Logger.error("Failed to apply configuration to #{port}: #{inspect(reason)}")
@@ -851,7 +848,12 @@ defmodule TreninoWeb.ConfigurationEditLive do
     do: "The controller rejected the configuration. Update the firmware, then apply again."
 
   def configuration_failure_message(:no_inputs),
-    do: "This configuration is empty. Add at least one input, then apply again."
+    do:
+      "This configuration is empty. Add at least one input, matrix, output, display or gauge, then apply again."
+
+  def configuration_failure_message(:firmware_update_required),
+    do:
+      "This configuration needs firmware 3.1 or newer. Update the device firmware, then apply again."
 
   def configuration_failure_message(reason) do
     Logger.error("Configuration apply failed: #{inspect(reason)}")
@@ -911,7 +913,9 @@ defmodule TreninoWeb.ConfigurationEditLive do
   end
 
   @impl true
-  def handle_info({:configuration_applied, port, device, _config_id}, socket) do
+  # Apply events are broadcast for every configuration; only react to this page's own.
+  def handle_info({:configuration_applied, port, %{id: id} = device, _config_id}, socket)
+      when id == socket.assigns.device.id do
     # Subscribe to input values for the new active port
     Hardware.subscribe_input_values(port)
 
@@ -925,7 +929,8 @@ defmodule TreninoWeb.ConfigurationEditLive do
   end
 
   @impl true
-  def handle_info({:configuration_failed, _port, _device_id, reason}, socket) do
+  def handle_info({:configuration_failed, _port, device_id, reason}, socket)
+      when device_id == socket.assigns.device.id do
     {:noreply,
      socket
      |> assign(:applying, false)
@@ -1160,6 +1165,7 @@ defmodule TreninoWeb.ConfigurationEditLive do
       :if={@show_apply_modal}
       device={@device}
       connected_devices={@connected_devices}
+      device_names={@nav_device_names}
       allcall_warning={Hardware.allcall_warning(@device.id)}
     />
 
@@ -1209,8 +1215,8 @@ defmodule TreninoWeb.ConfigurationEditLive do
   end
 
   defp has_parts?(assigns) do
-    assigns.inputs != [] or assigns.matrices != [] or assigns.i2c_modules != [] or
-      assigns.stepper_count > 0
+    assigns.inputs != [] or assigns.matrices != [] or assigns.outputs != [] or
+      assigns.i2c_modules != [] or assigns.stepper_count > 0
   end
 
   # The device only learns the configuration on Apply, so compare what is saved now

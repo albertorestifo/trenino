@@ -25,6 +25,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- With several devices connected, the Apply configuration dialog now shows
+  what each device is running: this configuration, another one by name, an
+  unknown one, or none.
+- A configuration with only outputs can now be applied to a device, so its
+  outputs can be tested from the configuration page. Before, Apply stayed
+  unavailable until an input was added. Requires firmware 3.1 or newer.
+- Applying a configuration no longer affects other open configuration
+  pages. Before, a page could switch to the configuration just applied
+  elsewhere, or show its error.
 - Editing or deleting a sequence now takes effect on button bindings right
   away. Before, buttons kept running the old commands until the train was
   reloaded.

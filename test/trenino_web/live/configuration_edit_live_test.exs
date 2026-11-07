@@ -410,7 +410,11 @@ defmodule TreninoWeb.ConfigurationEditLiveTest do
                "Update the firmware"
 
       assert ConfigurationEditLive.configuration_failure_message(:no_inputs) =~
-               "Add at least one input"
+               "Add at least one input, matrix, output"
+
+      firmware = ConfigurationEditLive.configuration_failure_message(:firmware_update_required)
+      assert firmware =~ "firmware 3.1 or newer"
+      refute firmware =~ "Stepper"
 
       unknown = ConfigurationEditLive.configuration_failure_message({:unexpected, :term})
       assert unknown =~ "could not be applied"
