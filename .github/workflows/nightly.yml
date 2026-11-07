@@ -14,10 +14,10 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  ELIXIR_VERSION: "1.19"
+  ELIXIR_VERSION: "1.20"
   # Pin to exact version available on Beam Machine (Burrito's ERTS source).
   # Beam Machine may lag behind the latest OTP patch releases.
-  OTP_VERSION: "28.4"
+  OTP_VERSION: "29.1"
   MIX_ENV: prod
   AVRDUDE_VERSION: "8.1"
 
