@@ -504,8 +504,8 @@ defmodule Trenino.Hardware do
     {:ok, matrices} = list_matrices(device.id)
     Enum.each(matrices, &Repo.delete/1)
 
-    # Delete the device
-    Repo.delete(device)
+    # Delete the device (its stepper axes and dials go with it)
+    device |> Repo.delete() |> notify_gauge_configuration()
   end
 
   defp delete_input_with_calibration(%Input{} = input) do

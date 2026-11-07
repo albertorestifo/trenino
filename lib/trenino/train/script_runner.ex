@@ -19,6 +19,8 @@ defmodule Trenino.Train.ScriptRunner do
   alias Trenino.Hardware
   alias Trenino.Hardware.ConfigurationManager
   alias Trenino.Hardware.HT16K33
+  alias Trenino.Hardware.I2cModule
+  alias Trenino.Hardware.Output
   alias Trenino.Simulator.Client, as: SimulatorClient
   alias Trenino.Simulator.Connection, as: SimulatorConnection
   alias Trenino.Simulator.ConnectionState
@@ -58,14 +60,20 @@ defmodule Trenino.Train.ScriptRunner do
             scripts: %{integer() => ScriptState.t()},
             subscriptions: %{String.t() => integer()},
             endpoint_to_scripts: %{String.t() => [integer()]},
-            poll_timer: reference() | nil
+            poll_timer: reference() | nil,
+            outputs: %{integer() => Output.t()},
+            i2c_modules: [I2cModule.t()] | nil
           }
 
+    # `outputs` and `i2c_modules` cache the hardware that script effects drive, filled on
+    # first use and dropped when a configuration is applied or the scripts reload.
     defstruct active_train: nil,
               scripts: %{},
               subscriptions: %{},
               endpoint_to_scripts: %{},
-              poll_timer: nil
+              poll_timer: nil,
+              outputs: %{},
+              i2c_modules: nil
   end
 
   # Client API
@@ -105,6 +113,7 @@ defmodule Trenino.Train.ScriptRunner do
   @impl true
   def init(:ok) do
     Train.subscribe()
+    ConfigurationManager.subscribe_configuration()
 
     state = %State{}
 
@@ -165,6 +174,9 @@ defmodule Trenino.Train.ScriptRunner do
 
   def handle_info({:train_detected, _}, %State{} = state), do: {:noreply, state}
   def handle_info({:detection_error, _}, %State{} = state), do: {:noreply, state}
+
+  def handle_info({:configuration_applied, _port, _device, _config_id}, %State{} = state),
+    do: {:noreply, forget_hardware(state)}
 
   def handle_info(:poll_subscriptions, %State{} = state) do
     state = poll_and_execute(state)
@@ -380,7 +392,7 @@ defmodule Trenino.Train.ScriptRunner do
     case Task.yield(task, @execution_timeout_ms) || Task.shutdown(task, :brutal_kill) do
       {:ok, {:ok, new_lua, effects}} ->
         script_state = %{script_state | lua: new_lua}
-        script_state = process_effects(state, script_id, script_state, effects)
+        {state, script_state} = process_effects(state, script_id, script_state, effects)
         put_in(state.scripts[script_id], script_state)
 
       {:ok, {:error, reason}} ->
@@ -398,8 +410,15 @@ defmodule Trenino.Train.ScriptRunner do
   end
 
   defp process_effects(%State{} = state, script_id, %ScriptState{} = script_state, effects) do
-    Enum.reduce(effects, script_state, fn effect, acc ->
-      process_effect(state, script_id, acc, effect)
+    Enum.reduce(effects, {state, script_state}, fn
+      {:output_set, output_id, on?}, {acc_state, acc_script} ->
+        {apply_output_set(acc_state, output_id, on?), acc_script}
+
+      {:display_set, addr, text}, {acc_state, acc_script} ->
+        {apply_display_set(acc_state, addr, text), acc_script}
+
+      effect, {acc_state, acc_script} ->
+        {acc_state, process_effect(acc_state, script_id, acc_script, effect)}
     end)
   end
 
@@ -415,26 +434,6 @@ defmodule Trenino.Train.ScriptRunner do
 
     timer = Process.send_after(self(), {:scheduled_run, script_id}, ms)
     %{script_state | scheduled_timer: timer}
-  end
-
-  defp process_effect(
-         _state,
-         _script_id,
-         %ScriptState{} = script_state,
-         {:output_set, output_id, on?}
-       ) do
-    apply_output_set(output_id, on?)
-    script_state
-  end
-
-  defp process_effect(
-         _state,
-         _script_id,
-         %ScriptState{} = script_state,
-         {:display_set, addr, text}
-       ) do
-    apply_display_set(addr, text)
-    script_state
   end
 
   defp process_effect(_state, _script_id, %ScriptState{} = script_state, {:api_get, _path}) do
@@ -457,13 +456,29 @@ defmodule Trenino.Train.ScriptRunner do
     script_state
   end
 
-  defp apply_output_set(output_id, on?) do
-    case Train.get_output_by_id(output_id) do
-      {:ok, output} ->
+  defp apply_output_set(%State{} = state, output_id, on?) do
+    case cached_output(state, output_id) do
+      {:ok, output, state} ->
         set_hardware_output(output, on?)
+        state
 
-      {:error, _} ->
+      :error ->
         Logger.warning("[ScriptRunner] Unknown output ID: #{output_id}")
+        state
+    end
+  end
+
+  # Unknown ids are not cached, so an output created later is found on the next call.
+  defp cached_output(%State{outputs: outputs} = state, output_id) do
+    case Map.fetch(outputs, output_id) do
+      {:ok, output} ->
+        {:ok, output, state}
+
+      :error ->
+        case Train.get_output_by_id(output_id) do
+          {:ok, output} -> {:ok, output, %{state | outputs: Map.put(outputs, output_id, output)}}
+          {:error, _} -> :error
+        end
     end
   end
 
@@ -476,10 +491,13 @@ defmodule Trenino.Train.ScriptRunner do
     end
   end
 
-  defp apply_display_set(i2c_address, text) do
-    # Queries DB each invocation — acceptable for first iteration; cache here if it becomes hot
-    modules = Hardware.list_all_i2c_modules()
+  defp apply_display_set(%State{} = state, i2c_address, text) do
+    state = %{state | i2c_modules: state.i2c_modules || Hardware.list_all_i2c_modules()}
+    write_display(state.i2c_modules, i2c_address, text)
+    state
+  end
 
+  defp write_display(modules, i2c_address, text) do
     case Enum.find(modules, &(&1.i2c_address == i2c_address)) do
       nil ->
         Logger.warning("[ScriptRunner] No i2c module found at address #{i2c_address}")
@@ -530,7 +548,10 @@ defmodule Trenino.Train.ScriptRunner do
     end
 
     %{state | scripts: %{}, subscriptions: %{}, endpoint_to_scripts: %{}, poll_timer: nil}
+    |> forget_hardware()
   end
+
+  defp forget_hardware(%State{} = state), do: %{state | outputs: %{}, i2c_modules: nil}
 
   defp get_simulator_client do
     case SimulatorConnection.get_status() do

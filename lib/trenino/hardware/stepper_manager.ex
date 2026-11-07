@@ -11,6 +11,7 @@ defmodule Trenino.Hardware.StepperManager do
           barriers: map(),
           leases: map(),
           watched_owners: %{term() => %{monitor: reference(), token: term()}},
+          axis_cache: %{term() => StepperAxis.t()},
           send_fun: function()
         }
 
@@ -73,6 +74,7 @@ defmodule Trenino.Hardware.StepperManager do
   def init(opts) do
     cleanup_orphan_sessions()
     Connection.subscribe()
+    Phoenix.PubSub.subscribe(Trenino.PubSub, "train:gauges:configuration")
 
     s = %{
       sessions: %{},
@@ -82,6 +84,7 @@ defmodule Trenino.Hardware.StepperManager do
       watched_owners: %{},
       paused_axes: MapSet.new(),
       subscribed: MapSet.new(),
+      axis_cache: %{},
       send_fun: Keyword.get(opts, :send_fun, &Connection.send_message/2)
     }
 
@@ -102,7 +105,7 @@ defmodule Trenino.Hardware.StepperManager do
       session ->
         result = recommission_session(session.pid, id, address)
 
-        {:reply, result, revoke_port(s, session.port)}
+        {:reply, result, s |> revoke_port(session.port) |> forget_axes()}
     end
   end
 
@@ -125,7 +128,7 @@ defmodule Trenino.Hardware.StepperManager do
         do: result,
         else: {:error, :requires_fresh_reference_and_manual_lease}
 
-    {:reply, result, s}
+    {:reply, result, forget_axes(s)}
   end
 
   def handle_call({:rezero, id, opts}, _, s) do
@@ -196,7 +199,7 @@ defmodule Trenino.Hardware.StepperManager do
       {result, lease} =
         once(lease, operation_token, {op, params}, fn -> execute_once(s, pid, id, op, params) end)
 
-      {:reply, result, %{s | leases: Map.put(s.leases, id, lease)}}
+      {:reply, result, forget_axes(%{s | leases: Map.put(s.leases, id, lease)})}
     else
       false -> {:reply, {:error, :operation_token_required}, s}
       error -> {:reply, error, s}
@@ -270,10 +273,12 @@ defmodule Trenino.Hardware.StepperManager do
   end
 
   def handle_call({:target, id, target, _train_id}, _, s) do
+    {lookup, s} = cached_axis(s, id)
+
     result =
       with false <- Map.has_key?(s.leases, id),
            false <- MapSet.member?(s.paused_axes, id),
-           {:ok, axis} <- Hardware.get_stepper_axis(id),
+           {:ok, axis} <- lookup,
            true <- axis.commissioned and axis.idle_behavior == :hold,
            {:ok, pid} <- axis_session(s, axis),
            :ok <- applied_configuration(axis, pid),
@@ -363,7 +368,10 @@ defmodule Trenino.Hardware.StepperManager do
   def handle_call({:reconcile, id}, from, s), do: handle_call({:recover, id}, from, s)
 
   @impl true
-  def handle_info({:devices_updated, devices}, s), do: {:noreply, reconcile(s, devices, true)}
+  def handle_info({:devices_updated, devices}, s),
+    do: {:noreply, s |> forget_axes() |> reconcile(devices, true)}
+
+  def handle_info({:gauge_bindings_changed, _}, s), do: {:noreply, forget_axes(s)}
 
   def handle_info({:mcp_expire, id, token}, s) do
     now = System.monotonic_time(:millisecond)
@@ -686,6 +694,25 @@ defmodule Trenino.Hardware.StepperManager do
         revoke_leases(s, Map.take(s.leases, ids))
     end
   end
+
+  # Train targets arrive several times a second per moving gauge, so the persisted axis
+  # is cached for them. Every axis and dial write broadcasts on "train:gauges:configuration"
+  # (see `Hardware.notify_gauge_configuration/1`), which drops the cache, as do device
+  # changes and this manager's own writes. Operator actions keep reading the database.
+  defp cached_axis(%{axis_cache: cache} = s, id) do
+    case Map.fetch(cache, id) do
+      {:ok, axis} ->
+        {{:ok, axis}, s}
+
+      :error ->
+        case Hardware.get_stepper_axis(id) do
+          {:ok, axis} = found -> {found, %{s | axis_cache: Map.put(cache, id, axis)}}
+          error -> {error, s}
+        end
+    end
+  end
+
+  defp forget_axes(s), do: %{s | axis_cache: %{}}
 
   # Accepts an already-loaded axis so hot paths (train targets at 5 Hz) read it once.
   defp axis_session(s, %StepperAxis{} = axis) do

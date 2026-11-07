@@ -261,6 +261,43 @@ defmodule Trenino.StepperGaugeIntegrationTest do
     stop_supervised!(StepperManager)
   end
 
+  test "train targets reuse the persisted axis until a gauge configuration change", ctx do
+    {:ok, axis} = Hardware.create_stepper_axis(ctx.device.id, %{name: "Speed"})
+    connected = %{ctx.connection | device_config_id: ctx.device.config_id}
+    StepperFirmware.connect(ctx.firmware, connected)
+    send(ctx.manager, {:devices_updated, [connected]})
+    eventually(fn -> StepperManager.snapshot(ctx.device.id).lifecycle == :awaiting_reference end)
+
+    {:ok, token} = StepperManager.claim_manual(axis.id, self())
+    eventually(fn -> StepperManager.snapshot(ctx.device.id).axes[axis.id].pending == nil end)
+    {:ok, _} = StepperManager.command(axis.id, :reference, %{position: 0}, token)
+    eventually(fn -> StepperManager.snapshot(ctx.device.id).axes[axis.id].ready end)
+    {:ok, _} = StepperManager.complete_commissioning(axis.id, token)
+    StepperManager.release_manual(axis.id, token)
+    eventually(fn -> StepperManager.snapshot(ctx.device.id).axes[axis.id].pending == nil end)
+    StepperManager.resume(axis.id)
+
+    {:ok, persisted} = Hardware.get_stepper_axis(axis.id)
+    test_pid = self()
+
+    Mimic.stub(Hardware, :get_stepper_axis, fn id ->
+      send(test_pid, {:axis_lookup, id})
+      Mimic.call_original(Hardware, :get_stepper_axis, [id])
+    end)
+
+    assert :ok = StepperManager.set_target(axis.id, 100, 1)
+    assert :ok = StepperManager.set_target(axis.id, 200, 1)
+    assert :ok = StepperManager.set_target(axis.id, 300, 1)
+    assert_received {:axis_lookup, _}
+    refute_received {:axis_lookup, _}
+
+    # Saved but not applied: the cached axis must not keep the old config moving.
+    {:ok, _} = Hardware.update_stepper_axis(persisted, %{max_speed: persisted.max_speed + 10})
+    assert {:error, _} = StepperManager.set_target(axis.id, 400, 1)
+    assert_received {:axis_lookup, _}
+    stop_supervised!(StepperManager)
+  end
+
   test "shield address and axis deletion notify train consumers after domain mutation", ctx do
     {:ok, axis} = Hardware.create_stepper_axis(ctx.device.id, %{name: "Speed"})
     Phoenix.PubSub.subscribe(Trenino.PubSub, "train:gauges:configuration")
