@@ -32,6 +32,7 @@ defmodule Trenino.Train.OutputController do
   alias Trenino.Train.OutputBinding
 
   @poll_interval_ms 200
+  @retry_delay_ms 1000
   @subscription_id_base 1000
 
   defmodule State do
@@ -46,14 +47,23 @@ defmodule Trenino.Train.OutputController do
     @type t :: %__MODULE__{
             active_train: Train.Train.t() | nil,
             bindings: %{integer() => binding_info()},
+            endpoint_ids: %{String.t() => integer()},
             subscriptions: %{String.t() => integer()},
-            poll_timer: reference() | nil
+            retry_after: %{String.t() => integer()},
+            poll_timer: reference() | nil,
+            poll_token: reference() | nil
           }
 
+    # `endpoint_ids` holds every endpoint the train needs; `subscriptions` only the ones
+    # the simulator currently holds. The difference is (re)subscribed on each poll once
+    # its `retry_after` time has passed, so a failed or lost subscription recovers.
     defstruct active_train: nil,
               bindings: %{},
+              endpoint_ids: %{},
               subscriptions: %{},
-              poll_timer: nil
+              retry_after: %{},
+              poll_timer: nil,
+              poll_token: nil
   end
 
   # Client API
@@ -77,6 +87,7 @@ defmodule Trenino.Train.OutputController do
   @impl true
   def init(:ok) do
     Train.subscribe()
+    SimulatorConnection.subscribe()
 
     state = %State{}
 
@@ -103,7 +114,7 @@ defmodule Trenino.Train.OutputController do
   def handle_info({:train_changed, nil}, %State{} = state) do
     Logger.info("[OutputController] Train deactivated, cleaning up")
     state = cleanup_subscriptions(state)
-    {:noreply, %{state | active_train: nil, bindings: %{}, subscriptions: %{}}}
+    {:noreply, %{state | active_train: nil, bindings: %{}, endpoint_ids: %{}, subscriptions: %{}}}
   end
 
   def handle_info({:train_changed, train}, %State{} = state) do
@@ -115,7 +126,18 @@ defmodule Trenino.Train.OutputController do
   def handle_info({:train_detected, _}, %State{} = state), do: {:noreply, state}
   def handle_info({:detection_error, _}, %State{} = state), do: {:noreply, state}
 
-  def handle_info(:poll_subscriptions, %State{} = state) do
+  # A (re)connected simulator may have restarted and forgotten every subscription, so all
+  # endpoints are subscribed afresh on the next poll.
+  def handle_info({:simulator_status_changed, %ConnectionState{status: :connected}}, state) do
+    {:noreply, %{state | subscriptions: %{}, retry_after: %{}}}
+  end
+
+  # Without a simulator the outputs no longer reflect anything, so they are switched off.
+  def handle_info({:simulator_status_changed, %ConnectionState{}}, %State{} = state) do
+    {:noreply, %{all_outputs_off(state) | subscriptions: %{}, retry_after: %{}}}
+  end
+
+  def handle_info({:poll_subscriptions, token}, %State{poll_token: token} = state) do
     state = poll_and_update_outputs(state)
     {:noreply, schedule_poll(state)}
   end
@@ -124,81 +146,100 @@ defmodule Trenino.Train.OutputController do
 
   # Private Functions
 
+  # Bindings load whether or not the simulator is reachable right now; subscribing is
+  # left to the poll loop, which retries until it succeeds.
   defp load_bindings_for_train(%State{} = state, train) do
     bindings = Train.list_enabled_output_bindings(train.id)
 
-    if Enum.empty?(bindings) do
+    endpoint_ids =
+      bindings
+      |> Enum.map(& &1.endpoint)
+      |> Enum.uniq()
+      |> Enum.sort()
+      |> Enum.with_index(@subscription_id_base)
+      |> Map.new()
+
+    binding_map =
+      Map.new(bindings, fn %OutputBinding{} = binding ->
+        {binding.id,
+         %{
+           binding: binding,
+           subscription_id: endpoint_ids[binding.endpoint],
+           current_state: false
+         }}
+      end)
+
+    if map_size(binding_map) == 0 do
       Logger.info("[OutputController] No output bindings for train #{train.name}")
-      %{state | active_train: train, bindings: %{}, subscriptions: %{}}
     else
-      case get_simulator_client() do
-        {:ok, client} ->
-          {binding_map, subscription_map} = setup_subscriptions(client, bindings)
-
-          state = %{
-            state
-            | active_train: train,
-              bindings: binding_map,
-              subscriptions: subscription_map
-          }
-
-          Logger.info(
-            "[OutputController] Loaded #{map_size(binding_map)} bindings for train #{train.name}"
-          )
-
-          schedule_poll(state)
-
-        :error ->
-          Logger.warning(
-            "[OutputController] Simulator not connected, cannot set up subscriptions"
-          )
-
-          %{state | active_train: train, bindings: %{}, subscriptions: %{}}
-      end
+      Logger.info(
+        "[OutputController] Loaded #{map_size(binding_map)} bindings for train #{train.name}"
+      )
     end
+
+    schedule_poll(
+      %{
+        state
+        | active_train: train,
+          bindings: binding_map,
+          endpoint_ids: endpoint_ids,
+          subscriptions: %{},
+          retry_after: %{}
+      },
+      0
+    )
   end
 
-  defp setup_subscriptions(client, bindings) do
-    endpoint_groups = Enum.group_by(bindings, & &1.endpoint)
+  defp ensure_subscriptions(%State{} = state, client) do
+    now = now()
 
-    endpoint_groups
-    |> Enum.with_index()
-    |> Enum.reduce({%{}, %{}}, fn {{endpoint, bindings_for_endpoint}, index}, acc ->
-      subscription_id = @subscription_id_base + index
-      subscribe_endpoint(client, endpoint, bindings_for_endpoint, subscription_id, acc)
+    state.endpoint_ids
+    |> Enum.reject(fn {endpoint, _} -> Map.has_key?(state.subscriptions, endpoint) end)
+    |> Enum.filter(fn {endpoint, _} -> Map.get(state.retry_after, endpoint, now) <= now end)
+    |> Enum.reduce(state, fn {endpoint, id}, acc ->
+      subscribe_endpoint(acc, client, endpoint, id)
     end)
   end
 
-  defp subscribe_endpoint(
-         client,
-         endpoint,
-         bindings_for_endpoint,
-         subscription_id,
-         {b_acc, s_acc}
-       ) do
+  defp subscribe_endpoint(%State{} = state, client, endpoint, subscription_id) do
+    # A subscription left over from a previous run may still hold this ID, and subscribing
+    # onto it would append a second path.
+    clear_stale_subscription(client, subscription_id)
+
     case SimulatorClient.subscribe(client, endpoint, subscription_id) do
       {:ok, _} ->
         Logger.info("[OutputController] Subscribed to #{endpoint} with ID #{subscription_id}")
-        updated_bindings = add_bindings_to_map(bindings_for_endpoint, subscription_id, b_acc)
-        {updated_bindings, Map.put(s_acc, endpoint, subscription_id)}
+
+        %{
+          state
+          | subscriptions: Map.put(state.subscriptions, endpoint, subscription_id),
+            retry_after: Map.delete(state.retry_after, endpoint)
+        }
 
       {:error, reason} ->
-        Logger.warning(
-          "[OutputController] Failed to subscribe to #{endpoint}: #{inspect(reason)}"
-        )
+        unless Map.has_key?(state.retry_after, endpoint) do
+          Logger.warning(
+            "[OutputController] Failed to subscribe to #{endpoint}, retrying: #{inspect(reason)}"
+          )
+        end
 
-        {b_acc, s_acc}
+        retry_later(state, endpoint)
     end
   end
 
-  defp add_bindings_to_map(bindings_for_endpoint, subscription_id, binding_map) do
-    Enum.reduce(bindings_for_endpoint, binding_map, fn %OutputBinding{} = binding, acc ->
-      Map.put(acc, binding.id, %{
-        binding: binding,
-        subscription_id: subscription_id,
-        current_state: false
-      })
-    end)
+  # A missing subscription is the normal case; any other failure surfaces through the
+  # subscribe that follows.
+  defp clear_stale_subscription(client, subscription_id) do
+    _ = SimulatorClient.unsubscribe(client, subscription_id)
+    :ok
+  end
+
+  defp retry_later(%State{} = state, endpoint) do
+    %{
+      state
+      | subscriptions: Map.delete(state.subscriptions, endpoint),
+        retry_after: Map.put(state.retry_after, endpoint, now() + @retry_delay_ms)
+    }
   end
 
   defp cleanup_subscriptions(%State{poll_timer: timer, subscriptions: subs} = state) do
@@ -214,25 +255,40 @@ defmodule Trenino.Train.OutputController do
         :ok
     end
 
-    Enum.each(state.bindings, fn {_id, info} ->
-      set_output_state(info.binding, false)
-    end)
-
-    %{state | poll_timer: nil}
+    %{all_outputs_off(state) | poll_timer: nil, poll_token: nil}
   end
 
-  defp schedule_poll(%State{bindings: bindings} = state) when map_size(bindings) > 0 do
-    timer = Process.send_after(self(), :poll_subscriptions, @poll_interval_ms)
-    %{state | poll_timer: timer}
+  defp all_outputs_off(%State{} = state) do
+    bindings =
+      Map.new(state.bindings, fn {id, info} ->
+        set_output_state(info.binding, false)
+        {id, %{info | current_state: false}}
+      end)
+
+    %{state | bindings: bindings}
   end
 
-  defp schedule_poll(%State{} = state), do: state
+  defp schedule_poll(state, delay \\ @poll_interval_ms)
+
+  defp schedule_poll(%State{bindings: bindings} = state, delay) when map_size(bindings) > 0 do
+    token = make_ref()
+    timer = Process.send_after(self(), {:poll_subscriptions, token}, delay)
+    %{state | poll_timer: timer, poll_token: token}
+  end
+
+  defp schedule_poll(%State{} = state, _delay), do: %{state | poll_timer: nil, poll_token: nil}
 
   defp poll_and_update_outputs(%State{} = state) do
     case get_simulator_client() do
       {:ok, client} ->
+        state = ensure_subscriptions(state, client)
+
         by_subscription =
-          Enum.group_by(state.bindings, fn {_id, info} -> info.subscription_id end)
+          state.bindings
+          |> Enum.filter(fn {_id, info} ->
+            Map.has_key?(state.subscriptions, info.binding.endpoint)
+          end)
+          |> Enum.group_by(fn {_id, info} -> info.subscription_id end)
 
         Enum.reduce(by_subscription, state, fn {sub_id, binding_entries}, acc ->
           process_subscription(client, sub_id, binding_entries, acc)
@@ -251,18 +307,18 @@ defmodule Trenino.Train.OutputController do
         value = normalize_value(raw_value)
         update_bindings_with_value(state, binding_entries, value)
 
-      {:ok, %{"Entries" => [%{"NodeValid" => false} | _]}} ->
-        state
-
       {:ok, _} ->
         state
 
+      # The simulator may have dropped the subscription (e.g. it restarted), so the
+      # endpoint is subscribed again after the retry delay.
       {:error, reason} ->
         Logger.debug(
-          "[OutputController] Failed to get subscription #{sub_id}: #{inspect(reason)}"
+          "[OutputController] Failed to get subscription #{sub_id}, resubscribing: #{inspect(reason)}"
         )
 
-        state
+        [{_id, info} | _] = binding_entries
+        retry_later(state, info.binding.endpoint)
     end
   end
 
@@ -339,6 +395,8 @@ defmodule Trenino.Train.OutputController do
       Hardware.set_output(port, output.pin, value)
     end
   end
+
+  defp now, do: System.monotonic_time(:millisecond)
 
   defp get_simulator_client do
     case SimulatorConnection.get_status() do

@@ -10,6 +10,10 @@ defmodule Trenino.Train.GaugeController.State do
     bindings: %{},
     subscriptions: %{},
     status: %{},
+    # binding id => %{target, at}: the last target the manager accepted, so an unchanged
+    # sample is not resent every poll.
+    sent: %{},
+    stepper_devices: MapSet.new(),
     cleaning: false,
     retry_after: %{},
     id_base: 4000,

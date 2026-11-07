@@ -89,6 +89,78 @@ defmodule Trenino.Train.GaugeControllerTest do
     assert_receive {:target, _, 360, _}, 700
   end
 
+  test "an unchanged accepted target is not resent every poll", %{train: train, binding: b} do
+    pid = start_supervised!(GaugeController)
+    send(pid, {:train_changed, train})
+    assert_receive {:target, _, 360, _}, 500
+    # Several 200 ms polls of the same sample go by without another set_target.
+    refute_receive {:target, _, _, _}, 700
+
+    # Past the refresh window the same target is driven again.
+    :sys.replace_state(pid, fn s ->
+      put_in(s.sent[b.id].at, System.monotonic_time(:millisecond) - 5000)
+    end)
+
+    assert_receive {:target, _, 360, _}, 500
+  end
+
+  test "a target the stepper session no longer holds is resent at once", %{
+    train: train,
+    axis: axis
+  } do
+    pid = start_supervised!(GaugeController)
+    send(pid, {:train_changed, train})
+    assert_receive {:target, _, 360, _}, 500
+
+    # Holding the target, or with a move still in flight, changes nothing.
+    held = %{axis.id => %{pending: nil, last_target: 360}}
+    send(pid, {:stepper_updated, axis.device_id, %{axes: held}})
+    in_flight = %{axis.id => %{pending: %{}, last_target: nil}}
+    send(pid, {:stepper_updated, axis.device_id, %{axes: in_flight}})
+    refute_receive {:target, _, _, _}, 500
+
+    # A re-referenced axis has forgotten its target.
+    forgotten = %{axis.id => %{pending: nil, last_target: nil}}
+    send(pid, {:stepper_updated, axis.device_id, %{axes: forgotten}})
+    assert_receive {:target, _, 360, _}, 500
+
+    # A disconnected session reports no axes at all.
+    refute_receive {:target, _, _, _}, 300
+    send(pid, {:stepper_updated, axis.device_id, %{lifecycle: :disconnected, axes: %{}}})
+    assert_receive {:target, _, 360, _}, 500
+  end
+
+  test "a changed target is sent immediately", %{train: train} do
+    counter = start_supervised!({Agent, fn -> 50 end})
+
+    Mimic.stub(Client, :get_subscription, fn _, _ ->
+      value = Agent.get(counter, & &1)
+      {:ok, %{"Entries" => [%{"NodeValid" => true, "Values" => %{"Speed" => value}}]}}
+    end)
+
+    pid = start_supervised!(GaugeController)
+    send(pid, {:train_changed, train})
+    assert_receive {:target, _, 360, _}, 500
+    Agent.update(counter, fn _ -> 100 end)
+    assert_receive {:target, _, 720, _}, 500
+    assert Process.alive?(pid)
+  end
+
+  test "a rejected target is retried on the next sample", %{train: train} do
+    owner = self()
+
+    Mimic.stub(StepperManager, :set_target, fn _, target, _ ->
+      send(owner, {:target_attempt, target})
+      {:error, :needs_reference}
+    end)
+
+    pid = start_supervised!(GaugeController)
+    send(pid, {:train_changed, train})
+    assert_receive {:target_attempt, 360}, 500
+    assert_receive {:target_attempt, 360}, 500
+    assert Process.alive?(pid)
+  end
+
   test "stale input applies inactive policy once without inventing zero", %{
     train: train,
     binding: b

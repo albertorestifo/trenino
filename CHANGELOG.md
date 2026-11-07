@@ -40,6 +40,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Reconnecting a device no longer makes levers and buttons receive each
   reading more than once. Every reconnect used to add another subscription to
   the device's input values.
+- Output LEDs now light reliably after a train loads. If subscribing to the
+  simulator failed once, for example while the train was still loading, the
+  output stayed dark for the whole session. Trenino now keeps retrying,
+  subscribes again after the simulator restarts or reconnects, and switches
+  outputs off while the simulator is disconnected.
+- A sequence on a momentary button now runs to the end on a quick tap. Before,
+  releasing the button stopped the sequence part-way, so a door-close sequence
+  could leave a control held and need a second press. Pressing again while
+  the sequence is still running is ignored.
+- Gauges no longer read the stepper axis from the database on every
+  simulator sample while the needle is still, which filled the debug log.
 
 ## [0.8.3] - 2026-11-04
 

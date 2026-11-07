@@ -399,43 +399,9 @@ defmodule Trenino.Train.ButtonController do
   end
 
   defp handle_button_press(%State{} = state, element_id, %{mode: :sequence} = binding_info) do
-    case binding_info.on_sequence do
-      nil ->
-        # No sequence configured, skip
-        Logger.warning("[ButtonController] Sequence mode button has no on_sequence configured")
-        :skip
-
-      %{commands: commands} when commands == [] ->
-        # Empty sequence, skip
-        :skip
-
-      %{commands: commands} ->
-        # Spawn a task to execute the sequence
-        controller_pid = self()
-
-        task_pid =
-          spawn(fn ->
-            execute_sequence_commands(commands, controller_pid, element_id)
-          end)
-
-        broadcast_button_update(element_id, binding_info.on_value, true)
-
-        # Track active button for momentary hardware (to cancel on release)
-        active_button = %{
-          element_id: element_id,
-          binding_info: binding_info,
-          timer_ref: nil,
-          sequence_task: task_pid
-        }
-
-        state = %{
-          state
-          | last_sent_values: Map.put(state.last_sent_values, element_id, binding_info.on_value),
-            active_buttons: Map.put(state.active_buttons, element_id, active_button)
-        }
-
-        {:ok, state}
-    end
+    if binding_info.hardware_type == :momentary and sequence_running?(state, element_id),
+      do: :skip,
+      else: start_on_sequence(state, element_id, binding_info)
   end
 
   defp handle_button_press(%State{} = state, element_id, %{mode: :keystroke} = binding_info) do
@@ -460,6 +426,55 @@ defmodule Trenino.Train.ButtonController do
     )
 
     :skip
+  end
+
+  # A momentary press while the sequence is still running is ignored: restarting it would
+  # cut the running one off between a press command and its matching release.
+  defp sequence_running?(%State{} = state, element_id) do
+    case state.active_buttons[element_id] do
+      %{sequence_task: pid} when is_pid(pid) -> Process.alive?(pid)
+      _ -> false
+    end
+  end
+
+  defp start_on_sequence(%State{} = state, element_id, binding_info) do
+    case binding_info.on_sequence do
+      nil ->
+        # No sequence configured, skip
+        Logger.warning("[ButtonController] Sequence mode button has no on_sequence configured")
+        :skip
+
+      %{commands: commands} when commands == [] ->
+        # Empty sequence, skip
+        :skip
+
+      %{commands: commands} ->
+        # Spawn a task to execute the sequence
+        controller_pid = self()
+
+        task_pid =
+          spawn(fn ->
+            execute_sequence_commands(commands, controller_pid, element_id)
+          end)
+
+        broadcast_button_update(element_id, binding_info.on_value, true)
+
+        # Tracked so a train change or reload can cancel it; a release lets it finish.
+        active_button = %{
+          element_id: element_id,
+          binding_info: binding_info,
+          timer_ref: nil,
+          sequence_task: task_pid
+        }
+
+        state = %{
+          state
+          | last_sent_values: Map.put(state.last_sent_values, element_id, binding_info.on_value),
+            active_buttons: Map.put(state.active_buttons, element_id, active_button)
+        }
+
+        {:ok, state}
+    end
   end
 
   # Handle button release based on mode
@@ -488,6 +503,17 @@ defmodule Trenino.Train.ButtonController do
     state = %{state | last_sent_values: Map.put(state.last_sent_values, element_id, sim_value)}
 
     {:ok, state}
+  end
+
+  # A momentary release lets the on-sequence run to completion: sequences pair each press
+  # command with a later release command, so cutting one short on a quick tap left
+  # simulator controls held. A latching release with an off-sequence supersedes it.
+  defp handle_button_release(
+         %State{} = state,
+         element_id,
+         %{mode: :sequence, hardware_type: :momentary} = binding_info
+       ) do
+    handle_sequence_release(state, element_id, binding_info)
   end
 
   defp handle_button_release(%State{} = state, element_id, %{mode: :sequence} = binding_info) do

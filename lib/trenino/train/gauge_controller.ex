@@ -16,6 +16,11 @@ defmodule Trenino.Train.GaugeController do
   # never reused: polling resumes on a fresh ID range instead of stalling forever.
   @max_cleanup_attempts 3
   @id_block 1000
+  # An unchanged, accepted target is not re-sent on every sample (each send reads the axis
+  # from the database). It is re-sent as soon as the stepper session reports it no longer
+  # holds that target (a manual lease, a re-reference, a reconnect), and at least this often
+  # as a backstop.
+  @resend_after_ms 2000
 
   def start_link(opts), do: GenServer.start_link(__MODULE__, opts, name: __MODULE__)
   def reload_bindings, do: GenServer.cast(__MODULE__, :reload)
@@ -60,6 +65,9 @@ defmodule Trenino.Train.GaugeController do
   @impl true
   def handle_info({:train_changed, train}, s), do: {:noreply, activate(s, train)}
   def handle_info({:gauge_bindings_changed, _}, s), do: {:noreply, reload(s)}
+
+  def handle_info({:stepper_updated, device_id, %{axes: axes}}, s) when is_map(axes),
+    do: {:noreply, forget_unheld_targets(s, device_id, axes)}
 
   def handle_info({:simulator_status_changed, %ConnectionState{}}, s),
     do: {:noreply, activate(s, s.train)}
@@ -145,7 +153,12 @@ defmodule Trenino.Train.GaugeController do
         StepperManager.inactive(b.stepper_axis_id, b.inactive_behavior)
       end)
 
-      %{s | bindings: bindings, status: Map.take(s.status, Map.keys(bindings))}
+      subscribe_steppers(%{
+        s
+        | bindings: bindings,
+          status: Map.take(s.status, Map.keys(bindings)),
+          sent: %{}
+      })
     else
       activate(s, s.train)
     end
@@ -157,6 +170,41 @@ defmodule Trenino.Train.GaugeController do
 
   defp load_bindings(train),
     do: Map.new(Train.list_enabled_gauge_bindings(train.id), &{&1.id, &1})
+
+  # PubSub subscriptions are never dropped, so each device topic is joined only once.
+  defp subscribe_steppers(s) do
+    devices =
+      s.bindings
+      |> Map.values()
+      |> Enum.map(& &1.stepper_axis.device_id)
+      |> MapSet.new()
+
+    devices
+    |> MapSet.difference(s.stepper_devices)
+    |> Enum.each(&StepperManager.subscribe/1)
+
+    %{s | stepper_devices: MapSet.union(s.stepper_devices, devices)}
+  end
+
+  # A target in flight (`pending`) is not yet reflected in `last_target`, so it is kept.
+  defp forget_unheld_targets(s, device_id, axes) do
+    sent =
+      Map.reject(s.sent, fn {id, %{target: target}} ->
+        case s.bindings[id] do
+          %{stepper_axis: %{device_id: ^device_id}, stepper_axis_id: axis_id} ->
+            not holds_target?(Map.get(axes, axis_id), target)
+
+          _ ->
+            false
+        end
+      end)
+
+    %{s | sent: sent}
+  end
+
+  defp holds_target?(%{pending: nil, last_target: held}, target), do: held == target
+  defp holds_target?(%{pending: _}, _target), do: true
+  defp holds_target?(_axis, _target), do: false
 
   defp current_client do
     case SimulatorConnection.get_status() do
@@ -180,18 +228,19 @@ defmodule Trenino.Train.GaugeController do
     client = current_client()
     bindings = load_bindings(train)
 
-    %{
+    subscribe_steppers(%{
       s
       | train: train,
         client: client,
         bindings: bindings,
         subscriptions: %{},
         status: %{},
+        sent: %{},
         generation: generation,
         retry_after: %{},
         endpoint_errors: %{},
         timer: Process.send_after(self(), {:poll, generation}, 0)
-    }
+    })
   end
 
   defp cleanup(%State{cleaning: true} = s) do
@@ -400,7 +449,7 @@ defmodule Trenino.Train.GaugeController do
   defp apply_sample(s, id, b, response) do
     with {:ok, raw} <- sample(response, b.value_key),
          {:ok, mapped} <- GaugeMapper.map(b, raw, b.stepper_axis) do
-      result = StepperManager.set_target(b.stepper_axis_id, mapped.target, s.train.id)
+      {s, result} = send_target(s, id, b, mapped.target)
 
       status =
         Map.merge(mapped, %{
@@ -423,12 +472,32 @@ defmodule Trenino.Train.GaugeController do
     end
   end
 
+  defp send_target(s, id, b, target) do
+    now = now()
+
+    case Map.get(s.sent, id) do
+      %{target: ^target, at: at} when now - at < @resend_after_ms ->
+        {s, :ok}
+
+      _ ->
+        result = StepperManager.set_target(b.stepper_axis_id, target, s.train.id)
+
+        sent =
+          if result == :ok,
+            do: Map.put(s.sent, id, %{target: target, at: now}),
+            else: Map.delete(s.sent, id)
+
+        {%{s | sent: sent}, result}
+    end
+  end
+
   defp expire_samples(s) do
     Enum.reduce(s.bindings, s, fn {id, b}, acc ->
       status = Map.get(acc.status, id)
 
       if status && now() - status.received_at >= b.stale_after_ms && not status.inactive do
         StepperManager.inactive(b.stepper_axis_id, b.inactive_behavior)
+        acc = %{acc | sent: Map.delete(acc.sent, id)}
         publish(acc, id, Map.merge(status, %{stale: true, inactive: true}))
       else
         acc

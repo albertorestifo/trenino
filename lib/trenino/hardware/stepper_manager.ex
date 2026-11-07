@@ -275,8 +275,8 @@ defmodule Trenino.Hardware.StepperManager do
            false <- MapSet.member?(s.paused_axes, id),
            {:ok, axis} <- Hardware.get_stepper_axis(id),
            true <- axis.commissioned and axis.idle_behavior == :hold,
-           {:ok, pid} <- axis_session(s, id),
-           :ok <- applied_configuration(s, id, pid),
+           {:ok, pid} <- axis_session(s, axis),
+           :ok <- applied_configuration(axis, pid),
            do: StepperSession.set_target(pid, id, target, :train)
 
     {:reply, normalize_target_result(result), s}
@@ -687,13 +687,19 @@ defmodule Trenino.Hardware.StepperManager do
     end
   end
 
-  defp axis_session(s, id) do
-    with {:ok, axis} <- Hardware.get_stepper_axis(id),
-         session when not is_nil(session) <-
-           find_session(s, axis.device_id),
+  # Accepts an already-loaded axis so hot paths (train targets at 5 Hz) read it once.
+  defp axis_session(s, %StepperAxis{} = axis) do
+    with session when not is_nil(session) <- find_session(s, axis.device_id),
          true <- Process.alive?(session.pid) do
       {:ok, session.pid}
     else
+      _ -> {:error, :disconnected}
+    end
+  end
+
+  defp axis_session(s, id) do
+    case Hardware.get_stepper_axis(id) do
+      {:ok, axis} -> axis_session(s, axis)
       _ -> {:error, :disconnected}
     end
   end
@@ -921,8 +927,14 @@ defmodule Trenino.Hardware.StepperManager do
   end
 
   defp applied_configuration(_s, id, pid) do
-    with {:ok, persisted} <- Hardware.get_stepper_axis(id),
-         configured when not is_nil(configured) <- StepperSession.snapshot(pid).axes[id],
+    case Hardware.get_stepper_axis(id) do
+      {:ok, persisted} -> applied_configuration(persisted, pid)
+      _ -> {:error, :needs_apply}
+    end
+  end
+
+  defp applied_configuration(%StepperAxis{id: id} = persisted, pid) do
+    with configured when not is_nil(configured) <- StepperSession.snapshot(pid).axes[id],
          true <-
            persisted.axis_index == configured.config.axis_index and
              StepperAxis.to_protocol_config(persisted) ==

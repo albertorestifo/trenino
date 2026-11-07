@@ -651,7 +651,7 @@ defmodule Trenino.Train.ButtonControllerTest do
       refute Map.has_key?(state.active_buttons, ctx.element.id)
     end
 
-    test "cancels sequence on button release for momentary hardware", ctx do
+    test "a momentary release lets the sequence finish", ctx do
       {:ok, _binding} =
         TrainContext.create_button_binding(ctx.element.id, ctx.input.id, %{
           mode: :sequence,
@@ -666,20 +666,18 @@ defmodule Trenino.Train.ButtonControllerTest do
         %{state | input_lookup: Map.put(state.input_lookup, {"COM1", 15}, ctx.input.id)}
       end)
 
-      # Press button
       send(Process.whereis(ButtonController), {:input_value_updated, "COM1", 15, 1})
-      Process.sleep(5)
-
       state = ButtonController.get_state()
       task_pid = state.active_buttons[ctx.element.id].sequence_task
+      ref = Process.monitor(task_pid)
 
-      # Release button before sequence completes
+      # A quick tap: released during the 100ms delay, before the second command.
       send(Process.whereis(ButtonController), {:input_value_updated, "COM1", 15, 0})
-      Process.sleep(10)
+      ButtonController.get_state()
+      assert Process.alive?(task_pid)
 
-      # Task should be killed
-      refute Process.alive?(task_pid)
-
+      # It exits normally once every command has run, not killed.
+      assert_receive {:DOWN, ^ref, :process, ^task_pid, :normal}, 500
       state = ButtonController.get_state()
       refute Map.has_key?(state.active_buttons, ctx.element.id)
     end
@@ -716,7 +714,7 @@ defmodule Trenino.Train.ButtonControllerTest do
       refute Map.has_key?(state.active_buttons, ctx.element.id)
     end
 
-    test "rapid button presses properly cancel previous sequences", ctx do
+    test "a momentary press while the sequence runs is ignored", ctx do
       {:ok, _binding} =
         TrainContext.create_button_binding(ctx.element.id, ctx.input.id, %{
           mode: :sequence,
@@ -731,26 +729,17 @@ defmodule Trenino.Train.ButtonControllerTest do
         %{state | input_lookup: Map.put(state.input_lookup, {"COM1", 15}, ctx.input.id)}
       end)
 
-      # Press button (starts sequence)
       send(Process.whereis(ButtonController), {:input_value_updated, "COM1", 15, 1})
-      Process.sleep(5)
-
       state = ButtonController.get_state()
       first_task_pid = state.active_buttons[ctx.element.id].sequence_task
 
-      # Release and immediately press again before first completes
+      # Release and press again before the first run completes
       send(Process.whereis(ButtonController), {:input_value_updated, "COM1", 15, 0})
       send(Process.whereis(ButtonController), {:input_value_updated, "COM1", 15, 1})
-      Process.sleep(5)
-
-      # First task should be killed
-      refute Process.alive?(first_task_pid)
-
-      # New task should be running
       state = ButtonController.get_state()
-      assert Map.has_key?(state.active_buttons, ctx.element.id)
-      second_task_pid = state.active_buttons[ctx.element.id].sequence_task
-      assert Process.alive?(second_task_pid)
+
+      assert Process.alive?(first_task_pid)
+      assert state.active_buttons[ctx.element.id].sequence_task == first_task_pid
     end
 
     test "sequence task is cancelled on train change", ctx do
@@ -786,8 +775,7 @@ defmodule Trenino.Train.ButtonControllerTest do
       assert state.active_buttons == %{}
     end
 
-    test "sequence with long delays is properly cancelled", ctx do
-      # Create a sequence with a long delay
+    test "a sequence with a long delay is cancelled on reload", ctx do
       {:ok, long_sequence} = TrainContext.create_sequence(ctx.train.id, %{name: "Long Delay"})
 
       TrainContext.set_sequence_commands(long_sequence, [
@@ -809,20 +797,13 @@ defmodule Trenino.Train.ButtonControllerTest do
         %{state | input_lookup: Map.put(state.input_lookup, {"COM1", 15}, ctx.input.id)}
       end)
 
-      # Press button to start sequence with long delay
       send(Process.whereis(ButtonController), {:input_value_updated, "COM1", 15, 1})
-      Process.sleep(10)
-
       state = ButtonController.get_state()
       task_pid = state.active_buttons[ctx.element.id].sequence_task
-      assert Process.alive?(task_pid)
+      ref = Process.monitor(task_pid)
 
-      # Release button - should cancel immediately, not wait for 5000ms delay
-      send(Process.whereis(ButtonController), {:input_value_updated, "COM1", 15, 0})
-      Process.sleep(20)
-
-      # Task should be killed immediately
-      refute Process.alive?(task_pid)
+      ButtonController.reload_bindings()
+      assert_receive {:DOWN, ^ref, :process, ^task_pid, :killed}, 200
 
       state = ButtonController.get_state()
       refute Map.has_key?(state.active_buttons, ctx.element.id)
