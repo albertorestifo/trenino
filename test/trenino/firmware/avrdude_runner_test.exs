@@ -27,9 +27,14 @@ defmodule Trenino.Firmware.AvrdudeRunnerTest do
           end
         end)
 
-      :erlang.trace(caller, true, [:receive])
+      # The :receive trace fires when the output reaches the caller's mailbox,
+      # which can be before the runner has started its watcher. Wait for the
+      # watcher's spawn too, or the kill below can land while nothing is
+      # watching.
+      :erlang.trace(caller, true, [:receive, :procs])
       send(caller, :go)
       assert_receive {:trace, ^caller, :receive, {_port, {:data, data}}}, 2_000
+      assert_receive {:trace, ^caller, :spawn, _watcher, _mfa}, 2_000
       os_pid = data |> String.trim() |> String.to_integer()
       assert os_process_alive?(os_pid)
 
