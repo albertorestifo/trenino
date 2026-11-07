@@ -415,4 +415,57 @@ defmodule Trenino.Serial.Connection.DeviceConnectionTest do
       assert {:error, :invalid_token} = result
     end
   end
+
+  describe "retry backoff" do
+    defp failed(failures, failed_at \\ System.monotonic_time(:millisecond)) do
+      %{SerialTestHelpers.build_failed_connection(failed_at: failed_at) | failures: failures}
+    end
+
+    test "doubles with each consecutive failure up to one minute" do
+      assert Enum.map(1..7, &DeviceConnection.retry_backoff_ms(failed(&1))) ==
+               [5_000, 10_000, 20_000, 40_000, 60_000, 60_000, 60_000]
+    end
+
+    test "stays capped for a port that has failed many times" do
+      assert DeviceConnection.retry_backoff_ms(failed(10_000)) == 60_000
+    end
+
+    test "mark_failed counts consecutive failures" do
+      conn = SerialTestHelpers.build_failed_connection()
+      assert conn.failures == 1
+
+      again =
+        conn
+        |> then(&DeviceConnection.new(&1.port, self(), &1))
+        |> DeviceConnection.mark_disconnecting()
+        |> DeviceConnection.mark_failed()
+
+      assert again.failures == 2
+    end
+
+    test "new/3 keeps the failure count of the previous attempt" do
+      assert DeviceConnection.new("/dev/tty.test", self(), failed(3)).failures == 3
+      assert DeviceConnection.new("/dev/tty.test", self(), nil).failures == 0
+    end
+
+    test "connecting resets the failure count" do
+      identity = SerialTestHelpers.build_identity_response()
+
+      conn =
+        DeviceConnection.new("/dev/tty.test", self(), failed(4))
+        |> DeviceConnection.mark_discovering()
+        |> DeviceConnection.mark_connected(identity)
+
+      assert conn.failures == 0
+    end
+
+    test "should_retry?/1 retries a first failure after 5 seconds" do
+      now = System.monotonic_time(:millisecond)
+
+      refute DeviceConnection.should_retry?(failed(1, now - 4_000))
+      assert DeviceConnection.should_retry?(failed(1, now - 5_000))
+      refute DeviceConnection.should_retry?(failed(3, now - 15_000))
+      assert DeviceConnection.should_retry?(failed(3, now - 20_000))
+    end
+  end
 end

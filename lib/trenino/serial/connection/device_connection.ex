@@ -31,7 +31,8 @@ defmodule Trenino.Serial.Connection.DeviceConnection do
           device_version: String.t() | nil,
           upload_token: String.t() | nil,
           error_reason: String.t() | nil,
-          error_type: atom() | nil
+          error_type: atom() | nil,
+          failures: non_neg_integer()
         }
 
   @enforce_keys [:port, :status]
@@ -44,13 +45,31 @@ defmodule Trenino.Serial.Connection.DeviceConnection do
     :failed_at,
     :upload_token,
     :error_reason,
-    :error_type
+    :error_type,
+    failures: 0
   ]
+
+  # Retry delay after the first failure; doubles with each consecutive
+  # failure up to the cap, so a port without Trenino firmware is not reset
+  # by a reconnect attempt every few seconds.
+  @base_retry_backoff_ms 5_000
+  @max_retry_backoff_ms 60_000
 
   @doc "Create a new connection in :connecting state"
   @spec new(String.t(), pid()) :: t()
   def new(port, pid) do
     %__MODULE__{port: port, status: :connecting, pid: pid}
+  end
+
+  @doc """
+  Create a new connection in :connecting state for a retry, keeping the
+  consecutive failure count of the previous attempt so backoff keeps growing.
+  """
+  @spec new(String.t(), pid(), t() | nil) :: t()
+  def new(port, pid, nil), do: new(port, pid)
+
+  def new(port, pid, %__MODULE__{failures: failures}) do
+    %__MODULE__{new(port, pid) | failures: failures}
   end
 
   @doc "Transition to :discovering state after port opened successfully"
@@ -65,7 +84,13 @@ defmodule Trenino.Serial.Connection.DeviceConnection do
         config_id: config_id,
         version: version
       }) do
-    %__MODULE__{conn | status: :connected, device_config_id: config_id, device_version: version}
+    %__MODULE__{
+      conn
+      | status: :connected,
+        device_config_id: config_id,
+        device_version: version,
+        failures: 0
+    }
   end
 
   @doc """
@@ -94,8 +119,14 @@ defmodule Trenino.Serial.Connection.DeviceConnection do
     conn
   end
 
-  def mark_failed(%__MODULE__{status: :disconnecting} = conn) do
-    %__MODULE__{conn | status: :failed, pid: nil, failed_at: System.monotonic_time(:millisecond)}
+  def mark_failed(%__MODULE__{status: :disconnecting, failures: failures} = conn) do
+    %__MODULE__{
+      conn
+      | status: :failed,
+        pid: nil,
+        failed_at: System.monotonic_time(:millisecond),
+        failures: failures + 1
+    }
   end
 
   @doc "Mark as failed with an error reason"
@@ -152,6 +183,21 @@ defmodule Trenino.Serial.Connection.DeviceConnection do
   end
 
   def should_retry?(%__MODULE__{}, _backoff_ms), do: false
+
+  @doc """
+  Check if a failed port is due for a retry, using a backoff that grows with
+  consecutive failures: 5s, 10s, 20s, 40s, then every 60s.
+  """
+  @spec should_retry?(t()) :: boolean()
+  def should_retry?(%__MODULE__{} = conn), do: should_retry?(conn, retry_backoff_ms(conn))
+
+  @doc "Delay before retrying a failed port, based on its consecutive failures"
+  @spec retry_backoff_ms(t()) :: pos_integer()
+  def retry_backoff_ms(%__MODULE__{failures: failures}) do
+    # Capped so a port that keeps failing never computes a huge power.
+    exponent = failures |> Kernel.-(1) |> max(0) |> min(8)
+    min(@base_retry_backoff_ms * Integer.pow(2, exponent), @max_retry_backoff_ms)
+  end
 
   @doc "Check if this connection is actively using the port"
   @spec active?(t()) :: boolean()

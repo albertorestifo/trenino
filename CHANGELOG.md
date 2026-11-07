@@ -25,6 +25,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- Devices connect within a few seconds of being plugged in. Before, Trenino
+  only looked for new devices once a minute, and a port that failed to
+  connect also waited about a minute for its next try. Failed ports are now
+  retried after 5 seconds, then less often after each further failure, up
+  to once a minute.
 - Devices with levers or other analog inputs now connect reliably. Before,
   a board could sometimes show "No Trenino firmware detected" even though
   its firmware was fine: input readings it sent while connecting were

@@ -17,10 +17,11 @@ defmodule Trenino.Serial.Connection do
 
   require Logger
 
-  # Retry failed ports after 30 seconds
-  @failed_port_backoff_ms 30_000
-  # Run discovery every minute
-  @discovery_interval_ms 60_000
+  # Scan for new ports every 2 seconds. Enumerating ports is cheap and only
+  # untracked ports (or failed ports due for a retry) are opened, so a board
+  # that is plugged in connects within a couple of seconds.
+  # Failed ports are retried with a growing backoff (DeviceConnection.retry_backoff_ms/1).
+  @default_scan_interval_ms 2_000
   # Timeout for cleanup operations (failsafe if task crashes)
   @cleanup_timeout_ms 5_000
   # Timeout for discovery operations (3s settle + 5×1s reads + buffer)
@@ -442,7 +443,13 @@ defmodule Trenino.Serial.Connection do
     end
   end
 
-  defp schedule_discovery(interval_ms \\ @discovery_interval_ms) do
+  defp schedule_discovery do
+    schedule_discovery(
+      Application.get_env(:trenino, :serial_scan_interval_ms, @default_scan_interval_ms)
+    )
+  end
+
+  defp schedule_discovery(interval_ms) do
     Process.send_after(self(), :discover, interval_ms)
   end
 
@@ -467,9 +474,12 @@ defmodule Trenino.Serial.Connection do
     all_ports = Map.keys(UART.enumerate())
     eligible_ports = Enum.filter(all_ports, &should_connect?(&1, state))
 
-    Logger.debug(
-      "Discovery: found #{length(all_ports)} ports, #{length(eligible_ports)} eligible"
-    )
+    # Scans run every few seconds; only log when there is something to connect.
+    if eligible_ports != [] do
+      Logger.debug(
+        "Discovery: found #{length(all_ports)} ports, #{length(eligible_ports)} eligible"
+      )
+    end
 
     Enum.each(eligible_ports, &GenServer.cast(__MODULE__, {:connect, &1}))
   end
@@ -480,7 +490,7 @@ defmodule Trenino.Serial.Connection do
         # Not tracked, should connect
         nil -> true
         # Failed and backoff expired, should retry
-        conn -> DeviceConnection.should_retry?(conn, @failed_port_backoff_ms)
+        conn -> DeviceConnection.should_retry?(conn)
       end
   end
 
@@ -513,8 +523,9 @@ defmodule Trenino.Serial.Connection do
   end
 
   defp do_open_port(port, pid, state) do
-    # Track immediately in :connecting state
-    conn = DeviceConnection.new(port, pid)
+    # Track immediately in :connecting state, keeping the failure count of a
+    # previous failed attempt so the retry backoff keeps growing
+    conn = DeviceConnection.new(port, pid, State.get(state, port))
     state_with_conn = State.put(state, conn)
 
     # UART.open is a GenServer.call to the UART process. If the UART process's

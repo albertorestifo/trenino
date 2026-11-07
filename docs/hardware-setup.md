@@ -78,7 +78,9 @@ The sensitivity value determines how much the input must change before sending a
 
 ### Automatic Discovery
 
-trenino automatically scans for devices every 60 seconds. Connected devices appear in the sidebar navigation.
+trenino checks for new devices every 2 seconds, so a board connects a few seconds after it is plugged in. Connected devices appear in the sidebar navigation.
+
+If a port fails to connect, trenino tries it again after 5 seconds, then waits longer after each further failure, up to once a minute. This keeps it from repeatedly resetting a board that does not run Trenino firmware.
 
 ### Manual Scan
 
