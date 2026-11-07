@@ -25,6 +25,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- Devices with levers or other analog inputs now connect reliably. Before,
+  a board could sometimes show "No Trenino firmware detected" even though
+  its firmware was fine: input readings it sent while connecting were
+  mistaken for failed replies, and Trenino gave up before reading the
+  device's answer.
 - With several devices connected, the Apply configuration dialog now shows
   what each device is running: this configuration, another one by name, an
   unknown one, or none.

@@ -85,3 +85,7 @@ config :trenino, :start_virtual_joystick_manager, false
 # Shorter call timeout in tests so port-timeout tests don't wait the full
 # production 5s. Production default stays 5000ms via Application.get_env.
 config :trenino, :serial_connection_call_timeout_ms, 500
+
+# Skip the post-open settle delay in discovery tests (production waits 3s
+# for boards that reset into their bootloader when the port opens).
+config :trenino, :serial_discovery_settle_ms, 0
