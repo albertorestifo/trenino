@@ -1,4 +1,7 @@
 defmodule Trenino.Train.LeverController do
+  # Normalized hardware travel (0..1) that releases a lever held after a sweep.
+  @resume_travel 0.03
+
   @moduledoc """
   Controls lever values based on hardware input.
 
@@ -31,6 +34,18 @@ defmodule Trenino.Train.LeverController do
   A value the simulator already received is not sent again. Notched levers snap
   to their own position after a write, so repeating a gate target on every jitter
   sample would pull the handle off the notch and let it snap back, over and over.
+
+  ## Calibration sweeps
+
+  `Trenino.Simulator.LeverAnalyzer.analyze/3` registers the control it sweeps
+  with `sweep_started/1` and `sweep_finished/1`. While a sweep runs, hardware
+  input for a lever bound to that control is dropped and any pending write or
+  retry for it is cancelled, so analog noise cannot move the lever mid-sweep.
+
+  After the sweep the lever stays held at the hardware position seen last. Its
+  writes resume once the hardware lever moves at least `#{@resume_travel}` of its
+  travel from there, so a stale hardware value is not pushed over the position
+  the analyzer restored. If no sample was seen, the first one sets that baseline.
   """
 
   use GenServer
@@ -63,7 +78,8 @@ defmodule Trenino.Train.LeverController do
     @type binding_lookup :: %{
             (input_id :: integer()) => %{
               lever_config: LeverConfig.t(),
-              binding: LeverInputBinding.t()
+              binding: LeverInputBinding.t(),
+              control_path: String.t() | nil
             }
           }
 
@@ -82,7 +98,10 @@ defmodule Trenino.Train.LeverController do
                 token: reference() | nil
               }
             },
-            last_written: %{integer() => float()}
+            last_written: %{integer() => float()},
+            sweeps: %{(control_path :: String.t()) => reference()},
+            held: %{(lever_config_id :: integer()) => baseline :: float() | nil},
+            positions: %{(lever_config_id :: integer()) => normalized :: float()}
           }
 
     defstruct active_train: nil,
@@ -91,7 +110,10 @@ defmodule Trenino.Train.LeverController do
               subscribed_ports: MapSet.new(),
               pending: %{},
               retries: %{},
-              last_written: %{}
+              last_written: %{},
+              sweeps: %{},
+              held: %{},
+              positions: %{}
   end
 
   # Client API
@@ -118,6 +140,35 @@ defmodule Trenino.Train.LeverController do
     if Process.whereis(__MODULE__), do: GenServer.cast(__MODULE__, :reload_bindings)
 
     :ok
+  end
+
+  @doc """
+  Stops forwarding hardware input to the levers bound to `control_path` until
+  `sweep_finished/1` is called or the calling process exits.
+
+  `Trenino.Simulator.LeverAnalyzer` calls this while it holds the sweep lock.
+  It is a no-op when the controller is not running.
+  """
+  @spec sweep_started(String.t()) :: :ok
+  def sweep_started(control_path) when is_binary(control_path) do
+    call_if_running({:sweep_started, control_path, self()})
+  end
+
+  @doc """
+  Ends the sweep of `control_path`. Its levers stay held until the hardware
+  lever moves; see the module docs.
+  """
+  @spec sweep_finished(String.t()) :: :ok
+  def sweep_finished(control_path) when is_binary(control_path) do
+    call_if_running({:sweep_finished, control_path})
+  end
+
+  # A sweep must not fail because the controller is restarting.
+  defp call_if_running(message) do
+    if Process.whereis(__MODULE__), do: GenServer.call(__MODULE__, message)
+    :ok
+  catch
+    :exit, _reason -> :ok
   end
 
   # Server Callbacks
@@ -150,6 +201,17 @@ defmodule Trenino.Train.LeverController do
     {:reply, state, state}
   end
 
+  def handle_call({:sweep_started, control_path, pid}, _from, %State{} = state) do
+    state = end_sweep(state, control_path)
+    ref = Process.monitor(pid)
+    state = %{state | sweeps: Map.put(state.sweeps, control_path, ref)}
+    {:reply, :ok, hold_levers(state, control_path)}
+  end
+
+  def handle_call({:sweep_finished, control_path}, _from, %State{} = state) do
+    {:reply, :ok, end_sweep(state, control_path)}
+  end
+
   @impl true
   def handle_cast(:reload_bindings, %State{active_train: nil} = state) do
     {:noreply, state}
@@ -164,7 +226,7 @@ defmodule Trenino.Train.LeverController do
   def handle_info({:train_changed, nil}, %State{} = state) do
     Logger.info("[LeverController] Train deactivated, clearing bindings")
     state = cancel_pending(state)
-    {:noreply, %{state | active_train: nil, binding_lookup: %{}}}
+    {:noreply, %{state | active_train: nil, binding_lookup: %{}, held: %{}, positions: %{}}}
   end
 
   def handle_info({:train_changed, train}, %State{} = state) do
@@ -229,8 +291,14 @@ defmodule Trenino.Train.LeverController do
   end
 
   def handle_info({:DOWN, ref, :process, _pid, reason}, %State{} = state) do
-    Logger.warning("[LeverController] Simulator write crashed: #{inspect(reason)}")
-    {:noreply, finish_write(state, ref, :error)}
+    case Enum.find(state.sweeps, fn {_path, sweep_ref} -> sweep_ref == ref end) do
+      {control_path, _ref} ->
+        {:noreply, %{state | sweeps: Map.delete(state.sweeps, control_path)}}
+
+      nil ->
+        Logger.warning("[LeverController] Simulator write crashed: #{inspect(reason)}")
+        {:noreply, finish_write(state, ref, :error)}
+    end
   end
 
   # Catch-all for unknown messages
@@ -295,20 +363,117 @@ defmodule Trenino.Train.LeverController do
       bindings
       |> Enum.filter(& &1.enabled)
       |> Map.new(fn binding ->
-        {binding.input_id, %{lever_config: binding.lever_config, binding: binding}}
+        {binding.input_id,
+         %{
+           lever_config: binding.lever_config,
+           binding: binding,
+           control_path: control_path(binding.lever_config)
+         }}
       end)
+
+    # Recalibration reloads bindings right after the sweep, so holds survive it.
+    lever_ids = Enum.map(binding_lookup, fn {_input_id, info} -> info.lever_config.id end)
 
     Logger.info(
       "[LeverController] Loaded #{map_size(binding_lookup)} enabled bindings for train #{train.name}"
     )
 
-    %{state | active_train: train, binding_lookup: binding_lookup, pending: %{}}
+    %{
+      state
+      | active_train: train,
+        binding_lookup: binding_lookup,
+        pending: %{},
+        held: Map.take(state.held, lever_ids),
+        positions: Map.take(state.positions, lever_ids)
+    }
   end
+
+  defp control_path(%LeverConfig{value_endpoint: endpoint}) when is_binary(endpoint) do
+    case String.split_at(endpoint, -byte_size(".InputValue")) do
+      {path, ".InputValue"} -> path
+      _ -> nil
+    end
+  end
+
+  defp control_path(%LeverConfig{}), do: nil
 
   defp apply_input_update(%State{} = state, port, pin, raw_value) do
     case resolve_simulator_value(state, port, pin, raw_value) do
-      {:ok, lever_config, sim_value} -> enqueue_value(state, lever_config, sim_value)
-      :skip -> state
+      {:ok, binding_info, normalized, sim_value} ->
+        route_value(state, binding_info, normalized, sim_value)
+
+      :skip ->
+        state
+    end
+  end
+
+  defp route_value(state, %{lever_config: config, control_path: path}, normalized, sim_value) do
+    %LeverConfig{id: id} = config
+
+    cond do
+      # The baseline follows the hardware while the sweep runs.
+      Map.has_key?(state.sweeps, path) ->
+        %{state | held: Map.put(state.held, id, normalized)}
+
+      Map.has_key?(state.held, id) ->
+        release_if_moved(state, config, normalized, sim_value)
+
+      true ->
+        state
+        |> Map.update!(:positions, &Map.put(&1, id, normalized))
+        |> enqueue_value(config, sim_value)
+    end
+  end
+
+  defp release_if_moved(state, %LeverConfig{id: id} = config, normalized, sim_value) do
+    case Map.fetch!(state.held, id) do
+      baseline when is_number(baseline) and abs(normalized - baseline) >= @resume_travel ->
+        %{
+          state
+          | held: Map.delete(state.held, id),
+            positions: Map.put(state.positions, id, normalized)
+        }
+        |> enqueue_value(config, sim_value)
+
+      baseline when is_number(baseline) ->
+        state
+
+      nil ->
+        %{state | held: Map.put(state.held, id, normalized)}
+    end
+  end
+
+  # Cancels pending writes and retries for the swept levers and holds them at
+  # their last known hardware position. An HTTP request already sent cannot be
+  # recalled.
+  defp hold_levers(%State{} = state, control_path) do
+    state.binding_lookup
+    |> Enum.filter(fn {_input_id, info} -> info.control_path == control_path end)
+    |> Enum.reduce(state, fn {_input_id, %{lever_config: %LeverConfig{id: id}}}, acc ->
+      case Map.get(acc.pending, id) do
+        {_, _, %Task{} = task} -> Task.shutdown(task, :brutal_kill)
+        _ -> :ok
+      end
+
+      acc = clear_retry(acc, id)
+
+      %{
+        acc
+        | pending: Map.delete(acc.pending, id),
+          last_written: Map.delete(acc.last_written, id),
+          held: Map.put(acc.held, id, Map.get(acc.positions, id))
+      }
+    end)
+  end
+
+  defp end_sweep(%State{} = state, control_path) do
+    case Map.pop(state.sweeps, control_path) do
+      {nil, _sweeps} ->
+        state
+
+      {ref, sweeps} ->
+        Process.demonitor(ref, [:flush])
+        %{state | sweeps: sweeps}
     end
   end
 
@@ -319,7 +484,7 @@ defmodule Trenino.Train.LeverController do
          {:ok, binding_info} <- Map.fetch(state.binding_lookup, input_info.input_id),
          {:ok, normalized} <- InputNormalizer.normalize(raw_value, input_info.calibration),
          {:ok, sim_value} <- LeverMapper.map_input(binding_info.lever_config, normalized) do
-      {:ok, binding_info.lever_config, sim_value}
+      {:ok, binding_info, normalized, sim_value}
     else
       :error -> :skip
       {:error, _reason} -> :skip

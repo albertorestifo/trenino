@@ -7,6 +7,7 @@ defmodule Trenino.Simulator.LeverAnalyzer.SweepSafetyTest do
 
   alias Trenino.Simulator.Client
   alias Trenino.Simulator.LeverAnalyzer
+  alias Trenino.Train.LeverController
 
   @path "CurrentDrivableActor/FakeLever"
   @fast_opts [settling_time_ms: 0, push_delay_ms: 0, sweep_step: 0.05]
@@ -175,6 +176,36 @@ defmodule Trenino.Simulator.LeverAnalyzer.SweepSafetyTest do
     assert sets(lever) == []
   end
 
+  test "pauses the lever controller for the control during the sweep" do
+    lever = start_lever()
+    test_pid = self()
+
+    expect(LeverController, :sweep_started, fn @path ->
+      send(test_pid, {:started, sets(lever)})
+      :ok
+    end)
+
+    expect(LeverController, :sweep_finished, fn @path ->
+      send(test_pid, {:finished, sets(lever)})
+      :ok
+    end)
+
+    assert {:ok, _result} = LeverAnalyzer.analyze(client(), @path, @fast_opts)
+
+    # Paused before the first set, resumed after the restore.
+    assert_received {:started, []}
+    assert_received {:finished, sets_at_finish}
+    assert List.last(sets_at_finish) == 0.3
+  end
+
+  test "resumes the lever controller when the sweep stops early" do
+    start_lever(speed: fn input -> if input > 0.6, do: 5.0, else: 0.0 end)
+    expect(LeverController, :sweep_started, fn @path -> :ok end)
+    expect(LeverController, :sweep_finished, fn @path -> :ok end)
+
+    assert {:error, :train_moving} = LeverAnalyzer.analyze(client(), @path, @fast_opts)
+  end
+
   test "refuses a second sweep of the same control" do
     start_lever()
     test_pid = self()
@@ -190,6 +221,7 @@ defmodule Trenino.Simulator.LeverAnalyzer.SweepSafetyTest do
       end)
 
     assert_receive :locked
+    reject(&LeverController.sweep_started/1)
     assert {:error, :calibration_running} = LeverAnalyzer.analyze(client(), @path, @fast_opts)
 
     send(holder, :release)

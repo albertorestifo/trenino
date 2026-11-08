@@ -25,69 +25,7 @@ defmodule Trenino.Train.LeverControllerTest do
   end
 
   describe "smooth lever updates" do
-    setup %{test: test} do
-      {:ok, train} =
-        TrainContext.create_train(%{
-          name: "Latency Train",
-          identifiers: [%{identifier: "latency_train_#{System.unique_integer([:positive])}"}]
-        })
-
-      {:ok, element} = TrainContext.create_element(train.id, %{name: "Throttle", type: :lever})
-
-      {:ok, lever_config} =
-        TrainContext.create_lever_config(element.id, %{
-          min_endpoint: "CurrentDrivableActor/Throttle(Lever).Min",
-          max_endpoint: "CurrentDrivableActor/Throttle(Lever).Max",
-          value_endpoint: @endpoint,
-          lever_type: :continuous
-        })
-
-      {:ok, _notch} =
-        TrainContext.create_notch(lever_config.id, %{
-          index: 0,
-          type: :linear,
-          input_min: 0.0,
-          input_max: 1.0,
-          sim_input_min: 0.0,
-          sim_input_max: 1.0,
-          min_value: 0.0,
-          max_value: 1.0
-        })
-
-      {:ok, device} = Hardware.create_device(%{name: "Pro Micro #{test}"})
-
-      {:ok, input} =
-        Hardware.create_input(device.id, %{
-          pin: 2,
-          input_type: :analog,
-          sensitivity: 1,
-          name: "Throttle pot"
-        })
-
-      {:ok, _calibration} =
-        Hardware.save_calibration(input.id, %{
-          max_hardware_value: 1023,
-          min_value: 0,
-          max_value: 1000,
-          has_rollover: false,
-          is_inverted: false
-        })
-
-      {:ok, _binding} = TrainContext.bind_input(lever_config.id, input.id)
-
-      device_conn = %DeviceConnection{
-        port: "/dev/cu.usbmodem#{System.unique_integer([:positive])}",
-        status: :connected,
-        device_config_id: device.config_id
-      }
-
-      Mimic.stub(Trenino.Serial.Connection, :list_devices, fn -> [device_conn] end)
-      send(Process.whereis(LeverController), {:train_changed, train})
-      send(Process.whereis(LeverController), {:devices_updated, [device_conn]})
-      LeverController.get_state()
-
-      %{port: device_conn.port, pin: input.pin}
-    end
+    setup :bind_throttle
 
     test "sends the latest jittered value instead of draining a FIFO of stale writes", %{
       port: port,
@@ -361,6 +299,133 @@ defmodule Trenino.Train.LeverControllerTest do
     end
   end
 
+  describe "calibration sweeps" do
+    setup :bind_throttle
+
+    setup do
+      client = connect_simulator()
+      test_pid = self()
+
+      Mimic.stub(Client, :set, fn ^client, @endpoint, value ->
+        send(test_pid, {:attempt, value, self()})
+        {:ok, %{"Result" => "Success"}}
+      end)
+
+      :ok
+    end
+
+    test "sends nothing while the sweep holds the lock and resumes once the lever moves",
+         context do
+      sweep = start_sweep()
+
+      for raw <- [500, 700], do: send_input(context, raw)
+      LeverController.get_state()
+      refute_receive {:attempt, _, _}, 100
+
+      finish_sweep(sweep)
+
+      # Noise around the last hardware position does not overwrite the
+      # position the analyzer restored.
+      send_input(context, 710)
+      LeverController.get_state()
+      refute_receive {:attempt, _, _}, 100
+
+      send_input(context, 800)
+      assert_receive {:attempt, 0.8, _writer}, 1_000
+
+      send_input(context, 810)
+      assert_receive {:attempt, 0.81, _writer}, 1_000
+    end
+
+    test "uses the position before the sweep when no sample arrives during it", context do
+      send_input(context, 500)
+      assert_receive {:attempt, 0.5, _writer}, 1_000
+
+      start_sweep() |> finish_sweep()
+
+      send_input(context, 510)
+      LeverController.get_state()
+      refute_receive {:attempt, _, _}, 100
+
+      # The analyzer restored the lever, so the old target is not deduplicated.
+      send_input(context, 450)
+      assert_receive {:attempt, 0.45, _writer}, 1_000
+    end
+
+    test "the first sample after a sweep sets the baseline when none was seen", context do
+      start_sweep() |> finish_sweep()
+
+      send_input(context, 300)
+      LeverController.get_state()
+      refute_receive {:attempt, _, _}, 100
+
+      send_input(context, 400)
+      assert_receive {:attempt, 0.4, _writer}, 1_000
+    end
+
+    test "a sweep cancels a scheduled retry", context do
+      test_pid = self()
+
+      Mimic.stub(Client, :set, fn _, @endpoint, value ->
+        send(test_pid, {:attempt, value, self()})
+        {:error, :timeout}
+      end)
+
+      send_input(context, 500)
+      assert_receive {:attempt, 0.5, _writer}, 1_000
+      wait_for_writer_release(Process.whereis(LeverController))
+      assert map_size(LeverController.get_state().retries) == 1
+
+      sweep = start_sweep()
+      state = LeverController.get_state()
+      assert state.retries == %{}
+      assert state.pending == %{}
+      refute_receive {:attempt, _, _}, 500
+
+      finish_sweep(sweep)
+    end
+
+    test "an analyzer that dies ends the sweep but keeps the hold", context do
+      %{pid: holder} = start_sweep()
+      ref = Process.monitor(holder)
+      Process.exit(holder, :kill)
+      assert_receive {:DOWN, ^ref, :process, ^holder, :killed}
+      wait_until(fn -> LeverController.get_state().sweeps == %{} end)
+
+      send_input(context, 500)
+      LeverController.get_state()
+      refute_receive {:attempt, _, _}, 100
+
+      send_input(context, 900)
+      assert_receive {:attempt, 0.9, _writer}, 1_000
+    end
+
+    test "reloading bindings after the sweep keeps the hold", context do
+      sweep = start_sweep()
+      send_input(context, 500)
+      finish_sweep(sweep)
+
+      LeverController.reload_bindings()
+      assert map_size(LeverController.get_state().held) == 1
+
+      send_input(context, 510)
+      LeverController.get_state()
+      refute_receive {:attempt, _, _}, 100
+
+      send_input(context, 600)
+      assert_receive {:attempt, 0.6, _writer}, 1_000
+    end
+
+    test "a sweep of another control does not hold this lever", context do
+      sweep = start_sweep("CurrentDrivableActor/Reverser(Lever)")
+
+      send_input(context, 500)
+      assert_receive {:attempt, 0.5, _writer}, 1_000
+
+      finish_sweep(sweep)
+    end
+  end
+
   describe "device reconnects" do
     test "subscribes to each port once across a disconnect and reconnect", %{test: test} do
       test_pid = self()
@@ -399,6 +464,114 @@ defmodule Trenino.Train.LeverControllerTest do
 
       refute_received {:subscribed, ^port}
       assert MapSet.member?(state.subscribed_ports, port)
+    end
+  end
+
+  defp bind_throttle(%{test: test}) do
+    {:ok, train} =
+      TrainContext.create_train(%{
+        name: "Latency Train",
+        identifiers: [%{identifier: "latency_train_#{System.unique_integer([:positive])}"}]
+      })
+
+    {:ok, element} = TrainContext.create_element(train.id, %{name: "Throttle", type: :lever})
+
+    {:ok, lever_config} =
+      TrainContext.create_lever_config(element.id, %{
+        min_endpoint: "CurrentDrivableActor/Throttle(Lever).Min",
+        max_endpoint: "CurrentDrivableActor/Throttle(Lever).Max",
+        value_endpoint: @endpoint,
+        lever_type: :continuous
+      })
+
+    {:ok, _notch} =
+      TrainContext.create_notch(lever_config.id, %{
+        index: 0,
+        type: :linear,
+        input_min: 0.0,
+        input_max: 1.0,
+        sim_input_min: 0.0,
+        sim_input_max: 1.0,
+        min_value: 0.0,
+        max_value: 1.0
+      })
+
+    {:ok, device} = Hardware.create_device(%{name: "Pro Micro #{test}"})
+
+    {:ok, input} =
+      Hardware.create_input(device.id, %{
+        pin: 2,
+        input_type: :analog,
+        sensitivity: 1,
+        name: "Throttle pot"
+      })
+
+    {:ok, _calibration} =
+      Hardware.save_calibration(input.id, %{
+        max_hardware_value: 1023,
+        min_value: 0,
+        max_value: 1000,
+        has_rollover: false,
+        is_inverted: false
+      })
+
+    {:ok, _binding} = TrainContext.bind_input(lever_config.id, input.id)
+
+    device_conn = %DeviceConnection{
+      port: "/dev/cu.usbmodem#{System.unique_integer([:positive])}",
+      status: :connected,
+      device_config_id: device.config_id
+    }
+
+    Mimic.stub(Trenino.Serial.Connection, :list_devices, fn -> [device_conn] end)
+    send(Process.whereis(LeverController), {:train_changed, train})
+    send(Process.whereis(LeverController), {:devices_updated, [device_conn]})
+    LeverController.get_state()
+
+    %{port: device_conn.port, pin: input.pin}
+  end
+
+  @control_path "CurrentDrivableActor/Throttle(Lever)"
+
+  defp send_input(%{port: port, pin: pin}, raw),
+    do: send(LeverController, {:input_value_updated, port, pin, raw})
+
+  # Stands in for LeverAnalyzer.analyze/3: takes the sweep lock and registers
+  # the control from its own process, as the analyzer does.
+  defp start_sweep(control_path \\ @control_path) do
+    test_pid = self()
+
+    pid =
+      spawn(fn ->
+        lock = {{Trenino.Simulator.LeverAnalyzer, control_path}, self()}
+        true = :global.set_lock(lock, [node()], 0)
+        :ok = LeverController.sweep_started(control_path)
+        send(test_pid, {:sweeping, self()})
+
+        receive do
+          :finish ->
+            :ok = LeverController.sweep_finished(control_path)
+            :global.del_lock(lock, [node()])
+            send(test_pid, {:finished, self()})
+        end
+      end)
+
+    assert_receive {:sweeping, ^pid}, 1_000
+    %{pid: pid}
+  end
+
+  defp finish_sweep(%{pid: pid}) do
+    send(pid, :finish)
+    assert_receive {:finished, ^pid}, 1_000
+  end
+
+  defp wait_until(fun, attempts \\ 50)
+  defp wait_until(_fun, 0), do: flunk("condition never became true")
+
+  defp wait_until(fun, attempts) do
+    unless fun.() do
+      Process.sleep(5)
+      wait_until(fun, attempts - 1)
     end
   end
 

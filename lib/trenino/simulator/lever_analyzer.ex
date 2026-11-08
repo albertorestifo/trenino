@@ -51,6 +51,7 @@ defmodule Trenino.Simulator.LeverAnalyzer do
   alias Trenino.Simulator.Client
   alias Trenino.Simulator.LeverMetadata
   alias Trenino.Simulator.LeverMetadata.Label
+  alias Trenino.Train.LeverController
 
   # Sweep configuration
   @sweep_step 0.02
@@ -219,8 +220,11 @@ defmodule Trenino.Simulator.LeverAnalyzer do
 
     if :global.set_lock(lock, [node()], 0) do
       try do
+        # Hardware bound to this control must not move it during the sweep.
+        LeverController.sweep_started(control_path)
         do_analyze(client, control_path, opts)
       after
+        LeverController.sweep_finished(control_path)
         :global.del_lock(lock, [node()])
       end
     else
