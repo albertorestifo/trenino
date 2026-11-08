@@ -36,9 +36,10 @@ defmodule Trenino.BetaTest do
       Application.put_env(:trenino, :beta_features, :setting)
 
       names = Enum.map(ToolRegistry.list_tools(), & &1.name)
-      assert length(names) == 53
+      assert length(names) == 43
       refute "get_selector" in names
       refute "list_stepper_axes" in names
+      refute "get_virtual_joystick_status" in names
 
       assert {:error, "Unknown tool: get_selector"} =
                ToolRegistry.call_tool("get_selector", %{})

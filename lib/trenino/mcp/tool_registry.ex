@@ -54,7 +54,8 @@ defmodule Trenino.MCP.ToolRegistry do
     GaugeBindingTools => :gauges,
     GaugeRuntimeTools => :gauges,
     DialCalibrationTools => :gauges,
-    SelectorTools => :selectors
+    SelectorTools => :selectors,
+    VirtualJoystickTools => :joystick
   }
 
   @type tool_def :: %{

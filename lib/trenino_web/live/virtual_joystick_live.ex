@@ -9,6 +9,7 @@ defmodule TreninoWeb.VirtualJoystickLive do
   alias Trenino.Hardware
   alias Trenino.Hardware.ConfigurationManager
   alias Trenino.Serial.Connection
+  alias Trenino.Settings
   alias Trenino.VirtualJoystick
   alias Trenino.VirtualJoystick.Mapper
   alias Trenino.VirtualJoystick.Platform
@@ -92,6 +93,17 @@ defmodule TreninoWeb.VirtualJoystickLive do
   def handle_info(_message, socket), do: {:noreply, socket}
 
   @impl true
+  def handle_event("enable-beta-features", _, socket) do
+    {:ok, _} = Settings.set_beta_features(:enabled)
+
+    {:noreply,
+     assign(socket,
+       beta_gauges: true,
+       beta_joystick: true,
+       beta_selectors: true
+     )}
+  end
+
   def handle_event("show-transition-confirmation", _, socket),
     do: {:noreply, assign(socket, :confirm_transition, true)}
 
@@ -252,6 +264,46 @@ defmodule TreninoWeb.VirtualJoystickLive do
       )
 
   @impl true
+  def render(%{beta_joystick: false} = assigns) do
+    ~H"""
+    <main class="flex-1 p-4 sm:p-8">
+      <div class="mx-auto max-w-2xl">
+        <header class="mb-8">
+          <h1 class="text-2xl font-semibold">Virtual joystick</h1>
+          <p class="mt-2 max-w-prose text-sm text-muted">
+            Send selected hardware controls to games as one standard Windows joystick.
+          </p>
+        </header>
+
+        <section
+          id="joystick-beta-notice"
+          class="rounded-xl border border-base-300 bg-base-200/50 p-5"
+          aria-labelledby="joystick-beta-heading"
+        >
+          <h2 id="joystick-beta-heading" class="text-lg font-semibold">
+            The virtual joystick is a beta feature
+          </h2>
+          <p class="mt-2 max-w-prose text-sm">
+            It is not as well tested as the rest of Trenino, so errors are expected.
+            If something goes wrong, turn it off and let us know.
+          </p>
+          <p class="mt-2 max-w-prose text-sm text-muted">
+            Enabling it turns on all beta features. You can turn them off again from
+            "Enable beta features" on the Settings page.
+          </p>
+          <button
+            data-testid="enable-beta-features"
+            phx-click="enable-beta-features"
+            class="btn btn-primary mt-4"
+          >
+            Enable beta features
+          </button>
+        </section>
+      </div>
+    </main>
+    """
+  end
+
   def render(assigns) do
     assigns = assign(assigns, :status_ui, status_ui(assigns.status, assigns.status_reason))
     assigns = assign(assigns, :transitioning, assigns.status in [:enabling, :disabling])

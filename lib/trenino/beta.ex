@@ -22,11 +22,13 @@ defmodule Trenino.Beta do
     # Stepper-motor gauges such as speedometers: hardware gauges, gauge
     # bindings, dial calibration.
     :gauges,
+    # Windows virtual joystick: the Joystick page and its MCP tools.
+    :joystick,
     # Selectors: an analog input used as a rotary switch with fixed positions.
     :selectors
   ]
 
-  @type feature :: :gauges | :selectors
+  @type feature :: :gauges | :joystick | :selectors
 
   @spec features() :: [feature()]
   def features, do: @features

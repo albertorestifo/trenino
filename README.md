@@ -42,7 +42,7 @@ Build your own train controls with real throttle levers, brake handles, switches
 - **Auto-detection** — automatically recognizes which train you're driving and loads the right configuration
 - **Visual control mapping** — map any hardware input to simulator controls using the built-in API explorer
 - **Rotary selectors** (beta) — turn a potentiometer into a switch with fixed positions, such as a lights selector, where each position sets its own simulator value, runs a sequence, or taps a key ([train configuration guide](docs/train-configuration.md#configuring-selectors))
-- **Windows virtual joystick** — expose selected calibrated levers and buttons as one removable DirectInput joystick with eight axes and 32 buttons, independently of Train Sim World
+- **Windows virtual joystick** (beta) — expose selected calibrated levers and buttons as one removable DirectInput joystick with eight axes and 32 buttons, independently of Train Sim World
 - **I2C display modules** — show live simulator data (speed, brake pressure, gear position) on HT16K33 7- or 14-segment LED displays wired to your Arduino
 - **Physical stepper gauges** (beta) — drive real needle gauges with stepper motors and bind them to live simulator data such as speed or brake pressure ([stepper gauges guide](docs/stepper-gauges.md))
 - **Beta features** — features marked (beta) are still being tested; turn them on with "Enable beta features" on the Settings page

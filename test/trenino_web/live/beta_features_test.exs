@@ -46,6 +46,30 @@ defmodule TreninoWeb.BetaFeaturesTest do
     end
   end
 
+  describe "joystick page with beta features off" do
+    test "explains the beta and hides the joystick controls", %{conn: conn} do
+      {:ok, view, _} = live(conn, ~p"/virtual-joystick")
+
+      assert has_element?(view, "nav a[href='/virtual-joystick']", "Joystick")
+      assert has_element?(view, "#joystick-beta-notice", "errors are expected")
+      assert has_element?(view, "#joystick-beta-notice", "not as well tested")
+      assert has_element?(view, "[data-testid='enable-beta-features']")
+      refute has_element?(view, "[data-testid='virtual-joystick-status']")
+      refute has_element?(view, "#add-mapping")
+    end
+
+    test "the enable button turns on beta features and shows the page", %{conn: conn} do
+      {:ok, view, _} = live(conn, ~p"/virtual-joystick")
+
+      view |> element("[data-testid='enable-beta-features']") |> render_click()
+
+      assert Settings.beta_features?()
+      refute has_element?(view, "#joystick-beta-notice")
+      assert has_element?(view, "[data-testid='virtual-joystick-status']")
+      assert has_element?(view, "#add-mapping")
+    end
+  end
+
   describe "settings toggle" do
     test "enabling beta features shows them on the next page load", %{conn: conn} do
       {:ok, view, _} = live(conn, ~p"/settings")

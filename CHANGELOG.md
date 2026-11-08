@@ -10,7 +10,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 - Beta features: features that are still being tested are off by default
   and can be turned on with "Enable beta features" on the Settings page.
-  Selectors and stepper-motor gauges are beta features.
+  Selectors, stepper-motor gauges and the Windows virtual joystick are beta
+  features.
 - Selectors (beta, turn on "Enable beta features" in Settings): use a
   potentiometer as a rotary switch with fixed positions, such as a lights
   selector. Split its travel evenly into 2 to 12 positions,
@@ -47,6 +48,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   or a position springs back. It refuses to start while the train moves,
   stops if the train speeds up, always puts the lever back where it was,
   and keeps your notch mapping when the notches did not change.
+- The Windows virtual joystick is now a beta feature. The Joystick tab stays
+  in the navigation; while beta features are off, it explains that the
+  joystick is less tested and errors are expected, and offers an "Enable
+  beta features" button. The virtual joystick MCP tools are hidden until
+  beta features are on. Saved mappings, and a joystick that is already
+  active, keep working.
 - Stepper-motor gauges, such as speedometers, are now a beta feature. Turn
   on "Enable beta features" on the Settings page to see the Gauges and Gauge
   bindings sections and the gauge MCP tools. Gauges already set up keep
