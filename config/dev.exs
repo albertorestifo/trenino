@@ -62,6 +62,9 @@ config :trenino, TreninoWeb.Endpoint,
 # Enable dev routes for dashboard and mailbox
 config :trenino, dev_routes: true
 
+# Beta features are always on in development (see Trenino.Beta)
+config :trenino, :beta_features, :all
+
 # Do not include metadata nor timestamps in development logs
 config :logger, :default_formatter, format: "[$level] $message\n"
 

@@ -89,3 +89,7 @@ config :trenino, :serial_connection_call_timeout_ms, 500
 # Skip the post-open settle delay in discovery tests (production waits 3s
 # for boards that reset into their bootloader when the port opens).
 config :trenino, :serial_discovery_settle_ms, 0
+
+# Beta features are on in tests; tests for the gated-off state switch to
+# :setting (see Trenino.Beta)
+config :trenino, :beta_features, :all

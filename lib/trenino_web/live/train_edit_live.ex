@@ -1315,17 +1315,26 @@ defmodule TreninoWeb.TrainEditLive do
   # Anchor nav entries, one per section, each counting what its section's badge counts.
   defp nav_items(assigns) do
     [
-      %{id: "elements", label: "Elements", count: length(assigns.elements)},
-      %{id: "gauge-bindings", label: "Gauge bindings", count: assigns.gauge_binding_count},
-      %{
-        id: "display-bindings",
-        label: "Display bindings",
-        count: length(assigns.display_bindings)
-      },
-      %{id: "output-bindings", label: "Output bindings", count: length(assigns.output_bindings)},
-      %{id: "sequences", label: "Sequences", count: length(assigns.sequences)},
-      %{id: "scripts", label: "Scripts", count: length(assigns.scripts)}
-    ]
+      %{id: "elements", label: "Elements", count: length(assigns.elements)}
+    ] ++
+      if(assigns.beta_gauges,
+        do: [%{id: "gauge-bindings", label: "Gauge bindings", count: assigns.gauge_binding_count}],
+        else: []
+      ) ++
+      [
+        %{
+          id: "display-bindings",
+          label: "Display bindings",
+          count: length(assigns.display_bindings)
+        },
+        %{
+          id: "output-bindings",
+          label: "Output bindings",
+          count: length(assigns.output_bindings)
+        },
+        %{id: "sequences", label: "Sequences", count: length(assigns.sequences)},
+        %{id: "scripts", label: "Scripts", count: length(assigns.scripts)}
+      ]
   end
 
   defp send_polled_value_to_component(:config_wizard, value) do
@@ -1625,6 +1634,7 @@ defmodule TreninoWeb.TrainEditLive do
 
         <.section_group :if={not @new_mode} id="displays-lights" title="Displays & lights">
           <.live_component
+            :if={@beta_gauges}
             module={TreninoWeb.GaugeBindingWizard}
             id="gauge-setup"
             train_id={@train.id}
@@ -1665,7 +1675,7 @@ defmodule TreninoWeb.TrainEditLive do
       </div>
     </main>
 
-    <.add_element_modal :if={@modal_open} form={@element_form} />
+    <.add_element_modal :if={@modal_open} form={@element_form} beta_selectors={@beta_selectors} />
 
     <.confirmation_modal
       :if={@show_delete_modal}

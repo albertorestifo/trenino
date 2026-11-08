@@ -1129,10 +1129,10 @@ defmodule TreninoWeb.ConfigurationEditLive do
             active_port={@active_port}
           />
 
-          <.new_gauges_section :if={@new_mode} />
+          <.new_gauges_section :if={@beta_gauges and @new_mode} />
 
           <.live_component
-            :if={not @new_mode}
+            :if={@beta_gauges and not @new_mode}
             module={TreninoWeb.StepperAxisFormComponent}
             id="stepper-setup"
             device_id={@device.id}
@@ -1209,9 +1209,12 @@ defmodule TreninoWeb.ConfigurationEditLive do
       %{id: "inputs", label: "Inputs", count: length(assigns.inputs)},
       %{id: "matrices", label: "Matrices", count: length(assigns.matrices)},
       %{id: "outputs", label: "Outputs", count: length(assigns.outputs)},
-      %{id: "displays", label: "Displays", count: length(assigns.i2c_modules)},
-      %{id: "stepper-axes", label: "Gauges", count: assigns.stepper_count}
-    ]
+      %{id: "displays", label: "Displays", count: length(assigns.i2c_modules)}
+    ] ++
+      if(assigns.beta_gauges,
+        do: [%{id: "stepper-axes", label: "Gauges", count: assigns.stepper_count}],
+        else: []
+      )
   end
 
   defp has_parts?(assigns) do

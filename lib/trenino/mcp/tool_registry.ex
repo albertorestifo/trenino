@@ -6,6 +6,8 @@ defmodule Trenino.MCP.ToolRegistry do
   definitions, and an `execute/2` function that handles a specific tool call.
   """
 
+  alias Trenino.Beta
+
   alias Trenino.MCP.Tools.{
     ButtonBindingTools,
     DetectionTools,
@@ -44,6 +46,15 @@ defmodule Trenino.MCP.ToolRegistry do
     DialCalibrationTools
   ]
 
+  # Tool modules hidden unless their beta feature is enabled (see Trenino.Beta)
+  @beta_tool_modules %{
+    StepperTools => :gauges,
+    GaugeBindingTools => :gauges,
+    GaugeRuntimeTools => :gauges,
+    DialCalibrationTools => :gauges,
+    SelectorTools => :selectors
+  }
+
   @type tool_def :: %{
           name: String.t(),
           description: String.t(),
@@ -52,7 +63,7 @@ defmodule Trenino.MCP.ToolRegistry do
 
   @spec list_tools() :: [tool_def()]
   def list_tools do
-    Enum.flat_map(@tool_modules, & &1.tools())
+    Enum.flat_map(tool_modules(), & &1.tools())
   end
 
   @spec call_tool(String.t(), map()) :: {:ok, term()} | {:error, String.t()}
@@ -63,8 +74,17 @@ defmodule Trenino.MCP.ToolRegistry do
     end
   end
 
+  defp tool_modules do
+    Enum.filter(@tool_modules, fn module ->
+      case Map.fetch(@beta_tool_modules, module) do
+        {:ok, feature} -> Beta.enabled?(feature)
+        :error -> true
+      end
+    end)
+  end
+
   defp find_tool_module(name) do
-    Enum.find_value(@tool_modules, :error, fn module ->
+    Enum.find_value(tool_modules(), :error, fn module ->
       tool_names = Enum.map(module.tools(), & &1.name)
 
       if name in tool_names do

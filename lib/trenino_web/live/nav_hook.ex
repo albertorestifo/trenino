@@ -11,6 +11,7 @@ defmodule TreninoWeb.NavHook do
   import Phoenix.Component
 
   alias Trenino.AppVersion
+  alias Trenino.Beta
   alias Trenino.Firmware
   alias Trenino.Hardware
   alias Trenino.Serial.Connection
@@ -41,6 +42,8 @@ defmodule TreninoWeb.NavHook do
      |> assign(:nav_dropdown_open, false)
      |> assign(:nav_scanning, false)
      |> assign(:nav_current_path, "/")
+     |> assign(:beta_gauges, Beta.enabled?(:gauges))
+     |> assign(:beta_selectors, Beta.enabled?(:selectors))
      |> attach_hook(:nav_path_tracker, :handle_params, &handle_params/3)
      |> attach_hook(:nav_firmware_events, :handle_event, &handle_event/3)
      |> attach_hook(:nav_firmware_info, :handle_info, &handle_info/2)}

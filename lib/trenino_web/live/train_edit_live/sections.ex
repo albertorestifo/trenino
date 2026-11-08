@@ -632,6 +632,7 @@ defmodule TreninoWeb.TrainEditLive.Sections do
   defp get_button_binding(%Element{button_binding: binding}), do: binding
 
   attr :form, :map, required: true
+  attr :beta_selectors, :boolean, default: false
 
   def add_element_modal(assigns) do
     ~H"""
@@ -662,11 +663,14 @@ defmodule TreninoWeb.TrainEditLive.Sections do
                 label="Type"
                 field={@form[:type]}
                 type="select"
-                options={[{"Lever", :lever}, {"Button", :button}, {"Selector", :selector}]}
+                options={
+                  [{"Lever", :lever}, {"Button", :button}] ++
+                    if(@beta_selectors, do: [{"Selector", :selector}], else: [])
+                }
                 class="select select-bordered w-full"
               />
               <p class="text-xs text-muted mt-1">
-                Lever for analog inputs, Button for digital inputs, Selector for a potentiometer with fixed positions
+                Lever for analog inputs, Button for digital inputs<span :if={@beta_selectors}>, Selector for a potentiometer with fixed positions</span>
               </p>
             </div>
           </div>

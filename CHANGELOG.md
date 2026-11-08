@@ -8,8 +8,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
-- Selectors: use a potentiometer as a rotary switch with fixed positions,
-  such as a lights selector. Split its travel evenly into 2 to 12 positions,
+- Beta features: features that are still being tested are off by default
+  and can be turned on with "Enable beta features" on the Settings page.
+  Selectors and stepper-motor gauges are beta features.
+- Selectors (beta, turn on "Enable beta features" in Settings): use a
+  potentiometer as a rotary switch with fixed positions, such as a lights
+  selector. Split its travel evenly into 2 to 12 positions,
   or turn the knob into each detent and capture it. The gaps between
   positions are dead zones, so jitter never switches it. Each position runs
   its own action when the knob enters it and when it leaves: set a simulator
@@ -22,6 +26,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   `list_device_inputs` now reports whether an input is calibrated.
 - A quiet footer at the bottom of every page links to the Trenino Discord
   community, for questions, ideas and sharing setups.
+
+### Changed
+
+- Stepper-motor gauges, such as speedometers, are now a beta feature. Turn
+  on "Enable beta features" on the Settings page to see the Gauges and Gauge
+  bindings sections and the gauge MCP tools. Gauges already set up keep
+  working while beta features are off.
 
 ### Fixed
 

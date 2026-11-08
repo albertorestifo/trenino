@@ -15,6 +15,9 @@ defmodule Trenino.Settings do
   @error_reporting_key "error_reporting"
   @error_reporting_values [:enabled, :disabled]
 
+  @beta_features_key "beta_features"
+  @beta_features_values [:enabled, :disabled]
+
   @simulator_url_key "simulator_url"
   @simulator_api_key_key "simulator_api_key"
   @default_simulator_url "http://localhost:31270"
@@ -29,6 +32,15 @@ defmodule Trenino.Settings do
           {:ok, Setting.t()} | {:error, Ecto.Changeset.t()}
   def set_error_reporting(value) when value in @error_reporting_values do
     put_raw(@error_reporting_key, Atom.to_string(value))
+  end
+
+  @spec beta_features?() :: boolean()
+  def beta_features?, do: get_atom(@beta_features_key, @beta_features_values) == :enabled
+
+  @spec set_beta_features(:enabled | :disabled) ::
+          {:ok, Setting.t()} | {:error, Ecto.Changeset.t()}
+  def set_beta_features(value) when value in @beta_features_values do
+    put_raw(@beta_features_key, Atom.to_string(value))
   end
 
   @spec simulator_url() :: String.t()

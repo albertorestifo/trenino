@@ -5,6 +5,7 @@ defmodule TreninoWeb.SettingsLive do
 
   use TreninoWeb, :live_view
 
+  alias Trenino.Beta
   alias Trenino.Serial.Connection
   alias Trenino.Settings
   alias Trenino.Settings.Simulator, as: SimulatorSettings
@@ -16,6 +17,8 @@ defmodule TreninoWeb.SettingsLive do
      socket
      |> assign(:page_title, "Settings")
      |> assign(:error_reporting_enabled, Settings.error_reporting?())
+     |> assign(:beta_configurable, Beta.configurable?())
+     |> assign(:beta_features_enabled, Settings.beta_features?())
      |> assign(:simulator_url, Settings.simulator_url())
      |> assign(:api_key_status, api_key_status())
      |> assign(:connection_result, nil)
@@ -78,6 +81,13 @@ defmodule TreninoWeb.SettingsLive do
     new_value = if socket.assigns.error_reporting_enabled, do: :disabled, else: :enabled
     {:ok, _} = Settings.set_error_reporting(new_value)
     {:noreply, assign(socket, :error_reporting_enabled, new_value == :enabled)}
+  end
+
+  @impl true
+  def handle_event("toggle_beta_features", _params, socket) do
+    new_value = if socket.assigns.beta_features_enabled, do: :disabled, else: :enabled
+    {:ok, _} = Settings.set_beta_features(new_value)
+    {:noreply, assign(socket, :beta_features_enabled, new_value == :enabled)}
   end
 
   @impl true
@@ -199,6 +209,35 @@ defmodule TreninoWeb.SettingsLive do
               checked={@error_reporting_enabled}
             />
           </label>
+        </section>
+
+        <div class="border-t border-base-300 my-10"></div>
+
+        <section>
+          <h2 class="text-xl font-semibold mb-5">Beta Features</h2>
+          <label
+            :if={@beta_configurable}
+            class="flex items-start justify-between gap-6 cursor-pointer"
+          >
+            <div>
+              <div class="font-medium">Enable beta features</div>
+              <div class="text-sm text-muted mt-1">
+                Try features that are still being tested: stepper-motor gauges such as
+                speedometers, and selectors that use a potentiometer as a rotary switch.
+                They may change or have rough edges.
+              </div>
+            </div>
+            <input
+              type="checkbox"
+              class="toggle toggle-primary mt-0.5 shrink-0"
+              data-testid="beta-features-toggle"
+              phx-click="toggle_beta_features"
+              checked={@beta_features_enabled}
+            />
+          </label>
+          <p :if={!@beta_configurable} class="text-sm text-muted">
+            Beta features are always on in this build.
+          </p>
         </section>
 
         <div class="border-t border-base-300 my-10"></div>
