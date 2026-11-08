@@ -1405,6 +1405,18 @@ defmodule TreninoWeb.LeverSetupWizard do
           </ul>
         </div>
 
+        <div
+          id="lever-calibration-movement-warning"
+          role="alert"
+          class="alert alert-soft alert-warning text-left text-sm mt-4"
+        >
+          <.icon name="hero-exclamation-triangle" class="w-5 h-5 shrink-0" />
+          <span>
+            The lever sweep applies power and will move the train. Apply the train brake if
+            it has a separate one, and make sure the line ahead is clear.
+          </span>
+        </div>
+
         <div class="mt-6">
           <p class="text-sm text-muted">
             This process takes about 5-10 seconds.
@@ -1454,8 +1466,8 @@ defmodule TreninoWeb.LeverSetupWizard do
             Sweeping through lever positions and reading values.
           </p>
           <p class="text-sm text-muted mt-2">
-            This can take up to a minute. The lever moves in the game, and it stops
-            if the train starts moving.
+            This can take up to a minute. The lever moves in the game and the train
+            will move. The lever is put back where it was at the end.
           </p>
         </div>
 
@@ -1561,14 +1573,6 @@ defmodule TreninoWeb.LeverSetupWizard do
 
   defp format_calibration_error(:no_control_path),
     do: "Trenino could not find this lever in the simulator. Go back and pick the endpoint again."
-
-  defp format_calibration_error(:train_not_stopped),
-    do: "The train is moving. Stop it, then go back and try again."
-
-  defp format_calibration_error(:train_moving),
-    do:
-      "The train started moving, so calibration stopped and the lever was put back. " <>
-        "Apply the train brake or a handbrake, then go back and try again."
 
   defp format_calibration_error(:calibration_running),
     do: "This lever is already being calibrated. Wait for it to finish, then try again."

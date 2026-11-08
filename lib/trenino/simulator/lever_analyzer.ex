@@ -30,9 +30,11 @@ defmodule Trenino.Simulator.LeverAnalyzer do
   ## Safety
 
   A sweep moves the lever in the simulator, so it can apply power and move the
-  train. `analyze/3` refuses to start when the train is moving, stops when the
-  train speeds up past `:max_speed`, and always puts the lever back where it
-  was. Only one sweep per control runs at a time.
+  train; callers warn the user before sweeping. Some levers cannot be swept
+  without moving the train, such as a combined power/brake handle with no
+  separate brake, so the sweep does not stop when the train moves.
+  `analyze/3` always puts the lever back where it was, and only one sweep per
+  control runs at a time.
 
   ## Usage
 
@@ -77,11 +79,6 @@ defmodule Trenino.Simulator.LeverAnalyzer do
   # Fewer during the sweep, where it runs for every sample that stops short
   @sweep_push_attempts 3
   @push_delay_ms 30
-
-  # Safety
-  @speed_endpoint "CurrentDrivableActor.Function.HUD_GetSpeed"
-  @stopped_speed 0.5
-  @default_max_speed 2.0
 
   defmodule Sample do
     @moduledoc "A single sample from the lever sweep"
@@ -194,12 +191,9 @@ defmodule Trenino.Simulator.LeverAnalyzer do
 
   Returns `{:ok, AnalysisResult.t()}` on success, or `{:error, reason}`:
 
-  - `:train_not_stopped` - the train was moving before the sweep started
-  - `:train_moving` - the train sped up past `:max_speed` during the sweep
   - `:calibration_running` - another sweep of this control is running
   - `:insufficient_samples` - the simulator answered too few samples
   - `:position_unreadable` - the lever's position could not be read, so it could not be restored
-  - `:speed_unavailable` - the speed could not be read and `:require_speed_guard` is set
 
   ## Options
 
@@ -208,9 +202,6 @@ defmodule Trenino.Simulator.LeverAnalyzer do
     - `:push_delay_ms` - Delay between repeated sets into a gate (default: #{@push_delay_ms})
     - `:restore_position` - `:original` (default) puts the lever back where it was,
       a number moves it there, `nil` leaves it at the end of the sweep
-    - `:max_speed` - Speed in m/s that stops the sweep (default: #{@default_max_speed})
-    - `:require_speed_guard` - refuse with `:speed_unavailable` when the speed
-      cannot be read (default: false, which sweeps with a warning)
   """
   @spec analyze(Client.t(), String.t(), keyword()) :: {:ok, AnalysisResult.t()} | {:error, term()}
   def analyze(%Client{} = client, control_path, opts \\ []) when is_binary(control_path) do
@@ -243,18 +234,13 @@ defmodule Trenino.Simulator.LeverAnalyzer do
 
     restore_position = Keyword.get(opts, :restore_position, :original)
 
+    ctx = build_context(client, control_path, opts)
+
     result =
-      with {:ok, speed_check} <- check_stopped(client),
-           :ok <- check_speed_guard(speed_check, opts),
-           ctx = build_context(client, control_path, opts, speed_check),
-           {:ok, original} <- read_original(client, ctx.value_endpoint, restore_position) do
+      with {:ok, original} <- read_original(client, ctx.value_endpoint, restore_position) do
         try do
           with {:ok, samples} <- sweep_lever(ctx) do
-            analyze_samples(samples,
-              metadata: metadata,
-              sweep_step: ctx.step,
-              warnings: speed_warnings(speed_check)
-            )
+            analyze_samples(samples, metadata: metadata, sweep_step: ctx.step)
           end
         after
           restore(ctx, restore_position, original)
@@ -264,7 +250,7 @@ defmodule Trenino.Simulator.LeverAnalyzer do
     log_result(result)
   end
 
-  defp build_context(client, control_path, opts, speed_check) do
+  defp build_context(client, control_path, opts) do
     %{
       client: client,
       control_path: control_path,
@@ -273,9 +259,7 @@ defmodule Trenino.Simulator.LeverAnalyzer do
       notch_endpoint: "#{control_path}.Function.GetCurrentNotchIndex",
       step: Keyword.get(opts, :sweep_step, @sweep_step),
       settling: Keyword.get(opts, :settling_time_ms, @settling_time_ms),
-      push_delay: Keyword.get(opts, :push_delay_ms, @push_delay_ms),
-      max_speed: Keyword.get(opts, :max_speed, @default_max_speed),
-      speed_guard?: speed_check == :stopped
+      push_delay: Keyword.get(opts, :push_delay_ms, @push_delay_ms)
     }
   end
 
@@ -337,25 +321,6 @@ defmodule Trenino.Simulator.LeverAnalyzer do
   # Safety
   # ===========================================================================
 
-  # Returns {:ok, :stopped} when the speed reads as stopped, {:ok, :unknown}
-  # when the simulator does not expose a speed, and an error when moving.
-  defp check_stopped(client) do
-    case read_speed(client) do
-      {:ok, speed} when abs(speed) > @stopped_speed -> {:error, :train_not_stopped}
-      {:ok, _speed} -> {:ok, :stopped}
-      :unknown -> {:ok, :unknown}
-    end
-  end
-
-  # MCP sweeps must not run without the speed guard
-  defp check_speed_guard(:unknown, opts) do
-    if Keyword.get(opts, :require_speed_guard, false),
-      do: {:error, :speed_unavailable},
-      else: :ok
-  end
-
-  defp check_speed_guard(_speed_check, _opts), do: :ok
-
   # Without the starting position the lever cannot be put back, and it would be
   # left at the end of the sweep (full power on many levers), so do not sweep.
   defp read_original(client, value_endpoint, :original) do
@@ -366,28 +331,6 @@ defmodule Trenino.Simulator.LeverAnalyzer do
   end
 
   defp read_original(_client, _value_endpoint, _restore_position), do: {:ok, nil}
-
-  defp speed_warnings(:stopped), do: []
-
-  defp speed_warnings(:unknown) do
-    ["The train's speed could not be read, so the sweep ran without the speed guard."]
-  end
-
-  defp read_speed(client) do
-    case Client.get_float(client, @speed_endpoint) do
-      {:ok, speed} when is_number(speed) -> {:ok, speed}
-      _ -> :unknown
-    end
-  end
-
-  defp train_too_fast?(%{speed_guard?: false}), do: false
-
-  defp train_too_fast?(%{client: client, max_speed: max_speed}) do
-    case read_speed(client) do
-      {:ok, speed} -> abs(speed) > max_speed
-      :unknown -> false
-    end
-  end
 
   defp read_input(client, value_endpoint) do
     case Client.get_float(client, value_endpoint) do
@@ -440,12 +383,7 @@ defmodule Trenino.Simulator.LeverAnalyzer do
   defp sweep_step(ctx, set_input, acc) do
     case sample_position(ctx, set_input, List.first(acc)) do
       {:ok, sample} ->
-        if train_too_fast?(ctx) do
-          Logger.warning("[LeverAnalyzer] Train is moving, stopping the sweep")
-          {:halt, {:error, :train_moving}}
-        else
-          {:cont, {:ok, [sample | acc]}}
-        end
+        {:cont, {:ok, [sample | acc]}}
 
       {:error, reason} ->
         Logger.warning("[LeverAnalyzer] Sample failed at #{set_input}: #{inspect(reason)}")

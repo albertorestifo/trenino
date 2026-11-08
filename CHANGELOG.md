@@ -46,6 +46,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- Lever calibration no longer stops when the train moves, so levers that
+  release the brake as they sweep, such as a combined power/brake handle
+  with no separate brake, can be calibrated. The Lever Setup Wizard and the
+  `calibrate_lever` MCP tool warn up front that the sweep will move the
+  train, and the lever is still put back where it was at the end.
 - Lever calibration finds notches the way drivers feel them, tested on
   trains from the UK, Germany, Austria and the US. The ends of a brake or
   power range ("Max Brake", "Min Power") are part of the range instead of

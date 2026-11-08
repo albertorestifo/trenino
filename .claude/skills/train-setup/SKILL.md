@@ -29,7 +29,7 @@ Tool schemas carry parameters, modes and operators. This skill covers the order 
 
 1. `list_simulator_levers` with `match` set to the element's name. Match by `role` (`Throttle`, `AutomaticBrake`, `IndependentBrake`, `DynamicBrake`, `Reverser`), not by node name. On twin-cab trains use the `_F` control unless the user says otherwise.
 2. `set_lever_endpoint` with the chosen `control_path`.
-3. `calibrate_lever` only after the user agrees: it moves the lever in the game and can move the train. Ask them to stop the train, apply the train brake, and set the train up as if to drive (reverser out of neutral), or power notches may be blocked. Tell the user every returned warning and the notch names it found.
+3. `calibrate_lever` only after the user agrees. Warn them first that the sweep applies power and will move the train: it does not stop when the train moves, because some levers (such as a combined power/brake handle) release the brake as they sweep. The lever is put back where it was at the end. Ask them to stop the train, apply the train brake if it has a separate one, and set the train up as if to drive (reverser out of neutral), or power notches may be blocked. Tell the user every returned warning and the notch names it found.
 4. `bind_lever_input` with an analog input from `detect_hardware_input`. The input must be calibrated (UI-only).
 5. `open_lever_setup` to hand over. Mapping the physical notches needs the user; `get_lever.next_step` says what is left.
 
