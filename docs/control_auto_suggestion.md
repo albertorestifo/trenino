@@ -134,7 +134,7 @@ Based on analysis of 5 different trains:
 2. User clicks "Configure" on the element
 3. Modal opens with lever configuration form
 4. If simulator is connected:
-   - `ControlDetector.suggest_lever("Throttle")` is called
+   - `ControlDetector.suggest_levers(client, "Throttle")` is called
    - If match found, suggestion box appears at top of modal
    - Shows control name and confidence percentage
    - User can click "Apply Suggestion" to auto-fill all fields
@@ -183,29 +183,20 @@ Similar UI, but applies to button endpoint field only.
 
 ## API Reference
 
-### `ControlDetector.suggest_lever/1`
-
-Suggests a lever control matching the given element name.
+### `ControlDetector.suggest_levers/3`
 
 ```elixir
-@spec suggest_lever(String.t()) :: {:ok, lever_suggestion()} | {:error, term()}
-
-# Example
-{:ok, %{
-  control_name: "Throttle(Lever)",
-  min_endpoint: "CurrentDrivableActor/Throttle(Lever).Function.GetMinimumInputValue",
-  max_endpoint: "CurrentDrivableActor/Throttle(Lever).Function.GetMaximumInputValue",
-  value_endpoint: "CurrentDrivableActor/Throttle(Lever).InputValue",
-  notch_count_endpoint: "CurrentDrivableActor/Throttle(Lever).Function.GetNotchCount",
-  notch_index_endpoint: "CurrentDrivableActor/Throttle(Lever).Function.GetCurrentNotchIndex",
-  confidence: 0.85
-}}
+@spec suggest_levers(Client.t(), String.t(), pos_integer()) ::
+        {:ok, [%{lever: LeverMetadata.t(), score: float()}]} | {:error, term()}
 ```
 
-**Returns:**
-- `{:ok, suggestion}` - Match found with confidence > 0.3
-- `{:error, :not_connected}` - Simulator not connected
-- `{:error, :no_match}` - No matching control found
+Reads every lever with `Trenino.Simulator.LeverMetadata.list_levers/1` and
+ranks them by the lever's in-game role (`Property.InputIdentifier`) first and
+its node name second. "Power Handle" and "Throttle" match the `Throttle`
+role, "Brake" matches `AutomaticBrake`, "Independent brake" matches
+`IndependentBrake`. Front-cab (`_F`) controls rank above rear-cab ones. The
+Lever Setup Wizard shows the top three on its Find in Simulator step, and the
+`list_simulator_levers` MCP tool returns them as `best_matches`.
 
 ### `ControlDetector.suggest_button/1`
 

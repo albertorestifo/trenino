@@ -67,7 +67,7 @@ defmodule Trenino.MCP.ServerTest do
       assert {:reply, response} = Server.handle_message(message)
       assert %{tools: tools} = response.result
       assert is_list(tools)
-      assert length(tools) == 66
+      assert length(tools) == 72
 
       tool_names = Enum.map(tools, & &1.name)
       assert "list_trains" in tool_names

@@ -272,7 +272,7 @@ defmodule Trenino.Train do
     Repo.transaction(fn ->
       with {:ok, lever_config} <- create_lever_config(element_id, config_attrs),
            :ok <- create_notches_from_suggestions(lever_config.id, suggested_notches) do
-        Repo.preload(lever_config, :notches)
+        Repo.preload(lever_config, :notches, force: true)
       else
         {:error, reason} -> Repo.rollback(reason)
       end
@@ -282,7 +282,11 @@ defmodule Trenino.Train do
   @doc """
   Update a lever config with new analysis results.
 
-  Replaces existing notches with those from the new analysis.
+  Replaces existing notches with those from the new analysis. When the lever
+  still points at the same simulator control and the new notches have the
+  same count and types as the old ones, each notch keeps its hardware range
+  (`input_min`/`input_max`), so a recalibration does not undo the user's notch
+  mapping. Otherwise the notches need mapping again.
   """
   @spec update_lever_config_with_analysis(LeverConfig.t(), map(), map()) ::
           {:ok, LeverConfig.t()} | {:error, term()}
@@ -293,24 +297,54 @@ defmodule Trenino.Train do
     config_attrs = Map.put(attrs, :lever_type, lever_type)
 
     Repo.transaction(fn ->
+      same_control? = updated_value_endpoint(config, attrs) == config.value_endpoint
+
       with {:ok, updated_config} <- update_lever_config(config, config_attrs),
-           :ok <- replace_notches(updated_config.id, suggested_notches) do
-        Repo.preload(updated_config, :notches)
+           :ok <- replace_notches(updated_config.id, suggested_notches, same_control?) do
+        Repo.preload(updated_config, :notches, force: true)
       else
         {:error, reason} -> Repo.rollback(reason)
       end
     end)
   end
 
-  defp replace_notches(lever_config_id, suggested_notches) do
+  defp updated_value_endpoint(%LeverConfig{} = config, attrs) do
+    Map.get(attrs, :value_endpoint, Map.get(attrs, "value_endpoint", config.value_endpoint))
+  end
+
+  defp replace_notches(lever_config_id, suggested_notches, same_control?) do
+    existing =
+      Notch
+      |> where([n], n.lever_config_id == ^lever_config_id)
+      |> order_by([n], asc: n.index)
+      |> Repo.all()
+
+    hardware_ranges =
+      if same_control?, do: carried_hardware_ranges(existing, suggested_notches), else: %{}
+
     Notch
     |> where([n], n.lever_config_id == ^lever_config_id)
     |> Repo.delete_all()
 
-    create_notches_from_suggestions(lever_config_id, suggested_notches)
+    create_notches_from_suggestions(lever_config_id, suggested_notches, hardware_ranges)
   end
 
-  defp create_notches_from_suggestions(lever_config_id, suggested_notches) do
+  # Hardware ranges survive only when the notch layout is unchanged
+  defp carried_hardware_ranges(existing, suggested_notches) do
+    same_layout? =
+      length(existing) == length(suggested_notches) and
+        existing
+        |> Enum.zip(Enum.sort_by(suggested_notches, &(&1[:index] || 0)))
+        |> Enum.all?(fn {%Notch{type: type}, suggestion} -> suggestion[:type] == type end)
+
+    if same_layout? do
+      Map.new(existing, &{&1.index, %{input_min: &1.input_min, input_max: &1.input_max}})
+    else
+      %{}
+    end
+  end
+
+  defp create_notches_from_suggestions(lever_config_id, suggested_notches, hardware_ranges \\ %{}) do
     results =
       Enum.map(suggested_notches, fn notch ->
         # The analyzer's input_min/input_max represent the simulator's InputValue range
@@ -328,6 +362,8 @@ defmodule Trenino.Train do
           sim_input_max: notch[:input_max],
           description: notch[:description]
         }
+
+        attrs = Map.merge(attrs, Map.get(hardware_ranges, attrs.index, %{}))
 
         %Notch{lever_config_id: lever_config_id}
         |> Notch.changeset(attrs)
@@ -371,7 +407,7 @@ defmodule Trenino.Train do
       with :ok <- insert_notches(lever_config.id, notches),
            {:ok, updated_config} <-
              update_lever_config(lever_config, %{calibrated_at: DateTime.utc_now()}) do
-        Repo.preload(updated_config, :notches)
+        Repo.preload(updated_config, :notches, force: true)
       else
         {:error, reason} -> Repo.rollback(reason)
       end

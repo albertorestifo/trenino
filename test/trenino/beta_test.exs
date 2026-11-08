@@ -36,7 +36,7 @@ defmodule Trenino.BetaTest do
       Application.put_env(:trenino, :beta_features, :setting)
 
       names = Enum.map(ToolRegistry.list_tools(), & &1.name)
-      assert length(names) == 47
+      assert length(names) == 53
       refute "get_selector" in names
       refute "list_stepper_axes" in names
 
@@ -48,7 +48,7 @@ defmodule Trenino.BetaTest do
       Application.put_env(:trenino, :beta_features, :setting)
       {:ok, _} = Settings.set_beta_features(:enabled)
 
-      assert length(ToolRegistry.list_tools()) == 66
+      assert length(ToolRegistry.list_tools()) == 72
     end
   end
 end

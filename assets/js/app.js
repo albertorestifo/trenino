@@ -75,6 +75,29 @@ function normalizeKey(code) {
 
 // Custom hooks for LiveView
 const Hooks = {
+  // Copies data-copy-text to the clipboard and briefly shows data-copied-label
+  // in the element's [data-label] child.
+  CopyToClipboard: {
+    mounted() {
+      this.handleClick = async () => {
+        const label = this.el.querySelector("[data-label]")
+        const original = label ? label.textContent : null
+        try {
+          await navigator.clipboard.writeText(this.el.dataset.copyText || "")
+          if (label) label.textContent = this.el.dataset.copiedLabel || "Copied"
+        } catch (_error) {
+          if (label) label.textContent = "Copy failed: select the prompt below"
+        }
+        clearTimeout(this.timer)
+        this.timer = setTimeout(() => { if (label) label.textContent = original }, 2500)
+      }
+      this.el.addEventListener("click", this.handleClick)
+    },
+    destroyed() {
+      clearTimeout(this.timer)
+      this.el.removeEventListener("click", this.handleClick)
+    }
+  },
   AutoDismiss: {
     mounted() {
       const delay = parseInt(this.el.dataset.dismissAfter || "5000")

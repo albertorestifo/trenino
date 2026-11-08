@@ -24,11 +24,29 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   also available through new MCP tools (`get_selector`,
   `configure_selector`, `set_selector_even_split`, `delete_selector`), and
   `list_device_inputs` now reports whether an input is calibrated.
+- Lever setup can be done by an AI assistant, and blends with the wizard.
+  New MCP tools (`list_simulator_levers`, `get_lever`, `set_lever_endpoint`,
+  `calibrate_lever`, `bind_lever_input`, `open_lever_setup`) let an
+  assistant find the simulator lever by its in-game role, calibrate it, bind
+  your hardware input, and then open the Lever Setup Wizard at the step that
+  needs you: mapping the physical notches. The wizard's "Find in Simulator"
+  step suggests matching levers on its own and has an "Ask AI" button that
+  copies a ready-made prompt.
 - A quiet footer at the bottom of every page links to the Trenino Discord
   community, for questions, ideas and sharing setups.
 
 ### Changed
 
+- Lever calibration finds notches the way drivers feel them, tested on
+  trains from the UK, Germany, Austria and the US. The ends of a brake or
+  power range ("Max Brake", "Min Power") are part of the range instead of
+  separate notches, power steps inside one simulator notch become separate
+  notches, gates such as Emergency are always reached, and notches are named
+  as in the game ("Emergency", "Brake", "N3"). Calibration warns when part of
+  the lever was blocked (for example power while the reverser is in neutral)
+  or a position springs back. It refuses to start while the train moves,
+  stops if the train speeds up, always puts the lever back where it was,
+  and keeps your notch mapping when the notches did not change.
 - Stepper-motor gauges, such as speedometers, are now a beta feature. Turn
   on "Enable beta features" on the Settings page to see the Gauges and Gauge
   bindings sections and the gauge MCP tools. Gauges already set up keep

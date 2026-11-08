@@ -61,6 +61,14 @@ An exact identifier can belong to only one train profile. If prefixes from diffe
 
 Each lever needs API endpoints to communicate with the simulator.
 
+### Suggested Levers
+
+With the train loaded, the wizard's **Find in Simulator** step lists the
+simulator levers that match the element's name, using each lever's in-game
+role ("Throttle", "AutomaticBrake", "Reverser") and position names. Click one
+to use it. **Ask AI** copies a prompt for an assistant connected through
+[MCP](mcp-setup.md) to finish the endpoint and calibration steps for you.
+
 ### Auto-Detection
 
 1. With the train loaded in simulator, click **Auto-Detect** on the lever
@@ -95,9 +103,13 @@ Many train controls have discrete positions (notches). Trenino supports both con
 
 ### Auto-Detecting Notches
 
-1. Click **Auto-Detect** on a configured lever
-2. Trenino reads notch data from the simulator
-3. Notch positions and types are automatically set
+1. Stop the train and apply the brake, then start calibration
+2. Trenino moves the lever through its range in the game and reads what it does
+3. Notches are set and named as in the game; the lever goes back where it was
+
+Calibration stops if the train starts moving. Set the train up as if to drive
+(for example the reverser out of neutral), or some notches may be blocked;
+Trenino warns when that happens.
 
 ### Notch Mapping Wizard
 

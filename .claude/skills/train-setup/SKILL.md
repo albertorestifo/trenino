@@ -20,10 +20,20 @@ Tool schemas carry parameters, modes and operators. This skill covers the order 
 3. **Discover controls.** Explore `list_simulator_endpoints` breadth-first from `CurrentDrivableActor`. Names vary by train (for example `Throttle(Lever)`), so never assume them.
 4. **Create elements.** Use `lever` for analog controls, `button` for digital ones, and `selector` for a potentiometer that acts as a multi-position switch (for example a lights selector).
 5. **Bind inputs.** Use `detect_hardware_input` rather than asking for IDs, one call at a time.
-6. **Bind buttons** with `create_button_binding`. Send levers to the Lever Setup Wizard in the UI, because lever binding and calibration are UI-only.
+6. **Bind buttons** with `create_button_binding`. Set up levers with the lever tools (see Levers below).
 7. **Configure selectors** with `configure_selector`. The input must be an analog input with `calibrated: true` in `list_device_inputs`; calibration is UI-only. List positions in the order the knob passes through them. Omit ranges for an even split, or ask the user to capture detents in the selector setup in the UI when the knob's detents are uneven. Each position has an enter and an exit action (`set_value`, `sequence`, `keystroke`, or the default `none`).
 8. **Add optional behaviour:** output bindings, I2C modules with display bindings, sequences, Lua scripts, or virtual joystick mappings.
 9. **Test with the user.** After each binding, debug with `get_simulator_value` and `set_simulator_value`.
+
+## Levers
+
+1. `list_simulator_levers` with `match` set to the element's name. Match by `role` (`Throttle`, `AutomaticBrake`, `IndependentBrake`, `DynamicBrake`, `Reverser`), not by node name. On twin-cab trains use the `_F` control unless the user says otherwise.
+2. `set_lever_endpoint` with the chosen `control_path`.
+3. `calibrate_lever` only after the user agrees: it moves the lever in the game and can move the train. Ask them to stop the train, apply the train brake, and set the train up as if to drive (reverser out of neutral), or power notches may be blocked. Tell the user every returned warning and the notch names it found.
+4. `bind_lever_input` with an analog input from `detect_hardware_input`. The input must be calibrated (UI-only).
+5. `open_lever_setup` to hand over. Mapping the physical notches needs the user; `get_lever.next_step` says what is left.
+
+Recalibrating keeps the notch mapping when the notches did not change.
 
 ## Selectors
 

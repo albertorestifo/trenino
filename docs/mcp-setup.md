@@ -158,6 +158,7 @@ Claude has access to dozens of tools for interacting with Trenino (the client li
 | Elements | List, create, delete buttons, levers and selectors |
 | Devices | List devices, list inputs, list outputs; list, create, update, delete I2C modules |
 | Detection | Detect hardware inputs (button/lever) |
+| Levers | List simulator levers, get, link to a simulator lever, calibrate, bind input, open the Lever Setup Wizard |
 | Output Bindings | List, create, update, delete |
 | Button Bindings | Get, create, update, delete |
 | Selectors | Get, configure, split evenly, delete |

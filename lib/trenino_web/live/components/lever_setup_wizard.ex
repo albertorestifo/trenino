@@ -30,9 +30,12 @@ defmodule TreninoWeb.LeverSetupWizard do
   require Logger
 
   alias Trenino.Hardware
+  alias Trenino.Simulator.ControlDetector
+  alias Trenino.Simulator.LeverMetadata
   alias Trenino.Train
   alias Trenino.Train.Calibration.NotchMappingSession
   alias Trenino.Train.Element
+  alias Trenino.Train.LeverSetup
   alias TreninoWeb.LeverVisualization
 
   # Steps for new lever setup (includes explanation step)
@@ -71,7 +74,9 @@ defmodule TreninoWeb.LeverSetupWizard do
       if socket.assigns.initialized do
         socket
       else
-        initialize_wizard(socket, element)
+        socket
+        |> initialize_wizard(element)
+        |> apply_initial_step(Map.get(assigns, :initial_step))
       end
 
     # Handle forwarded events from parent
@@ -121,6 +126,10 @@ defmodule TreninoWeb.LeverSetupWizard do
     |> assign(:calibration_status, :idle)
     |> assign(:calibration_progress, 0.0)
     |> assign(:calibration_error, nil)
+    |> assign(:calibration_warnings, [])
+    |> assign(:suggestions, [])
+    |> assign(:suggestions_status, :idle)
+    |> assign(:ai_prompt, ai_prompt(element))
     |> assign(:selected_lever_type, nil)
     |> assign(:lever_type, get_existing_lever_type(existing_config))
     |> assign(:notches, get_existing_notches(existing_config))
@@ -136,6 +145,27 @@ defmodule TreninoWeb.LeverSetupWizard do
     |> assign(:steps_configured, compute_configured_steps(existing_config, existing_input_id))
     |> assign(:initialized, true)
   end
+
+  # Deep links (`?lever=ID&step=STEP`) open the wizard at a later step. A
+  # step that is not available for this lever is ignored. Calibration is never
+  # started from a link, because it moves the lever in the game.
+  @linkable_steps [:select_input, :find_endpoint, :map_notches]
+
+  defp apply_initial_step(socket, step) when step in @linkable_steps do
+    if step in socket.assigns.steps do
+      socket = assign(socket, selected_lever_type: :analog, current_step: step)
+
+      case step do
+        :map_notches -> start_notch_mapping(socket)
+        :find_endpoint -> maybe_load_suggestions(socket)
+        _ -> socket
+      end
+    else
+      socket
+    end
+  end
+
+  defp apply_initial_step(socket, _step), do: socket
 
   defp get_existing_lever_type(nil), do: nil
   defp get_existing_lever_type(%{lever_type: lever_type}), do: lever_type
@@ -358,7 +388,7 @@ defmodule TreninoWeb.LeverSetupWizard do
           socket
       end
 
-    {:noreply, assign(socket, :current_step, next_step)}
+    {:noreply, socket |> assign(:current_step, next_step) |> maybe_load_suggestions()}
   end
 
   @impl true
@@ -376,7 +406,21 @@ defmodule TreninoWeb.LeverSetupWizard do
           socket
       end
 
-    {:noreply, assign(socket, :current_step, prev_step)}
+    {:noreply, socket |> assign(:current_step, prev_step) |> maybe_load_suggestions()}
+  end
+
+  @impl true
+  def handle_event("use_suggestion", %{"path" => path}, socket) do
+    if Enum.any?(socket.assigns.suggestions, &(&1.lever.control_path == path)) do
+      endpoints = path |> LeverSetup.endpoints_for() |> Map.put(:node_path, path)
+
+      {:noreply,
+       socket
+       |> assign(:detected_endpoints, endpoints)
+       |> maybe_invalidate_for_endpoint_change(endpoints)}
+    else
+      {:noreply, socket}
+    end
   end
 
   @impl true
@@ -405,6 +449,7 @@ defmodule TreninoWeb.LeverSetupWizard do
         |> maybe_stop_mapping_session_if_leaving()
         |> assign(:current_step, step)
         |> maybe_start_step_resources(step)
+        |> maybe_load_suggestions()
 
       {:noreply, socket}
     else
@@ -545,6 +590,53 @@ defmodule TreninoWeb.LeverSetupWizard do
 
   defp filter_inputs_for_type(inputs, _), do: Enum.filter(inputs, &(&1.input_type == :analog))
 
+  # Suggest simulator levers for this element when the user reaches the
+  # "Find in Simulator" step. Reading every lever takes a few seconds, so it
+  # runs in the background and only once per wizard.
+  defp maybe_load_suggestions(
+         %{assigns: %{current_step: :find_endpoint, suggestions_status: :idle}} = socket
+       ) do
+    client = socket.assigns.client
+    name = socket.assigns.element.name
+
+    socket
+    |> assign(:suggestions_status, :loading)
+    |> start_async(:lever_suggestions, fn -> ControlDetector.suggest_levers(client, name) end)
+  end
+
+  defp maybe_load_suggestions(socket), do: socket
+
+  @impl true
+  def handle_async(:lever_suggestions, {:ok, {:ok, suggestions}}, socket) do
+    {:noreply, assign(socket, suggestions: suggestions, suggestions_status: :loaded)}
+  end
+
+  def handle_async(:lever_suggestions, result, socket) do
+    Logger.warning("Lever suggestions failed: #{inspect(result)}")
+    {:noreply, assign(socket, suggestions: [], suggestions_status: :failed)}
+  end
+
+  # A prompt for the user's AI assistant (connected through Trenino's MCP
+  # server) to take over the endpoint and calibration steps.
+  defp ai_prompt(element) do
+    train_name =
+      case Train.get_train(element.train_id) do
+        {:ok, train} -> train.name
+        _ -> "this train"
+      end
+
+    ~s(In Trenino, set up the lever "#{element.name}" of the train "#{train_name}" ) <>
+      "(train_id #{element.train_id}, element_id #{element.id}). Use list_simulator_levers " <>
+      ~s(with match "#{element.name}" to find the simulator lever, then set_lever_endpoint. ) <>
+      "Ask me before calibrate_lever, because it moves the lever in the game, and tell me " <>
+      "any warnings it returns. Then call open_lever_setup so I can finish in Trenino."
+  end
+
+  defp selected_path?(%{value_endpoint: endpoint}, path) when is_binary(endpoint),
+    do: endpoint == path <> ".InputValue"
+
+  defp selected_path?(_endpoints, _path), do: false
+
   # Stop mapping session if leaving :map_notches step
   defp maybe_stop_mapping_session_if_leaving(socket) do
     if socket.assigns.current_step == :map_notches do
@@ -600,11 +692,18 @@ defmodule TreninoWeb.LeverSetupWizard do
     assign(socket, :calibration_status, :running)
   end
 
+  defp apply_calibration_result(socket, {:ok, %{lever_config: config, analysis: analysis}}) do
+    socket
+    |> apply_calibration_result({:ok, config})
+    |> assign(:calibration_warnings, analysis.warnings)
+  end
+
   defp apply_calibration_result(socket, {:ok, updated_config}) do
-    config_with_notches = Trenino.Repo.preload(updated_config, :notches)
+    config_with_notches = Trenino.Repo.preload(updated_config, :notches, force: true)
 
     socket
     |> assign(:calibration_status, :complete)
+    |> assign(:calibration_warnings, [])
     |> assign(:notches, config_with_notches.notches)
     |> assign(:lever_type, updated_config.lever_type)
     # Clear run_calibration from needs_redo since calibration completed
@@ -979,6 +1078,10 @@ defmodule TreninoWeb.LeverSetupWizard do
       client={@socket_assigns.client}
       detected_endpoints={@socket_assigns.detected_endpoints}
       show_auto_detect={@socket_assigns.show_auto_detect}
+      suggestions={@socket_assigns.suggestions}
+      suggestions_status={@socket_assigns.suggestions_status}
+      ai_prompt={@socket_assigns.ai_prompt}
+      element_id={@socket_assigns.element.id}
       can_proceed={can_proceed_from?(:find_endpoint, @socket_assigns)}
       myself={@myself}
     />
@@ -997,6 +1100,7 @@ defmodule TreninoWeb.LeverSetupWizard do
       calibration_status={@socket_assigns.calibration_status}
       calibration_progress={@socket_assigns.calibration_progress}
       calibration_error={@socket_assigns.calibration_error}
+      calibration_warnings={@socket_assigns.calibration_warnings}
       lever_type={@socket_assigns.lever_type}
       notches={@socket_assigns.notches}
       can_proceed={can_proceed_from?(:run_calibration, @socket_assigns)}
@@ -1127,6 +1231,10 @@ defmodule TreninoWeb.LeverSetupWizard do
   attr :client, :any, required: true
   attr :detected_endpoints, :map, default: nil
   attr :show_auto_detect, :boolean, default: false
+  attr :suggestions, :list, default: []
+  attr :suggestions_status, :atom, default: :idle
+  attr :ai_prompt, :string, required: true
+  attr :element_id, :integer, required: true
   attr :can_proceed, :boolean, required: true
   attr :myself, :any, required: true
 
@@ -1151,6 +1259,75 @@ defmodule TreninoWeb.LeverSetupWizard do
         <p class="text-xs text-muted mt-1">
           Move the lever in the simulator to detect it, or browse the API tree below
         </p>
+      </div>
+
+      <div id="lever-suggestions" class="px-4 py-3 border-b border-base-300 space-y-2">
+        <div class="flex items-center justify-between gap-2">
+          <h6 class="text-sm font-medium">Suggested levers</h6>
+          <div class="flex items-center gap-2">
+            <button
+              id={"ask-ai-#{@element_id}"}
+              type="button"
+              phx-hook="CopyToClipboard"
+              phx-update="ignore"
+              data-copy-text={@ai_prompt}
+              data-copied-label="Prompt copied"
+              class="btn btn-ghost btn-xs text-xs"
+            >
+              <.icon name="hero-chat-bubble-left-right" class="w-4 h-4" />
+              <span data-label>Ask AI</span>
+            </button>
+          </div>
+        </div>
+
+        <p :if={@suggestions_status == :loading} class="text-xs text-muted flex items-center gap-2">
+          <.icon name="hero-arrow-path-mini" class="w-4 h-4 motion-safe:animate-spin" />
+          Reading the train's levers…
+        </p>
+
+        <p
+          :if={@suggestions_status in [:loaded, :failed] and @suggestions == []}
+          class="text-xs text-muted"
+        >
+          No lever matches this element's name. Use Auto-Detect or browse below.
+        </p>
+
+        <div :if={@suggestions != []} class="grid gap-2">
+          <button
+            :for={%{lever: lever} <- @suggestions}
+            type="button"
+            phx-click="use_suggestion"
+            phx-value-path={lever.control_path}
+            phx-target={@myself}
+            aria-pressed={to_string(selected_path?(@detected_endpoints, lever.control_path))}
+            class={[
+              "text-left rounded-lg border px-3 py-2 transition-colors",
+              if(selected_path?(@detected_endpoints, lever.control_path),
+                do: "border-primary bg-primary/10",
+                else: "border-base-300 hover:border-base-content/30"
+              )
+            ]}
+          >
+            <div class="flex items-center justify-between gap-2">
+              <span class="font-mono text-sm truncate">{lever.node_name}</span>
+              <span :if={lever.role} class="badge badge-ghost badge-sm text-xs">{lever.role}</span>
+            </div>
+            <p :if={LeverMetadata.label_summary(lever) != ""} class="text-xs text-muted truncate">
+              {LeverMetadata.label_summary(lever)}
+            </p>
+          </button>
+        </div>
+
+        <details class="text-xs">
+          <summary class="text-muted cursor-pointer">
+            Let your AI assistant set this lever up
+          </summary>
+          <p class="text-muted mt-1">
+            Ask AI copies this prompt. Paste it into an assistant connected to Trenino's MCP
+            server; it picks the lever, calibrates it after asking you, and brings you back here.
+          </p>
+          <p class="mt-1 p-2 bg-base-200 rounded select-all">{@ai_prompt}</p>
+        </details>
       </div>
 
       <div class="flex-1 overflow-hidden flex flex-col">
@@ -1254,6 +1431,7 @@ defmodule TreninoWeb.LeverSetupWizard do
   attr :calibration_status, :atom, required: true
   attr :calibration_progress, :float, required: true
   attr :calibration_error, :string, default: nil
+  attr :calibration_warnings, :list, default: []
   attr :lever_type, :atom, default: nil
   attr :notches, :list, default: []
   attr :can_proceed, :boolean, required: true
@@ -1272,7 +1450,8 @@ defmodule TreninoWeb.LeverSetupWizard do
             Sweeping through lever positions and reading values.
           </p>
           <p class="text-sm text-muted mt-2">
-            This may take 10-15 seconds
+            This can take up to a minute. The lever moves in the game, and it stops
+            if the train starts moving.
           </p>
         </div>
 
@@ -1306,6 +1485,15 @@ defmodule TreninoWeb.LeverSetupWizard do
                 {format_notch_value(notch)}
               </span>
             </div>
+          </div>
+
+          <div
+            :for={warning <- @calibration_warnings}
+            role="alert"
+            class="alert alert-warning text-left text-sm mt-3"
+          >
+            <.icon name="hero-exclamation-triangle" class="w-5 h-5 shrink-0" />
+            <span>{warning}</span>
           </div>
         </div>
 
@@ -1348,6 +1536,17 @@ defmodule TreninoWeb.LeverSetupWizard do
 
   defp format_calibration_error(:no_control_path),
     do: "Trenino could not find this lever in the simulator. Go back and pick the endpoint again."
+
+  defp format_calibration_error(:train_not_stopped),
+    do: "The train is moving. Stop it, then go back and try again."
+
+  defp format_calibration_error(:train_moving),
+    do:
+      "The train started moving, so calibration stopped and the lever was put back. " <>
+        "Apply the train brake or a handbrake, then go back and try again."
+
+  defp format_calibration_error(:calibration_running),
+    do: "This lever is already being calibrated. Wait for it to finish, then try again."
 
   defp format_calibration_error(:insufficient_samples),
     do:

@@ -80,6 +80,9 @@ config :trenino, :detection_grace_period_ms, 200
 config :trenino, :connection_initial_delay_ms, 0
 
 config :trenino, :virtual_joystick_bridge_timeout_ms, 100
+
+# No settling delays when lever sweeps run against stubbed simulators
+config :trenino, :lever_analyzer, settling_time_ms: 0, push_delay_ms: 0
 config :trenino, :start_virtual_joystick_manager, false
 
 # Shorter call timeout in tests so port-timeout tests don't wait the full

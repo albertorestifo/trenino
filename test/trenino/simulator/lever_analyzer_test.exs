@@ -15,7 +15,7 @@ defmodule Trenino.Simulator.LeverAnalyzerTest do
   @api_key "test-api-key"
 
   # Use settling_time_ms: 0 to avoid slow sleeps in tests
-  @fast_opts [settling_time_ms: 0]
+  @fast_opts [settling_time_ms: 0, push_delay_ms: 0]
 
   setup :verify_on_exit!
 
@@ -133,14 +133,14 @@ defmodule Trenino.Simulator.LeverAnalyzerTest do
       assert length(result.zones) == 8
     end
 
-    test "returns error when insufficient samples are collected" do
+    test "refuses to sweep when the lever's position cannot be read" do
       client = Client.new(@base_url, @api_key)
 
       stub(Req, :request, fn _req, _opts ->
         {:error, %Req.TransportError{reason: :econnrefused}}
       end)
 
-      assert {:error, :insufficient_samples} =
+      assert {:error, :position_unreadable} =
                LeverAnalyzer.analyze(client, "CurrentDrivableActor/TestLever", @fast_opts)
     end
   end

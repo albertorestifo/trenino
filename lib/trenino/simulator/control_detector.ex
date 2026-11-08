@@ -2,13 +2,15 @@ defmodule Trenino.Simulator.ControlDetector do
   @moduledoc """
   Detects and suggests train controls from the TSW API.
 
-  Analyzes the CurrentDrivableActor to find lever and button controls,
-  classifies them based on their available endpoints, and matches them
-  to element names using fuzzy string matching.
+  Analyzes the CurrentDrivableActor to find lever and button controls and
+  matches them to element names.
 
   ## Control Detection
 
-  - **Levers**: Controls with `Function.GetNotchCount` endpoint
+  - **Levers**: Controls with `Function.GetNotchCount` endpoint, read through
+    `Trenino.Simulator.LeverMetadata`. They are matched by their in-game role
+    (`Property.InputIdentifier`, e.g. "Throttle" or "AutomaticBrake") first,
+    and by node name second.
   - **Buttons**: Controls with `Property.bDefaultToPressed` endpoint
 
   ## Endpoint Patterns
@@ -28,16 +30,9 @@ defmodule Trenino.Simulator.ControlDetector do
 
   alias Trenino.Simulator.Client
   alias Trenino.Simulator.Connection
+  alias Trenino.Simulator.LeverMetadata
 
-  @type lever_suggestion :: %{
-          control_name: String.t(),
-          min_endpoint: String.t(),
-          max_endpoint: String.t(),
-          value_endpoint: String.t(),
-          notch_count_endpoint: String.t() | nil,
-          notch_index_endpoint: String.t() | nil,
-          confidence: float()
-        }
+  @type lever_suggestion :: %{lever: LeverMetadata.t(), score: float()}
 
   @type button_suggestion :: %{
           control_name: String.t(),
@@ -45,51 +40,125 @@ defmodule Trenino.Simulator.ControlDetector do
           confidence: float()
         }
 
-  @doc """
-  Suggests a lever control matching the given element name.
+  # Words in an element name that point at a lever role, with their weight.
+  # "brake" alone means the train brake; other brakes need their own word.
+  @role_keywords %{
+    "Throttle" => %{
+      "throttle" => 1.0,
+      "power" => 1.0,
+      "master" => 0.8,
+      "controller" => 0.8,
+      "traction" => 0.8,
+      "combined" => 0.8,
+      "notch" => 0.6,
+      "brake" => 0.3
+    },
+    "AutomaticBrake" => %{"brake" => 0.9, "train" => 1.0, "automatic" => 1.0, "air" => 0.8},
+    "TrainBrake" => %{"brake" => 0.9, "train" => 1.0},
+    "IndependentBrake" => %{
+      "independent" => 1.0,
+      "loco" => 1.0,
+      "locomotive" => 1.0,
+      "direct" => 1.0,
+      "engine" => 0.8,
+      "brake" => 0.5
+    },
+    "DynamicBrake" => %{"dynamic" => 1.0, "regen" => 1.0, "regenerative" => 1.0, "brake" => 0.4},
+    "Reverser" => %{"reverser" => 1.0, "direction" => 1.0, "reverse" => 0.8, "forward" => 0.6}
+  }
 
-  Returns the best matching lever control from CurrentDrivableActor if found.
+  @min_lever_score 0.3
+
+  @doc """
+  Suggests simulator levers for an element, best match first.
+
+  Each lever is scored by how well the element name matches its in-game role
+  ("Power Handle" → "Throttle", "Train Brake" → "AutomaticBrake") or its node
+  name. Levers below #{@min_lever_score} are left out. Front-cab controls rank
+  above rear-cab ones.
 
   ## Examples
 
-      iex> ControlDetector.suggest_lever("Throttle")
-      {:ok, %{
-        control_name: "Throttle(Lever)",
-        min_endpoint: "CurrentDrivableActor/Throttle(Lever).Function.GetMinimumInputValue",
-        max_endpoint: "CurrentDrivableActor/Throttle(Lever).Function.GetMaximumInputValue",
-        value_endpoint: "CurrentDrivableActor/Throttle(Lever).InputValue",
-        notch_count_endpoint: "CurrentDrivableActor/Throttle(Lever).Function.GetNotchCount",
-        notch_index_endpoint: "CurrentDrivableActor/Throttle(Lever).Function.GetCurrentNotchIndex",
-        confidence: 0.95
-      }}
-
-      iex> ControlDetector.suggest_lever("Unknown")
-      {:error, :no_match}
+      iex> ControlDetector.suggest_levers(client, "Throttle")
+      {:ok, [%{lever: %LeverMetadata{control_path: "CurrentDrivableActor/Throttle_F"}, score: 1.0}]}
 
   """
-  @spec suggest_lever(String.t()) :: {:ok, lever_suggestion()} | {:error, term()}
-  def suggest_lever(element_name) when is_binary(element_name) do
-    with {:ok, client} <- get_client(),
-         {:ok, controls} <- list_controls(client),
-         {:ok, levers} <- detect_levers(client, controls) do
-      case find_best_match(element_name, levers) do
-        {lever, confidence} when confidence > 0.3 ->
-          {:ok,
-           %{
-             control_name: lever.name,
-             min_endpoint: lever.min_endpoint,
-             max_endpoint: lever.max_endpoint,
-             value_endpoint: lever.value_endpoint,
-             notch_count_endpoint: lever.notch_count_endpoint,
-             notch_index_endpoint: lever.notch_index_endpoint,
-             confidence: confidence
-           }}
-
-        _ ->
-          {:error, :no_match}
-      end
+  @spec suggest_levers(Client.t(), String.t(), pos_integer()) ::
+          {:ok, [lever_suggestion()]} | {:error, term()}
+  def suggest_levers(%Client{} = client, element_name, limit \\ 3) when is_binary(element_name) do
+    with {:ok, levers} <- LeverMetadata.list_levers(client) do
+      {:ok, rank_levers(levers, element_name, limit)}
     end
   end
+
+  @doc """
+  Ranks already-read levers for an element name. See `suggest_levers/3`.
+  """
+  @spec rank_levers([LeverMetadata.t()], String.t(), pos_integer()) :: [lever_suggestion()]
+  def rank_levers(levers, element_name, limit \\ 3) do
+    words = element_name |> String.downcase() |> split_into_words()
+    name = String.downcase(element_name)
+
+    levers
+    |> Enum.with_index()
+    |> Enum.map(fn {lever, order} ->
+      score = max(role_score(lever.role, name, words), 0.9 * name_score(name, lever.node_name))
+      {%{lever: lever, score: Float.round(score, 2)}, order}
+    end)
+    |> Enum.filter(fn {%{score: score}, _} -> score >= @min_lever_score end)
+    |> Enum.sort_by(fn {%{score: score}, order} -> {-score, order} end)
+    |> Enum.take(limit)
+    |> Enum.map(&elem(&1, 0))
+  end
+
+  defp role_score(nil, _name, _words), do: 0.0
+
+  defp role_score(role, name, words) do
+    weights = Map.get(@role_keywords, role, %{String.downcase(role) => 1.0})
+
+    cond do
+      String.downcase(role) == name -> 1.0
+      names_other_role?(role, weights, words) -> 0.0
+      true -> keyword_score(weights, words)
+    end
+  end
+
+  # "Independent brake" names the IndependentBrake role, so it must not match
+  # the train brake just because both contain "brake"
+  defp names_other_role?(role, weights, words) do
+    Enum.any?(words, fn word ->
+      Map.get(weights, word, 0.0) < 1.0 and
+        Enum.any?(@role_keywords, fn {other, other_weights} ->
+          other != role and Map.get(other_weights, word) == 1.0
+        end)
+    end)
+  end
+
+  defp keyword_score(weights, words) do
+    case words |> Enum.map(&Map.get(weights, &1, 0.0)) |> Enum.sort(:desc) do
+      [best, next | _] when next > 0 -> min(best + 0.1, 1.0)
+      [best | _] -> best
+      [] -> 0.0
+    end
+  end
+
+  # Only strong name matches count; fuzzy similarity alone is noise for levers
+  @min_name_score 0.7
+
+  defp name_score(_name, nil), do: 0.0
+
+  defp name_score(name, node_name) do
+    squashed_name = squash(name)
+
+    score =
+      if squashed_name != "" and String.contains?(squash(node_name), squashed_name),
+        do: 0.85,
+        else: calculate_confidence(name, node_name)
+
+    if score >= @min_name_score, do: score, else: 0.0
+  end
+
+  defp squash(text), do: text |> String.downcase() |> String.replace(~r/[^a-z0-9]/, "")
 
   @doc """
   Suggests a button control matching the given element name.
@@ -153,43 +222,6 @@ defmodule Trenino.Simulator.ControlDetector do
         Logger.warning("[ControlDetector] Failed to list controls: #{inspect(error)}")
         error
     end
-  end
-
-  # Detects lever controls by checking for notch count endpoint
-  defp detect_levers(%Client{} = client, controls) do
-    levers =
-      controls
-      |> Enum.filter(&is_binary/1)
-      |> Enum.map(fn control -> detect_lever(client, control) end)
-      |> Enum.filter(&(&1 != nil))
-
-    {:ok, levers}
-  end
-
-  # Checks if a control is a lever and extracts its endpoints
-  defp detect_lever(%Client{} = client, control_name) do
-    path = "CurrentDrivableActor/#{control_name}"
-
-    with {:ok, %{"Nodes" => endpoints}} when is_list(endpoints) <- Client.list(client, path),
-         true <- has_notch_count?(endpoints) do
-      %{
-        name: control_name,
-        min_endpoint: "#{path}.Function.GetMinimumInputValue",
-        max_endpoint: "#{path}.Function.GetMaximumInputValue",
-        value_endpoint: "#{path}.InputValue",
-        notch_count_endpoint: "#{path}.Function.GetNotchCount",
-        notch_index_endpoint: "#{path}.Function.GetCurrentNotchIndex"
-      }
-    else
-      _ -> nil
-    end
-  end
-
-  # Checks if the control has a notch count endpoint (lever indicator)
-  defp has_notch_count?(endpoints) do
-    Enum.any?(endpoints, fn endpoint ->
-      is_binary(endpoint) and String.contains?(endpoint, "Function.GetNotchCount")
-    end)
   end
 
   # Detects button controls by checking for bDefaultToPressed property

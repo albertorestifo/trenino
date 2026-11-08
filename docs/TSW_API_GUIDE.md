@@ -168,6 +168,39 @@ The player's currently driven vehicle. Contains all controls and simulation data
 
 > **Note**: Control names vary between trains. Always use `/list` to discover available controls.
 
+### Lever metadata
+
+Every lever node (any node answering `Function.GetNotchCount`) also exposes,
+without moving it:
+
+- `Property.InputIdentifier` → `{"identifier": "Throttle"}`. The control's
+  role (`Throttle`, `Reverser`, `AutomaticBrake`, `IndependentBrake`,
+  `DynamicBrake`, ...). Stable across trains, unlike node names such as
+  `PowerHandle(IrregularLever)` or `MasterController`. `"None"` for minor
+  switches.
+- `Property.DisplayInfo` → `namedValues`: the names the game shows, each with
+  a `valueSource` (`Output` or `Input`) and a `valueRange`. Ranges can be
+  zero-width (`N3` at `[3, 3]`) and can overlap. Names can be templates
+  (`{BrakePercent} Brake`, `B{BrakeText}`).
+- `Function.GetMinimum/MaximumInputValue`, `Function.GetMinimum/MaximumOutputValue`,
+  `Property.DefaultInputValue`.
+
+`Function.CalcTargetOutputValue` and similar ignore query parameters, so the
+input position of each notch can only be found by moving the lever.
+
+### Moving levers
+
+- A single `PATCH` often stops in front of a gate (for example Emergency).
+  Setting the same value several times in a row engages it.
+- The simulator gives the ends of a range ("Max Brake", "Min Power") their
+  own notch index and snaps nearby inputs onto them.
+- Interlocks can block part of a lever: with the reverser in neutral, some
+  trains keep the power handle at Off.
+- Spring-loaded positions (for example a brake's "Release") cannot be held:
+  the lever returns to the next position.
+- Moving a power lever moves the train. Check `Function.HUD_GetSpeed` (its
+  value key is `"Speed (ms)"`) before and during a sweep.
+
 ### WeatherManager
 
 Control weather conditions. All values range from 0 to 1.

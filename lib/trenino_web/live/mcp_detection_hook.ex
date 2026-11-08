@@ -3,6 +3,9 @@ defmodule TreninoWeb.MCPDetectionHook do
   LiveView on_mount hook that subscribes to MCP detection events
   and renders a detection modal overlay.
 
+  It also follows navigation requests from the MCP server
+  (`Trenino.UINavigation`), so the AI can bring the user to a page.
+
   Add to your router's live_session:
 
       live_session :default, on_mount: [{TreninoWeb.MCPDetectionHook, :default}] do
@@ -18,11 +21,14 @@ defmodule TreninoWeb.MCPDetectionHook do
   import Phoenix.LiveView
   import TreninoWeb.CoreComponents, only: [icon: 1]
 
+  alias Trenino.UINavigation
+
   @detection_topic "mcp:detection"
 
   def on_mount(:default, _params, _session, socket) do
     if connected?(socket) do
       Phoenix.PubSub.subscribe(Trenino.PubSub, @detection_topic)
+      UINavigation.subscribe()
     end
 
     socket =
@@ -41,9 +47,28 @@ defmodule TreninoWeb.MCPDetectionHook do
     {:halt, assign(socket, :mcp_detection, nil)}
   end
 
+  defp handle_mcp_detection({:ui_navigate, path, from, ref}, socket) do
+    if in_app_path?(path) do
+      UINavigation.ack(from, ref)
+      {:halt, push_navigate(socket, to: path)}
+    else
+      {:halt, socket}
+    end
+  end
+
   defp handle_mcp_detection(_msg, socket) do
     {:cont, socket}
   end
+
+  # Only paths inside the app, never another site ("//host", "/\\host", "https://...")
+  defp in_app_path?("/" <> _ = path) do
+    case URI.new(path) do
+      {:ok, %URI{scheme: nil, host: nil}} -> not String.contains?(path, ["\\", "//"])
+      _ -> false
+    end
+  end
+
+  defp in_app_path?(_path), do: false
 
   attr :detection, :map, default: nil
 

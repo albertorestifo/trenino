@@ -19,6 +19,7 @@ defmodule TreninoWeb.TrainEditLive do
   alias Trenino.Hardware
   alias Trenino.Hardware.ConfigurationManager
   alias Trenino.Serial.Connection
+  alias Trenino.Simulator
   alias Trenino.Simulator.Client, as: SimulatorClient
   alias Trenino.Simulator.ControlDetectionSession
   alias Trenino.Train, as: TrainContext
@@ -36,6 +37,7 @@ defmodule TreninoWeb.TrainEditLive do
   }
 
   alias Trenino.Train.LeverController
+  alias Trenino.Train.LeverSetup
   alias Trenino.Train.ScriptRunner
   alias TreninoWeb.SelectorWizard
   alias TreninoWeb.SequenceManagerComponent
@@ -105,6 +107,7 @@ defmodule TreninoWeb.TrainEditLive do
      |> assign(:config_wizard_mode, nil)
      |> assign(:config_wizard_event, nil)
      |> assign(:show_lever_setup_wizard, false)
+     |> assign(:lever_setup_initial_step, nil)
      |> assign(:show_selector_wizard, false)
      |> assign(:selector_wizard_element, nil)
      |> assign(:selector_inputs, [])
@@ -178,6 +181,7 @@ defmodule TreninoWeb.TrainEditLive do
          |> assign(:config_wizard_mode, nil)
          |> assign(:config_wizard_event, nil)
          |> assign(:show_lever_setup_wizard, false)
+         |> assign(:lever_setup_initial_step, nil)
          |> assign(:show_selector_wizard, false)
          |> assign(:selector_wizard_element, nil)
          |> assign(:selector_inputs, [])
@@ -212,6 +216,46 @@ defmodule TreninoWeb.TrainEditLive do
   end
 
   # Nav component events
+  # Deep link from the MCP server or the AI: /trains/:id?lever=ELEMENT_ID&step=STEP
+  @impl true
+  def handle_params(%{"lever" => lever_id} = params, _uri, socket) do
+    with true <- connected?(socket),
+         %Train{id: train_id} when is_integer(train_id) <- socket.assigns.train,
+         {element_id, ""} <- Integer.parse(lever_id),
+         {:ok, %Element{type: :lever, train_id: ^train_id}} <-
+           TrainContext.get_element(element_id) do
+      open_lever_from_link(socket, element_id, parse_wizard_step(params["step"]))
+    else
+      false -> {:noreply, socket}
+      _ -> {:noreply, put_flash(socket, :error, "That lever link is not valid for this train.")}
+    end
+  end
+
+  def handle_params(_params, _uri, socket), do: {:noreply, socket}
+
+  # NavHook loads the simulator status after mount, so ask the simulator directly
+  defp open_lever_from_link(socket, element_id, step) do
+    simulator_status = Simulator.get_status()
+
+    if simulator_status.status != :connected or simulator_status.client == nil do
+      {:noreply,
+       put_flash(
+         socket,
+         :error,
+         "Connect to the simulator, then click Configure on the lever to continue its setup."
+       )}
+    else
+      {:noreply, socket} = open_lever_config_wizard(socket, element_id)
+      {:noreply, assign(socket, :lever_setup_initial_step, step)}
+    end
+  end
+
+  defp parse_wizard_step(step) when is_binary(step) do
+    Enum.find(LeverSetup.wizard_steps(), &(Atom.to_string(&1) == step))
+  end
+
+  defp parse_wizard_step(_), do: nil
+
   @impl true
   def handle_event("nav_toggle_dropdown", _, socket) do
     {:noreply, assign(socket, :nav_dropdown_open, !socket.assigns.nav_dropdown_open)}
@@ -1149,6 +1193,7 @@ defmodule TreninoWeb.TrainEditLive do
      socket
      |> assign(:elements, elements)
      |> assign(:show_lever_setup_wizard, false)
+     |> assign(:lever_setup_initial_step, nil)
      |> assign(:lever_setup_element, nil)
      |> assign(:lever_setup_event, nil)
      |> put_flash(
@@ -1162,6 +1207,7 @@ defmodule TreninoWeb.TrainEditLive do
     {:noreply,
      socket
      |> assign(:show_lever_setup_wizard, false)
+     |> assign(:lever_setup_initial_step, nil)
      |> assign(:lever_setup_element, nil)
      |> assign(:lever_setup_event, nil)}
   end
@@ -1365,28 +1411,7 @@ defmodule TreninoWeb.TrainEditLive do
   end
 
   defp run_lever_calibration(client, control_path, element, config_params) do
-    alias Trenino.Simulator.LeverAnalyzer
-    alias Trenino.Train
-
-    case LeverAnalyzer.analyze(client, control_path, restore_position: nil) do
-      {:ok, analysis_result} ->
-        # Check database for existing config (not the stale preloaded data)
-        # This handles re-calibration within the same wizard session
-        case Train.get_lever_config(element.id) do
-          {:ok, existing_config} ->
-            Train.update_lever_config_with_analysis(
-              existing_config,
-              config_params,
-              analysis_result
-            )
-
-          {:error, :not_found} ->
-            Train.create_lever_config_with_analysis(element.id, config_params, analysis_result)
-        end
-
-      {:error, _reason} = error ->
-        error
-    end
+    LeverSetup.calibrate(client, element.id, control_path, endpoints: config_params)
   end
 
   defp open_config_wizard_for_element(socket, %Element{type: :lever} = element) do
@@ -1491,6 +1516,7 @@ defmodule TreninoWeb.TrainEditLive do
          socket
          |> assign(:show_lever_setup_wizard, true)
          |> assign(:lever_setup_element, element)
+         |> assign(:lever_setup_initial_step, nil)
          |> assign(:lever_setup_event, nil)}
 
       {:error, _} ->
@@ -1712,6 +1738,7 @@ defmodule TreninoWeb.TrainEditLive do
       module={TreninoWeb.LeverSetupWizard}
       id="lever-setup-wizard"
       element={@lever_setup_element}
+      initial_step={@lever_setup_initial_step}
       client={@nav_simulator_status.client}
       explorer_event={@lever_setup_event}
     />

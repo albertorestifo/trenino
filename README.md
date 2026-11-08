@@ -47,7 +47,7 @@ Build your own train controls with real throttle levers, brake handles, switches
 - **Physical stepper gauges** (beta) — drive real needle gauges with stepper motors and bind them to live simulator data such as speed or brake pressure ([stepper gauges guide](docs/stepper-gauges.md))
 - **Beta features** — features marked (beta) are still being tested; turn them on with "Enable beta features" on the Settings page
 - **Lua scripting** — write custom logic to flash warning LEDs, react to speed changes, automate sequences, and more ([scripting guide](docs/lua-scripting.md))
-- **AI-assisted setup** — describe what you want in plain language and let Claude configure your train via [MCP integration](docs/mcp-setup.md). With Trenino open, a coding agent such as Claude Code or Codex can set itself up when you ask it to "install the Trenino MCP" (setup guide for agents at `http://localhost:4000/llms.txt`, in releases newer than 0.8.2)
+- **AI-assisted setup** — describe what you want in plain language and let Claude configure your train via [MCP integration](docs/mcp-setup.md). Say "set lever A to throttle" and the assistant finds, calibrates and binds the lever, then opens the wizard for the one step that needs you. With Trenino open, a coding agent such as Claude Code or Codex can set itself up when you ask it to "install the Trenino MCP" (setup guide for agents at `http://localhost:4000/llms.txt`, in releases newer than 0.8.2)
 
 ## Getting Started
 
