@@ -14,7 +14,7 @@ defmodule Trenino.MCP.Tools.LeverTools do
   alias Trenino.Simulator.LeverMetadata
   alias Trenino.Simulator.LeverMetadata.Label
   alias Trenino.Train, as: TrainContext
-  alias Trenino.Train.{Element, LeverConfig, LeverInputBinding, LeverSetup, Notch}
+  alias Trenino.Train.{Element, LeverConfig, LeverInputBinding, LeverSetup, Notch, NotchDesign}
   alias Trenino.UINavigation
 
   @tool_names ~w(list_simulator_levers get_lever set_lever_endpoint calibrate_lever
@@ -48,7 +48,10 @@ defmodule Trenino.MCP.Tools.LeverTools do
         description:
           "Get a lever element's setup: its simulator control, notches, bound hardware input, " <>
             "and next_step (set_endpoint, calibrate, bind_input, map_notches or done) with " <>
-            "the reason.",
+            "the reason. Once calibrated, notch_disk_url opens the train-lever notch disk " <>
+            "generator with a disk designed from the notches (gates are detents, Emergency " <>
+            "and centre gates hold harder, ranges are smooth); give it to the user to " <>
+            "print a matching physical notch disk.",
         input_schema: %{
           type: "object",
           properties: %{element_id: @element_id},
@@ -74,10 +77,12 @@ defmodule Trenino.MCP.Tools.LeverTools do
         name: "calibrate_lever",
         description:
           "Sweep the lever's simulator control and save its notches, named from the game. " <>
-            "IMPORTANT: this moves the lever in the game and can apply power. Ask the user " <>
-            "first, and have the train stopped with the train brake applied. It refuses to " <>
-            "start while the train moves and stops if the train speeds up; the lever is put " <>
-            "back where it was. Takes up to a minute. Read the returned warnings to the user " <>
+            "IMPORTANT: this moves the lever in the game, applies power and will move the " <>
+            "train. It does not stop when the train moves, because some levers (such as a " <>
+            "combined power/brake handle) release the brake as they sweep. Before calling, " <>
+            "warn the user that the train will move and get their OK; ask them to apply the " <>
+            "train brake if the train has a separate one. The lever is put back where it was " <>
+            "at the end. Takes up to a minute. Read the returned warnings to the user " <>
             "(for example a range blocked by the reverser, or a spring-loaded position).",
         input_schema: %{
           type: "object",
@@ -152,7 +157,7 @@ defmodule Trenino.MCP.Tools.LeverTools do
       with {:ok, config} <- fetch_config(element_id),
            path when is_binary(path) <- LeverSetup.control_path(config),
            {:ok, %{analysis: analysis}} <-
-             LeverSetup.calibrate(client, element_id, path, analyzer: [require_speed_guard: true]),
+             LeverSetup.calibrate(client, element_id, path),
            {:ok, result} <- lever_result(element_id) do
         {:ok, Map.merge(result, %{lever_type: analysis.lever_type, warnings: analysis.warnings})}
       else
@@ -281,9 +286,19 @@ defmodule Trenino.MCP.Tools.LeverTools do
       lever_type: config && config.lever_type,
       calibrated_at: config && config.calibrated_at,
       notches: serialize_notches(config),
+      notch_disk_url: notch_disk_url(config, element.name),
       input: serialize_binding(config)
     }
   end
+
+  defp notch_disk_url(%LeverConfig{notches: [_ | _]} = config, name) do
+    case NotchDesign.generator_link(config, name) do
+      {:ok, url} -> url
+      {:error, _reason} -> nil
+    end
+  end
+
+  defp notch_disk_url(_config, _name), do: nil
 
   defp serialize_notches(%LeverConfig{notches: notches}) when is_list(notches) do
     notches
@@ -355,14 +370,6 @@ defmodule Trenino.MCP.Tools.LeverTools do
   defp error_message(:not_calibrated, _id),
     do: "That input is not calibrated. Ask the user to calibrate it on the Devices page first."
 
-  defp error_message(:train_not_stopped, _id),
-    do: "The train is moving. Ask the user to stop it, then try again."
-
-  defp error_message(:train_moving, _id),
-    do:
-      "The train started moving, so calibration stopped and the lever was put back. Ask the " <>
-        "user to apply the train brake or handbrake, then try again."
-
   defp error_message(:calibration_running, _id),
     do: "This lever is already being calibrated. Wait for it to finish."
 
@@ -371,11 +378,6 @@ defmodule Trenino.MCP.Tools.LeverTools do
 
   defp error_message(:invalid_step, _id),
     do: "step must be one of: select_input, find_endpoint, map_notches."
-
-  defp error_message(:speed_unavailable, _id),
-    do:
-      "The train's speed could not be read, so calibration did not start. Ask the user to " <>
-        "calibrate from the Lever Setup Wizard instead (open_lever_setup)."
 
   defp error_message(:position_unreadable, _id),
     do: "The lever's position could not be read, so calibration did not start. Try again."

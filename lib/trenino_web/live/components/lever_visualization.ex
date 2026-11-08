@@ -177,7 +177,9 @@ defmodule TreninoWeb.LeverVisualization do
       @is_active && "text-primary font-medium",
       not @is_active && "text-muted"
     ]}>
-      <div class="font-medium break-words" title={notch_name(@notch, @index)}>
+      <%!-- Truncate rather than break mid-word in narrow slots; the full name is in
+           the tooltip and in the current-notch panel. --%>
+      <div class="font-medium truncate" title={notch_name(@notch, @index)}>
         {notch_name(@notch, @index)}
       </div>
       <div :if={@captured_range} class="font-mono text-xs text-muted mt-0.5">

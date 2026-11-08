@@ -78,7 +78,7 @@ defmodule TreninoWeb.ConfigurationWizardComponentTest do
 
       # Click configure lever
       view
-      |> element("[phx-click='configure_lever'][phx-value-id='#{lever_element.id}']")
+      |> element("#configure-element-#{lever_element.id}")
       |> render_click()
 
       # Get full rendered HTML after click
@@ -132,7 +132,7 @@ defmodule TreninoWeb.ConfigurationWizardComponentTest do
       {:ok, view, _html} = live(conn, ~p"/trains/#{train.id}")
 
       view
-      |> element("[phx-click='configure_lever'][phx-value-id='#{lever_element.id}']")
+      |> element("#configure-element-#{lever_element.id}")
       |> render_click()
 
       # Wizard should NOT open when simulator is not connected
@@ -159,7 +159,7 @@ defmodule TreninoWeb.ConfigurationWizardComponentTest do
       {:ok, view, _html} = live(conn, ~p"/trains/#{train.id}")
 
       view
-      |> element("[phx-click='configure_lever'][phx-value-id='#{lever_element.id}']")
+      |> element("#configure-element-#{lever_element.id}")
       |> render_click()
 
       # Get full rendered HTML after click
@@ -296,7 +296,7 @@ defmodule TreninoWeb.ConfigurationWizardComponentTest do
 
       # Open wizard
       view
-      |> element("[phx-click='configure_lever'][phx-value-id='#{lever_element.id}']")
+      |> element("#configure-element-#{lever_element.id}")
       |> render_click()
 
       assert render(view) =~ "Configure Lever"

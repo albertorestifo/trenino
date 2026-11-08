@@ -39,6 +39,7 @@ Build your own train controls with real throttle levers, brake handles, switches
 
 - **One-click firmware flashing** — flash Arduino boards directly from the app, no extra software needed
 - **Guided calibration** — step-by-step process to calibrate your levers and controls
+- **Notch disk design** — turn a calibrated lever's notches into a printable notch disk with the train-lever notch disk generator, in one click
 - **Auto-detection** — automatically recognizes which train you're driving and loads the right configuration
 - **Visual control mapping** — map any hardware input to simulator controls using the built-in API explorer
 - **Rotary selectors** (beta) — turn a potentiometer into a switch with fixed positions, such as a lights selector, where each position sets its own simulator value, runs a sequence, or taps a key ([train configuration guide](docs/train-configuration.md#configuring-selectors))

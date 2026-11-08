@@ -482,7 +482,9 @@ defmodule TreninoWeb.SharedComponents do
   with icon and text. When there are three or more of them they collapse into a "..."
   menu; pass `menu={:always}` to keep them in the menu whatever their number (for cards
   whose optional actions come and go with their state, so the layout stays stable).
-  An action with `navigate` renders as a real link instead of a button. Labels render
+  An action with `navigate` renders as a real link instead of a button, and one with
+  `href` as an external link that opens in the browser. A disabled action can say why
+  in `title`. Labels render
   at `text-xs` (12px); daisyUI's `btn-xs` alone would make them 11px. When `name` is
   set, inline actions get `"{label} {name}"` as their aria-label, so a screen reader's
   list of buttons says which item each "Edit" or "Test" belongs to.
@@ -530,6 +532,8 @@ defmodule TreninoWeb.SharedComponents do
   slot :action do
     attr :event, :any, doc: "an event name or a `Phoenix.LiveView.JS` command"
     attr :navigate, :string, doc: "renders a `<.link navigate>` instead of a button"
+    attr :href, :string, doc: "renders an external link that opens in a new window"
+    attr :title, :string, doc: "tooltip, e.g. why the action is disabled"
     attr :values, :map, doc: "sent as `phx-value-*`"
     attr :icon, :string
     attr :label, :string, required: true
@@ -579,10 +583,25 @@ defmodule TreninoWeb.SharedComponents do
                 <.icon :if={action[:icon]} name={action[:icon]} class="size-4" />
                 {action.label}
               </.link>
+              <a
+                :if={action[:href]}
+                id={action[:id]}
+                href={action.href}
+                target="_blank"
+                rel="noopener noreferrer"
+                title={action[:title]}
+                phx-click={close_menu()}
+                phx-keydown={close_menu()}
+                phx-key="Escape"
+              >
+                <.icon :if={action[:icon]} name={action[:icon]} class="size-4" />
+                {action.label}<span class="sr-only"> (opens in new tab)</span>
+              </a>
               <button
-                :if={is_nil(action[:navigate])}
+                :if={is_nil(action[:navigate]) and is_nil(action[:href])}
                 id={action[:id]}
                 type="button"
+                title={action[:title]}
                 phx-click={menu_click(action)}
                 phx-keydown={close_menu()}
                 phx-key="Escape"
@@ -608,10 +627,24 @@ defmodule TreninoWeb.SharedComponents do
             <.icon :if={action[:icon]} name={action[:icon]} class="size-4" />
             {action.label}
           </.link>
+          <a
+            :if={action[:href]}
+            id={action[:id]}
+            href={action.href}
+            target="_blank"
+            rel="noopener noreferrer"
+            title={action[:title]}
+            aria-label={action_aria_label(action, @name) <> " (opens in new tab)"}
+            class="btn btn-ghost btn-xs text-xs"
+          >
+            <.icon :if={action[:icon]} name={action[:icon]} class="size-4" />
+            {action.label}
+          </a>
           <button
-            :if={is_nil(action[:navigate])}
+            :if={is_nil(action[:navigate]) and is_nil(action[:href])}
             id={action[:id]}
             type="button"
+            title={action[:title]}
             phx-click={action[:event]}
             phx-target={action[:target]}
             disabled={action[:disabled] || false}
@@ -670,6 +703,8 @@ defmodule TreninoWeb.SharedComponents do
   end
 
   defp menu_push(%JS{} = js, _target), do: js
+  # A disabled item with no event (e.g. an external link that is not available yet)
+  defp menu_push(nil, _target), do: %JS{}
   defp menu_push(event, nil), do: JS.push(event)
   defp menu_push(event, target), do: JS.push(event, target: target)
 

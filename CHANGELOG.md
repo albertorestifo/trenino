@@ -53,6 +53,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   needs you: mapping the physical notches. The wizard's "Find in Simulator"
   step suggests matching levers on its own and has an "Ask AI" button that
   copies a ready-made prompt.
+- Design a notch disk for a calibrated lever: "Design notch disk" in the
+  lever's "..." menu on the train page (and "Design a notch disk" on the
+  wizard's "Detect Notches" step) opens the train-lever notch disk generator with
+  the lever's notches filled in, ready to download the STL. Each gate
+  becomes a click, Emergency and centre positions (Off, Idle, Coast, the
+  zero notch) hold harder, and brake or power ranges become smooth
+  stretches sized by their share of the travel. The MCP `get_lever` tool
+  returns the same link as `notch_disk_url`.
 - A quiet footer at the bottom of every page links to the Trenino Discord
   community, for questions, ideas and sharing setups.
 
@@ -65,9 +73,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   notches, gates such as Emergency are always reached, and notches are named
   as in the game ("Emergency", "Brake", "N3"). Calibration warns when part of
   the lever was blocked (for example power while the reverser is in neutral)
-  or a position springs back. It refuses to start while the train moves,
-  stops if the train speeds up, always puts the lever back where it was,
-  and keeps your notch mapping when the notches did not change.
+  or a position springs back. It always puts the lever back where it was,
+  and keeps your notch mapping when the notches did not change. The sweep
+  applies power and will move the train; the wizard and the
+  `calibrate_lever` MCP tool warn about this before it starts. This lets
+  levers that release the brake as they sweep, such as a combined
+  power/brake handle with no separate brake, be calibrated.
+- The Lever Setup Wizard's "Detect Notches" step no longer moves the lever
+  as soon as you open it. Press "Start Detection" (or "Detect Again" for a
+  lever that is already calibrated) when you are ready; a failed run offers
+  "Try Again".
+- The wizard's "Map Positions" step shows your progress (the simulator
+  notches and your lever) on the left and the notch you are capturing, with
+  its live readings and buttons, on the right, so everything fits without
+  scrolling.
+- On the train page, lever actions (Configure, Design notch disk) are in
+  the row's "..." menu.
 - The Windows virtual joystick is now a beta feature. The Joystick tab stays
   in the navigation; while beta features are off, it explains that the
   joystick is less tested and errors are expected, and offers an "Enable

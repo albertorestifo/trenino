@@ -154,6 +154,9 @@ defmodule Trenino.MCP.Tools.LeverToolsTest do
                {"Forward", 1.0, [1.0, 1.0]}
              ]
 
+      # Neutral is the zero centre, so it holds harder
+      assert result.lever.notch_disk_url =~ "train-lever-generator/?positions=3&deep=2&smooth="
+
       input = analog_input_fixture()
 
       assert {:ok, %{next_step: :map_notches, ui_path: path}} =
@@ -170,18 +173,21 @@ defmodule Trenino.MCP.Tools.LeverToolsTest do
   end
 
   describe "calibrate_lever" do
-    test "refuses to run without the speed guard", %{element: element, lever: lever} do
+    test "calibrates while the train moves and restores the lever", %{
+      element: element,
+      lever: lever
+    } do
       {:ok, _} =
         run("set_lever_endpoint", %{"element_id" => element.id, "control_path" => @reverser})
 
       stub(Req, :request, fn _req, opts ->
         if opts[:url] =~ "HUD_GetSpeed",
-          do: reply(%{"Result" => "Error"}),
+          do: value(5.0),
           else: fake_simulator(lever, opts)
       end)
 
-      assert {:error, message} = run("calibrate_lever", %{"element_id" => element.id})
-      assert message =~ "speed could not be read"
+      assert {:ok, result} = run("calibrate_lever", %{"element_id" => element.id})
+      assert result.lever_type == :discrete
       assert Agent.get(lever, & &1) == 0.5
     end
 

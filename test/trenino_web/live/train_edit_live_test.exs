@@ -6,6 +6,7 @@ defmodule TreninoWeb.TrainEditLiveTest do
   alias Trenino.Hardware
   alias Trenino.Train, as: TrainContext
   alias Trenino.Train.Detection
+  alias Trenino.Train.LeverSetup
   alias Trenino.Train.Train
 
   # Sample state that NotchMappingSession broadcasts with events
@@ -583,13 +584,124 @@ defmodule TreninoWeb.TrainEditLiveTest do
       train: train,
       element: element
     } do
-      {:ok, _view, html} = live(conn, ~p"/trains/#{train.id}")
+      {:ok, view, _html} = live(conn, ~p"/trains/#{train.id}")
 
-      # Should have a configure_lever button
-      assert html =~ "phx-click=\"configure_lever\""
-      assert html =~ "phx-value-id=\"#{element.id}\""
-      # Button always shows "Configure"
+      # Lever rows keep Configure in the "..." menu
+      button =
+        element(view, "#element-actions-#{element.id}-menu #configure-element-#{element.id}")
+
+      html = render(button)
+      assert html =~ "configure_lever"
+      assert html =~ ~s(phx-value-id="#{element.id}")
       assert html =~ "Configure"
+    end
+  end
+
+  describe "notch disk link" do
+    setup do
+      {:ok, train} =
+        TrainContext.create_train(%{
+          name: "BR430",
+          identifiers: [%{identifier: "Test_Train_Disk_#{System.unique_integer([:positive])}"}]
+        })
+
+      {:ok, element} = TrainContext.create_element(train.id, %{name: "Master", type: :lever})
+
+      {:ok, lever_config} =
+        TrainContext.create_lever_config(
+          element.id,
+          LeverSetup.endpoints_for("CurrentDrivableActor/MasterController")
+        )
+
+      %{train: train, element: element, lever_config: lever_config}
+    end
+
+    test "a calibrated lever links to the generator with its notches", %{
+      conn: conn,
+      train: train,
+      element: element,
+      lever_config: lever_config
+    } do
+      notches = [
+        %{
+          type: :gate,
+          value: -11.0,
+          sim_input_min: 0.0,
+          sim_input_max: 0.0,
+          description: "Emergency"
+        },
+        %{
+          type: :linear,
+          min_value: -10.0,
+          max_value: -0.91,
+          sim_input_min: 0.1,
+          sim_input_max: 0.41,
+          description: "Brake"
+        },
+        %{type: :gate, value: 0.0, sim_input_min: 0.5, sim_input_max: 0.5, description: "Off"},
+        %{
+          type: :linear,
+          min_value: 1.0,
+          max_value: 10.0,
+          sim_input_min: 0.59,
+          sim_input_max: 1.0,
+          description: "Power"
+        }
+      ]
+
+      notches
+      |> Enum.with_index()
+      |> Enum.each(fn {attrs, index} ->
+        {:ok, _} = TrainContext.create_notch(lever_config.id, Map.put(attrs, :index, index))
+      end)
+
+      {:ok, view, _html} = live(conn, ~p"/trains/#{train.id}")
+
+      # Lives in the row's "..." menu, not inline next to Configure
+      assert has_element?(view, "#element-actions-#{element.id}-menu #notch-disk-#{element.id}")
+
+      link = element(view, "#notch-disk-#{element.id}")
+      assert render(link) =~ ~s(target="_blank")
+      assert render(link) =~ "(opens in new tab)"
+      [href] = link |> render() |> LazyHTML.from_fragment() |> LazyHTML.attribute("href")
+
+      assert "https://albertorestifo.github.io/train-lever-generator/?" <> query = href
+      params = URI.decode_query(query)
+      assert params["positions"] == "6"
+      assert params["deep"] == "1,3"
+      assert params["smooth"] == "2,4,5"
+      assert params["name"] == "BR430 Master"
+    end
+
+    test "an uncalibrated lever has no notch disk action", %{
+      conn: conn,
+      train: train,
+      element: element
+    } do
+      {:ok, view, _html} = live(conn, ~p"/trains/#{train.id}")
+      refute has_element?(view, "#notch-disk-#{element.id}")
+    end
+
+    test "a lever with too many notches shows the action disabled with the reason", %{
+      conn: conn,
+      train: train,
+      element: element,
+      lever_config: lever_config
+    } do
+      for i <- 0..13 do
+        {:ok, _} =
+          TrainContext.create_notch(lever_config.id, %{
+            index: i,
+            type: :gate,
+            value: i * 1.0,
+            description: "N#{i}"
+          })
+      end
+
+      {:ok, view, _html} = live(conn, ~p"/trains/#{train.id}")
+
+      assert has_element?(view, "button#notch-disk-#{element.id}[disabled]")
+      assert render(element(view, "#notch-disk-#{element.id}")) =~ "more than 13 notches"
     end
   end
 

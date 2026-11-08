@@ -10,7 +10,14 @@ defmodule TreninoWeb.TrainEditLive.Sections do
 
   import TreninoWeb.SharedComponents
 
-  alias Trenino.Train.{DisplayBinding, Element, LeverConfig, LeverInputBinding, SelectorBinding}
+  alias Trenino.Train.{
+    DisplayBinding,
+    Element,
+    LeverConfig,
+    LeverInputBinding,
+    NotchDesign,
+    SelectorBinding
+  }
 
   attr :train_form, :map, required: true
   attr :is_active, :boolean, required: true
@@ -139,6 +146,7 @@ defmodule TreninoWeb.TrainEditLive.Sections do
 
   attr :elements, :list, required: true
   attr :selector_positions, :map, default: %{}
+  attr :train_name, :string, default: nil
 
   def elements_section(assigns) do
     ~H"""
@@ -154,7 +162,7 @@ defmodule TreninoWeb.TrainEditLive.Sections do
       <:actions>
         <.section_action id="add-element" label="Add element" on_click="open_add_element_modal" />
       </:actions>
-      <div class="overflow-x-auto">
+      <div class="overflow-x-auto has-[details[open]]:overflow-visible">
         <table class="table table-sm bg-base-100 rounded-lg">
           <thead>
             <tr class="bg-base-200">
@@ -169,6 +177,7 @@ defmodule TreninoWeb.TrainEditLive.Sections do
               :for={element <- @elements}
               element={element}
               position={Map.get(@selector_positions, element.id)}
+              train_name={@train_name}
             />
           </tbody>
         </table>
@@ -216,7 +225,7 @@ defmodule TreninoWeb.TrainEditLive.Sections do
           </p>
         </div>
       </:notice>
-      <div class="overflow-x-auto">
+      <div class="overflow-x-auto has-[details[open]]:overflow-visible">
         <table class="table table-sm bg-base-100 rounded-lg">
           <thead>
             <tr class="bg-base-200">
@@ -310,7 +319,7 @@ defmodule TreninoWeb.TrainEditLive.Sections do
           </p>
         </div>
       </:notice>
-      <div class="overflow-x-auto">
+      <div class="overflow-x-auto has-[details[open]]:overflow-visible">
         <table class="table table-sm bg-base-100 rounded-lg">
           <thead>
             <tr class="bg-base-200">
@@ -406,7 +415,7 @@ defmodule TreninoWeb.TrainEditLive.Sections do
           navigate={~p"/trains/#{@train_id}/scripts/new"}
         />
       </:actions>
-      <div class="overflow-x-auto">
+      <div class="overflow-x-auto has-[details[open]]:overflow-visible">
         <table class="table table-sm bg-base-100 rounded-lg">
           <thead>
             <tr class="bg-base-200">
@@ -486,6 +495,7 @@ defmodule TreninoWeb.TrainEditLive.Sections do
 
   attr :element, :map, required: true
   attr :position, :map, default: nil
+  attr :train_name, :string, default: nil
 
   defp element_row(assigns) do
     {status_badges, configure_action} = element_status(assigns.element)
@@ -494,6 +504,7 @@ defmodule TreninoWeb.TrainEditLive.Sections do
       assigns
       |> assign(:status_badges, status_badges)
       |> assign(:configure_action, configure_action)
+      |> assign(:notch_disk, notch_disk_link(assigns.element, assigns.train_name))
 
     ~H"""
     <tr class="hover:bg-base-200/50">
@@ -520,13 +531,29 @@ defmodule TreninoWeb.TrainEditLive.Sections do
         </span>
       </td>
       <td>
-        <.row_actions id={"element-actions-#{@element.id}"} name={@element.name}>
+        <%!-- Lever rows always use the menu: "Design notch disk" only appears
+             once the lever is calibrated, and the row should not change shape. --%>
+        <.row_actions
+          id={"element-actions-#{@element.id}"}
+          name={@element.name}
+          menu={if @element.type == :lever, do: :always, else: :auto}
+        >
           <:action
             :if={@configure_action}
+            id={"configure-element-#{@element.id}"}
             event={@configure_action}
             values={%{id: @element.id}}
             icon="hero-cog-6-tooth"
             label="Configure"
+          />
+          <:action
+            :if={@notch_disk}
+            id={"notch-disk-#{@element.id}"}
+            href={elem(@notch_disk, 0)}
+            disabled={is_nil(elem(@notch_disk, 0))}
+            title={elem(@notch_disk, 1)}
+            icon="hero-arrow-top-right-on-square"
+            label="Design notch disk"
           />
           <:action
             event="delete_element"
@@ -539,6 +566,25 @@ defmodule TreninoWeb.TrainEditLive.Sections do
       </td>
     </tr>
     """
+  end
+
+  # Calibrated lever rows link to the notch disk generator: {href, title}, href nil when disabled
+  defp notch_disk_link(%Element{type: :lever} = element, train_name) do
+    case get_lever_config(element) do
+      %LeverConfig{notches: [_ | _]} = config -> notch_disk_link(config, element.name, train_name)
+      _ -> nil
+    end
+  end
+
+  defp notch_disk_link(_element, _train_name), do: nil
+
+  defp notch_disk_link(%LeverConfig{} = config, element_name, train_name) do
+    name = [train_name, element_name] |> Enum.reject(&(&1 in [nil, ""])) |> Enum.join(" ")
+
+    case NotchDesign.generator_link(config, name) do
+      {:ok, url} -> {url, "Open the notch disk generator with this lever's notches"}
+      {:error, reason} -> {nil, reason}
+    end
   end
 
   defp element_status(%{type: :lever} = element) do
