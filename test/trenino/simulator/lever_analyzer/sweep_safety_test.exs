@@ -1,7 +1,7 @@
 defmodule Trenino.Simulator.LeverAnalyzer.SweepSafetyTest do
   @moduledoc """
-  Sweep behaviour against a fake simulator lever: pushing into gates, the
-  speed guard, restoring the lever and the per-lever lock.
+  Sweep behaviour against a fake simulator lever: pushing into gates,
+  sweeping while the train moves, restoring the lever and the per-lever lock.
   """
   use Trenino.SerialSafetyCase, async: true
 
@@ -143,37 +143,23 @@ defmodule Trenino.Simulator.LeverAnalyzer.SweepSafetyTest do
     assert Agent.get(lever, & &1.input) == 1.0
   end
 
-  test "refuses to start while the train is moving" do
-    lever = start_lever(speed: fn _input -> 3.0 end)
+  test "sweeps while the train is moving and restores the lever" do
+    lever = start_lever(start_input: 0.3, speed: fn _input -> 3.0 end)
 
-    assert {:error, :train_not_stopped} = LeverAnalyzer.analyze(client(), @path, @fast_opts)
-    assert sets(lever) == []
-  end
+    assert {:ok, _result} = LeverAnalyzer.analyze(client(), @path, @fast_opts)
 
-  test "stops when the train speeds up and still restores the lever" do
-    lever =
-      start_lever(start_input: 0.3, speed: fn input -> if input > 0.6, do: 5.0, else: 0.0 end)
-
-    assert {:error, :train_moving} = LeverAnalyzer.analyze(client(), @path, @fast_opts)
-
-    refute 1.0 in sets(lever)
+    assert 1.0 in sets(lever)
     assert Agent.get(lever, & &1.input) == 0.3
   end
 
-  test "warns and continues when the speed cannot be read" do
-    start_lever(speed: fn _input -> nil end)
+  test "keeps sweeping when the train speeds up" do
+    lever =
+      start_lever(start_input: 0.3, speed: fn input -> if input > 0.6, do: 5.0, else: 0.0 end)
 
-    assert {:ok, result} = LeverAnalyzer.analyze(client(), @path, @fast_opts)
-    assert Enum.any?(result.warnings, &(&1 =~ "without the speed guard"))
-  end
+    assert {:ok, _result} = LeverAnalyzer.analyze(client(), @path, @fast_opts)
 
-  test "refuses to run without the speed guard when it is required" do
-    lever = start_lever(speed: fn _input -> nil end)
-
-    assert {:error, :speed_unavailable} =
-             LeverAnalyzer.analyze(client(), @path, [require_speed_guard: true] ++ @fast_opts)
-
-    assert sets(lever) == []
+    assert 1.0 in sets(lever)
+    assert Agent.get(lever, & &1.input) == 0.3
   end
 
   test "pauses the lever controller for the control during the sweep" do
@@ -199,11 +185,12 @@ defmodule Trenino.Simulator.LeverAnalyzer.SweepSafetyTest do
   end
 
   test "resumes the lever controller when the sweep stops early" do
-    start_lever(speed: fn input -> if input > 0.6, do: 5.0, else: 0.0 end)
+    # Nothing can be read, so the starting position is unknown and it does not sweep.
+    stub(Req, :request, fn _req, _opts -> ok(%{"Result" => "Error"}) end)
     expect(LeverController, :sweep_started, fn @path -> :ok end)
     expect(LeverController, :sweep_finished, fn @path -> :ok end)
 
-    assert {:error, :train_moving} = LeverAnalyzer.analyze(client(), @path, @fast_opts)
+    assert {:error, :position_unreadable} = LeverAnalyzer.analyze(client(), @path, @fast_opts)
   end
 
   test "refuses a second sweep of the same control" do
