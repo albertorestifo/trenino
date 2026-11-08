@@ -1130,4 +1130,38 @@ defmodule TreninoWeb.LeverSetupWizardTest do
       assert html =~ "64% (not in a captured notch)"
     end
   end
+
+  describe "detect notches result" do
+    alias Trenino.Train.Notch
+
+    defp render_result(notch_disk_url) do
+      render_component(&TreninoWeb.LeverSetupWizard.step_run_calibration/1,
+        calibration_status: :complete,
+        calibration_progress: 1.0,
+        calibration_error: nil,
+        calibration_warnings: [],
+        lever_type: :discrete,
+        notches: [
+          %Notch{index: 0, type: :gate, value: 0.0, description: "Off"},
+          %Notch{index: 1, type: :gate, value: 1.0, description: "Power 1"}
+        ],
+        notch_disk_url: notch_disk_url,
+        can_proceed: true,
+        myself: %Phoenix.LiveComponent.CID{cid: 1}
+      )
+    end
+
+    test "links to the notch disk generator in a new window" do
+      html = render_result("https://example.test/gen/?positions=2")
+
+      assert html =~ ~s(id="lever-notch-disk-link")
+      assert html =~ ~s(href="https://example.test/gen/?positions=2")
+      assert html =~ ~s(target="_blank")
+      assert html =~ "Design a notch disk"
+    end
+
+    test "hides the link without a design" do
+      refute render_result(nil) =~ "lever-notch-disk-link"
+    end
+  end
 end

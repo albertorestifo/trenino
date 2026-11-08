@@ -1655,7 +1655,11 @@ defmodule TreninoWeb.TrainEditLive do
         />
 
         <.section_group :if={not @new_mode} id="controls" title="Controls">
-          <.elements_section elements={@elements} selector_positions={@selector_positions} />
+          <.elements_section
+            elements={@elements}
+            selector_positions={@selector_positions}
+            train_name={@train.name}
+          />
         </.section_group>
 
         <.section_group :if={not @new_mode} id="displays-lights" title="Displays & lights">

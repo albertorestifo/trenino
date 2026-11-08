@@ -154,6 +154,9 @@ defmodule Trenino.MCP.Tools.LeverToolsTest do
                {"Forward", 1.0, [1.0, 1.0]}
              ]
 
+      # Neutral is the zero centre, so it holds harder
+      assert result.lever.notch_disk_url =~ "train-lever-generator/?positions=3&deep=2&smooth="
+
       input = analog_input_fixture()
 
       assert {:ok, %{next_step: :map_notches, ui_path: path}} =

@@ -33,6 +33,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   needs you: mapping the physical notches. The wizard's "Find in Simulator"
   step suggests matching levers on its own and has an "Ask AI" button that
   copies a ready-made prompt.
+- Design a notch disk for a calibrated lever: "Design notch disk" on the
+  lever's row on the train page (and "Design a notch disk" after the
+  wizard detects notches) opens the train-lever notch disk generator with
+  the lever's notches filled in, ready to download the STL. Each gate
+  becomes a click, Emergency and centre positions (Off, Idle, Coast, the
+  zero notch) hold harder, and brake or power ranges become smooth
+  stretches sized by their share of the travel. The MCP `get_lever` tool
+  returns the same link as `notch_disk_url`.
 - A quiet footer at the bottom of every page links to the Trenino Discord
   community, for questions, ideas and sharing setups.
 

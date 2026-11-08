@@ -14,7 +14,7 @@ defmodule Trenino.MCP.Tools.LeverTools do
   alias Trenino.Simulator.LeverMetadata
   alias Trenino.Simulator.LeverMetadata.Label
   alias Trenino.Train, as: TrainContext
-  alias Trenino.Train.{Element, LeverConfig, LeverInputBinding, LeverSetup, Notch}
+  alias Trenino.Train.{Element, LeverConfig, LeverInputBinding, LeverSetup, Notch, NotchDesign}
   alias Trenino.UINavigation
 
   @tool_names ~w(list_simulator_levers get_lever set_lever_endpoint calibrate_lever
@@ -48,7 +48,10 @@ defmodule Trenino.MCP.Tools.LeverTools do
         description:
           "Get a lever element's setup: its simulator control, notches, bound hardware input, " <>
             "and next_step (set_endpoint, calibrate, bind_input, map_notches or done) with " <>
-            "the reason.",
+            "the reason. Once calibrated, notch_disk_url opens the train-lever notch disk " <>
+            "generator with a disk designed from the notches (gates are detents, Emergency " <>
+            "and centre gates hold harder, ranges are smooth); give it to the user to " <>
+            "print a matching physical notch disk.",
         input_schema: %{
           type: "object",
           properties: %{element_id: @element_id},
@@ -281,9 +284,19 @@ defmodule Trenino.MCP.Tools.LeverTools do
       lever_type: config && config.lever_type,
       calibrated_at: config && config.calibrated_at,
       notches: serialize_notches(config),
+      notch_disk_url: notch_disk_url(config, element.name),
       input: serialize_binding(config)
     }
   end
+
+  defp notch_disk_url(%LeverConfig{notches: [_ | _]} = config, name) do
+    case NotchDesign.generator_link(config, name) do
+      {:ok, url} -> url
+      {:error, _reason} -> nil
+    end
+  end
+
+  defp notch_disk_url(_config, _name), do: nil
 
   defp serialize_notches(%LeverConfig{notches: notches}) when is_list(notches) do
     notches

@@ -36,6 +36,7 @@ defmodule TreninoWeb.LeverSetupWizard do
   alias Trenino.Train.Calibration.NotchMappingSession
   alias Trenino.Train.Element
   alias Trenino.Train.LeverSetup
+  alias Trenino.Train.NotchDesign
   alias TreninoWeb.LeverVisualization
 
   # Steps for new lever setup (includes explanation step)
@@ -1103,6 +1104,7 @@ defmodule TreninoWeb.LeverSetupWizard do
       calibration_warnings={@socket_assigns.calibration_warnings}
       lever_type={@socket_assigns.lever_type}
       notches={@socket_assigns.notches}
+      notch_disk_url={notch_disk_url(@socket_assigns)}
       can_proceed={can_proceed_from?(:run_calibration, @socket_assigns)}
       myself={@myself}
     />
@@ -1434,10 +1436,12 @@ defmodule TreninoWeb.LeverSetupWizard do
   attr :calibration_warnings, :list, default: []
   attr :lever_type, :atom, default: nil
   attr :notches, :list, default: []
+  attr :notch_disk_url, :string, default: nil
   attr :can_proceed, :boolean, required: true
   attr :myself, :any, required: true
 
-  defp step_run_calibration(assigns) do
+  @doc false
+  def step_run_calibration(assigns) do
     ~H"""
     <div class="flex-1 overflow-y-auto p-6">
       <div class="max-w-lg mx-auto text-center">
@@ -1487,6 +1491,17 @@ defmodule TreninoWeb.LeverSetupWizard do
             </div>
           </div>
 
+          <a
+            :if={@notch_disk_url}
+            id="lever-notch-disk-link"
+            href={@notch_disk_url}
+            target="_blank"
+            rel="noopener noreferrer"
+            class="btn btn-ghost btn-sm mt-3"
+          >
+            <.icon name="hero-arrow-top-right-on-square" class="w-4 h-4" /> Design a notch disk
+          </a>
+
           <div
             :for={warning <- @calibration_warnings}
             role="alert"
@@ -1514,6 +1529,16 @@ defmodule TreninoWeb.LeverSetupWizard do
     />
     """
   end
+
+  # The notch disk generator link for the detected notches, or nil
+  defp notch_disk_url(%{notches: notches, element: %Element{name: name}}) when is_list(notches) do
+    case NotchDesign.from_notches(notches, name) do
+      {:ok, design} -> NotchDesign.generator_url(design)
+      {:error, _reason} -> nil
+    end
+  end
+
+  defp notch_disk_url(_assigns), do: nil
 
   defp format_notch_value(%{type: :gate, value: value}) when is_number(value) do
     Float.round(value, 2)

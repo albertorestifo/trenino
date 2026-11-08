@@ -18,6 +18,10 @@ config :trenino,
 # version ships.
 config :trenino, :firmware_version_requirement, nil
 
+# The train-lever notch disk generator. Calibrated levers link to it with
+# their notches prefilled (see Trenino.Train.NotchDesign).
+config :trenino, :notch_generator_url, "https://albertorestifo.github.io/train-lever-generator/"
+
 # Configures the endpoint
 config :trenino, TreninoWeb.Endpoint,
   url: [host: "localhost"],
