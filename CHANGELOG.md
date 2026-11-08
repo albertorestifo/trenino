@@ -63,10 +63,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   wizard's "Detect Notches" step) opens the train-lever notch disk generator with
   the lever's notches filled in, ready to download the STL. Each gate
   becomes a click, Emergency and centre positions (Off, Idle, Coast, the
-  zero notch) hold harder, and brake or power ranges become smooth
-  stretches. Every notch lands where it sits on the simulator lever, so a
-  centred Off is the centre of the disk, and a range never glides straight
-  into Emergency: a click stands between them. The MCP `get_lever` tool
+  zero notch) hold harder, and brake or power ranges become ranges with a
+  wall at each end: the lever rests anywhere in the range and has to be
+  pushed over a wall to leave it, with a higher wall before Emergency. Every
+  notch lands where it sits on the simulator lever, so a centred Off is the
+  centre of the disk. The MCP `get_lever` tool
   returns the same link as `notch_disk_url`.
 - A quiet footer at the bottom of every page links to the Trenino Discord
   community, for questions, ideas and sharing setups.

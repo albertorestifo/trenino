@@ -8,8 +8,11 @@ defmodule Trenino.Train.NotchDesign do
 
     - Standard: a clear click.
     - Deep: a strong hold, for centre or emergency positions.
-    - Smooth: no notch, the lever glides through. The first and last
-      positions are always notches, never Smooth.
+    - Smooth: a range. A run of Smooth positions is a flat floor at notch
+      depth from its first to its last position, with a wall at each end:
+      the lever rests anywhere on it and is pushed over a wall to leave.
+      Walls beside an Emergency at an end of travel are higher. The first
+      and last positions are always notches, never Smooth.
 
   ## Mapping
 
@@ -23,19 +26,18 @@ defmodule Trenino.Train.NotchDesign do
     - A linear range is a run of Smooth positions. A range at an end of
       travel gets a Standard end-stop position named after the range, since
       the ends can't be Smooth. Two ranges next to each other are split by an
-      unnamed Standard position. A range next to Emergency is guarded by a
-      Standard position named after the range, so the lever has to be pushed
-      past a click instead of gliding into Emergency.
+      unnamed Standard position. A range gets at least two positions
+      when the disk has room, so its floor has length.
 
   ## Layout
 
-  The generator spreads positions evenly, and a run of Smooth positions has
-  no shape of its own: it is one plateau between the notches on either
-  side. So the run lengths only decide where the notches land. Every
+  The generator spreads positions evenly, and a range's floor runs from its
+  first to its last Smooth position, so the run lengths decide where the
+  notches and the range ends land. Every
   position count up to 13 and every split of the Smooth positions is tried,
   and the design keeps the one that puts each gate closest to its simulator
   input on the travel (a centred Off becomes the middle position), with a
-  small preference for plateaus that cover their range and for fewer
+  small preference for floors that cover their range and for fewer
   positions. Disks with Deep positions stay within 9 positions unless the
   lever needs more.
 
@@ -50,14 +52,13 @@ defmodule Trenino.Train.NotchDesign do
   @min_positions 2
   @default_generator_url "https://albertorestifo.github.io/train-lever-generator/"
   @deep_name ~r/\b(emergency|off|idle|coast|neutral)\b/i
-  @emergency_name ~r/\bemergency\b/i
   # Deep fits up to this many positions
   @max_deep_positions 9
   # A gate band this close to an end of travel (as a share of it) sits at the end
   @end_band 0.02
   # Layout scoring, in shares of the travel: a misplaced gate counts fully, a
-  # detent eating into a range a quarter, and each position costs a little so
-  # the smallest good disk wins
+  # floor falling short of its range a quarter, and each position costs a
+  # little so the smallest good disk wins
   @edge_weight 0.25
   @position_cost 0.01
 
@@ -177,8 +178,6 @@ defmodule Trenino.Train.NotchDesign do
     Regex.match?(@deep_name, label(notch)) or (zero_centre and zero?(notch.value))
   end
 
-  defp emergency?({:notch, _feel, label, _anchor}), do: Regex.match?(@emergency_name, label)
-
   defp zero?(value), do: is_number(value) and value == 0
 
   # A zero-output gate is the centre when outputs go both negative and positive.
@@ -233,10 +232,6 @@ defmodule Trenino.Train.NotchDesign do
   defp add_stops(segments) do
     segments
     |> split_adjacent_ranges()
-    |> guard_emergency()
-    |> Enum.reverse()
-    |> guard_emergency()
-    |> Enum.reverse()
     |> cap_start(0.0)
     |> Enum.reverse()
     |> cap_start(1.0)
@@ -247,19 +242,6 @@ defmodule Trenino.Train.NotchDesign do
     do: [{:notch, :standard, label, anchor} | segments]
 
   defp cap_start(segments, _anchor), do: segments
-
-  # A range never runs straight into Emergency: a Standard position, named
-  # after the range, has to be pushed past first.
-  defp guard_emergency([{:notch, _, _, _} = gate, {:smooth, label, _} = range | rest]) do
-    if emergency?(gate) do
-      [gate, {:notch, :standard, label, nil}, range | guard_emergency(rest)]
-    else
-      [gate | guard_emergency([range | rest])]
-    end
-  end
-
-  defp guard_emergency([segment | rest]), do: [segment | guard_emergency(rest)]
-  defp guard_emergency([]), do: []
 
   defp split_adjacent_ranges([{:smooth, _, a_edges} = a, {:smooth, _, b_edges} = b | rest]) do
     [a, {:notch, :standard, "", between(a_edges, b_edges)} | split_adjacent_ranges([b | rest])]
@@ -282,21 +264,29 @@ defmodule Trenino.Train.NotchDesign do
   # Every Smooth run keeps at least one position
   defp minimum_size(segments), do: length(segments)
 
+  # A range's floor runs from its first to its last Smooth position, so a run
+  # gets two positions when the disk has room, and one otherwise.
+  defp min_run(segments) do
+    runs = Enum.count(segments, &smooth?/1)
+    if length(segments) + runs <= @max_positions, do: 2, else: 1
+  end
+
   defp smooth?({:smooth, _label, _edges}), do: true
   defp smooth?(_segment), do: false
 
   # The generator spaces positions evenly, so the only freedom is how many
   # Smooth positions each run gets. Tries every position count and split, and
   # keeps the one that puts gates closest to where they sit on the
-  # simulator's travel, and each range's plateau closest to the range.
+  # simulator's travel, and each range's floor closest to the range.
   # Returns the Smooth run lengths in order.
   defp layout(segments) do
     runs = Enum.count(segments, &smooth?/1)
     fixed = length(segments) - runs
-    minimum = fixed + runs
+    min_run = min_run(segments)
+    minimum = fixed + runs * min_run
 
     for count <- minimum..max_count(segments, minimum),
-        lengths <- compositions(count - fixed, runs) do
+        lengths <- compositions(count - fixed, runs, min_run) do
       {score(segments, count, lengths), lengths}
     end
     |> Enum.min_by(fn {score, _lengths} -> score end)
@@ -311,12 +301,13 @@ defmodule Trenino.Train.NotchDesign do
       else: @max_positions
   end
 
-  defp compositions(0, 0), do: [[]]
-  defp compositions(_total, 0), do: []
+  # Every way to split `total` positions into `parts` runs of at least `min` each
+  defp compositions(0, 0, _min), do: [[]]
+  defp compositions(_total, 0, _min), do: []
 
-  defp compositions(total, parts) do
-    for first <- 1..(total - parts + 1)//1,
-        rest <- compositions(total - first, parts - 1),
+  defp compositions(total, parts, min) do
+    for first <- min..(total - (parts - 1) * min)//1,
+        rest <- compositions(total - first, parts - 1, min),
         do: [first | rest]
   end
 
@@ -331,9 +322,10 @@ defmodule Trenino.Train.NotchDesign do
       placed
       |> Enum.chunk_every(3, 1, :discard)
       |> Enum.flat_map(fn
-        [{:notch, a_feel, _, a}, {:run, {from, to}}, {:notch, b_feel, _, b}] ->
-          # Only a detent that eats into the range counts
-          [max(0.0, (a + reach(a_feel)) / last - from), max(0.0, to - (b - reach(b_feel)) / last)]
+        [{:notch, _, _, a}, {:run, {from, to}}, {:notch, _, _, b}] ->
+          # The floor runs from the first to the last Smooth position. Only a
+          # floor shorter than the range counts.
+          [max(0.0, (a + 1) / last - from), max(0.0, to - (b - 1) / last)]
 
         _ ->
           []
@@ -344,11 +336,6 @@ defmodule Trenino.Train.NotchDesign do
 
   defp worst([]), do: 0.0
   defp worst(errors), do: Enum.max(errors)
-
-  # How far a notch's detent reaches towards its neighbour, in positions,
-  # before a Smooth plateau starts (from the generator's recipe).
-  defp reach(:deep), do: 9 / 14.5
-  defp reach(_feel), do: 0.5
 
   defp place(segments, lengths) do
     {placed, _i, []} =
