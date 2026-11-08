@@ -626,6 +626,27 @@ defmodule TreninoWeb.LeverSetupWizardTest do
       %{train: train, element: element, lever_config: lever_config}
     end
 
+    test "a deep link opens the wizard at Map Positions and starts the mapping session", %{
+      conn: conn,
+      train: train,
+      element: element,
+      lever_config: lever_config
+    } do
+      {:ok, view, _html} =
+        live(conn, "/trains/#{train.id}?lever=#{element.id}&step=map_notches")
+
+      html = render(view)
+
+      pid = NotchMappingSession.whereis(lever_config.id)
+      assert is_pid(pid)
+      assert html =~ "Map Positions"
+      refute html =~ "Controller disconnected"
+
+      # The session's first state arrives over PubSub; the next render shows it
+      render(view)
+      assert render(view) =~ "Map Hardware Positions"
+    end
+
     test "set_direction reaches the session and re-renders the manual state", %{
       conn: conn,
       train: train,

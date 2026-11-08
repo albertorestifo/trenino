@@ -73,6 +73,8 @@ defmodule Trenino.Simulator.LeverAnalyzer do
 
   # Gates often need several rapid sets before the lever enters them
   @push_attempts 5
+  # Fewer during the sweep, where it runs for every sample that stops short
+  @sweep_push_attempts 3
   @push_delay_ms 30
 
   # Safety
@@ -395,8 +397,10 @@ defmodule Trenino.Simulator.LeverAnalyzer do
   defp restore(ctx, :original, original), do: push(ctx, original)
   defp restore(ctx, position, _original) when is_number(position), do: push(ctx, position)
 
-  defp push(%{client: client, value_endpoint: endpoint, push_delay: delay}, value) do
-    for _ <- 1..@push_attempts do
+  defp push(ctx, value, attempts \\ @push_attempts)
+
+  defp push(%{client: client, value_endpoint: endpoint, push_delay: delay}, value, attempts) do
+    for _ <- 1..attempts do
       Client.set(client, endpoint, value)
       sleep(delay)
     end
@@ -430,7 +434,7 @@ defmodule Trenino.Simulator.LeverAnalyzer do
   end
 
   defp sweep_step(ctx, set_input, acc) do
-    case sample_position(ctx, set_input) do
+    case sample_position(ctx, set_input, List.first(acc)) do
       {:ok, sample} ->
         if train_too_fast?(ctx) do
           Logger.warning("[LeverAnalyzer] Train is moving, stopping the sweep")
@@ -465,12 +469,14 @@ defmodule Trenino.Simulator.LeverAnalyzer do
     end
   end
 
-  # Set the input once; when the lever did not land there, push it a few more
+  # Set the input once; when the lever stopped short of it, push it a few more
   # times so it can enter a gate (a single set often stops at the gate before).
-  defp sample_position(ctx, set_input) do
+  # The sweep goes upwards, so a lever that snapped past the target is already
+  # in the next gate and pushing again would only cost time.
+  defp sample_position(ctx, set_input, previous) do
     with {:ok, _} <- Client.set(ctx.client, ctx.value_endpoint, set_input),
          :ok <- sleep(ctx.settling),
-         {:ok, actual_input} <- settle_input(ctx, set_input),
+         {:ok, actual_input} <- settle_input(ctx, set_input, previous),
          {:ok, output} <- Client.get_float(ctx.client, ctx.output_endpoint),
          {:ok, notch_index} <- Client.get_float(ctx.client, ctx.notch_endpoint) do
       {:ok,
@@ -484,10 +490,10 @@ defmodule Trenino.Simulator.LeverAnalyzer do
     end
   end
 
-  defp settle_input(ctx, set_input) do
+  defp settle_input(ctx, set_input, previous) do
     with {:ok, actual} <- Client.get_float(ctx.client, ctx.value_endpoint) do
-      if abs(actual - set_input) > @snap_threshold do
-        push(ctx, set_input)
+      if actual < set_input - @snap_threshold and not push_failed_here?(previous, actual) do
+        push(ctx, set_input, @sweep_push_attempts)
         sleep(ctx.settling)
         Client.get_float(ctx.client, ctx.value_endpoint)
       else
@@ -495,6 +501,16 @@ defmodule Trenino.Simulator.LeverAnalyzer do
       end
     end
   end
+
+  # The previous sample already stopped short at this same position after
+  # being pushed, so pushing again will not move it (a lever that does not
+  # respond, or the far side of an interlock). Skip it to keep sweeps short.
+  defp push_failed_here?(%Sample{} = previous, actual) do
+    previous.actual_input < previous.set_input - @snap_threshold and
+      abs(previous.actual_input - actual) < 0.005
+  end
+
+  defp push_failed_here?(nil, _actual), do: false
 
   defp generate_sweep_values(min_input, max_input, step) do
     range = max_input - min_input
@@ -557,6 +573,7 @@ defmodule Trenino.Simulator.LeverAnalyzer do
       |> Enum.flat_map(&split_stepped_group/1)
       |> drop_transient_groups()
       |> merge_zones(step)
+      |> fold_repeated_gates()
 
     Logger.debug("[LeverAnalyzer] #{length(zones)} zones after merging")
 
@@ -660,6 +677,28 @@ defmodule Trenino.Simulator.LeverAnalyzer do
   end
 
   defp add_zone([], next, _step, _max_gap), do: [next]
+
+  # Some levers come back to an earlier gate later in the sweep (the Class 142
+  # reverser snaps to Off above 0.86). The same gate at the same position is
+  # one notch.
+  defp fold_repeated_gates(zones) do
+    zones
+    |> Enum.reduce([], fn zone, acc ->
+      case Enum.find_index(acc, &same_gate?(&1, zone)) do
+        nil -> [zone | acc]
+        index -> List.update_at(acc, index, &combine_zones(&1, zone))
+      end
+    end)
+    |> Enum.reverse()
+  end
+
+  defp same_gate?(%Zone{type: :gate} = a, %Zone{type: :gate} = b) do
+    same_output?(a.value, b.value) and
+      abs(a.actual_input_min - b.actual_input_min) <= @snap_threshold and
+      abs(a.actual_input_max - b.actual_input_max) <= @snap_threshold
+  end
+
+  defp same_gate?(_a, _b), do: false
 
   defp combine_zones(%Zone{} = a, %Zone{} = b) do
     create_zone_from_samples(a.samples ++ b.samples, a.notch_indices ++ b.notch_indices)

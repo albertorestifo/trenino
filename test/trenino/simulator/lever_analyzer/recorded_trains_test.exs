@@ -231,6 +231,29 @@ defmodule Trenino.Simulator.LeverAnalyzer.RecordedTrainsTest do
       assert Enum.map(result.suggested_notches, & &1.value) == [0.0, 1.0]
     end
 
+    test "a gate the lever comes back to later is one notch (Class 142 reverser)" do
+      gates = [{0.0, -2.0, 0}, {0.25, -1.0, 1}, {0.5, 0.0, 2}, {0.75, 1.0, 3}]
+
+      sweep =
+        for i <- 0..20 do
+          set = i * 0.05
+
+          {actual, output, idx} =
+            if set > 0.86, do: hd(gates), else: Enum.at(gates, round(set / 0.25))
+
+          {set, actual, output, idx}
+        end
+
+      {:ok, result} = rows(sweep)
+
+      assert Enum.map(result.suggested_notches, &{&1.value, &1.input_min}) == [
+               {-2.0, 0.0},
+               {-1.0, 0.25},
+               {0.0, 0.5},
+               {1.0, 0.75}
+             ]
+    end
+
     test "no samples is an error, not a crash" do
       assert LeverAnalyzer.analyze_samples([]) == {:error, :insufficient_samples}
     end

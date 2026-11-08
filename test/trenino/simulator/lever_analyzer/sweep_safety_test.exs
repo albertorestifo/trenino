@@ -100,6 +100,30 @@ defmodule Trenino.Simulator.LeverAnalyzer.SweepSafetyTest do
     assert %{type: :gate, value: 2.0, input_min: 0.95} = List.last(result.suggested_notches)
   end
 
+  test "stops pushing a lever that does not move" do
+    {:ok, stuck} = Agent.start_link(fn -> 0 end)
+
+    stub(Req, :request, fn _req, opts ->
+      case opts[:method] do
+        :patch ->
+          Agent.update(stuck, &(&1 + 1))
+          ok(%{"Result" => "Success"})
+
+        :get ->
+          cond do
+            opts[:url] =~ "HUD_GetSpeed" -> value(0.0)
+            opts[:url] =~ "GetMaximumInputValue" -> value(1.0)
+            true -> value(0.0)
+          end
+      end
+    end)
+
+    assert {:ok, _result} = LeverAnalyzer.analyze(client(), @path, @fast_opts)
+
+    # 21 samples, the start and restore pushes, and one round of pushes, not one per sample
+    assert Agent.get(stuck, & &1) <= 21 + 5 + 5 + 3
+  end
+
   test "puts the lever back where it was by default" do
     lever = start_lever(start_input: 0.3)
 
