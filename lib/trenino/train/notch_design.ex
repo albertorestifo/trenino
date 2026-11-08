@@ -20,14 +20,24 @@ defmodule Trenino.Train.NotchDesign do
       Neutral, or it is the zero-output gate between negative and positive
       outputs (the BR430's "0"). Every other gate, such as stepped power
       notches, Set-up or 1A, is Standard.
-    - A linear range is a run of Smooth positions. Its length follows the
-      range's share of the simulator input travel: one position per
-      `travel / notch count`, at least one. A range at an end of travel gets
-      a Standard end-stop position named after the range, since the ends
-      can't be Smooth. Two ranges next to each other are split by an
-      unnamed Standard position.
-    - When there are more than 13 positions, the longest Smooth runs are
-      shortened first, down to one position each.
+    - A linear range is a run of Smooth positions. A range at an end of
+      travel gets a Standard end-stop position named after the range, since
+      the ends can't be Smooth. Two ranges next to each other are split by an
+      unnamed Standard position. A range next to Emergency is guarded by a
+      Standard position named after the range, so the lever has to be pushed
+      past a click instead of gliding into Emergency.
+
+  ## Layout
+
+  The generator spreads positions evenly, and a run of Smooth positions has
+  no shape of its own: it is one plateau between the notches on either
+  side. So the run lengths only decide where the notches land. Every
+  position count up to 13 and every split of the Smooth positions is tried,
+  and the design keeps the one that puts each gate closest to its simulator
+  input on the travel (a centred Off becomes the middle position), with a
+  small preference for plateaus that cover their range and for fewer
+  positions. Disks with Deep positions stay within 9 positions unless the
+  lever needs more.
 
   The generator checks the design when it opens. Deep needs room: with
   more than about 9 positions it doesn't fit, and the generator then makes
@@ -40,6 +50,16 @@ defmodule Trenino.Train.NotchDesign do
   @min_positions 2
   @default_generator_url "https://albertorestifo.github.io/train-lever-generator/"
   @deep_name ~r/\b(emergency|off|idle|coast|neutral)\b/i
+  @emergency_name ~r/\bemergency\b/i
+  # Deep fits up to this many positions
+  @max_deep_positions 9
+  # A gate band this close to an end of travel (as a share of it) sits at the end
+  @end_band 0.02
+  # Layout scoring, in shares of the travel: a misplaced gate counts fully, a
+  # detent eating into a range a quarter, and each position costs a little so
+  # the smallest good disk wins
+  @edge_weight 0.25
+  @position_cost 0.01
 
   @type feel :: :standard | :deep | :smooth
 
@@ -63,17 +83,16 @@ defmodule Trenino.Train.NotchDesign do
 
   def from_notches(notches, name) when is_list(notches) do
     notches = Enum.sort_by(notches, fn %Notch{index: index} -> index end)
-    pitch = pitch(notches)
+    travel = travel(notches)
     zero_centre = zero_centre?(notches)
 
     segments =
       notches
-      |> Enum.map(&segment(&1, pitch, zero_centre))
-      |> add_end_stops()
+      |> Enum.map(&segment(&1, travel, zero_centre))
+      |> add_stops()
 
     with :ok <- check_size(segments) do
-      positions = segments |> fit(@max_positions) |> expand()
-      {:ok, %__MODULE__{name: name, positions: positions}}
+      {:ok, %__MODULE__{name: name, positions: segments |> layout() |> expand()}}
     end
   end
 
@@ -134,24 +153,19 @@ defmodule Trenino.Train.NotchDesign do
   def error_message(:too_many_positions),
     do: "The lever has more than #{@max_positions} notches, more than a disk can hold."
 
-  # Segments: {:notch, feel, label} or {:smooth, length, label}
+  # Segments, before layout:
+  #   {:notch, feel, label, anchor} - one position. `anchor` is where it
+  #     belongs on the travel (0.0 to 1.0), or nil when it has no place.
+  #   {:smooth, label, edges} - a Smooth run of one or more positions.
+  #     `edges` is the range's {from, to} on the travel, or nil.
 
-  defp segment(%Notch{type: :gate} = notch, _pitch, zero_centre) do
+  defp segment(%Notch{type: :gate} = notch, travel, zero_centre) do
     feel = if deep?(notch, zero_centre), do: :deep, else: :standard
-    {:notch, feel, label(notch)}
+    {:notch, feel, label(notch), gate_anchor(notch, travel)}
   end
 
-  defp segment(%Notch{type: :linear} = notch, pitch, _zero_centre) do
-    length =
-      case {width(notch), pitch} do
-        {width, pitch} when is_number(width) and is_number(pitch) and pitch > 0 ->
-          max(1, round(width / pitch))
-
-        _ ->
-          1
-      end
-
-    {:smooth, length, label(notch)}
+  defp segment(%Notch{type: :linear} = notch, travel, _zero_centre) do
+    {:smooth, label(notch), range_edges(notch, travel)}
   end
 
   defp label(%Notch{description: description}) when is_binary(description),
@@ -163,6 +177,8 @@ defmodule Trenino.Train.NotchDesign do
     Regex.match?(@deep_name, label(notch)) or (zero_centre and zero?(notch.value))
   end
 
+  defp emergency?({:notch, _feel, label, _anchor}), do: Regex.match?(@emergency_name, label)
+
   defp zero?(value), do: is_number(value) and value == 0
 
   # A zero-output gate is the centre when outputs go both negative and positive.
@@ -172,82 +188,191 @@ defmodule Trenino.Train.NotchDesign do
     Enum.any?(numbers, &(&1 < 0)) and Enum.any?(numbers, &(&1 > 0))
   end
 
-  defp width(%Notch{sim_input_min: min, sim_input_max: max})
-       when is_number(min) and is_number(max),
-       do: max - min
+  # The simulator input travel, {low, high}. Simulator levers run from 0 or
+  # -1 to 1, and the calibrated notches don't always reach the ends (the
+  # BR430's power range stops at 0.85), so the travel is widened to those.
+  defp travel(notches) do
+    inputs =
+      notches
+      |> Enum.flat_map(&[&1.sim_input_min, &1.sim_input_max])
+      |> Enum.filter(&is_number/1)
 
-  defp width(%Notch{}), do: nil
+    case inputs do
+      [] ->
+        nil
 
-  # One position's share of the simulator input travel
-  defp pitch(notches) do
-    mins = notches |> Enum.map(& &1.sim_input_min) |> Enum.filter(&is_number/1)
-    maxs = notches |> Enum.map(& &1.sim_input_max) |> Enum.filter(&is_number/1)
-
-    if mins != [] and maxs != [] do
-      (Enum.max(maxs) - Enum.min(mins)) / length(notches)
+      inputs ->
+        {low, high} = Enum.min_max(inputs)
+        low = min(low, if(low < 0, do: -1.0, else: 0.0))
+        high = max(high, 1.0)
+        if high > low, do: {low, high}
     end
   end
 
-  defp add_end_stops(segments) do
+  defp fraction(value, {low, high}), do: (value - low) / (high - low)
+
+  # A gate whose band touches an end of travel sits at that end, otherwise at
+  # the middle of its band.
+  defp gate_anchor(%Notch{sim_input_min: min, sim_input_max: max}, {low, high} = travel)
+       when is_number(min) and is_number(max) do
+    cond do
+      fraction(min, travel) <= @end_band -> 0.0
+      fraction(max, travel) >= 1 - @end_band -> 1.0
+      true -> fraction((min + max) / 2, {low, high})
+    end
+  end
+
+  defp gate_anchor(%Notch{}, _travel), do: nil
+
+  defp range_edges(%Notch{sim_input_min: min, sim_input_max: max}, travel)
+       when is_number(min) and is_number(max) and not is_nil(travel),
+       do: {fraction(min, travel), fraction(max, travel)}
+
+  defp range_edges(%Notch{}, _travel), do: nil
+
+  defp add_stops(segments) do
     segments
     |> split_adjacent_ranges()
-    |> cap_start()
+    |> guard_emergency()
     |> Enum.reverse()
-    |> cap_start()
+    |> guard_emergency()
+    |> Enum.reverse()
+    |> cap_start(0.0)
+    |> Enum.reverse()
+    |> cap_start(1.0)
     |> Enum.reverse()
   end
 
-  defp cap_start([{:smooth, _length, label} | _] = segments),
-    do: [{:notch, :standard, label} | segments]
+  defp cap_start([{:smooth, label, _edges} | _] = segments, anchor),
+    do: [{:notch, :standard, label, anchor} | segments]
 
-  defp cap_start(segments), do: segments
+  defp cap_start(segments, _anchor), do: segments
 
-  defp split_adjacent_ranges([{:smooth, _, _} = a, {:smooth, _, _} = b | rest]),
-    do: [a, {:notch, :standard, ""} | split_adjacent_ranges([b | rest])]
+  # A range never runs straight into Emergency: a Standard position, named
+  # after the range, has to be pushed past first.
+  defp guard_emergency([{:notch, _, _, _} = gate, {:smooth, label, _} = range | rest]) do
+    if emergency?(gate) do
+      [gate, {:notch, :standard, label, nil}, range | guard_emergency(rest)]
+    else
+      [gate | guard_emergency([range | rest])]
+    end
+  end
+
+  defp guard_emergency([segment | rest]), do: [segment | guard_emergency(rest)]
+  defp guard_emergency([]), do: []
+
+  defp split_adjacent_ranges([{:smooth, _, a_edges} = a, {:smooth, _, b_edges} = b | rest]) do
+    [a, {:notch, :standard, "", between(a_edges, b_edges)} | split_adjacent_ranges([b | rest])]
+  end
 
   defp split_adjacent_ranges([segment | rest]), do: [segment | split_adjacent_ranges(rest)]
   defp split_adjacent_ranges([]), do: []
 
-  defp check_size(segments) do
-    # Every Smooth run keeps at least one position
-    minimum = Enum.count(segments, &match?({:notch, _, _}, &1)) + Enum.count(segments, &smooth?/1)
+  defp between({_, a_to}, {b_from, _}), do: (a_to + b_from) / 2
+  defp between(_a, _b), do: nil
 
-    cond do
-      minimum > @max_positions -> {:error, :too_many_positions}
-      minimum < @min_positions -> {:error, :too_few_positions}
-      true -> :ok
+  defp check_size(segments) do
+    case minimum_size(segments) do
+      minimum when minimum > @max_positions -> {:error, :too_many_positions}
+      minimum when minimum < @min_positions -> {:error, :too_few_positions}
+      _minimum -> :ok
     end
   end
 
-  defp smooth?({:smooth, _length, _label}), do: true
+  # Every Smooth run keeps at least one position
+  defp minimum_size(segments), do: length(segments)
+
+  defp smooth?({:smooth, _label, _edges}), do: true
   defp smooth?(_segment), do: false
 
-  # Shortens the longest Smooth run (the first one on a tie) until the disk fits.
-  defp fit(segments, max) do
-    total = Enum.sum_by(segments, &size/1)
+  # The generator spaces positions evenly, so the only freedom is how many
+  # Smooth positions each run gets. Tries every position count and split, and
+  # keeps the one that puts gates closest to where they sit on the
+  # simulator's travel, and each range's plateau closest to the range.
+  # Returns the Smooth run lengths in order.
+  defp layout(segments) do
+    runs = Enum.count(segments, &smooth?/1)
+    fixed = length(segments) - runs
+    minimum = fixed + runs
 
-    longest =
-      segments
-      |> Enum.with_index()
-      |> Enum.filter(fn {segment, _i} -> smooth?(segment) end)
-      |> Enum.max_by(fn {{:smooth, length, _}, _i} -> length end, fn -> nil end)
-
-    case longest do
-      {{:smooth, length, label}, i} when total > max and length > 1 ->
-        segments |> List.replace_at(i, {:smooth, length - 1, label}) |> fit(max)
-
-      _ ->
-        segments
+    for count <- minimum..max_count(segments, minimum),
+        lengths <- compositions(count - fixed, runs) do
+      {score(segments, count, lengths), lengths}
     end
+    |> Enum.min_by(fn {score, _lengths} -> score end)
+    |> then(fn {_score, lengths} -> {segments, lengths} end)
   end
 
-  defp size({:notch, _feel, _label}), do: 1
-  defp size({:smooth, length, _label}), do: length
+  # Deep needs room, so a disk with Deep positions stays within the count
+  # where it still fits, unless the lever needs more.
+  defp max_count(segments, minimum) do
+    if Enum.any?(segments, &match?({:notch, :deep, _, _}, &1)) and minimum <= @max_deep_positions,
+      do: @max_deep_positions,
+      else: @max_positions
+  end
 
-  defp expand(segments) do
-    Enum.flat_map(segments, fn
-      {:notch, feel, label} -> [{feel, label}]
-      {:smooth, length, _label} -> List.duplicate({:smooth, ""}, length)
-    end)
+  defp compositions(0, 0), do: [[]]
+  defp compositions(_total, 0), do: []
+
+  defp compositions(total, parts) do
+    for first <- 1..(total - parts + 1)//1,
+        rest <- compositions(total - first, parts - 1),
+        do: [first | rest]
+  end
+
+  defp score(segments, count, lengths) do
+    placed = place(segments, lengths)
+    last = count - 1
+
+    gate_errors =
+      for {:notch, _feel, anchor, i} <- placed, is_number(anchor), do: abs(i / last - anchor)
+
+    edge_errors =
+      placed
+      |> Enum.chunk_every(3, 1, :discard)
+      |> Enum.flat_map(fn
+        [{:notch, a_feel, _, a}, {:run, {from, to}}, {:notch, b_feel, _, b}] ->
+          # Only a detent that eats into the range counts
+          [max(0.0, (a + reach(a_feel)) / last - from), max(0.0, to - (b - reach(b_feel)) / last)]
+
+        _ ->
+          []
+      end)
+
+    worst(gate_errors) + @edge_weight * worst(edge_errors) + @position_cost * count
+  end
+
+  defp worst([]), do: 0.0
+  defp worst(errors), do: Enum.max(errors)
+
+  # How far a notch's detent reaches towards its neighbour, in positions,
+  # before a Smooth plateau starts (from the generator's recipe).
+  defp reach(:deep), do: 9 / 14.5
+  defp reach(_feel), do: 0.5
+
+  defp place(segments, lengths) do
+    {placed, _i, []} =
+      Enum.reduce(segments, {[], 0, lengths}, fn
+        {:notch, feel, _label, anchor}, {acc, i, lengths} ->
+          {[{:notch, feel, anchor, i} | acc], i + 1, lengths}
+
+        {:smooth, _label, edges}, {acc, i, [length | lengths]} ->
+          {[{:run, edges} | acc], i + length, lengths}
+      end)
+
+    Enum.reverse(placed)
+  end
+
+  defp expand({segments, lengths}) do
+    {positions, []} =
+      Enum.flat_map_reduce(segments, lengths, fn
+        {:notch, feel, label, _anchor}, lengths ->
+          {[{feel, label}], lengths}
+
+        {:smooth, _label, _edges}, [length | lengths] ->
+          {List.duplicate({:smooth, ""}, length), lengths}
+      end)
+
+    positions
   end
 end

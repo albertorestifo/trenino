@@ -667,9 +667,10 @@ defmodule TreninoWeb.TrainEditLiveTest do
 
       assert "https://albertorestifo.github.io/train-lever-generator/?" <> query = href
       params = URI.decode_query(query)
-      assert params["positions"] == "6"
-      assert params["deep"] == "1,3"
-      assert params["smooth"] == "2,4,5"
+      # Emergency, the Brake guard, Off centred at position 4 of 7, Power end stop
+      assert params["positions"] == "7"
+      assert params["deep"] == "1,4"
+      assert params["smooth"] == "3,5,6"
       assert params["name"] == "BR430 Master"
     end
 

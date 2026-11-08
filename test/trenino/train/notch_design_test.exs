@@ -70,6 +70,16 @@ defmodule Trenino.Train.NotchDesignTest do
       sim_input_max: at
     }
 
+  defp band(index, description, value, {from, to}),
+    do: %Notch{
+      index: index,
+      type: :gate,
+      value: value,
+      description: description,
+      sim_input_min: from,
+      sim_input_max: to
+    }
+
   defp linear(index, description, {min, max}, {from, to}),
     do: %Notch{
       index: index,
@@ -82,23 +92,26 @@ defmodule Trenino.Train.NotchDesignTest do
     }
 
   describe "from_notches/2 on recorded levers" do
-    test "BR430: Emergency and the zero gate are Deep, ranges are Smooth, Power gets an end stop" do
+    test "BR430: the zero gate is centred, Brake guards Emergency, Power gets an end stop" do
       design = design!(notches(:br430_master_controller))
 
       assert design.positions == [
                {:deep, "Emergency Brake"},
+               {:standard, "Brake"},
                {:smooth, ""},
                {:deep, "0"},
+               {:smooth, ""},
                {:smooth, ""},
                {:standard, "Power"}
              ]
     end
 
-    test "M9: Emergency and Coast are Deep, the longer power range gets two Smooth positions" do
+    test "M9: Coast is centred like the simulator's 0.5, Brake guards Emergency" do
       design = design!(notches(:m9_master_controller))
 
       assert design.positions == [
                {:deep, "Emergency"},
+               {:standard, "Brake"},
                {:smooth, ""},
                {:deep, "Coast"},
                {:smooth, ""},
@@ -112,6 +125,7 @@ defmodule Trenino.Train.NotchDesignTest do
 
       assert design.positions == [
                {:deep, "Off"},
+               {:smooth, ""},
                {:smooth, ""},
                {:smooth, ""},
                {:standard, "Power"}
@@ -148,8 +162,10 @@ defmodule Trenino.Train.NotchDesignTest do
     test "AC4400 automatic brake: Handle Off and Emergency are Deep, Release is Standard" do
       design = design!(notches(:ac4400_automatic_brake))
 
+      # Suppression (0.7) and Handle Off (0.8) land near their simulator inputs
       assert design.positions == [
                {:standard, "Release"},
+               {:smooth, ""},
                {:smooth, ""},
                {:smooth, ""},
                {:standard, "Suppression"},
@@ -189,12 +205,71 @@ defmodule Trenino.Train.NotchDesignTest do
 
       assert design.positions == [
                {:deep, "Emergency"},
+               {:standard, "Brake"},
                {:smooth, ""},
                {:standard, ""},
                {:smooth, ""},
                {:smooth, ""},
                {:standard, "Power"}
              ]
+    end
+
+    test "Class 802 full lever: Off is the centre position and Brake guards Emergency" do
+      design =
+        design!([
+          gate(0, "Emergency", -2.0, -1.0),
+          linear(1, "Brake", {-1.0, -0.25}, {-0.9, -0.25}),
+          gate(2, "Off", 0.0, 0.0),
+          band(3, "Power 1", 1.0, {0.25, 0.36}),
+          band(4, "Power 2", 2.0, {0.38, 0.62}),
+          band(5, "Power 3", 3.0, {0.64, 0.86}),
+          band(6, "Power 4", 4.0, {0.88, 1.0})
+        ])
+
+      assert design.positions == [
+               {:deep, "Emergency"},
+               {:standard, "Brake"},
+               {:smooth, ""},
+               {:smooth, ""},
+               {:deep, "Off"},
+               {:standard, "Power 1"},
+               {:standard, "Power 2"},
+               {:standard, "Power 3"},
+               {:standard, "Power 4"}
+             ]
+
+      # Off at input 0.0 of -1.0..1.0 is the middle of 9 evenly spaced positions
+      assert NotchDesign.positions_with(design, :deep) == [1, 5]
+    end
+
+    test "a range only gets a guard next to Emergency, not next to other gates" do
+      design =
+        design!([
+          gate(0, "Off", 0.0, 0.0),
+          linear(1, "Power", {0.0, 1.0}, {0.1, 0.9}),
+          gate(2, "Full", 1.0, 1.0)
+        ])
+
+      assert NotchDesign.positions_with(design, :standard) == [NotchDesign.count(design)]
+
+      assert design |> NotchDesign.positions_with(:smooth) |> length() ==
+               NotchDesign.count(design) - 2
+    end
+
+    test "gates follow their simulator inputs, not their order" do
+      # Off sits at 0.75 of the travel, so the range before it takes three
+      # times the room of the one after
+      design =
+        design!([
+          gate(0, "Low", 0.0, 0.0),
+          linear(1, "Ramp", {0.0, 1.0}, {0.05, 0.7}),
+          gate(2, "Off", 1.0, 0.75),
+          linear(3, "Top", {1.0, 2.0}, {0.8, 0.95}),
+          gate(4, "High", 2.0, 1.0)
+        ])
+
+      [off] = NotchDesign.positions_with(design, :deep)
+      assert_in_delta (off - 1) / (NotchDesign.count(design) - 1), 0.75, 0.05
     end
 
     test "a range without simulator inputs gets one Smooth position" do
@@ -229,9 +304,9 @@ defmodule Trenino.Train.NotchDesignTest do
       assert "https://albertorestifo.github.io/train-lever-generator/?" <> query = url
 
       assert URI.decode_query(query) == %{
-               "positions" => "5",
-               "deep" => "1,3",
-               "smooth" => "2,4",
+               "positions" => "7",
+               "deep" => "1,4",
+               "smooth" => "3,5,6",
                "label" => "Power",
                "name" => "BR430 Master controller"
              }
@@ -242,7 +317,7 @@ defmodule Trenino.Train.NotchDesignTest do
         |> Enum.filter(&String.starts_with?(&1, "label="))
         |> Enum.map(&(&1 |> String.replace_prefix("label=", "") |> URI.decode_www_form()))
 
-      assert labels == ["Emergency Brake", "", "0", "", "Power"]
+      assert labels == ["Emergency Brake", "Brake", "", "0", "", "", "Power"]
     end
 
     test "leaves out the name when there is none" do
