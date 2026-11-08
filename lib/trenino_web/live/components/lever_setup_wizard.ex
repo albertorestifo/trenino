@@ -1411,7 +1411,10 @@ defmodule TreninoWeb.LeverSetupWizard do
             </li>
             <li class="flex items-start gap-2">
               <.icon name="hero-check-circle" class="w-5 h-5 text-success flex-shrink-0 mt-0.5" />
-              <span>Train key is in and reverser is neutral (if applicable)</span>
+              <span>
+                Train key is in and the reverser is out of neutral (if applicable), or
+                power notches may be blocked
+              </span>
             </li>
           </ul>
         </div>
@@ -1480,7 +1483,8 @@ defmodule TreninoWeb.LeverSetupWizard do
             This lever already has {length(@notches)} notches. Detect them again to replace them.
           </p>
           <p class="text-sm text-muted mb-6">
-            The lever moves in the game. Stop the train and apply the brake first.
+            The lever sweep applies power and will move the train. Make sure the line
+            ahead is clear.
           </p>
           <button phx-click="start_calibration" phx-target={@myself} class="btn btn-primary">
             <.icon name="hero-play" class="w-4 h-4" />
