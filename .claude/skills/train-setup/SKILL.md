@@ -33,6 +33,8 @@ Tool schemas carry parameters, modes and operators. This skill covers the order 
 4. `bind_lever_input` with an analog input from `detect_hardware_input`. The input must be calibrated (UI-only).
 5. `open_lever_setup` to hand over. Mapping the physical notches needs the user; `get_lever.next_step` says what is left.
 
+To print a physical notch disk that matches a calibrated lever, give the user `get_lever.notch_disk_url`. It opens the notch disk generator with the lever's notches filled in.
+
 Recalibrating keeps the notch mapping when the notches did not change.
 
 ## Selectors
