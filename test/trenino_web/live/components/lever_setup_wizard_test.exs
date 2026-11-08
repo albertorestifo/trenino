@@ -9,6 +9,7 @@ defmodule TreninoWeb.LeverSetupWizardTest do
   alias Trenino.Simulator.ConnectionState
   alias Trenino.Train, as: TrainContext
   alias Trenino.Train.LeverConfig
+  alias Trenino.Train.LeverSetup
 
   setup :verify_on_exit!
   setup :set_mimic_global
@@ -70,7 +71,7 @@ defmodule TreninoWeb.LeverSetupWizardTest do
       {:ok, view, _html} = live(conn, ~p"/trains/#{train.id}")
 
       view
-      |> element("[phx-click='configure_lever'][phx-value-id='#{lever_element.id}']")
+      |> element("#configure-element-#{lever_element.id}")
       |> render_click()
 
       html = render(view)
@@ -109,7 +110,7 @@ defmodule TreninoWeb.LeverSetupWizardTest do
       {:ok, view, _html} = live(conn, ~p"/trains/#{train.id}")
 
       view
-      |> element("[phx-click='configure_lever'][phx-value-id='#{lever_element.id}']")
+      |> element("#configure-element-#{lever_element.id}")
       |> render_click()
 
       html = render(view)
@@ -148,7 +149,7 @@ defmodule TreninoWeb.LeverSetupWizardTest do
       {:ok, view, _html} = live(conn, ~p"/trains/#{train.id}")
 
       view
-      |> element("[phx-click='configure_lever'][phx-value-id='#{lever_element.id}']")
+      |> element("#configure-element-#{lever_element.id}")
       |> render_click()
 
       html = render(view)
@@ -176,7 +177,7 @@ defmodule TreninoWeb.LeverSetupWizardTest do
       {:ok, view, _html} = live(conn, ~p"/trains/#{train.id}")
 
       view
-      |> element("[phx-click='configure_lever'][phx-value-id='#{lever_element.id}']")
+      |> element("#configure-element-#{lever_element.id}")
       |> render_click()
 
       html = render(view)
@@ -213,7 +214,7 @@ defmodule TreninoWeb.LeverSetupWizardTest do
       {:ok, view, _html} = live(conn, ~p"/trains/#{train.id}")
 
       view
-      |> element("[phx-click='configure_lever'][phx-value-id='#{lever_element.id}']")
+      |> element("#configure-element-#{lever_element.id}")
       |> render_click()
 
       # Click on "Find in Simulator" step indicator (step 2)
@@ -225,6 +226,62 @@ defmodule TreninoWeb.LeverSetupWizardTest do
 
       # Should now be showing the Find Endpoint step content
       assert html =~ "Auto-Detect Control"
+    end
+
+    test "navigating to Detect Notches waits for the Start button", %{
+      conn: conn,
+      train: train,
+      lever_element: lever_element,
+      client: client
+    } do
+      {:ok, _lever_config} =
+        Trenino.Repo.insert(%LeverConfig{
+          element_id: lever_element.id,
+          min_endpoint: "CurrentDrivableActor/MasterController.InputMin",
+          max_endpoint: "CurrentDrivableActor/MasterController.InputMax",
+          value_endpoint: "CurrentDrivableActor/MasterController.InputValue",
+          lever_type: :discrete
+        })
+
+      stub(Simulator, :get_status, fn ->
+        %ConnectionState{status: :connected, client: client}
+      end)
+
+      stub(Client, :list, fn _client ->
+        {:ok, %{"NodeName" => "Root", "NodePath" => "Root", "Nodes" => []}}
+      end)
+
+      test_pid = self()
+
+      stub(LeverSetup, :calibrate, fn _client, element_id, _path, _opts ->
+        send(test_pid, {:calibrate_called, element_id})
+        {:error, :no_control_path}
+      end)
+
+      {:ok, view, _html} = live(conn, ~p"/trains/#{train.id}")
+
+      view
+      |> element("#configure-element-#{lever_element.id}")
+      |> render_click()
+
+      view
+      |> element("[phx-click='go_to_step'][phx-value-step='run_calibration']")
+      |> render_click()
+
+      html = render(view)
+
+      refute html =~ "Analyzing Lever"
+      refute_received {:calibrate_called, _}
+      assert has_element?(view, "button[phx-click='start_calibration']", "Detect Again")
+
+      # Pressing the button is what starts the sweep
+      view
+      |> element("button[phx-click='start_calibration']")
+      |> render_click()
+
+      element_id = lever_element.id
+      assert_receive {:calibrate_called, ^element_id}
+      assert render(view) =~ "Calibration Failed"
     end
 
     test "configured steps show green checkmarks in edit mode", %{
@@ -269,7 +326,7 @@ defmodule TreninoWeb.LeverSetupWizardTest do
       {:ok, view, _html} = live(conn, ~p"/trains/#{train.id}")
 
       view
-      |> element("[phx-click='configure_lever'][phx-value-id='#{lever_element.id}']")
+      |> element("#configure-element-#{lever_element.id}")
       |> render_click()
 
       html = render(view)
@@ -310,7 +367,7 @@ defmodule TreninoWeb.LeverSetupWizardTest do
       {:ok, view, _html} = live(conn, ~p"/trains/#{train.id}")
 
       view
-      |> element("[phx-click='configure_lever'][phx-value-id='#{lever_element.id}']")
+      |> element("#configure-element-#{lever_element.id}")
       |> render_click()
 
       html = render(view)
@@ -367,7 +424,7 @@ defmodule TreninoWeb.LeverSetupWizardTest do
       {:ok, view, _html} = live(conn, ~p"/trains/#{train.id}")
 
       view
-      |> element("[phx-click='configure_lever'][phx-value-id='#{lever_element.id}']")
+      |> element("#configure-element-#{lever_element.id}")
       |> render_click()
 
       html = render(view)
@@ -393,7 +450,7 @@ defmodule TreninoWeb.LeverSetupWizardTest do
       {:ok, view, _html} = live(conn, ~p"/trains/#{train.id}")
 
       view
-      |> element("[phx-click='configure_lever'][phx-value-id='#{lever_element.id}']")
+      |> element("#configure-element-#{lever_element.id}")
       |> render_click()
 
       # Select analog lever type
@@ -492,7 +549,7 @@ defmodule TreninoWeb.LeverSetupWizardTest do
       {:ok, view, _html} = live(conn, ~p"/trains/#{train.id}")
 
       view
-      |> element("[phx-click='configure_lever'][phx-value-id='#{lever_element.id}']")
+      |> element("#configure-element-#{lever_element.id}")
       |> render_click()
 
       # Select a different input (if available in UI)
@@ -533,7 +590,7 @@ defmodule TreninoWeb.LeverSetupWizardTest do
       {:ok, view, _html} = live(conn, ~p"/trains/#{train.id}")
 
       view
-      |> element("[phx-click='configure_lever'][phx-value-id='#{lever_element.id}']")
+      |> element("#configure-element-#{lever_element.id}")
       |> render_click()
 
       html = render(view)
@@ -656,7 +713,7 @@ defmodule TreninoWeb.LeverSetupWizardTest do
       {:ok, view, _html} = live(conn, ~p"/trains/#{train.id}")
 
       view
-      |> element("[phx-click='configure_lever'][phx-value-id='#{element.id}']")
+      |> element("#configure-element-#{element.id}")
       |> render_click()
 
       view
@@ -846,6 +903,35 @@ defmodule TreninoWeb.LeverSetupWizardTest do
         can_proceed: false,
         myself: %Phoenix.LiveComponent.CID{cid: 1}
       )
+    end
+
+    test "the current notch sits in its own column next to the overview" do
+      html = render_step(mapping_state(preview: forward_preview()))
+      doc = LazyHTML.from_fragment(html)
+
+      [layout_class] =
+        doc |> LazyHTML.query("#map-notches-layout") |> LazyHTML.attribute("class")
+
+      assert layout_class =~ "md:grid-cols-[minmax(0,1fr)_20rem]"
+
+      # Readings and capture buttons are in the right column, not the overview
+      assert doc
+             |> LazyHTML.query("#current-notch-panel [phx-click='capture_range']")
+             |> Enum.count() == 1
+
+      assert doc |> LazyHTML.query("#map-notches-overview #current-notch-panel") |> Enum.count() ==
+               0
+
+      assert doc |> LazyHTML.query("#map-notches-overview h3") |> LazyHTML.text() =~
+               "Map Hardware Positions"
+    end
+
+    test "the review spans one column once every notch is captured" do
+      html = render_step(review_state(forward_preview()))
+      doc = LazyHTML.from_fragment(html)
+
+      assert doc |> LazyHTML.query("#map-notches-layout.max-w-2xl") |> Enum.count() == 1
+      assert doc |> LazyHTML.query("#current-notch-panel") |> Enum.count() == 0
     end
 
     test "capturing a linear notch shows full description, output and new copy" do
@@ -1134,9 +1220,9 @@ defmodule TreninoWeb.LeverSetupWizardTest do
   describe "detect notches result" do
     alias Trenino.Train.Notch
 
-    defp render_result(notch_disk_url) do
+    defp render_result(notch_disk_url, status \\ :complete) do
       render_component(&TreninoWeb.LeverSetupWizard.step_run_calibration/1,
-        calibration_status: :complete,
+        calibration_status: status,
         calibration_progress: 1.0,
         calibration_error: nil,
         calibration_warnings: [],
@@ -1162,6 +1248,14 @@ defmodule TreninoWeb.LeverSetupWizardTest do
 
     test "hides the link without a design" do
       refute render_result(nil) =~ "lever-notch-disk-link"
+    end
+
+    test "a calibrated lever keeps the link before detecting again" do
+      html = render_result("https://example.test/gen/?positions=2", :idle)
+
+      assert html =~ "Detect Again"
+      assert html =~ ~s(id="lever-notch-disk-link")
+      refute html =~ "Analyzing Lever"
     end
   end
 end

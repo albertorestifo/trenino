@@ -595,7 +595,7 @@ defmodule TreninoWeb.SharedComponents do
                 phx-key="Escape"
               >
                 <.icon :if={action[:icon]} name={action[:icon]} class="size-4" />
-                {action.label}
+                {action.label}<span class="sr-only"> (opens in new tab)</span>
               </a>
               <button
                 :if={is_nil(action[:navigate]) and is_nil(action[:href])}
@@ -634,7 +634,7 @@ defmodule TreninoWeb.SharedComponents do
             target="_blank"
             rel="noopener noreferrer"
             title={action[:title]}
-            aria-label={action_aria_label(action, @name)}
+            aria-label={action_aria_label(action, @name) <> " (opens in new tab)"}
             class="btn btn-ghost btn-xs text-xs"
           >
             <.icon :if={action[:icon]} name={action[:icon]} class="size-4" />
@@ -703,6 +703,8 @@ defmodule TreninoWeb.SharedComponents do
   end
 
   defp menu_push(%JS{} = js, _target), do: js
+  # A disabled item with no event (e.g. an external link that is not available yet)
+  defp menu_push(nil, _target), do: %JS{}
   defp menu_push(event, nil), do: JS.push(event)
   defp menu_push(event, target), do: JS.push(event, target: target)
 

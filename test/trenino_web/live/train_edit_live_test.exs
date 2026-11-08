@@ -584,12 +584,15 @@ defmodule TreninoWeb.TrainEditLiveTest do
       train: train,
       element: element
     } do
-      {:ok, _view, html} = live(conn, ~p"/trains/#{train.id}")
+      {:ok, view, _html} = live(conn, ~p"/trains/#{train.id}")
 
-      # Should have a configure_lever button
-      assert html =~ "phx-click=\"configure_lever\""
-      assert html =~ "phx-value-id=\"#{element.id}\""
-      # Button always shows "Configure"
+      # Lever rows keep Configure in the "..." menu
+      button =
+        element(view, "#element-actions-#{element.id}-menu #configure-element-#{element.id}")
+
+      html = render(button)
+      assert html =~ "configure_lever"
+      assert html =~ ~s(phx-value-id="#{element.id}")
       assert html =~ "Configure"
     end
   end
@@ -654,8 +657,12 @@ defmodule TreninoWeb.TrainEditLiveTest do
 
       {:ok, view, _html} = live(conn, ~p"/trains/#{train.id}")
 
+      # Lives in the row's "..." menu, not inline next to Configure
+      assert has_element?(view, "#element-actions-#{element.id}-menu #notch-disk-#{element.id}")
+
       link = element(view, "#notch-disk-#{element.id}")
       assert render(link) =~ ~s(target="_blank")
+      assert render(link) =~ "(opens in new tab)"
       [href] = link |> render() |> LazyHTML.from_fragment() |> LazyHTML.attribute("href")
 
       assert "https://albertorestifo.github.io/train-lever-generator/?" <> query = href

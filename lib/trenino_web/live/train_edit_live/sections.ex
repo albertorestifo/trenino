@@ -162,7 +162,7 @@ defmodule TreninoWeb.TrainEditLive.Sections do
       <:actions>
         <.section_action id="add-element" label="Add element" on_click="open_add_element_modal" />
       </:actions>
-      <div class="overflow-x-auto">
+      <div class="overflow-x-auto has-[details[open]]:overflow-visible">
         <table class="table table-sm bg-base-100 rounded-lg">
           <thead>
             <tr class="bg-base-200">
@@ -225,7 +225,7 @@ defmodule TreninoWeb.TrainEditLive.Sections do
           </p>
         </div>
       </:notice>
-      <div class="overflow-x-auto">
+      <div class="overflow-x-auto has-[details[open]]:overflow-visible">
         <table class="table table-sm bg-base-100 rounded-lg">
           <thead>
             <tr class="bg-base-200">
@@ -319,7 +319,7 @@ defmodule TreninoWeb.TrainEditLive.Sections do
           </p>
         </div>
       </:notice>
-      <div class="overflow-x-auto">
+      <div class="overflow-x-auto has-[details[open]]:overflow-visible">
         <table class="table table-sm bg-base-100 rounded-lg">
           <thead>
             <tr class="bg-base-200">
@@ -415,7 +415,7 @@ defmodule TreninoWeb.TrainEditLive.Sections do
           navigate={~p"/trains/#{@train_id}/scripts/new"}
         />
       </:actions>
-      <div class="overflow-x-auto">
+      <div class="overflow-x-auto has-[details[open]]:overflow-visible">
         <table class="table table-sm bg-base-100 rounded-lg">
           <thead>
             <tr class="bg-base-200">
@@ -531,9 +531,16 @@ defmodule TreninoWeb.TrainEditLive.Sections do
         </span>
       </td>
       <td>
-        <.row_actions id={"element-actions-#{@element.id}"} name={@element.name}>
+        <%!-- Lever rows always use the menu: "Design notch disk" only appears
+             once the lever is calibrated, and the row should not change shape. --%>
+        <.row_actions
+          id={"element-actions-#{@element.id}"}
+          name={@element.name}
+          menu={if @element.type == :lever, do: :always, else: :auto}
+        >
           <:action
             :if={@configure_action}
+            id={"configure-element-#{@element.id}"}
             event={@configure_action}
             values={%{id: @element.id}}
             icon="hero-cog-6-tooth"

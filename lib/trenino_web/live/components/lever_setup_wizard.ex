@@ -378,8 +378,10 @@ defmodule TreninoWeb.LeverSetupWizard do
 
     socket =
       case next_step do
-        :run_calibration ->
-          # Set running state and request parent to run calibration
+        # Only the explanation step's "Start Calibration" button starts the
+        # sweep straight away. Reaching the step any other way waits for the
+        # user to press Start, because the sweep moves the lever in the game.
+        :run_calibration when current_step == :explain_calibration ->
           request_calibration(socket)
 
         :map_notches ->
@@ -432,6 +434,15 @@ defmodule TreninoWeb.LeverSetupWizard do
   @impl true
   def handle_event("close_auto_detect", _params, socket) do
     {:noreply, assign(socket, :show_auto_detect, false)}
+  end
+
+  @impl true
+  def handle_event("start_calibration", _params, socket) do
+    if socket.assigns.calibration_status == :running do
+      {:noreply, socket}
+    else
+      {:noreply, request_calibration(socket)}
+    end
   end
 
   @impl true
@@ -647,12 +658,8 @@ defmodule TreninoWeb.LeverSetupWizard do
     end
   end
 
-  # Start resources needed for a step when navigating to it
-  defp maybe_start_step_resources(socket, :run_calibration) do
-    # When navigating to calibration step, start calibration
-    request_calibration(socket)
-  end
-
+  # Start resources needed for a step when navigating to it. Calibration is
+  # not one of them: it waits for the Start button on its step.
   defp maybe_start_step_resources(socket, :map_notches) do
     # When navigating to mapping step, start the mapping session
     start_notch_mapping(socket)
@@ -882,7 +889,11 @@ defmodule TreninoWeb.LeverSetupWizard do
       endpoints[:value_endpoint] != nil
   end
 
-  defp can_proceed_from?(:run_calibration, assigns), do: assigns.calibration_status == :complete
+  # A lever calibrated earlier can move on without detecting again.
+  defp can_proceed_from?(:run_calibration, assigns) do
+    assigns.calibration_status == :complete or
+      (assigns.calibration_status == :idle and assigns.lever_type != nil)
+  end
 
   defp can_proceed_from?(:map_notches, assigns) do
     state = assigns.mapping_state
@@ -1445,6 +1456,37 @@ defmodule TreninoWeb.LeverSetupWizard do
     ~H"""
     <div class="flex-1 overflow-y-auto p-6">
       <div class="max-w-lg mx-auto text-center">
+        <div :if={@calibration_status == :idle}>
+          <div class="w-16 h-16 mx-auto mb-4 rounded-full bg-base-200 flex items-center justify-center">
+            <.icon name="hero-cog-6-tooth" class="w-8 h-8" />
+          </div>
+          <h3 class="text-xl font-semibold mb-2">Detect Notches</h3>
+          <p :if={@lever_type == nil} class="text-muted mb-4">
+            Trenino sweeps the lever through its range in the game and saves each notch it finds.
+          </p>
+          <p :if={@lever_type != nil} class="text-muted mb-4">
+            This lever already has {length(@notches)} notches. Detect them again to replace them.
+          </p>
+          <p class="text-sm text-muted mb-6">
+            The lever moves in the game. Stop the train and apply the brake first.
+          </p>
+          <button phx-click="start_calibration" phx-target={@myself} class="btn btn-primary">
+            <.icon name="hero-play" class="w-4 h-4" />
+            {if @lever_type == nil, do: "Start Detection", else: "Detect Again"}
+          </button>
+          <div :if={@lever_type != nil && @notch_disk_url}>
+            <a
+              id="lever-notch-disk-link"
+              href={@notch_disk_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              class="btn btn-ghost btn-sm mt-3"
+            >
+              <.icon name="hero-arrow-top-right-on-square" class="w-4 h-4" /> Design a notch disk
+            </a>
+          </div>
+        </div>
+
         <div :if={@calibration_status == :running}>
           <div class="w-16 h-16 mx-auto mb-4 rounded-full bg-base-200 flex items-center justify-center">
             <span class="loading loading-spinner loading-lg"></span>
@@ -1518,6 +1560,9 @@ defmodule TreninoWeb.LeverSetupWizard do
           </div>
           <h3 class="text-xl font-semibold mb-2">Calibration Failed</h3>
           <p class="text-error mb-4">{@calibration_error}</p>
+          <button phx-click="start_calibration" phx-target={@myself} class="btn btn-primary">
+            <.icon name="hero-arrow-path" class="w-4 h-4" /> Try Again
+          </button>
         </div>
       </div>
     </div>
@@ -1616,41 +1661,60 @@ defmodule TreninoWeb.LeverSetupWizard do
         <span class="loading loading-spinner loading-lg"></span>
       </div>
 
-      <div :if={@mapping_state} class="max-w-2xl mx-auto">
-        <h3 class="text-xl font-semibold mb-2">Map Hardware Positions</h3>
-        <p class="text-sm text-muted mb-4">
-          Move your physical lever to capture the range for each notch.
-          <%= if @preview do %>
-            The “Your lever” strip shows where each captured notch sits on your
-            hardware, and whether your lever runs the same way as the simulator.
-          <% else %>
-            Lever direction is worked out from the notches you capture.
-          <% end %>
-        </p>
+      <%!-- While a notch is being mapped the overall progress sits on the
+           left and the current notch's live readings on the right, so the
+           readings stay in view without scrolling. --%>
+      <div
+        :if={@mapping_state}
+        id="map-notches-layout"
+        class={[
+          "mx-auto",
+          if(@mapping_state.current_notch,
+            do: "grid gap-6 items-start md:grid-cols-[minmax(0,1fr)_20rem]",
+            else: "max-w-2xl"
+          )
+        ]}
+      >
+        <div id="map-notches-overview" class="min-w-0">
+          <h3 class="text-xl font-semibold mb-2">Map Hardware Positions</h3>
+          <p class="text-sm text-muted mb-4">
+            Move your physical lever to capture the range for each notch.
+            <%= if @preview do %>
+              The “Your lever” strip shows where each captured notch sits on your
+              hardware, and whether your lever runs the same way as the simulator.
+            <% else %>
+              Lever direction is worked out from the notches you capture.
+            <% end %>
+          </p>
 
-        <%!-- Simulator-order bar (x-axis is notch order, not hardware travel) --%>
-        <.live_component
-          module={LeverVisualization}
-          id="lever-viz"
-          notches={@mapping_state.notches}
-          captured_ranges={@mapping_state.captured_ranges}
-          total_travel={@mapping_state.total_travel}
-          current_notch_index={@mapping_state.current_notch_index}
-          event_target={@myself}
-        />
+          <%!-- Simulator-order bar (x-axis is notch order, not hardware travel) --%>
+          <.live_component
+            module={LeverVisualization}
+            id="lever-viz"
+            notches={@mapping_state.notches}
+            captured_ranges={@mapping_state.captured_ranges}
+            total_travel={@mapping_state.total_travel}
+            current_notch_index={@mapping_state.current_notch_index}
+            event_target={@myself}
+          />
 
-        <%!-- Physical-order strip with live marker --%>
-        <LeverVisualization.hardware_strip
-          :if={@preview}
-          preview={@preview}
-          current_value={@mapping_state.current_value}
-          total_travel={@mapping_state.total_travel}
-          current_notch_index={@mapping_state.current_notch_index}
-          event_target={@myself}
-        />
+          <%!-- Physical-order strip with live marker --%>
+          <LeverVisualization.hardware_strip
+            :if={@preview}
+            preview={@preview}
+            current_value={@mapping_state.current_value}
+            total_travel={@mapping_state.total_travel}
+            current_notch_index={@mapping_state.current_notch_index}
+            event_target={@myself}
+          />
+        </div>
 
         <%!-- Current notch mapping panel --%>
-        <div :if={@mapping_state.current_notch} class="mt-6 bg-base-200 rounded-lg p-4">
+        <div
+          :if={@mapping_state.current_notch}
+          id="current-notch-panel"
+          class="bg-base-100 rounded-lg p-4 md:sticky md:top-0"
+        >
           <div class="flex items-start justify-between gap-4 mb-4">
             <div class="min-w-0">
               <h4 class="font-semibold break-words">
