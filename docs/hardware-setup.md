@@ -61,7 +61,7 @@ For each physical input on your device:
    - **Name** - A friendly label shown in train configuration selectors (e.g., "Throttle Lever", "Horn Button")
    - **Pin Number** - The ADC pin on your microcontroller
    - **Input Type** - Analog or Digital
-   - **Sensitivity** - Value change threshold (1-255, default 5)
+   - **Sensitivity** - Value change threshold (1-10, default 5)
 4. Save the input
 
 ### Sensitivity Setting
@@ -70,9 +70,9 @@ The sensitivity value determines how much the input must change before sending a
 
 | Value | Use Case |
 |-------|----------|
-| 1-3 | High precision requirements |
+| 1-2 | Train levers, especially notches that cover a short part of the travel |
 | 5 | Default, good balance |
-| 10-20 | Noisy inputs, reduce chatter |
+| 8-10 | Noisy inputs, reduce chatter |
 
 ## Connecting Your Device
 

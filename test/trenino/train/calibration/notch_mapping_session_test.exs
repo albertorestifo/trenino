@@ -888,7 +888,7 @@ defmodule Trenino.Train.Calibration.NotchMappingSessionTest do
       assert preview.direction_known
       assert %{notch_index: 0, hardware_pct: 25.0, type: :linear} = preview.live
       # Braking stored as 0.0-0.44: 0.25 / 0.44 * 0.45
-      assert preview.live.sim_input == 0.26
+      assert preview.live.sim_input == 0.2557
 
       # Calibrated 800 -> 100%, Power not captured yet: a gap
       send(pid, {:input_value_updated, "/dev/test", 5, 900})

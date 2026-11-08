@@ -20,6 +20,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Gauge MCP tools: `list_gauges`, `create_gauge`, `update_gauge`, `delete_gauge`,
   `apply_device_configuration`, `move_gauge` and `zero_gauge` replace the stepper axis
   tools. Dial and binding tools take `gauge_id` instead of `stepper_axis_id`.
+- Levers are smoother: the lever position and the value sent for linear notches now
+  keep 4 decimals instead of 2. Before, a lever had at most 101 positions, so a brake
+  notch spread over a tenth of the travel moved the simulator in about 10 steps. Lower
+  the input's Sensitivity to 1 or 2 to get every step the ADC reads. Notch boundaries
+  and gate values are unchanged.
 
 ### Removed
 

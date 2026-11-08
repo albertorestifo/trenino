@@ -12,7 +12,8 @@ defmodule Trenino.Train.LeverMapper do
   1. **Hardware**: Raw ADC value (e.g., 0-1023 from potentiometer)
   2. **Calibration**: `Hardware.Calibration.Calculator.normalize/2` converts to
      calibrated integer (0 to total_travel, e.g., 0-800)
-  3. **Normalization**: `LeverController` divides by total_travel to get 0.0-1.0 float
+  3. **Normalization**: `LeverController` divides by total_travel to get 0.0-1.0 float,
+     rounded to `input_precision/0` decimals
   4. **Mapping** (this module): Converts hardware 0.0-1.0 to simulator InputValue 0.0-1.0
   5. **Simulator**: InputValue is sent to simulator, which produces output values
 
@@ -49,6 +50,19 @@ defmodule Trenino.Train.LeverMapper do
   """
 
   alias Trenino.Train.{LeverConfig, Notch}
+
+  # Hardware inputs and linear sim inputs keep 4 decimals. Rounding to 2 would
+  # cap a lever at 101 positions, so a linear notch covering 10% of the travel
+  # would only have ~10 steps however fine the ADC is. Notch bounds stay at 2
+  # decimals; only the live position and the interpolated output are finer.
+  @input_precision 4
+
+  @doc """
+  Decimal places kept for normalized hardware inputs and interpolated
+  simulator inputs on levers.
+  """
+  @spec input_precision() :: pos_integer()
+  def input_precision, do: @input_precision
 
   @type map_result ::
           {:ok, float()}
@@ -103,7 +117,8 @@ defmodule Trenino.Train.LeverMapper do
   def resolve_input(%LeverConfig{notches: notches, inverted: inverted}, input_value)
       when is_float(input_value) and input_value >= 0.0 and input_value <= 1.0 do
     # Apply inversion if configured (hardware direction opposite to simulator)
-    effective_value = if inverted, do: Float.round(1.0 - input_value, 2), else: input_value
+    effective_value =
+      if inverted, do: Float.round(1.0 - input_value, @input_precision), else: input_value
 
     # Find the notch that contains this hardware input value
     case find_notch(notches, effective_value) do
@@ -134,7 +149,7 @@ defmodule Trenino.Train.LeverMapper do
   end
 
   # Gates narrower than @min_gate_catch_width are matched inclusively, padded by
-  # @gate_catch_pad on each side. Hardware resolution is 0.01, and the wizard
+  # @gate_catch_pad on each side. Notch bounds are stored at 0.01, and the wizard
   # accepts single-point gate captures that Notch.changeset rounds to zero width;
   # under half-open matching such a detent could never be reached. Wider gates
   # are already reachable and keep half-open matching, so existing layouts with
@@ -182,8 +197,8 @@ defmodule Trenino.Train.LeverMapper do
     end
   end
 
-  # Widths and bounds are rounded so they compare exactly against 2-decimal
-  # hardware inputs (0.12 - 0.1 is not exactly 0.02 in floating point)
+  # Widths and bounds are rounded so they compare exactly against the 2-decimal
+  # notch grid (0.12 - 0.1 is not exactly 0.02 in floating point)
   defp narrow_gate?(%Notch{type: :gate, input_min: min, input_max: max}),
     do: Float.round((max - min) / 1, 2) < @min_gate_catch_width
 
@@ -311,8 +326,7 @@ defmodule Trenino.Train.LeverMapper do
     sim_range = sim_max - sim_min
     sim_value = sim_min + effective_position * sim_range
 
-    # Round to 2 decimal places
-    {:ok, Float.round(sim_value, 2)}
+    {:ok, Float.round(sim_value, @input_precision)}
   end
 
   def calculate_sim_input(%Notch{sim_input_min: nil}, _input_value, _invert_position) do

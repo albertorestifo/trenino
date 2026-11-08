@@ -837,11 +837,11 @@ defmodule Trenino.Train.LeverMapperTest do
 
       # Effective input == hardware input. Power notch runs 1.0 -> 0.56 as input rises
       assert {:ok, 1.0} = LeverMapper.map_input(config, 0.0)
-      assert {:ok, 0.57} = LeverMapper.map_input(config, 0.44)
+      assert {:ok, 0.5698} = LeverMapper.map_input(config, 0.44)
       assert {:ok, 0.5} = LeverMapper.map_input(config, 0.5)
       # Braking notch runs 0.44 -> 0.06 as input rises
       assert {:ok, 0.44} = LeverMapper.map_input(config, 0.56)
-      assert {:ok, 0.07} = LeverMapper.map_input(config, 0.95)
+      assert {:ok, 0.0695} = LeverMapper.map_input(config, 0.95)
       assert {:ok, 0.02} = LeverMapper.map_input(config, 1.0)
 
       # Monotone: sim never rises as hardware input rises
@@ -859,7 +859,7 @@ defmodule Trenino.Train.LeverMapperTest do
 
       # Hardware x -> effective 1 - x, then the same descending interpolation
       assert {:ok, 1.0} = LeverMapper.map_input(config, 1.0)
-      assert {:ok, 0.57} = LeverMapper.map_input(config, 0.56)
+      assert {:ok, 0.5698} = LeverMapper.map_input(config, 0.56)
       assert {:ok, 0.44} = LeverMapper.map_input(config, 0.44)
       assert {:ok, 0.02} = LeverMapper.map_input(config, 0.0)
     end
@@ -1049,6 +1049,72 @@ defmodule Trenino.Train.LeverMapperTest do
       power = %Notch{type: :linear, input_min: 0.55, input_max: 1.0}
 
       assert LeverMapper.find_notch([neutral, power], 0.55) == power
+    end
+  end
+
+  describe "input resolution" do
+    # Shaped like a real MasterController: a brake notch over 9% of the travel
+    # next to a narrow Off gate.
+    defp short_brake_config do
+      %LeverConfig{
+        inverted: false,
+        notches: [
+          %Notch{
+            index: 0,
+            type: :linear,
+            input_min: 0.05,
+            input_max: 0.14,
+            sim_input_min: 0.1,
+            sim_input_max: 0.45
+          },
+          %Notch{
+            index: 1,
+            type: :gate,
+            input_min: 0.17,
+            input_max: 0.18,
+            sim_input_min: 0.5,
+            sim_input_max: 0.5
+          }
+        ]
+      }
+    end
+
+    test "a short linear notch maps every 4-decimal input to its own sim value" do
+      config = short_brake_config()
+
+      # One 10-bit ADC count over ~600 counts of travel is ~0.0017
+      inputs = for i <- 0..50, do: Float.round(0.05 + i * 0.0017, 4)
+
+      values =
+        Enum.map(inputs, fn hw ->
+          {:ok, v} = LeverMapper.map_input(config, hw)
+          v
+        end)
+
+      assert length(Enum.uniq(values)) == length(inputs)
+      assert values == Enum.sort(values)
+    end
+
+    test "linear output keeps 4 decimals" do
+      assert {:ok, 0.2556} = LeverMapper.map_input(short_brake_config(), 0.09)
+      assert {:ok, 0.2575} = LeverMapper.map_input(short_brake_config(), 0.0905)
+    end
+
+    test "narrow gates still catch 4-decimal inputs around them" do
+      config = short_brake_config()
+
+      for hw <- [0.16, 0.1625, 0.175, 0.1899, 0.19] do
+        assert {:ok, 0.5} = LeverMapper.map_input(config, hw)
+      end
+
+      assert {:error, :no_notch} = LeverMapper.map_input(config, 0.1501)
+      assert {:error, :no_notch} = LeverMapper.map_input(config, 0.1901)
+    end
+
+    test "inversion keeps 4 decimals" do
+      config = %{short_brake_config() | inverted: true}
+
+      assert {:ok, 0.2575} = LeverMapper.map_input(config, 0.9095)
     end
   end
 end

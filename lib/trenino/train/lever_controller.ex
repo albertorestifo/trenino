@@ -482,7 +482,12 @@ defmodule Trenino.Train.LeverController do
   defp resolve_simulator_value(%State{} = state, port, pin, raw_value) do
     with {:ok, input_info} <- Map.fetch(state.input_lookup, {port, pin}),
          {:ok, binding_info} <- Map.fetch(state.binding_lookup, input_info.input_id),
-         {:ok, normalized} <- InputNormalizer.normalize(raw_value, input_info.calibration),
+         {:ok, normalized} <-
+           InputNormalizer.normalize(
+             raw_value,
+             input_info.calibration,
+             LeverMapper.input_precision()
+           ),
          {:ok, sim_value} <- LeverMapper.map_input(binding_info.lever_config, normalized) do
       {:ok, binding_info, normalized, sim_value}
     else

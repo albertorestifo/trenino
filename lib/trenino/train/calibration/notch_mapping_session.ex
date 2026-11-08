@@ -1096,7 +1096,7 @@ defmodule Trenino.Train.Calibration.NotchMappingSession do
       (state.current_value / state.total_travel)
       |> max(0.0)
       |> min(1.0)
-      |> Float.round(2)
+      |> Float.round(LeverMapper.input_precision())
 
     case resolve(config, hardware, index_by_id) do
       {:ok, idx, sim_input} -> end_info(state, idx, hardware, sim_input)

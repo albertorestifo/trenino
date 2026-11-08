@@ -18,6 +18,13 @@ defmodule Trenino.Hardware.InputNormalizerTest do
     assert InputNormalizer.normalize(900, @calibration) == {:ok, 1.0}
   end
 
+  test "keeps the requested precision so adjacent ADC steps stay distinct" do
+    assert InputNormalizer.normalize(512, @calibration, 4) == {:ok, 0.515}
+
+    values = for raw <- 500..510, do: elem(InputNormalizer.normalize(raw, @calibration, 4), 1)
+    assert length(Enum.uniq(values)) == 11
+  end
+
   test "clamps readings outside the calibrated range" do
     assert InputNormalizer.normalize(0, @calibration) == {:ok, 0.0}
     assert InputNormalizer.normalize(1023, @calibration) == {:ok, 1.0}
