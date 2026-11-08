@@ -36,12 +36,12 @@ defmodule Trenino.Hardware.ConfigurationManagerTest do
                ConfigurationManager.apply_configuration(port, empty_device.id)
     end
 
-    test "refuses inputs plus stepper axes on firmware below 3.1", %{device: device, port: port} do
+    test "refuses inputs plus gauges on firmware below 3.3", %{device: device, port: port} do
       Mimic.set_mimic_global()
-      {:ok, _} = Hardware.create_stepper_axis(device.id, %{name: "Speed"})
+      Trenino.GaugeFixtures.gauge_fixture(device.id)
 
       Mimic.stub(Trenino.Serial.Connection, :connected_devices, fn ->
-        [%{port: port, device_version: "3.0.0"}]
+        [%{port: port, device_version: "3.2.1"}]
       end)
 
       assert {:error, :firmware_update_required} =
@@ -132,6 +132,121 @@ defmodule Trenino.Hardware.ConfigurationManagerTest do
     )
 
     :sys.get_state(ConfigurationManager)
+  end
+
+  describe "gauges" do
+    setup do
+      Mimic.set_mimic_global()
+      Mimic.stub(Circuits.UART, :enumerate, fn -> %{} end)
+      {:ok, device} = Hardware.create_device(%{name: "Gauges only"})
+      gauge = Trenino.GaugeFixtures.gauge_fixture(device.id, %{reverse: true})
+      %{device: device, gauge: gauge, port: unique_port()}
+    end
+
+    test "a gauges-only device gets a gauge part, not the empty Configure", %{
+      device: device,
+      port: port
+    } do
+      test_pid = self()
+
+      Mimic.stub(Trenino.Serial.Connection, :connected_devices, fn ->
+        [%{port: port, device_version: "3.3.0"}]
+      end)
+
+      Mimic.stub(Trenino.Serial.Connection, :send_message, fn ^port, message ->
+        send(test_pid, {:configuration_message, message})
+        :ok
+      end)
+
+      Phoenix.PubSub.subscribe(Trenino.PubSub, @config_topic)
+      assert {:ok, config_id} = ConfigurationManager.apply_configuration(port, device.id)
+
+      assert_receive {:configuration_message,
+                      %Trenino.Serial.Protocol.Configure{
+                        config_id: ^config_id,
+                        total_parts: 1,
+                        part_number: 0,
+                        input_type: :gauge,
+                        driver: :vid6606,
+                        pins: [8, 7, 6, 255],
+                        travel: 3780,
+                        max_speed: 5000,
+                        acceleration: 50_000,
+                        reverse: true
+                      }}
+
+      send(
+        ConfigurationManager,
+        {:serial_message, port, %ConfigurationStored{config_id: config_id}}
+      )
+
+      assert_receive {:configuration_applied, ^port, _device, ^config_id}
+      assert {:ok, %{applied_fingerprint: fingerprint}} = Hardware.get_device(device.id)
+      assert fingerprint == Hardware.device_fingerprint(device.id)
+    end
+
+    test "refuses gauges on firmware below 3.3", %{device: device, port: port} do
+      Mimic.stub(Trenino.Serial.Connection, :connected_devices, fn ->
+        [%{port: port, device_version: "3.2.1"}]
+      end)
+
+      assert {:error, :firmware_update_required} =
+               ConfigurationManager.apply_configuration(port, device.id)
+    end
+
+    test "refuses a gauge pin that an input added later also uses", %{device: device, port: port} do
+      Mimic.stub(Trenino.Serial.Connection, :connected_devices, fn ->
+        [%{port: port, device_version: "3.3.0"}]
+      end)
+
+      {:ok, _} = Hardware.create_input(device.id, %{pin: 7, input_type: :button, debounce: 20})
+
+      assert {:error, :gauge_pin_conflict} =
+               ConfigurationManager.apply_configuration(port, device.id)
+    end
+
+    test "a gauge start failure is broadcast only right after an Apply", %{
+      device: device,
+      port: port
+    } do
+      Mimic.stub(Trenino.Serial.Connection, :connected_devices, fn ->
+        [%{port: port, device_version: "3.3.0"}]
+      end)
+
+      Mimic.stub(Trenino.Serial.Connection, :send_message, fn ^port, _ -> :ok end)
+      Phoenix.PubSub.subscribe(Trenino.PubSub, @config_topic)
+      module_error = %Trenino.Serial.Protocol.ModuleError{i2c_address: 0, error_code: 0}
+
+      # The firmware repeats boot-time errors at every connect: those are only logged.
+      send(ConfigurationManager, {:serial_message, port, module_error})
+      refute_receive {:gauge_start_failed, ^port}, 50
+
+      assert {:ok, config_id} = ConfigurationManager.apply_configuration(port, device.id)
+
+      send(
+        ConfigurationManager,
+        {:serial_message, port, %ConfigurationStored{config_id: config_id}}
+      )
+
+      assert_receive {:configuration_applied, ^port, _device, ^config_id}
+
+      send(ConfigurationManager, {:serial_message, port, module_error})
+      assert_receive {:gauge_start_failed, ^port}
+    end
+
+    test "refuses more modules than the firmware stores", %{device: device, port: port} do
+      Mimic.stub(Trenino.Serial.Connection, :connected_devices, fn ->
+        [%{port: port, device_version: "3.3.0"}]
+      end)
+
+      for pin <- 30..37 do
+        {:ok, _} =
+          Hardware.create_input(device.id, %{pin: pin, input_type: :button, debounce: 20})
+      end
+
+      assert {:error, :too_many_modules} =
+               ConfigurationManager.apply_configuration(port, device.id)
+    end
   end
 
   describe "outputs-only configuration" do

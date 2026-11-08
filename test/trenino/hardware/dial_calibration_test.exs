@@ -1,25 +1,24 @@
 defmodule Trenino.Hardware.DialCalibrationTest do
   use Trenino.DataCase, async: true
+  alias Trenino.GaugeFixtures
   alias Trenino.Hardware
-  alias Trenino.Hardware.{DialCalibration, StepperAxis}
+  alias Trenino.Hardware.{DialCalibration, Gauge}
   alias Trenino.Train
   alias Trenino.Train.GaugeMapper
 
   @points [%{value: 0, position: 0}, %{value: 100, position: 720}]
 
-  defp changeset(points, axis \\ %StepperAxis{id: 1}),
+  defp changeset(points, gauge \\ %Gauge{id: 1, travel: 720}),
     do:
       DialCalibration.changeset(
-        %DialCalibration{stepper_axis_id: 1, points: []},
+        %DialCalibration{gauge_id: 1, points: []},
         %{points: points},
-        axis
+        gauge
       )
 
   defp setup_axis do
     {:ok, device} = Hardware.create_device(%{name: "Panel"})
-    {:ok, axis} = Hardware.create_stepper_axis(device.id, %{name: "Speed"})
-    {:ok, axis} = Hardware.commission_stepper_axis(axis)
-    axis
+    GaugeFixtures.gauge_fixture(device.id, %{travel: 720})
   end
 
   test "points require sorted distinct values and monotonic positions inside limits" do
@@ -77,7 +76,7 @@ defmodule Trenino.Hardware.DialCalibrationTest do
       Train.create_gauge_binding(train.id, %{
         name: "S",
         endpoint: "S",
-        stepper_axis_id: axis.id,
+        gauge_id: axis.id,
         enabled: true
       })
 
@@ -86,9 +85,9 @@ defmodule Trenino.Hardware.DialCalibrationTest do
     assert {:ok, %{enabled: false}} = Train.get_gauge_binding(binding.id)
   end
 
-  test "axis limits are enforced for the calibration" do
+  test "positions must lie within the gauge travel" do
     axis = setup_axis()
-    wide = [%{value: 0, position: 0}, %{value: 100, position: axis.max_position + 1}]
+    wide = [%{value: 0, position: 0}, %{value: 100, position: axis.travel + 1}]
     assert {:error, cs} = Hardware.save_dial_calibration(axis, %{points: wide})
     assert %{points: [_ | _]} = errors_on(cs)
   end
@@ -102,7 +101,7 @@ defmodule Trenino.Hardware.DialCalibrationTest do
       Train.create_gauge_binding(train.id, %{
         name: "S",
         endpoint: "S",
-        stepper_axis_id: axis.id,
+        gauge_id: axis.id,
         enabled: true
       })
 
@@ -116,13 +115,10 @@ defmodule Trenino.Hardware.DialCalibrationTest do
   describe "fields that change what a stored position means" do
     for {field, value} <- [
           reverse: true,
-          home_position: 10,
-          motor_port: 2,
-          home_direction: 1,
-          home_backoff: 20,
-          reference_strategy: :internal_stop
+          pins: [9, 10, 6, 255],
+          driver: :direct
         ] do
-      test "changing #{field} invalidates the dial and disables bindings" do
+      test "changing #{field} deletes the dial and disables bindings" do
         axis = setup_axis()
         {:ok, _} = Hardware.save_dial_calibration(axis, %{points: @points, reviewed: true})
         {:ok, train} = Train.create_train(%{name: "A", identifiers: [%{identifier: "A"}]})
@@ -131,53 +127,31 @@ defmodule Trenino.Hardware.DialCalibrationTest do
           Train.create_gauge_binding(train.id, %{
             name: "S",
             endpoint: "S",
-            stepper_axis_id: axis.id,
+            gauge_id: axis.id,
             enabled: true
           })
 
-        {:ok, _} = Hardware.update_stepper_axis(axis, %{unquote(field) => unquote(value)})
+        attrs =
+          if unquote(field) == :driver,
+            do: %{driver: :direct, pins: [9, 10, 14, 15], max_speed: 1800},
+            else: %{unquote(field) => unquote(Macro.escape(value))}
 
-        assert {:ok, %{valid: false, reviewed: false}} = Hardware.get_dial_calibration(axis.id)
+        {:ok, _} = Hardware.update_gauge(axis, attrs)
+
+        assert {:error, :not_found} = Hardware.get_dial_calibration(axis.id)
         assert {:ok, %{enabled: false}} = Train.get_gauge_binding(binding.id)
       end
     end
 
-    test "homing speed and steps keep the reviewed dial" do
+    test "speed and acceleration keep the reviewed dial" do
       axis = setup_axis()
       {:ok, _} = Hardware.save_dial_calibration(axis, %{points: @points, reviewed: true})
-      {:ok, _} = Hardware.update_stepper_axis(axis, %{home_speed: 80, home_steps: 500})
-      assert {:ok, %{valid: true, reviewed: true}} = Hardware.get_dial_calibration(axis.id)
-    end
-
-    test "dial_valid: false lets the wizard retune the home frame and blocks the dial" do
-      axis = setup_axis()
-      {:ok, _} = Hardware.save_dial_calibration(axis, %{points: @points, reviewed: true})
-      {:ok, train} = Train.create_train(%{name: "A", identifiers: [%{identifier: "A"}]})
-
-      {:ok, binding} =
-        Train.create_gauge_binding(train.id, %{
-          name: "S",
-          endpoint: "S",
-          stepper_axis_id: axis.id,
-          enabled: true
-        })
-
-      {:ok, tuned} =
-        Hardware.update_stepper_axis(axis, %{home_backoff: 20, home_speed: 80}, dial_valid: false)
-
-      assert {:ok, %{valid: false, reviewed: true}} = Hardware.get_dial_calibration(axis.id)
-      assert {:ok, %{enabled: true}} = Train.get_gauge_binding(binding.id)
-      {:ok, blocked} = Hardware.get_stepper_axis(axis.id)
-
-      assert {:error, :invalid_calibration_or_limits} =
-               GaugeMapper.map(binding, 50, blocked)
-
-      {:ok, _} = Hardware.update_stepper_axis(tuned, %{home_speed: 60}, dial_valid: true)
+      {:ok, _} = Hardware.update_gauge(axis, %{max_speed: 3000, acceleration: 20_000})
       assert {:ok, %{valid: true, reviewed: true}} = Hardware.get_dial_calibration(axis.id)
     end
   end
 
-  test "shrinking the soft limits past a saved point invalidates the dial and disables all bindings" do
+  test "shrinking travel past a saved point deletes the dial and disables all bindings" do
     axis = setup_axis()
     {:ok, _} = Hardware.save_dial_calibration(axis, %{points: @points, reviewed: true})
     {:ok, a} = Train.create_train(%{name: "A", identifiers: [%{identifier: "A"}]})
@@ -188,23 +162,19 @@ defmodule Trenino.Hardware.DialCalibrationTest do
         Train.create_gauge_binding(train.id, %{
           name: "S",
           endpoint: "S",
-          stepper_axis_id: axis.id,
+          gauge_id: axis.id,
           enabled: true
         })
     end
 
-    {:ok, _} = Hardware.update_stepper_axis(axis, %{max_position: 700})
+    {:ok, _} = Hardware.update_gauge(axis, %{travel: 700})
 
-    assert {:ok, %{valid: false, reviewed: false, points: [_, _]}} =
-             Hardware.get_dial_calibration(axis.id)
+    assert {:error, :not_found} = Hardware.get_dial_calibration(axis.id)
 
     assert Enum.all?(
              [a, b],
              &Enum.all?(Train.list_gauge_bindings(&1.id), fn x -> not x.enabled end)
            )
-
-    {:ok, cal} = Hardware.save_dial_calibration(axis, %{points: @points, reviewed: true})
-    assert cal.valid and cal.reviewed
   end
 
   test "allowing more travel keeps the reviewed dial and its bindings" do
@@ -216,31 +186,32 @@ defmodule Trenino.Hardware.DialCalibrationTest do
       Train.create_gauge_binding(train.id, %{
         name: "S",
         endpoint: "S",
-        stepper_axis_id: axis.id,
+        gauge_id: axis.id,
         enabled: true
       })
 
-    {:ok, axis} = Hardware.update_stepper_axis(axis, %{max_position: 800})
+    {:ok, _} = Hardware.update_gauge(axis, %{travel: 3780})
     assert {:ok, %{valid: true, reviewed: true}} = Hardware.get_dial_calibration(axis.id)
     assert {:ok, %{enabled: true}} = Train.get_gauge_binding(binding.id)
-
-    {:ok, _} = Hardware.update_stepper_axis(axis, %{max_position: 719})
-    assert {:ok, %{valid: false, reviewed: false}} = Hardware.get_dial_calibration(axis.id)
-    assert {:ok, %{enabled: false}} = Train.get_gauge_binding(binding.id)
   end
 
-  test "changing the stepping mode invalidates the dial" do
+  test "unrelated gauge edits leave the dial alone" do
     axis = setup_axis()
     {:ok, _} = Hardware.save_dial_calibration(axis, %{points: @points, reviewed: true})
-    other = Enum.find(Ecto.Enum.values(StepperAxis, :mode), &(&1 != axis.mode))
-    {:ok, _} = Hardware.update_stepper_axis(axis, %{mode: other})
-    assert {:ok, %{valid: false, reviewed: false}} = Hardware.get_dial_calibration(axis.id)
-  end
-
-  test "unrelated axis edits leave the dial alone" do
-    axis = setup_axis()
-    {:ok, _} = Hardware.save_dial_calibration(axis, %{points: @points, reviewed: true})
-    {:ok, _} = Hardware.update_stepper_axis(axis, %{name: "Renamed"})
+    {:ok, _} = Hardware.update_gauge(axis, %{name: "Renamed"})
     assert {:ok, %{valid: true, reviewed: true}} = Hardware.get_dial_calibration(axis.id)
+  end
+
+  test "a gauge whose dial is not valid maps nothing" do
+    axis = setup_axis()
+    {:ok, _} = Hardware.save_dial_calibration(axis, %{points: @points, reviewed: true})
+    {:ok, train} = Train.create_train(%{name: "A", identifiers: [%{identifier: "A"}]})
+
+    {:ok, binding} =
+      Train.create_gauge_binding(train.id, %{name: "S", endpoint: "S", gauge_id: axis.id})
+
+    {:ok, gauge} = Hardware.get_gauge(axis.id)
+    invalid = %{gauge | dial_calibration: %{gauge.dial_calibration | valid: false}}
+    assert {:error, :invalid_calibration_or_limits} = GaugeMapper.map(binding, 50, invalid)
   end
 end

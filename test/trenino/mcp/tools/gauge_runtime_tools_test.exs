@@ -20,23 +20,15 @@ defmodule Trenino.MCP.Tools.GaugeRuntimeToolsTest do
       {:error, {:http_error, 500, %{"x" => 1}}}
     end)
 
-    Mimic.stub(Trenino.Hardware.StepperManager, :set_target, fn _, _, _ -> :ok end)
-    Mimic.stub(Trenino.Hardware.StepperManager, :inactive, fn _, _ -> :ok end)
+    Mimic.stub(Hardware, :gauge_link, fn _ -> {:error, :device_not_connected} end)
 
     {:ok, device} = Hardware.create_device(%{name: "Panel"})
-    {:ok, axis} = Hardware.create_stepper_axis(device.id, %{name: "Speed"})
-    {:ok, axis} = Hardware.commission_stepper_axis(axis)
+    gauge = Trenino.GaugeFixtures.calibrated_gauge_fixture(device.id)
     {:ok, train} = Train.create_train(%{name: "T", identifiers: [%{identifier: "GRT"}]})
-
-    {:ok, _} =
-      Hardware.save_dial_calibration(axis, %{
-        points: [%{value: 0, position: 0}, %{value: 100, position: 720}],
-        reviewed: true
-      })
 
     {:ok, binding} =
       Train.create_gauge_binding(train.id, %{
-        stepper_axis_id: axis.id,
+        gauge_id: gauge.id,
         name: "Speed",
         endpoint: "Speed",
         enabled: true

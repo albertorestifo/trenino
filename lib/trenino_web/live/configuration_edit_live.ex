@@ -6,8 +6,6 @@ defmodule TreninoWeb.ConfigurationEditLive do
   Configurations can be applied to any connected device.
   """
 
-  alias Trenino.Hardware.StepperManager
-
   use TreninoWeb, :live_view
 
   require Logger
@@ -131,8 +129,7 @@ defmodule TreninoWeb.ConfigurationEditLive do
      |> assign(:show_apply_modal, false)
      |> assign(:show_delete_modal, false)
      |> assign(:i2c_modules, [])
-     |> assign(:stepper_count, 0)
-     |> assign(:stepper_axes, [])
+     |> assign(:gauges, [])
      |> assign(:i2c_modal_open, false)
      |> assign(:i2c_modal_module, nil)}
   end
@@ -141,7 +138,6 @@ defmodule TreninoWeb.ConfigurationEditLive do
     case Hardware.get_device_by_config_id(config_id) do
       {:ok, device} ->
         maybe_subscribe_on_connect(socket, config_id)
-        if connected?(socket), do: StepperManager.subscribe(device.id)
 
         {:ok, inputs} = Hardware.list_inputs(device.id)
         {:ok, matrices} = Hardware.list_matrices(device.id)
@@ -182,8 +178,7 @@ defmodule TreninoWeb.ConfigurationEditLive do
          |> assign(:show_apply_modal, false)
          |> assign(:show_delete_modal, false)
          |> assign(:i2c_modules, i2c_modules)
-         |> assign(:stepper_count, length(Hardware.list_stepper_axes(device.id)))
-         |> assign(:stepper_axes, Hardware.list_stepper_axes(device.id))
+         |> assign(:gauges, Hardware.list_gauges(device.id))
          |> assign(:i2c_modal_open, false)
          |> assign(:i2c_modal_module, nil)}
 
@@ -210,6 +205,8 @@ defmodule TreninoWeb.ConfigurationEditLive do
   defp maybe_subscribe_on_connect(socket, config_id) do
     if connected?(socket) do
       Hardware.subscribe_configuration()
+      # Gauges saved elsewhere (MCP, another tab) show up here too.
+      Phoenix.PubSub.subscribe(Trenino.PubSub, "train:gauges:configuration")
       active_port = find_active_port(config_id)
       if active_port, do: Hardware.subscribe_input_values(active_port)
     end
@@ -547,11 +544,12 @@ defmodule TreninoWeb.ConfigurationEditLive do
          |> assign(:applying, false)
          |> put_flash(:error, configuration_failure_message(:no_inputs))}
 
-      {:error, :firmware_update_required} ->
+      {:error, reason}
+      when reason in [:firmware_update_required, :gauge_pin_conflict, :too_many_modules] ->
         {:noreply,
          socket
          |> assign(:applying, false)
-         |> put_flash(:error, configuration_failure_message(:firmware_update_required))}
+         |> put_flash(:error, configuration_failure_message(reason))}
 
       {:error, reason} ->
         Logger.error("Failed to apply configuration to #{port}: #{inspect(reason)}")
@@ -845,7 +843,18 @@ defmodule TreninoWeb.ConfigurationEditLive do
     do: "The controller did not respond. Check the USB cable and reconnect, then apply again."
 
   def configuration_failure_message(:device_rejected),
-    do: "The controller rejected the configuration. Update the firmware, then apply again."
+    do:
+      "The controller rejected the configuration. Update the firmware, then apply again. " <>
+        "With gauges, also check: at most #{Hardware.max_gauges_per_device()}, no shared pins except RESET_N, " <>
+        "and direct drive only on AVR boards (Pro Micro, Leonardo, Micro, Uno, Nano, Mega)."
+
+  def configuration_failure_message(:too_many_modules),
+    do:
+      "A controller stores at most 8 inputs, matrices, displays and gauges together. Move some to another controller, then apply again."
+
+  def configuration_failure_message(:gauge_pin_conflict),
+    do:
+      "A gauge shares a pin with an input, matrix or output. Move one of them to a free pin, then apply again."
 
   def configuration_failure_message(:no_inputs),
     do:
@@ -853,7 +862,7 @@ defmodule TreninoWeb.ConfigurationEditLive do
 
   def configuration_failure_message(:firmware_update_required),
     do:
-      "This configuration needs firmware 3.1 or newer. Update the device firmware, then apply again."
+      "This configuration needs newer controller firmware (#{Hardware.gauge_firmware_version()} or newer for gauges). Update the firmware, then apply again."
 
   def configuration_failure_message(reason) do
     Logger.error("Configuration apply failed: #{inspect(reason)}")
@@ -918,6 +927,7 @@ defmodule TreninoWeb.ConfigurationEditLive do
       when id == socket.assigns.device.id do
     # Subscribe to input values for the new active port
     Hardware.subscribe_input_values(port)
+    refresh_gauges(socket, :applied)
 
     {:noreply,
      socket
@@ -966,6 +976,7 @@ defmodule TreninoWeb.ConfigurationEditLive do
   @impl true
   def handle_info({:devices_updated, devices}, socket) do
     socket = assign(socket, :nav_devices, devices)
+    refresh_gauges(socket)
 
     # Update active port if configuration is applied to a device
     config_id = socket.assigns.device.config_id
@@ -1020,34 +1031,45 @@ defmodule TreninoWeb.ConfigurationEditLive do
   end
 
   @impl true
-  def handle_info({:stepper_updated, device_id, snapshot}, socket) do
-    if socket.assigns.device.id == device_id do
-      send_update(TreninoWeb.StepperAxisFormComponent, id: "stepper-setup", snapshot: snapshot)
+  def handle_info({:gauge_saved, _gauge}, socket),
+    do: {:noreply, assign(socket, :gauges, Hardware.list_gauges(socket.assigns.device.id))}
+
+  def handle_info({:gauge_bindings_changed, _}, %{assigns: %{new_mode: false}} = socket) do
+    refresh_gauges(socket)
+    {:noreply, assign(socket, :gauges, Hardware.list_gauges(socket.assigns.device.id))}
+  end
+
+  def handle_info({:dial_calibration_saved, _calibration}, socket) do
+    # Re-render the gauge cards so they show the saved dial status.
+    refresh_gauges(socket)
+    {:noreply, socket}
+  end
+
+  # The device found a gauge it could not start (a pin the board lacks). The firmware does
+  # not say which one, so the message names the device.
+  def handle_info({:gauge_start_failed, port}, socket) do
+    if port == socket.assigns[:active_port] do
+      {:noreply,
+       put_flash(
+         socket,
+         :error,
+         "A gauge on this controller failed to start. Check that its pins exist on this board, then apply again."
+       )}
+    else
+      {:noreply, socket}
     end
-
-    {:noreply, socket}
-  end
-
-  def handle_info({:stepper_axis_saved, _axis}, socket) do
-    axes = Hardware.list_stepper_axes(socket.assigns.device.id)
-    {:noreply, assign(socket, stepper_count: length(axes), stepper_axes: axes)}
-  end
-
-  def handle_info({:gauge_wizard_closed, axis_id}, socket) do
-    send_update(TreninoWeb.StepperAxisFormComponent, id: "stepper-setup", wizard_closed: axis_id)
-    {:noreply, socket}
-  end
-
-  def handle_info({:dial_calibration_saved, calibration}, socket) do
-    # Re-render the axis list so every axis card shows the saved dial status.
-    if Enum.any?(socket.assigns.stepper_axes, &(&1.id == calibration.stepper_axis_id)) do
-      send_update(TreninoWeb.StepperAxisFormComponent, id: "stepper-setup", dial_saved: true)
-    end
-
-    {:noreply, socket}
   end
 
   def handle_info(_msg, socket), do: {:noreply, socket}
+
+  # The gauge section shows whether gauges can be moved now (connected, firmware, applied).
+  # `:applied` tells an open calibration panel the gauge just re-zeroed.
+  defp refresh_gauges(socket, reason \\ :changed)
+
+  defp refresh_gauges(%{assigns: %{new_mode: false, beta_gauges: true}}, reason),
+    do: send_update(TreninoWeb.GaugeSectionComponent, id: "gauge-setup", refresh: reason)
+
+  defp refresh_gauges(_socket, _reason), do: :ok
 
   defp display_test_texts(4), do: ["8888", "1234", "ABCD", "    "]
   defp display_test_texts(8), do: ["88888888", "12345678", "ABCDEFGH", "        "]
@@ -1133,8 +1155,8 @@ defmodule TreninoWeb.ConfigurationEditLive do
 
           <.live_component
             :if={@beta_gauges and not @new_mode}
-            module={TreninoWeb.StepperAxisFormComponent}
-            id="stepper-setup"
+            module={TreninoWeb.GaugeSectionComponent}
+            id="gauge-setup"
             device_id={@device.id}
           />
         </.section_group>
@@ -1166,7 +1188,6 @@ defmodule TreninoWeb.ConfigurationEditLive do
       device={@device}
       connected_devices={@connected_devices}
       device_names={@nav_device_names}
-      allcall_warning={Hardware.allcall_warning(@device.id)}
     />
 
     <.delete_modal
@@ -1212,14 +1233,14 @@ defmodule TreninoWeb.ConfigurationEditLive do
       %{id: "displays", label: "Displays", count: length(assigns.i2c_modules)}
     ] ++
       if(assigns.beta_gauges,
-        do: [%{id: "stepper-axes", label: "Gauges", count: assigns.stepper_count}],
+        do: [%{id: "gauges", label: "Gauges", count: length(assigns.gauges)}],
         else: []
       )
   end
 
   defp has_parts?(assigns) do
     assigns.inputs != [] or assigns.matrices != [] or assigns.outputs != [] or
-      assigns.i2c_modules != [] or assigns.stepper_count > 0
+      assigns.i2c_modules != [] or assigns.gauges != []
   end
 
   # The device only learns the configuration on Apply, so compare what is saved now
@@ -1238,7 +1259,7 @@ defmodule TreninoWeb.ConfigurationEditLive do
         assigns.inputs,
         assigns.matrices,
         assigns.i2c_modules,
-        assigns.stepper_axes
+        assigns.gauges
       )
 
     case Hardware.config_status(assigns.device, current) do

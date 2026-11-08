@@ -281,7 +281,6 @@ defmodule TreninoWeb.ConfigurationEditLive.Modals do
 
   attr :device, :map, required: true
   attr :connected_devices, :list, required: true
-  attr :allcall_warning, :string, default: nil
 
   attr :device_names, :map,
     default: %{},
@@ -296,16 +295,6 @@ defmodule TreninoWeb.ConfigurationEditLive.Modals do
         <p class="text-sm text-muted mb-6">
           Select a device to apply "<span class="font-medium">{@device.name}</span>" to:
         </p>
-
-        <div
-          :if={@allcall_warning}
-          id="apply-allcall-warning"
-          role="alert"
-          class="alert alert-soft alert-warning text-sm mb-4"
-        >
-          <.icon name="hero-exclamation-triangle" class="size-5 shrink-0" />
-          <p>{@allcall_warning}</p>
-        </div>
 
         <div class="space-y-2">
           <button

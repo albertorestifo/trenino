@@ -1,52 +1,46 @@
 defmodule Trenino.MCP.Tools.GaugeSerialization do
   @moduledoc false
-  alias Trenino.Hardware.{DialCalibration, StepperAxis, StepperLease}
+  alias Trenino.Hardware.{DialCalibration, Gauge}
   alias Trenino.Train.GaugeBinding
-  def axis(%StepperAxis{} = axis), do: Map.take(axis, StepperAxis.__schema__(:fields))
+
+  def gauge(%Gauge{} = gauge) do
+    gauge
+    |> Map.take([
+      :id,
+      :device_id,
+      :name,
+      :driver,
+      :pins,
+      :travel,
+      :max_speed,
+      :acceleration,
+      :reverse
+    ])
+    |> Map.put(:dial, dial(loaded(gauge.dial_calibration)))
+  end
 
   def binding(%GaugeBinding{} = b) do
     Map.put(
       Map.take(b, GaugeBinding.__schema__(:fields)),
       :dial,
-      dial(GaugeBinding.calibration(b.stepper_axis))
+      dial(GaugeBinding.calibration(b.gauge))
     )
   end
 
-  @doc "The axis dial calibration as plain data, or `nil` when none is recorded."
+  defp loaded(%Ecto.Association.NotLoaded{}), do: nil
+  defp loaded(value), do: value
+
+  @doc "The gauge dial calibration as plain data, or `nil` when none is recorded."
   def dial(nil), do: nil
 
   def dial(%DialCalibration{} = c) do
     %{
-      stepper_axis_id: c.stepper_axis_id,
+      gauge_id: c.gauge_id,
       output_unit: c.output_unit,
       valid: c.valid,
       reviewed: c.reviewed,
       points: Enum.map(c.points, &Map.take(&1, [:value, :position]))
     }
-  end
-
-  def status(snapshot) do
-    axes =
-      Map.new(snapshot.axes, fn {id, a} ->
-        pending =
-          if a.pending,
-            do: Map.take(a.pending.command, [:operation, :request_id, :axis, :position]),
-            else: nil
-
-        status = if a.status, do: a.status |> Map.from_struct(), else: nil
-
-        {to_string(id),
-         %{
-           ready: a.ready,
-           manual_pause: a.paused,
-           lease: a.lease,
-           pending: pending,
-           error: plain(a.error),
-           status: status
-         }}
-      end)
-
-    %{lifecycle: snapshot.lifecycle, axes: axes, error: plain(Map.get(snapshot, :error))}
   end
 
   def result({:error, %Ecto.Changeset{} = cs}) do
@@ -71,11 +65,25 @@ defmodule Trenino.MCP.Tools.GaugeSerialization do
   defp format_option(value), do: inspect(value)
 
   defp plain(nil), do: nil
-  defp plain({:lease_held, info}), do: StepperLease.message(info)
 
-  defp plain(:lease_expired_finishing_motion),
+  defp plain(:needs_apply),
     do:
-      "The lease expired but an accepted move or home is still finishing; only renew, stop or release_lease work now. Claim again once the axis is stationary."
+      "The device has not confirmed the saved configuration. Call apply_device_configuration first."
+
+  defp plain(:too_many_modules),
+    do:
+      "A controller stores at most 8 inputs, matrices, displays and gauges together. Move some to another controller, then apply again."
+
+  defp plain(:gauge_pin_conflict),
+    do:
+      "A gauge shares a pin with an input, matrix or output on this device. Move one of them to a free pin, then apply again."
+
+  defp plain(:device_not_connected),
+    do: "The device is not connected. Connect it and try again."
+
+  defp plain(:device_rejected),
+    do:
+      "The device rejected the configuration. For gauges check: at most 4, no shared pins except RESET_N, and direct drive only on AVR boards (Pro Micro, Leonardo, Micro, Uno, Nano, Mega)."
 
   defp plain(:no_inputs),
     do:
@@ -83,7 +91,7 @@ defmodule Trenino.MCP.Tools.GaugeSerialization do
 
   defp plain(:firmware_update_required),
     do:
-      "This configuration needs firmware 3.1 or newer. Update the device firmware, then apply again."
+      "This needs newer device firmware (3.3.0 or newer for gauges). Update the device firmware, then try again."
 
   defp plain(reason) when is_atom(reason),
     do: reason |> Atom.to_string() |> String.replace("_", " ")

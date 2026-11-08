@@ -1,11 +1,18 @@
 defmodule Trenino.Train.GaugeControllerTest do
   use Trenino.DataCase, async: false
+  import Trenino.GaugeFixtures
   alias Trenino.Hardware
-  alias Trenino.Hardware.StepperManager
   alias Trenino.Simulator.{Client, ConnectionState}
   alias Trenino.Train
   alias Trenino.Train.GaugeController
   setup :set_mimic_global
+
+  # The calibrated fixture maps value 0 to step 0 and value 100 to step 1890.
+  @half 945
+  @full 1890
+
+  defp sample(value),
+    do: {:ok, %{"Entries" => [%{"NodeValid" => true, "Values" => %{"Speed" => value}}]}}
 
   setup do
     owner = self()
@@ -25,33 +32,24 @@ defmodule Trenino.Train.GaugeControllerTest do
       {:ok, %{}}
     end)
 
-    Mimic.stub(Client, :get_subscription, fn _, _ ->
-      {:ok, %{"Entries" => [%{"NodeValid" => true, "Values" => %{"Speed" => 50}}]}}
+    Mimic.stub(Client, :get_subscription, fn _, _ -> sample(50) end)
+
+    Mimic.stub(Hardware, :gauge_link, fn device_id ->
+      send(owner, {:link, device_id})
+      {:ok, "/dev/gauges"}
     end)
 
-    Mimic.stub(StepperManager, :set_target, fn id, target, train ->
-      send(owner, {:target, id, target, train})
-      :ok
-    end)
-
-    Mimic.stub(StepperManager, :inactive, fn id, behavior ->
-      send(owner, {:inactive, id, behavior})
+    Mimic.stub(Hardware, :set_gauge_position, fn port, gauge, target ->
+      send(owner, {:target, port, gauge.id, target})
       :ok
     end)
 
     {:ok, device} = Hardware.create_device(%{name: "Panel"})
-    {:ok, axis} = Hardware.create_stepper_axis(device.id, %{name: "Speed"})
-    {:ok, axis} = Hardware.commission_stepper_axis(axis)
+    gauge = calibrated_gauge_fixture(device.id)
     {:ok, train} = Train.create_train(%{name: "Train", identifiers: [%{identifier: "GaugeTest"}]})
 
-    {:ok, _} =
-      Hardware.save_dial_calibration(axis, %{
-        points: [%{value: 0, position: 0}, %{value: 100, position: 720}],
-        reviewed: true
-      })
-
     attrs = %{
-      stepper_axis_id: axis.id,
+      gauge_id: gauge.id,
       name: "Speed",
       endpoint: "Speed",
       enabled: true,
@@ -59,7 +57,42 @@ defmodule Trenino.Train.GaugeControllerTest do
     }
 
     {:ok, binding} = Train.create_gauge_binding(train.id, attrs)
-    %{axis: axis, train: train, binding: binding}
+    %{device: device, gauge: gauge, train: train, binding: binding}
+  end
+
+  defp start_controller(train) do
+    pid = start_supervised!(GaugeController)
+    send(pid, {:train_changed, train})
+    pid
+  end
+
+  test "fresh samples send the mapped position to the gauge's port", %{
+    train: train,
+    gauge: gauge,
+    device: device
+  } do
+    start_controller(train)
+    assert_receive {:subscribed, "Speed", 4000}, 500
+    assert_receive {:link, device_id}, 500
+    assert device_id == device.id
+    assert_receive {:target, "/dev/gauges", gauge_id, @half}, 500
+    assert gauge_id == gauge.id
+  end
+
+  test "the link is looked up once per device, not on every send", %{train: train} do
+    pid = start_controller(train)
+    assert_receive {:target, _, _, @half}, 500
+    assert_receive {:link, _}
+
+    # Past the refresh window the target is resent through the cached link.
+    :sys.replace_state(pid, fn s ->
+      Map.update!(s, :sent, fn sent ->
+        Map.new(sent, fn {id, entry} -> {id, %{entry | at: entry.at - 5000}} end)
+      end)
+    end)
+
+    assert_receive {:target, _, _, @half}, 500
+    refute_received {:link, _}
   end
 
   test "timed out HTTP poll cleans subscriptions and resumes fresh polling", %{train: train} do
@@ -76,98 +109,201 @@ defmodule Trenino.Train.GaugeControllerTest do
           :never -> {:error, :cancelled}
         end
       else
-        {:ok, %{"Entries" => [%{"NodeValid" => true, "Values" => %{"Speed" => 50}}]}}
+        sample(50)
       end
     end)
 
-    pid = start_supervised!(GaugeController)
-    send(pid, {:train_changed, train})
+    pid = start_controller(train)
     assert_receive :poll_blocked, 500
     state = :sys.get_state(pid)
     send(pid, {:poll_timeout, state.task.ref})
     assert_receive {:unsubscribed, 4000}, 500
-    assert_receive {:target, _, 360, _}, 700
+    assert_receive {:target, _, _, @half}, 700
   end
 
-  test "an unchanged accepted target is not resent every poll", %{train: train, binding: b} do
-    pid = start_supervised!(GaugeController)
-    send(pid, {:train_changed, train})
-    assert_receive {:target, _, 360, _}, 500
-    # Several 200 ms polls of the same sample go by without another set_target.
+  test "an unchanged target is not resent every poll, only after the refresh window", %{
+    train: train,
+    binding: b
+  } do
+    pid = start_controller(train)
+    assert_receive {:target, _, _, @half}, 500
+    # Several 200 ms polls of the same sample go by without another command.
     refute_receive {:target, _, _, _}, 700
 
-    # Past the refresh window the same target is driven again.
     :sys.replace_state(pid, fn s ->
       put_in(s.sent[b.id].at, System.monotonic_time(:millisecond) - 5000)
     end)
 
-    assert_receive {:target, _, 360, _}, 500
-  end
-
-  test "a target the stepper session no longer holds is resent at once", %{
-    train: train,
-    axis: axis
-  } do
-    pid = start_supervised!(GaugeController)
-    send(pid, {:train_changed, train})
-    assert_receive {:target, _, 360, _}, 500
-
-    # Holding the target, or with a move still in flight, changes nothing.
-    held = %{axis.id => %{pending: nil, last_target: 360}}
-    send(pid, {:stepper_updated, axis.device_id, %{axes: held}})
-    in_flight = %{axis.id => %{pending: %{}, last_target: nil}}
-    send(pid, {:stepper_updated, axis.device_id, %{axes: in_flight}})
-    refute_receive {:target, _, _, _}, 500
-
-    # A re-referenced axis has forgotten its target.
-    forgotten = %{axis.id => %{pending: nil, last_target: nil}}
-    send(pid, {:stepper_updated, axis.device_id, %{axes: forgotten}})
-    assert_receive {:target, _, 360, _}, 500
-
-    # A disconnected session reports no axes at all.
-    refute_receive {:target, _, _, _}, 300
-    send(pid, {:stepper_updated, axis.device_id, %{lifecycle: :disconnected, axes: %{}}})
-    assert_receive {:target, _, 360, _}, 500
+    assert_receive {:target, _, _, @half}, 500
   end
 
   test "a changed target is sent immediately", %{train: train} do
     counter = start_supervised!({Agent, fn -> 50 end})
+    Mimic.stub(Client, :get_subscription, fn _, _ -> sample(Agent.get(counter, & &1)) end)
 
-    Mimic.stub(Client, :get_subscription, fn _, _ ->
-      value = Agent.get(counter, & &1)
-      {:ok, %{"Entries" => [%{"NodeValid" => true, "Values" => %{"Speed" => value}}]}}
-    end)
-
-    pid = start_supervised!(GaugeController)
-    send(pid, {:train_changed, train})
-    assert_receive {:target, _, 360, _}, 500
+    pid = start_controller(train)
+    assert_receive {:target, _, _, @half}, 500
     Agent.update(counter, fn _ -> 100 end)
-    assert_receive {:target, _, 720, _}, 500
+    assert_receive {:target, _, _, @full}, 500
     assert Process.alive?(pid)
   end
 
-  test "a rejected target is retried on the next sample", %{train: train} do
+  test "an applied configuration re-zeros the gauges, so the link is refreshed and the target resent",
+       %{train: train, device: device} do
+    pid = start_controller(train)
+    assert_receive {:link, _}, 500
+    assert_receive {:target, _, _, @half}, 500
+    refute_receive {:target, _, _, _}, 300
+
+    send(pid, {:configuration_applied, "/dev/gauges", device, 7})
+    assert_receive {:link, _}, 500
+    assert_receive {:target, _, _, @half}, 500
+  end
+
+  test "a device list change refreshes the link and resends the target", %{train: train} do
+    pid = start_controller(train)
+    assert_receive {:link, _}, 500
+    assert_receive {:target, _, _, @half}, 500
+    refute_receive {:target, _, _, _}, 300
+
+    send(pid, {:devices_updated, []})
+    assert_receive {:link, _}, 500
+    assert_receive {:target, _, _, @half}, 500
+  end
+
+  test "a link error is reported as the binding's failure and clears once the device is applied",
+       %{train: train, binding: b, device: device} do
     owner = self()
 
-    Mimic.stub(StepperManager, :set_target, fn _, target, _ ->
-      send(owner, {:target_attempt, target})
-      {:error, :needs_reference}
+    Mimic.stub(Hardware, :gauge_link, fn device_id ->
+      send(owner, {:link, device_id})
+      {:error, :needs_apply}
     end)
 
-    pid = start_supervised!(GaugeController)
-    send(pid, {:train_changed, train})
-    assert_receive {:target_attempt, 360}, 500
-    assert_receive {:target_attempt, 360}, 500
+    GaugeController.subscribe(train.id)
+    pid = start_controller(train)
+    id = b.id
+
+    assert_receive {:gauge_binding_updated, ^id, %{failure: :needs_apply, target: @half}}, 500
+    refute_received {:target, _, _, _}
+
+    # A failed link is cached too: the next polls do not look it up again.
+    assert_receive {:gauge_binding_updated, ^id, %{failure: :needs_apply}}, 500
+    assert_receive {:link, _}
+    refute_received {:link, _}
+
+    Mimic.stub(Hardware, :gauge_link, fn _ -> {:ok, "/dev/gauges"} end)
+    send(pid, {:configuration_applied, "/dev/gauges", device, 1})
+    assert_receive {:target, _, _, @half}, 500
+    assert_receive {:gauge_binding_updated, ^id, %{failure: nil}}, 500
+  end
+
+  test "a rejected send is retried on the next sample and reported", %{train: train, binding: b} do
+    owner = self()
+
+    Mimic.stub(Hardware, :set_gauge_position, fn _, _, target ->
+      send(owner, {:target_attempt, target})
+      {:error, :not_connected}
+    end)
+
+    GaugeController.subscribe(train.id)
+    pid = start_controller(train)
+    id = b.id
+    assert_receive {:target_attempt, @half}, 500
+    assert_receive {:target_attempt, @half}, 500
+    assert_receive {:gauge_binding_updated, ^id, %{failure: :not_connected}}, 500
     assert Process.alive?(pid)
   end
 
-  test "stale input applies inactive policy once without inventing zero", %{
+  describe "manual control" do
+    test "an owner's hold blocks train samples and ends when the owner dies", %{
+      train: train,
+      gauge: gauge,
+      binding: b
+    } do
+      holder = spawn(fn -> Process.sleep(:infinity) end)
+      GaugeController.subscribe(train.id)
+      pid = start_supervised!(GaugeController)
+
+      assert :ok = GaugeController.hold_manual(gauge.id, owner: holder)
+      assert GaugeController.manual?(gauge.id)
+
+      send(pid, {:train_changed, train})
+      id = b.id
+
+      assert_receive {:gauge_binding_updated, ^id, %{failure: :manual_control, target: @half}},
+                     500
+
+      refute_receive {:target, _, _, _}, 500
+
+      Process.exit(holder, :kill)
+      assert_receive {:target, _, _, @half}, 500
+      refute GaugeController.manual?(gauge.id)
+      assert_receive {:gauge_binding_updated, ^id, %{failure: nil}}, 500
+    end
+
+    test "a hold taken while running stops further sends", %{train: train, gauge: gauge} do
+      counter = start_supervised!({Agent, fn -> 50 end})
+      Mimic.stub(Client, :get_subscription, fn _, _ -> sample(Agent.get(counter, & &1)) end)
+
+      start_controller(train)
+      assert_receive {:target, _, _, @half}, 500
+
+      GaugeController.hold_manual(gauge.id, owner: self())
+      Agent.update(counter, fn _ -> 100 end)
+      refute_receive {:target, _, _, _}, 500
+    end
+
+    test "release_manual resends the train's target at once", %{train: train, gauge: gauge} do
+      start_supervised!(GaugeController)
+      GaugeController.hold_manual(gauge.id, owner: self())
+      send(GaugeController, {:train_changed, train})
+      assert_receive {:subscribed, "Speed", _}, 500
+      refute_receive {:target, _, _, _}, 500
+
+      assert :ok = GaugeController.release_manual(gauge.id)
+      refute GaugeController.manual?(gauge.id)
+      assert_receive {:target, _, _, @half}, 500
+    end
+
+    test "a ttl hold expires on its own", %{train: train, gauge: gauge} do
+      start_supervised!(GaugeController)
+      GaugeController.hold_manual(gauge.id, ttl_ms: 400)
+      send(GaugeController, {:train_changed, train})
+      refute_receive {:target, _, _, _}, 300
+      assert_receive {:target, _, _, @half}, 1000
+      refute GaugeController.manual?(gauge.id)
+    end
+
+    test "a timed hold does not replace a hold owned by a live process", %{gauge: gauge} do
+      start_supervised!(GaugeController)
+      holder = spawn(fn -> Process.sleep(:infinity) end)
+      assert :ok = GaugeController.hold_manual(gauge.id, owner: holder)
+      assert :ok = GaugeController.hold_manual(gauge.id, ttl_ms: 1)
+      Process.sleep(5)
+      assert GaugeController.manual?(gauge.id)
+      Process.exit(holder, :kill)
+    end
+
+    test "holds work with no active train and are no-ops without the controller", %{gauge: gauge} do
+      assert :ok = GaugeController.hold_manual(gauge.id, owner: self())
+      refute GaugeController.manual?(gauge.id)
+
+      start_supervised!(GaugeController)
+      assert :ok = GaugeController.hold_manual(gauge.id, owner: self())
+      assert GaugeController.manual?(gauge.id)
+      assert :ok = GaugeController.release_manual(gauge.id)
+      refute GaugeController.manual?(gauge.id)
+    end
+  end
+
+  test "stale input holds the needle: nothing is sent, not even zero", %{
     train: train,
     binding: b
   } do
-    pid = start_supervised!(GaugeController)
-    send(pid, {:train_changed, train})
-    assert_receive {:target, _, 360, _}, 500
+    GaugeController.subscribe(train.id)
+    pid = start_controller(train)
+    assert_receive {:target, _, _, @half}, 500
     Mimic.stub(Client, :get_subscription, fn _, _ -> {:error, :offline} end)
 
     :sys.replace_state(pid, fn s ->
@@ -175,13 +311,13 @@ defmodule Trenino.Train.GaugeControllerTest do
     end)
 
     send(pid, {:poll, :sys.get_state(pid).generation})
-    assert_receive {:inactive, _, :hold}, 500
-    refute_receive {:inactive, _, _}, 300
-    refute_receive {:target, _, 0, _}, 20
+    id = b.id
+    assert_receive {:gauge_binding_updated, ^id, %{stale: true, target: @half}}, 500
+    refute_receive {:target, _, _, _}, 500
+    refute Map.has_key?(:sys.get_state(pid).sent, b.id)
   end
 
   test "cleanup rejection blocks ID reuse and retries safely", %{train: train} do
-    owner = self()
     counter = start_supervised!({Agent, fn -> 0 end})
 
     Mimic.stub(Client, :unsubscribe, fn _, _ ->
@@ -191,14 +327,12 @@ defmodule Trenino.Train.GaugeControllerTest do
         else: {:ok, %{}}
     end)
 
-    pid = start_supervised!(GaugeController)
-    send(pid, {:train_changed, train})
+    pid = start_controller(train)
     assert_receive {:target, _, _, _}, 500
     assert_receive {:subscribed, _, _}, 100
     send(pid, {:train_changed, train})
     refute_receive {:subscribed, _, _}, 400
     assert_receive {:subscribed, "Speed", 4000}, 1000
-    send(owner, :cleanup_retried)
   end
 
   test "cleanup of an already-missing subscription completes and polling resumes", %{
@@ -213,9 +347,8 @@ defmodule Trenino.Train.GaugeControllerTest do
         }}}
     end)
 
-    pid = start_supervised!(GaugeController)
-    send(pid, {:train_changed, train})
-    assert_receive {:target, _, 360, _}, 500
+    pid = start_controller(train)
+    assert_receive {:target, _, _, @half}, 500
     assert_receive {:subscribed, "Speed", 4000}, 100
 
     send(pid, {:train_changed, train})
@@ -227,40 +360,26 @@ defmodule Trenino.Train.GaugeControllerTest do
   test "the subscription ID is cleared before its first subscribe, even on a fresh start", %{
     train: train
   } do
-    pid = start_supervised!(GaugeController)
-    send(pid, {:train_changed, train})
+    start_controller(train)
     assert_receive {:subscribed, "Speed", 4000}, 500
     # Same task, so mailbox order is call order: unsubscribe must come first.
     assert {:messages, [{:unsubscribed, 4000} | _]} = Process.info(self(), :messages)
   end
 
   test "a failed GET drops the subscription and resubscribes after backoff", %{train: train} do
-    owner = self()
     counter = start_supervised!({Agent, fn -> 0 end})
 
     Mimic.stub(Client, :get_subscription, fn _, _ ->
-      if Agent.get_and_update(counter, &{&1, &1 + 1}) == 0 do
-        {:error, {:http_error, 400, %{"errorCode" => "dtg.comm.NoSuchSubscription"}}}
-      else
-        send(owner, :polled_ok)
-        {:ok, %{"Entries" => [%{"NodeValid" => true, "Values" => %{"Speed" => 50}}]}}
-      end
+      if Agent.get_and_update(counter, &{&1, &1 + 1}) == 0,
+        do: {:error, {:http_error, 400, %{"errorCode" => "dtg.comm.NoSuchSubscription"}}},
+        else: sample(50)
     end)
 
-    pid = start_supervised!(GaugeController)
-    send(pid, {:train_changed, train})
+    start_controller(train)
     assert_receive {:subscribed, "Speed", 4000}, 500
     refute_receive {:subscribed, "Speed", 4000}, 500
     assert_receive {:subscribed, "Speed", 4000}, 1500
-    assert_receive {:target, _, 360, _}, 500
-  end
-
-  test "supervisor shutdown still makes bindings inactive", %{train: train} do
-    pid = start_supervised!(GaugeController)
-    send(pid, {:train_changed, train})
-    assert_receive {:target, _, 360, _}, 500
-    assert :ok = stop_supervised(GaugeController)
-    assert_receive {:inactive, _, :hold}, 100
+    assert_receive {:target, _, _, @half}, 500
   end
 
   test "single numeric value selection is strict and never arbitrarily chooses a key" do
@@ -281,43 +400,31 @@ defmodule Trenino.Train.GaugeControllerTest do
              )
   end
 
-  test "fresh samples map targets and deactivation applies outgoing policy", %{
-    train: train,
-    axis: axis
-  } do
-    pid = start_supervised!(GaugeController)
-    send(pid, {:train_changed, train})
+  test "deactivating the train unsubscribes and stops sending", %{train: train} do
+    pid = start_controller(train)
     assert_receive {:subscribed, "Speed", 4000}, 500
-    assert_receive {:target, id, 360, train_id}, 500
-    assert id == axis.id and train_id == train.id
+    assert_receive {:target, _, _, @half}, 500
     send(pid, {:train_changed, nil})
-    assert_receive {:inactive, ^id, :hold}, 200
     assert_receive {:unsubscribed, 4000}, 200
-    refute_receive {:target, _, _, _}, 250
+    refute_receive {:target, _, _, _}, 400
+    assert GaugeController.snapshot(train.id) == %{}
   end
 
-  test "slow HTTP cannot block train switch and old completion cannot move", %{
-    train: train,
-    axis: axis
-  } do
+  test "slow HTTP cannot block train switch and old completion cannot move", %{train: train} do
     owner = self()
 
     Mimic.stub(Client, :get_subscription, fn _, _ ->
       send(owner, {:poll_entered, self()})
 
       receive do
-        :continue ->
-          {:ok, %{"Entries" => [%{"NodeValid" => true, "Values" => %{"Speed" => 100}}]}}
+        :continue -> sample(100)
       end
     end)
 
-    pid = start_supervised!(GaugeController)
-    send(pid, {:train_changed, train})
+    pid = start_controller(train)
     assert_receive {:poll_entered, worker}, 500
     old = :sys.get_state(pid)
     send(pid, {:train_changed, nil})
-    assert_receive {:inactive, id, :hold}, 200
-    assert id == axis.id
     send(worker, :continue)
     send(pid, {old.task.ref, {old.generation, %{subscriptions: %{}, values: %{}, retries: %{}}}})
     refute_receive {:target, _, _, _}, 250
@@ -327,8 +434,7 @@ defmodule Trenino.Train.GaugeControllerTest do
   test "subscription cleanup completes before identifiers can be reused", %{train: train} do
     owner = self()
 
-    pid = start_supervised!(GaugeController)
-    send(pid, {:train_changed, train})
+    pid = start_controller(train)
     assert_receive {:target, _, _, _}, 500
     assert_receive {:subscribed, "Speed", 4000}, 100
 
@@ -356,16 +462,14 @@ defmodule Trenino.Train.GaugeControllerTest do
       {:error, :offline}
     end)
 
-    pid = start_supervised!(GaugeController)
-    send(pid, {:train_changed, train})
+    start_controller(train)
     assert_receive :subscribe_failed, 500
     refute_receive :subscribe_failed, 600
     assert_receive :subscribe_failed, 700
   end
 
   test "persistent cleanup failure is bounded, then polling resumes on fresh IDs", %{train: train} do
-    pid = start_supervised!(GaugeController)
-    send(pid, {:train_changed, train})
+    pid = start_controller(train)
     assert_receive {:subscribed, "Speed", 4000}, 500
     Mimic.stub(Client, :unsubscribe, fn _, _ -> {:error, :offline} end)
     send(pid, {:train_changed, train})
@@ -376,16 +480,16 @@ defmodule Trenino.Train.GaugeControllerTest do
 
     assert_receive {:subscribed, "Speed", id}, 3000
     assert id != 4000
-    assert_receive {:target, _, 360, _}, 500
-    state = :sys.get_state(pid)
-    refute state.cleaning
+    assert_receive {:target, _, _, @half}, 500
+    refute :sys.get_state(pid).cleaning
   end
 
-  test "reload with unchanged endpoints keeps the healthy subscription", %{train: train} do
-    pid = start_supervised!(GaugeController)
-    send(pid, {:train_changed, train})
+  test "reload with unchanged endpoints keeps the healthy subscription and resends", %{
+    train: train
+  } do
+    pid = start_controller(train)
     assert_receive {:subscribed, "Speed", 4000}, 500
-    assert_receive {:target, _, 360, _}, 500
+    assert_receive {:target, _, _, @half}, 500
     GaugeController.reload_bindings()
     send(pid, {:gauge_bindings_changed, train.id})
     :sys.get_state(pid)
@@ -393,12 +497,11 @@ defmodule Trenino.Train.GaugeControllerTest do
     assert_receive {:unsubscribed, 4000}
     refute_receive {:unsubscribed, _}, 300
     refute_receive {:subscribed, _, _}, 10
-    assert_receive {:target, _, 360, _}, 500
+    assert_receive {:target, _, _, @half}, 500
   end
 
   test "reload with changed endpoints resubscribes", %{train: train, binding: b} do
-    pid = start_supervised!(GaugeController)
-    send(pid, {:train_changed, train})
+    pid = start_controller(train)
     assert_receive {:subscribed, "Speed", 4000}, 500
     {:ok, _} = Train.update_gauge_binding(b, %{endpoint: "Other"})
     send(pid, {:gauge_bindings_changed, train.id})
@@ -410,39 +513,28 @@ defmodule Trenino.Train.GaugeControllerTest do
     train: train,
     binding: b
   } do
-    pid = start_supervised!(GaugeController)
-    send(pid, {:train_changed, train})
-    assert_receive {:target, _, 360, _}, 500
+    start_controller(train)
+    assert_receive {:target, _, _, @half}, 500
     runtime = GaugeController.runtime(train.id)
     assert %{simulator_connected: true, cleaning: false, last_error: nil} = runtime.controller
-    assert %{sample: 50.0, target: 360, stale: false, failure: nil} = runtime.bindings[b.id]
+    assert %{sample: 50.0, target: @half, stale: false, failure: nil} = runtime.bindings[b.id]
     assert GaugeController.runtime(-1) == nil
   end
 
-  test "subscribe, poll and set_target failures are reported", %{train: train, binding: b} do
+  test "subscribe and poll failures are reported", %{train: train, binding: b} do
+    id = b.id
+    GaugeController.subscribe(train.id)
     Mimic.stub(Client, :subscribe, fn _, _, _ -> {:error, :offline} end)
-    pid = start_supervised!(GaugeController)
-    send(pid, {:train_changed, train})
-    Process.sleep(100)
-    runtime = GaugeController.runtime(train.id)
-    assert {:subscribe_failed, {:error, :offline}} = runtime.controller.last_error
-    assert {:subscribe_failed, _} = runtime.bindings[b.id].failure
+    pid = start_controller(train)
+
+    assert_receive {:gauge_binding_updated, ^id, %{failure: {:subscribe_failed, _}}}, 500
+
+    assert {:subscribe_failed, {:error, :offline}} =
+             GaugeController.runtime(train.id).controller.last_error
 
     Mimic.stub(Client, :subscribe, fn _, _, _ -> {:ok, %{}} end)
     Mimic.stub(Client, :get_subscription, fn _, _ -> {:error, :boom} end)
     send(pid, {:train_changed, train})
-    Process.sleep(1500)
-    assert {:poll_failed, :boom} = GaugeController.runtime(train.id).bindings[b.id].failure
-
-    Mimic.stub(Client, :get_subscription, fn _, _ ->
-      {:ok, %{"Entries" => [%{"NodeValid" => true, "Values" => %{"Speed" => 50}}]}}
-    end)
-
-    Mimic.stub(StepperManager, :set_target, fn _, _, _ -> {:error, :not_ready} end)
-    send(pid, {:train_changed, train})
-    Process.sleep(1500)
-
-    assert %{failure: {:error, :not_ready}, target: 360} =
-             GaugeController.runtime(train.id).bindings[b.id]
+    assert_receive {:gauge_binding_updated, ^id, %{failure: {:poll_failed, :boom}}}, 1500
   end
 end

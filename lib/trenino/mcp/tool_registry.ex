@@ -17,13 +17,13 @@ defmodule Trenino.MCP.ToolRegistry do
     ElementTools,
     GaugeBindingTools,
     GaugeRuntimeTools,
+    GaugeTools,
     LeverTools,
     OutputBindingTools,
     ScriptTools,
     SelectorTools,
     SequenceTools,
     SimulatorTools,
-    StepperTools,
     TrainTools,
     VirtualJoystickTools
   }
@@ -42,7 +42,7 @@ defmodule Trenino.MCP.ToolRegistry do
     DetectionTools,
     DisplayBindingTools,
     VirtualJoystickTools,
-    StepperTools,
+    GaugeTools,
     GaugeBindingTools,
     GaugeRuntimeTools,
     DialCalibrationTools
@@ -50,7 +50,7 @@ defmodule Trenino.MCP.ToolRegistry do
 
   # Tool modules hidden unless their beta feature is enabled (see Trenino.Beta)
   @beta_tool_modules %{
-    StepperTools => :gauges,
+    GaugeTools => :gauges,
     GaugeBindingTools => :gauges,
     GaugeRuntimeTools => :gauges,
     DialCalibrationTools => :gauges,

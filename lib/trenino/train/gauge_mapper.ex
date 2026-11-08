@@ -1,15 +1,15 @@
 defmodule Trenino.Train.GaugeMapper do
   @moduledoc "Pure conversion and piecewise interpolation; never sends physical commands."
-  alias Trenino.Hardware.{DialCalibration, StepperAxis}
+  alias Trenino.Hardware.{DialCalibration, Gauge}
   alias Trenino.Train.GaugeBinding
   @type mapping :: %{value: float(), target: integer(), clamped: boolean()}
-  @spec map(GaugeBinding.t(), term(), StepperAxis.t()) :: {:ok, mapping()} | {:error, atom()}
-  def map(%GaugeBinding{} = b, raw, %StepperAxis{} = a) do
-    with %DialCalibration{valid: true} = cal <- GaugeBinding.calibration(a),
+  @spec map(GaugeBinding.t(), term(), Gauge.t()) :: {:ok, mapping()} | {:error, atom()}
+  def map(%GaugeBinding{} = b, raw, %Gauge{} = g) do
+    with %DialCalibration{valid: true} = cal <- GaugeBinding.calibration(g),
          {:ok, converted} <- convert(raw, b.input_unit, cal.output_unit),
          {:ok, value} <- transform(converted, b),
          {:ok, target, clamped} <- interpolate(value, cal.points, b.out_of_range),
-         true <- target >= a.min_position and target <= a.max_position do
+         true <- target in 0..g.travel do
       {:ok, %{value: Float.round(value, 2), target: target, clamped: clamped}}
     else
       nil -> {:error, :invalid_calibration_or_limits}

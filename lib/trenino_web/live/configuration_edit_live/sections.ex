@@ -451,24 +451,24 @@ defmodule TreninoWeb.ConfigurationEditLive.Sections do
   @doc """
   The Gauges section shown while a new configuration is not saved yet.
 
-  The real section is `TreninoWeb.StepperAxisFormComponent`, which needs a saved
+  The real section is `TreninoWeb.GaugeSectionComponent`, which needs a saved
   device. Until then this shows the same header with a disabled "Add gauge" and the
   reason, matching the Displays section next to it.
   """
   def new_gauges_section(assigns) do
     ~H"""
     <.config_section
-      id="stepper-axes"
+      id="gauges"
       title="Gauges"
-      description="Stepper-motor gauges driven by the motor shield."
+      description="X27 gauge motors driven by the controller, through a VID6606 chip or straight from board pins."
       empty?
       empty_icon="hero-cog-6-tooth"
       empty_message="No gauges configured"
-      empty_hint="Drive a gauge needle from the sim with a stepper motor. Needs controller firmware 3.1.0 or newer."
+      empty_hint="Drive a gauge needle from the sim. Needs controller firmware 3.3.0 or newer."
     >
       <:actions>
         <.section_action
-          id="stepper-add"
+          id="gauge-add"
           label="Add gauge"
           disabled
           disabled_reason="Name the configuration first to add a gauge."

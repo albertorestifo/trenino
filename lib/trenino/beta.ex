@@ -19,8 +19,8 @@ defmodule Trenino.Beta do
   alias Trenino.Settings
 
   @features [
-    # Stepper-motor gauges such as speedometers: hardware gauges, gauge
-    # bindings, dial calibration.
+    # X27 gauges such as speedometers (firmware 3.3.0): hardware gauges, dial
+    # calibration, gauge bindings and their MCP tools.
     :gauges,
     # Windows virtual joystick: the Joystick page and its MCP tools.
     :joystick,

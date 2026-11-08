@@ -403,4 +403,4 @@ Common paths to explore:
 
 ## Physical gauges
 
-The train editor's Gauge bindings section chooses which simulator value drives each physical dial; the dial itself is calibrated once per axis on the hardware configuration page. See [Stepper gauges](stepper-gauges.md) for hardware registration, commissioning, calibration, reference loss, Class 323 starter and MCP control. Firmware 3.1.0 or newer is required.
+The train editor's Gauge bindings section chooses which simulator value drives each physical dial; the dial itself is calibrated once per gauge on the hardware configuration page. See [Physical gauges](gauges.md) for wiring, calibration, the Class 323 starter and MCP control. Gauges are a beta feature and need controller firmware 3.3.0 or newer.

@@ -15,9 +15,9 @@ defmodule Trenino.Hardware.ConfigurationManager do
   use GenServer
 
   alias Trenino.Hardware
+  alias Trenino.Hardware.Gauge
   alias Trenino.Hardware.I2cModule
   alias Trenino.Hardware.Input
-  alias Trenino.Hardware.StepperManager
   alias Trenino.Serial.Connection
 
   alias Trenino.Serial.Protocol.ConfigurationError
@@ -29,6 +29,10 @@ defmodule Trenino.Hardware.ConfigurationManager do
   require Logger
 
   @config_timeout_ms 10_000
+  # The firmware stores at most this many modules (MAX_MODULES in its config_manager.h).
+  @max_modules 8
+  # Module errors this soon after ConfigurationStored belong to that Apply.
+  @module_error_window_ms 5_000
   @config_topic "hardware:configuration"
   @input_values_topic "hardware:input_values"
 
@@ -44,12 +48,16 @@ defmodule Trenino.Hardware.ConfigurationManager do
     @type t :: %__MODULE__{
             in_flight: %{integer() => in_flight_info()},
             input_values: %{String.t() => %{integer() => integer()}},
-            subscribed_ports: MapSet.t(String.t())
+            subscribed_ports: MapSet.t(String.t()),
+            applied_at: %{String.t() => integer()}
           }
 
+    # applied_at: port => monotonic ms of its last ConfigurationStored, so module errors
+    # that follow an Apply can be told apart from the ones repeated at every connect.
     defstruct in_flight: %{},
               input_values: %{},
-              subscribed_ports: MapSet.new()
+              subscribed_ports: MapSet.new(),
+              applied_at: %{}
   end
 
   # Client API
@@ -167,13 +175,6 @@ defmodule Trenino.Hardware.ConfigurationManager do
 
     Enum.each(disconnected, fn {_, info} ->
       Process.cancel_timer(info.timer_ref)
-
-      StepperManager.finish_deployment(
-        info.port,
-        Map.get(info, :stepper_token),
-        {:error, :disconnected}
-      )
-
       broadcast_config_event({:configuration_failed, info.port, info.device_id, :disconnected})
     end)
 
@@ -197,17 +198,16 @@ defmodule Trenino.Hardware.ConfigurationManager do
             Logger.info("Configuration #{config_id} successfully stored on device")
             # Update the device connection's config_id to match
             Connection.update_device_config_id(port, config_id)
-            StepperManager.finish_deployment(port, Map.get(info, :stepper_token), :ok)
             broadcast_config_event({:configuration_applied, port, device, config_id})
-            {:noreply, %{state | in_flight: new_in_flight}}
+
+            {:noreply,
+             %{
+               state
+               | in_flight: new_in_flight,
+                 applied_at: Map.put(state.applied_at, port, now_ms())
+             }}
 
           {:error, reason} ->
-            StepperManager.finish_deployment(
-              port,
-              Map.get(info, :stepper_token),
-              {:error, reason}
-            )
-
             Logger.error("Failed to update device with config_id: #{inspect(reason)}")
             broadcast_config_event({:configuration_failed, port, device_id, reason})
             {:noreply, %{state | in_flight: new_in_flight}}
@@ -227,16 +227,9 @@ defmodule Trenino.Hardware.ConfigurationManager do
       {nil, _} ->
         {:noreply, state}
 
-      {%{port: ^port, timer_ref: timer_ref, device_id: device_id} = info, new_in_flight} ->
+      {%{port: ^port, timer_ref: timer_ref, device_id: device_id}, new_in_flight} ->
         Process.cancel_timer(timer_ref)
         Logger.error("Configuration #{config_id} rejected by device")
-
-        StepperManager.finish_deployment(
-          port,
-          Map.get(info, :stepper_token),
-          {:error, :device_rejected}
-        )
-
         broadcast_config_event({:configuration_failed, port, device_id, :device_rejected})
         {:noreply, %{state | in_flight: new_in_flight}}
 
@@ -258,6 +251,25 @@ defmodule Trenino.Hardware.ConfigurationManager do
     )
 
     {:noreply, %{state | input_values: new_input_values}}
+  end
+
+  # Firmware 3.3.0 reports a gauge that failed to start (a pin the board lacks, or no
+  # room in the step timer) with address 0. The message carries no pin, so it can only
+  # be reported per device. The firmware repeats boot-time errors at every connect, so
+  # only the ones right after an Apply are broadcast; the rest are logged.
+  @impl true
+  def handle_info(
+        {:serial_message, port, %ModuleError{i2c_address: 0, error_code: code}},
+        %State{} = state
+      ) do
+    Logger.warning("ModuleError: a gauge on #{port} failed to start (error_code=#{code})")
+
+    with {:ok, at} <- Map.fetch(state.applied_at, port),
+         true <- now_ms() - at <= @module_error_window_ms do
+      broadcast_config_event({:gauge_start_failed, port})
+    end
+
+    {:noreply, state}
   end
 
   @impl true
@@ -283,9 +295,8 @@ defmodule Trenino.Hardware.ConfigurationManager do
       {nil, _} ->
         {:noreply, state}
 
-      {%{port: port, device_id: device_id} = info, new_in_flight} ->
+      {%{port: port, device_id: device_id}, new_in_flight} ->
         Logger.error("Configuration #{config_id} timed out")
-        StepperManager.finish_deployment(port, Map.get(info, :stepper_token), {:error, :timeout})
         broadcast_config_event({:configuration_failed, port, device_id, :timeout})
         {:noreply, %{state | in_flight: new_in_flight}}
     end
@@ -315,67 +326,81 @@ defmodule Trenino.Hardware.ConfigurationManager do
          {:ok, inputs} <- Hardware.list_inputs(device_id),
          {:ok, matrices} <- Hardware.list_matrices(device_id),
          i2c_modules = Hardware.list_i2c_modules(device_id),
+         gauges = Hardware.list_gauges(device_id),
          {:ok, outputs} <- Hardware.list_outputs(device_id),
-         :ok <- validate_configuration(port, device_id, inputs, matrices, i2c_modules, outputs),
+         parts = build_config_parts(inputs, matrices, i2c_modules, gauges),
+         :ok <- validate_configuration(port, parts, gauges, outputs),
+         :ok <- validate_gauge_pins(gauges, inputs, matrices, outputs),
          config_id = device.config_id,
-         {:ok, token} <- StepperManager.begin_deployment(port) do
-      case send_configuration_messages(port, config_id, inputs, matrices, i2c_modules) do
-        :ok ->
-          timer_ref = Process.send_after(self(), {:config_timeout, config_id}, @config_timeout_ms)
+         :ok <- send_configuration_messages(port, config_id, parts) do
+      timer_ref = Process.send_after(self(), {:config_timeout, config_id}, @config_timeout_ms)
 
-          in_flight_info = %{
-            port: port,
-            timer_ref: timer_ref,
-            device_id: device_id,
-            stepper_token: token,
-            fingerprint:
-              Hardware.config_fingerprint(
-                inputs,
-                matrices,
-                i2c_modules,
-                Hardware.list_stepper_axes(device_id)
-              )
-          }
+      in_flight_info = %{
+        port: port,
+        timer_ref: timer_ref,
+        device_id: device_id,
+        fingerprint: Hardware.config_fingerprint(inputs, matrices, i2c_modules, gauges)
+      }
 
-          new_in_flight = Map.put(state.in_flight, config_id, in_flight_info)
-          {:ok, config_id, %{state | in_flight: new_in_flight}}
-
-        error ->
-          StepperManager.finish_deployment(port, token, error)
-          error
-      end
+      new_in_flight = Map.put(state.in_flight, config_id, in_flight_info)
+      {:ok, config_id, %{state | in_flight: new_in_flight}}
     else
       true -> {:error, :busy}
       error -> error
     end
   end
 
-  # Stepper axes need firmware 3.1+. Without this check a pre-3.1 device would accept the
-  # configuration while StepperManager silently declines to start a session. The empty
-  # Configure packet sent for an outputs-only configuration (outputs need no device-side
-  # parts, but the device must still learn the config_id) also needs firmware 3.1+.
-  defp validate_configuration(port, device_id, inputs, matrices, i2c_modules, outputs) do
-    case {Hardware.list_stepper_axes(device_id), inputs ++ matrices ++ i2c_modules, outputs} do
+  # Gauges are configure parts, but they need firmware 3.3.0 (module type 7); older
+  # firmware rejects the whole configuration. The empty Configure packet sent for an
+  # outputs-only configuration (outputs need no device-side parts, but the device must
+  # still learn the config_id) needs firmware 3.1.0.
+  defp validate_configuration(_port, parts, _gauges, _outputs)
+       when length(parts) > @max_modules,
+       do: {:error, :too_many_modules}
+
+  defp validate_configuration(port, parts, gauges, outputs) do
+    case {gauges, parts, outputs} do
       {[], [], []} -> {:error, :no_inputs}
-      {[], [], _outputs} -> validate_firmware_floor(port)
+      {[], [], _outputs} -> validate_firmware_floor(port, "3.1.0")
       {[], _parts, _} -> :ok
-      {_axes, _, _} -> validate_firmware_floor(port)
+      {_gauges, _, _} -> validate_firmware_floor(port, Hardware.gauge_firmware_version())
     end
   end
 
-  defp validate_firmware_floor(port) do
+  # Gauge saves already refuse pins used by inputs, matrices or outputs, but those can be
+  # added after the gauge. The firmware would reject the configuration (or ignore SetOutput
+  # on the pin), so the clash is caught here with a clear reason.
+  defp validate_gauge_pins([], _inputs, _matrices, _outputs), do: :ok
+
+  defp validate_gauge_pins(gauges, inputs, matrices, outputs) do
+    gauge_pins = MapSet.new(gauges, &Gauge.used_pins/1) |> Enum.concat() |> MapSet.new()
+
+    other_pins =
+      Enum.map(inputs, & &1.pin) ++
+        Enum.map(outputs, & &1.pin) ++
+        Enum.flat_map(
+          matrices,
+          &(Enum.map(&1.row_pins, fn p -> p.pin end) ++ Enum.map(&1.col_pins, fn p -> p.pin end))
+        )
+
+    if Enum.any?(other_pins, &MapSet.member?(gauge_pins, &1)),
+      do: {:error, :gauge_pin_conflict},
+      else: :ok
+  end
+
+  defp validate_firmware_floor(port, floor) do
     conn = Enum.find(Connection.connected_devices(), &(&1.port == port))
 
     with %{device_version: version} when is_binary(version) <- conn,
          {:ok, parsed} <- Version.parse(version),
-         true <- Version.compare(parsed, "3.1.0") != :lt and parsed.pre == [] do
+         true <- Version.compare(parsed, floor) != :lt and parsed.pre == [] do
       :ok
     else
       _ -> {:error, :firmware_update_required}
     end
   end
 
-  defp send_configuration_messages(port, config_id, [], [], []) do
+  defp send_configuration_messages(port, config_id, []) do
     Connection.send_message(port, %Configure{
       config_id: config_id,
       total_parts: 0,
@@ -384,8 +409,7 @@ defmodule Trenino.Hardware.ConfigurationManager do
     })
   end
 
-  defp send_configuration_messages(port, config_id, inputs, matrices, i2c_modules) do
-    config_parts = build_config_parts(inputs, matrices, i2c_modules)
+  defp send_configuration_messages(port, config_id, config_parts) do
     total_parts = length(config_parts)
 
     Logger.info(
@@ -405,11 +429,12 @@ defmodule Trenino.Hardware.ConfigurationManager do
     end)
   end
 
-  defp build_config_parts(inputs, matrices, i2c_modules) do
+  defp build_config_parts(inputs, matrices, i2c_modules, gauges) do
     input_parts = Enum.map(inputs, &{:input, &1})
     matrix_parts = Enum.map(matrices, &{:matrix, &1})
     i2c_parts = Enum.map(i2c_modules, &{:i2c_module, &1})
-    input_parts ++ matrix_parts ++ i2c_parts
+    gauge_parts = Enum.map(gauges, &{:gauge, &1})
+    input_parts ++ matrix_parts ++ i2c_parts ++ gauge_parts
   end
 
   defp build_configure_message(
@@ -487,6 +512,23 @@ defmodule Trenino.Hardware.ConfigurationManager do
       num_digits: mod.params.num_digits
     }
   end
+
+  defp build_configure_message(config_id, total_parts, part_number, {:gauge, %Gauge{} = gauge}) do
+    %Configure{
+      config_id: config_id,
+      total_parts: total_parts,
+      part_number: part_number,
+      input_type: :gauge,
+      driver: gauge.driver,
+      pins: gauge.pins,
+      travel: gauge.travel,
+      max_speed: gauge.max_speed,
+      acceleration: gauge.acceleration,
+      reverse: gauge.reverse
+    }
+  end
+
+  defp now_ms, do: System.monotonic_time(:millisecond)
 
   defp broadcast_config_event(event) do
     Phoenix.PubSub.broadcast(Trenino.PubSub, @config_topic, event)

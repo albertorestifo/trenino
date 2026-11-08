@@ -37,7 +37,7 @@ defmodule Trenino.Hardware.Device do
     has_many :inputs, Input
     has_many :outputs, Output
     has_many :i2c_modules, I2cModule
-    has_many :stepper_axes, Trenino.Hardware.StepperAxis
+    has_many :gauges, Trenino.Hardware.Gauge
 
     timestamps(type: :utc_datetime)
   end

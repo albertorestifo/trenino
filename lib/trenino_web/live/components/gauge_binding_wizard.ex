@@ -1,9 +1,9 @@
 defmodule TreninoWeb.GaugeBindingWizard do
   @moduledoc """
   Human-field gauge binding workflow, usable offline. A train's gauge only chooses its
-  speed source (axis, endpoint, units) and whether it is enabled; the dial itself is
-  calibrated once per axis by the guided gauge setup in the hardware configuration
-  (`TreninoWeb.GaugeWizardComponent`).
+  speed source (gauge, endpoint, units) and whether it is enabled; the dial itself is
+  calibrated once per gauge in the hardware configuration
+  (`TreninoWeb.GaugeCalibrationComponent`).
   """
   use TreninoWeb, :live_component
 
@@ -12,14 +12,16 @@ defmodule TreninoWeb.GaugeBindingWizard do
   alias Phoenix.HTML.Form
   alias Trenino.Hardware
   alias Trenino.Hardware.DialCalibration
-  alias Trenino.Hardware.StepperManager
   alias Trenino.Train
   alias Trenino.Train.{Detection, GaugeBinding, GaugePresets}
   alias TreninoWeb.{GaugeFeedback, GaugeGuidance}
 
   @impl true
   def update(%{runtime_event: {id, status}}, socket) do
-    {:ok, assign(socket, :runtime, Map.put(socket.assigns.runtime, id, status))}
+    {:ok,
+     socket
+     |> assign(:runtime, Map.put(socket.assigns.runtime, id, status))
+     |> refresh_links(false)}
   end
 
   def update(%{explorer_event: {field, endpoint}}, socket) do
@@ -42,10 +44,33 @@ defmodule TreninoWeb.GaugeBindingWizard do
       |> assign_new(:runtime, fn -> %{} end)
 
     {:ok,
-     assign(socket,
-       axes: Hardware.list_all_stepper_axes(),
+     socket
+     |> assign(
+       gauges: Hardware.list_all_gauges(),
        bindings: Train.list_gauge_bindings(socket.assigns.train_id)
-     )}
+     )
+     |> refresh_links(true)}
+  end
+
+  # Whether each device can take gauge commands (a database and serial-registry lookup).
+  # Runtime events arrive every poll, so the answer is reused for a few seconds.
+  @links_ttl_ms 3000
+
+  defp refresh_links(socket, force?) do
+    now = System.monotonic_time(:millisecond)
+    at = socket.assigns[:links_at]
+
+    if force? or is_nil(at) or now - at >= @links_ttl_ms do
+      links =
+        socket.assigns.bindings
+        |> Enum.map(& &1.gauge.device_id)
+        |> Enum.uniq()
+        |> Map.new(&{&1, Hardware.gauge_link(&1)})
+
+      assign(socket, links: links, links_at: now)
+    else
+      socket
+    end
   end
 
   @impl true
@@ -55,14 +80,14 @@ defmodule TreninoWeb.GaugeBindingWizard do
   end
 
   def handle_event("add", _, socket) do
-    axis = List.first(socket.assigns.axes)
-    params = %{"stepper_axis_id" => if(axis, do: axis.id, else: nil)}
+    gauge = List.first(socket.assigns.gauges)
+    params = %{"gauge_id" => if(gauge, do: gauge.id, else: nil)}
     {:noreply, begin_edit(socket, %GaugeBinding{train_id: socket.assigns.train_id}, params)}
   end
 
   def handle_event("preset", _, socket) do
     params = GaugePresets.class323_speedometer() |> stringify()
-    params = Map.put(params, "stepper_axis_id", socket.assigns.params["stepper_axis_id"])
+    params = Map.put(params, "gauge_id", socket.assigns.params["gauge_id"])
     {:noreply, change(socket, params)}
   end
 
@@ -98,7 +123,7 @@ defmodule TreninoWeb.GaugeBindingWizard do
            form: nil,
            editing: nil,
            bindings: Train.list_gauge_bindings(binding.train_id),
-           message: "Gauge binding saved. Commission and reference hardware before enabling."
+           message: "Gauge binding saved. Calibrate the gauge's dial before enabling it."
          )}
 
       {:error, cs} ->
@@ -142,15 +167,15 @@ defmodule TreninoWeb.GaugeBindingWizard do
       |> change(params)
 
   defp change(socket, params) do
-    axis = find_axis(socket.assigns.axes, params["stepper_axis_id"])
+    gauge = find_gauge(socket.assigns.gauges, params["gauge_id"])
 
     cs =
-      GaugeBinding.changeset(socket.assigns.editing, params, axis) |> Map.put(:action, :validate)
+      GaugeBinding.changeset(socket.assigns.editing, params, gauge) |> Map.put(:action, :validate)
 
     assign(socket, params: params, form: to_form(cs))
   end
 
-  defp find_axis(axes, id), do: Enum.find(axes, &(to_string(&1.id) == to_string(id)))
+  defp find_gauge(gauges, id), do: Enum.find(gauges, &(to_string(&1.id) == to_string(id)))
 
   defp own_binding(socket, id), do: Enum.find(socket.assigns.bindings, &(to_string(&1.id) == id))
 
@@ -160,7 +185,7 @@ defmodule TreninoWeb.GaugeBindingWizard do
     b
     |> Map.from_struct()
     |> Map.take([
-      :stepper_axis_id,
+      :gauge_id,
       :name,
       :endpoint,
       :value_key,
@@ -169,7 +194,6 @@ defmodule TreninoWeb.GaugeBindingWizard do
       :offset,
       :absolute_value,
       :out_of_range,
-      :inactive_behavior,
       :stale_after_ms,
       :enabled
     ])
@@ -177,14 +201,14 @@ defmodule TreninoWeb.GaugeBindingWizard do
   end
 
   @doc false
-  # Short description of the axis dial for the wizard and the saved gauge cards.
-  def dial_status(axis) do
-    case GaugeBinding.calibration(axis) do
+  # Short description of the gauge dial for the wizard and the saved gauge cards.
+  def dial_status(gauge) do
+    case GaugeBinding.calibration(gauge) do
       nil ->
-        {:missing, "No dial calibration on this axis yet."}
+        {:missing, "No dial calibration on this gauge yet."}
 
       %DialCalibration{valid: false} ->
-        {:missing, "The dial is blocked: the axis changed or a homing setup was left unfinished."}
+        {:missing, "The dial is out of date: the gauge's wiring or direction changed."}
 
       %DialCalibration{reviewed: false} ->
         {:missing, "The dial is saved but not reviewed."}
@@ -194,20 +218,14 @@ defmodule TreninoWeb.GaugeBindingWizard do
     end
   end
 
-  defp enable_reason(form, axis) do
+  defp enable_reason(form, gauge) do
     cond do
-      is_nil(axis) ->
+      is_nil(gauge) ->
         "Choose a hardware gauge in step 1."
 
-      not axis.commissioned ->
-        "Set up this gauge first (Gauges, in the Feedback group of the hardware configuration)."
-
-      axis.idle_behavior != :hold ->
-        "Continuous gauges need the axis idle behavior set to hold."
-
-      match?({:missing, _}, dial_status(axis)) ->
-        {_, reason} = dial_status(axis)
-        "#{reason} Run the gauge setup on the axis first."
+      match?({:missing, _}, dial_status(gauge)) ->
+        {_, reason} = dial_status(gauge)
+        "#{reason} Calibrate it in the hardware configuration first."
 
       form[:input_unit].errors != [] ->
         "Fix the units in step 2 first."
@@ -225,10 +243,8 @@ defmodule TreninoWeb.GaugeBindingWizard do
     :exit, _ -> nil
   end
 
-  defp binding_blocker(binding, client) do
-    snapshot = StepperManager.snapshot(binding.stepper_axis.device_id)
-    GaugeGuidance.blocker(binding, snapshot, client != nil)
-  end
+  defp binding_blocker(binding, client, links),
+    do: GaugeGuidance.blocker(binding, client != nil, Map.get(links, binding.gauge.device_id))
 
   attr :number, :integer, required: true
   attr :title, :string, required: true
@@ -264,7 +280,7 @@ defmodule TreninoWeb.GaugeBindingWizard do
     <p id={@id} class={["text-sm", match?({:missing, _}, @status) && "text-warning"]}>
       {elem(@status, 1)}
       <.link
-        navigate={"/configurations/#{@axis.device.config_id}#stepper-axis-#{@axis.id}"}
+        navigate={"/configurations/#{@axis.device.config_id}#gauge-#{@axis.id}"}
         class="link"
       >{if match?({:ok, _}, @status), do: "Open gauge", else: "Set up gauge"}</.link>
     </p>
@@ -274,19 +290,20 @@ defmodule TreninoWeb.GaugeBindingWizard do
   attr :b, :any, required: true
   attr :runtime, :any, default: nil
   attr :client, :any, default: nil
+  attr :links, :map, default: %{}
   attr :myself, :any, required: true
 
   # One line of identity, one state chip, one reason only when something is wrong, and at
   # most one action. Everything else (endpoint, raw numbers) sits behind Details.
   defp gauge_card(assigns) do
     b = assigns.b
-    card = card_state(b, assigns.runtime, assigns.client)
+    card = card_state(b, assigns.runtime, assigns.client, assigns.links)
 
     assigns =
       assigns
       |> assign(:card, card)
-      |> assign(:axis, b.stepper_axis)
-      |> assign(:config_id, b.stepper_axis.device.config_id)
+      |> assign(:axis, b.gauge)
+      |> assign(:config_id, b.gauge.device.config_id)
 
     ~H"""
     <article
@@ -349,7 +366,7 @@ defmodule TreninoWeb.GaugeBindingWizard do
         <p :if={@runtime} class="text-sm">
           Latest sample: {GaugeFeedback.value(@runtime[:sample])} ·
           Converted value: {GaugeFeedback.value(@runtime[:value])} ·
-          Estimated target: {GaugeFeedback.value(@runtime[:target])} transitions
+          Estimated target: {GaugeFeedback.value(@runtime[:target])} steps
         </p>
         <p
           :if={@runtime[:failure] && GaugeFeedback.result(@runtime[:failure]) != @card.reason}
@@ -366,15 +383,15 @@ defmodule TreninoWeb.GaugeBindingWizard do
   end
 
   defp action_path(_, axis, config_id),
-    do: ~p"/configurations/#{config_id}" <> "#stepper-axis-#{axis.id}"
+    do: ~p"/configurations/#{config_id}" <> "#gauge-#{axis.id}"
 
   defp action_label(:dial), do: "Set up gauge"
   defp action_label(:axis), do: "Open gauge"
 
   # Exactly one reason wins, in order of how directly it explains a still needle.
-  defp card_state(b, runtime, client) do
-    blocker = binding_blocker(b, client)
-    dial = dial_status(b.stepper_axis)
+  defp card_state(b, runtime, client, links) do
+    blocker = binding_blocker(b, client, links)
+    dial = dial_status(b.gauge)
     state = pick_state(b, blocker, dial, runtime)
     Map.put_new(state, :live, nil)
   end
@@ -382,7 +399,7 @@ defmodule TreninoWeb.GaugeBindingWizard do
   defp pick_state(_b, blocker, _dial, _rt) when is_binary(blocker) do
     action =
       cond do
-        String.contains?(blocker, "dial is blocked") -> :dial
+        String.contains?(blocker, "dial is not calibrated") -> :dial
         String.contains?(blocker, "simulator is not connected") -> nil
         true -> :axis
       end
@@ -402,18 +419,11 @@ defmodule TreninoWeb.GaugeBindingWizard do
   defp pick_state(_b, nil, _dial, %{failure: failure}) when not is_nil(failure),
     do: note(:warn, "Not moving", GaugeFeedback.result(failure))
 
-  defp pick_state(%{enabled: false} = b, nil, dial, _rt) do
-    cond do
-      match?({:missing, _}, dial) ->
-        dial_note(:muted, "Off", dial)
+  defp pick_state(%{enabled: false}, nil, {:missing, _} = dial, _rt),
+    do: dial_note(:muted, "Off", dial)
 
-      not b.stepper_axis.commissioned ->
-        axis_note(:muted, "Off", "The axis is not commissioned yet.")
-
-      true ->
-        %{kind: :muted, label: "Off", reason: nil, reason_id: nil, action: nil}
-    end
-  end
+  defp pick_state(%{enabled: false}, nil, _dial, _rt),
+    do: %{kind: :muted, label: "Off", reason: nil, reason_id: nil, action: nil}
 
   defp pick_state(b, nil, dial, rt) do
     cond do
@@ -438,9 +448,6 @@ defmodule TreninoWeb.GaugeBindingWizard do
   defp note(kind, label, reason),
     do: %{kind: kind, label: label, reason: reason, reason_id: "gauge-note", action: nil}
 
-  defp axis_note(kind, label, reason),
-    do: %{kind: kind, label: label, reason: reason, reason_id: "gauge-note", action: :axis}
-
   defp dial_note(kind, label, {:missing, reason}),
     do: %{kind: kind, label: label, reason: reason, reason_id: "gauge-dial", action: :dial}
 
@@ -448,7 +455,7 @@ defmodule TreninoWeb.GaugeBindingWizard do
   defp sentence(other), do: other
 
   defp live_text(b, rt) do
-    case GaugeBinding.calibration(b.stepper_axis) do
+    case GaugeBinding.calibration(b.gauge) do
       %DialCalibration{output_unit: unit} when unit != :raw ->
         "#{GaugeFeedback.value(rt[:value])} #{unit_label(unit)}"
 
@@ -459,11 +466,11 @@ defmodule TreninoWeb.GaugeBindingWizard do
 
   @impl true
   def render(assigns) do
-    axis = find_axis(assigns.axes, assigns.params["stepper_axis_id"])
+    gauge = find_gauge(assigns.gauges, assigns.params["gauge_id"])
 
     assigns =
       assigns
-      |> assign(:axis, axis)
+      |> assign(:axis, gauge)
       |> assign(:unit_options, GaugeFeedback.unit_options())
       |> assign(:train_hint, train_hint(assigns))
 
@@ -484,14 +491,14 @@ defmodule TreninoWeb.GaugeBindingWizard do
             label="Add gauge binding"
             on_click="add"
             target={@myself}
-            disabled={@axes == []}
+            disabled={@gauges == []}
             describedby="gauge-prerequisites"
           />
         </:actions>
-        <:notice :if={@axes == []}>
+        <:notice :if={@gauges == []}>
           <p id="gauge-prerequisites" class="text-sm text-muted">
             Add a gauge to a <.link navigate={~p"/"} class="link">hardware configuration</.link>
-            first, Apply it, then run its gauge setup and calibrate the dial there.
+            first, Apply it, then calibrate its dial there.
           </p>
         </:notice>
         <:notice :if={@message && is_nil(@form)}>
@@ -521,10 +528,10 @@ defmodule TreninoWeb.GaugeBindingWizard do
           >
             <.step number={1} title="Hardware gauge">
               <.input
-                field={@form[:stepper_axis_id]}
+                field={@form[:gauge_id]}
                 type="select"
                 label="Hardware gauge"
-                options={Enum.map(@axes, &{"#{&1.device.name} · #{&1.name}", &1.id})}
+                options={Enum.map(@gauges, &{"#{&1.device.name} · #{&1.name}", &1.id})}
               />
               <.dial_line :if={@axis} id="gauge-dial-status" axis={@axis} />
             </.step>
@@ -569,7 +576,7 @@ defmodule TreninoWeb.GaugeBindingWizard do
                 options={@unit_options}
               />
               <p :if={@axis && GaugeBinding.calibration(@axis)} id="gauge-dial-unit" class="text-xs">
-                The dial unit is set on the axis: {unit_label(
+                The dial unit is set on the gauge: {unit_label(
                   GaugeBinding.calibration(@axis).output_unit
                 )}.
               </p>
@@ -588,7 +595,7 @@ defmodule TreninoWeb.GaugeBindingWizard do
                 reason={enable_reason(@form, @axis)}
               />
               <p class="text-xs">
-                Saving never moves the motor. If you cannot enable yet, save it disabled, finish commissioning and the dial calibration, then use Enable on the saved gauge binding.
+                Saving never moves the needle. If you cannot enable yet, save it disabled, calibrate the gauge's dial, then use Enable on the saved gauge binding.
               </p>
               <button id="gauge-save" type="submit" name="intent" value="save" class="btn btn-primary">
                 {if checked?(@form[:enabled]),
@@ -634,6 +641,7 @@ defmodule TreninoWeb.GaugeBindingWizard do
             b={b}
             runtime={@runtime[b.id]}
             client={@client}
+            links={@links}
             myself={@myself}
           />
         </div>

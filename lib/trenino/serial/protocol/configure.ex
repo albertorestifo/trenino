@@ -8,14 +8,20 @@ defmodule Trenino.Serial.Protocol.Configure do
   - Button payload (0x01): [pin:u8][debounce:u8]
   - Matrix payload (0x02): [num_row_pins:u8][num_col_pins:u8][row_pins...][col_pins...]
   - HT16K33 payload (0x04): [i2c_address:u8][brightness:u8][num_digits:u8]
-  - Note: type ID 0x03 is reserved (BLDC, removed)
+  - X27 gauge payload (0x07, firmware >= 3.3.0), exactly 12 bytes:
+    [driver:u8][pins:u8[4]][travel:u16 LE][max_speed:u16 LE][acceleration:u16 LE][flags:u8]
+    driver 0 = VID6606 (pins STEP, DIR, RESET_N or 0xFF, 0xFF), 1 = direct (X27 contacts 1-4);
+    flags bit 0 reverses the direction.
+  - Note: type IDs 0x03 (BLDC), 0x05 and 0x06 (I2C input chips) are reserved
   """
 
   alias Trenino.Serial.Protocol.Message
 
   @behaviour Message
 
-  @type input_type :: :analog | :button | :matrix | :ht16k33 | :empty
+  @type input_type :: :analog | :button | :matrix | :ht16k33 | :gauge | :empty
+
+  @type gauge_driver :: :vid6606 | :direct
 
   @type t() :: %__MODULE__{
           config_id: integer(),
@@ -32,7 +38,14 @@ defmodule Trenino.Serial.Protocol.Configure do
           # HT16K33 fields
           i2c_address: integer() | nil,
           brightness: integer() | nil,
-          num_digits: integer() | nil
+          num_digits: integer() | nil,
+          # Gauge fields
+          driver: gauge_driver() | nil,
+          pins: [integer()] | nil,
+          travel: integer() | nil,
+          max_speed: integer() | nil,
+          acceleration: integer() | nil,
+          reverse: boolean() | nil
         }
 
   defstruct [
@@ -47,8 +60,16 @@ defmodule Trenino.Serial.Protocol.Configure do
     :col_pins,
     :i2c_address,
     :brightness,
-    :num_digits
+    :num_digits,
+    :driver,
+    :pins,
+    :travel,
+    :max_speed,
+    :acceleration,
+    :reverse
   ]
+
+  @gauge_drivers %{vid6606: 0, direct: 1}
 
   # Encode - Analog (input_type = 0x00)
   @impl Message
@@ -121,6 +142,29 @@ defmodule Trenino.Serial.Protocol.Configure do
        0x04::8-unsigned, i2c_address::8-unsigned, brightness::8-unsigned, num_digits::8-unsigned>>}
   end
 
+  # Encode - X27 gauge (input_type = 0x07)
+  def encode(%__MODULE__{
+        config_id: config_id,
+        total_parts: total_parts,
+        part_number: part_number,
+        input_type: :gauge,
+        driver: driver,
+        pins: [p0, p1, p2, p3],
+        travel: travel,
+        max_speed: max_speed,
+        acceleration: acceleration,
+        reverse: reverse
+      })
+      when is_map_key(@gauge_drivers, driver) and is_boolean(reverse) do
+    {:ok,
+     <<0x02, config_id::little-32-unsigned, total_parts::8-unsigned, part_number::8-unsigned,
+       0x07, Map.fetch!(@gauge_drivers, driver)::8, p0::8, p1::8, p2::8, p3::8,
+       travel::little-16-unsigned, max_speed::little-16-unsigned,
+       acceleration::little-16-unsigned, if(reverse, do: 1, else: 0)::8>>}
+  end
+
+  def encode(%__MODULE__{input_type: :gauge}), do: {:error, :invalid_gauge_configuration}
+
   # Decode body - Analog (input_type = 0x00)
   @impl Message
   def decode_body(<<id::little-32, 0, 0, 255>>),
@@ -183,6 +227,28 @@ defmodule Trenino.Serial.Protocol.Configure do
     else
       {:error, :invalid_message}
     end
+  end
+
+  # Decode body - X27 gauge (input_type = 0x07), exact 12-byte payload
+  def decode_body(
+        <<config_id::little-32-unsigned, total_parts::8-unsigned, part_number::8-unsigned, 0x07,
+          driver::8, p0::8, p1::8, p2::8, p3::8, travel::little-16-unsigned,
+          max_speed::little-16-unsigned, acceleration::little-16-unsigned, flags::8>>
+      )
+      when driver in 0..1 and flags in 0..1 do
+    {:ok,
+     %__MODULE__{
+       config_id: config_id,
+       total_parts: total_parts,
+       part_number: part_number,
+       input_type: :gauge,
+       driver: if(driver == 0, do: :vid6606, else: :direct),
+       pins: [p0, p1, p2, p3],
+       travel: travel,
+       max_speed: max_speed,
+       acceleration: acceleration,
+       reverse: flags == 1
+     }}
   end
 
   def decode_body(_), do: {:error, :invalid_message}

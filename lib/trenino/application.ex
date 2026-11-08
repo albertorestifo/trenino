@@ -22,7 +22,6 @@ defmodule Trenino.Application do
         {Registry, keys: :unique, name: Trenino.MCP.SessionRegistry},
         {Task.Supervisor, name: Trenino.TaskSupervisor},
         Trenino.Serial.Connection,
-        stepper_children(),
         Trenino.Hardware.ConfigurationManager,
         virtual_joystick_manager_child(),
         Trenino.Hardware.Calibration.SessionSupervisor,
@@ -76,12 +75,6 @@ defmodule Trenino.Application do
     else
       []
     end
-  end
-
-  defp stepper_children do
-    if Application.get_env(:trenino, :start_stepper_manager, true),
-      do: [Trenino.Hardware.StepperSupervisor, Trenino.Hardware.StepperManager],
-      else: []
   end
 
   defp virtual_joystick_manager_child do

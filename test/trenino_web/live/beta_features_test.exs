@@ -26,8 +26,8 @@ defmodule TreninoWeb.BetaFeaturesTest do
       {:ok, device} = Hardware.create_device(%{name: "Panel"})
       {:ok, view, _} = live(conn, ~p"/configurations/#{device.config_id}")
 
-      refute has_element?(view, "#stepper-axes")
-      refute has_element?(view, "a[href='#stepper-axes']")
+      refute has_element?(view, "#gauges")
+      refute has_element?(view, "a[href='#gauges']")
       assert has_element?(view, "#outputs")
     end
 
@@ -80,7 +80,7 @@ defmodule TreninoWeb.BetaFeaturesTest do
 
       {:ok, device} = Hardware.create_device(%{name: "Panel"})
       {:ok, view, _} = live(conn, ~p"/configurations/#{device.config_id}")
-      assert has_element?(view, "#stepper-axes")
+      assert has_element?(view, "#gauges")
     end
 
     test "is replaced by a note when beta features are always on", %{conn: conn} do

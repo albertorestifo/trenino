@@ -6,12 +6,32 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- Gauges (beta) follow controller firmware 3.3.0, which replaced its motor-shield
+  stepper axes with X27 gauge modules. A gauge is now an X27 driven by a VID6606
+  chip channel (STEP/DIR, plus the chip's shared RESET_N) or straight from four AVR
+  board pins, up to four per controller, and is part of the configuration sent with
+  Apply. The guided setup, shield address, manual-control lease and homing are gone:
+  the controller zeros every gauge itself at startup and on every Apply. Add a gauge
+  with its pins (the train-lever gauge board's channels are one click away), then
+  calibrate its dial in a new panel that moves the needle while you note what the dial
+  shows. A stale simulator value holds the needle. Needs firmware 3.3.0 or newer.
+- Gauge MCP tools: `list_gauges`, `create_gauge`, `update_gauge`, `delete_gauge`,
+  `apply_device_configuration`, `move_gauge` and `zero_gauge` replace the stepper axis
+  tools. Dial and binding tools take `gauge_id` instead of `stepper_axis_id`.
+
+### Removed
+
+- Gauges set up for firmware 3.1.0 to 3.2.1 (motor-shield stepper axes), their dial
+  calibrations and the train gauge bindings that used them. They cannot run on firmware
+  3.3.0; set the gauges up again.
+
 ### Added
 
 - Beta features: features that are still being tested are off by default
   and can be turned on with "Enable beta features" on the Settings page.
-  Selectors, stepper-motor gauges and the Windows virtual joystick are beta
-  features.
+  Selectors, gauges and the Windows virtual joystick are beta features.
 - Selectors (beta, turn on "Enable beta features" in Settings): use a
   potentiometer as a rotary switch with fixed positions, such as a lights
   selector. Split its travel evenly into 2 to 12 positions,

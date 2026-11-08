@@ -1,8 +1,21 @@
 defmodule Trenino.Train.GaugeController do
-  @moduledoc "Fresh simulator samples drive commissioned, referenced axes through the manager."
+  @moduledoc """
+  Fresh simulator samples drive the gauges of the active train's enabled bindings.
+
+  Gauge commands are fire-and-forget (`SetGaugePosition`), so the controller re-sends an
+  unchanged target every 2 seconds as a backstop, and at once after the device stores a
+  configuration or reconnects: both re-zero every gauge, which forgets its position.
+
+  A stale value holds the needle: nothing is sent until a fresh sample arrives.
+
+  While a gauge is under manual control (the calibration panel or the `move_gauge` MCP
+  tool), train samples for it are not sent. See `hold_manual/2`.
+  """
   use GenServer
   require Logger
-  alias Trenino.Hardware.StepperManager
+  alias Trenino.Hardware
+  alias Trenino.Hardware.ConfigurationManager
+  alias Trenino.Serial.Connection, as: SerialConnection
   alias Trenino.Simulator.Client
   alias Trenino.Simulator.Connection, as: SimulatorConnection
   alias Trenino.Simulator.ConnectionState
@@ -16,11 +29,11 @@ defmodule Trenino.Train.GaugeController do
   # never reused: polling resumes on a fresh ID range instead of stalling forever.
   @max_cleanup_attempts 3
   @id_block 1000
-  # An unchanged, accepted target is not re-sent on every sample (each send reads the axis
-  # from the database). It is re-sent as soon as the stepper session reports it no longer
-  # holds that target (a manual lease, a re-reference, a reconnect), and at least this often
-  # as a backstop.
+  # An unchanged target is not re-sent on every sample. It is re-sent after a configuration
+  # is applied, the device list changes or manual control ends, and at least this often
+  # as a backstop for the fire-and-forget command.
   @resend_after_ms 2000
+  @link_ttl_ms 5000
 
   def start_link(opts), do: GenServer.start_link(__MODULE__, opts, name: __MODULE__)
   def reload_bindings, do: GenServer.cast(__MODULE__, :reload)
@@ -41,12 +54,54 @@ defmodule Trenino.Train.GaugeController do
     if Process.whereis(__MODULE__), do: GenServer.call(__MODULE__, {:runtime, id}), else: nil
   end
 
+  @doc """
+  Puts a gauge under manual control, so train samples stop moving it, until
+  `release_manual/1` is called or the hold ends:
+
+    * `owner: pid` - while `pid` is alive (the calibration panel's LiveView);
+    * `ttl_ms: ms` - for `ms` milliseconds; calling again renews it (MCP `move_gauge`).
+
+  A no-op when the controller is not running.
+  """
+  @spec hold_manual(integer(), keyword()) :: :ok
+  def hold_manual(gauge_id, opts) when is_integer(gauge_id),
+    do:
+      call_if_running(
+        {:hold_manual, gauge_id, Keyword.get(opts, :owner), Keyword.get(opts, :ttl_ms)}
+      )
+
+  @doc "Ends manual control of a gauge; the active train's value is sent again."
+  @spec release_manual(integer()) :: :ok
+  def release_manual(gauge_id) when is_integer(gauge_id),
+    do: call_if_running({:release_manual, gauge_id})
+
+  @doc "True while a gauge is under manual control."
+  @spec manual?(integer()) :: boolean()
+  def manual?(gauge_id) when is_integer(gauge_id) do
+    if Process.whereis(__MODULE__),
+      do: GenServer.call(__MODULE__, {:manual?, gauge_id}),
+      else: false
+  catch
+    :exit, _ -> false
+  end
+
+  # Manual control must not fail because the controller is restarting.
+  defp call_if_running(message) do
+    if Process.whereis(__MODULE__), do: GenServer.call(__MODULE__, message)
+    :ok
+  catch
+    :exit, _reason -> :ok
+  end
+
   @impl true
   def init(_opts) do
-    # Trap exits so a supervisor shutdown runs terminate/2 and releases the steppers.
+    # Trap exits so a supervisor shutdown runs terminate/2 (stops the poll task); simulator
+    # subscriptions left behind are cleared on the next start.
     Process.flag(:trap_exit, true)
     Train.subscribe()
     SimulatorConnection.subscribe()
+    SerialConnection.subscribe()
+    ConfigurationManager.subscribe_configuration()
     Phoenix.PubSub.subscribe(Trenino.PubSub, "train:gauges:configuration")
     {:ok, %State{}, {:continue, :initial}}
   end
@@ -60,14 +115,46 @@ defmodule Trenino.Train.GaugeController do
   def handle_call({:runtime, id}, _, s),
     do: {:reply, if(s.train && s.train.id == id, do: runtime_state(s), else: nil), s}
 
+  # A timed hold (MCP) never replaces one owned by a live process (the calibration panel):
+  # the panel keeps the gauge until it closes.
+  def handle_call({:hold_manual, gauge_id, owner, ttl_ms}, _, s) do
+    case s.manual do
+      %{^gauge_id => %{ref: ref}} when is_reference(ref) and is_nil(owner) ->
+        {:reply, :ok, s}
+
+      _ ->
+        {:reply, :ok, put_hold(s, gauge_id, owner, ttl_ms)}
+    end
+  end
+
+  def handle_call({:release_manual, gauge_id}, _, s),
+    do: {:reply, :ok, end_manual(s, gauge_id, resend: true)}
+
+  def handle_call({:manual?, gauge_id}, _, s) do
+    s = expire_manual(s)
+    {:reply, Map.has_key?(s.manual, gauge_id), s}
+  end
+
+  defp put_hold(s, gauge_id, owner, ttl_ms) do
+    s = end_manual(s, gauge_id, resend: false)
+    ref = if is_pid(owner), do: Process.monitor(owner)
+    until = if is_integer(ttl_ms), do: now() + ttl_ms
+    %{s | manual: Map.put(s.manual, gauge_id, %{ref: ref, until: until})}
+  end
+
   @impl true
   def handle_cast(:reload, s), do: {:noreply, reload(s)}
   @impl true
   def handle_info({:train_changed, train}, s), do: {:noreply, activate(s, train)}
   def handle_info({:gauge_bindings_changed, _}, s), do: {:noreply, reload(s)}
 
-  def handle_info({:stepper_updated, device_id, %{axes: axes}}, s) when is_map(axes),
-    do: {:noreply, forget_unheld_targets(s, device_id, axes)}
+  # Both re-zero the device's gauges (a new configuration recreates them, a reconnect may
+  # be a reboot) and may change where commands go, so links are looked up again and every
+  # target is resent.
+  def handle_info({:devices_updated, _devices}, s), do: {:noreply, relink(s)}
+
+  def handle_info({:configuration_applied, _port, _device, _config_id}, s),
+    do: {:noreply, relink(s)}
 
   def handle_info({:simulator_status_changed, %ConnectionState{}}, s),
     do: {:noreply, activate(s, s.train)}
@@ -120,16 +207,46 @@ defmodule Trenino.Train.GaugeController do
   def handle_info({:DOWN, ref, :process, _, reason}, %State{task: %{ref: ref}} = s),
     do: {:noreply, cleanup(%{s | task: nil, last_error: {:poll_crashed, reason}})}
 
+  def handle_info({:DOWN, ref, :process, _, _}, s) do
+    case Enum.find(s.manual, fn {_, hold} -> hold.ref == ref end) do
+      {gauge_id, _} -> {:noreply, end_manual(s, gauge_id, resend: true)}
+      nil -> {:noreply, s}
+    end
+  end
+
   def handle_info(_, s), do: {:noreply, s}
 
   @impl true
   def terminate(_, s) do
     if s.timer, do: Process.cancel_timer(s.timer)
     if s.task, do: Task.shutdown(s.task, :brutal_kill)
+  end
 
-    Enum.each(s.bindings, fn {_, binding} ->
-      StepperManager.inactive(binding.stepper_axis_id, binding.inactive_behavior)
-    end)
+  defp relink(s), do: %{s | links: %{}, sent: %{}}
+
+  defp end_manual(s, gauge_id, resend: resend?) do
+    case Map.pop(s.manual, gauge_id) do
+      {nil, _} ->
+        s
+
+      {hold, manual} ->
+        if hold.ref, do: Process.demonitor(hold.ref, [:flush])
+        s = %{s | manual: manual}
+        if resend?, do: forget_sent_for_gauge(s, gauge_id), else: s
+    end
+  end
+
+  defp expire_manual(s) do
+    now = now()
+
+    s.manual
+    |> Enum.filter(fn {_, hold} -> hold.until && hold.until <= now end)
+    |> Enum.reduce(s, fn {gauge_id, _}, acc -> end_manual(acc, gauge_id, resend: true) end)
+  end
+
+  defp forget_sent_for_gauge(s, gauge_id) do
+    sent = Map.reject(s.sent, fn {id, _} -> match?(%{gauge_id: ^gauge_id}, s.bindings[id]) end)
+    %{s | sent: sent}
   end
 
   @doc "Resolve exactly one valid numeric sample, or an explicitly selected value key."
@@ -149,16 +266,13 @@ defmodule Trenino.Train.GaugeController do
     bindings = load_bindings(s.train)
 
     if current_client() == s.client and endpoints(bindings) == endpoints(s.bindings) do
-      Enum.each(Map.drop(s.bindings, Map.keys(bindings)), fn {_, b} ->
-        StepperManager.inactive(b.stepper_axis_id, b.inactive_behavior)
-      end)
-
-      subscribe_steppers(%{
+      %{
         s
         | bindings: bindings,
           status: Map.take(s.status, Map.keys(bindings)),
-          sent: %{}
-      })
+          sent: %{},
+          links: %{}
+      }
     else
       activate(s, s.train)
     end
@@ -170,41 +284,6 @@ defmodule Trenino.Train.GaugeController do
 
   defp load_bindings(train),
     do: Map.new(Train.list_enabled_gauge_bindings(train.id), &{&1.id, &1})
-
-  # PubSub subscriptions are never dropped, so each device topic is joined only once.
-  defp subscribe_steppers(s) do
-    devices =
-      s.bindings
-      |> Map.values()
-      |> Enum.map(& &1.stepper_axis.device_id)
-      |> MapSet.new()
-
-    devices
-    |> MapSet.difference(s.stepper_devices)
-    |> Enum.each(&StepperManager.subscribe/1)
-
-    %{s | stepper_devices: MapSet.union(s.stepper_devices, devices)}
-  end
-
-  # A target in flight (`pending`) is not yet reflected in `last_target`, so it is kept.
-  defp forget_unheld_targets(s, device_id, axes) do
-    sent =
-      Map.reject(s.sent, fn {id, %{target: target}} ->
-        case s.bindings[id] do
-          %{stepper_axis: %{device_id: ^device_id}, stepper_axis_id: axis_id} ->
-            not holds_target?(Map.get(axes, axis_id), target)
-
-          _ ->
-            false
-        end
-      end)
-
-    %{s | sent: sent}
-  end
-
-  defp holds_target?(%{pending: nil, last_target: held}, target), do: held == target
-  defp holds_target?(%{pending: _}, _target), do: true
-  defp holds_target?(_axis, _target), do: false
 
   defp current_client do
     case SimulatorConnection.get_status() do
@@ -228,7 +307,7 @@ defmodule Trenino.Train.GaugeController do
     client = current_client()
     bindings = load_bindings(train)
 
-    subscribe_steppers(%{
+    %{
       s
       | train: train,
         client: client,
@@ -236,11 +315,12 @@ defmodule Trenino.Train.GaugeController do
         subscriptions: %{},
         status: %{},
         sent: %{},
+        links: %{},
         generation: generation,
         retry_after: %{},
         endpoint_errors: %{},
         timer: Process.send_after(self(), {:poll, generation}, 0)
-    })
+    }
   end
 
   defp cleanup(%State{cleaning: true} = s) do
@@ -251,10 +331,6 @@ defmodule Trenino.Train.GaugeController do
   defp cleanup(s) do
     if s.timer, do: Process.cancel_timer(s.timer)
     if s.task, do: Task.shutdown(s.task, :brutal_kill)
-
-    Enum.each(s.bindings, fn {_, b} ->
-      StepperManager.inactive(b.stepper_axis_id, b.inactive_behavior)
-    end)
 
     if s.client do
       ids = s.bindings |> endpoints() |> Enum.with_index(s.id_base) |> Enum.map(&elem(&1, 1))
@@ -448,7 +524,7 @@ defmodule Trenino.Train.GaugeController do
 
   defp apply_sample(s, id, b, response) do
     with {:ok, raw} <- sample(response, b.value_key),
-         {:ok, mapped} <- GaugeMapper.map(b, raw, b.stepper_axis) do
+         {:ok, mapped} <- GaugeMapper.map(b, raw, b.gauge) do
       {s, result} = send_target(s, id, b, mapped.target)
 
       status =
@@ -474,13 +550,18 @@ defmodule Trenino.Train.GaugeController do
 
   defp send_target(s, id, b, target) do
     now = now()
+    s = expire_manual(s)
 
     case Map.get(s.sent, id) do
+      _ when is_map_key(s.manual, b.gauge_id) ->
+        {%{s | sent: Map.delete(s.sent, id)}, :manual_control}
+
       %{target: ^target, at: at} when now - at < @resend_after_ms ->
         {s, :ok}
 
       _ ->
-        result = StepperManager.set_target(b.stepper_axis_id, target, s.train.id)
+        {s, link} = link(s, b.gauge.device_id)
+        result = send_position(link, b.gauge, target)
 
         sent =
           if result == :ok,
@@ -491,12 +572,39 @@ defmodule Trenino.Train.GaugeController do
     end
   end
 
+  defp send_position({:ok, port}, gauge, target) do
+    case Hardware.set_gauge_position(port, gauge, target) do
+      :ok -> :ok
+      {:error, reason} -> reason
+    end
+  end
+
+  defp send_position({:error, reason}, _gauge, _target), do: reason
+
+  # Looking a link up reads the database and the serial registry, so the answer is cached
+  # per device until the device list, the applied configuration or the gauges change, and
+  # re-checked every few seconds: edits to inputs or outputs change whether the device
+  # still runs the saved configuration, and they broadcast nothing here.
+  defp link(s, device_id) do
+    now = now()
+
+    case Map.fetch(s.links, device_id) do
+      {:ok, {link, at}} when now - at < @link_ttl_ms ->
+        {s, link}
+
+      _ ->
+        link = Hardware.gauge_link(device_id)
+        {%{s | links: Map.put(s.links, device_id, {link, now})}, link}
+    end
+  end
+
   defp expire_samples(s) do
     Enum.reduce(s.bindings, s, fn {id, b}, acc ->
       status = Map.get(acc.status, id)
 
       if status && now() - status.received_at >= b.stale_after_ms && not status.inactive do
-        StepperManager.inactive(b.stepper_axis_id, b.inactive_behavior)
+        # Hold: the needle stays at the last value. After a reboot or a new configuration
+        # it rests at zero until a fresh sample arrives.
         acc = %{acc | sent: Map.delete(acc.sent, id)}
         publish(acc, id, Map.merge(status, %{stale: true, inactive: true}))
       else

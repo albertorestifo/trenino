@@ -138,7 +138,7 @@ defmodule TreninoWeb.TrainEditLiveTest do
   describe "section nav and groups" do
     setup do
       {:ok, device} = Hardware.create_device(%{name: "Panel"})
-      {:ok, axis} = Hardware.create_stepper_axis(device.id, %{name: "Speed"})
+      gauge = Trenino.GaugeFixtures.gauge_fixture(device.id, %{name: "Speed"})
 
       {:ok, train} =
         TrainContext.create_train(%{name: "Class 323", identifiers: [%{identifier: "Class323"}]})
@@ -146,7 +146,7 @@ defmodule TreninoWeb.TrainEditLiveTest do
       {:ok, binding} =
         TrainContext.create_gauge_binding(train.id, %{
           name: "Speedometer",
-          stepper_axis_id: axis.id,
+          gauge_id: gauge.id,
           endpoint: "VerifiedSpeed",
           input_unit: :mps
         })
@@ -204,14 +204,14 @@ defmodule TreninoWeb.TrainEditLiveTest do
       {:ok, view, _} = live(conn, ~p"/trains/#{train.id}")
       assert has_element?(view, "#section-nav a[href='#gauge-bindings'] .badge", "1")
 
-      # A train binds each axis once, so the second binding needs its own axis.
+      # A train binds each gauge once, so the second binding needs its own gauge.
       {:ok, device} = Hardware.create_device(%{name: "Second panel"})
-      {:ok, axis} = Hardware.create_stepper_axis(device.id, %{name: "Brake"})
+      gauge = Trenino.GaugeFixtures.gauge_fixture(device.id, %{name: "Brake"})
 
       {:ok, second} =
         TrainContext.create_gauge_binding(train.id, %{
           name: "Brake gauge",
-          stepper_axis_id: axis.id,
+          gauge_id: gauge.id,
           endpoint: "VerifiedBrake",
           input_unit: :mps
         })

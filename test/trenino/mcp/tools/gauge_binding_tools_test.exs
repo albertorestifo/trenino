@@ -7,8 +7,7 @@ defmodule Trenino.MCP.Tools.GaugeBindingToolsTest do
 
   setup do
     {:ok, device} = Hardware.create_device(%{name: "Gauge"})
-    {:ok, axis} = Hardware.create_stepper_axis(device.id, %{name: "Speed"})
-    {:ok, axis} = Hardware.commission_stepper_axis(axis)
+    axis = Trenino.GaugeFixtures.gauge_fixture(device.id)
 
     {:ok, train} =
       Train.create_train(%{name: "Class 323", identifiers: [%{identifier: "Class323"}]})
@@ -16,48 +15,48 @@ defmodule Trenino.MCP.Tools.GaugeBindingToolsTest do
     %{axis: axis, train: train}
   end
 
-  test "dial calibration is read and written per axis, never through the binding", %{axis: axis} do
+  test "dial calibration is read and written per gauge, never through the binding", %{axis: axis} do
     assert {:ok, %{calibration: nil}} =
-             DialCalibrationTools.execute("get_dial_calibration", %{"stepper_axis_id" => axis.id})
+             DialCalibrationTools.execute("get_dial_calibration", %{"gauge_id" => axis.id})
 
     assert {:ok, %{calibration: %{reviewed: false, points: [_, _]}}} =
              DialCalibrationTools.execute("update_dial_calibration", %{
-               "stepper_axis_id" => axis.id,
+               "gauge_id" => axis.id,
                "points" => @points
              })
 
     assert {:ok, %{calibration: %{reviewed: true, valid: true, output_unit: :mph}}} =
              DialCalibrationTools.execute("update_dial_calibration", %{
-               "stepper_axis_id" => axis.id,
+               "gauge_id" => axis.id,
                "points" => @points,
                "output_unit" => "mph",
                "reviewed" => true
              })
 
     assert {:ok, %{calibration: %{reviewed: true}}} =
-             DialCalibrationTools.execute("get_dial_calibration", %{"stepper_axis_id" => axis.id})
+             DialCalibrationTools.execute("get_dial_calibration", %{"gauge_id" => axis.id})
 
     assert {:error, _} =
              DialCalibrationTools.execute("update_dial_calibration", %{
-               "stepper_axis_id" => axis.id,
+               "gauge_id" => axis.id,
                "points" => [%{"value" => 0, "position" => 0}]
              })
 
     assert {:error, _} =
-             DialCalibrationTools.execute("get_dial_calibration", %{"stepper_axis_id" => 0})
+             DialCalibrationTools.execute("get_dial_calibration", %{"gauge_id" => 0})
   end
 
-  test "create returns the axis dial, not null", %{axis: axis, train: train} do
+  test "create returns the gauge dial, not null", %{axis: axis, train: train} do
     {:ok, _} =
       DialCalibrationTools.execute("update_dial_calibration", %{
-        "stepper_axis_id" => axis.id,
+        "gauge_id" => axis.id,
         "points" => @points
       })
 
     assert {:ok, %{binding: %{dial: %{points: [_, _]}}}} =
              GaugeBindingTools.execute("create_gauge_binding", %{
                "train_id" => train.id,
-               "stepper_axis_id" => axis.id,
+               "gauge_id" => axis.id,
                "name" => "Speed",
                "endpoint" => "Speed"
              })
@@ -66,7 +65,7 @@ defmodule Trenino.MCP.Tools.GaugeBindingToolsTest do
   test "gauge CRUD and preview share mapper without movement", %{axis: axis, train: train} do
     attrs = %{
       "train_id" => train.id,
-      "stepper_axis_id" => axis.id,
+      "gauge_id" => axis.id,
       "name" => "Speed",
       "endpoint" => "Speed"
     }
@@ -84,7 +83,7 @@ defmodule Trenino.MCP.Tools.GaugeBindingToolsTest do
 
     {:ok, _} =
       DialCalibrationTools.execute("update_dial_calibration", %{
-        "stepper_axis_id" => axis.id,
+        "gauge_id" => axis.id,
         "points" => @points,
         "reviewed" => true
       })

@@ -1,22 +1,21 @@
 defmodule Trenino.Hardware.DialCalibration do
   @moduledoc """
-  The measured dial of one stepper axis: dial value -> position, and the unit the
-  printed dial shows. The dial belongs to the hardware, so every train binding on the
-  axis shares it.
+  The measured dial of one gauge: dial value -> position in steps from the end stop, and
+  the unit the printed dial shows. The dial belongs to the hardware, so every train
+  binding on the gauge shares it.
 
-  Kept in its own table (not on `StepperAxis`) so the axis stays purely electrical:
-  saving or reviewing a dial never touches the motion fields, the commissioning flag
-  or the applied-configuration fingerprint.
+  Kept in its own table (not on `Gauge`) so saving or reviewing a dial never touches the
+  applied-configuration fingerprint.
   """
   use Ecto.Schema
   import Ecto.Changeset
-  alias Trenino.Hardware.{DialPoint, StepperAxis}
+  alias Trenino.Hardware.{DialPoint, Gauge}
 
   @type t :: %__MODULE__{}
   @units [:raw, :mps, :kmh, :mph]
 
-  schema "hardware_stepper_dial_calibrations" do
-    belongs_to :stepper_axis, StepperAxis
+  schema "hardware_dial_calibrations" do
+    belongs_to :gauge, Gauge
     field :output_unit, Ecto.Enum, values: @units, default: :raw
     field :valid, :boolean, default: true
     field :reviewed, :boolean, default: false
@@ -25,23 +24,23 @@ defmodule Trenino.Hardware.DialCalibration do
   end
 
   @doc """
-  Validates points and unit against the axis soft limits. Passing `reviewed: true`
+  Validates points and unit against the gauge travel. Passing `reviewed: true`
   with otherwise valid data marks the dial valid and reviewed; any change to the
   points or unit without it clears the review, and an explicit `reviewed: false` clears it
   even when nothing else changed.
   """
-  @spec changeset(t(), map(), StepperAxis.t() | nil) :: Ecto.Changeset.t()
-  def changeset(%__MODULE__{} = calibration, attrs, axis \\ nil) do
+  @spec changeset(t(), map(), Gauge.t() | nil) :: Ecto.Changeset.t()
+  def changeset(%__MODULE__{} = calibration, attrs, gauge \\ nil) do
     reviewed? = review_request(attrs)
 
     calibration
     |> cast(attrs, [:output_unit])
     |> cast_embed(:points, with: &DialPoint.changeset/2, required: true)
-    |> validate_required([:stepper_axis_id, :output_unit])
-    |> validate_points(axis)
+    |> validate_required([:gauge_id, :output_unit])
+    |> validate_points(gauge)
     |> review(reviewed?)
-    |> foreign_key_constraint(:stepper_axis_id)
-    |> unique_constraint(:stepper_axis_id)
+    |> foreign_key_constraint(:gauge_id)
+    |> unique_constraint(:gauge_id)
   end
 
   defp review_request(attrs) do
@@ -67,7 +66,7 @@ defmodule Trenino.Hardware.DialCalibration do
       else: cs
   end
 
-  defp validate_points(cs, axis) do
+  defp validate_points(cs, gauge) do
     points = get_field(cs, :points)
 
     cs =
@@ -95,16 +94,13 @@ defmodule Trenino.Hardware.DialCalibration do
         else:
           add_error(cs, :points, "values must increase and positions must be strictly monotonic")
 
-    validate_bounds(cs, points, axis)
+    validate_bounds(cs, points, gauge)
   end
 
-  defp validate_bounds(cs, points, %StepperAxis{} = axis) do
-    if Enum.all?(points, fn p ->
-         is_integer(p.position) and p.position >= axis.min_position and
-           p.position <= axis.max_position
-       end),
-       do: cs,
-       else: add_error(cs, :points, "positions must be within axis limits")
+  defp validate_bounds(cs, points, %Gauge{travel: travel}) do
+    if Enum.all?(points, &(is_integer(&1.position) and &1.position in 0..travel)),
+      do: cs,
+      else: add_error(cs, :points, "positions must be between 0 and the gauge travel (#{travel})")
   end
 
   defp validate_bounds(cs, _, _), do: cs

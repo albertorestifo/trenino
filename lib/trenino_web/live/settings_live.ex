@@ -222,8 +222,8 @@ defmodule TreninoWeb.SettingsLive do
             <div>
               <div class="font-medium">Enable beta features</div>
               <div class="text-sm text-muted mt-1">
-                Try features that are still being tested: stepper-motor gauges such as
-                speedometers, selectors that use a potentiometer as a rotary switch, and
+                Try features that are still being tested: X27 gauges such as speedometers
+                (controller firmware 3.3.0 or newer), selectors that use a potentiometer as a rotary switch, and
                 the Windows virtual joystick. They may change or have rough edges.
               </div>
             </div>

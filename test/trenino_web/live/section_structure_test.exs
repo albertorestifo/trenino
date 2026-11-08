@@ -42,7 +42,7 @@ defmodule TreninoWeb.SectionStructureTest do
         }
       })
 
-    {:ok, axis} = Hardware.create_stepper_axis(device.id, %{name: "Speedometer"})
+    gauge = Trenino.GaugeFixtures.gauge_fixture(device.id)
 
     {:ok, train} =
       TrainContext.create_train(%{name: "Class 66", identifiers: [%{identifier: "BR_Class_66"}]})
@@ -69,7 +69,7 @@ defmodule TreninoWeb.SectionStructureTest do
     {:ok, _gauge_binding} =
       TrainContext.create_gauge_binding(train.id, %{
         name: "Speed gauge",
-        stepper_axis_id: axis.id,
+        gauge_id: gauge.id,
         endpoint: "VerifiedSpeed",
         input_unit: :mps
       })
@@ -93,7 +93,7 @@ defmodule TreninoWeb.SectionStructureTest do
       {:ok, view, _} = live(conn, ~p"/configurations/#{device.config_id}")
 
       html = render(view)
-      assert_sections(html, ~w(inputs matrices outputs displays stepper-axes))
+      assert_sections(html, ~w(inputs matrices outputs displays gauges))
       assert_groups(html, ~w(controls-group feedback-group))
       assert_nav_matches_sections(html)
     end

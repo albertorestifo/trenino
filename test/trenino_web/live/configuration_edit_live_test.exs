@@ -177,14 +177,14 @@ defmodule TreninoWeb.ConfigurationEditLiveTest do
             {"matrices", "Matrices", "Add matrix"},
             {"outputs", "Outputs", "Add output"},
             {"displays", "Displays", "Add display"},
-            {"stepper-axes", "Gauges", "Add gauge"}
+            {"gauges", "Gauges", "Add gauge"}
           ] do
         assert has_element?(view, "section##{id}[data-section-card] h3##{id}-title", title)
         assert has_element?(view, "section##{id} button", add)
       end
 
       assert has_element?(view, "#displays [data-section-empty]", "No displays configured")
-      assert has_element?(view, "#stepper-axes [data-section-empty]", "No gauges configured")
+      assert has_element?(view, "#gauges [data-section-empty]", "No gauges configured")
     end
 
     test "sections sit in Controls and Feedback groups behind a per-section counted nav", %{
@@ -201,7 +201,7 @@ defmodule TreninoWeb.ConfigurationEditLiveTest do
             {"matrices", "Matrices"},
             {"outputs", "Outputs"},
             {"displays", "Displays"},
-            {"stepper-axes", "Gauges"}
+            {"gauges", "Gauges"}
           ] do
         assert has_element?(view, "#section-nav a[href='##{id}']", label)
       end
@@ -214,11 +214,11 @@ defmodule TreninoWeb.ConfigurationEditLiveTest do
       end
 
       refute has_element?(view, "#section-nav a[href='#displays'] .badge")
-      refute has_element?(view, "#section-nav a[href='#stepper-axes'] .badge")
+      refute has_element?(view, "#section-nav a[href='#gauges'] .badge")
 
       for {group, title, sections} <- [
             {"controls-group", "Controls", ["inputs", "matrices"]},
-            {"feedback-group", "Feedback", ["outputs", "displays", "stepper-axes"]}
+            {"feedback-group", "Feedback", ["outputs", "displays", "gauges"]}
           ] do
         assert has_element?(
                  view,
@@ -263,7 +263,7 @@ defmodule TreninoWeb.ConfigurationEditLiveTest do
 
       for {section, button, reason} <- [
             {"displays", "add-display", "Name the configuration first to add a display."},
-            {"stepper-axes", "stepper-add", "Name the configuration first to add a gauge."}
+            {"gauges", "gauge-add", "Name the configuration first to add a gauge."}
           ] do
         assert has_element?(view, "div#feedback-group section##{section}[data-section-card]")
 
@@ -413,7 +413,7 @@ defmodule TreninoWeb.ConfigurationEditLiveTest do
                "Add at least one input, matrix, output"
 
       firmware = ConfigurationEditLive.configuration_failure_message(:firmware_update_required)
-      assert firmware =~ "firmware 3.1 or newer"
+      assert firmware =~ "3.3.0 or newer for gauges"
       refute firmware =~ "Stepper"
 
       unknown = ConfigurationEditLive.configuration_failure_message({:unexpected, :term})

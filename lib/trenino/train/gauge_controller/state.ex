@@ -10,10 +10,13 @@ defmodule Trenino.Train.GaugeController.State do
     bindings: %{},
     subscriptions: %{},
     status: %{},
-    # binding id => %{target, at}: the last target the manager accepted, so an unchanged
-    # sample is not resent every poll.
+    # binding id => %{target, at}: the last target sent, so an unchanged sample is not
+    # resent every poll.
     sent: %{},
-    stepper_devices: MapSet.new(),
+    # device id => {{:ok, port} | {:error, reason}, checked_at}: where gauge commands go.
+    links: %{},
+    # gauge id => %{ref: monitor ref | nil, until: monotonic ms | nil}: manual control.
+    manual: %{},
     cleaning: false,
     retry_after: %{},
     id_base: 4000,

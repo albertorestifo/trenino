@@ -8,7 +8,7 @@ defmodule Trenino.MCP.Tools.GaugeRuntimeTools do
       %{
         name: "get_gauge_runtime",
         description:
-          "Live gauge controller state for a train (default: the active train), read-only. Returns controller state (simulator_connected, cleaning, cleanup_attempts, last_error, subscribed_endpoints) and per binding the latest raw sample, converted value, target, clamped, stale, inactive, age_ms and failure (subscribe/poll/mapping error or a set_target refusal). Use it to see why a gauge is not moving. `active: false` means the controller is not running that train.",
+          "Live gauge controller state for a train (default: the active train), read-only. Returns controller state (simulator_connected, cleaning, cleanup_attempts, last_error, subscribed_endpoints) and per binding the latest raw sample, converted value, target, clamped, stale, inactive, age_ms and failure (subscribe/poll/mapping error, or why the position was not sent: manual_control while move_gauge or the calibration panel holds the gauge, needs_apply, device_not_connected, firmware_update_required). A stale binding holds its needle; after a reboot or a new configuration the needle rests at zero until a fresh value arrives. Use it to see why a gauge is not moving. `active: false` means the controller is not running that train.",
         input_schema: %{
           type: "object",
           properties: %{train_id: %{type: "integer"}},

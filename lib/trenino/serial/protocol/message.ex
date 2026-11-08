@@ -13,11 +13,11 @@ defmodule Trenino.Serial.Protocol.Message do
     InputValue,
     ModuleError,
     RetryCalibration,
+    SetGaugePosition,
     SetModuleBrightness,
     SetOutput,
-    StepperCommand,
-    StepperStatus,
-    WriteSegments
+    WriteSegments,
+    ZeroGauge
   }
 
   @type t() :: struct()
@@ -53,8 +53,9 @@ defmodule Trenino.Serial.Protocol.Message do
   def decode(<<0x0D, rest::binary>>), do: WriteSegments.decode_body(rest)
   def decode(<<0x0E, rest::binary>>), do: SetModuleBrightness.decode_body(rest)
   def decode(<<0x0F, rest::binary>>), do: ModuleError.decode_body(rest)
-  def decode(<<0x10, rest::binary>>), do: StepperCommand.decode_body(rest)
-  def decode(<<0x11, rest::binary>>), do: StepperStatus.decode_body(rest)
+  # 0x10–0x11: reserved (stepper axis extension, firmware 3.1.0–3.2.1, removed in 3.3.0)
+  def decode(<<0x12, rest::binary>>), do: SetGaugePosition.decode_body(rest)
+  def decode(<<0x13, rest::binary>>), do: ZeroGauge.decode_body(rest)
   def decode(<<_unknown, _rest::binary>>), do: {:error, :unknown_message_type}
   def decode(<<>>), do: {:error, :insufficient_data}
   def decode(_), do: {:error, :invalid_input}

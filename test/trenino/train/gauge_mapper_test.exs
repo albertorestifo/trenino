@@ -1,6 +1,6 @@
 defmodule Trenino.Train.GaugeMapperTest do
   use ExUnit.Case, async: true
-  alias Trenino.Hardware.{DialCalibration, DialPoint, StepperAxis}
+  alias Trenino.Hardware.{DialCalibration, DialPoint, Gauge}
   alias Trenino.Train.{GaugeBinding, GaugeMapper}
 
   defp calibration(extra \\ []) do
@@ -18,19 +18,27 @@ defmodule Trenino.Train.GaugeMapperTest do
     )
   end
 
-  defp axis(extra \\ []), do: %StepperAxis{dial_calibration: calibration(extra)}
-  defp gauge, do: %GaugeBinding{}
+  defp gauge(extra \\ [], fields \\ []),
+    do: struct(%Gauge{travel: 3780, dial_calibration: calibration(extra)}, fields)
+
+  defp gauge_binding, do: %GaugeBinding{}
 
   test "piecewise calibration, clamp and unit conversion" do
-    axis = axis()
-    assert {:ok, %{target: 175}} = GaugeMapper.map(gauge(), 25, axis)
-    assert {:ok, %{target: 535}} = GaugeMapper.map(gauge(), 75, axis)
-    assert {:ok, %{target: 720, clamped: true}} = GaugeMapper.map(gauge(), 101, axis)
-    assert {:ok, %{target: 0, clamped: true}} = GaugeMapper.map(gauge(), -1, axis)
-    assert {:error, :out_of_range} = GaugeMapper.map(%{gauge() | out_of_range: :reject}, -1, axis)
+    gauge = gauge()
+    assert {:ok, %{target: 175}} = GaugeMapper.map(gauge_binding(), 25, gauge)
+    assert {:ok, %{target: 535}} = GaugeMapper.map(gauge_binding(), 75, gauge)
+    assert {:ok, %{target: 720, clamped: true}} = GaugeMapper.map(gauge_binding(), 101, gauge)
+    assert {:ok, %{target: 0, clamped: true}} = GaugeMapper.map(gauge_binding(), -1, gauge)
+
+    assert {:error, :out_of_range} =
+             GaugeMapper.map(%{gauge_binding() | out_of_range: :reject}, -1, gauge)
 
     assert {:ok, %{target: 720, value: 100.0}} =
-             GaugeMapper.map(%{gauge() | input_unit: :mps}, 44.704, axis(output_unit: :mph))
+             GaugeMapper.map(
+               %{gauge_binding() | input_unit: :mps},
+               44.704,
+               gauge(output_unit: :mph)
+             )
 
     assert {:ok, 10.0} = GaugeMapper.convert(36, :kmh, :mps)
     assert {:error, _} = GaugeMapper.convert(3, :raw, :mph)
@@ -42,17 +50,30 @@ defmodule Trenino.Train.GaugeMapperTest do
     end
 
     points = [%DialPoint{value: 0.0, position: 0}, %DialPoint{value: 29.0, position: 500}]
-    b = %{gauge() | input_unit: :kmh, out_of_range: :reject}
+    b = %{gauge_binding() | input_unit: :kmh, out_of_range: :reject}
 
     assert {:ok, %{target: 500, clamped: false}} =
-             GaugeMapper.map(b, 29, axis(output_unit: :kmh, points: points))
+             GaugeMapper.map(b, 29, gauge(output_unit: :kmh, points: points))
   end
 
-  test "the dial comes from the axis: no or invalid calibration never maps" do
-    assert {:error, :invalid_calibration_or_limits} = GaugeMapper.map(gauge(), 25, %StepperAxis{})
+  test "the dial comes from the gauge: no or invalid calibration never maps" do
+    assert {:error, :invalid_calibration_or_limits} =
+             GaugeMapper.map(gauge_binding(), 25, %Gauge{travel: 3780})
 
     assert {:error, :invalid_calibration_or_limits} =
-             GaugeMapper.map(gauge(), 25, axis(valid: false))
+             GaugeMapper.map(gauge_binding(), 25, %Gauge{travel: 3780, dial_calibration: nil})
+
+    assert {:error, :invalid_calibration_or_limits} =
+             GaugeMapper.map(gauge_binding(), 25, gauge(valid: false))
+  end
+
+  test "targets stay inside the gauge's travel" do
+    # A dial point past a shortened travel cannot drive the needle into the end stop.
+    short = gauge([], travel: 500)
+    assert {:ok, %{target: 175}} = GaugeMapper.map(gauge_binding(), 25, short)
+    assert {:error, :invalid_calibration_or_limits} = GaugeMapper.map(gauge_binding(), 100, short)
+
+    assert {:ok, %{target: 720}} = GaugeMapper.map(gauge_binding(), 100, gauge([], travel: 720))
   end
 
   test "dial_target previews a calibration in dial units" do
@@ -68,25 +89,25 @@ defmodule Trenino.Train.GaugeMapperTest do
 
   test "invalid samples never become zero and abs is explicit" do
     for value <- [nil, true, "12", %{}, []],
-        do: assert({:error, _} = GaugeMapper.map(gauge(), value, axis()))
+        do: assert({:error, _} = GaugeMapper.map(gauge_binding(), value, gauge()))
 
     assert {:ok, %{target: 175}} =
-             GaugeMapper.map(%{gauge() | absolute_value: true}, -25, axis())
+             GaugeMapper.map(%{gauge_binding() | absolute_value: true}, -25, gauge())
 
     assert {:ok, %{value: 51.0}} =
-             GaugeMapper.map(%{gauge() | multiplier: 2.0, offset: 1.0}, 25, axis())
+             GaugeMapper.map(%{gauge_binding() | multiplier: 2.0, offset: 1.0}, 25, gauge())
   end
 
   test "overflow is a rejected sample" do
     assert {:error, _} = GaugeMapper.convert(1.0e308, :mps, :mph)
-    assert {:error, _} = GaugeMapper.map(%{gauge() | multiplier: 1.0e308}, 100, axis())
+    assert {:error, _} = GaugeMapper.map(%{gauge_binding() | multiplier: 1.0e308}, 100, gauge())
   end
 
   test "tiny raw-unit samples retain precision for interpolation" do
-    axis =
-      axis(points: [%DialPoint{value: 0.0, position: 0}, %DialPoint{value: 1.0, position: 720}])
+    gauge =
+      gauge(points: [%DialPoint{value: 0.0, position: 0}, %DialPoint{value: 1.0, position: 720}])
 
-    assert {:ok, %{target: 3}} = GaugeMapper.map(gauge(), 0.004, axis)
+    assert {:ok, %{target: 3}} = GaugeMapper.map(gauge_binding(), 0.004, gauge)
     huge = Integer.pow(10, 400)
     assert {:error, _} = GaugeMapper.convert(huge, :raw, :raw)
   end

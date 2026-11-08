@@ -1685,19 +1685,19 @@ defmodule Trenino.Train do
       from b in GaugeBinding,
         where: b.train_id == ^train_id,
         order_by: b.name,
-        preload: [stepper_axis: [:device, :dial_calibration]]
+        preload: [gauge: [:device, :dial_calibration]]
     )
   end
 
   @doc """
-  Gauge bindings that drive a stepper axis, with their train, oldest train first.
-  Used to show which trains already use a freshly set-up gauge.
+  Gauge bindings that drive a gauge, with their train, oldest train first.
+  Used to show which trains already use a gauge.
   """
-  @spec list_gauge_bindings_for_axis(integer()) :: [GaugeBinding.t()]
-  def list_gauge_bindings_for_axis(axis_id) do
+  @spec list_gauge_bindings_for_gauge(integer()) :: [GaugeBinding.t()]
+  def list_gauge_bindings_for_gauge(gauge_id) do
     Repo.all(
       from b in GaugeBinding,
-        where: b.stepper_axis_id == ^axis_id,
+        where: b.gauge_id == ^gauge_id,
         order_by: [b.train_id, b.name],
         preload: :train
     )
@@ -1709,7 +1709,7 @@ defmodule Trenino.Train do
   def get_gauge_binding(id) when is_integer(id) and id > 0 do
     case Repo.get(GaugeBinding, id) do
       nil -> {:error, :not_found}
-      binding -> {:ok, Repo.preload(binding, stepper_axis: [:device, :dial_calibration])}
+      binding -> {:ok, Repo.preload(binding, gauge: [:device, :dial_calibration])}
     end
   end
 
@@ -1725,27 +1725,26 @@ defmodule Trenino.Train do
     do: Repo.delete(binding) |> notify_gauge_change()
 
   defp save_gauge_binding(binding, attrs, operation) do
-    id =
-      Map.get(attrs, :stepper_axis_id, Map.get(attrs, "stepper_axis_id", binding.stepper_axis_id))
+    id = Map.get(attrs, :gauge_id, Map.get(attrs, "gauge_id", binding.gauge_id))
 
-    axis =
-      case Hardware.get_stepper_axis(id) do
-        {:ok, axis} -> axis
+    gauge =
+      case Hardware.get_gauge(id) do
+        {:ok, gauge} -> gauge
         _ -> nil
       end
 
     binding
-    |> GaugeBinding.changeset(attrs, axis)
+    |> GaugeBinding.changeset(attrs, gauge)
     |> then(&apply(Repo, operation, [&1]))
-    |> preload_gauge_axis()
+    |> preload_gauge()
     |> notify_gauge_change()
   end
 
-  # Saved bindings are serialized with their axis dial, so load it from the saved row.
-  defp preload_gauge_axis({:ok, binding}),
-    do: {:ok, Repo.preload(binding, [stepper_axis: [:device, :dial_calibration]], force: true)}
+  # Saved bindings are serialized with their gauge dial, so load it from the saved row.
+  defp preload_gauge({:ok, binding}),
+    do: {:ok, Repo.preload(binding, [gauge: [:device, :dial_calibration]], force: true)}
 
-  defp preload_gauge_axis(error), do: error
+  defp preload_gauge(error), do: error
 
   defp notify_gauge_change({:ok, binding} = result) do
     Phoenix.PubSub.broadcast(

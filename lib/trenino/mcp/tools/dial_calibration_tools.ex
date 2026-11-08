@@ -1,7 +1,7 @@
 defmodule Trenino.MCP.Tools.DialCalibrationTools do
   @moduledoc """
-  The measured dial of a stepper axis. The dial belongs to the hardware, so one
-  calibration serves every train binding on the axis. Saving never moves the motor.
+  The measured dial of a gauge. The dial belongs to the hardware, so one calibration
+  serves every train binding on the gauge. Saving never moves the needle.
   """
   alias Trenino.Hardware
   alias Trenino.Hardware.DialCalibration
@@ -12,22 +12,22 @@ defmodule Trenino.MCP.Tools.DialCalibrationTools do
       %{
         name: "get_dial_calibration",
         description:
-          "Dial calibration of a stepper axis (shared by every train gauge binding on it): output_unit (raw/mps/kmh/mph, what the printed dial shows), points (dial value -> position in transitions), valid and reviewed. Returns calibration: null when none is recorded. Read-only.",
+          "Dial calibration of a gauge (shared by every train gauge binding on it): output_unit (raw/mps/kmh/mph, what the printed dial shows), points (dial value -> position in steps from the end stop), valid and reviewed. Returns calibration: null when none is recorded. Read-only.",
         input_schema: %{
           type: "object",
-          required: ["stepper_axis_id"],
-          properties: %{stepper_axis_id: %{type: "integer"}}
+          required: ["gauge_id"],
+          properties: %{gauge_id: %{type: "integer"}}
         }
       },
       %{
         name: "update_dial_calibration",
         description:
-          "Create or replace the dial calibration of a stepper axis. 2-32 strictly increasing dial values with strictly monotonic positions inside the axis soft limits. Set reviewed: true only after the user checked the points against the real dial; any change without it clears the review and disables every gauge binding on the axis. Never moves the motor. Measure points with control_stepper_axis (claim, jog, read the estimated position) and use preview_gauge_binding to check a binding's mapping.",
+          "Create or replace the dial calibration of a gauge. 2-32 strictly increasing dial values with strictly monotonic positions between 0 and the gauge travel (steps from the end stop). Set reviewed: true only after the user checked the points against the real dial; any change without it clears the review and disables every gauge binding on the gauge. Never moves the needle. Measure points with move_gauge (move, then ask the user what the dial reads; release it afterwards) and use preview_gauge_binding to check a binding's mapping.",
         input_schema: %{
           type: "object",
-          required: ["stepper_axis_id"],
+          required: ["gauge_id"],
           properties: %{
-            stepper_axis_id: %{type: "integer"},
+            gauge_id: %{type: "integer"},
             output_unit: %{type: "string", enum: ["raw", "mps", "kmh", "mph"]},
             reviewed: %{type: "boolean"},
             points: %{
@@ -44,18 +44,18 @@ defmodule Trenino.MCP.Tools.DialCalibrationTools do
     ]
   end
 
-  def execute("get_dial_calibration", %{"stepper_axis_id" => id}) when is_integer(id) do
-    with {:ok, axis} <- Hardware.get_stepper_axis(id) do
-      {:ok, %{calibration: Serialization.dial(axis.dial_calibration)}}
+  def execute("get_dial_calibration", %{"gauge_id" => id}) when is_integer(id) do
+    with {:ok, gauge} <- Hardware.get_gauge(id) do
+      {:ok, %{calibration: Serialization.dial(gauge.dial_calibration)}}
     end
     |> Serialization.result()
   end
 
-  def execute("update_dial_calibration", %{"stepper_axis_id" => id} = args)
+  def execute("update_dial_calibration", %{"gauge_id" => id} = args)
       when is_integer(id) do
-    with {:ok, axis} <- Hardware.get_stepper_axis(id),
+    with {:ok, gauge} <- Hardware.get_gauge(id),
          {:ok, %DialCalibration{} = calibration} <-
-           Hardware.save_dial_calibration(axis, Map.delete(args, "stepper_axis_id")) do
+           Hardware.save_dial_calibration(gauge, Map.delete(args, "gauge_id")) do
       {:ok, %{calibration: Serialization.dial(calibration)}}
     end
     |> Serialization.result()
