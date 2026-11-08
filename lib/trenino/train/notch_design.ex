@@ -41,9 +41,10 @@ defmodule Trenino.Train.NotchDesign do
   positions. Disks with Deep positions stay within 9 positions unless the
   lever needs more.
 
-  The generator checks the design when it opens. Deep needs room: with
-  more than about 9 positions it doesn't fit, and the generator then makes
-  those positions Standard and says so.
+  The generator checks the design when it opens. Deep needs room: up to 9
+  positions it keeps the tested depth, and closer than that the generator
+  cuts it shallower (about 1.4 mm at 11 positions, 0.25 mm at 13) and says
+  so.
   """
 
   alias Trenino.Train.{LeverConfig, Notch}
@@ -294,7 +295,7 @@ defmodule Trenino.Train.NotchDesign do
   end
 
   # Deep needs room, so a disk with Deep positions stays within the count
-  # where it still fits, unless the lever needs more.
+  # where it keeps its full depth, unless the lever needs more.
   defp max_count(segments, minimum) do
     if Enum.any?(segments, &match?({:notch, :deep, _, _}, &1)) and minimum <= @max_deep_positions,
       do: @max_deep_positions,
