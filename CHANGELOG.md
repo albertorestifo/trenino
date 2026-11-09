@@ -8,6 +8,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- A lever resting between two mapped notches now sends the nearest notch instead
+  of nothing. Captured notch ranges rarely touch, so a lever moved from Brake and
+  settling just outside a narrow Off detent left the simulator on the last brake
+  value. A linear notch reached from a gap sends its nearest end. The mapping
+  wizard's live preview shows the same notch.
+- A lever write that still fails after every retry is now logged.
 - The sensitivity of an analog input can now be changed after it is added: the inputs
   table on the configuration page has a Sensitivity field for each analog input. Apply
   the configuration afterwards to send the new value to the controller.

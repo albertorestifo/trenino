@@ -256,9 +256,9 @@ defmodule Trenino.Train.LeverMapperTest do
       %{lever_config: lever_config}
     end
 
-    test "returns error for input before first notch", %{lever_config: config} do
-      assert {:error, :no_notch} = LeverMapper.map_input(config, 0.0)
-      assert {:error, :no_notch} = LeverMapper.map_input(config, 0.19)
+    test "input before the first notch clamps to its start", %{lever_config: config} do
+      assert {:ok, +0.0} = LeverMapper.map_input(config, 0.0)
+      assert {:ok, +0.0} = LeverMapper.map_input(config, 0.19)
     end
 
     test "maps values within notch range", %{lever_config: config} do
@@ -269,9 +269,9 @@ defmodule Trenino.Train.LeverMapperTest do
       assert value > 0.9
     end
 
-    test "returns error for input at or after notch max", %{lever_config: config} do
-      assert {:error, :no_notch} = LeverMapper.map_input(config, 0.8)
-      assert {:error, :no_notch} = LeverMapper.map_input(config, 1.0)
+    test "input at or after the notch max clamps to its end", %{lever_config: config} do
+      assert {:ok, 1.0} = LeverMapper.map_input(config, 0.8)
+      assert {:ok, 1.0} = LeverMapper.map_input(config, 1.0)
     end
   end
 
@@ -384,13 +384,71 @@ defmodule Trenino.Train.LeverMapperTest do
       assert %Notch{} = LeverMapper.find_notch(notches, 1.0)
     end
 
-    test "returns nil when no notch matches" do
-      notches = [
-        %Notch{input_min: 0.2, input_max: 0.8}
-      ]
+    test "falls back to the only notch outside its range" do
+      notch = %Notch{input_min: 0.2, input_max: 0.8}
 
-      assert nil == LeverMapper.find_notch(notches, 0.1)
-      assert nil == LeverMapper.find_notch(notches, 0.9)
+      assert notch == LeverMapper.find_notch([notch], 0.1)
+      assert notch == LeverMapper.find_notch([notch], 0.9)
+    end
+
+    test "returns nil when no notch has a hardware range" do
+      assert nil == LeverMapper.find_notch([%Notch{input_min: nil, input_max: nil}], 0.5)
+      assert nil == LeverMapper.find_notch([], 0.5)
+    end
+
+    test "a value in a gap goes to the notch with the nearest edge" do
+      brake = %Notch{type: :linear, input_min: 0.04, input_max: 0.13}
+      off = %Notch{type: :gate, input_min: 0.17, input_max: 0.18}
+      power = %Notch{type: :gate, input_min: 0.26, input_max: 0.29}
+      notches = [brake, off, power]
+
+      assert LeverMapper.find_notch(notches, 0.14) == brake
+      assert LeverMapper.find_notch(notches, 0.155) == off
+      assert LeverMapper.find_notch(notches, 0.21) == off
+      assert LeverMapper.find_notch(notches, 0.24) == power
+    end
+
+    test "moving from Brake to a narrow Off gate never leaves the last brake value" do
+      # Class 802 power handle as captured: gaps either side of Off
+      config = %LeverConfig{
+        inverted: false,
+        notches: [
+          %Notch{
+            type: :linear,
+            input_min: 0.04,
+            input_max: 0.13,
+            sim_input_min: -0.9,
+            sim_input_max: -0.25
+          },
+          %Notch{
+            type: :gate,
+            input_min: 0.17,
+            input_max: 0.18,
+            sim_input_min: 0.0,
+            sim_input_max: 0.0
+          },
+          %Notch{
+            type: :gate,
+            input_min: 0.26,
+            input_max: 0.29,
+            sim_input_min: 0.25,
+            sim_input_max: 0.36
+          }
+        ]
+      }
+
+      assert {:ok, -0.25} = LeverMapper.map_input(config, 0.14)
+
+      for hw <- [0.155, 0.17, 0.2, 0.21] do
+        assert {:ok, +0.0} = LeverMapper.map_input(config, hw)
+      end
+    end
+
+    test "a gate wins a tie in a gap" do
+      linear = %Notch{type: :linear, input_min: 0.0, input_max: 0.4}
+      gate = %Notch{type: :gate, input_min: 0.5, input_max: 0.6}
+
+      assert LeverMapper.find_notch([linear, gate], 0.45) == gate
     end
 
     test "ignores notches with nil input ranges" do
@@ -992,8 +1050,9 @@ defmodule Trenino.Train.LeverMapperTest do
         assert LeverMapper.find_notch([gate], v) == gate
       end
 
-      assert LeverMapper.find_notch([gate], 0.48) == nil
-      assert LeverMapper.find_notch([gate], 0.52) == nil
+      other = %Notch{type: :gate, input_min: 0.3, input_max: 0.31}
+      assert LeverMapper.find_notch([gate, other], 0.4) == other
+      assert LeverMapper.find_notch([gate, other], 0.43) == gate
     end
 
     test "takes priority over adjacent linear notches", ctx do
@@ -1024,7 +1083,9 @@ defmodule Trenino.Train.LeverMapperTest do
         assert LeverMapper.find_notch([gate], v) == gate
       end
 
-      assert LeverMapper.find_notch([gate], 0.15) == nil
+      far = %Notch{type: :gate, input_min: 0.2, input_max: 0.21}
+      assert LeverMapper.find_notch([gate, far], 0.15) == gate
+      assert LeverMapper.find_notch([gate, far], 0.18) == far
     end
 
     test "zero-width gate at 1.0 matches 1.0 and 0.99" do
@@ -1107,8 +1168,11 @@ defmodule Trenino.Train.LeverMapperTest do
         assert {:ok, 0.5} = LeverMapper.map_input(config, hw)
       end
 
-      assert {:error, :no_notch} = LeverMapper.map_input(config, 0.1501)
-      assert {:error, :no_notch} = LeverMapper.map_input(config, 0.1901)
+      # Outside the padded window the gap resolves to the nearest edge: the end
+      # of Brake just past it, Off once Off's edge is closer, never nothing
+      assert {:ok, 0.45} = LeverMapper.map_input(config, 0.1501)
+      assert {:ok, 0.5} = LeverMapper.map_input(config, 0.1601)
+      assert {:ok, 0.5} = LeverMapper.map_input(config, 0.1901)
     end
 
     test "inversion keeps 4 decimals" do

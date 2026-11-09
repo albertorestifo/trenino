@@ -890,9 +890,12 @@ defmodule Trenino.Train.Calibration.NotchMappingSessionTest do
       # Braking stored as 0.0-0.44: 0.25 / 0.44 * 0.45
       assert preview.live.sim_input == 0.2557
 
-      # Calibrated 800 -> 100%, Power not captured yet: a gap
+      # Calibrated 800 -> 100%, Power not captured yet: the gap resolves to the
+      # nearest captured notch, as it would at runtime
       send(pid, {:input_value_updated, "/dev/test", 5, 900})
-      assert NotchMappingSession.get_public_state(pid).preview.live == nil
+
+      assert %{notch_index: 1, type: :gate, sim_input: 0.5} =
+               NotchMappingSession.get_public_state(pid).preview.live
 
       NotchMappingSession.cancel(pid)
     end

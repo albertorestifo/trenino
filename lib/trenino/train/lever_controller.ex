@@ -574,7 +574,16 @@ defmodule Trenino.Train.LeverController do
       timer = Process.send_after(self(), {:retry_write, id, token}, delay)
       put_in(state.retries[id], %{attempts: retry.attempts + 1, timer: timer, token: token})
     else
-      _ -> state
+      nil ->
+        Logger.warning(
+          "[LeverController] Gave up writing lever #{id} after #{retry.attempts} retries; " <>
+            "it is sent again when the lever moves"
+        )
+
+        state
+
+      _ ->
+        state
     end
   end
 

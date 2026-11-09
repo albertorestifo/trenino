@@ -169,8 +169,13 @@ defmodule Trenino.Train.LeverMapper do
     2. Any other mapped notch matches the half-open range `[input_min, input_max)`,
        gates before linear notches.
     3. A notch whose `input_max` is exactly 1.0 also matches 1.0.
+    4. A value in a gap between notches (or before the first, or after the
+       last) goes to the notch whose nearest edge is closest; a gate wins a tie.
+       Captured ranges rarely touch, and a lever resting just outside a narrow
+       detent's window would otherwise send nothing and leave the simulator on
+       the previous notch.
 
-  Returns nil if no notch matches.
+  Returns nil only when no notch has a hardware range.
   """
   @spec find_notch([Notch.t()], float()) :: Notch.t() | nil
   def find_notch(notches, input_value) do
@@ -181,9 +186,21 @@ defmodule Trenino.Train.LeverMapper do
     find_narrow_gate(mapped, input_value) ||
       Enum.find(mapped, &(&1.type == :gate and in_range?.(&1))) ||
       Enum.find(mapped, &(&1.type != :gate and in_range?.(&1))) ||
-      Enum.find(mapped, fn notch ->
-        input_value == notch.input_max and notch.input_max == 1.0
-      end)
+      travel_end_notch(mapped, input_value) ||
+      nearest_notch(mapped, input_value)
+  end
+
+  defp travel_end_notch(mapped, input_value) do
+    Enum.find(mapped, &(input_value == &1.input_max and &1.input_max == 1.0))
+  end
+
+  defp nearest_notch([], _input_value), do: nil
+
+  defp nearest_notch(mapped, input_value) do
+    Enum.min_by(mapped, fn %Notch{input_min: min, input_max: max} = notch ->
+      distance = max(max(min - input_value, input_value - max), 0.0)
+      {distance, if(notch.type == :gate, do: 0, else: 1)}
+    end)
   end
 
   # Among narrow gates whose padded range contains the value, the one whose
@@ -315,8 +332,9 @@ defmodule Trenino.Train.LeverMapper do
       when is_number(input_min) and is_number(input_max) and
              is_number(sim_min) and is_number(sim_max) do
     # Calculate position within the notch's hardware input range (0.0 to 1.0)
+    # Clamped: a value in a gap next to this notch resolves to its nearest end
     input_range = input_max - input_min
-    position = (input_value - input_min) / input_range
+    position = ((input_value - input_min) / input_range) |> max(0.0) |> min(1.0)
 
     # For descending layouts, invert the position so that lower effective
     # values map to higher sim values
