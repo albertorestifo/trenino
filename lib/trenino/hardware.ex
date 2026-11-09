@@ -553,13 +553,11 @@ defmodule Trenino.Hardware do
   end
 
   defp delete_input_with_calibration(%Input{} = input) do
-    # Delete calibration if exists
+    # The calibration's foreign key has no ON DELETE action, so it goes first
     case Repo.get_by(Calibration, input_id: input.id) do
-      nil -> :ok
-      calibration -> Repo.delete(calibration)
+      nil -> Repo.delete(input)
+      calibration -> with {:ok, _} <- Repo.delete(calibration), do: Repo.delete(input)
     end
-
-    Repo.delete(input)
   end
 
   defp configuration_active?(config_id) when is_nil(config_id), do: false
@@ -733,19 +731,22 @@ defmodule Trenino.Hardware do
   end
 
   @doc """
-  Delete an input by ID or Input struct.
+  Delete an input by ID or Input struct, together with its calibration.
+
+  The calibration's foreign key has no `ON DELETE` action, so it is removed first,
+  in the same transaction.
   """
   @spec delete_input(integer() | Input.t()) ::
           {:ok, Input.t()} | {:error, :not_found | Ecto.Changeset.t()}
   def delete_input(input_id) when is_integer(input_id) do
     case Repo.get(Input, input_id) do
       nil -> {:error, :not_found}
-      input -> Repo.delete(input)
+      input -> delete_input(input)
     end
   end
 
   def delete_input(%Input{} = input) do
-    Repo.delete(input)
+    Repo.transact(fn -> delete_input_with_calibration(input) end)
   end
 
   @doc """

@@ -5,6 +5,7 @@ defmodule Trenino.HardwareTest do
   alias Trenino.Hardware
   alias Trenino.Hardware.Device
   alias Trenino.Hardware.Input
+  alias Trenino.Hardware.Input.Calibration
 
   describe "create_device/1" do
     test "creates a device with valid attributes and auto-generated config_id" do
@@ -322,6 +323,26 @@ defmodule Trenino.HardwareTest do
 
     test "returns error when input not found" do
       assert {:error, :not_found} = Hardware.delete_input(999_999)
+    end
+
+    test "deletes a calibrated input together with its calibration" do
+      {:ok, device} = Hardware.create_device(%{name: "Levers"})
+
+      {:ok, input} =
+        Hardware.create_input(device.id, %{pin: 5, input_type: :analog, sensitivity: 5})
+
+      {:ok, _calibration} =
+        Hardware.save_calibration(input.id, %{
+          min_value: 10,
+          max_value: 1000,
+          max_hardware_value: 1023,
+          has_rollover: false,
+          is_inverted: false
+        })
+
+      assert {:ok, %Input{}} = Hardware.delete_input(input.id)
+      assert {:ok, []} = Hardware.list_inputs(device.id)
+      assert Repo.get_by(Calibration, input_id: input.id) == nil
     end
   end
 
