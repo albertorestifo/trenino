@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-11-09
+
 ### Changed
 
 - Row actions look the same in every table. The button that opens an item's settings
@@ -31,6 +33,38 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   notch spread over a tenth of the travel moved the simulator in about 10 steps. Lower
   the input's Sensitivity to 1 or 2 to get every step the ADC reads. Notch boundaries
   and gate values are unchanged.
+
+- Lever calibration finds notches the way drivers feel them, tested on
+  trains from the UK, Germany, Austria and the US. The ends of a brake or
+  power range ("Max Brake", "Min Power") are part of the range instead of
+  separate notches, power steps inside one simulator notch become separate
+  notches, gates such as Emergency are always reached, and notches are named
+  as in the game ("Emergency", "Brake", "N3"). Calibration warns when part of
+  the lever was blocked (for example power while the reverser is in neutral)
+  or a position springs back. It always puts the lever back where it was,
+  and keeps your notch mapping when the notches did not change. The sweep
+  applies power and will move the train; the wizard and the
+  `calibrate_lever` MCP tool warn about this before it starts. This lets
+  levers that release the brake as they sweep, such as a combined
+  power/brake handle with no separate brake, be calibrated.
+- The Lever Setup Wizard's "Detect Notches" step no longer moves the lever
+  as soon as you open it. Press "Start Detection" (or "Detect Again" for a
+  lever that is already calibrated) when you are ready; a failed run offers
+  "Try Again".
+- The wizard's "Map Positions" step shows your progress (the simulator
+  notches and your lever) on the left and the notch you are capturing, with
+  its live readings and buttons, on the right, so everything fits without
+  scrolling.
+- The Windows virtual joystick is now a beta feature. The Joystick tab stays
+  in the navigation; while beta features are off, it explains that the
+  joystick is less tested and errors are expected, and offers an "Enable
+  beta features" button. The virtual joystick MCP tools are hidden until
+  beta features are on. Saved mappings, and a joystick that is already
+  active, keep working.
+- Gauges, such as speedometers, are now a beta feature. Turn
+  on "Enable beta features" on the Settings page to see the Gauges and Gauge
+  bindings sections and the gauge MCP tools. Gauges already set up keep
+  working while beta features are off.
 
 ### Removed
 
@@ -78,42 +112,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - A quiet footer at the bottom of every page links to the Trenino Discord
   community, for questions, ideas and sharing setups.
 
-### Changed
-
-- Lever calibration finds notches the way drivers feel them, tested on
-  trains from the UK, Germany, Austria and the US. The ends of a brake or
-  power range ("Max Brake", "Min Power") are part of the range instead of
-  separate notches, power steps inside one simulator notch become separate
-  notches, gates such as Emergency are always reached, and notches are named
-  as in the game ("Emergency", "Brake", "N3"). Calibration warns when part of
-  the lever was blocked (for example power while the reverser is in neutral)
-  or a position springs back. It always puts the lever back where it was,
-  and keeps your notch mapping when the notches did not change. The sweep
-  applies power and will move the train; the wizard and the
-  `calibrate_lever` MCP tool warn about this before it starts. This lets
-  levers that release the brake as they sweep, such as a combined
-  power/brake handle with no separate brake, be calibrated.
-- The Lever Setup Wizard's "Detect Notches" step no longer moves the lever
-  as soon as you open it. Press "Start Detection" (or "Detect Again" for a
-  lever that is already calibrated) when you are ready; a failed run offers
-  "Try Again".
-- The wizard's "Map Positions" step shows your progress (the simulator
-  notches and your lever) on the left and the notch you are capturing, with
-  its live readings and buttons, on the right, so everything fits without
-  scrolling.
-- On the train page, lever actions (Configure, Design notch disk) are in
-  the row's "..." menu.
-- The Windows virtual joystick is now a beta feature. The Joystick tab stays
-  in the navigation; while beta features are off, it explains that the
-  joystick is less tested and errors are expected, and offers an "Enable
-  beta features" button. The virtual joystick MCP tools are hidden until
-  beta features are on. Saved mappings, and a joystick that is already
-  active, keep working.
-- Stepper-motor gauges, such as speedometers, are now a beta feature. Turn
-  on "Enable beta features" on the Settings page to see the Gauges and Gauge
-  bindings sections and the gauge MCP tools. Gauges already set up keep
-  working while beta features are off.
-
 ### Fixed
 
 - Devices connect within a few seconds of being plugged in. Before, Trenino
@@ -150,7 +148,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   releasing the button stopped the sequence part-way, so a door-close sequence
   could leave a control held and need a second press. Pressing again while
   the sequence is still running is ignored.
-- Gauges no longer read the stepper axis from the database on every
+- Gauges no longer read their hardware from the database on every
   simulator sample while the needle is still, which filled the debug log.
 - Error reporting now works in released builds. Before, no error report ever
   reached us, even with error reporting turned on: the reporting address was
@@ -160,6 +158,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   are reported. Everyday problems you can fix yourself, such as an unplugged
   cable, a serial port from another device, Train Sim World not running or
   being offline, are no longer reported as errors.
+
+### Security
+
+- Updated the Ecto database library to 3.14.3 for EEF-CVE-2026-118391.
 
 ## [0.8.3] - 2026-11-04
 
