@@ -159,7 +159,9 @@ defmodule Trenino.Train.ButtonController do
   def handle_cast(:reload_bindings, %State{active_train: train} = state) do
     # Cancel all active buttons before reloading
     state = cancel_all_active_buttons(state)
-    {:noreply, load_bindings_for_train(state, train)}
+
+    # A rebind can point at an input that was added after its device connected.
+    {:noreply, state |> rebuild_input_lookup() |> load_bindings_for_train(train)}
   end
 
   # Train detection events

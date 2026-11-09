@@ -1204,6 +1204,10 @@ defmodule TreninoWeb.TrainEditLive do
 
   @impl true
   def handle_info({:lever_setup_cancelled, _element_id}, socket) do
+    # The wizard saves the input binding before notch mapping starts, so a
+    # cancelled setup can still have changed it.
+    LeverController.reload_bindings()
+
     {:noreply,
      socket
      |> assign(:show_lever_setup_wizard, false)

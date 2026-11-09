@@ -217,8 +217,10 @@ defmodule Trenino.Train.LeverController do
     {:noreply, state}
   end
 
+  # A rebind can point at an input that was added or calibrated after its device
+  # connected, so the input lookup is rebuilt along with the bindings.
   def handle_cast(:reload_bindings, %State{active_train: train} = state) do
-    {:noreply, load_bindings_for_train(state, train)}
+    {:noreply, state |> rebuild_input_lookup() |> load_bindings_for_train(train)}
   end
 
   # Train detection events

@@ -426,6 +426,43 @@ defmodule Trenino.Train.LeverControllerTest do
     end
   end
 
+  describe "rebinding" do
+    setup :bind_throttle
+
+    test "an input added after the device connected drives the lever once bound", %{
+      device: device,
+      port: port,
+      lever_config: lever_config
+    } do
+      {:ok, input} =
+        Hardware.create_input(device.id, %{pin: 5, input_type: :analog, sensitivity: 1})
+
+      {:ok, _calibration} =
+        Hardware.save_calibration(input.id, %{
+          max_hardware_value: 1023,
+          min_value: 0,
+          max_value: 1000,
+          has_rollover: false,
+          is_inverted: false
+        })
+
+      {:ok, _binding} = TrainContext.bind_input(lever_config.id, input.id)
+      LeverController.reload_bindings()
+      LeverController.get_state()
+
+      client = connect_simulator()
+      test_pid = self()
+
+      Mimic.stub(Client, :set, fn ^client, @endpoint, value ->
+        send(test_pid, {:set, value})
+        {:ok, %{"Result" => "Success"}}
+      end)
+
+      send(LeverController, {:input_value_updated, port, 5, 300})
+      assert_receive {:set, 0.3}, 1_000
+    end
+  end
+
   describe "device reconnects" do
     test "subscribes to each port once across a disconnect and reconnect", %{test: test} do
       test_pid = self()
@@ -528,7 +565,7 @@ defmodule Trenino.Train.LeverControllerTest do
     send(Process.whereis(LeverController), {:devices_updated, [device_conn]})
     LeverController.get_state()
 
-    %{port: device_conn.port, pin: input.pin}
+    %{port: device_conn.port, pin: input.pin, device: device, lever_config: lever_config}
   end
 
   @control_path "CurrentDrivableActor/Throttle(Lever)"
