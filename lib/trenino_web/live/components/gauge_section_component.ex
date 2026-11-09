@@ -382,9 +382,15 @@ defmodule TreninoWeb.GaugeSectionComponent do
                   · <span class="tabular-nums">{gauge.travel}</span>
                   steps
                 </p>
+                <div class="mt-2">
+                  <.status_chip
+                    id={"gauge-status-#{gauge.id}"}
+                    kind={status.kind}
+                    label={status.label}
+                  />
+                </div>
               </div>
               <div class="ml-auto flex shrink-0 items-center gap-1">
-                <.status_chip id={"gauge-status-#{gauge.id}"} kind={status.kind} label={status.label} />
                 <.row_actions
                   :if={@calibrating_id != gauge.id}
                   id={"gauge-actions-#{gauge.id}"}

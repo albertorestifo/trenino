@@ -376,7 +376,7 @@ defmodule TreninoWeb.SequenceManagerComponent do
               <tr class="bg-base-200">
                 <th>Name</th>
                 <th>Commands</th>
-                <th class="text-right"><span class="sr-only">Actions</span></th>
+                <th class="w-px text-right"><span class="sr-only">Actions</span></th>
               </tr>
             </thead>
             <tbody>

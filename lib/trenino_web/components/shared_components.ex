@@ -327,7 +327,7 @@ defmodule TreninoWeb.SharedComponents do
       class={["bg-base-200/50 rounded-xl p-4 sm:p-6 scroll-mt-36", @class]}
     >
       <div class="flex flex-wrap items-start justify-between gap-x-4 gap-y-2">
-        <div class="min-w-0">
+        <div class="min-w-0 flex-1 basis-64">
           <div class="flex items-center gap-2">
             <h3 id={"#{@id}-title"} class="text-xl font-semibold">{@title}</h3>
             <span
@@ -337,7 +337,7 @@ defmodule TreninoWeb.SharedComponents do
               {@count}
             </span>
           </div>
-          <p :if={@description} class="text-sm text-muted mt-1">{@description}</p>
+          <p :if={@description} class="text-sm text-muted mt-1 max-w-prose">{@description}</p>
         </div>
         <div :if={@actions != []} class="flex shrink-0 items-start gap-2">
           {render_slot(@actions)}
@@ -480,8 +480,14 @@ defmodule TreninoWeb.SharedComponents do
 
   Non-destructive actions (`kind` other than `:danger`) render as small ghost buttons
   with icon and text. When there are three or more of them they collapse into a "..."
-  menu; pass `menu={:always}` to keep them in the menu whatever their number (for cards
-  whose optional actions come and go with their state, so the layout stays stable).
+  menu; pass `menu={:always}` to keep them in the menu whatever their number (for rows
+  whose optional actions come and go with their state). An action marked `primary`
+  always stays inline, before the menu, so the row's main verb (usually "Edit") is
+  never hidden.
+
+  In a table whose rows do not all have a menu, pass `menu_slot` on every row: rows
+  without a menu then reserve its width, so the inline buttons and the trash line up
+  down the column. Give the actions `<th>` `w-px` so the column hugs its content.
   An action with `navigate` renders as a real link instead of a button, and one with
   `href` as an external link that opens in the browser. A disabled action can say why
   in `title`. Labels render
@@ -529,6 +535,10 @@ defmodule TreninoWeb.SharedComponents do
     values: [:auto, :always],
     doc: "`:auto` collapses three or more regular actions into the menu, `:always` always does"
 
+  attr :menu_slot, :boolean,
+    default: false,
+    doc: "reserve the menu's width when there is no menu, so actions align across rows"
+
   slot :action do
     attr :event, :any, doc: "an event name or a `Phoenix.LiveView.JS` command"
     attr :navigate, :string, doc: "renders a `<.link navigate>` instead of a button"
@@ -542,20 +552,27 @@ defmodule TreninoWeb.SharedComponents do
     attr :target, :any
     attr :id, :string
     attr :disabled, :boolean
+    attr :primary, :boolean, doc: "stays inline, before the menu, when the others collapse"
   end
 
   def row_actions(assigns) do
     {danger, regular} = Enum.split_with(assigns.action, &(&1[:kind] == :danger))
+    {primary, secondary} = Enum.split_with(regular, &(&1[:primary] == true))
+
+    overflow? =
+      secondary != [] and (assigns.menu == :always or length(regular) >= 3)
 
     assigns =
       assigns
       |> assign(:danger, danger)
-      |> assign(:regular, regular)
-      |> assign(:overflow?, regular != [] and (assigns.menu == :always or length(regular) >= 3))
+      |> assign(:inline, if(overflow?, do: primary, else: regular))
+      |> assign(:menu_items, if(overflow?, do: secondary, else: []))
+      |> assign(:overflow?, overflow?)
       |> assign(:menu_id, assigns.menu_id || (assigns.id && "#{assigns.id}-menu"))
 
     ~H"""
-    <div id={@id} class={["flex items-center justify-end gap-1", @class]}>
+    <div id={@id} class={["flex items-center justify-end gap-1 whitespace-nowrap", @class]}>
+      <.inline_action :for={action <- @inline} action={action} name={@name} />
       <%= if @overflow? do %>
         <details
           id={@menu_id}
@@ -572,7 +589,7 @@ defmodule TreninoWeb.SharedComponents do
             <.icon name="hero-ellipsis-horizontal" class="size-4" />
           </summary>
           <ul class="menu dropdown-content z-10 mt-1 w-56 rounded-box border border-base-300 bg-base-200 p-1 shadow">
-            <li :for={action <- @regular}>
+            <li :for={action <- @menu_items}>
               <.link
                 :if={action[:navigate]}
                 id={action[:id]}
@@ -616,47 +633,14 @@ defmodule TreninoWeb.SharedComponents do
           </ul>
         </details>
       <% else %>
-        <%= for action <- @regular do %>
-          <.link
-            :if={action[:navigate]}
-            id={action[:id]}
-            navigate={action.navigate}
-            aria-label={action_aria_label(action, @name)}
-            class="btn btn-ghost btn-xs text-xs"
-          >
-            <.icon :if={action[:icon]} name={action[:icon]} class="size-4" />
-            {action.label}
-          </.link>
-          <a
-            :if={action[:href]}
-            id={action[:id]}
-            href={action.href}
-            target="_blank"
-            rel="noopener noreferrer"
-            title={action[:title]}
-            aria-label={action_aria_label(action, @name) <> " (opens in new tab)"}
-            class="btn btn-ghost btn-xs text-xs"
-          >
-            <.icon :if={action[:icon]} name={action[:icon]} class="size-4" />
-            {action.label}
-          </a>
-          <button
-            :if={is_nil(action[:navigate]) and is_nil(action[:href])}
-            id={action[:id]}
-            type="button"
-            title={action[:title]}
-            phx-click={action[:event]}
-            phx-target={action[:target]}
-            disabled={action[:disabled] || false}
-            data-confirm={action[:confirm]}
-            aria-label={action_aria_label(action, @name)}
-            class="btn btn-ghost btn-xs text-xs"
-            {phx_values(action)}
-          >
-            <.icon :if={action[:icon]} name={action[:icon]} class="size-4" />
-            {action.label}
-          </button>
-        <% end %>
+        <span
+          :if={@menu_slot}
+          aria-hidden="true"
+          class="btn btn-ghost btn-xs invisible"
+          data-menu-slot
+        >
+          <.icon name="hero-ellipsis-horizontal" class="size-4" />
+        </span>
       <% end %>
       <button
         :for={action <- @danger}
@@ -674,6 +658,53 @@ defmodule TreninoWeb.SharedComponents do
         <.icon name="hero-trash" class="size-4" />
       </button>
     </div>
+    """
+  end
+
+  attr :action, :map, required: true
+  attr :name, :string, default: nil
+
+  defp inline_action(assigns) do
+    ~H"""
+    <.link
+      :if={@action[:navigate]}
+      id={@action[:id]}
+      navigate={@action.navigate}
+      aria-label={action_aria_label(@action, @name)}
+      class="btn btn-ghost btn-xs text-xs"
+    >
+      <.icon :if={@action[:icon]} name={@action[:icon]} class="size-4" />
+      {@action.label}
+    </.link>
+    <a
+      :if={@action[:href]}
+      id={@action[:id]}
+      href={@action.href}
+      target="_blank"
+      rel="noopener noreferrer"
+      title={@action[:title]}
+      aria-label={action_aria_label(@action, @name) <> " (opens in new tab)"}
+      class="btn btn-ghost btn-xs text-xs"
+    >
+      <.icon :if={@action[:icon]} name={@action[:icon]} class="size-4" />
+      {@action.label}
+    </a>
+    <button
+      :if={is_nil(@action[:navigate]) and is_nil(@action[:href])}
+      id={@action[:id]}
+      type="button"
+      title={@action[:title]}
+      phx-click={@action[:event]}
+      phx-target={@action[:target]}
+      disabled={@action[:disabled] || false}
+      data-confirm={@action[:confirm]}
+      aria-label={action_aria_label(@action, @name)}
+      class="btn btn-ghost btn-xs text-xs"
+      {phx_values(@action)}
+    >
+      <.icon :if={@action[:icon]} name={@action[:icon]} class="size-4" />
+      {@action.label}
+    </button>
     """
   end
 

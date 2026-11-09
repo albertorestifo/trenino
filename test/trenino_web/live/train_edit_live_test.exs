@@ -531,9 +531,9 @@ defmodule TreninoWeb.TrainEditLiveTest do
       # Load the view to see the binding
       {:ok, _view, html} = live(conn, ~p"/trains/#{train.id}")
 
-      # Should show element name and Configure button
+      # Should show element name and Edit button
       assert html =~ "Horn"
-      assert html =~ "Configure"
+      assert html =~ "Edit Horn"
     end
   end
 
@@ -579,21 +579,25 @@ defmodule TreninoWeb.TrainEditLiveTest do
       %{conn: conn, train: train, element: element, lever_config: lever_config}
     end
 
-    test "shows configure button for lever elements", %{
+    test "shows an inline Edit button for lever elements", %{
       conn: conn,
       train: train,
       element: element
     } do
       {:ok, view, _html} = live(conn, ~p"/trains/#{train.id}")
 
-      # Lever rows keep Configure in the "..." menu
-      button =
-        element(view, "#element-actions-#{element.id}-menu #configure-element-#{element.id}")
+      # Edit stays inline on lever rows, outside the "..." menu
+      refute has_element?(
+               view,
+               "#element-actions-#{element.id}-menu #configure-element-#{element.id}"
+             )
 
-      html = render(button)
+      html =
+        render(element(view, "#element-actions-#{element.id} > #configure-element-#{element.id}"))
+
       assert html =~ "configure_lever"
       assert html =~ ~s(phx-value-id="#{element.id}")
-      assert html =~ "Configure"
+      assert html =~ "Edit"
     end
   end
 
@@ -657,7 +661,7 @@ defmodule TreninoWeb.TrainEditLiveTest do
 
       {:ok, view, _html} = live(conn, ~p"/trains/#{train.id}")
 
-      # Lives in the row's "..." menu, not inline next to Configure
+      # Lives in the row's "..." menu, not inline next to Edit
       assert has_element?(view, "#element-actions-#{element.id}-menu #notch-disk-#{element.id}")
 
       link = element(view, "#notch-disk-#{element.id}")

@@ -8,6 +8,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
+- Row actions look the same in every table. The button that opens an item's settings
+  is labelled "Edit" everywhere (it said "Configure" on elements and output bindings),
+  and lever rows show it inline instead of hiding it in the "..." menu, which now holds
+  only "Design notch disk". Action buttons line up down each column, output binding
+  rows stay on one line, the gauge status sits under the gauge's name, and "Add gauge"
+  sits top right like the other sections' add buttons.
 - Gauges (beta) follow controller firmware 3.3.0, which replaced its motor-shield
   stepper axes with X27 gauge modules. A gauge is now an X27 driven by a VID6606
   chip channel (STEP/DIR, plus the chip's shared RESET_N) or straight from four AVR

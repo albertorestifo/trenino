@@ -144,7 +144,7 @@ defmodule TreninoWeb.ConfigurationEditLive.Sections do
             <th>Name</th>
             <th>Type</th>
             <th>Value</th>
-            <th class="text-right"><span class="sr-only">Actions</span></th>
+            <th class="w-px text-right"><span class="sr-only">Actions</span></th>
           </tr>
         </thead>
         <tbody>
@@ -235,7 +235,7 @@ defmodule TreninoWeb.ConfigurationEditLive.Sections do
             <th>Name</th>
             <th>Size</th>
             <th>Buttons</th>
-            <th class="text-right"><span class="sr-only">Actions</span></th>
+            <th class="w-px text-right"><span class="sr-only">Actions</span></th>
           </tr>
         </thead>
         <tbody>
@@ -384,7 +384,7 @@ defmodule TreninoWeb.ConfigurationEditLive.Sections do
             <th class="text-center">Pin</th>
             <th>Name</th>
             <th :if={@active_port} class="text-center">Test</th>
-            <th class="text-right"><span class="sr-only">Actions</span></th>
+            <th class="w-px text-right"><span class="sr-only">Actions</span></th>
           </tr>
         </thead>
         <tbody>
@@ -511,7 +511,7 @@ defmodule TreninoWeb.ConfigurationEditLive.Sections do
               <th>Address</th>
               <th>Digits</th>
               <th>Brightness</th>
-              <th class="text-right"><span class="sr-only">Actions</span></th>
+              <th class="w-px text-right"><span class="sr-only">Actions</span></th>
             </tr>
           </thead>
           <tbody>

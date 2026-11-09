@@ -204,7 +204,7 @@ defmodule Trenino.MCP.Tools.LeverTools do
              step: step,
              message:
                "No Trenino window is open. Ask the user to open Trenino, go to the train, " <>
-                 "and click Configure on the lever."
+                 "and click Edit on the lever."
            }}
       end
     else

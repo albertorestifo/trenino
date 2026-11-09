@@ -242,7 +242,7 @@ defmodule TreninoWeb.TrainEditLive do
        put_flash(
          socket,
          :error,
-         "Connect to the simulator, then click Configure on the lever to continue its setup."
+         "Connect to the simulator, then click Edit on the lever to continue its setup."
        )}
     else
       {:noreply, socket} = open_lever_config_wizard(socket, element_id)

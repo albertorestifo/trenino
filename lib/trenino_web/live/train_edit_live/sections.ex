@@ -169,7 +169,7 @@ defmodule TreninoWeb.TrainEditLive.Sections do
               <th>Name</th>
               <th>Type</th>
               <th>Status</th>
-              <th class="text-right"><span class="sr-only">Actions</span></th>
+              <th class="w-px text-right"><span class="sr-only">Actions</span></th>
             </tr>
           </thead>
           <tbody>
@@ -233,35 +233,36 @@ defmodule TreninoWeb.TrainEditLive.Sections do
               <th>Endpoint</th>
               <th>Condition</th>
               <th>Output</th>
-              <th class="text-right"><span class="sr-only">Actions</span></th>
+              <th class="w-px text-right"><span class="sr-only">Actions</span></th>
             </tr>
           </thead>
           <tbody>
             <tr :for={binding <- @output_bindings} class="hover:bg-base-200/50">
-              <td class="font-medium">{binding.name}</td>
+              <td class="font-medium whitespace-nowrap">{binding.name}</td>
               <td class="font-mono text-xs max-w-[200px] truncate" title={binding.endpoint}>
                 {binding.endpoint}
               </td>
-              <td class="text-sm">
+              <td class="text-sm whitespace-nowrap">
                 <.condition_display
                   operator={binding.operator}
                   value_a={binding.value_a}
                   value_b={binding.value_b}
                 />
               </td>
-              <td class="text-sm">
-                <span class="badge badge-ghost badge-sm">{binding.output_type}</span>
-                <span class="text-muted ml-1">
+              <td class="text-sm whitespace-nowrap">
+                <span class="text-muted">
                   {binding.output.name || "Pin #{binding.output.pin}"}
                 </span>
+                <span class="badge badge-ghost badge-sm ml-1">{binding.output_type}</span>
               </td>
               <td>
                 <.row_actions id={"output-binding-actions-#{binding.id}"} name={binding.name}>
                   <:action
+                    id={"edit-output-binding-#{binding.id}"}
                     event="configure_output_binding"
                     values={%{id: binding.id}}
-                    icon="hero-cog-6-tooth"
-                    label="Configure"
+                    icon="hero-pencil-square"
+                    label="Edit"
                   />
                   <:action
                     event="delete_output_binding"
@@ -326,7 +327,7 @@ defmodule TreninoWeb.TrainEditLive.Sections do
               <th>Name</th>
               <th>Endpoint</th>
               <th>Format</th>
-              <th class="text-right"><span class="sr-only">Actions</span></th>
+              <th class="w-px text-right"><span class="sr-only">Actions</span></th>
             </tr>
           </thead>
           <tbody>
@@ -422,7 +423,7 @@ defmodule TreninoWeb.TrainEditLive.Sections do
               <th>Name</th>
               <th>Triggers</th>
               <th>Enabled</th>
-              <th class="text-right"><span class="sr-only">Actions</span></th>
+              <th class="w-px text-right"><span class="sr-only">Actions</span></th>
             </tr>
           </thead>
           <tbody>
@@ -531,20 +532,23 @@ defmodule TreninoWeb.TrainEditLive.Sections do
         </span>
       </td>
       <td>
-        <%!-- Lever rows always use the menu: "Design notch disk" only appears
-             once the lever is calibrated, and the row should not change shape. --%>
+        <%!-- Edit always shows inline. Extras such as "Design notch disk" (only once
+             a lever is calibrated) go in the "..." menu, and rows without a menu
+             reserve its width so every row's buttons line up. --%>
         <.row_actions
           id={"element-actions-#{@element.id}"}
           name={@element.name}
-          menu={if @element.type == :lever, do: :always, else: :auto}
+          menu={:always}
+          menu_slot
         >
           <:action
             :if={@configure_action}
             id={"configure-element-#{@element.id}"}
             event={@configure_action}
             values={%{id: @element.id}}
-            icon="hero-cog-6-tooth"
-            label="Configure"
+            icon="hero-pencil-square"
+            label="Edit"
+            primary
           />
           <:action
             :if={@notch_disk}

@@ -410,6 +410,56 @@ defmodule TreninoWeb.SharedComponentsTest do
       assert count(doc, "#row-2 > button") == 1
     end
 
+    test "keeps a primary action inline before the menu" do
+      assigns = %{}
+
+      html =
+        rendered_to_string(~H"""
+        <.row_actions id="row-p" name="Brake" menu={:always}>
+          <:action id="row-p-edit" event="edit" label="Edit" primary />
+          <:action id="row-p-disk" event="disk" label="Design notch disk" />
+          <:action event="delete" label="Delete Brake" kind={:danger} />
+        </.row_actions>
+        """)
+
+      doc = parse(html)
+
+      assert count(doc, "#row-p > button#row-p-edit") == 1
+      assert count(doc, "#row-p-menu #row-p-disk") == 1
+      assert count(doc, "#row-p-menu #row-p-edit") == 0
+    end
+
+    test "shows a lone primary action inline with no menu, reserving its slot" do
+      assigns = %{}
+
+      html =
+        rendered_to_string(~H"""
+        <.row_actions id="row-s" name="Horn" menu={:always} menu_slot>
+          <:action id="row-s-edit" event="edit" label="Edit" primary />
+          <:action event="delete" label="Delete Horn" kind={:danger} />
+        </.row_actions>
+        """)
+
+      doc = parse(html)
+
+      assert count(doc, "#row-s > button#row-s-edit") == 1
+      assert count(doc, "#row-s details") == 0
+      assert count(doc, "#row-s > span[data-menu-slot][aria-hidden=true]") == 1
+    end
+
+    test "reserves no menu slot unless asked" do
+      assigns = %{}
+
+      html =
+        rendered_to_string(~H"""
+        <.row_actions id="row-n">
+          <:action event="edit" label="Edit" />
+        </.row_actions>
+        """)
+
+      assert count(parse(html), "[data-menu-slot]") == 0
+    end
+
     test "uses an explicit menu_id for the overflow menu" do
       assigns = %{}
 
