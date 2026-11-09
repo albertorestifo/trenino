@@ -525,6 +525,11 @@ jobs:
           args: ${{ matrix.tauri_args }} --features desktop-updater --config src-tauri/tauri.updater.conf.json
           uploadUpdaterJson: true
           updaterJsonPreferNsis: true
+          # On a release event, upload into that release by id so tauri-action
+          # leaves its title and notes alone. Without an id it looks the release
+          # up by tag and overwrites both with the values below, which only
+          # apply to manual runs that have no release yet.
+          releaseId: ${{ github.event.release.id }}
           tagName: v${{ needs.verify-version.outputs.version }}
           releaseName: "trenino v${{ needs.verify-version.outputs.version }}"
           releaseBody: "See the release notes for details."
