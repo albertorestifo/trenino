@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- The sensitivity of an analog input can now be changed after it is added: the inputs
+  table on the configuration page has a Sensitivity field for each analog input. Apply
+  the configuration afterwards to send the new value to the controller.
+
 ## [0.9.0] - 2026-11-09
 
 ### Changed

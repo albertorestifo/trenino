@@ -676,6 +676,22 @@ defmodule TreninoWeb.ConfigurationEditLive do
   end
 
   @impl true
+  def handle_event("update_input_sensitivity", %{"id" => id, "value" => value}, socket) do
+    input = Enum.find(socket.assigns.inputs, &(&1.id == String.to_integer(id)))
+
+    cond do
+      is_nil(input) ->
+        {:noreply, socket}
+
+      to_string(input.sensitivity) == String.trim(value) ->
+        {:noreply, socket}
+
+      true ->
+        save_input_sensitivity(socket, input, value)
+    end
+  end
+
+  @impl true
   def handle_event("update_output_name", %{"id" => id, "value" => name}, socket) do
     output = Enum.find(socket.assigns.outputs, &(&1.id == String.to_integer(id)))
 
@@ -718,6 +734,24 @@ defmodule TreninoWeb.ConfigurationEditLive do
       end
     else
       {:noreply, socket}
+    end
+  end
+
+  defp save_input_sensitivity(socket, %Input{} = input, value) do
+    case Hardware.update_input(input, %{sensitivity: String.trim(value)}) do
+      {:ok, _updated} ->
+        {:ok, inputs} = Hardware.list_inputs(socket.assigns.device.id)
+
+        {:noreply,
+         socket
+         |> assign(:inputs, inputs)
+         |> put_flash(
+           :info,
+           "Sensitivity saved. Apply the configuration to send it to the controller."
+         )}
+
+      {:error, _changeset} ->
+        {:noreply, put_flash(socket, :error, "Sensitivity must be a whole number from 1 to 10.")}
     end
   end
 

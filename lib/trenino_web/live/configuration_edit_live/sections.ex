@@ -143,6 +143,7 @@ defmodule TreninoWeb.ConfigurationEditLive.Sections do
             <th class="text-center">Pin</th>
             <th>Name</th>
             <th>Type</th>
+            <th>Sensitivity</th>
             <th>Value</th>
             <th class="w-px text-right"><span class="sr-only">Actions</span></th>
           </tr>
@@ -165,6 +166,22 @@ defmodule TreninoWeb.ConfigurationEditLive.Sections do
               <span class="badge badge-ghost badge-sm capitalize">
                 {input.input_type}
               </span>
+            </td>
+            <td>
+              <input
+                :if={input.input_type == :analog}
+                id={"input-sensitivity-#{input.id}"}
+                type="number"
+                min="1"
+                max="10"
+                step="1"
+                value={input.sensitivity}
+                aria-label={"Sensitivity (1-10) for input on pin #{input.pin}"}
+                phx-blur="update_input_sensitivity"
+                phx-value-id={input.id}
+                class="input input-ghost input-xs w-16 font-mono"
+              />
+              <span :if={input.input_type != :analog} class="text-muted" aria-hidden="true">—</span>
             </td>
             <td class="min-w-24">
               <.input_value

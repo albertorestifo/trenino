@@ -309,6 +309,48 @@ defmodule TreninoWeb.ConfigurationEditLiveTest do
 
       refute has_element?(view, "#output-actions-#{output.id}")
     end
+
+    test "changes the sensitivity of an existing analog input", %{
+      conn: conn,
+      device: device,
+      input: input
+    } do
+      {:ok, view, _} = live(conn, ~p"/configurations/#{device.config_id}")
+
+      html =
+        view
+        |> element("#input-sensitivity-#{input.id}")
+        |> render_blur(%{"value" => "8"})
+
+      assert html =~ "Sensitivity saved"
+      assert {:ok, %Input{sensitivity: 8}} = Hardware.get_input(input.id)
+      assert has_element?(view, "#input-sensitivity-#{input.id}[value='8']")
+    end
+
+    test "rejects an out-of-range sensitivity and keeps the saved value", %{
+      conn: conn,
+      device: device,
+      input: input
+    } do
+      {:ok, view, _} = live(conn, ~p"/configurations/#{device.config_id}")
+
+      html =
+        view
+        |> element("#input-sensitivity-#{input.id}")
+        |> render_blur(%{"value" => "11"})
+
+      assert html =~ "Sensitivity must be a whole number from 1 to 10."
+      assert {:ok, %Input{sensitivity: 5}} = Hardware.get_input(input.id)
+    end
+
+    test "button inputs have no sensitivity field", %{conn: conn, device: device} do
+      {:ok, button} =
+        Hardware.create_input(device.id, %{pin: 7, input_type: :button, debounce: 20})
+
+      {:ok, view, _} = live(conn, ~p"/configurations/#{device.config_id}")
+
+      refute has_element?(view, "#input-sensitivity-#{button.id}")
+    end
   end
 
   describe "Hardware context integration" do
