@@ -31,6 +31,10 @@
   <sub>Share your builds, get help with wiring and setup, and follow what's coming next.</sub>
 </p>
 
+<p align="center">
+  <img src="docs/images/screenshot-devices.webp" alt="The Trenino app showing the Devices page with three hardware configurations" width="800">
+</p>
+
 ## Features
 
 **[See Trenino in action!](https://www.youtube.com/watch?v=FcnUJaJU0Wo)**
