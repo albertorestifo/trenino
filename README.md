@@ -54,6 +54,16 @@ Build your own train controls with real throttle levers, brake handles, switches
 - **Lua scripting** — write custom logic to flash warning LEDs, react to speed changes, automate sequences, and more ([scripting guide](docs/lua-scripting.md))
 - **AI-assisted setup** — describe what you want in plain language and let Claude configure your train via [MCP integration](docs/mcp-setup.md). Say "set lever A to throttle" and the assistant finds, calibrates and binds the lever, then opens the wizard for the one step that needs you. With Trenino open, a coding agent such as Claude Code or Codex can set itself up when you ask it to "install the Trenino MCP" (setup guide for agents at `http://localhost:4000/llms.txt`, in releases newer than 0.8.2)
 
+### Print a lever
+
+<a href="https://makerworld.com/en/models/3630506-train-master-controller-notched-throttle-brake"><img src="docs/images/makerworld-main-lever.jpg" alt="Notched master controller lever" width="320" align="right"></a>
+
+No controller yet? The **Notched Master Controller** is a full-size, 3D-printable throttle/brake lever with real notches you can feel, swappable notch discs and six grips. It's designed to work with Trenino.
+
+**[Get it on MakerWorld →](https://makerworld.com/en/models/3630506-train-master-controller-notched-throttle-brake)**
+
+<br clear="right">
+
 ## Getting Started
 
 ### Requirements
