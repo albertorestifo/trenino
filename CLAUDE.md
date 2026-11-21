@@ -25,10 +25,8 @@ Unfinished features are gated by `Trenino.Beta` (`lib/trenino/beta.ex`). To put 
 - Pattern match struct types in function arguments: `def process(%MyStruct{} = struct)`.
 - Prefer structs over untyped maps. When a map is necessary, document its shape with a typespec.
 - Round simulator inputs and outputs, calibration values, notch values and user-facing floats to 2 places: `Float.round(value, 2)`. Exception: the live lever position and the interpolated value for linear notches keep `LeverMapper.input_precision/0` (4) places, so short notches keep their resolution.
-- Keep protocol structs atom-based and convert to integers only on the wire. Each message module implements `encode` and `decode_body` with binary pattern matching; dispatch lives in `lib/trenino/serial/protocol/message.ex`.
 - GenServers keep their state in a nested `State` struct.
 - Define macros only when explicitly requested.
-- Edit-page sections (hardware configuration and train pages) use `section_group`, `config_section`, `section_action`, `row_actions` and `section_empty` from `TreninoWeb.SharedComponents`; see the "Edit-page sections" block in the phoenix-liveview skill.
 
 ## Tests
 
