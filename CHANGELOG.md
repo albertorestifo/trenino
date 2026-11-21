@@ -8,9 +8,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Changed
 
-- Updated Sentry to 14.x, plus esbuild, Tailwind, the Tauri opener plugin and the
-  Claude Code GitHub Action. Error reports now scrub a wider set of sensitive
-  parameter names.
+- Updated Sentry to 14.x, plus esbuild, Tailwind and the Tauri opener plugin. Error
+  reports now scrub a wider set of sensitive parameter names.
 
 ### Fixed
 
