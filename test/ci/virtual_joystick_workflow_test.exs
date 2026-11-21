@@ -1,49 +1,35 @@
 defmodule Trenino.CI.VirtualJoystickWorkflowTest do
   use ExUnit.Case, async: true
 
-  @workflows ~w(nightly release)
+  @build_workflow Path.join([File.cwd!(), ".github", "workflows", "build-desktop.yml"])
 
-  test "nightly and release build and stage target-specific virtual joystick sidecars" do
-    for workflow <- @workflows do
+  test "nightly and release both build through the shared desktop workflow" do
+    for workflow <- ~w(nightly release) do
       contents = File.read!(Path.join([File.cwd!(), ".github", "workflows", "#{workflow}.yml"]))
 
-      assert contents =~ "  build-virtual-joystick:\n",
-             "#{workflow}.yml must define the virtual joystick build job"
+      assert contents =~ "uses: ./.github/workflows/build-desktop.yml",
+             "#{workflow}.yml must build through build-desktop.yml"
 
-      assert contents =~
-               ~r/  build-tauri:\n(?:.*\n)*?    needs: \[[^\]]*build-virtual-joystick[^\]]*\]/,
-             "#{workflow}.yml build-tauri must depend on build-virtual-joystick"
-
-      assert contents =~ "name: virtual-joystick-${{ matrix.target }}",
-             "#{workflow}.yml must download the target-specific virtual joystick artifact"
-
-      assert contents =~
-               "virtual_joystick-${{ matrix.tauri_target }}.exe",
-             "#{workflow}.yml must stage the Windows virtual joystick sidecar"
-
-      assert contents =~
-               ~r/virtual_joystick-\$\{\{ matrix\.tauri_target \}\}(?!\.exe)/,
-             "#{workflow}.yml must stage the Unix virtual joystick sidecar without .exe"
-
-      assert contents =~
-               "chmod +x \"tauri/src-tauri/binaries/virtual_joystick-${{ matrix.tauri_target }}\"",
-             "#{workflow}.yml must make the Unix virtual joystick sidecar executable"
-
-      assert contents =~ "virtual-joystick-download",
-             "#{workflow}.yml must use and clean up a virtual joystick staging directory"
+      assert contents =~ "channel: #{workflow}",
+             "#{workflow}.yml must pass its channel to build-desktop.yml"
     end
   end
 
-  test "nightly and release stage verified Windows vJoy runtime resources" do
-    for workflow <- @workflows do
-      contents = File.read!(Path.join([File.cwd!(), ".github", "workflows", "#{workflow}.yml"]))
+  test "the desktop build compiles and stages the Windows virtual joystick sidecar" do
+    contents = File.read!(@build_workflow)
 
-      assert contents =~ "choco install innoextract --version 1.9 -y --no-progress",
-             "#{workflow}.yml must install the pinned vJoy installer extractor"
+    assert contents =~
+             ~r/- name: Build virtual joystick utility\n\s+if: runner\.os == 'Windows'\n\s+run: cargo build --release --manifest-path tauri\/virtual_joystick\/Cargo\.toml/
 
-      assert contents =~ "./scripts/stage-vjoy-resources.ps1",
-             "#{workflow}.yml must stage the verified vJoy resources before Tauri builds"
-    end
+    assert contents =~
+             ~s|cp "tauri/virtual_joystick/target/release/virtual_joystick$EXT" "$bin/virtual_joystick-$TRIPLE$EXT"|
+  end
+
+  test "the desktop build stages verified Windows vJoy runtime resources" do
+    contents = File.read!(@build_workflow)
+
+    assert contents =~ "choco install innoextract --version 1.9 -y --no-progress"
+    assert contents =~ "./scripts/stage-vjoy-resources.ps1"
   end
 
   test "shared vJoy staging verifies pinned inputs and creates every packaged resource" do
