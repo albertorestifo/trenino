@@ -6,10 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.9.1] - 2026-11-21
+
 ### Changed
 
 - Updated Sentry to 14.x, plus esbuild, Tailwind and the Tauri opener plugin. Error
   reports now scrub a wider set of sensitive parameter names.
+- Updated Phoenix LiveView to 1.2.14 and Plug to 1.20.4 for two security fixes.
 
 ### Fixed
 
@@ -39,6 +42,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Changing the hardware input of a lever or button now takes effect in the simulator
   right away. Before, an input added or calibrated after its device connected was
   ignored until the app restarted.
+- Deleting a calibrated input (such as a lever) no longer crashes the configuration
+  page. Its calibration is removed along with it.
 
 ## [0.9.0] - 2026-11-09
 
