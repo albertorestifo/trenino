@@ -8,6 +8,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- On Linux, the app window no longer opens empty on some graphics drivers (newer
+  Mesa, NVIDIA). WebKitGTK's DMABUF renderer is now off by default; set
+  `WEBKIT_DISABLE_DMABUF_RENDERER=0` to turn it back on.
 - A lever resting between two mapped notches now sends the nearest notch instead
   of nothing. Captured notch ranges rarely touch, so a lever moved from Brake and
   settling just outside a narrow Off detent left the simulator on the last brake

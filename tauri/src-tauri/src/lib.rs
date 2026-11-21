@@ -97,8 +97,22 @@ fn wait_for_backend(handle: &tauri::AppHandle) -> bool {
     false
 }
 
+/// WebKitGTK's DMABUF renderer draws an empty window on many GPU/driver stacks,
+/// notably when the AppImage's bundled WebKitGTK meets a newer host Mesa or the
+/// NVIDIA driver (issue #195). Turn it off unless the user chose a value.
+#[cfg(target_os = "linux")]
+fn configure_webkit_renderer() {
+    if std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none() {
+        std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // Must run before GTK/WebKit initialise, while the process is single-threaded.
+    #[cfg(target_os = "linux")]
+    configure_webkit_renderer();
+
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_shell::init())
