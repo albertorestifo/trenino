@@ -6,22 +6,22 @@ on:
 
 jobs:
   claude-review:
-    # Skip draft PRs, PRs by claude[bot] (circular reviews), and dependabot PRs
-    # (handled by dependabot-analyzer workflow). Dependabot cannot access secrets
-    # in pull_request events, so this would always fail.
+    # Skip draft PRs, PRs by claude[bot] (circular reviews), and Dependabot PRs.
+    # Dependabot cannot read secrets on pull_request events, so its runs would
+    # always fail.
     if: |
       !github.event.pull_request.draft &&
       github.event.pull_request.user.login != 'claude[bot]' &&
       github.event.pull_request.user.login != 'dependabot[bot]'
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     concurrency:
       group: claude-review-${{ github.event.pull_request.number }}
       cancel-in-progress: true
     permissions:
       contents: read
       pull-requests: write
-      issues: write
+      issues: read
       actions: read
       # Required even with claude_code_oauth_token: the action uses OIDC to
       # obtain its GitHub App token.
@@ -40,35 +40,21 @@ jobs:
 
       - name: Run Claude Code Review
         id: claude-review
-        uses: anthropics/claude-code-action@61a9c274fa7110a66dfafc1bbbced03833eb25fe # v1.0.269
+        uses: anthropics/claude-code-action@acfe7992852970efb4fee683d63d628e3e52df67 # v1.0.286
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           additional_permissions: |
             actions: read
-          prompt: |
-            Review PR #${{ github.event.pull_request.number }} in ${{ github.repository }}.
-
-            Start with: `gh pr diff ${{ github.event.pull_request.number }}` and `gh pr view ${{ github.event.pull_request.number }}`
-
-            This is an Elixir/Phoenix project. Apply the project coding guidelines:
-            - Struct arguments must be pattern matched: `def fn(%MyStruct{} = s)`
-            - Float values must be rounded to 2 decimal places (`Float.round(v, 2)`)
-            - Protocol message encode/decode must use atom-based structs (no integer type fields)
-            - Avoid untyped maps; prefer structs or documented map types
-
-            Focus on:
-            1. **Correctness** — bugs, wrong logic, edge cases not handled
-            2. **Project guidelines** — violations of the rules above
-            3. **Security** — input validation, injection risks
-            4. **Testing** — missing coverage for new behaviour
-
-            Skip style nits. Only flag issues that matter.
-
-            Post a single review comment using:
-            `gh pr comment ${{ github.event.pull_request.number }} --body "..."`
-
-            Use a heredoc to handle special characters. Format as markdown with
-            sections for each concern. If there's nothing significant to flag, say so briefly.
+          # The official code-review plugin reviews the diff against the
+          # repository's CLAUDE.md files, so project guidelines live there
+          # rather than in this prompt.
+          plugin_marketplaces: "https://github.com/anthropics/claude-plugins-official.git"
+          plugins: "code-review@claude-plugins-official"
+          # --comment posts findings as inline PR comments (or one summary
+          # comment when nothing is found). Without it results only reach the
+          # run log.
+          prompt: "/code-review:code-review --comment ${{ github.repository }}/pull/${{ github.event.pull_request.number }}"
+          # Must stay: the inline-comment MCP server only starts when
+          # claude_args names its tool.
           claude_args: |
-            --allowedTools "Bash(gh pr diff:*),Bash(gh pr view:*),Bash(gh pr comment:*)"
-
+            --allowedTools "mcp__github_inline_comment__create_inline_comment"
