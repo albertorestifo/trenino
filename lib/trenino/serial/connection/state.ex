@@ -10,10 +10,13 @@ defmodule Trenino.Serial.Connection.State do
   alias Trenino.Serial.Connection.DeviceConnection
 
   @type t :: %__MODULE__{
-          ports: %{String.t() => DeviceConnection.t()}
+          ports: %{String.t() => DeviceConnection.t()},
+          enumerate_failing?: boolean()
         }
 
-  defstruct ports: %{}
+  # enumerate_failing? is true while serial port enumeration keeps failing, so
+  # the failure is logged once per streak instead of on every scan.
+  defstruct ports: %{}, enumerate_failing?: false
 
   @doc "Get a connection by port name"
   @spec get(t(), String.t()) :: DeviceConnection.t() | nil

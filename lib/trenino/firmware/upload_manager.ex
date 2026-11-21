@@ -66,6 +66,10 @@ defmodule Trenino.Firmware.UploadManager do
           {:ok, String.t()} | {:error, term()}
   def start_upload(port, environment, firmware_file_id) do
     GenServer.call(__MODULE__, {:start_upload, port, environment, firmware_file_id})
+  catch
+    # The serial connection did not answer in time (e.g. a device that stopped
+    # responding). Report it as a failed start instead of crashing the caller.
+    :exit, {reason, {GenServer, :call, _args}} -> {:error, reason}
   end
 
   @doc """
@@ -280,10 +284,13 @@ defmodule Trenino.Firmware.UploadManager do
       _ -> :ok
     end
 
-    report_upload_failure("firmware_upload_failed", upload, reason, %{avrdude_output: output})
+    report_upload_failure("firmware_upload_failed", upload, reason, %{
+      avrdude_output_tail: Uploader.diagnostic_output(output)
+    })
 
     broadcast({:upload_failed, upload.upload_id, reason, error_message})
-    # Reported to Sentry above; a Logger.error here would send a duplicate event.
+    # Bugs are reported to Sentry above and environment failures are not
+    # actionable; a Logger.error here would send an event for either.
     Logger.warning("Failed firmware upload #{upload.upload_id}: #{inspect(reason)}")
   end
 
@@ -308,9 +315,21 @@ defmodule Trenino.Firmware.UploadManager do
     Logger.warning("Upload task crashed: #{inspect(reason)}")
   end
 
-  # One Sentry issue per failure reason, so a new kind of failure is not hidden
-  # inside an existing issue.
+  # Only failures that point at a bug in Trenino reach Sentry. Wrong board,
+  # absent or silent device, timeouts and cancellations stay in the upload
+  # history, the UI message and a warning log.
   defp report_upload_failure(message, upload, reason, extra) do
+    if Uploader.environment_error?(reason) do
+      :ok
+    else
+      capture_upload_failure(message, upload, reason, extra)
+    end
+  end
+
+  # One Sentry issue per failure reason, so a new kind of failure is not hidden
+  # inside an existing issue. avrdude_output_tail is pre-filtered by
+  # Uploader.diagnostic_output/1 so Sentry's server-side scrubbing keeps it.
+  defp capture_upload_failure(message, upload, reason, extra) do
     reason_tag = if is_atom(reason), do: Atom.to_string(reason), else: inspect(reason)
 
     Sentry.capture_message(message,

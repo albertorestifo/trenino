@@ -560,6 +560,120 @@ defmodule Trenino.Firmware.DownloaderTest do
     end
   end
 
+  describe "legacy and broken manifests" do
+    defp single_release(tag, extra_assets) do
+      [
+        %{
+          "tag_name" => tag,
+          "name" => tag,
+          "html_url" => "https://github.com/releases/#{tag}",
+          "body" => "Release",
+          "published_at" => "2026-01-17T10:00:00Z",
+          "assets" =>
+            [
+              %{
+                "name" => "release.json",
+                "size" => 500,
+                "browser_download_url" => "https://github.com/releases/#{tag}/release.json"
+              }
+            ] ++ extra_assets
+        }
+      ]
+    end
+
+    defp stub_releases(releases, manifests_by_tag) do
+      stub(Req, :get, fn url, _opts ->
+        if url =~ "api.github.com/repos",
+          do: {:ok, %Req.Response{status: 200, body: releases}},
+          else: {:ok, %Req.Response{status: 404, body: nil}}
+      end)
+
+      stub(Req, :get, fn url -> manifest_response(url, manifests_by_tag) end)
+    end
+
+    defp manifest_response(url, manifests_by_tag) do
+      case Enum.find(manifests_by_tag, fn {tag, _} -> url =~ "#{tag}/release.json" end) do
+        {_tag, manifest} -> {:ok, %Req.Response{status: 200, body: manifest}}
+        nil -> {:ok, %Req.Response{status: 404, body: nil}}
+      end
+    end
+
+    # Shape of the published v2.2.0 manifest: no device has uploadConfig.
+    defp legacy_device(env, name, file) do
+      %{"environment" => env, "displayName" => name, "firmwareFile" => file, "name" => env}
+    end
+
+    test "skips a legacy manifest without uploadConfig with a warning, not an error" do
+      manifest =
+        build_test_manifest([
+          legacy_device("due", "Arduino Due", "trenino-arduino-due.firmware.bin"),
+          legacy_device("uno", "Arduino Uno", "trenino-arduino-uno.firmware.hex")
+        ])
+
+      stub_releases(single_release("v2.2.0", []), %{"v2.2.0" => manifest})
+
+      error_log =
+        capture_log([level: :error], fn ->
+          assert {:ok, []} = Downloader.check_for_updates()
+        end)
+
+      refute error_log =~ "Invalid manifest structure"
+
+      warning_log =
+        capture_log([level: :warning], fn ->
+          assert {:ok, []} = Downloader.check_for_updates()
+        end)
+
+      assert warning_log =~ "Release v2.2.0 has a legacy manifest without uploadConfig"
+      assert {:error, :not_found} = Firmware.get_release_by_tag("v2.2.0")
+    end
+
+    test "logs a broken manifest once per check with a compact summary" do
+      manifest =
+        build_test_manifest([
+          build_device("uno", "Arduino Uno", "trenino-uno.hex"),
+          legacy_device("leonardo", "Arduino Leonardo", "trenino-leonardo.hex")
+        ])
+
+      stub_releases(single_release("v9.0.0", []), %{"v9.0.0" => manifest})
+
+      log =
+        capture_log([level: :error], fn ->
+          assert {:ok, []} = Downloader.check_for_updates()
+        end)
+
+      assert [_] = Regex.scan(~r/Invalid manifest structure/, log)
+      assert log =~ "Invalid manifest structure for release v9.0.0: invalid devices leonardo"
+      refute log =~ "displayName"
+    end
+
+    test "still stores a current manifest alongside a legacy release" do
+      legacy_manifest =
+        build_test_manifest([legacy_device("uno", "Arduino Uno", "trenino-uno.hex")])
+
+      current_manifest =
+        build_test_manifest([build_device("uno", "Arduino Uno", "trenino-uno.hex")])
+
+      uno_asset = %{
+        "name" => "trenino-uno.hex",
+        "size" => 1000,
+        "browser_download_url" => "https://github.com/releases/v2.2.1/trenino-uno.hex"
+      }
+
+      releases = single_release("v2.2.1", [uno_asset]) ++ single_release("v2.2.0", [])
+
+      stub_releases(releases, %{"v2.2.1" => current_manifest, "v2.2.0" => legacy_manifest})
+
+      log =
+        capture_log([level: :error], fn ->
+          assert {:ok, [release]} = Downloader.check_for_updates()
+          assert release.tag_name == "v2.2.1"
+        end)
+
+      refute log =~ "Invalid manifest structure"
+    end
+  end
+
   describe "download_firmware/1" do
     setup do
       # Create a release with a firmware file

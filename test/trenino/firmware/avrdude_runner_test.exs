@@ -18,6 +18,16 @@ defmodule Trenino.Firmware.AvrdudeRunnerTest do
       assert output =~ "Programmer id = "
     end
 
+    test "appends the exit status on failure" do
+      assert {:error, output} = run_shell("echo boom; exit 3")
+      assert output =~ "boom"
+      assert String.ends_with?(output, "[avrdude exited with status 3]")
+    end
+
+    test "returns the output unchanged on success" do
+      assert {:ok, "fine\n"} = run_shell("echo fine")
+    end
+
     test "kills the subprocess when the calling process is killed" do
       # The subprocess reports its OS pid, then hangs like a stuck avrdude.
       caller =

@@ -74,6 +74,30 @@ defmodule TreninoWeb.OutputApplyTest do
     assert has_element?(view, "button[phx-click=toggle_output][aria-pressed=false]", "OFF")
   end
 
+  test "output toggle stays off when the device does not respond", %{
+    conn: conn,
+    device: device
+  } do
+    {:ok, output} = Hardware.create_output(device.id, %{pin: 12, name: "Cab light"})
+    {:ok, view, _} = live(conn, ~p"/configurations/#{device.config_id}")
+
+    port = "COM5"
+    send(view.pid, {:devices_updated, [connected(port, device.config_id)]})
+    fingerprint = Hardware.config_fingerprint([], [], [], [])
+    {:ok, applied} = Hardware.confirm_configuration(device.id, device.config_id, fingerprint)
+    send(view.pid, {:configuration_applied, port, applied, device.config_id})
+
+    Mimic.stub(Hardware, :set_output, fn ^port, 12, :high -> {:error, :port_timed_out} end)
+
+    html =
+      view
+      |> element("button[phx-click=toggle_output][phx-value-id='#{output.id}']")
+      |> render_click()
+
+    assert html =~ "The device did not respond"
+    assert has_element?(view, "button[phx-click=toggle_output][aria-pressed=false]", "OFF")
+  end
+
   defp connected(port, config_id) do
     %DeviceConnection{
       port: port,

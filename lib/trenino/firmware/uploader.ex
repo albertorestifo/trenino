@@ -9,6 +9,7 @@ defmodule Trenino.Firmware.Uploader do
   require Logger
 
   alias Trenino.Firmware.{Avrdude, AvrdudeRunner, DeviceRegistry}
+  alias Trenino.Serial.Connection
 
   @type progress_callback :: (integer(), String.t() -> any())
 
@@ -219,7 +220,12 @@ defmodule Trenino.Firmware.Uploader do
   # Trigger bootloader on boards that need 1200bps touch (Leonardo, Micro, Pro Micro)
   defp maybe_trigger_bootloader(port, %{use_1200bps_touch: true}) do
     Logger.info("Triggering bootloader with 1200bps touch on #{port}")
-    ports_before = get_available_ports()
+
+    ports_before =
+      case get_available_ports() do
+        {:ok, ports} -> ports
+        :error -> :unknown
+      end
 
     case Circuits.UART.start_link() do
       {:ok, uart} ->
@@ -249,8 +255,24 @@ defmodule Trenino.Firmware.Uploader do
   defp maybe_trigger_bootloader(port, _config), do: {:ok, port}
 
   defp poll_for_bootloader_port(original_port, ports_before, seen_gone?, touched_at) do
-    ports_after = get_available_ports()
-    new_ports = ports_after -- ports_before
+    case get_available_ports() do
+      {:ok, ports_after} ->
+        check_bootloader_ports(original_port, ports_before, ports_after, seen_gone?, touched_at)
+
+      # Enumeration failed this round: retry without drawing conclusions about
+      # which ports came or went.
+      :error ->
+        if System.monotonic_time(:millisecond) - touched_at >= @bootloader_poll_deadline_ms do
+          {:error, :bootloader_port_not_found}
+        else
+          Process.sleep(@bootloader_poll_interval_ms)
+          poll_for_bootloader_port(original_port, ports_before, seen_gone?, touched_at)
+        end
+    end
+  end
+
+  defp check_bootloader_ports(original_port, ports_before, ports_after, seen_gone?, touched_at) do
+    new_ports = new_ports(ports_before, ports_after)
     original_present? = original_port in ports_after
     elapsed_ms = System.monotonic_time(:millisecond) - touched_at
 
@@ -282,6 +304,11 @@ defmodule Trenino.Firmware.Uploader do
     end
   end
 
+  # Without a baseline (enumeration failed before the touch), every port
+  # would look new, so only the original port is considered.
+  defp new_ports(:unknown, _ports_after), do: []
+  defp new_ports(ports_before, ports_after), do: ports_after -- ports_before
+
   defp pick_new_port([new_port], original_port) do
     Logger.info("Bootloader appeared on new port #{new_port} (was #{original_port})")
     {:ok, new_port}
@@ -294,9 +321,14 @@ defmodule Trenino.Firmware.Uploader do
   end
 
   defp get_available_ports do
-    Circuits.UART.enumerate()
-    |> Map.keys()
-    |> Enum.sort()
+    case Connection.list_ports() do
+      {:ok, ports} ->
+        {:ok, ports |> Map.keys() |> Enum.sort()}
+
+      {:error, error} ->
+        Logger.warning("Could not list serial ports: #{Exception.message(error)}")
+        :error
+    end
   end
 
   # Build avrdude command arguments
@@ -338,21 +370,56 @@ defmodule Trenino.Firmware.Uploader do
     end
   end
 
-  # Error patterns mapped to error atoms
-  # Each pattern is either a string or a list of strings (all must match)
-  # Order matters: more specific patterns should come before general ones
+  # Error patterns mapped to error atoms, matched case-insensitively (avrdude
+  # 8.x capitalises the first word of each line). Patterns are lowercase.
+  # Each pattern is either a string or a list of strings (all must match).
+  # Order matters: more specific patterns should come before general ones.
+  # Only avrdude's own English text is matched: the OS half of messages such
+  # as "cannot open port COM3: <reason>" is localized on Windows.
   @error_patterns [
     {"permission denied", :permission_denied},
     {"can't open device", :port_not_found},
     {"cannot open port", :port_not_found},
     {"programmer is not responding", :bootloader_not_responding},
     {"not in sync", :bootloader_not_responding},
+    {"cannot get into sync", :bootloader_not_responding},
+    {"programmer is out of sync", :bootloader_not_responding},
+    {"protocol expects sync byte", :bootloader_not_responding},
+    {"cannot communicate with device", :bootloader_not_responding},
+    {"timeout communicating with programmer", :bootloader_not_responding},
+    {"timeout/error communicating with programmer", :bootloader_not_responding},
     {["stk500", "not responding"], :bootloader_not_responding},
     {"initialization failed", :bootloader_not_responding},
-    {["butterfly", "AVR910"], :bootloader_not_responding},
-    {"device signature", :wrong_board_type},
+    {["butterfly", "avr910"], :bootloader_not_responding},
+    # avrdude 6.x: "Yikes!  Invalid device signature." / "Expected signature
+    # for ...". avrdude 8.x: "Error: invalid device signature" / "Error:
+    # expected signature for ATmega328P is 1E 95 0F". The plain "Device
+    # signature = ..." line is printed on every -v run and must not match.
+    {"invalid device signature", :wrong_board_type},
+    {"expected signature for", :wrong_board_type},
+    # avrdude 6.x: "verification error"; avrdude 8.x: "flash verification mismatch"
     {"verification error", :verification_failed},
-    {"Timeout", :timeout}
+    {"verification mismatch", :verification_failed},
+    {"timeout", :timeout},
+    # avrdude 8.x prints this whenever the programmer's open step fails,
+    # including after sync failures, so it only applies when nothing above did.
+    {"unable to open port", :port_not_found}
+  ]
+
+  # Failures caused by the user's hardware, cabling, board selection or
+  # environment. They are shown to the user and kept in the upload history,
+  # but are not bugs in Trenino, so they are not reported to Sentry. Any
+  # reason not listed here (unknown_error, avrdude_not_found, crashes, new
+  # atoms) is reported.
+  @environment_errors [
+    :port_not_found,
+    :permission_denied,
+    :bootloader_not_responding,
+    :bootloader_port_not_found,
+    :wrong_board_type,
+    :verification_failed,
+    :timeout,
+    :cancelled
   ]
 
   @doc """
@@ -360,6 +427,8 @@ defmodule Trenino.Firmware.Uploader do
   """
   @spec parse_error_output(String.t()) :: atom()
   def parse_error_output(output) do
+    output = String.downcase(output)
+
     Enum.find_value(@error_patterns, :unknown_error, fn
       {patterns, error} when is_list(patterns) ->
         if Enum.all?(patterns, &String.contains?(output, &1)), do: error
@@ -367,6 +436,67 @@ defmodule Trenino.Firmware.Uploader do
       {pattern, error} ->
         if String.contains?(output, pattern), do: error
     end)
+  end
+
+  @doc """
+  Returns true when an upload failure reason is caused by the user's hardware
+  or environment (wrong board, device absent or not responding, cancelled)
+  rather than by a bug in Trenino.
+  """
+  @spec environment_error?(term()) :: boolean()
+  def environment_error?(reason), do: reason in @environment_errors
+
+  # Sentry's server-side scrubbing replaces a whole value with "[Filtered]"
+  # when it contains any of these words, case-insensitively. Every avrdude 8.x
+  # run prints "Copyright see https://github.com/avrdudes/avrdude/blob/main/AUTHORS",
+  # which matches "auth".
+  @sentry_sensitive_words ~r/password|secret|passwd|api_key|apikey|auth|credentials|mysql_pwd|privatekey|private_key|token|bearer/i
+  @diagnostic_max_lines 40
+  @diagnostic_max_bytes 4_000
+
+  @doc """
+  Returns the last lines of avrdude output in a form fit for error reports.
+
+  Drops blank lines, the version and copyright banner, the informational
+  configuration file lines and any line Sentry would scrub, then redacts user
+  names in remaining paths (`C:\\Users\\<name>`, `/home/<name>`) and keeps at most
+  #{@diagnostic_max_lines} lines and #{@diagnostic_max_bytes} bytes.
+  """
+  @spec diagnostic_output(String.t() | nil) :: String.t() | nil
+  def diagnostic_output(nil), do: nil
+
+  def diagnostic_output(output) when is_binary(output) do
+    output
+    |> String.split(~r/\R/)
+    |> Enum.map(&String.trim_trailing/1)
+    |> Enum.reject(&diagnostic_noise?/1)
+    |> Enum.take(-@diagnostic_max_lines)
+    |> Enum.map_join("\n", &redact_user_paths/1)
+    |> take_trailing_bytes(@diagnostic_max_bytes)
+  end
+
+  defp diagnostic_noise?(line) do
+    line == "" or
+      String.starts_with?(line, [
+        "Avrdude version",
+        "avrdude version",
+        "Copyright",
+        "System wide configuration file is",
+        "User configuration file"
+      ]) or
+      Regex.match?(@sentry_sensitive_words, line)
+  end
+
+  defp redact_user_paths(line) do
+    Regex.replace(~r/([\\\/](?:Users|home)[\\\/])[^\\\/\s:]+/i, line, "\\1[user]")
+  end
+
+  defp take_trailing_bytes(string, max_bytes) when byte_size(string) <= max_bytes, do: string
+
+  defp take_trailing_bytes(string, max_bytes) do
+    string
+    |> binary_part(byte_size(string) - max_bytes, max_bytes)
+    |> String.replace_invalid()
   end
 
   # Keep private alias for internal use

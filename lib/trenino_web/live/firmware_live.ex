@@ -19,10 +19,6 @@ defmodule TreninoWeb.FirmwareLive do
 
   @impl true
   def mount(_params, _session, socket) do
-    if connected?(socket) do
-      Firmware.subscribe_uploads()
-    end
-
     releases = Firmware.list_releases(preload: [:firmware_files])
     upload_history = Firmware.list_upload_history(limit: 10, preload: [:firmware_file])
     current_upload = Firmware.current_upload()
@@ -40,7 +36,33 @@ defmodule TreninoWeb.FirmwareLive do
      |> assign(:show_upload_modal, false)
      |> assign(:upload_progress, nil)
      |> assign(:upload_error, nil)
-     |> assign(:show_older_releases, false)}
+     |> assign(:show_older_releases, false)
+     |> assign(:serial_ports, [])
+     |> then(fn socket ->
+       if connected?(socket) do
+         Firmware.subscribe_uploads()
+         refresh_serial_ports(socket)
+       else
+         socket
+       end
+     end)}
+  end
+
+  # Listing ports runs the circuits_uart helper, which can block for up to 5s
+  # when it fails, so it runs in a task and never in render/1. The nav hook
+  # already subscribes this LiveView to device updates, which re-list ports.
+  defp refresh_serial_ports(socket) do
+    start_async(socket, :serial_ports, &Connection.enumerate_ports/0)
+  end
+
+  @impl true
+  def handle_async(:serial_ports, {:ok, ports}, socket) do
+    {:noreply, assign(socket, :serial_ports, ports)}
+  end
+
+  def handle_async(:serial_ports, {:exit, reason}, socket) do
+    Logger.warning("Listing serial ports failed: #{inspect(reason)}")
+    {:noreply, socket}
   end
 
   @impl true
@@ -63,7 +85,12 @@ defmodule TreninoWeb.FirmwareLive do
 
   @impl true
   def handle_info({:devices_updated, devices}, socket) do
-    {:noreply, assign(socket, :nav_devices, devices)}
+    {:noreply, socket |> assign(:nav_devices, devices) |> refresh_serial_ports()}
+  end
+
+  @impl true
+  def handle_info(:scan_complete, socket) do
+    {:noreply, refresh_serial_ports(socket)}
   end
 
   @impl true
@@ -189,7 +216,8 @@ defmodule TreninoWeb.FirmwareLive do
      |> assign(:selected_port, nil)
      |> assign(:selected_environment, nil)
      |> assign(:show_upload_modal, true)
-     |> assign(:upload_error, nil)}
+     |> assign(:upload_error, nil)
+     |> refresh_serial_ports()}
   end
 
   @impl true
@@ -241,7 +269,7 @@ defmodule TreninoWeb.FirmwareLive do
         {:noreply, assign(socket, :upload_error, "No firmware available for this device.")}
 
       {:error, reason} ->
-        Logger.error("Firmware upload could not start: #{inspect(reason)}")
+        log_upload_start_failure(reason)
 
         {:noreply,
          assign(
@@ -267,6 +295,17 @@ defmodule TreninoWeb.FirmwareLive do
   @impl true
   def handle_event("toggle_older_releases", _, socket) do
     {:noreply, assign(socket, :show_older_releases, !socket.assigns.show_older_releases)}
+  end
+
+  # A serial port that stops answering is a device problem, not an app error.
+  @device_unavailable_reasons [:port_timed_out, :timeout, :noproc]
+
+  defp log_upload_start_failure(reason) when reason in @device_unavailable_reasons do
+    Logger.warning("Firmware upload could not start: #{inspect(reason)}")
+  end
+
+  defp log_upload_start_failure(reason) do
+    Logger.error("Firmware upload could not start: #{inspect(reason)}")
   end
 
   defp check_compatible(release) do
@@ -307,11 +346,9 @@ defmodule TreninoWeb.FirmwareLive do
 
   @impl true
   def render(assigns) do
-    # Get all available serial ports and merge with tracked device info
-    all_ports = Connection.enumerate_ports()
-
+    # Merge the listed serial ports with tracked device info
     available_ports =
-      Enum.map(all_ports, fn port ->
+      Enum.map(assigns.serial_ports, fn port ->
         device = Enum.find(assigns.nav_devices, &(&1.port == port))
         {port, device}
       end)

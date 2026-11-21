@@ -123,9 +123,14 @@ defmodule Trenino.Firmware.UploaderTest do
       assert Uploader.parse_error_output(output) == :bootloader_not_responding
     end
 
-    test "detects wrong board type from device signature" do
-      output = "avrdude: device signature = 0x1e950f"
+    test "detects wrong board type from an invalid device signature" do
+      output = "avrdude: Yikes!  Invalid device signature."
       assert Uploader.parse_error_output(output) == :wrong_board_type
+    end
+
+    test "does not treat the informational device signature line as an error" do
+      output = "Device signature = 1E 95 0F (ATmega328P)\nError: something new"
+      assert Uploader.parse_error_output(output) == :unknown_error
     end
 
     test "detects verification failed" do
@@ -146,6 +151,150 @@ defmodule Trenino.Firmware.UploaderTest do
     test "returns unknown_error for unrecognized output" do
       output = "some random error that doesn't match patterns"
       assert Uploader.parse_error_output(output) == :unknown_error
+    end
+  end
+
+  describe "parse_error_output/1 with avrdude 8.1 transcripts" do
+    alias Trenino.AvrdudeFixtures
+
+    test "classifies a sync failure despite the trailing 'unable to open port'" do
+      assert Uploader.parse_error_output(AvrdudeFixtures.avrdude8_sync_failure()) ==
+               :bootloader_not_responding
+    end
+
+    test "classifies a signature mismatch as wrong board" do
+      assert Uploader.parse_error_output(AvrdudeFixtures.avrdude8_signature_mismatch()) ==
+               :wrong_board_type
+    end
+
+    test "classifies a flash verification mismatch" do
+      assert Uploader.parse_error_output(AvrdudeFixtures.avrdude8_verification_mismatch()) ==
+               :verification_failed
+    end
+
+    test "classifies an stk500v2 timeout as bootloader not responding" do
+      assert Uploader.parse_error_output(AvrdudeFixtures.avrdude8_stk500v2_timeout()) ==
+               :bootloader_not_responding
+    end
+
+    test "classifies a missing port from avrdude's own text, not the localized reason" do
+      assert Uploader.parse_error_output(AvrdudeFixtures.avrdude8_port_missing_localized()) ==
+               :port_not_found
+    end
+
+    test "classifies a bare 'unable to open port' as port not found" do
+      assert Uploader.parse_error_output("Error: unable to open port COM3 for programmer arduino") ==
+               :port_not_found
+    end
+
+    test "matches case-insensitively" do
+      assert Uploader.parse_error_output(
+               "OS error: cannot open port /dev/ttyACM0: Permission denied"
+             ) ==
+               :permission_denied
+    end
+
+    test "leaves a configuration error unclassified so it is reported" do
+      assert Uploader.parse_error_output(AvrdudeFixtures.avrdude8_config_error()) ==
+               :unknown_error
+    end
+
+    test "leaves empty output unclassified" do
+      assert Uploader.parse_error_output("\n[avrdude exited with status -1073741515]") ==
+               :unknown_error
+    end
+  end
+
+  describe "environment_error?/1" do
+    test "is true for failures caused by hardware, board selection or the user" do
+      for reason <- [
+            :port_not_found,
+            :permission_denied,
+            :bootloader_not_responding,
+            :bootloader_port_not_found,
+            :wrong_board_type,
+            :verification_failed,
+            :timeout,
+            :cancelled
+          ] do
+        assert Uploader.environment_error?(reason), "#{reason} should not be reported"
+      end
+    end
+
+    test "is false for failures that point at a bug" do
+      for reason <- [
+            :unknown_error,
+            :avrdude_not_found,
+            :hex_file_not_found,
+            :unknown_device,
+            :crash
+          ] do
+        refute Uploader.environment_error?(reason), "#{reason} should be reported"
+      end
+
+      refute Uploader.environment_error?({:unexpected, :tuple})
+    end
+  end
+
+  describe "diagnostic_output/1" do
+    alias Trenino.AvrdudeFixtures
+
+    # Sentry's server-side scrubbing replaces the whole value with [Filtered]
+    # when it contains any of these words, case-insensitively.
+    @sentry_denylist ~w(password secret passwd api_key apikey auth credentials mysql_pwd privatekey private_key token bearer)
+
+    test "full avrdude 8.1 output would be scrubbed by Sentry" do
+      output = String.downcase(AvrdudeFixtures.avrdude8_sync_failure())
+      assert Enum.any?(@sentry_denylist, &String.contains?(output, &1))
+    end
+
+    test "survives Sentry's default scrubbing for every avrdude 8.1 transcript" do
+      for output <- [
+            AvrdudeFixtures.avrdude8_sync_failure(),
+            AvrdudeFixtures.avrdude8_signature_mismatch(),
+            AvrdudeFixtures.avrdude8_config_error(),
+            "Error: bad token in avrdude.conf\nError: oops"
+          ] do
+        tail = output |> Uploader.diagnostic_output() |> String.downcase()
+        refute Enum.any?(@sentry_denylist, &String.contains?(tail, &1)), tail
+      end
+    end
+
+    test "keeps the error lines and drops the banner and config info lines" do
+      tail = Uploader.diagnostic_output(AvrdudeFixtures.avrdude8_sync_failure())
+
+      assert tail =~ "Error: programmer is not responding"
+      assert tail =~ "[avrdude exited with status 1]"
+      refute tail =~ "Avrdude version"
+      refute tail =~ "System wide configuration file is"
+      refute tail =~ "\n\n"
+    end
+
+    test "keeps a configuration error line but redacts the user name" do
+      tail = Uploader.diagnostic_output(AvrdudeFixtures.avrdude8_config_error())
+
+      assert tail =~ "unable to process system wide configuration file"
+      assert tail =~ ~S"C:\Users\[user]\AppData"
+      refute tail =~ "alice"
+    end
+
+    test "redacts unix home directories" do
+      assert Uploader.diagnostic_output("Error: cannot open /home/bob/fw.hex") ==
+               "Error: cannot open /home/[user]/fw.hex"
+    end
+
+    test "keeps only the last lines and bytes" do
+      output = Enum.map_join(1..200, "\n", &"line #{&1} #{String.duplicate("x", 150)}")
+      tail = Uploader.diagnostic_output(output)
+
+      assert byte_size(tail) <= 4_000
+      assert tail =~ "line 200 "
+      refute tail =~ "line 150 "
+      assert String.valid?(tail)
+    end
+
+    test "passes nil through" do
+      assert Uploader.diagnostic_output(nil) == nil
     end
   end
 

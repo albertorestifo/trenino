@@ -29,6 +29,8 @@ defmodule Trenino.Serial.Connection do
   # Default GenServer.call timeout for blocking public API calls (ms).
   # Overridable via Application env for tests.
   @default_call_timeout_ms 5_000
+  # Scan interval while port enumeration keeps failing (helper cannot run).
+  @enumerate_failure_scan_interval_ms 30_000
 
   # Port name patterns to ignore (Bluetooth, debug consoles, etc.)
   @ignored_port_patterns [
@@ -60,13 +62,39 @@ defmodule Trenino.Serial.Connection do
     :exit, _ -> []
   end
 
-  @doc "Get all available serial ports (filtered by ignored patterns)"
+  @doc """
+  Get all available serial ports (filtered by ignored patterns).
+
+  Returns `[]` when the ports cannot be listed (see `list_ports/0`).
+  """
   @spec enumerate_ports() :: [String.t()]
   def enumerate_ports do
-    UART.enumerate()
-    |> Map.keys()
-    |> Enum.reject(&ignored_port?/1)
-    |> Enum.sort()
+    case list_ports() do
+      {:ok, ports} ->
+        ports
+        |> Map.keys()
+        |> Enum.reject(&ignored_port?/1)
+        |> Enum.sort()
+
+      {:error, _reason} ->
+        []
+    end
+  end
+
+  @doc """
+  List serial ports without letting the enumerator helper crash the caller.
+
+  `Circuits.UART.enumerate/0` runs a native helper. When the helper cannot
+  start (`:eacces` from antivirus or permissions, raised as `ErlangError`) or
+  exits without replying (its 5s timeout then closes an already-closed port,
+  raising `ArgumentError`), this returns `{:error, exception}`. Callers decide
+  how to log it: the discovery poll runs every couple of seconds.
+  """
+  @spec list_ports() :: {:ok, %{String.t() => map()}} | {:error, Exception.t()}
+  def list_ports do
+    {:ok, UART.enumerate()}
+  rescue
+    e in [ArgumentError, ErlangError] -> {:error, e}
   end
 
   defp ignored_port?(port) do
@@ -121,6 +149,8 @@ defmodule Trenino.Serial.Connection do
   @spec send_message(String.t(), Message.t()) :: :ok | {:error, term()}
   def send_message(port, message) do
     GenServer.call(__MODULE__, {:send_message, port, message})
+  catch
+    :exit, reason -> {:error, exit_reason(reason)}
   end
 
   @doc """
@@ -136,11 +166,14 @@ defmodule Trenino.Serial.Connection do
 
     * `{:ok, token}` - Port is now available for avrdude
     * `{:error, :upload_in_progress}` - Another upload is already in progress
+    * `{:error, reason}` - The connection manager did not answer (busy or restarting)
   """
   @spec request_upload_access(String.t()) ::
-          {:ok, String.t()} | {:error, :upload_in_progress}
+          {:ok, String.t()} | {:error, :upload_in_progress | term()}
   def request_upload_access(port) do
     GenServer.call(__MODULE__, {:request_upload_access, port})
+  catch
+    :exit, reason -> {:error, exit_reason(reason)}
   end
 
   @doc """
@@ -162,6 +195,12 @@ defmodule Trenino.Serial.Connection do
 
   @impl true
   def init(%State{} = state) do
+    # UART processes are linked so they die with this server and never keep a
+    # port open as orphans. Circuits.UART exits with :port_timed_out when its
+    # port program stops answering (flaky USB device); trapping exits turns
+    # that into a message instead of taking this server down with it. The
+    # :DOWN monitor handler does the state bookkeeping.
+    Process.flag(:trap_exit, true)
     schedule_discovery(1_000)
     {:ok, state}
   end
@@ -185,8 +224,7 @@ defmodule Trenino.Serial.Connection do
 
         case module.encode(message) do
           {:ok, encoded} ->
-            result = UART.write(pid, encoded)
-            {:reply, result, state}
+            {:reply, safe_write(pid, encoded), state}
 
           {:error, reason} ->
             {:reply, {:error, {:encode_failed, reason}}, state}
@@ -261,10 +299,9 @@ defmodule Trenino.Serial.Connection do
   @impl true
   def handle_cast(:scan, state) do
     # Clear failed ports so manual scan bypasses backoff
-    cleared_state = clear_failed_ports(state)
-    discover_new_ports(cleared_state)
+    updated_state = state |> clear_failed_ports() |> discover_new_ports()
     broadcast_scan_complete()
-    {:noreply, cleared_state}
+    {:noreply, updated_state}
   end
 
   @impl true
@@ -353,15 +390,20 @@ defmodule Trenino.Serial.Connection do
 
   @impl true
   def handle_info(:discover, %State{} = state) do
-    discover_new_ports(state)
-    schedule_discovery()
-    {:noreply, state}
+    updated_state = discover_new_ports(state)
+
+    # While the enumerator helper is failing, each attempt can block this
+    # GenServer for its 5s timeout, so poll much less often until it recovers.
+    if updated_state.enumerate_failing?,
+      do: schedule_discovery(@enumerate_failure_scan_interval_ms),
+      else: schedule_discovery()
+
+    {:noreply, updated_state}
   end
 
   @impl true
   def handle_info(:post_upload_scan, state) do
-    discover_new_ports(state)
-    {:noreply, state}
+    {:noreply, discover_new_ports(state)}
   end
 
   @impl true
@@ -388,6 +430,13 @@ defmodule Trenino.Serial.Connection do
     {:noreply, state}
   end
 
+  # Exit signals from linked UART processes. The :DOWN handler below updates
+  # the port state, so these only need to be consumed.
+  @impl true
+  def handle_info({:EXIT, _pid, _reason}, state) do
+    {:noreply, state}
+  end
+
   @impl true
   def handle_info({:DOWN, _ref, :process, pid, reason}, state) do
     case find_port_by_pid(state, pid) do
@@ -395,12 +444,15 @@ defmodule Trenino.Serial.Connection do
         {:noreply, state}
 
       port ->
-        Logger.warning("UART process for port #{port} died: #{inspect(reason)}")
+        if reason != :normal do
+          Logger.warning("UART process for port #{port} died: #{inspect(reason)}")
+        end
+
         # Mark as failed directly since the process is already dead
         updated_state =
           State.update(state, port, fn conn ->
             conn
-            |> DeviceConnection.set_error_reason("Connection lost unexpectedly")
+            |> set_lost_reason()
             |> DeviceConnection.mark_disconnecting()
             |> DeviceConnection.mark_failed()
           end)
@@ -443,6 +495,24 @@ defmodule Trenino.Serial.Connection do
     end
   end
 
+  # Keep the reason of a failure already being cleaned up (e.g. the open timed out).
+  defp set_lost_reason(%DeviceConnection{status: :disconnecting} = conn), do: conn
+
+  defp set_lost_reason(%DeviceConnection{} = conn),
+    do: DeviceConnection.set_error_reason(conn, "Connection lost unexpectedly")
+
+  # GenServer.call exits as {reason, {GenServer, :call, args}}; keep the reason.
+  defp exit_reason({reason, {GenServer, :call, _args}}), do: reason
+  defp exit_reason(reason), do: reason
+
+  defp safe_write(pid, encoded) do
+    UART.write(pid, encoded)
+  catch
+    :exit, reason ->
+      Logger.warning("Write to UART process failed: #{inspect(exit_reason(reason))}")
+      {:error, exit_reason(reason)}
+  end
+
   defp schedule_discovery do
     schedule_discovery(
       Application.get_env(:trenino, :serial_scan_interval_ms, @default_scan_interval_ms)
@@ -470,8 +540,28 @@ defmodule Trenino.Serial.Connection do
     )
   end
 
-  defp discover_new_ports(state) do
-    all_ports = Map.keys(UART.enumerate())
+  defp discover_new_ports(%State{} = state) do
+    case list_ports() do
+      {:ok, ports} ->
+        if state.enumerate_failing?, do: Logger.info("Serial port enumeration recovered")
+        connect_eligible_ports(Map.keys(ports), state)
+        %State{state | enumerate_failing?: false}
+
+      {:error, error} ->
+        # Environmental (the native helper cannot run). Warn once per failure
+        # streak rather than on every poll, and treat it as "no ports".
+        unless state.enumerate_failing? do
+          Logger.warning(
+            "Could not list serial ports, the serial helper failed: " <>
+              Exception.message(error)
+          )
+        end
+
+        %State{state | enumerate_failing?: true}
+    end
+  end
+
+  defp connect_eligible_ports(all_ports, state) do
     eligible_ports = Enum.filter(all_ports, &should_connect?(&1, state))
 
     # Scans run every few seconds; only log when there is something to connect.
@@ -541,7 +631,7 @@ defmodule Trenino.Serial.Connection do
           rx_framing_timeout: 1_000
         )
       catch
-        :exit, reason -> {:error, reason}
+        :exit, reason -> {:error, exit_reason(reason)}
       end
 
     case result do
@@ -580,7 +670,7 @@ defmodule Trenino.Serial.Connection do
             {:ok, identity}
           end
         catch
-          :exit, reason -> {:error, reason}
+          :exit, reason -> {:error, exit_reason(reason)}
         end
 
       GenServer.cast(__MODULE__, {:discovery_result, port, result})
@@ -622,17 +712,17 @@ defmodule Trenino.Serial.Connection do
   end
 
   # Safely stops a UART process, handling unresponsive or dead processes.
-  # May raise if the UART process is in a bad state - caller should handle.
+  # The process is stopped even after a clean close, so a failed port does not
+  # leave its UART process and port program running until the next retry.
   defp safe_stop_uart(pid) when is_pid(pid) do
     if Process.alive?(pid) do
       try do
-        case UART.close(pid) do
-          :ok -> :ok
-          {:error, _} -> force_stop(pid)
-        end
+        UART.close(pid)
       catch
-        :exit, _ -> force_stop(pid)
+        :exit, _ -> :ok
       end
+
+      force_stop(pid)
     else
       :ok
     end

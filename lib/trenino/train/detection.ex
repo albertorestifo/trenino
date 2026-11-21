@@ -8,6 +8,10 @@ defmodule Trenino.Train.Detection do
   - Match identifier to stored train configurations
   - Broadcast train change events via PubSub
 
+  Simulator requests run in a task under `Trenino.TaskSupervisor`, one at a time, so a
+  slow or hung simulator never blocks reads such as `get_active_train/0`. Results are
+  applied by the GenServer; results of a task cancelled by a connection change are dropped.
+
   ## Events
 
   Subscribers receive messages on "train:detection":
@@ -36,6 +40,14 @@ defmodule Trenino.Train.Detection do
 
     @type detection_error :: {:multiple_matches, [Train.Train.t()]} | nil
 
+    @typedoc """
+    Simulator work running in a task:
+    - `:detect` - regular poll or sync; asks Simulator.Connection for the client
+    - `:grace_detect` - sync during the grace period, using the grace client
+    - `:grace_poll` - grace period liveness check
+    """
+    @type task_kind :: :detect | :grace_detect | :grace_poll
+
     @type t :: %__MODULE__{
             active_train: Train.Train.t() | nil,
             current_identifier: String.t() | nil,
@@ -45,7 +57,10 @@ defmodule Trenino.Train.Detection do
             last_successful_contact: integer() | nil,
             last_client: Client.t() | nil,
             grace_client: Client.t() | nil,
-            grace_timer: reference() | nil
+            grace_timer: reference() | nil,
+            task: Task.t() | nil,
+            task_kind: task_kind() | nil,
+            sync_pending: boolean()
           }
 
     defstruct active_train: nil,
@@ -56,7 +71,10 @@ defmodule Trenino.Train.Detection do
               last_successful_contact: nil,
               last_client: nil,
               grace_client: nil,
-              grace_timer: nil
+              grace_timer: nil,
+              task: nil,
+              task_kind: nil,
+              sync_pending: false
   end
 
   # Client API
@@ -136,11 +154,16 @@ defmodule Trenino.Train.Detection do
   @impl true
   def handle_cast(:sync, %State{} = state) do
     # Clear current_identifier to force a full re-detection with database lookup
+    state = %{state | current_identifier: nil}
+
     new_state =
-      if in_grace_period?(state) do
-        do_detect_train(%{state | current_identifier: nil}, state.grace_client)
-      else
-        detect_train(%{state | current_identifier: nil})
+      case state do
+        # A running detection applies its result against the cleared identifier,
+        # so it already performs the full re-detection.
+        %State{task_kind: kind} when kind in [:detect, :grace_detect] -> state
+        # A grace poll doesn't detect; run the sync once it completes.
+        %State{task_kind: :grace_poll} -> %{state | sync_pending: true}
+        %State{task: nil} -> start_sync(state)
       end
 
     {:noreply, new_state}
@@ -160,7 +183,7 @@ defmodule Trenino.Train.Detection do
 
   @impl true
   def handle_info(:poll, %State{polling_enabled: true} = state) do
-    new_state = detect_train(state)
+    new_state = if state.task, do: state, else: start_task(state, :detect)
     schedule_poll()
     {:noreply, new_state}
   end
@@ -176,7 +199,7 @@ defmodule Trenino.Train.Detection do
         %State{} = state
       ) do
     Logger.info("Simulator connected, enabling train detection polling")
-    state = exit_grace_period(state)
+    state = state |> cancel_task() |> exit_grace_period()
     schedule_poll()
     new_state = %{state | polling_enabled: true}
     # Trigger immediate detection
@@ -187,6 +210,10 @@ defmodule Trenino.Train.Detection do
   @impl true
   def handle_info({:simulator_status_changed, %ConnectionState{}}, %State{} = state) do
     Logger.info("Simulator disconnected, disabling train detection polling")
+
+    # A grace poll in flight keeps running; anything else used the full-timeout
+    # client and may be hung on the simulator that just went away.
+    state = if state.task_kind == :grace_poll, do: state, else: cancel_task(state)
     new_state = %{state | polling_enabled: false}
 
     cond do
@@ -211,33 +238,119 @@ defmodule Trenino.Train.Detection do
   end
 
   @impl true
+  def handle_info(:grace_poll, %State{grace_client: %Client{}, task: %Task{}} = state) do
+    # Another simulator request is running; check again on the next tick
+    schedule_grace_poll()
+    {:noreply, state}
+  end
+
+  @impl true
   def handle_info(:grace_poll, %State{grace_client: %Client{}} = state) do
-    {:noreply, perform_grace_poll(state)}
+    {:noreply, start_task(state, :grace_poll)}
+  end
+
+  @impl true
+  def handle_info({ref, result}, %State{task: %Task{ref: ref}} = state) do
+    Process.demonitor(ref, [:flush])
+    kind = state.task_kind
+    state = %{state | task: nil, task_kind: nil}
+
+    {:noreply, state |> handle_task_result(kind, result) |> run_pending_sync()}
+  end
+
+  @impl true
+  def handle_info({:DOWN, ref, :process, _pid, reason}, %State{task: %Task{ref: ref}} = state) do
+    Logger.warning("Train detection task crashed: #{inspect(reason)}")
+    kind = state.task_kind
+    state = %{state | task: nil, task_kind: nil}
+
+    state =
+      if kind == :grace_poll and in_grace_period?(state),
+        do: handle_grace_poll_failure(state),
+        else: state
+
+    {:noreply, run_pending_sync(state)}
+  end
+
+  # Replies and exits of tasks that were cancelled or dropped by a state reset
+  @impl true
+  def handle_info({ref, _result}, %State{} = state) when is_reference(ref) do
+    {:noreply, state}
+  end
+
+  @impl true
+  def handle_info({:DOWN, _ref, :process, _pid, _reason}, %State{} = state) do
+    {:noreply, state}
   end
 
   # Private Functions
 
-  defp detect_train(%State{} = state) do
-    case get_simulator_status() do
-      %ConnectionState{status: :connected, client: %Client{} = client} ->
-        do_detect_train(%{state | last_client: client}, client)
+  # Simulator work runs in a task so a slow simulator never blocks reads.
+  defp start_task(%State{} = state, kind) do
+    work = task_work(state, kind)
+    task = Task.Supervisor.async_nolink(Trenino.TaskSupervisor, work)
+    %{state | task: task, task_kind: kind}
+  end
 
-      _ ->
-        state
+  defp task_work(%State{}, :detect) do
+    fn ->
+      case get_simulator_status() do
+        %ConnectionState{status: :connected, client: %Client{} = client} ->
+          {:detected, client, Identifier.derive_from_formation(client)}
+
+        _ ->
+          :not_connected
+      end
     end
   end
 
-  defp do_detect_train(%State{} = state, %Client{} = client) do
-    case Identifier.derive_from_formation(client) do
-      {:ok, identifier} ->
-        state = %{state | last_successful_contact: System.monotonic_time(:millisecond)}
-        handle_identifier_detected(state, identifier)
+  defp task_work(%State{grace_client: %Client{} = client}, :grace_detect) do
+    fn -> {:detected, nil, Identifier.derive_from_formation(client)} end
+  end
 
-      {:error, reason} ->
-        Logger.warning("Failed to detect train: #{inspect(reason)}")
-        broadcast({:detection_error, reason})
-        state
-    end
+  defp task_work(%State{grace_client: %Client{} = client}, :grace_poll) do
+    fn -> {:grace_polled, Identifier.derive_from_formation(client)} end
+  end
+
+  defp cancel_task(%State{task: nil} = state), do: %{state | sync_pending: false}
+
+  defp cancel_task(%State{task: %Task{} = task} = state) do
+    Task.shutdown(task, :brutal_kill)
+    %{state | task: nil, task_kind: nil, sync_pending: false}
+  end
+
+  defp start_sync(%State{} = state) do
+    if in_grace_period?(state),
+      do: start_task(state, :grace_detect),
+      else: start_task(state, :detect)
+  end
+
+  defp run_pending_sync(%State{sync_pending: true, task: nil} = state) do
+    start_sync(%{state | sync_pending: false})
+  end
+
+  defp run_pending_sync(%State{} = state), do: state
+
+  defp handle_task_result(%State{} = state, _kind, :not_connected), do: state
+
+  defp handle_task_result(%State{} = state, _kind, {:detected, client, result}) do
+    state = if client, do: %{state | last_client: client}, else: state
+    apply_detection(state, result)
+  end
+
+  defp handle_task_result(%State{} = state, :grace_poll, {:grace_polled, result}) do
+    if in_grace_period?(state), do: apply_grace_poll(state, result), else: state
+  end
+
+  defp apply_detection(%State{} = state, {:ok, identifier}) do
+    state = %{state | last_successful_contact: System.monotonic_time(:millisecond)}
+    handle_identifier_detected(state, identifier)
+  end
+
+  defp apply_detection(%State{} = state, {:error, reason}) do
+    Logger.warning("Failed to detect train: #{inspect(reason)}")
+    broadcast({:detection_error, reason})
+    state
   end
 
   defp handle_identifier_detected(%State{current_identifier: identifier} = state, identifier) do
@@ -302,16 +415,13 @@ defmodule Trenino.Train.Detection do
     end
   end
 
-  defp perform_grace_poll(%State{} = state) do
-    case Identifier.derive_from_formation(state.grace_client) do
-      {:ok, _identifier} ->
-        new_state = %{state | last_successful_contact: System.monotonic_time(:millisecond)}
-        schedule_grace_poll()
-        new_state
+  defp apply_grace_poll(%State{} = state, {:ok, _identifier}) do
+    schedule_grace_poll()
+    %{state | last_successful_contact: System.monotonic_time(:millisecond)}
+  end
 
-      {:error, _reason} ->
-        handle_grace_poll_failure(state)
-    end
+  defp apply_grace_poll(%State{} = state, {:error, _reason}) do
+    handle_grace_poll_failure(state)
   end
 
   defp handle_grace_poll_failure(%State{} = state) do
@@ -381,12 +491,11 @@ defmodule Trenino.Train.Detection do
     deactivate_train(state)
   end
 
-  defp exit_grace_period(%State{grace_timer: nil} = state) do
-    %{state | grace_client: nil, grace_timer: nil}
-  end
+  defp exit_grace_period(%State{} = state) do
+    state =
+      if state.task_kind in [:grace_poll, :grace_detect], do: cancel_task(state), else: state
 
-  defp exit_grace_period(%State{grace_timer: timer} = state) do
-    Process.cancel_timer(timer)
+    if state.grace_timer, do: Process.cancel_timer(state.grace_timer)
     %{state | grace_client: nil, grace_timer: nil}
   end
 

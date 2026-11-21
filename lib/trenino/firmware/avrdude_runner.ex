@@ -22,7 +22,8 @@ defmodule Trenino.Firmware.AvrdudeRunner do
   @doc """
   Runs avrdude with the given arguments and collects all output.
 
-  Returns `{:ok, output}` on exit status 0 or `{:error, output}` on non-zero exit.
+  Returns `{:ok, output}` on exit status 0 or `{:error, output}` on non-zero exit,
+  with a final `[avrdude exited with status N]` line appended on failure.
   Calls `progress_callback.(percent, message)` for each progress line detected.
   """
   @spec run(String.t(), [String.t()], progress_callback() | nil) ::
@@ -63,8 +64,10 @@ defmodule Trenino.Firmware.AvrdudeRunner do
       {^port, {:exit_status, 0}} ->
         {:ok, String.replace_invalid(acc)}
 
-      {^port, {:exit_status, _code}} ->
-        {:error, String.replace_invalid(acc)}
+      # The exit status is the only clue when avrdude dies before printing
+      # anything (e.g. a missing DLL on Windows exits with 0xC0000135).
+      {^port, {:exit_status, code}} ->
+        {:error, String.replace_invalid(acc) <> "\n[avrdude exited with status #{code}]"}
     after
       @collect_timeout_ms ->
         kill_os_process(os_pid)

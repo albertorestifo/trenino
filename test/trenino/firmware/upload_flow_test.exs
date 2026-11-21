@@ -203,5 +203,41 @@ defmodule Trenino.Firmware.UploadFlowTest do
       assert {:ok, %{duration_ms: duration_ms}} = Uploader.upload(port, "micro", hex_file)
       assert duration_ms >= 2_000
     end
+
+    test "ignores enumeration failures instead of treating every port as new", %{
+      hex_file: hex_file
+    } do
+      # The baseline enumerate fails (circuits_uart helper could not run), and
+      # so does one poll. COM7 is an unrelated port: without a baseline it must
+      # not be mistaken for the bootloader, so the original port is used.
+      {:ok, mock_uart} = Agent.start_link(fn -> :ok end)
+      {:ok, enum_agent} = Agent.start_link(fn -> 0 end)
+
+      on_exit(fn ->
+        if Process.alive?(mock_uart), do: Agent.stop(mock_uart)
+        if Process.alive?(enum_agent), do: Agent.stop(enum_agent)
+      end)
+
+      stub(Circuits.UART, :start_link, fn -> {:ok, mock_uart} end)
+      stub(Circuits.UART, :open, fn ^mock_uart, "COM5", [speed: 1200] -> :ok end)
+      stub(Circuits.UART, :close, fn ^mock_uart -> :ok end)
+
+      stub(Circuits.UART, :enumerate, fn ->
+        case Agent.get_and_update(enum_agent, fn n -> {n, n + 1} end) do
+          0 -> raise ArgumentError
+          1 -> :erlang.error(:eacces)
+          2 -> %{"COM7" => %{}}
+          _ -> %{"COM5" => %{}, "COM7" => %{}}
+        end
+      end)
+
+      stub(AvrdudeRunner, :run, fn _path, args, _cb ->
+        assert "COM5" in args
+        refute "COM7" in args
+        {:ok, AvrdudeFixtures.successful_upload()}
+      end)
+
+      assert {:ok, _} = Uploader.upload("COM5", "micro", hex_file)
+    end
   end
 end

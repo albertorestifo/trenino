@@ -138,12 +138,44 @@ defmodule Trenino.Firmware.Downloader do
             Logger.info("Successfully fetched manifest for #{tag_name}")
             manifest
 
+          {:error, {:invalid_manifest, :legacy_manifest}} ->
+            # Releases published before the manifest carried uploadConfig
+            # (v2.2.0 and earlier) cannot be flashed by this app. They are
+            # expected on every check, so this is not an error.
+            Logger.warning(
+              "Release #{tag_name} has a legacy manifest without uploadConfig - skipping"
+            )
+
+            nil
+
+          {:error, {:invalid_manifest, reason}} ->
+            # A published manifest that is genuinely broken is actionable for
+            # the firmware maintainer: report it once per release per check,
+            # with a compact summary so events group cleanly.
+            Logger.error(
+              "Invalid manifest structure for release #{tag_name}: #{describe_invalid(reason)}"
+            )
+
+            nil
+
           {:error, reason} ->
             Logger.warning("Failed to fetch manifest for #{tag_name}: #{inspect(reason)}")
             nil
         end
     end
   end
+
+  defp describe_invalid({:invalid_devices, devices}) do
+    envs =
+      Enum.map(devices, fn
+        %{"environment" => env} -> env
+        other -> inspect(other, limit: 5)
+      end)
+
+    "invalid devices #{Enum.join(envs, ", ")}"
+  end
+
+  defp describe_invalid(reason), do: inspect(reason)
 
   defp find_manifest_asset(assets) do
     Enum.find(assets, fn asset ->
@@ -170,6 +202,7 @@ defmodule Trenino.Firmware.Downloader do
     upload_config_required_fields = ["protocol", "mcu", "speed"]
 
     with :ok <- check_required_fields(data, required_fields),
+         :ok <- check_not_legacy(data["devices"], device_required_fields),
          :ok <-
            validate_devices(
              data["devices"],
@@ -178,20 +211,35 @@ defmodule Trenino.Firmware.Downloader do
            ) do
       {:ok, data}
     else
-      {:error, reason} ->
-        Logger.error("Invalid manifest structure: #{inspect(reason)}")
-        {:error, reason}
+      {:error, reason} -> {:error, {:invalid_manifest, reason}}
     end
   end
 
   defp validate_manifest(data) when is_binary(data) do
     case Jason.decode(data) do
       {:ok, decoded} -> validate_manifest(decoded)
-      {:error, _} -> {:error, :invalid_json}
+      {:error, _} -> {:error, {:invalid_manifest, :invalid_json}}
     end
   end
 
-  defp validate_manifest(_), do: {:error, :not_a_map}
+  defp validate_manifest(_), do: {:error, {:invalid_manifest, :not_a_map}}
+
+  # A legacy manifest is otherwise well formed but predates uploadConfig:
+  # no device carries it at all. A manifest where only some devices lack it
+  # is broken, not legacy, and falls through to validate_devices/3.
+  defp check_not_legacy([_ | _] = devices, device_required_fields) do
+    base_fields = device_required_fields -- ["uploadConfig"]
+
+    legacy? =
+      Enum.all?(devices, fn device ->
+        is_map(device) and not Map.has_key?(device, "uploadConfig") and
+          Enum.all?(base_fields, &Map.has_key?(device, &1))
+      end)
+
+    if legacy?, do: {:error, :legacy_manifest}, else: :ok
+  end
+
+  defp check_not_legacy(_devices, _fields), do: :ok
 
   defp check_required_fields(data, fields) do
     missing = Enum.filter(fields, fn field -> not Map.has_key?(data, field) end)

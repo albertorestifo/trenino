@@ -7,6 +7,7 @@ defmodule Trenino.Settings do
   """
 
   alias Trenino.Repo
+  alias Trenino.SentryFilter
   alias Trenino.Settings.Setting
   alias Trenino.Settings.Simulator
 
@@ -76,7 +77,11 @@ defmodule Trenino.Settings do
   """
   @spec sentry_before_send(event) :: event | false when event: term()
   def sentry_before_send(event) do
-    if error_reporting?(), do: event, else: false
+    cond do
+      SentryFilter.drop?(event) -> false
+      error_reporting?() -> event
+      true -> false
+    end
   rescue
     _ -> false
   catch

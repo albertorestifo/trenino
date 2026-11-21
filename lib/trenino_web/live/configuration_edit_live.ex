@@ -429,11 +429,20 @@ defmodule TreninoWeb.ConfigurationEditLive do
 
       # Send the command to the device
       value = if new_state, do: :high, else: :low
-      Hardware.set_output(socket.assigns.active_port, output.pin, value)
 
-      # Update the state
-      output_states = Map.put(socket.assigns.output_states, output_id, new_state)
-      {:noreply, assign(socket, :output_states, output_states)}
+      case Hardware.set_output(socket.assigns.active_port, output.pin, value) do
+        :ok ->
+          output_states = Map.put(socket.assigns.output_states, output_id, new_state)
+          {:noreply, assign(socket, :output_states, output_states)}
+
+        {:error, _reason} ->
+          {:noreply,
+           put_flash(
+             socket,
+             :error,
+             "The device did not respond. Check that it is still connected, then try again."
+           )}
+      end
     else
       {:noreply, socket}
     end

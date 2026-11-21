@@ -2,6 +2,7 @@ defmodule Trenino.Train.DetectionTest do
   use Trenino.DataCase, async: false
 
   alias Trenino.Simulator.Client
+  alias Trenino.Simulator.Connection, as: SimulatorConnection
   alias Trenino.Simulator.ConnectionState
   alias Trenino.Train, as: TrainContext
   alias Trenino.Train.Detection
@@ -128,6 +129,151 @@ defmodule Trenino.Train.DetectionTest do
 
     test "returns not_found for unknown identifier" do
       assert {:error, :not_found} = TrainContext.get_train_by_identifier("Unknown_Train_")
+    end
+  end
+
+  describe "reads while the simulator is slow" do
+    setup do
+      {:ok, train} =
+        TrainContext.create_train(%{
+          name: "Class 66",
+          identifiers: [%{identifier: "BR_Class_66"}]
+        })
+
+      Detection.subscribe()
+
+      # Detection only polls when Simulator.Connection is registered, and it isn't
+      # started in tests. Stand in for it so the regular poll path runs.
+      true = Process.register(self(), SimulatorConnection)
+      Mimic.allow(SimulatorConnection, self(), Process.whereis(Detection))
+      client = Client.new("http://test", "key")
+
+      stub(SimulatorConnection, :get_status, fn ->
+        %ConnectionState{status: :connected, client: client}
+      end)
+
+      %{train: train, client: client}
+    end
+
+    # Blocks every formation request until the test sends :release to the task.
+    defp stub_hung_simulator(result) do
+      test_pid = self()
+
+      stub(Identifier, :derive_from_formation, fn _client ->
+        send(test_pid, {:simulator_request, self()})
+
+        receive do
+          :release -> result
+        end
+      end)
+    end
+
+    test "get_active_train answers while a poll is waiting on the simulator", %{
+      train: train,
+      client: client
+    } do
+      stub_hung_simulator({:ok, "BR_Class_66"})
+
+      send(
+        Process.whereis(Detection),
+        {:simulator_status_changed, %ConnectionState{status: :connected, client: client}}
+      )
+
+      assert_receive {:simulator_request, request_pid}
+
+      assert GenServer.call(Detection, :get_active_train, 100) == nil
+      assert GenServer.call(Detection, :get_current_identifier, 100) == nil
+      assert %State{polling_enabled: true} = GenServer.call(Detection, :get_state, 100)
+
+      send(request_pid, :release)
+
+      assert_receive {:train_changed, %{id: train_id}}
+      assert train_id == train.id
+      assert Detection.get_active_train().id == train.id
+      assert Detection.get_current_identifier() == "BR_Class_66"
+    end
+
+    test "runs one formation request at a time", %{client: client} do
+      stub_hung_simulator({:ok, "BR_Class_66"})
+      detection_pid = Process.whereis(Detection)
+
+      send(
+        detection_pid,
+        {:simulator_status_changed, %ConnectionState{status: :connected, client: client}}
+      )
+
+      assert_receive {:simulator_request, request_pid}
+
+      send(detection_pid, :poll)
+      Detection.sync()
+      # The call is processed after the poll and the sync, so they had their chance.
+      _ = Detection.get_state()
+
+      refute_received {:simulator_request, _}
+
+      send(request_pid, :release)
+      assert_receive {:train_detected, %{identifier: "BR_Class_66"}}
+    end
+
+    test "drops a pending result when the simulator disconnects", %{client: client} do
+      stub_hung_simulator({:ok, "BR_Class_66"})
+      detection_pid = Process.whereis(Detection)
+
+      send(
+        detection_pid,
+        {:simulator_status_changed, %ConnectionState{status: :connected, client: client}}
+      )
+
+      assert_receive {:simulator_request, request_pid}
+      ref = Process.monitor(request_pid)
+
+      send(detection_pid, {:simulator_status_changed, %ConnectionState{status: :disconnected}})
+
+      assert_receive {:train_changed, nil}
+      assert_receive {:DOWN, ^ref, :process, ^request_pid, _reason}
+
+      state = Detection.get_state()
+      assert state.active_train == nil
+      assert state.current_identifier == nil
+      refute_received {:train_detected, _}
+    end
+
+    test "get_active_train answers while a grace poll is waiting on the simulator", %{
+      train: train,
+      client: client
+    } do
+      detection_pid = Process.whereis(Detection)
+
+      :sys.replace_state(detection_pid, fn _state ->
+        %State{
+          active_train: train,
+          current_identifier: "BR_Class_66",
+          polling_enabled: true,
+          last_successful_contact: System.monotonic_time(:millisecond),
+          last_client: client
+        }
+      end)
+
+      stub_hung_simulator({:ok, "BR_Class_66"})
+
+      send(detection_pid, {:simulator_status_changed, %ConnectionState{status: :disconnected}})
+
+      assert_receive {:simulator_request, request_pid}, 1_000
+      assert GenServer.call(Detection, :get_active_train, 100).id == train.id
+
+      test_pid = self()
+
+      stub(Identifier, :derive_from_formation, fn _client ->
+        send(test_pid, :grace_polled)
+        {:ok, "BR_Class_66"}
+      end)
+
+      send(request_pid, :release)
+
+      # Grace polling continues after the slow request completes
+      assert_receive :grace_polled, 1_000
+      assert Detection.get_active_train().id == train.id
+      refute_received {:train_changed, nil}
     end
   end
 
