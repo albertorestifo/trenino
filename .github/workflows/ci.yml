@@ -2,12 +2,19 @@ name: CI
 
 on:
   push:
-    branches: [master, main]
+    branches: [master]
   pull_request:
-    branches: [master, main]
+    branches: [master]
+  workflow_dispatch:
 
 permissions:
   contents: read
+
+# A new push to a PR cancels its previous run. Runs on master are never
+# cancelled, so every merge gets a result.
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   MIX_ENV: test
@@ -59,8 +66,38 @@ jobs:
           test "$(jq '[.bundle.externalBin[], .bundle.resources[]] | map(select(test("virtual_joystick|vJoy|THIRD_PARTY"))) | length' tauri/src-tauri/tauri.conf.json)" -eq 0
           test "$(jq '[.bundle.externalBin[], .bundle.resources[]] | map(select(test("virtual_joystick|vJoy|THIRD_PARTY"))) | length' tauri/src-tauri/tauri.windows.conf.json)" -ge 6
 
+  # The Windows package job takes ~25 minutes and only exercises packaging, so
+  # PRs run it only when packaging inputs change. Pushes to master skip it: the
+  # PR already ran it, and the nightly build packages master every day.
+  changes:
+    name: Detect packaging changes
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      packaging: ${{ steps.filter.outputs.packaging }}
+    steps:
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            packaging:
+              - 'tauri/**'
+              - 'scripts/**'
+              - '.github/workflows/ci.yml'
+              - '.github/actions/**'
+              - 'mix.exs'
+              - 'mix.lock'
+              - 'config/**'
+
   windows-package:
     name: Windows package (no driver mutation)
+    needs: [changes]
+    if: |
+      !cancelled() &&
+      (github.event_name == 'workflow_dispatch' || needs.changes.outputs.packaging == 'true')
     runs-on: windows-latest
 
     steps:
@@ -80,10 +117,20 @@ jobs:
         with:
           targets: x86_64-pc-windows-msvc
 
-      - name: Set up Node.js for signing regression tests
+      - name: Cache Rust
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            tauri/src-tauri -> target
+            tauri/keystroke -> target
+            tauri/virtual_joystick -> target
+
+      - name: Set up Node.js
         uses: actions/setup-node@v7
         with:
           node-version: 20
+          cache: 'npm'
+          cache-dependency-path: tauri/package-lock.json
 
       - name: Install pinned Tauri CLI dependencies
         working-directory: tauri
@@ -93,10 +140,11 @@ jobs:
         shell: pwsh
         run: ./scripts/test-updater-signing.ps1
 
-      - name: Install Tauri CLI and stage existing Windows prerequisite
+      # The Tauri CLI comes from tauri/package-lock.json (npm ci above), so it
+      # is not compiled from source here.
+      - name: Stage existing Windows prerequisites
         shell: pwsh
         run: |
-          cargo install tauri-cli --version "^2.0" --locked
           choco install innoextract --version 1.9 -y --no-progress
           Invoke-WebRequest -UseBasicParsing -Uri https://aka.ms/vs/17/release/vc_redist.x64.exe -OutFile tauri/src-tauri/resources/vc_redist.x64.exe
 
@@ -136,12 +184,10 @@ jobs:
           if ($signature.SignerCertificate.Subject -notmatch 'BRUNNER') { throw "Unexpected vJoy signer: $($signature.SignerCertificate.Subject)" }
           Write-Host "Verified vJoy signer: $($signature.SignerCertificate.Subject)"
 
-      - name: Build and test native crates
+      # build-desktop.sh builds the release sidecars; only the tests run here.
+      - name: Test native crates
         shell: pwsh
-        run: |
-          cargo test --manifest-path tauri/virtual_joystick/Cargo.toml
-          cargo build --release --manifest-path tauri/virtual_joystick/Cargo.toml --target x86_64-pc-windows-msvc
-          cargo build --release --manifest-path tauri/keystroke/Cargo.toml --target x86_64-pc-windows-msvc
+        run: cargo test --manifest-path tauri/virtual_joystick/Cargo.toml
 
       - name: Build Burrito and Tauri package
         env:

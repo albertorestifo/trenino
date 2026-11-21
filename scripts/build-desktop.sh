@@ -149,8 +149,15 @@ fi
 
 # Step 8: Build Tauri application
 echo "==> Building Tauri application..."
-cd "$TAURI_DIR"
-cargo tauri build
+# Prefer the CLI pinned in tauri/package-lock.json (npm ci in tauri/), and
+# fall back to a globally installed `cargo tauri`.
+if [ -x "$PROJECT_DIR/tauri/node_modules/.bin/tauri" ]; then
+    cd "$PROJECT_DIR/tauri"
+    npx tauri build
+else
+    cd "$TAURI_DIR"
+    cargo tauri build
+fi
 
 echo "==> Build complete!"
 echo "Output: $TAURI_DIR/target/release/bundle/"

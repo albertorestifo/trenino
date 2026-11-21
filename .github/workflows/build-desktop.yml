@@ -1,0 +1,294 @@
+name: Build Desktop App
+
+# Shared by nightly.yml and release.yml. Each platform builds the Burrito
+# backend, the native sidecars and the Tauri bundle in a single job.
+#
+# Callers set the permissions: release needs contents: write to upload assets.
+on:
+  workflow_call:
+    inputs:
+      channel:
+        description: "nightly or release"
+        required: true
+        type: string
+      version:
+        description: "Release version without the v prefix (release only)"
+        required: false
+        type: string
+        default: ""
+      release_id:
+        description: "Id of the GitHub release to upload into (release events only)"
+        required: false
+        type: string
+        default: ""
+
+env:
+  ELIXIR_VERSION: "1.20"
+  # Pin to exact version available on Beam Machine (Burrito's ERTS source).
+  # Beam Machine may lag behind the latest OTP patch releases.
+  OTP_VERSION: "29.1"
+  MIX_ENV: prod
+  AVRDUDE_VERSION: "8.1"
+  SENTRY_ENVIRONMENT: ${{ inputs.channel == 'release' && 'production' || 'nightly' }}
+
+jobs:
+  build:
+    name: Build (${{ matrix.target }})
+    # SENTRY_DSN is stored as a secret of the Release environment, not the repository.
+    environment: Release
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-2022
+            target: windows_x86_64
+            burrito_binary: trenino_desktop_windows_x86_64.exe
+            tauri_target: x86_64-pc-windows-msvc
+            ext: ".exe"
+            tauri_args: ""
+            nightly_artifact: Trenino-nightly-windows-x86_64
+          - os: ubuntu-22.04
+            target: linux_x86_64
+            burrito_binary: trenino_desktop_linux_x86_64
+            tauri_target: x86_64-unknown-linux-gnu
+            ext: ""
+            tauri_args: "--bundles appimage"
+            nightly_artifact: Trenino-nightly-linux-x86_64
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Validate inputs
+        shell: bash
+        env:
+          CHANNEL: ${{ inputs.channel }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          case "$CHANNEL" in
+            nightly) ;;
+            release) test -n "$VERSION" || { echo "::error::release builds need a version"; exit 1; } ;;
+            *) echo "::error::unknown channel '$CHANNEL'"; exit 1 ;;
+          esac
+
+      # ---- Elixir backend (Burrito) ----
+
+      - name: Setup Elixir
+        uses: erlef/setup-beam@v1
+        with:
+          elixir-version: ${{ env.ELIXIR_VERSION }}
+          otp-version: ${{ env.OTP_VERSION }}
+          version-type: strict
+
+      - name: Install Windows build dependencies
+        if: runner.os == 'Windows'
+        run: choco install 7zip -y
+
+      - name: Set up Burrito prerequisites
+        uses: ./.github/actions/setup-burrito
+
+      - name: Cache Mix dependencies
+        uses: actions/cache@v6
+        with:
+          path: deps
+          key: ${{ runner.os }}-deps-${{ hashFiles('**/mix.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-deps-
+
+      - name: Install dependencies
+        run: mix deps.get --only prod
+
+      - name: Build assets
+        run: mix assets.deploy
+
+      - name: Workaround circuits_uart Makefile location for Burrito
+        if: runner.os == 'Linux'
+        run: ln -sf src/Makefile deps/circuits_uart/Makefile
+
+      # Sentry is configured at build time (config/prod.exs): `mix release` writes
+      # SENTRY_DSN into the release's sys.config. This step compiles too, so it gets
+      # the same env to keep the config identical and avoid a second full compile.
+      # Source context is only enrichment, so a failure here must not block a release.
+      - name: Package source code for Sentry
+        continue-on-error: true
+        run: mix sentry.package_source_code
+        env:
+          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+
+      - name: Build Elixir release
+        run: mix release trenino_desktop
+        env:
+          BURRITO_TARGET: ${{ matrix.target }}
+          SENTRY_DSN: ${{ secrets.SENTRY_DSN }}
+
+      # ---- Native sidecars ----
+
+      - name: Install Linux system dependencies
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            build-essential \
+            libssl-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            libxdo-dev
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.tauri_target }}
+
+      - name: Cache Rust
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            tauri/src-tauri -> target
+            tauri/keystroke -> target
+            tauri/virtual_joystick -> target
+
+      - name: Build keystroke utility
+        run: cargo build --release --manifest-path tauri/keystroke/Cargo.toml
+
+      # Only tauri.windows.conf.json bundles the virtual joystick sidecar.
+      - name: Build virtual joystick utility
+        if: runner.os == 'Windows'
+        run: cargo build --release --manifest-path tauri/virtual_joystick/Cargo.toml
+
+      - name: Stage backend and sidecar binaries
+        shell: bash
+        env:
+          BURRITO_BINARY: ${{ matrix.burrito_binary }}
+          TRIPLE: ${{ matrix.tauri_target }}
+          EXT: ${{ matrix.ext }}
+        run: |
+          set -euo pipefail
+          bin=tauri/src-tauri/binaries
+          mkdir -p "$bin"
+          cp "burrito_out/$BURRITO_BINARY" "$bin/trenino_backend-$TRIPLE$EXT"
+          cp "tauri/keystroke/target/release/keystroke$EXT" "$bin/keystroke-$TRIPLE$EXT"
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            cp "tauri/virtual_joystick/target/release/virtual_joystick$EXT" "$bin/virtual_joystick-$TRIPLE$EXT"
+          fi
+          chmod +x "$bin"/*
+          ls -la "$bin"
+
+      # ---- Third-party bundle inputs ----
+
+      - name: Stage verified avrdude (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./scripts/download-avrdude.ps1 -Version $env:AVRDUDE_VERSION -ExpectedSha256 e4d571d81fee3387d51bfdedd0b6565e4c201e974101cac2caec7adfd6201da3 -DestinationDirectory tauri/src-tauri/binaries -TargetTriple ${{ matrix.tauri_target }}
+
+      - name: Stage verified avrdude (Linux)
+        if: runner.os == 'Linux'
+        env:
+          TRIPLE: ${{ matrix.tauri_target }}
+          SHA256: c751c88b1c0b886834d85cd4b19f100cc3415c896ab9f98cf7e2955edbcd678f
+        run: |
+          set -euo pipefail
+          work="$RUNNER_TEMP/avrdude"
+          mkdir -p "$work"
+          archive="$work/avrdude.tar.gz"
+          curl -fsSL -o "$archive" "https://github.com/avrdudes/avrdude/releases/download/v$AVRDUDE_VERSION/avrdude_v${AVRDUDE_VERSION}_Linux_64bit.tar.gz"
+          echo "$SHA256  $archive" | sha256sum -c -
+          tar xzf "$archive" -C "$work"
+          avrdude=$(find "$work" -name avrdude -type f | head -1)
+          conf=$(find "$work" -name avrdude.conf -type f | head -1)
+          test -n "$avrdude" && test -n "$conf"
+          install -m 755 "$avrdude" "tauri/src-tauri/binaries/avrdude-$TRIPLE"
+          cp "$conf" tauri/src-tauri/binaries/avrdude.conf
+
+      - name: Stage VC++ Redistributable and vJoy resources
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force tauri/src-tauri/resources | Out-Null
+          Invoke-WebRequest -UseBasicParsing -Uri https://aka.ms/vs/17/release/vc_redist.x64.exe -OutFile tauri/src-tauri/resources/vc_redist.x64.exe
+          choco install innoextract --version 1.9 -y --no-progress
+          ./scripts/stage-vjoy-resources.ps1
+
+      - name: Create placeholder for Windows-only resources
+        if: runner.os == 'Linux'
+        run: |
+          mkdir -p tauri/src-tauri/resources
+          touch tauri/src-tauri/resources/vc_redist.x64.exe
+
+      # ---- Tauri bundle ----
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 20
+          cache: 'npm'
+          cache-dependency-path: tauri/package-lock.json
+
+      - name: Install frontend dependencies
+        working-directory: tauri
+        run: npm ci
+
+      - name: Build Tauri app (nightly)
+        if: inputs.channel == 'nightly'
+        uses: tauri-apps/tauri-action@v1
+        with:
+          projectPath: tauri
+          tauriScript: npx tauri
+          args: ${{ matrix.tauri_args }}
+
+      - name: Build, sign and publish Tauri app (release)
+        if: inputs.channel == 'release'
+        uses: tauri-apps/tauri-action@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          projectPath: tauri
+          tauriScript: npx tauri
+          args: ${{ matrix.tauri_args }} --features desktop-updater --config src-tauri/tauri.updater.conf.json
+          uploadUpdaterJson: true
+          updaterJsonPreferNsis: true
+          # On a release event, upload into that release by id so tauri-action
+          # leaves its title and notes alone. Without an id it looks the release
+          # up by tag and overwrites both with the values below, which only
+          # apply to manual runs that have no release yet.
+          releaseId: ${{ inputs.release_id }}
+          tagName: v${{ inputs.version }}
+          releaseName: "trenino v${{ inputs.version }}"
+          releaseBody: "See the release notes for details."
+          releaseDraft: false
+          prerelease: false
+
+      # ---- Nightly downloads ----
+
+      - name: Prepare clearly named Windows downloads
+        if: inputs.channel == 'nightly' && runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force "nightly-artifacts" | Out-Null
+          $nsis = Get-ChildItem "tauri/src-tauri/target/release/bundle/nsis" -Filter "*.exe" -File | Select-Object -First 1
+          $msi = Get-ChildItem "tauri/src-tauri/target/release/bundle/msi" -Filter "*.msi" -File | Select-Object -First 1
+          if (-not $nsis) { throw "The Windows NSIS installer was not produced." }
+          if (-not $msi) { throw "The Windows MSI installer was not produced." }
+          Copy-Item -LiteralPath $nsis.FullName -Destination "nightly-artifacts/Trenino-nightly-windows-x86_64-setup.exe"
+          Copy-Item -LiteralPath $msi.FullName -Destination "nightly-artifacts/Trenino-nightly-windows-x86_64.msi"
+
+      - name: Prepare clearly named Linux download
+        if: inputs.channel == 'nightly' && runner.os == 'Linux'
+        run: |
+          mkdir -p nightly-artifacts
+          appimage=$(find tauri/src-tauri/target/release/bundle/appimage -maxdepth 1 -type f -name '*.AppImage' -print -quit)
+          test -n "$appimage"
+          cp "$appimage" nightly-artifacts/Trenino-nightly-linux-x86_64.AppImage
+
+      - name: Upload nightly installers
+        if: inputs.channel == 'nightly'
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ matrix.nightly_artifact }}
+          path: nightly-artifacts/*
+          if-no-files-found: error
+          retention-days: 7

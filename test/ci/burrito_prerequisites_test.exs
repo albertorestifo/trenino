@@ -1,7 +1,7 @@
 defmodule Trenino.CI.BurritoPrerequisitesTest do
   use ExUnit.Case, async: true
 
-  @workflows ~w(ci nightly release)
+  @workflows ~w(ci build-desktop)
 
   test "all Burrito workflows use the shared prerequisite action" do
     for workflow <- @workflows do

@@ -19,11 +19,6 @@ jobs:
       actions: read
 
     steps:
-      - name: Harden Runner
-        uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
-        with:
-          egress-policy: audit
-
       - name: Checkout repository with full history
         uses: actions/checkout@v7
         with:
@@ -132,6 +127,10 @@ jobs:
         uses: anthropics/claude-code-action@acfe7992852970efb4fee683d63d628e3e52df67 # v1.0.286
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          # The last two scheduled runs failed in under a second with no
+          # visible cause (the action hides Claude's output by default). This
+          # only runs on master with no untrusted input, so show the output.
+          show_full_output: true
 
           # Configure allowed tools for documentation work
           claude_args: '--allowed-tools Bash Read Write Edit Glob Grep'

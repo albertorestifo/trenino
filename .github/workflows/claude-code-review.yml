@@ -1,8 +1,10 @@
 name: Claude Code Review
 
+# Reviews once when a PR opens or leaves draft, not on every push. Ask for a
+# fresh review with an "@claude review" comment (handled by claude.yml).
 on:
   pull_request:
-    types: [opened, synchronize, ready_for_review, reopened]
+    types: [opened, ready_for_review, reopened]
 
 jobs:
   claude-review:
@@ -28,11 +30,6 @@ jobs:
       id-token: write
 
     steps:
-      - name: Harden Runner
-        uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
-        with:
-          egress-policy: audit
-
       - name: Checkout repository
         uses: actions/checkout@v7
         with:

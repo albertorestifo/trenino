@@ -1,21 +1,29 @@
-# To get started with Dependabot version updates, you'll need to specify which
-# package ecosystems to update and where the package manifests are located.
-# Please see the documentation for all configuration options:
+# Dependabot version updates, grouped so each ecosystem opens one PR a week
+# instead of one PR (and one CI run) per dependency.
 # https://docs.github.com/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot.yml-file
 
 version: 2
 updates:
-  - package-ecosystem: "mix" # See documentation for possible values
-    directory: "/" # Location of package manifests
+  - package-ecosystem: "mix"
+    directory: "/"
     schedule:
       interval: "weekly"
+    groups:
+      mix:
+        patterns: ["*"]
 
   - package-ecosystem: "cargo"
     directory: "/tauri/src-tauri"
     schedule:
       interval: "weekly"
+    groups:
+      cargo:
+        patterns: ["*"]
 
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
       interval: "weekly"
+    groups:
+      github-actions:
+        patterns: ["*"]
