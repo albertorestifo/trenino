@@ -94,8 +94,8 @@ defmodule Trenino.Firmware.Downloader do
     tag_name = release["tag_name"]
 
     case fetch_and_parse_manifest(tag_name, assets) do
+      # fetch_and_parse_manifest/2 already logged why
       nil ->
-        Logger.warning("Release #{tag_name} has no valid manifest - skipping")
         nil
 
       manifest_data ->
@@ -168,7 +168,7 @@ defmodule Trenino.Firmware.Downloader do
   defp describe_invalid({:invalid_devices, devices}) do
     envs =
       Enum.map(devices, fn
-        %{"environment" => env} -> env
+        %{"environment" => env} when is_binary(env) -> env
         other -> inspect(other, limit: 5)
       end)
 

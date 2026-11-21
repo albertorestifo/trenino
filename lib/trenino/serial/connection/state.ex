@@ -9,14 +9,26 @@ defmodule Trenino.Serial.Connection.State do
 
   alias Trenino.Serial.Connection.DeviceConnection
 
+  @typedoc """
+  The process holding the upload token for `port`: Connection monitors `pid`
+  (`monitor_ref`) and `request_ref` identifies the request that granted it.
+  """
+  @type upload_owner :: %{
+          port: String.t(),
+          pid: pid(),
+          monitor_ref: reference(),
+          request_ref: reference()
+        }
+
   @type t :: %__MODULE__{
           ports: %{String.t() => DeviceConnection.t()},
-          enumerate_failing?: boolean()
+          enumerate_failing?: boolean(),
+          upload_owner: upload_owner() | nil
         }
 
   # enumerate_failing? is true while serial port enumeration keeps failing, so
   # the failure is logged once per streak instead of on every scan.
-  defstruct ports: %{}, enumerate_failing?: false
+  defstruct ports: %{}, enumerate_failing?: false, upload_owner: nil
 
   @doc "Get a connection by port name"
   @spec get(t(), String.t()) :: DeviceConnection.t() | nil

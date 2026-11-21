@@ -211,6 +211,12 @@ defmodule Trenino.Train.Detection do
   def handle_info({:simulator_status_changed, %ConnectionState{}}, %State{} = state) do
     Logger.info("Simulator disconnected, disabling train detection polling")
 
+    # A detection cancelled here may have absorbed a sync (the sync cleared
+    # current_identifier while a train was active); redo it in the grace period.
+    sync_lost? =
+      state.task_kind in [:detect, :grace_detect] and state.current_identifier == nil and
+        state.active_train != nil
+
     # A grace poll in flight keeps running; anything else used the full-timeout
     # client and may be hung on the simulator that just went away.
     state = if state.task_kind == :grace_poll, do: state, else: cancel_task(state)
@@ -223,7 +229,14 @@ defmodule Trenino.Train.Detection do
 
       new_state.active_train != nil ->
         # Active train exists — enter grace period instead of deactivating
-        {:noreply, enter_grace_period(new_state)}
+        grace_state = enter_grace_period(new_state)
+
+        grace_state =
+          if sync_lost? and in_grace_period?(grace_state),
+            do: run_pending_sync(%{grace_state | sync_pending: true}),
+            else: grace_state
+
+        {:noreply, grace_state}
 
       true ->
         # No active train — deactivate as before
@@ -239,9 +252,9 @@ defmodule Trenino.Train.Detection do
 
   @impl true
   def handle_info(:grace_poll, %State{grace_client: %Client{}, task: %Task{}} = state) do
-    # Another simulator request is running; check again on the next tick
-    schedule_grace_poll()
-    {:noreply, state}
+    # Another simulator request is running: no contact this tick. Check again
+    # on the next one, unless the grace period has run out meanwhile.
+    {:noreply, handle_grace_poll_failure(state)}
   end
 
   @impl true

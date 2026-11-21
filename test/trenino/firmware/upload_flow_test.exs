@@ -239,5 +239,41 @@ defmodule Trenino.Firmware.UploadFlowTest do
 
       assert {:ok, _} = Uploader.upload("COM5", "micro", hex_file)
     end
+
+    test "finds a bootloader on a new port when the baseline enumerate failed", %{
+      hex_file: hex_file
+    } do
+      # Windows: the baseline fails, the first successful poll shows COM5
+      # gone (COM7 is unrelated and already present), then the bootloader
+      # appears on COM6. That first poll becomes the baseline.
+      {:ok, mock_uart} = Agent.start_link(fn -> :ok end)
+      {:ok, enum_agent} = Agent.start_link(fn -> 0 end)
+
+      on_exit(fn ->
+        if Process.alive?(mock_uart), do: Agent.stop(mock_uart)
+        if Process.alive?(enum_agent), do: Agent.stop(enum_agent)
+      end)
+
+      stub(Circuits.UART, :start_link, fn -> {:ok, mock_uart} end)
+      stub(Circuits.UART, :open, fn ^mock_uart, "COM5", [speed: 1200] -> :ok end)
+      stub(Circuits.UART, :close, fn ^mock_uart -> :ok end)
+
+      stub(Circuits.UART, :enumerate, fn ->
+        case Agent.get_and_update(enum_agent, fn n -> {n, n + 1} end) do
+          0 -> raise ArgumentError
+          1 -> %{"COM7" => %{}}
+          2 -> %{"COM7" => %{}}
+          _ -> %{"COM6" => %{}, "COM7" => %{}}
+        end
+      end)
+
+      stub(AvrdudeRunner, :run, fn _path, args, _cb ->
+        assert "COM6" in args
+        refute "COM7" in args
+        {:ok, AvrdudeFixtures.successful_upload()}
+      end)
+
+      assert {:ok, _} = Uploader.upload("COM5", "micro", hex_file)
+    end
   end
 end

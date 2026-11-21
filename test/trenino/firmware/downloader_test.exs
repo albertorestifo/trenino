@@ -625,7 +625,25 @@ defmodule Trenino.Firmware.DownloaderTest do
         end)
 
       assert warning_log =~ "Release v2.2.0 has a legacy manifest without uploadConfig"
+      refute warning_log =~ "has no valid manifest"
       assert {:error, :not_found} = Firmware.get_release_by_tag("v2.2.0")
+    end
+
+    test "summarises a broken device whose environment is not a string" do
+      manifest =
+        build_test_manifest([
+          build_device("uno", "Arduino Uno", "trenino-uno.hex"),
+          %{"environment" => %{"bad" => true}, "displayName" => "Odd", "firmwareFile" => "x.hex"}
+        ])
+
+      stub_releases(single_release("v9.1.0", []), %{"v9.1.0" => manifest})
+
+      log =
+        capture_log([level: :error], fn ->
+          assert {:ok, []} = Downloader.check_for_updates()
+        end)
+
+      assert log =~ "Invalid manifest structure for release v9.1.0"
     end
 
     test "logs a broken manifest once per check with a compact summary" do

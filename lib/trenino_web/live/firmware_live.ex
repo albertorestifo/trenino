@@ -38,6 +38,8 @@ defmodule TreninoWeb.FirmwareLive do
      |> assign(:upload_error, nil)
      |> assign(:show_older_releases, false)
      |> assign(:serial_ports, [])
+     |> assign(:listing_ports, false)
+     |> assign(:relist_ports, false)
      |> then(fn socket ->
        if connected?(socket) do
          Firmware.subscribe_uploads()
@@ -51,18 +53,31 @@ defmodule TreninoWeb.FirmwareLive do
   # Listing ports runs the circuits_uart helper, which can block for up to 5s
   # when it fails, so it runs in a task and never in render/1. The nav hook
   # already subscribes this LiveView to device updates, which re-list ports.
+  # Only one listing runs at a time; a refresh requested meanwhile re-lists
+  # once when it finishes.
+  defp refresh_serial_ports(%{assigns: %{listing_ports: true}} = socket) do
+    assign(socket, :relist_ports, true)
+  end
+
   defp refresh_serial_ports(socket) do
-    start_async(socket, :serial_ports, &Connection.enumerate_ports/0)
+    socket
+    |> assign(listing_ports: true, relist_ports: false)
+    |> start_async(:serial_ports, &Connection.enumerate_ports/0)
   end
 
   @impl true
   def handle_async(:serial_ports, {:ok, ports}, socket) do
-    {:noreply, assign(socket, :serial_ports, ports)}
+    {:noreply, socket |> assign(:serial_ports, ports) |> serial_ports_listed()}
   end
 
   def handle_async(:serial_ports, {:exit, reason}, socket) do
     Logger.warning("Listing serial ports failed: #{inspect(reason)}")
-    {:noreply, socket}
+    {:noreply, serial_ports_listed(socket)}
+  end
+
+  defp serial_ports_listed(socket) do
+    socket = assign(socket, :listing_ports, false)
+    if socket.assigns.relist_ports, do: refresh_serial_ports(socket), else: socket
   end
 
   @impl true

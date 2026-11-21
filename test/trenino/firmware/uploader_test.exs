@@ -143,6 +143,15 @@ defmodule Trenino.Firmware.UploaderTest do
       assert Uploader.parse_error_output(output) == :timeout
     end
 
+    test "does not treat the part table Timeout row as a timeout" do
+      output = """
+      Timeout                : 200
+      avrdude: something unexpected happened
+      """
+
+      assert Uploader.parse_error_output(output) == :unknown_error
+    end
+
     test "detects permission denied" do
       output = "avrdude: ser_open(): permission denied accessing /dev/ttyUSB0"
       assert Uploader.parse_error_output(output) == :permission_denied
@@ -281,6 +290,26 @@ defmodule Trenino.Firmware.UploaderTest do
     test "redacts unix home directories" do
       assert Uploader.diagnostic_output("Error: cannot open /home/bob/fw.hex") ==
                "Error: cannot open /home/[user]/fw.hex"
+    end
+
+    test "redacts a Windows user name that contains a space" do
+      tail =
+        Uploader.diagnostic_output(
+          ~S"OS error: file C:\Users\John Smith\AppData\Local\fw.hex is not readable"
+        )
+
+      assert tail == ~S"OS error: file C:\Users\[user]\AppData\Local\fw.hex is not readable"
+      refute tail =~ "Smith"
+    end
+
+    test "redacts forward-slash Windows paths and removable media paths" do
+      assert Uploader.diagnostic_output("c:/Users/Jane Doe/fw.hex") == "c:/Users/[user]/fw.hex"
+
+      assert Uploader.diagnostic_output("open /run/media/bob/usb/fw.hex") ==
+               "open /run/media/[user]/usb/fw.hex"
+
+      assert Uploader.diagnostic_output("open /media/bob/usb/fw.hex") ==
+               "open /media/[user]/usb/fw.hex"
     end
 
     test "keeps only the last lines and bytes" do

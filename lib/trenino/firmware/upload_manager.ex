@@ -65,10 +65,17 @@ defmodule Trenino.Firmware.UploadManager do
   @spec start_upload(String.t(), String.t(), integer()) ::
           {:ok, String.t()} | {:error, term()}
   def start_upload(port, environment, firmware_file_id) do
-    GenServer.call(__MODULE__, {:start_upload, port, environment, firmware_file_id})
+    # No timeout: the manager's own call to the serial connection is bounded
+    # by its timeout, and timing out here while the manager goes on to start
+    # the upload would report a failed start for a running upload.
+    GenServer.call(
+      __MODULE__,
+      {:start_upload, port, environment, firmware_file_id},
+      :infinity
+    )
   catch
-    # The serial connection did not answer in time (e.g. a device that stopped
-    # responding). Report it as a failed start instead of crashing the caller.
+    # The manager is not running or crashed. Report it as a failed start
+    # instead of crashing the caller.
     :exit, {reason, {GenServer, :call, _args}} -> {:error, reason}
   end
 

@@ -127,6 +127,45 @@ defmodule Trenino.Firmware.UploadManagerTest do
       assert Process.whereis(UploadManager) == manager_pid
       assert UploadManager.current_upload() == nil
     end
+
+    # Connection.request_upload_access can take its whole 5s call timeout
+    # before the manager does its own work, so the caller must not give up
+    # first while the upload starts anyway. This test is slow by design.
+    @tag timeout: 20_000
+    test "waits for a slow port grant instead of timing out", %{firmware_file: firmware_file} do
+      port = "/dev/tty.upload-slow-grant"
+      UploadManager.subscribe_uploads()
+
+      # Leave no upload running for the next test if this one fails.
+      on_exit(fn ->
+        with %{upload_id: id} <- UploadManager.current_upload(),
+             do: UploadManager.cancel_upload(id)
+      end)
+
+      stub(Connection, :request_upload_access, fn ^port ->
+        # Simulates a busy Connection; not a synchronization point.
+        receive do
+        after
+          5_200 -> Mimic.call_original(Connection, :request_upload_access, [port])
+        end
+      end)
+
+      stub(AvrdudeRunner, :run, fn _path, _args, _cb ->
+        {:ok, AvrdudeFixtures.successful_upload()}
+      end)
+
+      assert {:ok, upload_id} = UploadManager.start_upload(port, "uno", firmware_file.id)
+      assert_receive {:upload_completed, ^upload_id, _duration_ms}, 2_000
+    end
+
+    test "returns an error instead of exiting when the manager is not running", %{
+      firmware_file: firmware_file
+    } do
+      :ok = Supervisor.terminate_child(Trenino.Supervisor, UploadManager)
+      on_exit(fn -> Supervisor.restart_child(Trenino.Supervisor, UploadManager) end)
+
+      assert {:error, :noproc} = UploadManager.start_upload("COM3", "uno", firmware_file.id)
+    end
   end
 
   describe "Sentry reporting of failed uploads" do

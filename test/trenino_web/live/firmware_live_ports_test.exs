@@ -74,4 +74,44 @@ defmodule TreninoWeb.FirmwareLivePortsTest do
 
     assert has_element?(view, ~s(#port-selection-form option[value="#{@port}"]))
   end
+
+  test "lists ports once at a time and re-lists once after updates during a listing",
+       %{conn: conn} do
+    test_pid = self()
+    {:ok, ports} = Agent.start_link(fn -> %{} end)
+
+    # Each listing waits for the test, so it stays in flight.
+    stub(Circuits.UART, :enumerate, fn ->
+      send(test_pid, {:enumerating, self()})
+
+      receive do
+        :continue -> Agent.get(ports, & &1)
+      end
+    end)
+
+    {:ok, view, _html} = live(conn, "/firmware?port=#{URI.encode_www_form(@port)}")
+    assert_receive {:enumerating, mount_task}, 1_000
+    send(mount_task, :continue)
+    render_async(view)
+
+    :ok = Trenino.PubSubHelpers.wait_for_subscriber("device_updates")
+    Phoenix.PubSub.broadcast(Trenino.PubSub, "device_updates", {:devices_updated, []})
+    assert_receive {:enumerating, first_task}, 1_000
+
+    # More updates while the listing is in flight start no new listing.
+    Phoenix.PubSub.broadcast(Trenino.PubSub, "device_updates", {:devices_updated, []})
+    Phoenix.PubSub.broadcast(Trenino.PubSub, "device_updates", :scan_complete)
+    render(view)
+    refute_receive {:enumerating, _}, 100
+
+    # They are not lost: one more listing runs after the one in flight.
+    Agent.update(ports, fn _ -> %{@port => %{}} end)
+    send(first_task, :continue)
+    assert_receive {:enumerating, rerun_task}, 1_000
+    send(rerun_task, :continue)
+    render_async(view)
+
+    assert has_element?(view, ~s(#port-selection-form option[value="#{@port}"]))
+    refute_receive {:enumerating, _}, 100
+  end
 end

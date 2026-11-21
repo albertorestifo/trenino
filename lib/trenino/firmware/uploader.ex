@@ -256,6 +256,17 @@ defmodule Trenino.Firmware.Uploader do
 
   defp poll_for_bootloader_port(original_port, ports_before, seen_gone?, touched_at) do
     case get_available_ports() do
+      # No baseline (enumeration failed before the touch): the first poll
+      # where the original port is gone becomes the baseline, so only ports
+      # appearing after it count as new. A bootloader port already visible in
+      # that poll is not detected, which fails safe.
+      {:ok, ports_after} when ports_before == :unknown ->
+        if original_port in ports_after do
+          check_bootloader_ports(original_port, :unknown, ports_after, seen_gone?, touched_at)
+        else
+          check_bootloader_ports(original_port, ports_after, ports_after, true, touched_at)
+        end
+
       {:ok, ports_after} ->
         check_bootloader_ports(original_port, ports_before, ports_after, seen_gone?, touched_at)
 
@@ -272,7 +283,7 @@ defmodule Trenino.Firmware.Uploader do
   end
 
   defp check_bootloader_ports(original_port, ports_before, ports_after, seen_gone?, touched_at) do
-    new_ports = new_ports(ports_before, ports_after)
+    new_ports = new_ports(ports_before, ports_after) -- [original_port]
     original_present? = original_port in ports_after
     elapsed_ms = System.monotonic_time(:millisecond) - touched_at
 
@@ -304,8 +315,8 @@ defmodule Trenino.Firmware.Uploader do
     end
   end
 
-  # Without a baseline (enumeration failed before the touch), every port
-  # would look new, so only the original port is considered.
+  # Without a baseline yet (see poll_for_bootloader_port/4), every port would
+  # look new, so only the original port is considered.
   defp new_ports(:unknown, _ports_after), do: []
   defp new_ports(ports_before, ports_after), do: ports_after -- ports_before
 
@@ -400,7 +411,9 @@ defmodule Trenino.Firmware.Uploader do
     # avrdude 6.x: "verification error"; avrdude 8.x: "flash verification mismatch"
     {"verification error", :verification_failed},
     {"verification mismatch", :verification_failed},
-    {"timeout", :timeout},
+    # Appended by AvrdudeRunner when avrdude hangs. A bare "timeout" would also
+    # match the "Timeout : 200" row of the part table older avrdude builds print.
+    {"[timeout:", :timeout},
     # avrdude 8.x prints this whenever the programmer's open step fails,
     # including after sync failures, so it only applies when nothing above did.
     {"unable to open port", :port_not_found}
@@ -460,7 +473,8 @@ defmodule Trenino.Firmware.Uploader do
   Drops blank lines, the version and copyright banner, the informational
   configuration file lines and any line Sentry would scrub, then redacts user
   names in remaining paths (`C:\\Users\\<name>`, `/home/<name>`) and keeps at most
-  #{@diagnostic_max_lines} lines and #{@diagnostic_max_bytes} bytes.
+  #{@diagnostic_max_lines} lines and about #{@diagnostic_max_bytes} bytes (a
+  UTF-8 character split by the cut becomes a replacement character).
   """
   @spec diagnostic_output(String.t() | nil) :: String.t() | nil
   def diagnostic_output(nil), do: nil
@@ -487,8 +501,16 @@ defmodule Trenino.Firmware.Uploader do
       Regex.match?(@sentry_sensitive_words, line)
   end
 
+  # Windows user names may contain spaces ("C:\Users\John Smith\..."), so the
+  # name runs to the next separator. Unix names can't contain spaces.
   defp redact_user_paths(line) do
-    Regex.replace(~r/([\\\/](?:Users|home)[\\\/])[^\\\/\s:]+/i, line, "\\1[user]")
+    line
+    |> then(&Regex.replace(~r/([A-Za-z]:[\\\/]Users[\\\/])[^\\\/]+/i, &1, "\\1[user]"))
+    |> then(
+      &Regex.replace(~r{(/(?:Users|home|run/media|media)/)[^/\s:]+}i, &1, fn
+        _, prefix -> prefix <> "[user]"
+      end)
+    )
   end
 
   defp take_trailing_bytes(string, max_bytes) when byte_size(string) <= max_bytes, do: string

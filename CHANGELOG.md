@@ -13,6 +13,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- A controller that stops answering over USB no longer drops every other connected
+  controller. Toggling an output on an unresponsive device shows an error instead of
+  reloading the page, and starting a firmware upload on one reports the failure.
+- When the system cannot list serial ports (an antivirus blocking the port helper on
+  Windows, or the helper failing on Linux), the app shows no ports and retries every
+  30 seconds instead of restarting the serial connection in a loop.
+- Pages that show the active train no longer fail to load while Train Sim World is
+  slow to answer.
+- Firmware updates no longer log an error for the old v2.2.0 firmware release.
+- More avrdude 8 failures are recognised (wrong board, sync and verification errors),
+  so failed uploads show a clearer message.
 - On Linux, the app window no longer opens empty on some graphics drivers (newer
   Mesa, NVIDIA). WebKitGTK's DMABUF renderer is now off by default; set
   `WEBKIT_DISABLE_DMABUF_RENDERER=0` to turn it back on.

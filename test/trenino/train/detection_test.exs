@@ -275,6 +275,73 @@ defmodule Trenino.Train.DetectionTest do
       assert Detection.get_active_train().id == train.id
       refute_received {:train_changed, nil}
     end
+
+    test "a sync cut short by a disconnect runs again in the grace period", %{
+      train: train,
+      client: client
+    } do
+      detection_pid = Process.whereis(Detection)
+
+      :sys.replace_state(detection_pid, fn _state ->
+        %State{
+          active_train: train,
+          current_identifier: "BR_Class_66",
+          polling_enabled: true,
+          last_successful_contact: System.monotonic_time(:millisecond),
+          last_client: client
+        }
+      end)
+
+      stub_hung_simulator({:ok, "BR_Class_66"})
+
+      Detection.sync()
+      assert_receive {:simulator_request, sync_pid}
+      ref = Process.monitor(sync_pid)
+
+      send(detection_pid, {:simulator_status_changed, %ConnectionState{status: :disconnected}})
+
+      assert_receive {:DOWN, ^ref, :process, ^sync_pid, _reason}
+      # The sync is redone with the grace client instead of being dropped
+      assert_receive {:simulator_request, grace_pid}
+
+      assert %State{task_kind: :grace_detect, current_identifier: nil} =
+               Detection.get_state()
+
+      send(grace_pid, :release)
+      assert_receive {:train_detected, %{identifier: "BR_Class_66"}}
+    end
+
+    test "the grace period expires while a grace detection hangs", %{
+      train: train,
+      client: client
+    } do
+      detection_pid = Process.whereis(Detection)
+
+      :sys.replace_state(detection_pid, fn _state ->
+        %State{
+          active_train: train,
+          current_identifier: "BR_Class_66",
+          polling_enabled: true,
+          last_successful_contact: System.monotonic_time(:millisecond),
+          last_client: client
+        }
+      end)
+
+      stub_hung_simulator({:ok, "BR_Class_66"})
+
+      # A sync cut short by the disconnect is redone as a grace detection
+      Detection.sync()
+      assert_receive {:simulator_request, _sync_pid}
+      send(detection_pid, {:simulator_status_changed, %ConnectionState{status: :disconnected}})
+      assert_receive {:simulator_request, grace_pid}
+      ref = Process.monitor(grace_pid)
+
+      # The test grace period is 200ms; the hung request must not keep it open
+      assert_receive {:train_changed, nil}, 2_000
+      assert_receive {:DOWN, ^ref, :process, ^grace_pid, _reason}
+
+      assert %State{active_train: nil, grace_client: nil, task: nil} = Detection.get_state()
+    end
   end
 
   describe "grace period" do

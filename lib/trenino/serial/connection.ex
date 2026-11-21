@@ -162,6 +162,10 @@ defmodule Trenino.Serial.Connection do
   Works for any port - connected, disconnected, or not yet tracked.
   Avrdude will handle the actual device connection.
 
+  The calling process owns the token: if it exits before releasing, the port
+  is released. If the call times out, the request is abandoned so a late grant
+  does not leave the port reserved with a token nobody holds.
+
   ## Returns
 
     * `{:ok, token}` - Port is now available for avrdude
@@ -171,9 +175,17 @@ defmodule Trenino.Serial.Connection do
   @spec request_upload_access(String.t()) ::
           {:ok, String.t()} | {:error, :upload_in_progress | term()}
   def request_upload_access(port) do
-    GenServer.call(__MODULE__, {:request_upload_access, port})
-  catch
-    :exit, reason -> {:error, exit_reason(reason)}
+    request_ref = make_ref()
+
+    try do
+      GenServer.call(__MODULE__, {:request_upload_access, port, request_ref}, call_timeout())
+    catch
+      :exit, reason ->
+        # The request may still be queued. Casts from this process are handled
+        # after its earlier call, so a late grant is released right away.
+        GenServer.cast(__MODULE__, {:abandon_upload_access, port, request_ref})
+        {:error, exit_reason(reason)}
+    end
   end
 
   @doc """
@@ -239,41 +251,13 @@ defmodule Trenino.Serial.Connection do
   end
 
   @impl true
-  def handle_call({:request_upload_access, port}, _from, state) do
-    # Check if any device is already uploading
-    has_upload_in_progress =
-      state.ports
-      |> Map.values()
-      |> Enum.any?(&(&1.status == :uploading))
-
-    if has_upload_in_progress do
+  def handle_call({:request_upload_access, port, request_ref}, {owner, _tag}, state) do
+    if upload_in_progress?(state) do
       {:reply, {:error, :upload_in_progress}, state}
     else
-      case State.get(state, port) do
-        %DeviceConnection{pid: pid} = conn when not is_nil(pid) ->
-          # Close any existing UART connection
-          safe_close_uart(pid)
-          # Mark as uploading and get token
-          {updated_conn, token} = DeviceConnection.mark_uploading(conn)
-          updated_state = State.put(state, updated_conn)
-          broadcast_update(updated_state)
-          {:reply, {:ok, token}, updated_state}
-
-        %DeviceConnection{} = conn ->
-          # No UART connection to close, just mark as uploading
-          {updated_conn, token} = DeviceConnection.mark_uploading(conn)
-          updated_state = State.put(state, updated_conn)
-          broadcast_update(updated_state)
-          {:reply, {:ok, token}, updated_state}
-
-        nil ->
-          # Port not tracked - create a temporary entry for upload
-          conn = %DeviceConnection{port: port, status: :available}
-          {updated_conn, token} = DeviceConnection.mark_uploading(conn)
-          updated_state = State.put(state, updated_conn)
-          broadcast_update(updated_state)
-          {:reply, {:ok, token}, updated_state}
-      end
+      {token, updated_state} = grant_upload_access(state, port, owner, request_ref)
+      broadcast_update(updated_state)
+      {:reply, {:ok, token}, updated_state}
     end
   end
 
@@ -281,15 +265,7 @@ defmodule Trenino.Serial.Connection do
   def handle_call({:release_upload_access, port, token}, _from, state) do
     case State.get(state, port) do
       %DeviceConnection{status: :uploading, upload_token: ^token} ->
-        # Remove the port entry so it's discovered fresh (no backoff delay)
-        updated_state = State.delete(state, port)
-        broadcast_update(updated_state)
-        # Trigger immediate scan to reconnect quickly
-        Process.send_after(self(), :post_upload_scan, 500)
-        {:reply, :ok, updated_state}
-
-      %DeviceConnection{status: :uploading} ->
-        {:reply, {:error, :invalid_token}, state}
+        {:reply, :ok, release_upload(state, port)}
 
       _ ->
         {:reply, {:error, :invalid_token}, state}
@@ -362,15 +338,31 @@ defmodule Trenino.Serial.Connection do
   end
 
   @impl true
-  def handle_cast({:cleanup_complete, port}, state) do
-    updated_state =
-      State.update(state, port, fn conn ->
-        DeviceConnection.mark_failed(conn)
-      end)
+  def handle_cast({:abandon_upload_access, port, request_ref}, state) do
+    case state.upload_owner do
+      %{port: ^port, request_ref: ^request_ref} ->
+        Logger.warning("Upload access to #{port} was granted after the request timed out")
+        {:noreply, release_upload(state, port)}
 
-    Logger.debug("Cleanup complete for port #{port}")
-    broadcast_update(updated_state)
-    {:noreply, updated_state}
+      _ ->
+        {:noreply, state}
+    end
+  end
+
+  @impl true
+  def handle_cast({:cleanup_complete, port}, state) do
+    case State.get(state, port) do
+      %DeviceConnection{status: :disconnecting} = conn ->
+        Logger.debug("Cleanup complete for port #{port}")
+        updated_state = State.put(state, DeviceConnection.mark_failed(conn))
+        broadcast_update(updated_state)
+        {:noreply, updated_state}
+
+      _ ->
+        # Already failed (cleanup timeout), granted for upload meanwhile or no
+        # longer tracked.
+        {:noreply, state}
+    end
   end
 
   @impl true
@@ -437,6 +429,16 @@ defmodule Trenino.Serial.Connection do
     {:noreply, state}
   end
 
+  # The process holding an upload token exited without releasing it.
+  @impl true
+  def handle_info(
+        {:DOWN, ref, :process, _pid, reason},
+        %State{upload_owner: %{monitor_ref: ref, port: port}} = state
+      ) do
+    Logger.warning("Upload owner for port #{port} exited (#{inspect(reason)}), releasing it")
+    {:noreply, release_upload(state, port)}
+  end
+
   @impl true
   def handle_info({:DOWN, _ref, :process, pid, reason}, state) do
     case find_port_by_pid(state, pid) do
@@ -444,21 +446,7 @@ defmodule Trenino.Serial.Connection do
         {:noreply, state}
 
       port ->
-        if reason != :normal do
-          Logger.warning("UART process for port #{port} died: #{inspect(reason)}")
-        end
-
-        # Mark as failed directly since the process is already dead
-        updated_state =
-          State.update(state, port, fn conn ->
-            conn
-            |> set_lost_reason()
-            |> DeviceConnection.mark_disconnecting()
-            |> DeviceConnection.mark_failed()
-          end)
-
-        broadcast_update(updated_state)
-        {:noreply, updated_state}
+        handle_uart_down(state, port, reason)
     end
   end
 
@@ -495,11 +483,74 @@ defmodule Trenino.Serial.Connection do
     end
   end
 
-  # Keep the reason of a failure already being cleaned up (e.g. the open timed out).
-  defp set_lost_reason(%DeviceConnection{status: :disconnecting} = conn), do: conn
+  defp handle_uart_down(state, port, reason) do
+    case State.get(state, port) do
+      # Cleanup is already stopping this UART; {:cleanup_complete} marks the
+      # port failed and broadcasts.
+      %DeviceConnection{status: :disconnecting} ->
+        {:noreply, state}
 
-  defp set_lost_reason(%DeviceConnection{} = conn),
-    do: DeviceConnection.set_error_reason(conn, "Connection lost unexpectedly")
+      conn ->
+        if reason != :normal do
+          Logger.warning("UART process for port #{port} died: #{inspect(reason)}")
+        end
+
+        # Mark as failed directly since the process is already dead
+        failed_conn =
+          conn
+          |> DeviceConnection.set_error_reason("Connection lost unexpectedly")
+          |> DeviceConnection.mark_disconnecting()
+          |> DeviceConnection.mark_failed()
+
+        updated_state = State.put(state, failed_conn)
+        broadcast_update(updated_state)
+        {:noreply, updated_state}
+    end
+  end
+
+  defp upload_in_progress?(%State{ports: ports}) do
+    ports |> Map.values() |> Enum.any?(&(&1.status == :uploading))
+  end
+
+  # Closes any UART on the port, marks it :uploading and monitors the owner,
+  # so the port is released if the owner exits without releasing it.
+  defp grant_upload_access(state, port, owner, request_ref) do
+    conn =
+      case State.get(state, port) do
+        %DeviceConnection{pid: pid} = conn when is_pid(pid) ->
+          safe_close_uart(pid)
+          conn
+
+        %DeviceConnection{} = conn ->
+          conn
+
+        # Port not tracked - create a temporary entry for upload
+        nil ->
+          %DeviceConnection{port: port, status: :available}
+      end
+
+    {updated_conn, token} = DeviceConnection.mark_uploading(conn)
+
+    upload_owner = %{
+      port: port,
+      pid: owner,
+      monitor_ref: Process.monitor(owner),
+      request_ref: request_ref
+    }
+
+    {token, %State{State.put(state, updated_conn) | upload_owner: upload_owner}}
+  end
+
+  defp release_upload(%State{upload_owner: owner} = state, port) do
+    if owner, do: Process.demonitor(owner.monitor_ref, [:flush])
+
+    # Remove the port entry so it's discovered fresh (no backoff delay)
+    updated_state = %State{State.delete(state, port) | upload_owner: nil}
+    broadcast_update(updated_state)
+    # Trigger a scan soon to reconnect quickly
+    Process.send_after(self(), :post_upload_scan, 500)
+    updated_state
+  end
 
   # GenServer.call exits as {reason, {GenServer, :call, args}}; keep the reason.
   defp exit_reason({reason, {GenServer, :call, _args}}), do: reason
