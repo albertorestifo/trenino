@@ -6,6 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Changed
+
+- Updated Sentry to 14.x, plus esbuild, Tailwind and the Tauri opener plugin. Error
+  reports now scrub a wider set of sensitive parameter names.
+
 ### Fixed
 
 - A lever resting between two mapped notches now sends the nearest notch instead
