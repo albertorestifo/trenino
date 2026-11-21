@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/elixir-post-edit.sh",
+            "timeout": 300,
+            "statusMessage": "Formatting and testing the edited Elixir file"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/precommit-on-stop.sh",
+            "timeout": 900,
+            "statusMessage": "Running mix precommit"
+          }
+        ]
+      }
+    ]
+  }
+}

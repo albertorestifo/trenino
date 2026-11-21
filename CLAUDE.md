@@ -5,10 +5,12 @@ Trenino is a Phoenix/LiveView app with a Tauri desktop wrapper. It bridges custo
 ## Commands
 
 ```bash
-mix precommit   # compile (warnings-as-errors), deps.unlock --unused, format, credo --strict, tests. Rewrites files. Run before committing.
+mix precommit   # compile (warnings-as-errors), deps.unlock --unused, format, credo --strict, tests. Rewrites files.
 mix test        # run tests (auto-creates and migrates the test DB)
 mix setup       # first-time setup: deps, DB, assets
 ```
+
+Hooks in `.claude/settings.json` format each edited Elixir file and run its matching test file, and run `mix precommit` before you finish. A failing hook reports back to you: fix the cause, don't work around the hook.
 
 ## MCP Tools
 
