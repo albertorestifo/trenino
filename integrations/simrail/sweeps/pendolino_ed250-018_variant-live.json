@@ -1,0 +1,4231 @@
+{
+ "vehicle": {
+  "name": "pendolino/ed250-018 variant",
+  "type": "ElectricMultipleUnit",
+  "objectName": "466e0574-71ae-4d2d-9a59-619096d73754",
+  "vehicleNumber": 9,
+  "numberInTrainset": 1,
+  "isFrontInTrainset": true
+ },
+ "settleMs": 1200,
+ "noisy": [
+  "Physics_Output_ED250.battery_voltage",
+  "Physics_Output_ED250.simulation_timestamp",
+  "Physics_Output_ED250.supply_pressure",
+  "Physics_Output_General.time_minutes",
+  "Physics_Output_General.time_seconds"
+ ],
+ "initialState": {
+  "Physics_Input_General.drive_handle": 0,
+  "Physics_Input_General.drive_handle_pressed": 0,
+  "Physics_Input_General.scnd_handle": 0,
+  "Physics_Input_General.speed_ctrl": 2,
+  "Physics_Input_General.speed_ctrl_pressed": 0,
+  "Physics_Input_General.main_brake": 1,
+  "Physics_Input_General.local_brake": 0,
+  "Physics_Input_General.third_brake": 0,
+  "Physics_Input_General.emergency_brake_button": 0,
+  "Physics_Input_General.security_system_button": -1,
+  "Physics_Input_General.spring_brake_rq": 0,
+  "Physics_Input_General.spring_brake_valve": 0,
+  "Physics_Input_General.main_switch": 0,
+  "Physics_Input_General.direction_rq": 1,
+  "Physics_Input_General.battery_rq": 0,
+  "Physics_Input_General.battery_rq_off": 0,
+  "Physics_Input_General.pantograph_front_rq": 1,
+  "Physics_Input_General.pantograph_back_rq": 1,
+  "Physics_Input_General.pantograph_set_rq": 0,
+  "Physics_Input_General.pantograph_set": 0,
+  "Physics_Input_General.emergency_supply_button": 0,
+  "Physics_Input_General.horn_signal": 0,
+  "Physics_Input_General.active_cab": -2,
+  "Physics_Input_General.light_pos": 0,
+  "Physics_Input_General.brake_releaser": 0,
+  "Physics_Input_General.unlock_brake_pipe": 0,
+  "Physics_Input_General.assimilation_button": 0,
+  "Physics_Input_General.lights_power": 1,
+  "Physics_Input_General.washer": 0,
+  "Physics_Input_General.wiper": 0,
+  "Physics_Input_General.cablight": 0,
+  "Physics_Input_General.pulpitlight": 0,
+  "Physics_Input_General.instrumentlight": 0,
+  "Physics_Input_General.sanding_button": 0,
+  "Physics_Input_General.shunting_handle": 0,
+  "Physics_Input_General.RadioStop": 0,
+  "Physics_Input_General.radiostop_rq": 0,
+  "Physics_Input_General.radiostop_test_rq": 0,
+  "Physics_Input_General.radio_channel_set": 0,
+  "Physics_Input_General.radio_enable_set": 0,
+  "Physics_Input_General.radio_selective_call": 0,
+  "Physics_Input_General.radio_button": 0,
+  "Physics_Input_General.radio_noise": 0,
+  "Physics_Input_General.radio_volume_set": 0,
+  "Physics_Input_General.reset_crash": 0,
+  "Physics_Input_General.error_code_ack": 0,
+  "Physics_Input_General.error_code_rq": 0,
+  "Physics_Input_General.emergency_brake_button_flag": 0,
+  "Physics_Input_General.nope": 0,
+  "Physics_Input_General.radio_channel_change": 0,
+  "Physics_Input_General.headlight_individual": 0,
+  "Physics_Input_General.endsignal_individual": 0,
+  "Physics_Input_General.traction_voltage_rq": 0,
+  "Physics_Input_General.failure_request": 0,
+  "Physics_Input_General.failure_state_check": 0,
+  "Physics_Input_General.friction_factor_simple_rq": 1,
+  "Physics_Input_General.traindata_train_number_rq": 0,
+  "Physics_Input_General.traindata_driver_number_rq": 0,
+  "Physics_Input_General.traindata_train_length_rq": 0,
+  "Physics_Input_General.traindata_train_mass_rq": 0,
+  "Physics_Input_General.traindata_speed_rq": 0,
+  "Physics_Input_General.traindata_braking_factor_rq": 0,
+  "Physics_Input_General.traindata_brake_type_rq": 0,
+  "Physics_Input_General.selective_door_select": 0,
+  "Physics_Input_General.selective_door_request": 0,
+  "Physics_Input_General.cablightB": 0,
+  "Physics_Input_General.cablight_intensity": 0,
+  "Physics_Input_General.pulpitlight_intensity": 0,
+  "Physics_Input_General.instrumentlight_intensity": 0,
+  "Physics_Input_General.emergency_pantographs": 0,
+  "Physics_Input_General.etcs2023_release_brake": 0,
+  "Physics_Input_General.etcs2023_service_brake": 1,
+  "Physics_Input_General.etcs2023_emergency_brake": -1,
+  "Physics_Input_General.etcs2023_shunting_ok": 0,
+  "Physics_Input_General.etcs2023_shunting_reject": 0,
+  "Physics_Input_General.etcs2023_ues_rq": 0,
+  "Physics_Input_General.etcs2023_rma_rq": 0,
+  "Physics_Input_General.etcs2023_text_message": 0,
+  "Physics_Input_General.etcs2023_isolation_rq": 0,
+  "Physics_Input_General.etcs2023_reset_all": 0,
+  "Physics_Input_General.etcs2023_ack_button": 0,
+  "Physics_Input_General.etcs2023_force_os_rq": 0,
+  "Physics_Input_General.passengers_multipler_rq": -1,
+  "Physics_Input_General.wire_ice_rq": 0,
+  "Physics_Input_General.rt_speaker_pull_rq": 0,
+  "Physics_Input_General.rt_speaker_press_rq": 0,
+  "Physics_Input_General.change_cabin": 0,
+  "Physics_Input_General.try_connect_driver_coupler": 0,
+  "Physics_Input_General.try_disconnect_driver_coupler": 0,
+  "Physics_Input_General.radmor_splitter_on": 0,
+  "Physics_Input_General.radmor_splitter_cab": 0,
+  "Physics_Input_General.radmor_adapter_on": 0,
+  "Physics_Input_General.window_electric_heating": 0,
+  "Physics_Input_General.window_airflow_heating": 0,
+  "Physics_Output_General.error_code": 0,
+  "Physics_Output_General.quit": 0,
+  "Physics_Output_General.radio_on_lamp": 0,
+  "Physics_Output_General.cablight": 0,
+  "Physics_Output_General.instrumentlight": 1,
+  "Physics_Output_General.pulpitlight": 0,
+  "Physics_Output_General.failure_request_ack": 0,
+  "Physics_Output_General.failure_state": 0,
+  "Physics_Output_General.failure_exist": 0,
+  "Physics_Output_General.failure_broadcast": 0,
+  "Physics_Output_General.traction_voltage": 3500,
+  "Physics_Output_General.date_day": 5,
+  "Physics_Output_General.date_month": 6,
+  "Physics_Output_General.date_year": 2021,
+  "Physics_Output_General.time_hours": 6,
+  "Physics_Output_General.time_minutes": 36,
+  "Physics_Output_General.time_seconds": 58,
+  "Physics_Output_General.friction_force_status": 1,
+  "Physics_Output_General.traindata_train_number": 0,
+  "Physics_Output_General.traindata_driver_number": 0,
+  "Physics_Output_General.traindata_train_length": 0,
+  "Physics_Output_General.traindata_train_mass": 0,
+  "Physics_Output_General.traindata_speed": 0,
+  "Physics_Output_General.traindata_braking_factor": 0,
+  "Physics_Output_General.traindata_brake_type": 0,
+  "Physics_Output_General.current_pantograph_set": 0,
+  "Physics_Output_General.speed_ctrl_status": 1,
+  "Physics_Output_General.speed_ctrl_value": 250,
+  "Physics_Output_General.cablightB": 0,
+  "Physics_Output_General.etcs2023_level": 5,
+  "Physics_Output_General.etcs2023_mode": 8,
+  "Physics_Output_General.etcs2023_rbc_fault": 0,
+  "Physics_Output_General.etcs2023_balise_fault": 0,
+  "Physics_Output_General.etcs2023_shunting_request": 0,
+  "Physics_Output_General.etcs2023_ack_request": 0,
+  "Physics_Output_General.etcs2023_ack_light": -1,
+  "Physics_Output_General.etcs2023_cab_active": 1,
+  "Physics_Output_General.etcs2023_can_be_os_mode_forced": 0,
+  "Physics_Output_General.weather_temp": 25,
+  "Physics_Output_General.weather_humidity": 42,
+  "Physics_Output_General.passengers_multipler": 1,
+  "Physics_Output_General.passengers_counter": 0,
+  "Physics_Output_General.radio_active": 0,
+  "Physics_Output_General.radio_channel": 0,
+  "Physics_Output_General.wire_ice_level": 0,
+  "Physics_Output_General.rt_speaker_pulled": 0,
+  "Physics_Output_General.rt_speaker_pressed": 0,
+  "Physics_Output_General.security_system_etcs_disabled": 1,
+  "Physics_Output_General.security_system_ca_disabled": 0,
+  "Physics_Output_General.security_system_shp_disabled": 0,
+  "Physics_Output_General.security_system_sifa_disabled": 0,
+  "Physics_Output_General.aksel_next_station": 0,
+  "Physics_Output_General.aksel_next_station_distance": 0,
+  "Physics_Output_General.aksel_next_station_char_at": 0,
+  "Physics_Output_General.can_change_cabin": 0,
+  "Physics_Output_General.next_asdek_distance": -1,
+  "Physics_Output_General.another_trainset_distance": -1,
+  "Physics_Output_General.driver_coupler_can_be_coupled": -1,
+  "Physics_Output_General.driver_coupler_can_be_decoupled": -1,
+  "Physics_Output_General.actual_cabin": 1,
+  "Physics_Output_General.radmor_adapter_on": 0,
+  "Physics_Output_General.radmor_adapter_24v": 0,
+  "Physics_Output_General.speedCtrlValueForGui": 250,
+  "Physics_Output_General.mirrors_disabled": 0,
+  "Physics_Output_General.mirrors_left_open": 0,
+  "Physics_Output_General.mirrors_right_open": 0,
+  "Physics_Input_ED250.airtight_test_rq": 0,
+  "Physics_Input_ED250.hvac_rq": 0,
+  "Physics_Input_ED250.traction_change_rq": 0,
+  "Physics_Input_ED250.ed_enable_rq": 1,
+  "Physics_Input_ED250.abs_enable_rq": 0,
+  "Physics_Input_ED250.power_limit_rq": 0,
+  "Physics_Input_ED250.pantograph_front_cutoff_rq": 0,
+  "Physics_Input_ED250.pantograph_rear_cutoff_rq": 0,
+  "Physics_Input_ED250.info_driver_number": 0,
+  "Physics_Input_ED250.info_train_number": 0,
+  "Physics_Input_ED250.info_consist_mass": 0,
+  "Physics_Input_ED250.info_consist_length": 0,
+  "Physics_Input_ED250.info_braking_mass_pct": 0,
+  "Physics_Input_ED250.info_vmax": 0,
+  "Physics_Input_ED250.speed_ctrl_rq": 0,
+  "Physics_Input_ED250.traction_forbidden": 0,
+  "Physics_Input_ED250.door_open_left": 0,
+  "Physics_Input_ED250.door_open_right": 0,
+  "Physics_Input_ED250.door_close": 0,
+  "Physics_Input_ED250.fault_brakepipeleak_rq": 0,
+  "Physics_Input_ED250.fault_opencircuitbreaker_rq": 0,
+  "Physics_Input_ED250.fault_voltageloss_rq": 0,
+  "Physics_Input_ED250.fault_nospeed_rq": 0,
+  "Physics_Input_ED250.fault_nohorn_rq": 0,
+  "Physics_Input_ED250.radio_channel_change": 0,
+  "Physics_Input_ED250.pas_comp_light": 0,
+  "Physics_Input_ED250.brake_handle_cutoff": 0,
+  "Physics_Input_ED250.alarm_rq": 0,
+  "Physics_Input_ED250.corridorlight": 1,
+  "Physics_Input_ED250.reset_evc_teloc": 0,
+  "Physics_Input_ED250.override_hz_ril_a": 0,
+  "Physics_Input_ED250.override_hz_ril_b": 0,
+  "Physics_Input_ED250.headlight_shortcut": 0,
+  "Physics_Input_ED250.emergency_vetilation": 0,
+  "Physics_Input_ED250.reset_controller": 0,
+  "Physics_Input_ED250.test_sifa": 0,
+  "Physics_Input_ED250.test_lv_board_controls": 0,
+  "Physics_Input_ED250.brake_test": 0,
+  "Physics_Input_ED250.bypass_mcb": 0,
+  "Physics_Input_ED250.bypass_tco": 0,
+  "Physics_Input_ED250.forbid_emergency_brake": 0,
+  "Physics_Input_ED250.disable_radiostop": 0,
+  "Physics_Input_ED250.disable_sifa": 0,
+  "Physics_Input_ED250.disable_nothalt": 0,
+  "Physics_Input_ED250.disable_lzb": 0,
+  "Physics_Input_ED250.disable_pzb": 0,
+  "Physics_Input_ED250.disable_evc": 0,
+  "Physics_Input_ED250.disable_shp": 0,
+  "Physics_Input_ED250.disable_mirel": 1,
+  "Physics_Input_ED250.rearlight_pos": 0,
+  "Physics_Input_ED250.decouple": 0,
+  "Physics_Input_ED250.farlights_impulse": 0,
+  "Physics_Input_ED250.pulpitlight_intensity": 1,
+  "Physics_Input_ED250.instrumentlight_intensity": 0,
+  "Physics_Input_ED250.voltage_selector": 0,
+  "Physics_Input_ED250.booster": 0,
+  "Physics_Input_ED250.neutral_section": 0,
+  "Physics_Input_ED250.shp_button": -1,
+  "Physics_Input_ED250.coupler_cover_open": -2,
+  "Physics_Input_ED250.control_circuits": 1,
+  "Physics_Input_ED250.force_compressors": 1,
+  "Physics_Input_ED250.blind_control": 0,
+  "Physics_Input_ED250.spotlight_driver": 0,
+  "Physics_Input_ED250.spotlight_helper": 0,
+  "Physics_Input_ED250.test_dashboard_controls": 0,
+  "Physics_Input_ED250.footrest_control": 0,
+  "Physics_Input_ED250.windscreen_heater": 0,
+  "Physics_Input_ED250.upper_headlight": 1,
+  "Physics_Input_ED250.farlights": 0,
+  "Physics_Input_ED250.parking": 0,
+  "Physics_Input_ED250.air_recirculation": 0,
+  "Physics_Input_ED250.heating_feet": 0,
+  "Physics_Input_ED250.heating_temp": 0,
+  "Physics_Input_ED250.heating_fan": 0,
+  "Physics_Input_ED250.brake_distributor_insulation": -1,
+  "Physics_Input_ED250.heating_feet_temp": 0,
+  "Physics_Input_ED250.lzb_befehl": 0,
+  "Physics_Input_ED250.lzb_frei": 0,
+  "Physics_Input_ED250.lzb_wachs": 0,
+  "Physics_Input_ED250.display1_F1": 0,
+  "Physics_Input_ED250.display1_F2": 0,
+  "Physics_Input_ED250.display1_F3": 0,
+  "Physics_Input_ED250.display1_F4": 0,
+  "Physics_Input_ED250.display1_F5": 0,
+  "Physics_Input_ED250.display1_F6": 0,
+  "Physics_Input_ED250.display1_F7": 0,
+  "Physics_Input_ED250.display1_F8": 0,
+  "Physics_Input_ED250.display1_F9": 0,
+  "Physics_Input_ED250.display1_F0": 0,
+  "Physics_Input_ED250.display2_F1": 0,
+  "Physics_Input_ED250.display2_F2": 0,
+  "Physics_Input_ED250.display2_F3": 0,
+  "Physics_Input_ED250.display2_F4": 0,
+  "Physics_Input_ED250.display2_F5": 0,
+  "Physics_Input_ED250.display2_F6": 0,
+  "Physics_Input_ED250.display2_F7": 0,
+  "Physics_Input_ED250.display2_F8": 0,
+  "Physics_Input_ED250.display2_F9": 0,
+  "Physics_Input_ED250.display2_F0": 0,
+  "Physics_Input_ED250.radio_toggle": 0,
+  "Physics_Input_ED250.display4_invers": 0,
+  "Physics_Output_ED250.door": 0,
+  "Physics_Output_ED250.alerter": 0,
+  "Physics_Output_ED250.alerter_lit": 0,
+  "Physics_Output_ED250.shp": 0,
+  "Physics_Output_ED250.drive_direction": 1,
+  "Physics_Output_ED250.ed_brake_active": 0,
+  "Physics_Output_ED250.main_circuit_breaker_status": 0,
+  "Physics_Output_ED250.main_circuit_breaker_ready": 0,
+  "Physics_Output_ED250.velocity": 0,
+  "Physics_Output_ED250.odometer": 0,
+  "Physics_Output_ED250.simulation_timestamp": 107860180000000000000,
+  "Physics_Output_ED250.supply_current": 17.504883,
+  "Physics_Output_ED250.supply_voltage": 3500,
+  "Physics_Output_ED250.pipe_pressure": 3.8286433,
+  "Physics_Output_ED250.brakecyl1_pressure": 2.6989863,
+  "Physics_Output_ED250.brakecyl2_pressure": 3.5724223,
+  "Physics_Output_ED250.control_pressure": 3.4286892,
+  "Physics_Output_ED250.supply_pressure": 9.442964,
+  "Physics_Output_ED250.pneumatic_brake_status": 0,
+  "Physics_Output_ED250.traction_pct_handle": 0,
+  "Physics_Output_ED250.traction_pct_set": 0,
+  "Physics_Output_ED250.traction_pct_actual": 0,
+  "Physics_Output_ED250.traction_force_handle": 0,
+  "Physics_Output_ED250.traction_force_set": 0,
+  "Physics_Output_ED250.traction_force_actual": 0,
+  "Physics_Output_ED250.lv_status": 0,
+  "Physics_Output_ED250.compressor1_status": 0,
+  "Physics_Output_ED250.compressor2_status": 0,
+  "Physics_Output_ED250.pantograph_compressor_status": 0,
+  "Physics_Output_ED250.battery_status": 1,
+  "Physics_Output_ED250.ac_status": 0,
+  "Physics_Output_ED250.springbrake_active": 0,
+  "Physics_Output_ED250.abs_status": 0,
+  "Physics_Output_ED250.brake_system_status": 0,
+  "Physics_Output_ED250.hvac_active": 0,
+  "Physics_Output_ED250.traction_mode": 0,
+  "Physics_Output_ED250.cab": 1,
+  "Physics_Output_ED250.pantograph_front": 0,
+  "Physics_Output_ED250.pantograph_rear": 0,
+  "Physics_Output_ED250.brake_mode": 0,
+  "Physics_Output_ED250.front_lighting": 0,
+  "Physics_Output_ED250.activecab_front_lighting": 0,
+  "Physics_Output_ED250.pantograph_front_status": 0,
+  "Physics_Output_ED250.pantograph_rear_status": 0,
+  "Physics_Output_ED250.pantograph_control_status": 0,
+  "Physics_Output_ED250.battery_voltage": 26.796862,
+  "Physics_Output_ED250.fire_suppression_sensors": 0,
+  "Physics_Output_ED250.abs_disabled": 0,
+  "Physics_Output_ED250.simulation_status": 1,
+  "Physics_Output_ED250.radiostop_sound": 0,
+  "Physics_Output_ED250.radiostop_active": 0,
+  "Physics_Output_ED250.fire_suppression_lights": 0,
+  "Physics_Output_ED250.brakepipelocked": 0,
+  "Physics_Output_ED250.pas_comp_light_on": 1,
+  "Physics_Output_ED250.corridor_light_on": 1,
+  "Physics_Output_ED250.override_hz_ril": 0,
+  "Physics_Output_ED250.emergency_ventilation_on": 0,
+  "Physics_Output_ED250.brake_test_ok": 0,
+  "Physics_Output_ED250.awaiting_configuration": 0,
+  "Physics_Output_ED250.no_hv": 0,
+  "Physics_Output_ED250.tcn": 0,
+  "Physics_Output_ED250.brakehandle_malfunction": 0,
+  "Physics_Output_ED250.axlebox_hot": 0,
+  "Physics_Output_ED250.axlebox_overheat": 0,
+  "Physics_Output_ED250.bogie_transverse_vibrations": 0,
+  "Physics_Output_ED250.emergency_brake_engaged": 0,
+  "Physics_Output_ED250.emergency_brake_neutralised": 0,
+  "Physics_Output_ED250.emergency_brake_disabled": 0,
+  "Physics_Output_ED250.brake_pipe_leak": 0,
+  "Physics_Output_ED250.axle_unsecured": 0,
+  "Physics_Output_ED250.axle_braking": 1,
+  "Physics_Output_ED250.axle_locked": 0,
+  "Physics_Output_ED250.transmission_overheat": 0,
+  "Physics_Output_ED250.lzb": 0,
+  "Physics_Output_ED250.magnetic_brake_active": 0,
+  "Physics_Output_ED250.sifa": 0,
+  "Physics_Output_ED250.traction_malfunction": 0,
+  "Physics_Output_ED250.bypass_mcb": 0,
+  "Physics_Output_ED250.bypass_tco": 0,
+  "Physics_Output_ED250.farlights": 1,
+  "Physics_Output_ED250.windscreen_heating": 0,
+  "Physics_Output_ED250.air_recirculation": 0,
+  "Physics_Output_ED250.units_coupled": 0,
+  "Physics_Output_ED250.pneumatic_board_cutoff": 0,
+  "Physics_Output_ED250.bwg_cutoff": 1,
+  "Physics_Output_ED250.sifa_valve_cutoff": 0,
+  "Physics_Output_ED250.lzb_disabled": 1,
+  "Physics_Output_ED250.pzb_disabled": 0,
+  "Physics_Output_ED250.nothalt_active": 0,
+  "Physics_Output_ED250.etcs_disabled": 1,
+  "Physics_Output_ED250.mirel_disabled": 1,
+  "Physics_Output_ED250.shp_disabled": 0,
+  "Physics_Output_ED250.sifa_disabled": 1,
+  "Physics_Output_ED250.radiostop_disabled": 0,
+  "Physics_Output_ED250.ed_disabled": 0,
+  "Physics_Output_ED250.neutral_section": 0,
+  "Physics_Output_ED250.booster": 0,
+  "Physics_Output_ED250.spotlight_driver": 0,
+  "Physics_Output_ED250.spotlight_helper": 0,
+  "Physics_Output_ED250.heating_controller_ok": 1,
+  "Physics_Output_ED250.heating_controller_malfuncton": 0,
+  "Physics_Output_ED250.parking": 0,
+  "Physics_Output_ED250.door_left_allowed": 0,
+  "Physics_Output_ED250.door_right_allowed": 0,
+  "Physics_Output_ED250.dmi_powered": 0,
+  "Physics_Output_ED250.coupler_cover_openedA": 0,
+  "Physics_Output_ED250.coupler_cover_openedB": 0,
+  "Physics_Output_ED250.coupler_cover_openingA": 0,
+  "Physics_Output_ED250.coupler_cover_openingB": 0,
+  "Physics_Output_ED250.decoupling": 0
+ },
+ "results": [
+  {
+   "path": "Physics_Input_ED250.alarm_rq",
+   "controlId": "chassis_A/rocking/INTERIOR/kabina_A/kabina/bt-alarm/bt-alarm",
+   "type": "PhysicsInteractionButtonToggle",
+   "kind": "button",
+   "original": 0,
+   "positions": [],
+   "steps": [
+    {
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {}
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_ED250.emergency_vetilation",
+   "controlId": "chassis_A/rocking/INTERIOR/kabina_A/kabina/bt-awaryjna_wentylacja/bt-awaryjna_wentylacja",
+   "type": "PhysicsInteractionButtonToggle",
+   "kind": "button",
+   "original": 0,
+   "positions": [],
+   "steps": [
+    {
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {
+      "Physics_Output_ED250.emergency_ventilation_on": [
+       0,
+       1
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_ED250.booster",
+   "controlId": "chassis_A/rocking/INTERIOR/kabina_A/kabina/bt-booster/bt-booster",
+   "type": "PhysicsInteractionButtonToggle",
+   "kind": "button",
+   "original": 0,
+   "positions": [],
+   "steps": [
+    {
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {
+      "Physics_Output_ED250.booster": [
+       0,
+       1
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_General.security_system_button",
+   "controlId": "chassis_A/rocking/INTERIOR/kabina_A/kabina/bt-czuwak/bt-czuwak",
+   "type": "PhysicsInteractionButtonContinous",
+   "kind": "button",
+   "original": -1,
+   "positions": [],
+   "steps": [
+    {
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {}
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_ED250.door_open_left",
+   "controlId": "chassis_A/rocking/INTERIOR/kabina_A/kabina/bt-drzwi_lewe/bt-drzwi_lewe",
+   "type": "PhysicsInteractionButtonContinous",
+   "kind": "button",
+   "original": 0,
+   "positions": [],
+   "steps": [
+    {
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {
+      "Physics_Output_ED250.door_left_allowed": [
+       0,
+       1
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_ED250.door_open_right",
+   "controlId": "chassis_A/rocking/INTERIOR/kabina_A/kabina/bt-drzwi_prawe/bt-drzwi_prawe",
+   "type": "PhysicsInteractionButtonContinous",
+   "kind": "button",
+   "original": 0,
+   "positions": [],
+   "steps": [
+    {
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {
+      "Physics_Output_ED250.door_right_allowed": [
+       0,
+       1
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_ED250.door_close",
+   "controlId": "chassis_A/rocking/INTERIOR/kabina_A/kabina/bt-drzwi_zamkniecie/bt-drzwi_zamkniecie",
+   "type": "PhysicsInteractionButtonContinous",
+   "kind": "button",
+   "original": 0,
+   "positions": [],
+   "steps": [
+    {
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {
+      "Physics_Output_ED250.door_left_allowed": [
+       1,
+       0
+      ],
+      "Physics_Output_ED250.door_right_allowed": [
+       1,
+       0
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_ED250.lzb_befehl",
+   "controlId": "chassis_A/rocking/INTERIOR/kabina_A/kabina/bt-LZB_polecenie/bt-LZB_polecenie",
+   "type": "PhysicsInteractionButtonContinous",
+   "kind": "button",
+   "original": 0,
+   "positions": [],
+   "steps": [
+    {
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {}
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_ED250.neutral_section",
+   "controlId": "chassis_A/rocking/INTERIOR/kabina_A/kabina/bt-odcinek_neutralny/bt-odcinek_neutralny",
+   "type": "PhysicsInteractionButtonToggle",
+   "kind": "button",
+   "original": 0,
+   "positions": [],
+   "steps": [
+    {
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {
+      "Physics_Output_ED250.neutral_section": [
+       0,
+       1
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_ED250.parking",
+   "controlId": "chassis_A/rocking/INTERIOR/kabina_A/kabina/bt-parking/bt-parking",
+   "type": "PhysicsInteractionButtonContinous",
+   "kind": "button",
+   "original": 0,
+   "positions": [],
+   "steps": [
+    {
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {}
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_ED250.reset_evc_teloc",
+   "controlId": "chassis_A/rocking/INTERIOR/kabina_A/kabina/bt-reset_EVC/TELOC/bt-reset_EVC/TELOC",
+   "type": "PhysicsInteractionButtonToggle",
+   "kind": "button",
+   "original": 0,
+   "positions": [],
+   "steps": [
+    {
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {}
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_ED250.reset_controller",
+   "controlId": "chassis_A/rocking/INTERIOR/kabina_A/kabina/bt-reset_komputera/bt-reset_komputera",
+   "type": "PhysicsInteractionButtonContinous",
+   "kind": "button",
+   "original": 0,
+   "positions": [],
+   "steps": [
+    {
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {
+      "Physics_Input_General.drive_handle": [
+       0,
+       0.255
+      ],
+      "Physics_Output_ED250.traction_force_handle": [
+       0,
+       25.501
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_ED250.shp_button",
+   "controlId": "chassis_A/rocking/INTERIOR/kabina_A/kabina/bt-shp/bt-shp",
+   "type": "PhysicsInteractionButtonContinous",
+   "kind": "button",
+   "original": -1,
+   "positions": [],
+   "steps": [
+    {
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {}
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_ED250.farlights_impulse",
+   "controlId": "chassis_A/rocking/INTERIOR/kabina_A/kabina/bt-swiatla_dlugie/bt-swiatla_dlugie",
+   "type": "PhysicsInteractionButtonContinous",
+   "kind": "button",
+   "original": 0,
+   "positions": [],
+   "steps": [
+    {
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {}
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_ED250.corridorlight",
+   "controlId": "chassis_A/rocking/INTERIOR/kabina_A/kabina/bt-swiatlo_korytarz/bt-swiatlo_korytarz",
+   "type": "PhysicsInteractionButtonToggle",
+   "kind": "button",
+   "original": 1,
+   "positions": [],
+   "steps": [
+    {
+     "value": 0,
+     "ok": true,
+     "readback": 0,
+     "changes": {}
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_General.horn_signal",
+   "controlId": "chassis_A/rocking/INTERIOR/kabina_A/kabina/bt-syrena_low_pomocnik/bt-syrena_low_pomocnik",
+   "type": "PhysicsInteractionButtonContinous",
+   "kind": "button",
+   "original": 0,
+   "positions": [],
+   "steps": [
+    {
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {}
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_ED250.test_lv_board_controls",
+   "controlId": "chassis_A/rocking/INTERIOR/kabina_A/kabina/bt-test_lampek_szafy/bt-test_lampek_szafy",
+   "type": "PhysicsInteractionButtonContinous",
+   "kind": "button",
+   "original": 0,
+   "positions": [],
+   "steps": [
+    {
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {
+      "Physics_Output_ED250.override_hz_ril": [
+       0,
+       1
+      ],
+      "Physics_Output_ED250.brake_test_ok": [
+       0,
+       1
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_ED250.test_sifa",
+   "controlId": "chassis_A/rocking/INTERIOR/kabina_A/kabina/bt-test_SIFA/bt-test_SIFA",
+   "type": "PhysicsInteractionButtonContinous",
+   "kind": "button",
+   "original": 0,
+   "positions": [],
+   "steps": [
+    {
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {
+      "Physics_Input_General.drive_handle": [
+       0.264,
+       0.476
+      ],
+      "Physics_Output_ED250.traction_force_handle": [
+       26.403,
+       47.595
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_ED250.ed_enable_rq",
+   "controlId": "chassis_A/rocking/INTERIOR/kabina_A/kabina/bt-wylaczenie_ED/bt-wylaczenie_ED",
+   "type": "PhysicsInteractionButtonToggle",
+   "kind": "button",
+   "original": 1,
+   "positions": [],
+   "steps": [
+    {
+     "value": 0,
+     "ok": true,
+     "readback": 0,
+     "changes": {
+      "Physics_Input_General.drive_handle": [
+       0.12,
+       0
+      ],
+      "Physics_Output_ED250.traction_force_handle": [
+       11.974,
+       0
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_General.main_brake",
+   "controlId": "chassis_A/rocking/INTERIOR/kabina_A/kabina/Kran_Hamulca/Kran_Hamulca",
+   "type": "PhysicsInteractionLeverSmooth",
+   "kind": "lever",
+   "original": 2,
+   "positions": [
+    {
+     "index": 0,
+     "value": 7,
+     "lower": 7,
+     "upper": 7,
+     "smooth": false
+    },
+    {
+     "index": 1,
+     "value": 6,
+     "lower": 6,
+     "upper": 6,
+     "smooth": false
+    },
+    {
+     "index": 2,
+     "value": 4,
+     "lower": 6,
+     "upper": 3.8,
+     "smooth": true
+    },
+    {
+     "index": 3,
+     "value": 3.6,
+     "lower": 3.8,
+     "upper": 2.667,
+     "smooth": true
+    },
+    {
+     "index": 4,
+     "value": 2.667,
+     "lower": 2.667,
+     "upper": 2.667,
+     "smooth": false
+    },
+    {
+     "index": 5,
+     "value": 2,
+     "lower": 2,
+     "upper": 2,
+     "smooth": false
+    },
+    {
+     "index": 6,
+     "value": 1,
+     "lower": 1,
+     "upper": 1,
+     "smooth": false
+    },
+    {
+     "index": 7,
+     "value": 0,
+     "lower": 0,
+     "upper": 0,
+     "smooth": false
+    }
+   ],
+   "steps": [
+    {
+     "position": 0,
+     "value": 7,
+     "ok": false,
+     "error": "System.NullReferenceException: Object reference not set to an instance of an object.\n--- BEGIN IL2CPP STACK TRACE ---\nSystem.NullReferenceException: Object reference not set to an instance of an object.\r\n  at Assets.Scripts.Cabin.InputSystemControllers.PhysicsInteractionLeverStepped.SetStateFromPhysics (System.Single state) [0x00000] in <00000000000000000000000000000000>:0 \n--- END IL2CPP STACK TRACE ---\n",
+     "readback": 7,
+     "changes": {
+      "Physics_Output_ED250.pipe_pressure": [
+       3.829,
+       3.342
+      ],
+      "Physics_Output_ED250.brakecyl1_pressure": [
+       2.699,
+       3.232
+      ],
+      "Physics_Output_ED250.brakecyl2_pressure": [
+       3.572,
+       4.284
+      ],
+      "Physics_Output_ED250.control_pressure": [
+       3.429,
+       3.412
+      ]
+     }
+    },
+    {
+     "position": 1,
+     "value": 6,
+     "ok": false,
+     "error": "System.NullReferenceException: Object reference not set to an instance of an object.\n--- BEGIN IL2CPP STACK TRACE ---\nSystem.NullReferenceException: Object reference not set to an instance of an object.\r\n  at Assets.Scripts.Cabin.InputSystemControllers.PhysicsInteractionLeverStepped.SetStateFromPhysics (System.Single state) [0x00000] in <00000000000000000000000000000000>:0 \n--- END IL2CPP STACK TRACE ---\n",
+     "readback": 6,
+     "changes": {
+      "Physics_Output_ED250.pipe_pressure": [
+       3.342,
+       3.66
+      ],
+      "Physics_Output_ED250.brakecyl1_pressure": [
+       3.232,
+       3.17
+      ],
+      "Physics_Output_ED250.brakecyl2_pressure": [
+       4.284,
+       4.188
+      ],
+      "Physics_Output_ED250.control_pressure": [
+       3.412,
+       3.422
+      ]
+     }
+    },
+    {
+     "position": 2,
+     "value": 4,
+     "ok": false,
+     "error": "System.NullReferenceException: Object reference not set to an instance of an object.\n--- BEGIN IL2CPP STACK TRACE ---\nSystem.NullReferenceException: Object reference not set to an instance of an object.\r\n  at Assets.Scripts.Cabin.InputSystemControllers.PhysicsInteractionLeverStepped.SetStateFromPhysics (System.Single state) [0x00000] in <00000000000000000000000000000000>:0 \n--- END IL2CPP STACK TRACE ---\n",
+     "readback": 4,
+     "changes": {
+      "Physics_Output_ED250.pipe_pressure": [
+       3.66,
+       3.782
+      ],
+      "Physics_Output_ED250.brakecyl1_pressure": [
+       3.17,
+       2.833
+      ],
+      "Physics_Output_ED250.brakecyl2_pressure": [
+       4.188,
+       3.739
+      ],
+      "Physics_Output_ED250.control_pressure": [
+       3.422,
+       3.426
+      ]
+     }
+    },
+    {
+     "position": 3,
+     "value": 3.6,
+     "ok": false,
+     "error": "System.NullReferenceException: Object reference not set to an instance of an object.\n--- BEGIN IL2CPP STACK TRACE ---\nSystem.NullReferenceException: Object reference not set to an instance of an object.\r\n  at Assets.Scripts.Cabin.InputSystemControllers.PhysicsInteractionLeverStepped.SetStateFromPhysics (System.Single state) [0x00000] in <00000000000000000000000000000000>:0 \n--- END IL2CPP STACK TRACE ---\n",
+     "readback": 3.6,
+     "changes": {
+      "Physics_Output_ED250.pipe_pressure": [
+       3.782,
+       3.813
+      ],
+      "Physics_Output_ED250.brakecyl1_pressure": [
+       2.833,
+       2.718
+      ],
+      "Physics_Output_ED250.brakecyl2_pressure": [
+       3.739,
+       3.588
+      ],
+      "Physics_Output_ED250.control_pressure": [
+       3.426,
+       3.428
+      ]
+     }
+    },
+    {
+     "position": 4,
+     "value": 2.667,
+     "ok": false,
+     "error": "System.NullReferenceException: Object reference not set to an instance of an object.\n--- BEGIN IL2CPP STACK TRACE ---\nSystem.NullReferenceException: Object reference not set to an instance of an object.\r\n  at Assets.Scripts.Cabin.InputSystemControllers.PhysicsInteractionLeverStepped.SetStateFromPhysics (System.Single state) [0x00000] in <00000000000000000000000000000000>:0 \n--- END IL2CPP STACK TRACE ---\n",
+     "readback": 2.667,
+     "changes": {
+      "Physics_Output_ED250.pipe_pressure": [
+       3.813,
+       3.823
+      ],
+      "Physics_Output_ED250.brakecyl1_pressure": [
+       2.718,
+       2.708
+      ]
+     }
+    },
+    {
+     "position": 6,
+     "value": 1,
+     "ok": false,
+     "error": "System.NullReferenceException: Object reference not set to an instance of an object.\n--- BEGIN IL2CPP STACK TRACE ---\nSystem.NullReferenceException: Object reference not set to an instance of an object.\r\n  at Assets.Scripts.Cabin.InputSystemControllers.PhysicsInteractionLeverStepped.SetStateFromPhysics (System.Single state) [0x00000] in <00000000000000000000000000000000>:0 \n--- END IL2CPP STACK TRACE ---\n",
+     "readback": 1,
+     "changes": {
+      "Physics_Output_ED250.pipe_pressure": [
+       3.823,
+       3.827
+      ],
+      "Physics_Output_ED250.brakecyl1_pressure": [
+       2.708,
+       2.685
+      ],
+      "Physics_Output_ED250.brakecyl2_pressure": [
+       3.588,
+       3.552
+      ]
+     }
+    },
+    {
+     "position": 7,
+     "value": 0,
+     "ok": false,
+     "error": "System.NullReferenceException: Object reference not set to an instance of an object.\n--- BEGIN IL2CPP STACK TRACE ---\nSystem.NullReferenceException: Object reference not set to an instance of an object.\r\n  at Assets.Scripts.Cabin.InputSystemControllers.PhysicsInteractionLeverStepped.SetStateFromPhysics (System.Single state) [0x00000] in <00000000000000000000000000000000>:0 \n--- END IL2CPP STACK TRACE ---\n",
+     "readback": 0,
+     "changes": {}
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_General.direction_rq",
+   "controlId": "chassis_A/rocking/INTERIOR/kabina_A/kabina/sw-kierunek/sw-kierunek",
+   "type": "PhysicsInteractionSwitchStepped",
+   "kind": "switch",
+   "original": 1,
+   "positions": [
+    {
+     "index": 0,
+     "value": -1,
+     "stable": 0
+    },
+    {
+     "index": 1,
+     "value": 2,
+     "stable": 1
+    },
+    {
+     "index": 2,
+     "value": 1,
+     "stable": 2
+    }
+   ],
+   "steps": [
+    {
+     "position": 0,
+     "value": -1,
+     "ok": true,
+     "readback": -1,
+     "changes": {
+      "Physics_Output_ED250.drive_direction": [
+       1,
+       -1
+      ]
+     }
+    },
+    {
+     "position": 1,
+     "value": 2,
+     "ok": true,
+     "readback": 2,
+     "changes": {
+      "Physics_Output_ED250.drive_direction": [
+       -1,
+       0
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_ED250.heating_temp",
+   "controlId": "chassis_A/rocking/INTERIOR/kabina_A/kabina/sw-klimatyzacja_temp/sw-klimatyzacja_temp",
+   "type": "PhysicsInteractionSwitchSmooth",
+   "kind": "switch",
+   "original": 0,
+   "positions": [
+    {
+     "index": 0,
+     "value": 0
+    },
+    {
+     "index": 1,
+     "value": 1
+    }
+   ],
+   "steps": [
+    {
+     "position": 1,
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {}
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_ED250.heating_fan",
+   "controlId": "chassis_A/rocking/INTERIOR/kabina_A/kabina/sw-klimatyzacja_wentylator/sw-klimatyzacja_wentylator",
+   "type": "PhysicsInteractionSwitchStepped",
+   "kind": "switch",
+   "original": 0,
+   "positions": [
+    {
+     "index": 0,
+     "value": 0,
+     "stable": 0
+    },
+    {
+     "index": 1,
+     "value": 0,
+     "stable": 1
+    },
+    {
+     "index": 2,
+     "value": 0,
+     "stable": 2
+    },
+    {
+     "index": 3,
+     "value": 0,
+     "stable": 3
+    }
+   ],
+   "steps": []
+  },
+  {
+   "path": "Physics_Input_General.cablight",
+   "controlId": "chassis_A/rocking/INTERIOR/kabina_A/kabina/sw-lampa_kabina/sw-lampa_kabina",
+   "type": "PhysicsInteractionSwitchStepped",
+   "kind": "switch",
+   "original": 0,
+   "positions": [
+    {
+     "index": 0,
+     "value": -1,
+     "stable": 0
+    },
+    {
+     "index": 1,
+     "value": 1,
+     "stable": 1
+    }
+   ],
+   "steps": [
+    {
+     "position": 0,
+     "value": -1,
+     "ok": true,
+     "readback": -1,
+     "changes": {}
+    },
+    {
+     "position": 1,
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {
+      "Physics_Output_General.cablight": [
+       0,
+       1
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_ED250.spotlight_driver",
+   "controlId": "chassis_A/rocking/INTERIOR/kabina_A/kabina/sw-lampka_kabina/sw-lampka_kabina",
+   "type": "PhysicsInteractionSwitchStepped",
+   "kind": "switch",
+   "original": 0,
+   "positions": [
+    {
+     "index": 0,
+     "value": -1,
+     "stable": 0
+    },
+    {
+     "index": 1,
+     "value": 1,
+     "stable": 1
+    }
+   ],
+   "steps": [
+    {
+     "position": 0,
+     "value": -1,
+     "ok": true,
+     "readback": -1,
+     "changes": {}
+    },
+    {
+     "position": 1,
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {
+      "Physics_Output_ED250.spotlight_driver": [
+       0,
+       1
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_ED250.spotlight_helper",
+   "controlId": "chassis_A/rocking/INTERIOR/kabina_A/kabina/sw-lampka_pomocnik/sw-lampka_pomocnik",
+   "type": "PhysicsInteractionSwitchStepped",
+   "kind": "switch",
+   "original": 0,
+   "positions": [
+    {
+     "index": 0,
+     "value": -1,
+     "stable": 0
+    },
+    {
+     "index": 1,
+     "value": 1,
+     "stable": 1
+    }
+   ],
+   "steps": [
+    {
+     "position": 0,
+     "value": -1,
+     "ok": true,
+     "readback": -1,
+     "changes": {}
+    },
+    {
+     "position": 1,
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {
+      "Physics_Output_ED250.spotlight_helper": [
+       0,
+       1
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_ED250.lzb_wachs",
+   "controlId": "chassis_A/rocking/INTERIOR/kabina_A/kabina/sw-LZB_czujny/sw-LZB_czujny",
+   "type": "PhysicsInteractionSwitchStepped",
+   "kind": "switch",
+   "original": 0,
+   "positions": [
+    {
+     "index": 0,
+     "value": 1,
+     "stable": 1
+    },
+    {
+     "index": 1,
+     "value": 0,
+     "stable": 1
+    },
+    {
+     "index": 2,
+     "value": 1,
+     "stable": 1
+    }
+   ],
+   "steps": [
+    {
+     "position": 0,
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {}
+    },
+    {
+     "position": 2,
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {}
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_ED250.lzb_frei",
+   "controlId": "chassis_A/rocking/INTERIOR/kabina_A/kabina/sw-LZB_zezwolenie/sw-LZB_zezwolenie",
+   "type": "PhysicsInteractionSwitchStepped",
+   "kind": "switch",
+   "original": 0,
+   "positions": [
+    {
+     "index": 0,
+     "value": 1,
+     "stable": 1
+    },
+    {
+     "index": 1,
+     "value": 0,
+     "stable": 1
+    },
+    {
+     "index": 2,
+     "value": 1,
+     "stable": 1
+    }
+   ],
+   "steps": [
+    {
+     "position": 0,
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {}
+    },
+    {
+     "position": 2,
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {}
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_ED250.voltage_selector",
+   "controlId": "chassis_A/rocking/INTERIOR/kabina_A/kabina/sw-napiecie/sw-napiecie",
+   "type": "PhysicsInteractionSwitchStepped",
+   "kind": "switch",
+   "original": 0,
+   "positions": [
+    {
+     "index": 0,
+     "value": 0,
+     "stable": 0
+    },
+    {
+     "index": 1,
+     "value": 1,
+     "stable": 1
+    },
+    {
+     "index": 2,
+     "value": 2,
+     "stable": 2
+    },
+    {
+     "index": 3,
+     "value": 3,
+     "stable": 3
+    },
+    {
+     "index": 4,
+     "value": 4,
+     "stable": 4
+    }
+   ],
+   "steps": [
+    {
+     "position": 1,
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {
+      "Physics_Output_ED250.supply_current": [
+       17.31,
+       17.188
+      ]
+     }
+    },
+    {
+     "position": 2,
+     "value": 2,
+     "ok": true,
+     "readback": 2,
+     "changes": {}
+    },
+    {
+     "position": 3,
+     "value": 3,
+     "ok": true,
+     "readback": 3,
+     "changes": {}
+    },
+    {
+     "position": 4,
+     "value": 4,
+     "ok": true,
+     "readback": 4,
+     "changes": {}
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_ED250.bypass_mcb",
+   "controlId": "chassis_A/rocking/INTERIOR/kabina_A/kabina/sw-obejscie_MCB/sw-obejscie_MCB",
+   "type": "PhysicsInteractionSwitchStepped",
+   "kind": "switch",
+   "original": 0,
+   "positions": [
+    {
+     "index": 0,
+     "value": -1,
+     "stable": 0
+    },
+    {
+     "index": 1,
+     "value": 1,
+     "stable": 1
+    }
+   ],
+   "steps": [
+    {
+     "position": 0,
+     "value": -1,
+     "ok": true,
+     "readback": -1,
+     "changes": {}
+    },
+    {
+     "position": 1,
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {
+      "Physics_Output_ED250.bypass_mcb": [
+       0,
+       1
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_ED250.bypass_tco",
+   "controlId": "chassis_A/rocking/INTERIOR/kabina_A/kabina/sw-obejscie_MCO/sw-obejscie_MCO",
+   "type": "PhysicsInteractionSwitchStepped",
+   "kind": "switch",
+   "original": 0,
+   "positions": [
+    {
+     "index": 0,
+     "value": -1,
+     "stable": 0
+    },
+    {
+     "index": 1,
+     "value": 1,
+     "stable": 1
+    }
+   ],
+   "steps": [
+    {
+     "position": 0,
+     "value": -1,
+     "ok": true,
+     "readback": -1,
+     "changes": {}
+    },
+    {
+     "position": 1,
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {
+      "Physics_Output_ED250.bypass_tco": [
+       0,
+       1
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_ED250.override_hz_ril_a",
+   "controlId": "chassis_A/rocking/INTERIOR/kabina_A/kabina/sw-obejscie_pomiaru_harmonicznych_A/sw-obejscie_pomiaru_harmonicznych_A",
+   "type": "PhysicsInteractionSwitchStepped",
+   "kind": "switch",
+   "original": 0,
+   "positions": [
+    {
+     "index": 0,
+     "value": -1,
+     "stable": 0
+    },
+    {
+     "index": 1,
+     "value": 1,
+     "stable": 1
+    }
+   ],
+   "steps": [
+    {
+     "position": 0,
+     "value": -1,
+     "ok": true,
+     "readback": -1,
+     "changes": {}
+    },
+    {
+     "position": 1,
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {
+      "Physics_Output_ED250.override_hz_ril": [
+       0,
+       1
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_ED250.override_hz_ril_b",
+   "controlId": "chassis_A/rocking/INTERIOR/kabina_A/kabina/sw-obejscie_pomiaru_harmonicznych_B/sw-obejscie_pomiaru_harmonicznych_B",
+   "type": "PhysicsInteractionSwitchStepped",
+   "kind": "switch",
+   "original": 0,
+   "positions": [
+    {
+     "index": 0,
+     "value": -1,
+     "stable": 0
+    },
+    {
+     "index": 1,
+     "value": 1,
+     "stable": 1
+    }
+   ],
+   "steps": [
+    {
+     "position": 0,
+     "value": -1,
+     "ok": true,
+     "readback": -1,
+     "changes": {
+      "Physics_Input_General.error_code_ack": [
+       1,
+       0
+      ]
+     }
+    },
+    {
+     "position": 1,
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {}
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_ED250.brake_distributor_insulation",
+   "controlId": "chassis_A/rocking/INTERIOR/kabina_A/kabina/sw-odciecie_hamulca/sw-odciecie_hamulca",
+   "type": "PhysicsInteractionSwitchStepped",
+   "kind": "switch",
+   "original": -1,
+   "positions": [
+    {
+     "index": 0,
+     "value": -1,
+     "stable": 0
+    },
+    {
+     "index": 1,
+     "value": 1,
+     "stable": 1
+    }
+   ],
+   "steps": [
+    {
+     "position": 1,
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {
+      "Physics_Output_ED250.brakehandle_malfunction": [
+       0,
+       1
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_General.spring_brake_rq",
+   "controlId": "chassis_A/rocking/INTERIOR/kabina_A/kabina/sw-odlacznik_hamulca_sprezynowego/sw-odlacznik_hamulca_sprezynowego",
+   "type": "PhysicsInteractionSwitchStepped",
+   "kind": "switch",
+   "original": 0,
+   "positions": [
+    {
+     "index": 0,
+     "value": 1,
+     "stable": 1
+    },
+    {
+     "index": 1,
+     "value": 0,
+     "stable": 1
+    },
+    {
+     "index": 2,
+     "value": -1,
+     "stable": 1
+    }
+   ],
+   "steps": [
+    {
+     "position": 0,
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {
+      "Physics_Input_ED250.booster": [
+       0,
+       1
+      ],
+      "Physics_Output_ED250.brakecyl2_pressure": [
+       3.552,
+       3.575
+      ],
+      "Physics_Output_ED250.springbrake_active": [
+       0,
+       1
+      ]
+     }
+    },
+    {
+     "position": 2,
+     "value": -1,
+     "ok": true,
+     "readback": -1,
+     "changes": {
+      "Physics_Output_ED250.brakecyl2_pressure": [
+       3.575,
+       3.552
+      ],
+      "Physics_Output_ED250.springbrake_active": [
+       1,
+       0
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_ED250.heating_feet",
+   "controlId": "chassis_A/rocking/INTERIOR/kabina_A/kabina/sw-ogrzewanie_stop/sw-ogrzewanie_stop",
+   "type": "PhysicsInteractionSwitchStepped",
+   "kind": "switch",
+   "original": 0,
+   "positions": [
+    {
+     "index": 0,
+     "value": -1,
+     "stable": 0
+    },
+    {
+     "index": 1,
+     "value": 1,
+     "stable": 1
+    },
+    {
+     "index": 2,
+     "value": 2,
+     "stable": 2
+    }
+   ],
+   "steps": [
+    {
+     "position": 0,
+     "value": -1,
+     "ok": true,
+     "readback": -1,
+     "changes": {
+      "Physics_Input_General.drive_handle": [
+       0.668,
+       0.55
+      ],
+      "Physics_Input_ED250.booster": [
+       1,
+       -1
+      ],
+      "Physics_Output_ED250.traction_force_handle": [
+       66.834,
+       54.96
+      ],
+      "Physics_Output_ED250.booster": [
+       1,
+       0
+      ]
+     }
+    },
+    {
+     "position": 1,
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {
+      "Physics_Input_General.drive_handle": [
+       0.55,
+       0
+      ],
+      "Physics_Output_ED250.traction_force_handle": [
+       54.96,
+       0
+      ]
+     }
+    },
+    {
+     "position": 2,
+     "value": 2,
+     "ok": true,
+     "readback": 2,
+     "changes": {}
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_ED250.windscreen_heater",
+   "controlId": "chassis_A/rocking/INTERIOR/kabina_A/kabina/sw-ogrzewanie_szyby/sw-ogrzewanie_szyby",
+   "type": "PhysicsInteractionSwitchStepped",
+   "kind": "switch",
+   "original": 0,
+   "positions": [
+    {
+     "index": 0,
+     "value": -1,
+     "stable": 0
+    },
+    {
+     "index": 1,
+     "value": 1,
+     "stable": 1
+    }
+   ],
+   "steps": [
+    {
+     "position": 0,
+     "value": -1,
+     "ok": true,
+     "readback": -1,
+     "changes": {
+      "Physics_Input_General.horn_signal": [
+       0,
+       2
+      ]
+     }
+    },
+    {
+     "position": 1,
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {
+      "Physics_Output_ED250.windscreen_heating": [
+       0,
+       1
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_ED250.pas_comp_light",
+   "controlId": "chassis_A/rocking/INTERIOR/kabina_A/kabina/sw-oswietlenie_przedzialow/sw-oswietlenie_przedzialow",
+   "type": "PhysicsInteractionSwitchStepped",
+   "kind": "switch",
+   "original": 0,
+   "positions": [
+    {
+     "index": 0,
+     "value": -1,
+     "stable": 1
+    },
+    {
+     "index": 1,
+     "value": 0,
+     "stable": 1
+    },
+    {
+     "index": 2,
+     "value": 1,
+     "stable": 1
+    }
+   ],
+   "steps": [
+    {
+     "position": 0,
+     "value": -1,
+     "ok": true,
+     "readback": -1,
+     "changes": {
+      "Physics_Output_ED250.pas_comp_light_on": [
+       1,
+       0
+      ]
+     }
+    },
+    {
+     "position": 2,
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {
+      "Physics_Output_ED250.supply_current": [
+       17.188,
+       17.09
+      ],
+      "Physics_Output_ED250.pas_comp_light_on": [
+       0,
+       1
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_ED250.coupler_cover_open",
+   "controlId": "chassis_A/rocking/INTERIOR/kabina_A/kabina/sw-otwieranie_dzioba/sw-otwieranie_dzioba",
+   "type": "PhysicsInteractionSwitchStepped",
+   "kind": "switch",
+   "original": -2,
+   "positions": [
+    {
+     "index": 0,
+     "value": 1,
+     "stable": 1
+    },
+    {
+     "index": 1,
+     "value": -2,
+     "stable": 1
+    },
+    {
+     "index": 2,
+     "value": 0,
+     "stable": 1
+    }
+   ],
+   "steps": [
+    {
+     "position": 0,
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {}
+    },
+    {
+     "position": 2,
+     "value": 0,
+     "ok": true,
+     "readback": 0,
+     "changes": {}
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_General.sanding_button",
+   "controlId": "chassis_A/rocking/INTERIOR/kabina_A/kabina/sw-piasecznice/sw-piasecznice",
+   "type": "PhysicsInteractionSwitchStepped",
+   "kind": "switch",
+   "original": 0,
+   "positions": [
+    {
+     "index": 0,
+     "value": -1,
+     "stable": 0
+    },
+    {
+     "index": 1,
+     "value": 1,
+     "stable": 0
+    }
+   ],
+   "steps": [
+    {
+     "position": 0,
+     "value": -1,
+     "ok": true,
+     "readback": -1,
+     "changes": {}
+    },
+    {
+     "position": 1,
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {}
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_General.pulpitlight",
+   "controlId": "chassis_A/rocking/INTERIOR/kabina_A/kabina/sw-podsiwetlenie_pulpitu/sw-podsiwetlenie_pulpitu",
+   "type": "PhysicsInteractionSwitchStepped",
+   "kind": "switch",
+   "original": 0,
+   "positions": [
+    {
+     "index": 0,
+     "value": -1,
+     "stable": 0
+    },
+    {
+     "index": 1,
+     "value": 1,
+     "stable": 1
+    }
+   ],
+   "steps": [
+    {
+     "position": 0,
+     "value": -1,
+     "ok": true,
+     "readback": -1,
+     "changes": {}
+    },
+    {
+     "position": 1,
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {
+      "Physics_Output_General.pulpitlight": [
+       0,
+       1
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_ED250.instrumentlight_intensity",
+   "controlId": "chassis_A/rocking/INTERIOR/kabina_A/kabina/sw-podswietlenie_mano_potencjometr/sw-podswietlenie_mano_potencjometr",
+   "type": "PhysicsInteractionSwitchSmooth",
+   "kind": "switch",
+   "original": 0,
+   "positions": [
+    {
+     "index": 0,
+     "value": 0
+    },
+    {
+     "index": 1,
+     "value": 1
+    }
+   ],
+   "steps": [
+    {
+     "position": 1,
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {}
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_ED250.pulpitlight_intensity",
+   "controlId": "chassis_A/rocking/INTERIOR/kabina_A/kabina/sw-potencjometr_podsiwetlenie_pulpitu/sw-potencjometr_podsiwetlenie_pulpitu",
+   "type": "PhysicsInteractionSwitchSmooth",
+   "kind": "switch",
+   "original": 1,
+   "positions": [
+    {
+     "index": 0,
+     "value": 0.05
+    },
+    {
+     "index": 1,
+     "value": 1
+    }
+   ],
+   "steps": [
+    {
+     "position": 0,
+     "value": 0.05,
+     "ok": true,
+     "readback": 0.05,
+     "changes": {
+      "Physics_Output_General.pulpitlight": [
+       1,
+       0.05
+      ],
+      "Physics_Input_ED250.spotlight_helper": [
+       0,
+       1
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_General.speed_ctrl",
+   "controlId": "chassis_A/rocking/INTERIOR/kabina_A/kabina/sw-predkosc/sw-predkosc",
+   "type": "PhysicsInteractionLeverStepped",
+   "kind": "lever",
+   "original": 2,
+   "positions": [
+    {
+     "index": 0,
+     "value": 0,
+     "stable": 2
+    },
+    {
+     "index": 1,
+     "value": 1,
+     "stable": 2
+    },
+    {
+     "index": 2,
+     "value": 2,
+     "stable": 2
+    },
+    {
+     "index": 3,
+     "value": 3,
+     "stable": 2
+    }
+   ],
+   "steps": [
+    {
+     "position": 0,
+     "value": 0,
+     "ok": true,
+     "readback": 0,
+     "changes": {
+      "Physics_Output_General.speed_ctrl_status": [
+       1,
+       0
+      ],
+      "Physics_Output_General.speedCtrlValueForGui": [
+       250,
+       0
+      ]
+     }
+    },
+    {
+     "position": 1,
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {
+      "Physics_Input_General.direction_rq": [
+       1,
+       -1
+      ],
+      "Physics_Output_ED250.drive_direction": [
+       1,
+       -1
+      ]
+     }
+    },
+    {
+     "position": 3,
+     "value": 3,
+     "ok": true,
+     "readback": 3,
+     "changes": {
+      "Physics_Input_General.direction_rq": [
+       -1,
+       1
+      ],
+      "Physics_Output_General.speed_ctrl_status": [
+       0,
+       1
+      ],
+      "Physics_Output_General.weather_temp": [
+       25,
+       20
+      ],
+      "Physics_Output_General.weather_humidity": [
+       42,
+       35
+      ],
+      "Physics_Output_General.speedCtrlValueForGui": [
+       0,
+       4
+      ],
+      "Physics_Output_ED250.drive_direction": [
+       -1,
+       1
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_ED250.air_recirculation",
+   "controlId": "chassis_A/rocking/INTERIOR/kabina_A/kabina/sw-recylkulacja_powietrza/sw-recylkulacja_powietrza",
+   "type": "PhysicsInteractionSwitchStepped",
+   "kind": "switch",
+   "original": 0,
+   "positions": [
+    {
+     "index": 0,
+     "value": -1,
+     "stable": 0
+    },
+    {
+     "index": 1,
+     "value": 1,
+     "stable": 1
+    }
+   ],
+   "steps": [
+    {
+     "position": 0,
+     "value": -1,
+     "ok": true,
+     "readback": -1,
+     "changes": {
+      "Physics_Output_General.speed_ctrl_value": [
+       250,
+       4
+      ]
+     }
+    },
+    {
+     "position": 1,
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {
+      "Physics_Output_ED250.air_recirculation": [
+       0,
+       1
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_ED250.upper_headlight",
+   "controlId": "chassis_A/rocking/INTERIOR/kabina_A/kabina/sw-reflektor_gorny/sw-reflektor_gorny",
+   "type": "PhysicsInteractionSwitchStepped",
+   "kind": "switch",
+   "original": 1,
+   "positions": [
+    {
+     "index": 0,
+     "value": 1,
+     "stable": 0
+    },
+    {
+     "index": 1,
+     "value": -1,
+     "stable": 1
+    }
+   ],
+   "steps": [
+    {
+     "position": 1,
+     "value": -1,
+     "ok": true,
+     "readback": -1,
+     "changes": {
+      "Physics_Output_ED250.farlights": [
+       1,
+       0
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_General.light_pos",
+   "controlId": "chassis_A/rocking/INTERIOR/kabina_A/kabina/sw-reflektory_kabA/sw-reflektory_kabA",
+   "type": "PhysicsInteractionSwitchStepped",
+   "kind": "switch",
+   "original": 0,
+   "positions": [
+    {
+     "index": 0,
+     "value": 0,
+     "stable": 0
+    },
+    {
+     "index": 1,
+     "value": 1,
+     "stable": 1
+    },
+    {
+     "index": 2,
+     "value": 2,
+     "stable": 2
+    },
+    {
+     "index": 3,
+     "value": 3,
+     "stable": 3
+    },
+    {
+     "index": 4,
+     "value": 4,
+     "stable": 4
+    },
+    {
+     "index": 5,
+     "value": 5,
+     "stable": 5
+    },
+    {
+     "index": 6,
+     "value": 6,
+     "stable": 6
+    },
+    {
+     "index": 7,
+     "value": 7,
+     "stable": 7
+    }
+   ],
+   "steps": [
+    {
+     "position": 1,
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {}
+    },
+    {
+     "position": 2,
+     "value": 2,
+     "ok": true,
+     "readback": 2,
+     "changes": {}
+    },
+    {
+     "position": 3,
+     "value": 3,
+     "ok": true,
+     "readback": 3,
+     "changes": {
+      "Physics_Input_General.drive_handle": [
+       0,
+       0.222
+      ],
+      "Physics_Output_ED250.traction_force_handle": [
+       0,
+       22.194
+      ]
+     }
+    },
+    {
+     "position": 4,
+     "value": 4,
+     "ok": true,
+     "readback": 4,
+     "changes": {
+      "Physics_Input_General.drive_handle": [
+       0.222,
+       0.332
+      ],
+      "Physics_Output_ED250.traction_force_handle": [
+       22.194,
+       33.166
+      ]
+     }
+    },
+    {
+     "position": 5,
+     "value": 5,
+     "ok": true,
+     "readback": 5,
+     "changes": {}
+    },
+    {
+     "position": 6,
+     "value": 6,
+     "ok": true,
+     "readback": 6,
+     "changes": {}
+    },
+    {
+     "position": 7,
+     "value": 7,
+     "ok": true,
+     "readback": 7,
+     "changes": {
+      "Physics_Output_ED250.supply_current": [
+       17.09,
+       16.992
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_ED250.rearlight_pos",
+   "controlId": "chassis_A/rocking/INTERIOR/kabina_A/kabina/sw-reflektory_kabB/sw-reflektory_kabB",
+   "type": "PhysicsInteractionSwitchStepped",
+   "kind": "switch",
+   "original": 0,
+   "positions": [
+    {
+     "index": 0,
+     "value": 0,
+     "stable": 0
+    },
+    {
+     "index": 1,
+     "value": 1,
+     "stable": 1
+    },
+    {
+     "index": 2,
+     "value": 2,
+     "stable": 2
+    },
+    {
+     "index": 3,
+     "value": 3,
+     "stable": 3
+    },
+    {
+     "index": 4,
+     "value": 4,
+     "stable": 4
+    },
+    {
+     "index": 5,
+     "value": 5,
+     "stable": 5
+    },
+    {
+     "index": 6,
+     "value": 6,
+     "stable": 6
+    },
+    {
+     "index": 7,
+     "value": 7,
+     "stable": 7
+    }
+   ],
+   "steps": [
+    {
+     "position": 1,
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {}
+    },
+    {
+     "position": 2,
+     "value": 2,
+     "ok": true,
+     "readback": 2,
+     "changes": {}
+    },
+    {
+     "position": 3,
+     "value": 3,
+     "ok": true,
+     "readback": 3,
+     "changes": {}
+    },
+    {
+     "position": 4,
+     "value": 4,
+     "ok": true,
+     "readback": 4,
+     "changes": {}
+    },
+    {
+     "position": 5,
+     "value": 5,
+     "ok": true,
+     "readback": 5,
+     "changes": {
+      "Physics_Input_General.drive_handle": [
+       0.332,
+       0
+      ],
+      "Physics_Output_ED250.traction_force_handle": [
+       33.166,
+       0
+      ]
+     }
+    },
+    {
+     "position": 6,
+     "value": 6,
+     "ok": true,
+     "readback": 6,
+     "changes": {}
+    },
+    {
+     "position": 7,
+     "value": 7,
+     "ok": true,
+     "readback": 7,
+     "changes": {}
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_ED250.headlight_shortcut",
+   "controlId": "chassis_A/rocking/INTERIOR/kabina_A/kabina/sw-reflektory_z_akumulatora/sw-reflektory_z_akumulatora",
+   "type": "PhysicsInteractionSwitchStepped",
+   "kind": "switch",
+   "original": 0,
+   "positions": [
+    {
+     "index": 0,
+     "value": -1,
+     "stable": 0
+    },
+    {
+     "index": 1,
+     "value": 1,
+     "stable": 1
+    }
+   ],
+   "steps": [
+    {
+     "position": 0,
+     "value": -1,
+     "ok": true,
+     "readback": -1,
+     "changes": {
+      "Physics_Input_ED250.shp_button": [
+       1,
+       -1
+      ]
+     }
+    },
+    {
+     "position": 1,
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {}
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_ED250.heating_feet_temp",
+   "controlId": "chassis_A/rocking/INTERIOR/kabina_A/kabina/sw-regulacja_nadmuchu_nog/sw-regulacja_nadmuchu_nog",
+   "type": "PhysicsInteractionSwitchStepped",
+   "kind": "switch",
+   "original": 0,
+   "positions": [
+    {
+     "index": 0,
+     "value": 1,
+     "stable": 0
+    },
+    {
+     "index": 1,
+     "value": 0,
+     "stable": 1
+    }
+   ],
+   "steps": [
+    {
+     "position": 0,
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {
+      "Physics_Output_General.speedCtrlValueForGui": [
+       5,
+       8
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_ED250.footrest_control",
+   "controlId": "chassis_A/rocking/INTERIOR/kabina_A/kabina/sw-regulacja_stopnia/sw-regulacja_stopnia",
+   "type": "PhysicsInteractionSwitchStepped",
+   "kind": "switch",
+   "original": 0,
+   "positions": [
+    {
+     "index": 0,
+     "value": -1,
+     "stable": 1
+    },
+    {
+     "index": 1,
+     "value": 0,
+     "stable": 1
+    },
+    {
+     "index": 2,
+     "value": 1,
+     "stable": 1
+    }
+   ],
+   "steps": [
+    {
+     "position": 0,
+     "value": -1,
+     "ok": true,
+     "readback": -1,
+     "changes": {
+      "Physics_Output_General.speedCtrlValueForGui": [
+       20,
+       15
+      ]
+     }
+    },
+    {
+     "position": 2,
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {
+      "Physics_Output_General.speed_ctrl_value": [
+       4,
+       15
+      ],
+      "Physics_Input_ED250.lzb_befehl": [
+       0,
+       1
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_General.unlock_brake_pipe",
+   "controlId": "chassis_A/rocking/INTERIOR/kabina_A/kabina/sw-reset_hamulca_bezpieczenstwa/sw-reset_hamulca_bezpieczenstwa",
+   "type": "PhysicsInteractionSwitchStepped",
+   "kind": "switch",
+   "original": 0,
+   "positions": [
+    {
+     "index": 0,
+     "value": -1,
+     "stable": 0
+    },
+    {
+     "index": 1,
+     "value": 1,
+     "stable": 0
+    }
+   ],
+   "steps": [
+    {
+     "position": 0,
+     "value": -1,
+     "ok": true,
+     "readback": -1,
+     "changes": {}
+    },
+    {
+     "position": 1,
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {}
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_ED250.blind_control",
+   "controlId": "chassis_A/rocking/INTERIOR/kabina_A/kabina/sw-roleta/sw-roleta",
+   "type": "PhysicsInteractionSwitchStepped",
+   "kind": "switch",
+   "original": 0,
+   "positions": [
+    {
+     "index": 0,
+     "value": 1,
+     "stable": 1
+    },
+    {
+     "index": 1,
+     "value": 0,
+     "stable": 1
+    },
+    {
+     "index": 2,
+     "value": -1,
+     "stable": 1
+    }
+   ],
+   "steps": [
+    {
+     "position": 0,
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {}
+    },
+    {
+     "position": 2,
+     "value": -1,
+     "ok": true,
+     "readback": -1,
+     "changes": {}
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_ED250.decouple",
+   "controlId": "chassis_A/rocking/INTERIOR/kabina_A/kabina/sw-rozprzeganie/sw-rozprzeganie",
+   "type": "PhysicsInteractionSwitchStepped",
+   "kind": "switch",
+   "original": 0,
+   "positions": [
+    {
+     "index": 0,
+     "value": 1,
+     "stable": 1
+    },
+    {
+     "index": 1,
+     "value": 0,
+     "stable": 1
+    },
+    {
+     "index": 2,
+     "value": -1,
+     "stable": 1
+    }
+   ],
+   "steps": [
+    {
+     "position": 0,
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {
+      "Physics_Output_ED250.decoupling": [
+       0,
+       1
+      ]
+     }
+    },
+    {
+     "position": 2,
+     "value": -1,
+     "ok": true,
+     "readback": -1,
+     "changes": {}
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_General.drive_handle",
+   "controlId": "chassis_A/rocking/INTERIOR/kabina_A/kabina/sw-sila_pociagowa/sw-sila_pociagowa",
+   "type": "PhysicsInteractionLeverSmooth",
+   "kind": "lever",
+   "original": 0,
+   "positions": [
+    {
+     "index": 0,
+     "value": 0,
+     "lower": 0,
+     "upper": 0,
+     "smooth": false
+    },
+    {
+     "index": 1,
+     "value": 0,
+     "lower": 0,
+     "upper": 0,
+     "smooth": false
+    },
+    {
+     "index": 2,
+     "value": 0.001,
+     "lower": 0,
+     "upper": 1,
+     "smooth": true
+    },
+    {
+     "index": 3,
+     "value": 1,
+     "lower": 1,
+     "upper": 1,
+     "smooth": false
+    }
+   ],
+   "steps": [
+    {
+     "position": 2,
+     "value": 0.001,
+     "ok": true,
+     "readback": 0.001,
+     "changes": {
+      "Physics_Output_ED250.traction_force_handle": [
+       0,
+       0.1
+      ]
+     }
+    },
+    {
+     "position": 3,
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {
+      "Physics_Output_ED250.traction_force_handle": [
+       0.1,
+       100
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_General.washer",
+   "controlId": "chassis_A/rocking/INTERIOR/kabina_A/kabina/sw-spryskiwacz/sw-spryskiwacz",
+   "type": "PhysicsInteractionSwitchStepped",
+   "kind": "switch",
+   "original": 0,
+   "positions": [
+    {
+     "index": 0,
+     "value": -1,
+     "stable": 0
+    },
+    {
+     "index": 1,
+     "value": 1,
+     "stable": 0
+    }
+   ],
+   "steps": [
+    {
+     "position": 0,
+     "value": -1,
+     "ok": true,
+     "readback": -1,
+     "changes": {}
+    },
+    {
+     "position": 1,
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {
+      "Physics_Output_ED250.supply_current": [
+       16.992,
+       16.87
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_ED250.farlights",
+   "controlId": "chassis_A/rocking/INTERIOR/kabina_A/kabina/sw-swiatla_dlugie/sw-swiatla_dlugie",
+   "type": "PhysicsInteractionSwitchStepped",
+   "kind": "switch",
+   "original": 0,
+   "positions": [
+    {
+     "index": 0,
+     "value": -1,
+     "stable": 0
+    },
+    {
+     "index": 1,
+     "value": 1,
+     "stable": 1
+    }
+   ],
+   "steps": [
+    {
+     "position": 0,
+     "value": -1,
+     "ok": true,
+     "readback": -1,
+     "changes": {}
+    },
+    {
+     "position": 1,
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {}
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_General.lights_power",
+   "controlId": "chassis_A/rocking/INTERIOR/kabina_A/kabina/sw-swiatla_pozycyjne/sw-swiatla_pozycyjne",
+   "type": "PhysicsInteractionSwitchStepped",
+   "kind": "switch",
+   "original": 1,
+   "positions": [
+    {
+     "index": 0,
+     "value": 1,
+     "stable": 0
+    },
+    {
+     "index": 1,
+     "value": -1,
+     "stable": 1
+    }
+   ],
+   "steps": [
+    {
+     "position": 1,
+     "value": -1,
+     "ok": true,
+     "readback": -1,
+     "changes": {}
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_ED250.brake_test",
+   "controlId": "chassis_A/rocking/INTERIOR/kabina_A/kabina/sw-test_hamulca/sw-test_hamulca",
+   "type": "PhysicsInteractionSwitchStepped",
+   "kind": "switch",
+   "original": 0,
+   "positions": [
+    {
+     "index": 0,
+     "value": 3,
+     "stable": 0
+    },
+    {
+     "index": 1,
+     "value": 0,
+     "stable": 1
+    },
+    {
+     "index": 2,
+     "value": 1,
+     "stable": 2
+    },
+    {
+     "index": 3,
+     "value": 2,
+     "stable": 3
+    }
+   ],
+   "steps": [
+    {
+     "position": 0,
+     "value": 3,
+     "ok": true,
+     "readback": 3,
+     "changes": {}
+    },
+    {
+     "position": 2,
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {}
+    },
+    {
+     "position": 3,
+     "value": 2,
+     "ok": true,
+     "readback": 2,
+     "changes": {}
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_ED250.test_dashboard_controls",
+   "controlId": "chassis_A/rocking/INTERIOR/kabina_A/kabina/sw-test_kontrolek/sw-test_kontrolek",
+   "type": "PhysicsInteractionSwitchStepped",
+   "kind": "switch",
+   "original": 0,
+   "positions": [
+    {
+     "index": 0,
+     "value": -1,
+     "stable": 0
+    },
+    {
+     "index": 1,
+     "value": 1,
+     "stable": 0
+    }
+   ],
+   "steps": [
+    {
+     "position": 0,
+     "value": -1,
+     "ok": true,
+     "readback": -1,
+     "changes": {}
+    },
+    {
+     "position": 1,
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {
+      "Physics_Output_ED250.door": [
+       0,
+       1
+      ],
+      "Physics_Output_ED250.shp": [
+       0,
+       1
+      ],
+      "Physics_Output_ED250.main_circuit_breaker_status": [
+       0,
+       1
+      ],
+      "Physics_Output_ED250.ac_status": [
+       0,
+       1
+      ],
+      "Physics_Output_ED250.springbrake_active": [
+       0,
+       1
+      ],
+      "Physics_Output_ED250.abs_status": [
+       0,
+       1
+      ],
+      "Physics_Output_ED250.fire_suppression_lights": [
+       0,
+       1
+      ],
+      "Physics_Output_ED250.awaiting_configuration": [
+       0,
+       1
+      ],
+      "Physics_Output_ED250.no_hv": [
+       0,
+       1
+      ],
+      "Physics_Output_ED250.tcn": [
+       0,
+       1
+      ],
+      "Physics_Output_ED250.brakehandle_malfunction": [
+       0,
+       1
+      ],
+      "Physics_Output_ED250.axlebox_hot": [
+       0,
+       1
+      ],
+      "Physics_Output_ED250.axlebox_overheat": [
+       0,
+       1
+      ],
+      "Physics_Output_ED250.bogie_transverse_vibrations": [
+       0,
+       1
+      ],
+      "Physics_Output_ED250.emergency_brake_engaged": [
+       0,
+       1
+      ],
+      "Physics_Output_ED250.emergency_brake_neutralised": [
+       0,
+       1
+      ],
+      "Physics_Output_ED250.emergency_brake_disabled": [
+       0,
+       1
+      ],
+      "Physics_Output_ED250.brake_pipe_leak": [
+       0,
+       1
+      ],
+      "Physics_Output_ED250.axle_unsecured": [
+       0,
+       1
+      ],
+      "Physics_Output_ED250.axle_locked": [
+       0,
+       1
+      ],
+      "Physics_Output_ED250.transmission_overheat": [
+       0,
+       1
+      ],
+      "Physics_Output_ED250.lzb": [
+       0,
+       1
+      ],
+      "Physics_Output_ED250.magnetic_brake_active": [
+       0,
+       1
+      ],
+      "Physics_Output_ED250.sifa": [
+       0,
+       1
+      ],
+      "Physics_Output_ED250.traction_malfunction": [
+       0,
+       1
+      ],
+      "Physics_Output_ED250.units_coupled": [
+       0,
+       1
+      ],
+      "Physics_Output_ED250.pneumatic_board_cutoff": [
+       0,
+       1
+      ],
+      "Physics_Output_ED250.sifa_valve_cutoff": [
+       0,
+       1
+      ],
+      "Physics_Output_ED250.pzb_disabled": [
+       0,
+       1
+      ],
+      "Physics_Output_ED250.nothalt_active": [
+       0,
+       1
+      ],
+      "Physics_Output_ED250.shp_disabled": [
+       0,
+       1
+      ],
+      "Physics_Output_ED250.radiostop_disabled": [
+       0,
+       1
+      ],
+      "Physics_Output_ED250.ed_disabled": [
+       0,
+       1
+      ],
+      "Physics_Output_ED250.booster": [
+       0,
+       1
+      ],
+      "Physics_Output_ED250.parking": [
+       0,
+       1
+      ],
+      "Physics_Output_ED250.door_left_allowed": [
+       0,
+       1
+      ],
+      "Physics_Output_ED250.door_right_allowed": [
+       0,
+       1
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_General.wiper",
+   "controlId": "chassis_A/rocking/INTERIOR/kabina_A/kabina/sw-wycieraczki/sw-wycieraczki",
+   "type": "PhysicsInteractionSwitchStepped",
+   "kind": "switch",
+   "original": 0,
+   "positions": [
+    {
+     "index": 0,
+     "value": 0,
+     "stable": 0
+    },
+    {
+     "index": 1,
+     "value": 1,
+     "stable": 1
+    },
+    {
+     "index": 2,
+     "value": 2,
+     "stable": 2
+    }
+   ],
+   "steps": [
+    {
+     "position": 1,
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {}
+    },
+    {
+     "position": 2,
+     "value": 2,
+     "ok": true,
+     "readback": 2,
+     "changes": {}
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_ED250.disable_lzb",
+   "controlId": "chassis_A/rocking/INTERIOR/kabina_A/kabina/sw-wylaczenie_lzb/sw-wylaczenie_lzb",
+   "type": "PhysicsInteractionSwitchStepped",
+   "kind": "switch",
+   "original": 0,
+   "positions": [
+    {
+     "index": 0,
+     "value": -1,
+     "stable": 0
+    },
+    {
+     "index": 1,
+     "value": 1,
+     "stable": 1
+    }
+   ],
+   "steps": [
+    {
+     "position": 0,
+     "value": -1,
+     "ok": true,
+     "readback": -1,
+     "changes": {}
+    },
+    {
+     "position": 1,
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {}
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_ED250.disable_nothalt",
+   "controlId": "chassis_A/rocking/INTERIOR/kabina_A/kabina/sw-wylaczenie_nothalt/sw-wylaczenie_nothalt",
+   "type": "PhysicsInteractionSwitchStepped",
+   "kind": "switch",
+   "original": 0,
+   "positions": [
+    {
+     "index": 0,
+     "value": -1,
+     "stable": 0
+    },
+    {
+     "index": 1,
+     "value": 1,
+     "stable": 1
+    }
+   ],
+   "steps": [
+    {
+     "position": 0,
+     "value": -1,
+     "ok": true,
+     "readback": -1,
+     "changes": {}
+    },
+    {
+     "position": 1,
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {
+      "Physics_Output_ED250.nothalt_active": [
+       0,
+       1
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_ED250.disable_pzb",
+   "controlId": "chassis_A/rocking/INTERIOR/kabina_A/kabina/sw-wylaczenie_pzb/sw-wylaczenie_pzb",
+   "type": "PhysicsInteractionSwitchStepped",
+   "kind": "switch",
+   "original": 0,
+   "positions": [
+    {
+     "index": 0,
+     "value": -1,
+     "stable": 0
+    },
+    {
+     "index": 1,
+     "value": 1,
+     "stable": 1
+    }
+   ],
+   "steps": [
+    {
+     "position": 0,
+     "value": -1,
+     "ok": true,
+     "readback": -1,
+     "changes": {}
+    },
+    {
+     "position": 1,
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {
+      "Physics_Output_ED250.pzb_disabled": [
+       0,
+       1
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_ED250.disable_radiostop",
+   "controlId": "chassis_A/rocking/INTERIOR/kabina_A/kabina/sw-wylaczenie_radiostop/sw-wylaczenie_radiostop",
+   "type": "PhysicsInteractionSwitchStepped",
+   "kind": "switch",
+   "original": 0,
+   "positions": [
+    {
+     "index": 0,
+     "value": -1,
+     "stable": 0
+    },
+    {
+     "index": 1,
+     "value": 1,
+     "stable": 1
+    }
+   ],
+   "steps": [
+    {
+     "position": 0,
+     "value": -1,
+     "ok": true,
+     "readback": -1,
+     "changes": {}
+    },
+    {
+     "position": 1,
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {
+      "Physics_Output_ED250.radiostop_disabled": [
+       0,
+       1
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_ED250.disable_sifa",
+   "controlId": "chassis_A/rocking/INTERIOR/kabina_A/kabina/sw-wylaczenie_sifa/sw-wylaczenie_sifa",
+   "type": "PhysicsInteractionSwitchStepped",
+   "kind": "switch",
+   "original": 0,
+   "positions": [
+    {
+     "index": 0,
+     "value": -1,
+     "stable": 0
+    },
+    {
+     "index": 1,
+     "value": 1,
+     "stable": 1
+    }
+   ],
+   "steps": [
+    {
+     "position": 0,
+     "value": -1,
+     "ok": true,
+     "readback": -1,
+     "changes": {}
+    },
+    {
+     "position": 1,
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {}
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_General.etcs2023_isolation_rq",
+   "controlId": "chassis_A/rocking/INTERIOR/kabina_A/kabina/sw-wylacznik_evo/sw-wylacznik_evo",
+   "type": "PhysicsInteractionSwitchStepped",
+   "kind": "switch",
+   "original": 0,
+   "positions": [
+    {
+     "index": 0,
+     "value": -1,
+     "stable": 0
+    },
+    {
+     "index": 1,
+     "value": 1,
+     "stable": 1
+    }
+   ],
+   "steps": [
+    {
+     "position": 0,
+     "value": -1,
+     "ok": true,
+     "readback": 0,
+     "changes": {
+      "Physics_Output_ED250.supply_current": [
+       16.87,
+       16.772
+      ]
+     }
+    },
+    {
+     "position": 1,
+     "value": 1,
+     "ok": true,
+     "readback": 0,
+     "changes": {
+      "Physics_Input_General.etcs2023_service_brake": [
+       1,
+       -1
+      ],
+      "Physics_Output_General.etcs2023_mode": [
+       8,
+       12
+      ],
+      "Physics_Output_General.etcs2023_ack_request": [
+       0,
+       1
+      ],
+      "Physics_Output_General.etcs2023_ack_light": [
+       -1,
+       1
+      ],
+      "Physics_Output_ED250.pipe_pressure": [
+       3.828,
+       3.952
+      ],
+      "Physics_Output_ED250.brakecyl1_pressure": [
+       2.685,
+       2.507
+      ],
+      "Physics_Output_ED250.brakecyl2_pressure": [
+       3.552,
+       3.307
+      ],
+      "Physics_Output_ED250.control_pressure": [
+       3.428,
+       3.663
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_ED250.disable_mirel",
+   "controlId": "chassis_A/rocking/INTERIOR/kabina_A/kabina/sw-wylacznik_mirel/sw-wylacznik_mirel",
+   "type": "PhysicsInteractionSwitchStepped",
+   "kind": "switch",
+   "original": 1,
+   "positions": [
+    {
+     "index": 0,
+     "value": -1,
+     "stable": 0
+    },
+    {
+     "index": 1,
+     "value": 1,
+     "stable": 1
+    }
+   ],
+   "steps": [
+    {
+     "position": 0,
+     "value": -1,
+     "ok": true,
+     "readback": -1,
+     "changes": {
+      "Physics_Output_General.etcs2023_ack_light": [
+       1,
+       -1
+      ],
+      "Physics_Output_ED250.pipe_pressure": [
+       3.952,
+       4.214
+      ],
+      "Physics_Output_ED250.brakecyl1_pressure": [
+       2.507,
+       2.227
+      ],
+      "Physics_Output_ED250.brakecyl2_pressure": [
+       3.307,
+       2.937
+      ],
+      "Physics_Output_ED250.control_pressure": [
+       3.663,
+       3.935
+      ],
+      "Physics_Output_ED250.mirel_disabled": [
+       1,
+       0
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_ED250.disable_shp",
+   "controlId": "chassis_A/rocking/INTERIOR/kabina_A/kabina/sw-wylacznik_shp/sw-wylacznik_shp",
+   "type": "PhysicsInteractionSwitchStepped",
+   "kind": "switch",
+   "original": 0,
+   "positions": [
+    {
+     "index": 0,
+     "value": -1,
+     "stable": 0
+    },
+    {
+     "index": 1,
+     "value": 1,
+     "stable": 1
+    }
+   ],
+   "steps": [
+    {
+     "position": 0,
+     "value": -1,
+     "ok": true,
+     "readback": -1,
+     "changes": {
+      "Physics_Output_General.etcs2023_ack_light": [
+       1,
+       -1
+      ],
+      "Physics_Output_ED250.pipe_pressure": [
+       4.4,
+       4.682
+      ],
+      "Physics_Output_ED250.brakecyl1_pressure": [
+       2.048,
+       1.799
+      ],
+      "Physics_Output_ED250.brakecyl2_pressure": [
+       2.701,
+       2.371
+      ],
+      "Physics_Output_ED250.control_pressure": [
+       4.12,
+       4.401
+      ]
+     }
+    },
+    {
+     "position": 1,
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {
+      "Physics_Output_General.security_system_shp_disabled": [
+       0,
+       1
+      ],
+      "Physics_Output_ED250.pipe_pressure": [
+       4.682,
+       4.954
+      ],
+      "Physics_Output_ED250.brakecyl1_pressure": [
+       1.799,
+       1.578
+      ],
+      "Physics_Output_ED250.brakecyl2_pressure": [
+       2.371,
+       2.079
+      ],
+      "Physics_Output_ED250.control_pressure": [
+       4.401,
+       4.674
+      ],
+      "Physics_Output_ED250.shp_disabled": [
+       0,
+       1
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_ED250.force_compressors",
+   "controlId": "chassis_A/rocking/INTERIOR/kabina_A/kabina/sw-wymuszenie_sprezarek/sw-wymuszenie_sprezarek",
+   "type": "PhysicsInteractionSwitchStepped",
+   "kind": "switch",
+   "original": 1,
+   "positions": [
+    {
+     "index": 0,
+     "value": -1,
+     "stable": 0
+    },
+    {
+     "index": 1,
+     "value": 1,
+     "stable": 1
+    }
+   ],
+   "steps": [
+    {
+     "position": 0,
+     "value": -1,
+     "ok": true,
+     "readback": -1,
+     "changes": {
+      "Physics_Output_ED250.pipe_pressure": [
+       5.13,
+       5.304
+      ],
+      "Physics_Output_ED250.brakecyl1_pressure": [
+       1.441,
+       1.247
+      ],
+      "Physics_Output_ED250.brakecyl2_pressure": [
+       1.898,
+       1.642
+      ],
+      "Physics_Output_ED250.control_pressure": [
+       4.855,
+       4.97
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_ED250.forbid_emergency_brake",
+   "controlId": "chassis_A/rocking/INTERIOR/kabina_A/kabina/sw-zakaz_hamowania_awaryjnego/sw-zakaz_hamowania_awaryjnego",
+   "type": "PhysicsInteractionSwitchStepped",
+   "kind": "switch",
+   "original": 0,
+   "positions": [
+    {
+     "index": 0,
+     "value": -1,
+     "stable": 0
+    },
+    {
+     "index": 1,
+     "value": 1,
+     "stable": 1
+    }
+   ],
+   "steps": [
+    {
+     "position": 0,
+     "value": -1,
+     "ok": true,
+     "readback": -1,
+     "changes": {
+      "Physics_Output_ED250.pipe_pressure": [
+       5.34,
+       5.362
+      ],
+      "Physics_Output_ED250.brakecyl1_pressure": [
+       1.129,
+       0.962
+      ],
+      "Physics_Output_ED250.brakecyl2_pressure": [
+       1.487,
+       1.266
+      ],
+      "Physics_Output_ED250.control_pressure": [
+       4.986,
+       4.995
+      ]
+     }
+    },
+    {
+     "position": 1,
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {
+      "Physics_Output_General.etcs2023_ack_light": [
+       -1,
+       1
+      ],
+      "Physics_Output_ED250.pipe_pressure": [
+       5.362,
+       5.37
+      ],
+      "Physics_Output_ED250.brakecyl1_pressure": [
+       0.962,
+       0.812
+      ],
+      "Physics_Output_ED250.brakecyl2_pressure": [
+       1.266,
+       1.068
+      ],
+      "Physics_Output_ED250.control_pressure": [
+       4.995,
+       4.998
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_General.nope",
+   "controlId": "chassis_A/rocking/INTERIOR/kabina_A/kabina/uchwyt_napoje/uchwyt_napoje",
+   "type": "PhysicsInteractionFlapContinous",
+   "kind": "flap",
+   "original": 0,
+   "positions": [],
+   "steps": [
+    {
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {
+      "Physics_Output_General.etcs2023_ack_light": [
+       -1,
+       1
+      ],
+      "Physics_Output_ED250.pipe_pressure": [
+       5.373,
+       5.376
+      ],
+      "Physics_Output_ED250.brakecyl1_pressure": [
+       0.717,
+       0.587
+      ],
+      "Physics_Output_ED250.brakecyl2_pressure": [
+       0.942,
+       0.77
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_General.radiostop_rq",
+   "controlId": "chassis_A/rocking/INTERIOR/kabina_A/kabina/radiotelefon_eads/klawisz_polaczenie_alarmowe/klawisz_polaczenie_alarmowe",
+   "type": "PhysicsInteractionButtonToggle",
+   "kind": "button",
+   "original": 0,
+   "positions": [],
+   "steps": [
+    {
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {
+      "Physics_Output_General.etcs2023_ack_light": [
+       -1,
+       1
+      ],
+      "Physics_Output_ED250.pipe_pressure": [
+       5.378,
+       5.37
+      ],
+      "Physics_Output_ED250.brakecyl1_pressure": [
+       0.509,
+       0.4
+      ],
+      "Physics_Output_ED250.brakecyl2_pressure": [
+       0.667,
+       0.523
+      ],
+      "Physics_Output_ED250.radiostop_sound": [
+       0,
+       1
+      ],
+      "Physics_Output_ED250.radiostop_active": [
+       0,
+       1
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_ED250.display4_invers",
+   "controlId": "chassis_A/rocking/INTERIOR/kabina_A/kabina/radiotelefon_eads/klawisz_12/klawisz_12",
+   "type": "PhysicsInteractionButtonToggle",
+   "kind": "button",
+   "original": 0,
+   "positions": [],
+   "steps": [
+    {
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {
+      "Physics_Output_ED250.pipe_pressure": [
+       5.365,
+       5.352
+      ],
+      "Physics_Output_ED250.brakecyl1_pressure": [
+       0.336,
+       0.252
+      ],
+      "Physics_Output_ED250.brakecyl2_pressure": [
+       0.438,
+       0.327
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_General.radio_volume_set",
+   "controlId": "chassis_A/rocking/INTERIOR/kabina_A/kabina/radiotelefon_eads/klawisz_11/klawisz_11",
+   "type": "PhysicsInteractionButtonToggle",
+   "kind": "button",
+   "original": 0,
+   "positions": [],
+   "steps": [
+    {
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {
+      "Physics_Output_ED250.pipe_pressure": [
+       5.347,
+       5.342
+      ],
+      "Physics_Output_ED250.brakecyl1_pressure": [
+       0.203,
+       0
+      ],
+      "Physics_Output_ED250.brakecyl2_pressure": [
+       0.262,
+       0.126
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_ED250.radio_toggle",
+   "controlId": "chassis_A/rocking/INTERIOR/kabina_A/kabina/radiotelefon_eads/klawisz_reset/klawisz_reset",
+   "type": "PhysicsInteractionButtonContinous",
+   "kind": "button",
+   "original": 0,
+   "positions": [],
+   "steps": [
+    {
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {
+      "Physics_Output_ED250.pipe_pressure": [
+       5.34,
+       5.336
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_General.radio_channel_change",
+   "controlId": "chassis_A/rocking/INTERIOR/kabina_A/kabina/radiotelefon_eads/klawisz_up/klawisz_up",
+   "type": "PhysicsInteractionButtonToggle",
+   "kind": "button",
+   "original": 0,
+   "positions": [],
+   "steps": [
+    {
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {
+      "Physics_Output_ED250.pipe_pressure": [
+       5.334,
+       5.331
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_General.radio_selective_call",
+   "controlId": "chassis_A/rocking/INTERIOR/kabina_A/kabina/radiotelefon_eads/klawisz_3/klawisz_3",
+   "type": "PhysicsInteractionButtonToggle",
+   "kind": "button",
+   "original": 0,
+   "positions": [],
+   "steps": [
+    {
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {
+      "Physics_Output_ED250.pipe_pressure": [
+       5.329,
+       5.326
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_ED250.display1_F1",
+   "controlId": "chassis_A/rocking/INTERIOR/kabina_A/kabina/display1/klawisz_1/klawisz_1",
+   "type": "PhysicsInteractionButtonToggle",
+   "kind": "button",
+   "original": 0,
+   "positions": [],
+   "steps": [
+    {
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {
+      "Physics_Output_ED250.pipe_pressure": [
+       5.324,
+       5.321
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_ED250.display1_F2",
+   "controlId": "chassis_A/rocking/INTERIOR/kabina_A/kabina/display1/klawisz_2/klawisz_2",
+   "type": "PhysicsInteractionButtonToggle",
+   "kind": "button",
+   "original": 0,
+   "positions": [],
+   "steps": [
+    {
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {
+      "Physics_Output_ED250.pipe_pressure": [
+       5.319,
+       5.316
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_ED250.display1_F3",
+   "controlId": "chassis_A/rocking/INTERIOR/kabina_A/kabina/display1/klawisz_3/klawisz_3",
+   "type": "PhysicsInteractionButtonToggle",
+   "kind": "button",
+   "original": 0,
+   "positions": [],
+   "steps": [
+    {
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {
+      "Physics_Output_ED250.pipe_pressure": [
+       5.314,
+       5.311
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_ED250.display1_F4",
+   "controlId": "chassis_A/rocking/INTERIOR/kabina_A/kabina/display1/klawisz_4/klawisz_4",
+   "type": "PhysicsInteractionButtonToggle",
+   "kind": "button",
+   "original": 0,
+   "positions": [],
+   "steps": [
+    {
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {
+      "Physics_Output_ED250.pipe_pressure": [
+       5.309,
+       5.306
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_ED250.display1_F5",
+   "controlId": "chassis_A/rocking/INTERIOR/kabina_A/kabina/display1/klawisz_5/klawisz_5",
+   "type": "PhysicsInteractionButtonToggle",
+   "kind": "button",
+   "original": 0,
+   "positions": [],
+   "steps": [
+    {
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {
+      "Physics_Output_General.etcs2023_ack_light": [
+       1,
+       -1
+      ],
+      "Physics_Output_ED250.supply_current": [
+       16.772,
+       16.65
+      ],
+      "Physics_Output_ED250.pipe_pressure": [
+       5.304,
+       5.3
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_ED250.display1_F6",
+   "controlId": "chassis_A/rocking/INTERIOR/kabina_A/kabina/display1/klawisz_6/klawisz_6",
+   "type": "PhysicsInteractionButtonToggle",
+   "kind": "button",
+   "original": 0,
+   "positions": [],
+   "steps": [
+    {
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {
+      "Physics_Output_General.etcs2023_ack_light": [
+       1,
+       -1
+      ],
+      "Physics_Output_ED250.pipe_pressure": [
+       5.298,
+       5.294
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_ED250.display1_F7",
+   "controlId": "chassis_A/rocking/INTERIOR/kabina_A/kabina/display1/klawisz_7/klawisz_7",
+   "type": "PhysicsInteractionButtonToggle",
+   "kind": "button",
+   "original": 0,
+   "positions": [],
+   "steps": [
+    {
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {
+      "Physics_Output_General.etcs2023_ack_light": [
+       1,
+       -1
+      ],
+      "Physics_Output_ED250.pipe_pressure": [
+       5.292,
+       5.289
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_ED250.display1_F8",
+   "controlId": "chassis_A/rocking/INTERIOR/kabina_A/kabina/display1/klawisz_8/klawisz_8",
+   "type": "PhysicsInteractionButtonToggle",
+   "kind": "button",
+   "original": 0,
+   "positions": [],
+   "steps": [
+    {
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {
+      "Physics_Output_General.etcs2023_ack_light": [
+       1,
+       -1
+      ],
+      "Physics_Output_ED250.pipe_pressure": [
+       5.287,
+       5.284
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_ED250.display1_F9",
+   "controlId": "chassis_A/rocking/INTERIOR/kabina_A/kabina/display1/klawisz_9/klawisz_9",
+   "type": "PhysicsInteractionButtonToggle",
+   "kind": "button",
+   "original": 0,
+   "positions": [],
+   "steps": [
+    {
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {
+      "Physics_Output_General.etcs2023_ack_light": [
+       1,
+       -1
+      ],
+      "Physics_Output_ED250.pipe_pressure": [
+       5.282,
+       5.279
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_ED250.display1_F0",
+   "controlId": "chassis_A/rocking/INTERIOR/kabina_A/kabina/display1/klawisz_0/klawisz_0",
+   "type": "PhysicsInteractionButtonToggle",
+   "kind": "button",
+   "original": 0,
+   "positions": [],
+   "steps": [
+    {
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {
+      "Physics_Output_General.etcs2023_ack_light": [
+       1,
+       -1
+      ],
+      "Physics_Output_ED250.pipe_pressure": [
+       5.277,
+       5.274
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_ED250.display2_F1",
+   "controlId": "chassis_A/rocking/INTERIOR/kabina_A/kabina/display2/klawisz_1/klawisz_1",
+   "type": "PhysicsInteractionButtonToggle",
+   "kind": "button",
+   "original": 0,
+   "positions": [],
+   "steps": [
+    {
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {
+      "Physics_Output_ED250.pipe_pressure": [
+       5.272,
+       5.27
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_ED250.display2_F2",
+   "controlId": "chassis_A/rocking/INTERIOR/kabina_A/kabina/display2/klawisz_2/klawisz_2",
+   "type": "PhysicsInteractionButtonToggle",
+   "kind": "button",
+   "original": 0,
+   "positions": [],
+   "steps": [
+    {
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {
+      "Physics_Output_ED250.pipe_pressure": [
+       5.268,
+       5.265
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_ED250.display2_F3",
+   "controlId": "chassis_A/rocking/INTERIOR/kabina_A/kabina/display2/klawisz_3/klawisz_3",
+   "type": "PhysicsInteractionButtonToggle",
+   "kind": "button",
+   "original": 0,
+   "positions": [],
+   "steps": [
+    {
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {
+      "Physics_Output_ED250.pipe_pressure": [
+       5.263,
+       5.26
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_ED250.display2_F4",
+   "controlId": "chassis_A/rocking/INTERIOR/kabina_A/kabina/display2/klawisz_4/klawisz_4",
+   "type": "PhysicsInteractionButtonToggle",
+   "kind": "button",
+   "original": 0,
+   "positions": [],
+   "steps": [
+    {
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {
+      "Physics_Output_ED250.pipe_pressure": [
+       5.258,
+       5.256
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_ED250.display2_F5",
+   "controlId": "chassis_A/rocking/INTERIOR/kabina_A/kabina/display2/klawisz_5/klawisz_5",
+   "type": "PhysicsInteractionButtonToggle",
+   "kind": "button",
+   "original": 0,
+   "positions": [],
+   "steps": [
+    {
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {
+      "Physics_Output_ED250.pipe_pressure": [
+       5.254,
+       5.25
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_ED250.display2_F6",
+   "controlId": "chassis_A/rocking/INTERIOR/kabina_A/kabina/display2/klawisz_6/klawisz_6",
+   "type": "PhysicsInteractionButtonToggle",
+   "kind": "button",
+   "original": 0,
+   "positions": [],
+   "steps": [
+    {
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {
+      "Physics_Output_ED250.pipe_pressure": [
+       5.248,
+       5.246
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_ED250.display2_F7",
+   "controlId": "chassis_A/rocking/INTERIOR/kabina_A/kabina/display2/klawisz_7/klawisz_7",
+   "type": "PhysicsInteractionButtonToggle",
+   "kind": "button",
+   "original": 0,
+   "positions": [],
+   "steps": [
+    {
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {
+      "Physics_Output_ED250.pipe_pressure": [
+       5.244,
+       5.241
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_ED250.display2_F8",
+   "controlId": "chassis_A/rocking/INTERIOR/kabina_A/kabina/display2/klawisz_8/klawisz_8",
+   "type": "PhysicsInteractionButtonToggle",
+   "kind": "button",
+   "original": 0,
+   "positions": [],
+   "steps": [
+    {
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {
+      "Physics_Output_ED250.pipe_pressure": [
+       5.239,
+       5.237
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_ED250.display2_F9",
+   "controlId": "chassis_A/rocking/INTERIOR/kabina_A/kabina/display2/klawisz_9/klawisz_9",
+   "type": "PhysicsInteractionButtonToggle",
+   "kind": "button",
+   "original": 0,
+   "positions": [],
+   "steps": [
+    {
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {
+      "Physics_Output_ED250.pipe_pressure": [
+       5.235,
+       5.232
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_ED250.display2_F0",
+   "controlId": "chassis_A/rocking/INTERIOR/kabina_A/kabina/display2/klawisz_0/klawisz_0",
+   "type": "PhysicsInteractionButtonToggle",
+   "kind": "button",
+   "original": 0,
+   "positions": [],
+   "steps": [
+    {
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {
+      "Physics_Output_ED250.pipe_pressure": [
+       5.231,
+       5.229
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_General.radio_channel_set",
+   "controlId": "chassis_A/rocking/INTERIOR/kabina_A/kabina/Additional_Radio_Controls",
+   "type": "PhysicsNonInteractionWriteFromKeyOrRadial",
+   "kind": "other",
+   "original": 0,
+   "positions": [],
+   "steps": [
+    {
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {
+      "Physics_Output_ED250.pipe_pressure": [
+       5.227,
+       5.225
+      ]
+     }
+    }
+   ]
+  }
+ ]
+}

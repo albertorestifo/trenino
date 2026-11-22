@@ -88,12 +88,18 @@ async function run() {
         ? await call({ op: "setControl", control: control.id, position: target.position })
         : await call({ op: "set", path, value: target.value });
       await sleep(settleMs);
+      // Other *inputs* changing during a step are not reactions to this control: they come
+      // from someone operating the cab (or game logic writing inputs). Keep them apart.
       const changes = {};
+      const concurrentInputs = {};
       for (const [k, v] of Object.entries(state)) {
         if (k === path || noisy.has(k)) continue;
-        if (Math.abs(v - (before[k] ?? v)) > EPS) changes[k] = [round(before[k]), round(v)];
+        if (Math.abs(v - (before[k] ?? v)) <= EPS) continue;
+        (k.startsWith("Physics_Input") ? concurrentInputs : changes)[k] = [round(before[k]), round(v)];
       }
-      steps.push({ ...target, ok: reply.ok, error: reply.error, readback: round(state[path]), changes });
+      const step = { ...target, ok: reply.ok, error: reply.error, readback: round(state[path]), changes };
+      if (Object.keys(concurrentInputs).length) step.concurrentInputs = concurrentInputs;
+      steps.push(step);
       process.stdout.write(reply.ok ? "." : "x");
     }
 

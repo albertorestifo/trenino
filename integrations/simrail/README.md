@@ -100,6 +100,7 @@ Notch tables are **per control**: the same path can have different tables in eac
   first line schema, then the full initial state, then `{t, values}` changes (20 Hz).
 - `sweep-controls.mjs [label] [--only p1,p2] [--skip p1,p2] [--settle ms] [--no-restore]` →
   `sweeps/<vehicle>-<label>.json`: steps every bound control through its positions and
-  records which values react. **Run only on a freshly loaded train** — sweeps can latch
+  records which values react (`changes`); other inputs that moved meanwhile go to
+  `concurrentInputs` (someone operating the cab). Keep hands off the cab while it runs. **Run only on a freshly loaded train** — sweeps can latch
   states (see FINDINGS). Skip trip controls (`emergency_brake_button_flag`,
   `assimilation_button`) and start-up controls when sweeping a live train.

@@ -106,11 +106,40 @@ building the Trenino SimRail connector. Raw data lives next to this file:
   trains, and never trust conclusions about "this input does nothing" from a train that has
   been swept.
 
+### ED250 Pendolino (`pendolino/ed250-018 variant`, ElectricMultipleUnit)
+- 4 groups, 371 values, 322 controls (280 bound, 172 buttons).
+- **Analog throttle**: `drive_handle` is a smooth lever, continuous 0…1 (power fraction);
+  `traction_force_handle` follows (0.2 → ~20 kN, 1 → 100). First train where a continuous
+  hardware lever maps 1:1. Not a combined power/brake handle — the brake is separate.
+- `main_brake`: smooth lever with bands in one cab (value 4 covers 6…3.8, 3.6 covers
+  3.8…2.667) and an 11-step lever in the other (`7,6,5.33,4.67,4,3.6,3.23,2.667,2,1,0`).
+  Brake valve: 0 → fill, 2 → running (pipe pressure climbs to 5 bar).
+- `speed_ctrl` (cruise) is a spring-return lever: only position 2 holds; 0/1/3 spring back
+  to 2 (nudge down/up). `speed_ctrl_value` reached 250.
+- **Pulse switches**: `battery_rq` 1 then back to 0; `active_cab` rests at −2 and pulses to 1.
+  A connector must send a pulse, not hold a level.
+- Start-up (driver-operated, `ed250-manual-startup-*.jsonl`): `battery_rq` pulse
+  (`battery_status` 1) → `active_cab` pulse (`cab` 1) → vigilance → pantograph(s) up →
+  `force_compressors` → **`control_circuits` 1** → `main_switch` 1/0 (`supply_voltage` 3500;
+  several main-switch presses did nothing until `control_circuits` was on) → `main_brake`
+  0 then 2 (fill, pipe 5 bar) → spring brake release → direction 1 → throttle.
+- **`main_circuit_breaker_status` means something else here**: 0→1 when the battery came on
+  and 1→0 when the main switch closed, yet traction worked afterwards. Output semantics
+  are per vehicle, even for identically named fields.
+- ETCS is active: `etcs2023_service_brake` fired after the first throttle application.
+- `test_dashboard_controls` is a lamp test: lights every indicator output at once (useful
+  for testing hardware lamps).
+- Live sweep (`pendolino_ed250-018_variant-live.json`, start-up/trip controls skipped):
+  143 of 160 steps clean; 17 steps saw other **inputs** change at the same time
+  (`drive_handle` ×8, direction, horn, vigilance…) — treat those attributions as unreliable.
+  `sweep-controls.mjs` now records such changes separately as `concurrentInputs`.
+
 ## Open questions
 - How to charge the brake pipe / reset after an emergency brake via IO (Traxx).
 - Units: `velocity` (km/h?), pressures (bar), `traction_force_*` (kN?).
 - Do writes behave the same in multiplayer (physics may run server-side)?
 - Which state the EU07 cold sweep latched (candidates: a fault_*/unlock input or a
   battery_rq −1 "off" position held during the sweep).
-- Modern EMUs (ED250 Pendolino, EN76 Elf) not profiled yet — likely combined power/brake
-  handles and ETCS.
+- No train with a combined power/brake handle profiled yet (EN76 Elf may have one).
+- Whether the ED250 writes `drive_handle` itself (`reset_controller`, cruise control) or the
+  concurrent changes in its sweep were the driver.
