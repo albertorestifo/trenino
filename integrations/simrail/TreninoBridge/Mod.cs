@@ -14,6 +14,8 @@ namespace TreninoBridge;
 public sealed class Mod : MelonMod
 {
     public const string BridgeVersion = "0.2.0";
+    private const int DefaultPort = 31275;
+    private const int TswPort = 31270;
 
     private Server? _server;
 
@@ -21,9 +23,17 @@ public sealed class Mod : MelonMod
     {
         // Stored in <SimRail>\UserData\MelonPreferences.cfg under [TreninoBridge].
         var cat = MelonPreferences.CreateCategory("TreninoBridge");
-        var port = cat.CreateEntry("Port", 31275, description: "TCP port for the Trenino bridge API");
+        var port = cat.CreateEntry("Port", DefaultPort, description: "TCP port for the Trenino bridge API");
         var lan = cat.CreateEntry("ListenOnNetwork", true, description: "Accept connections from other computers (token required)");
         var token = cat.CreateEntry("Token", "", description: "Token LAN/browser clients must send (generated on first run)");
+
+        // 31270 is Train Sim World's External Interface port (and the 0.1 prototype's
+        // default): never share it, so Trenino can talk to both games unambiguously.
+        if (port.Value == TswPort)
+        {
+            port.Value = DefaultPort;
+            cat.SaveToFile(false);
+        }
 
         if (string.IsNullOrWhiteSpace(token.Value))
         {

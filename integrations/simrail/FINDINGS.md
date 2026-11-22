@@ -78,8 +78,39 @@ building the Trenino SimRail connector. Raw data lives next to this file:
 - Sweeps: `traxx_e186-134-cold.json` (unpowered), `traxx_e186-134-live.json` (powered
   until step 1 tripped the emergency brake — later steps ran on a dead loco).
 
+### EU07 (`4e/eu07-193`, Locomotive) — Łódź–Warsaw / base game
+- 4 groups, 278 values, 159 controls (145 bound). Main controls use `Physics_Input_General`.
+- **44-position resistor controller** `drive_handle` (0–43) plus a 7-position field-weakening
+  lever `scnd_handle` (values 6…0, reversed).
+- Direction is a **lever** here (`direction_rq` −1 backward / 2 neutral / 1 forward — same
+  values as the Traxx's three buttons, so `direction_rq` semantics are consistent).
+- **The two cabs have different brake valves on the same path**: `main_brake` is a smooth
+  notch-based FV4a in one cab (positions with value + lower/upper band, e.g. value 6 covers
+  6.5…4.5) and an 11-step lever (`8,7,6,5.25,4.5,4,3.5,3,2,1,0`) in the other. `local_brake`
+  is a continuous 1…0 smooth lever in one cab, 6 steps in the other.
+- While dragged with the mouse, smooth levers write **intermediate values** (0.546, 2.436,
+  4.987…) and settle on the notch value — genuine analog input.
+- Manual start-up recorded (`eu07-manual-startup-*.jsonl`, driver-operated, ends moving):
+  `battery_rq` 1 (battery immediately: `battery_status` 1, 90 V) → `active_cab` 1 →
+  `direction_rq` 1 → `unlockovldmotors_rq` 1/−1 (reset overload relays) →
+  `pantograph_front_rq` / `pantograph_back_rq` 1 (`supply_voltage` 3500,
+  `main_circuit_breaker_status` 0.8 = armed) → `main_switch` button 1 then 0 (breaker 1.0)
+  → `converter_rq` 1 → `compressor_rq` 1 → release brakes, notch up.
+  `unlockandrelease_rq` was used while starting off. `overload_motors_lamp` lit at notch ~9
+  under load; line voltage sags (3500 → ~3430 V).
+- Main switch = two push buttons on one path: close (`bt-zal_WS`, pressed 1) and open
+  (`bt-wyl_WS`, pressed −1).
+- **Lesson: a cold sweep left the EU07 in a state where the battery would not come on —
+  neither via the bridge nor via the game's own `B` key (both write only
+  `battery_rq` 0→1).** Reloading the train fixed it. Run sweeps only on freshly loaded
+  trains, and never trust conclusions about "this input does nothing" from a train that has
+  been swept.
+
 ## Open questions
 - How to charge the brake pipe / reset after an emergency brake via IO (Traxx).
 - Units: `velocity` (km/h?), pressures (bar), `traction_force_*` (kN?).
 - Do writes behave the same in multiplayer (physics may run server-side)?
-- Smooth levers (`PhysicsInteractionLeverSmooth`) — none on EN57/Traxx main controls yet.
+- Which state the EU07 cold sweep latched (candidates: a fault_*/unlock input or a
+  battery_rq −1 "off" position held during the sweep).
+- Modern EMUs (ED250 Pendolino, EN76 Elf) not profiled yet — likely combined power/brake
+  handles and ETCS.
