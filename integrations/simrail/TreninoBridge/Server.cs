@@ -257,23 +257,25 @@ internal sealed class Server : IDisposable
     private async Task RunStream(WebSocket ws, CancellationToken ct)
     {
         var session = new StreamSession();
-        using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        // Ends the session when the server stops or the client fell too far behind.
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(ct, session.Closed.Token);
         var writer = Task.Run(async () =>
         {
             await foreach (var msg in session.Outbox.Reader.ReadAllAsync(linked.Token))
                 await ws.SendTextAsync(msg, linked.Token);
         });
 
+        // Queue hello before joining the hub, so it always precedes the first vehicle push.
+        session.Send(Json.Serialize(new { op = "hello", api = Version, bridge = Mod.BridgeVersion }));
         StreamHub.Add(session);
         try
         {
-            await ws.SendTextAsync(Json.Serialize(new { op = "hello", api = Version, bridge = Mod.BridgeVersion }), ct);
             while (true)
             {
-                var text = await ws.ReceiveAsync(ct);
+                var text = await ws.ReceiveAsync(linked.Token);
                 if (text == null) break;
                 var reply = await HandleMessage(session, text);
-                session.Outbox.Writer.TryWrite(Json.Serialize(reply));
+                if (reply != null) session.Send(Json.Serialize(reply));
             }
         }
         finally
@@ -285,7 +287,7 @@ internal sealed class Server : IDisposable
         }
     }
 
-    private static async Task<Dictionary<string, object?>> HandleMessage(StreamSession session, string text)
+    private static async Task<Dictionary<string, object?>?> HandleMessage(StreamSession session, string text)
     {
         JsonElement msg;
         JsonElement? id = null;
@@ -303,15 +305,18 @@ internal sealed class Server : IDisposable
                     var paths = Strings(msg, "paths");
                     double? hz = msg.TryGetProperty("maxHz", out var h) && h.TryGetDouble(out var d) ? d : null;
                     // Atomic on the main thread: the hub can't tick between subscribing and
-                    // reading, and the reply's values become the baseline for change pushes.
-                    reply["values"] = await MainThread.Run(() =>
+                    // reading, the reply's values become the baseline for change pushes, and
+                    // the reply is queued there too, so no newer push can overtake it.
+                    await MainThread.Run(() =>
                     {
                         session.Subscribe(paths, hz);
                         var current = TrainIO.Refresh() ? TrainIO.Read(paths) : new Dictionary<string, float>();
                         session.Seed(current);
-                        return current;
+                        reply["values"] = current;
+                        session.Send(Json.Serialize(reply));
+                        return true;
                     });
-                    break;
+                    return null;
                 }
                 case "unsubscribe":
                     session.Unsubscribe(Strings(msg, "paths"));

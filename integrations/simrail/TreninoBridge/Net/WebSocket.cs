@@ -40,10 +40,15 @@ internal sealed class WebSocket
             var fin = (header[0] & 0x80) != 0;
             var opcode = header[0] & 0x0F;
             var masked = (header[1] & 0x80) != 0;
-            long len = header[1] & 0x7F;
+            // RFC 6455: client frames must be masked and use no extension (RSV) bits;
+            // control frames (opcode >= 8) carry at most 125 bytes and are never fragmented.
+            if (!masked) throw new IOException("unmasked client frame");
+            if ((header[0] & 0x70) != 0) throw new IOException("reserved bits set");
+            ulong len = (ulong)(header[1] & 0x7F);
+            if (opcode >= 0x8 && (len > 125 || !fin)) throw new IOException("invalid control frame");
             if (len == 126) { var ext = new byte[2]; await _conn.ReadExactAsync(ext, ct); len = BinaryPrimitives.ReadUInt16BigEndian(ext); }
-            else if (len == 127) { var ext = new byte[8]; await _conn.ReadExactAsync(ext, ct); len = (long)BinaryPrimitives.ReadUInt64BigEndian(ext); }
-            if (len > MaxMessage || message.Length + len > MaxMessage) throw new IOException("message too large");
+            else if (len == 127) { var ext = new byte[8]; await _conn.ReadExactAsync(ext, ct); len = BinaryPrimitives.ReadUInt64BigEndian(ext); }
+            if (len > MaxMessage || (ulong)message.Length + len > MaxMessage) throw new IOException("message too large");
 
             var mask = new byte[4];
             if (masked) await _conn.ReadExactAsync(mask, ct);

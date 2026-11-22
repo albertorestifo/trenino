@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Net;
 using System.Text;
 using System.Threading;
@@ -64,14 +65,28 @@ internal sealed class HttpRequest
                 if (headers.Count >= MaxHeaders || headerBytes > MaxHeaderBytes)
                     throw new BridgeException(431, "request headers too large");
                 var colon = line.IndexOf(':');
-                if (colon > 0) headers[line[..colon].Trim()] = line[(colon + 1)..].Trim();
+                if (colon <= 0) continue;
+                var name = line[..colon].Trim();
+                // A second Content-Length could frame the body differently than a proxy did.
+                if (headers.ContainsKey(name) && name.Equals("content-length", StringComparison.OrdinalIgnoreCase))
+                    throw new BridgeException(400, "duplicate Content-Length");
+                headers[name] = line[(colon + 1)..].Trim();
             }
 
-            if (headers.TryGetValue("content-length", out var lenText) && int.TryParse(lenText, out var len) && len > 0)
+            // Only plain Content-Length framing: anything else could desync request
+            // boundaries on a kept-alive connection (request smuggling).
+            if (headers.ContainsKey("transfer-encoding"))
+                throw new BridgeException(400, "Transfer-Encoding is not supported");
+            if (headers.TryGetValue("content-length", out var lenText))
             {
+                if (lenText.Length == 0 || !lenText.All(c => c is >= '0' and <= '9') || !int.TryParse(lenText, out var len))
+                    throw new BridgeException(400, "invalid Content-Length");
                 if (len > MaxBody) throw new BridgeException(413, "body too large");
-                body = new byte[len];
-                await conn.ReadExactAsync(body, deadline.Token);
+                if (len > 0)
+                {
+                    body = new byte[len];
+                    await conn.ReadExactAsync(body, deadline.Token);
+                }
             }
         }
         catch (OperationCanceledException) when (!ct.IsCancellationRequested)
@@ -81,7 +96,8 @@ internal sealed class HttpRequest
 
         var target = parts[1];
         var q = target.IndexOf('?');
-        var path = WebUtility.UrlDecode(q >= 0 ? target[..q] : target);
+        // Percent-decoding only: "+" is a literal plus in a path, not a space.
+        var path = Uri.UnescapeDataString(q >= 0 ? target[..q] : target);
         var query = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         if (q >= 0)
         {

@@ -53,14 +53,17 @@ internal static class TrainIO
         var ptr = vehicle == null ? IntPtr.Zero : vehicle.Pointer;
         if (ptr == _vehiclePtr) return ptr != IntPtr.Zero;
 
-        _vehiclePtr = ptr;
-        _generation++;
-        _fields = new(StringComparer.OrdinalIgnoreCase);
-        _fieldList = new();
-        _controls = new();
-        _controlsById = new(StringComparer.Ordinal);
-        if (vehicle == null) return false;
+        if (vehicle == null)
+        {
+            Publish(IntPtr.Zero, new(StringComparer.OrdinalIgnoreCase), new(), new(), new(StringComparer.Ordinal));
+            return false;
+        }
 
+        // Build into locals and publish only once complete: if the vehicle is half
+        // spawned and something throws, the next Refresh tries again instead of
+        // serving a partial index under this vehicle's pointer.
+        var fields = new Dictionary<string, FieldRef>(StringComparer.OrdinalIgnoreCase);
+        var fieldList = new List<FieldRef>();
         var list = vehicle.IOStorageList;
         if (list?.storages != null)
         {
@@ -72,22 +75,37 @@ internal static class TrainIO
                 for (var i = 0; i < names.Length; i++)
                 {
                     var f = new FieldRef(storage, i, group + "." + names[i]);
-                    _fields[f.Path] = f;
-                    _fieldList.Add(f);
+                    fields[f.Path] = f;
+                    fieldList.Add(f);
                 }
             }
         }
 
+        var controls = new List<ControlRef>();
+        var controlsById = new Dictionary<string, ControlRef>(StringComparer.Ordinal);
         foreach (var control in vehicle.GetComponentsInChildren<PhysicsInteractionInput_Base>(true))
         {
-            var id = UniqueId(HierarchyPath(control.transform, vehicle.transform));
+            var id = UniqueId(controlsById, HierarchyPath(control.transform, vehicle.transform));
             var typeName = control.GetIl2CppType().Name;
-            var path = ControlPath(control);
+            var path = ControlPath(fields, control);
             var c = new ControlRef { Id = id, Control = control, Typed = Wrap(control, typeName), Type = typeName, Path = path };
-            _controls.Add(c);
-            _controlsById[id] = c;
+            controls.Add(c);
+            controlsById[id] = c;
         }
+
+        Publish(ptr, fields, fieldList, controls, controlsById);
         return true;
+    }
+
+    private static void Publish(IntPtr ptr, Dictionary<string, FieldRef> fields, List<FieldRef> fieldList,
+        List<ControlRef> controls, Dictionary<string, ControlRef> controlsById)
+    {
+        _fields = fields;
+        _fieldList = fieldList;
+        _controls = controls;
+        _controlsById = controlsById;
+        _vehiclePtr = ptr;
+        _generation++;
     }
 
     private static void Require()
@@ -107,7 +125,8 @@ internal static class TrainIO
         foreach (var f in _fieldList)
         {
             if (!ReferenceEquals(f.Storage, last)) { data = f.Storage.data; last = f.Storage; }
-            if (data != null && f.Index < data.Length) result[f.Path] = data[f.Index];
+            // Non-finite floats would serialize as "NaN"/"Infinity" strings: leave them out.
+            if (data != null && f.Index < data.Length && float.IsFinite(data[f.Index])) result[f.Path] = data[f.Index];
         }
         return result;
     }
@@ -139,9 +158,10 @@ internal static class TrainIO
         if (c.Path == null) throw new BridgeException(400, $"control '{id}' is not bound to an IO value");
         var positions = Positions(c);
         if (positions.Count == 0) throw new BridgeException(400, $"control '{id}' has no discrete positions");
-        if (position < 0 || position >= positions.Count)
-            throw new BridgeException(400, $"position must be 0..{positions.Count - 1}");
-        var value = positions[position].Value
+        // Look up by the game's index: null entries are skipped, so list offsets can differ.
+        var target = positions.FirstOrDefault(p => p.Index == position)
+            ?? throw new BridgeException(400, $"position must be one of {string.Join(", ", positions.Select(p => p.Index))}");
+        var value = target.Value
             ?? throw new BridgeException(400, $"position {position} of '{id}' has no physics value");
         return Write(c.Path, value);
     }
@@ -180,7 +200,7 @@ internal static class TrainIO
             type = c.Type,
             kind = ControlKind(c.Type),
             path = c.Path,
-            position = c.Control.ActualPosition,
+            position = Safe(() => (int?)c.Control.ActualPosition),
             positions = Positions(c),
             button = Button(c),
             actions = Actions(c),
@@ -323,13 +343,13 @@ internal static class TrainIO
         _ => "other",
     };
 
-    private static string? ControlPath(PhysicsInteractionInput_Base control)
+    private static string? ControlPath(Dictionary<string, FieldRef> fields, PhysicsInteractionInput_Base control)
     {
         var name = Safe(() => control.ioFieldName);
         if (string.IsNullOrEmpty(name)) return null;
         var at = name.IndexOf('@');
         var path = at >= 0 ? name[..at] + "." + name[(at + 1)..] : name;
-        return _fields.ContainsKey(path) ? _fields[path].Path : null;
+        return fields.TryGetValue(path, out var f) ? f.Path : null;
     }
 
     private static string HierarchyPath(Transform t, Transform root)
@@ -340,10 +360,10 @@ internal static class TrainIO
         return string.Join("/", parts);
     }
 
-    private static string UniqueId(string id)
+    private static string UniqueId(Dictionary<string, ControlRef> taken, string id)
     {
-        if (!_controlsById.ContainsKey(id)) return id;
-        for (var n = 2; ; n++) if (!_controlsById.ContainsKey($"{id}#{n}")) return $"{id}#{n}";
+        if (!taken.ContainsKey(id)) return id;
+        for (var n = 2; ; n++) if (!taken.ContainsKey($"{id}#{n}")) return $"{id}#{n}";
     }
 
     private static readonly Dictionary<string, Type?> WrapperTypes = new(StringComparer.Ordinal);
@@ -368,7 +388,7 @@ internal static class TrainIO
         catch { return null; }
     }
 
-    private static float? AsFloat(object? v) => v switch { float f => Finite(f), int i => i, double d => (float)d, _ => null };
+    private static float? AsFloat(object? v) => v switch { float f => Finite(f), int i => i, double d => Finite((float)d), _ => null };
 
     private static float? Finite(float f) => float.IsFinite(f) ? f : null;
 

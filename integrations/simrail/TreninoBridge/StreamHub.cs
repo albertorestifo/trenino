@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Threading;
 using System.Threading.Channels;
 
 namespace TreninoBridge;
@@ -20,7 +21,22 @@ internal sealed class StreamSession
 
     /// <summary>Outgoing messages (JSON text), drained by the socket writer.</summary>
     public Channel<string> Outbox { get; } = Channel.CreateBounded<string>(
-        new BoundedChannelOptions(256) { FullMode = BoundedChannelFullMode.DropOldest, SingleReader = true });
+        new BoundedChannelOptions(256) { FullMode = BoundedChannelFullMode.Wait, SingleReader = true });
+
+    /// <summary>Cancelled when the client fell too far behind; the server then closes it.</summary>
+    public CancellationTokenSource Closed { get; } = new();
+
+    /// <summary>
+    /// Queue a message. Dropping one silently would leave the client stale forever
+    /// (the change baseline already counts it as sent), so a client whose queue is
+    /// full is disconnected instead and starts fresh when it reconnects.
+    /// </summary>
+    public void Send(string message)
+    {
+        if (Outbox.Writer.TryWrite(message)) return;
+        Outbox.Writer.TryComplete();
+        try { Closed.Cancel(); } catch (ObjectDisposedException) { /* already closed */ }
+    }
 
     public void Subscribe(IEnumerable<string> patterns, double? maxHz)
     {
@@ -99,12 +115,10 @@ internal static class StreamHub
         foreach (var s in sessions)
         {
             if (s.SentGeneration == TrainIO.Generation) continue;
-            vehicleMsg ??= inTrain
-                ? Json.Serialize(new { op = "vehicle", vehicle = TrainIO.Vehicle() })
-                : Json.Serialize(new { op = "vehicle", vehicle = (object?)null });
+            vehicleMsg ??= VehicleMessage(inTrain);
             if (s.SentGeneration != -1) s.ResetBaseline(); // values of the old vehicle are meaningless now
             s.SentGeneration = TrainIO.Generation;
-            s.Outbox.Writer.TryWrite(vehicleMsg);
+            s.Send(vehicleMsg);
         }
         if (!inTrain) return;
 
@@ -114,7 +128,16 @@ internal static class StreamHub
         foreach (var s in sessions)
         {
             var changed = s.Diff(snapshot, now);
-            if (changed != null) s.Outbox.Writer.TryWrite(Json.Serialize(new { op = "values", t, values = changed }));
+            if (changed != null) s.Send(Json.Serialize(new { op = "values", t, values = changed }));
         }
+    }
+
+    // A schema that can't be built (e.g. a control destroyed mid-read) must not
+    // stop value pushes for everyone: clients get the error and can ask again.
+    private static string VehicleMessage(bool inTrain)
+    {
+        if (!inTrain) return Json.Serialize(new { op = "vehicle", vehicle = (object?)null });
+        try { return Json.Serialize(new { op = "vehicle", vehicle = TrainIO.Vehicle() }); }
+        catch (Exception e) { return Json.Serialize(new { op = "vehicle", vehicle = (object?)null, error = e.GetBaseException().Message }); }
     }
 }

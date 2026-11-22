@@ -67,8 +67,22 @@ public sealed class Mod : MelonMod
     public override void OnUpdate()
     {
         MainThread.Drain();
-        StreamHub.Tick();
+        try
+        {
+            StreamHub.Tick();
+        }
+        catch (Exception e)
+        {
+            // Never let the bridge break the game's update loop; log at most every 5 s.
+            if (DateTime.UtcNow - _lastTickError > TimeSpan.FromSeconds(5))
+            {
+                _lastTickError = DateTime.UtcNow;
+                LoggerInstance.Warning($"stream tick failed: {e.GetBaseException().Message}");
+            }
+        }
     }
+
+    private DateTime _lastTickError = DateTime.MinValue;
 
     public override void OnDeinitializeMelon() => _server?.Dispose();
 
