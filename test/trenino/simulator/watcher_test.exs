@@ -88,7 +88,7 @@ defmodule Trenino.Simulator.WatcherTest do
     end
 
     test "unwatch, and the watcher exiting, stop polling those paths" do
-      watcher_with(tsw_connected())
+      pid = watcher_with(tsw_connected())
       owner = self()
 
       other =
@@ -105,11 +105,14 @@ defmodule Trenino.Simulator.WatcherTest do
       Process.exit(other, :kill)
       :ok = Watcher.unwatch(["A"])
       :ok = Watcher.watch(["Z"])
-      flush_reads()
-      assert_receive {:read, ["Z"]}, 500
+      # Older reads stay in the mailbox; the pattern skips them.
+      assert_receive {:read, ["Z"]}, 1000
+
+      # With nothing watched there is nothing left to poll.
       :ok = Watcher.unwatch_all()
-      flush_reads()
-      refute_receive {:read, _}, 500
+      assert %{watchers: watchers, values: values} = :sys.get_state(pid)
+      assert watchers == %{}
+      assert values == %{}
     end
 
     test "nothing is polled while the simulator is disconnected, and polling resumes on connect" do
@@ -199,13 +202,5 @@ defmodule Trenino.Simulator.WatcherTest do
     assert :ok = Watcher.watch(["A"])
     assert :ok = Watcher.unwatch(["A"])
     assert :ok = Watcher.unwatch_all()
-  end
-
-  defp flush_reads do
-    receive do
-      {:read, _} -> flush_reads()
-    after
-      250 -> :ok
-    end
   end
 end

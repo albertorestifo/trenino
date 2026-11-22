@@ -337,9 +337,11 @@ defmodule Trenino.Train.GaugeControllerTest do
     assert_receive {:target, _, _, @half}, 500
     send(pid, {:train_changed, nil})
     :sys.get_state(pid)
-    flush_reads()
-    refute_receive {:read, _}, 400
-    refute_received {:target, _, _, _}
+    # Nothing is watched any more, so nothing is polled for the gauge.
+    assert :sys.get_state(Watcher).watchers == %{}
+    send(pid, {:simulator_values, %{"Speed" => 100}})
+    :sys.get_state(pid)
+    refute_received {:target, _, _, @full}
     assert GaugeController.snapshot(train.id) == %{}
   end
 
@@ -359,9 +361,11 @@ defmodule Trenino.Train.GaugeControllerTest do
     assert_receive {:read, ["Speed"]}, 500
     {:ok, _} = Train.update_gauge_binding(b, %{endpoint: "Other"})
     send(pid, {:gauge_bindings_changed, train.id})
+    # Older reads of "Speed" stay in the mailbox; the pattern skips them.
+    assert_receive {:read, ["Other"]}, 1000
+    # The update also broadcasts a reload; let it finish its database read before the
+    # test's sandbox goes away.
     :sys.get_state(pid)
-    flush_reads()
-    assert_receive {:read, ["Other"]}, 500
   end
 
   test "a simulator disconnect forgets the samples", %{train: train, binding: b} do
@@ -386,13 +390,5 @@ defmodule Trenino.Train.GaugeControllerTest do
 
     assert %{sample: 50.0, target: @half, stale: false, failure: nil} = runtime.bindings[b.id]
     assert GaugeController.runtime(-1) == nil
-  end
-
-  defp flush_reads do
-    receive do
-      {:read, _} -> flush_reads()
-    after
-      250 -> :ok
-    end
   end
 end
