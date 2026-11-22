@@ -46,6 +46,37 @@ defmodule TreninoWeb.BetaFeaturesTest do
     end
   end
 
+  describe "settings page with beta features off" do
+    test "offers only Train Sim World", %{conn: conn} do
+      {:ok, view, _} = live(conn, ~p"/settings")
+
+      refute has_element?(view, "#simulator_choice")
+      refute has_element?(view, "#simrail-settings")
+      assert has_element?(view, "#simulator_url")
+      assert has_element?(view, "#simulator_api_key")
+    end
+
+    test "shows the Train Sim World fields even when SimRail was chosen", %{conn: conn} do
+      {:ok, _} = Settings.set_simulator(:simrail)
+      {:ok, view, _} = live(conn, ~p"/settings")
+
+      refute has_element?(view, "#simrail-settings")
+      assert has_element?(view, "#simulator_url")
+    end
+
+    test "saving connects to Train Sim World", %{conn: conn} do
+      {:ok, _} = Settings.set_simulator(:simrail)
+      expect(Trenino.Simulator.Connection, :reconfigure, fn -> :ok end)
+      {:ok, view, _} = live(conn, ~p"/settings")
+
+      view
+      |> form("#simulator-form", simulator: %{url: "http://localhost:31270", api_key: ""})
+      |> render_submit()
+
+      assert :tsw = Settings.simulator()
+    end
+  end
+
   describe "settings toggle" do
     test "enabling beta features shows them on the next page load", %{conn: conn} do
       {:ok, view, _} = live(conn, ~p"/settings")

@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- SimRail (beta): choose SimRail instead of Train Sim World on the Settings page and
+  connect through the TreninoBridge mod, with its URL and an optional token for when
+  SimRail runs on another computer.
+
 ### Removed
 
 - The Windows virtual joystick (beta) is gone: the Joystick page, its MCP

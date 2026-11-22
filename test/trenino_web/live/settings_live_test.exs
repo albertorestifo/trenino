@@ -158,6 +158,99 @@ defmodule TreninoWeb.SettingsLiveTest do
     end
   end
 
+  describe "SimRail (beta)" do
+    test "Train Sim World is selected by default", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/settings")
+
+      assert has_element?(view, "#simulator_choice option[value='tsw'][selected]")
+      assert has_element?(view, "#simulator_url")
+      refute has_element?(view, "#simrail-settings")
+    end
+
+    test "choosing SimRail shows the bridge URL and token", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/settings")
+
+      view
+      |> form("#simulator-form", simulator: %{simulator: "simrail"})
+      |> render_change()
+
+      assert has_element?(view, "#simrail_url[value='http://127.0.0.1:31275']")
+      assert has_element?(view, "#simrail_token[type='password']")
+      assert has_element?(view, "#simrail-token-help", "another computer")
+      refute has_element?(view, "#simulator_url")
+    end
+
+    test "saving stores the choice, URL and token, and reconnects", %{conn: conn} do
+      {:ok, _} = Settings.set_simulator(:simrail)
+      expect(Trenino.Simulator.Connection, :reconfigure, fn -> :ok end)
+      {:ok, view, _html} = live(conn, ~p"/settings")
+
+      view
+      |> form("#simulator-form",
+        simulator: %{
+          simulator: "simrail",
+          simrail_url: "http://192.168.1.20:31275",
+          simrail_token: "bridge-token"
+        }
+      )
+      |> render_submit()
+
+      assert :simrail = Settings.simulator()
+      assert "http://192.168.1.20:31275" = Settings.simrail_url()
+      assert "bridge-token" = Settings.simrail_token()
+      assert "http://localhost:31270" = Settings.simulator_url()
+
+      send(
+        view.pid,
+        {:simulator_status_changed, %Trenino.Simulator.ConnectionState{status: :connected}}
+      )
+
+      assert has_element?(view, "#simulator-connection-result", "Connected to SimRail")
+    end
+
+    test "a blank token keeps the stored one", %{conn: conn} do
+      {:ok, _} = Settings.set_simulator(:simrail)
+      {:ok, _} = Settings.set_simrail_token("existing")
+      stub(Trenino.Simulator.Connection, :reconfigure, fn -> :ok end)
+      {:ok, view, _html} = live(conn, ~p"/settings")
+
+      view
+      |> form("#simulator-form",
+        simulator: %{simrail_url: "http://127.0.0.1:31275", simrail_token: ""}
+      )
+      |> render_submit()
+
+      assert "existing" = Settings.simrail_token()
+    end
+
+    test "rejects a bridge URL without a scheme", %{conn: conn} do
+      {:ok, _} = Settings.set_simulator(:simrail)
+      {:ok, view, _html} = live(conn, ~p"/settings")
+
+      view
+      |> form("#simulator-form", simulator: %{simrail_url: "127.0.0.1:31275"})
+      |> render_change()
+
+      assert render(view) =~ "URL must start with http:// or https://"
+    end
+
+    test "switching back to Train Sim World connects to it", %{conn: conn} do
+      {:ok, _} = Settings.set_simulator(:simrail)
+      stub(Trenino.Simulator.Connection, :reconfigure, fn -> :ok end)
+      {:ok, view, _html} = live(conn, ~p"/settings")
+
+      view
+      |> form("#simulator-form", simulator: %{simulator: "tsw"})
+      |> render_change()
+
+      view
+      |> form("#simulator-form", simulator: %{url: "http://localhost:31270", api_key: ""})
+      |> render_submit()
+
+      assert :tsw = Settings.simulator()
+    end
+  end
+
   test "shows a quiet Discord link that opens outside the app", %{conn: conn} do
     {:ok, view, _} = live(conn, ~p"/settings")
 

@@ -126,4 +126,49 @@ defmodule Trenino.SettingsTest do
       assert {:ok, "second"} = Settings.api_key()
     end
   end
+
+  describe "simulator/0" do
+    test "defaults to Train Sim World" do
+      assert :tsw = Settings.simulator()
+    end
+
+    test "returns the stored choice" do
+      {:ok, _} = Settings.set_simulator(:simrail)
+      assert :simrail = Settings.simulator()
+
+      {:ok, _} = Settings.set_simulator(:tsw)
+      assert :tsw = Settings.simulator()
+    end
+
+    test "rejects unknown simulators" do
+      invalid_value = String.to_atom("msts")
+      assert_raise FunctionClauseError, fn -> Settings.set_simulator(invalid_value) end
+    end
+  end
+
+  describe "SimRail settings" do
+    test "the URL defaults to the bridge on this computer" do
+      assert "http://127.0.0.1:31275" = Settings.simrail_url()
+    end
+
+    test "stores the URL" do
+      {:ok, _} = Settings.set_simrail_url("http://192.168.1.20:31275")
+      assert "http://192.168.1.20:31275" = Settings.simrail_url()
+    end
+
+    test "the token is optional" do
+      assert nil == Settings.simrail_token()
+
+      {:ok, _} = Settings.set_simrail_token("bridge-token")
+      assert "bridge-token" = Settings.simrail_token()
+    end
+
+    test "do not change the Train Sim World settings" do
+      {:ok, _} = Settings.set_simrail_url("http://192.168.1.20:31275")
+      {:ok, _} = Settings.set_simrail_token("bridge-token")
+
+      assert "http://localhost:31270" = Settings.simulator_url()
+      refute match?({:ok, "bridge-token"}, Settings.api_key())
+    end
+  end
 end

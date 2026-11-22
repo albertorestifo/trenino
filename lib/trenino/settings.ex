@@ -23,6 +23,13 @@ defmodule Trenino.Settings do
   @simulator_api_key_key "simulator_api_key"
   @default_simulator_url "http://localhost:31270"
 
+  @simulator_key "simulator"
+  @simulator_values [:tsw, :simrail]
+
+  @simrail_url_key "simrail_url"
+  @simrail_token_key "simrail_token"
+  @default_simrail_url "http://127.0.0.1:31275"
+
   @spec error_reporting?() :: boolean()
   def error_reporting?, do: get_atom(@error_reporting_key, @error_reporting_values) == :enabled
 
@@ -64,6 +71,34 @@ defmodule Trenino.Settings do
   @spec set_api_key(String.t()) ::
           {:ok, Setting.t()} | {:error, Ecto.Changeset.t()}
   def set_api_key(key) when is_binary(key), do: put_raw(@simulator_api_key_key, key)
+
+  @doc "The simulator Trenino connects to: `:tsw` (default) or `:simrail`."
+  @spec simulator() :: Trenino.Simulator.simulator()
+  def simulator, do: get_atom(@simulator_key, @simulator_values) || :tsw
+
+  @spec set_simulator(Trenino.Simulator.simulator()) ::
+          {:ok, Setting.t()} | {:error, Ecto.Changeset.t()}
+  def set_simulator(value) when value in @simulator_values,
+    do: put_raw(@simulator_key, Atom.to_string(value))
+
+  @doc "URL of the TreninoBridge mod running inside SimRail."
+  @spec simrail_url() :: String.t()
+  def simrail_url, do: get_raw(@simrail_url_key) || @default_simrail_url
+
+  @spec set_simrail_url(String.t()) ::
+          {:ok, Setting.t()} | {:error, Ecto.Changeset.t()}
+  def set_simrail_url(url) when is_binary(url), do: put_raw(@simrail_url_key, url)
+
+  @doc """
+  The TreninoBridge token, or nil. Only needed when SimRail runs on another
+  computer: requests from the same computer are trusted without one.
+  """
+  @spec simrail_token() :: String.t() | nil
+  def simrail_token, do: get_raw(@simrail_token_key)
+
+  @spec set_simrail_token(String.t()) ::
+          {:ok, Setting.t()} | {:error, Ecto.Changeset.t()}
+  def set_simrail_token(token) when is_binary(token), do: put_raw(@simrail_token_key, token)
 
   @doc """
   Sentry `before_send` callback. Returns `false` to drop the event when the
