@@ -31,6 +31,7 @@ defmodule TreninoWeb.LeverSetupWizard do
 
   alias Trenino.Hardware
   alias Trenino.Simulator.ControlDetector
+  alias Trenino.Simulator.SimRailLevers
   alias Trenino.Simulator.LeverMetadata
   alias Trenino.Train
   alias Trenino.Train.Calibration.NotchMappingSession
@@ -55,6 +56,15 @@ defmodule TreninoWeb.LeverSetupWizard do
     :select_input,
     :find_endpoint,
     :run_calibration,
+    :map_notches
+  ]
+
+  # Steps when the simulator reports its controls (SimRail): picking the lever
+  # saves its notches from the game's notch table, so there is no calibration.
+  @steps_catalog [
+    :select_lever_type,
+    :select_input,
+    :find_endpoint,
     :map_notches
   ]
 
@@ -115,10 +125,24 @@ defmodule TreninoWeb.LeverSetupWizard do
 
     # Determine if we're in editing mode (existing config allows non-linear navigation)
     editing_mode = has_existing_config?(existing_config)
-    steps = if editing_mode, do: @steps_edit, else: @steps_new
+    # The profile decides the flow: a SimRail profile picks from the game's
+    # controls, a TSW profile browses and sweeps.
+    catalog = train_simulator(element) == :simrail
+
+    steps =
+      cond do
+        catalog -> @steps_catalog
+        editing_mode -> @steps_edit
+        true -> @steps_new
+      end
 
     socket
     |> assign(:current_step, :select_lever_type)
+    |> assign(:catalog, catalog)
+    |> assign(:catalog_levers, [])
+    |> assign(:catalog_status, :idle)
+    |> assign(:catalog_control_id, nil)
+    |> assign(:catalog_error, nil)
     |> assign(:available_inputs, available_inputs)
     |> assign(:selected_input_id, existing_input_id)
     |> assign(:selected_input, get_existing_input(existing_binding, available_inputs))
@@ -145,6 +169,13 @@ defmodule TreninoWeb.LeverSetupWizard do
     |> assign(:needs_redo, MapSet.new())
     |> assign(:steps_configured, compute_configured_steps(existing_config, existing_input_id))
     |> assign(:initialized, true)
+  end
+
+  defp train_simulator(%Element{train_id: train_id}) do
+    case Train.get_train(train_id) do
+      {:ok, train} -> train.simulator
+      _ -> :tsw
+    end
   end
 
   # Deep links (`?lever=ID&step=STEP`) open the wizard at a later step. A
@@ -427,6 +458,32 @@ defmodule TreninoWeb.LeverSetupWizard do
   end
 
   @impl true
+  def handle_event("use_catalog_lever", %{"path" => path, "control-id" => control_id}, socket) do
+    if Enum.any?(socket.assigns.catalog_levers, &(&1.id == control_id and &1.path == path)) do
+      element_id = socket.assigns.element.id
+
+      case LeverSetup.configure_from_catalog(element_id, path, control_id: control_id) do
+        {:ok, %{lever_config: _config} = result} ->
+          endpoints = SimRailLevers.endpoints(path)
+
+          {:noreply,
+           socket
+           |> assign(:catalog_control_id, control_id)
+           |> assign(:catalog_error, nil)
+           |> maybe_invalidate_for_endpoint_change(endpoints)
+           |> assign(:detected_endpoints, endpoints)
+           |> apply_calibration_result({:ok, result})}
+
+        {:error, reason} ->
+          Logger.warning("Configuring #{path} from the simulator failed: #{inspect(reason)}")
+          {:noreply, assign(socket, :catalog_error, catalog_error_message(reason))}
+      end
+    else
+      {:noreply, socket}
+    end
+  end
+
+  @impl true
   def handle_event("open_auto_detect", _params, socket) do
     {:noreply, assign(socket, :show_auto_detect, true)}
   end
@@ -605,8 +662,29 @@ defmodule TreninoWeb.LeverSetupWizard do
   # Suggest simulator levers for this element when the user reaches the
   # "Find in Simulator" step. Reading every lever takes a few seconds, so it
   # runs in the background and only once per wizard.
+  # A simulator that reports its controls lists the train's levers instead.
   defp maybe_load_suggestions(
-         %{assigns: %{current_step: :find_endpoint, suggestions_status: :idle}} = socket
+         %{assigns: %{catalog: true, current_step: :find_endpoint, catalog_status: :idle}} =
+           socket
+       ) do
+    socket
+    |> assign(:catalog_status, :loading)
+    |> start_async(:catalog_levers, fn ->
+      with {:ok, controls} <- Trenino.Simulator.controls(),
+           do: {:ok, SimRailLevers.levers(controls)}
+    end)
+  end
+
+  defp maybe_load_suggestions(%{assigns: %{catalog: true}} = socket), do: socket
+
+  defp maybe_load_suggestions(
+         %{
+           assigns: %{
+             current_step: :find_endpoint,
+             suggestions_status: :idle,
+             client: %Trenino.Simulator.Client{}
+           }
+         } = socket
        ) do
     client = socket.assigns.client
     name = socket.assigns.element.name
@@ -626,6 +704,15 @@ defmodule TreninoWeb.LeverSetupWizard do
   def handle_async(:lever_suggestions, result, socket) do
     Logger.warning("Lever suggestions failed: #{inspect(result)}")
     {:noreply, assign(socket, suggestions: [], suggestions_status: :failed)}
+  end
+
+  def handle_async(:catalog_levers, {:ok, {:ok, levers}}, socket) do
+    {:noreply, assign(socket, catalog_levers: levers, catalog_status: :loaded)}
+  end
+
+  def handle_async(:catalog_levers, result, socket) do
+    Logger.warning("Reading the simulator's levers failed: #{inspect(result)}")
+    {:noreply, assign(socket, catalog_levers: [], catalog_status: :failed)}
   end
 
   # A prompt for the user's AI assistant (connected through Trenino's MCP
@@ -1084,6 +1171,38 @@ defmodule TreninoWeb.LeverSetupWizard do
     """
   end
 
+  defp step_content(%{current_step: :find_endpoint, socket_assigns: %{catalog: true}} = assigns) do
+    ~H"""
+    <.step_pick_catalog_lever
+      levers={@socket_assigns.catalog_levers}
+      status={@socket_assigns.catalog_status}
+      selected_id={@socket_assigns.catalog_control_id}
+      error={@socket_assigns.catalog_error}
+      warnings={@socket_assigns.calibration_warnings}
+      notches={@socket_assigns.notches}
+      can_proceed={can_proceed_from?(:find_endpoint, @socket_assigns)}
+      myself={@myself}
+    />
+    """
+  end
+
+  # The TSW tools below need a Train Sim World connection: with another
+  # simulator (or none) connected they would be handed the wrong client.
+  defp step_content(%{current_step: :find_endpoint, socket_assigns: %{client: client}} = assigns)
+       when not is_struct(client, Trenino.Simulator.Client) do
+    ~H"""
+    <div class="flex-1 overflow-y-auto p-4">
+      <div id="find-endpoint-needs-tsw" role="status" class="alert alert-soft alert-warning">
+        <.icon name="hero-exclamation-triangle" class="w-5 h-5" />
+        <span>
+          This train profile is for Train Sim World. Connect Train Sim World in Settings to find this lever.
+        </span>
+      </div>
+    </div>
+    <.step_footer can_proceed={false} show_back={true} myself={@myself} />
+    """
+  end
+
   defp step_content(%{current_step: :find_endpoint} = assigns) do
     ~H"""
     <.step_find_endpoint
@@ -1381,6 +1500,123 @@ defmodule TreninoWeb.LeverSetupWizard do
     <.step_footer can_proceed={@can_proceed} show_back={true} myself={@myself} />
     """
   end
+
+  # Step 3 for simulators that report their controls (SimRail): pick the lever.
+  attr :levers, :list, required: true
+  attr :status, :atom, required: true
+  attr :selected_id, :string, default: nil
+  attr :error, :string, default: nil
+  attr :warnings, :list, default: []
+  attr :notches, :list, default: []
+  attr :can_proceed, :boolean, required: true
+  attr :myself, :any, required: true
+
+  defp step_pick_catalog_lever(assigns) do
+    ~H"""
+    <div id="catalog-levers" class="flex-1 overflow-y-auto p-4 space-y-3">
+      <div>
+        <h6 class="text-sm font-medium">Choose the lever in the cab</h6>
+        <p class="text-xs text-muted">
+          The game reports each lever's notches, so Trenino sets them up from your pick. Nothing moves in the game.
+        </p>
+      </div>
+
+      <p :if={@status == :loading} class="text-xs text-muted flex items-center gap-2">
+        <.icon name="hero-arrow-path-mini" class="w-4 h-4 motion-safe:animate-spin" />
+        Reading the train's levers…
+      </p>
+
+      <div :if={@status == :failed} role="status" class="alert alert-soft alert-warning">
+        <.icon name="hero-exclamation-triangle" class="w-5 h-5" />
+        <span>Could not read the train's levers. Check that you are in the cab, then reopen this step.</span>
+      </div>
+
+      <p :if={@status == :loaded and @levers == []} class="text-xs text-muted">
+        This train has no levers with notches. Sit in the driver's cab and reopen this step.
+      </p>
+
+      <div :if={@levers != []} class="grid gap-2">
+        <button
+          :for={lever <- @levers}
+          type="button"
+          phx-click="use_catalog_lever"
+          phx-value-path={lever.path}
+          phx-value-control-id={lever.id}
+          phx-target={@myself}
+          aria-pressed={to_string(lever.id == @selected_id)}
+          class={[
+            "text-left rounded-lg border px-3 py-2 transition-colors",
+            if(lever.id == @selected_id,
+              do: "border-primary bg-primary/10",
+              else: "border-base-300 hover:border-base-content/30"
+            )
+          ]}
+        >
+          <div class="flex items-center justify-between gap-2">
+            <span class="font-mono text-sm truncate" title={lever.path}>{lever.path}</span>
+            <span class="badge badge-ghost badge-sm text-xs whitespace-nowrap">
+              {position_summary(lever)}
+            </span>
+          </div>
+          <p class="text-xs text-muted truncate" title={lever.id}>{lever_location(lever)}</p>
+        </button>
+      </div>
+
+      <div :if={@error} role="alert" class="alert alert-soft alert-error">
+        <.icon name="hero-exclamation-circle" class="w-5 h-5" />
+        <span>{@error}</span>
+      </div>
+
+      <p :if={@selected_id && @notches != []} class="text-xs text-muted">
+        Set up {length(@notches)} notches from the game. Map them to your lever next.
+      </p>
+
+      <div :for={warning <- @warnings} role="status" class="alert alert-soft alert-warning">
+        <.icon name="hero-exclamation-triangle" class="w-5 h-5" />
+        <span>{warning}</span>
+      </div>
+    </div>
+
+    <.step_footer can_proceed={@can_proceed} show_back={true} myself={@myself} />
+    """
+  end
+
+  # "8 positions", plus whether some are smooth or spring back when released.
+  defp position_summary(%{positions: positions}) do
+    count = length(positions)
+    smooth = Enum.any?(positions, & &1.smooth)
+    springing = Enum.count(positions, &Trenino.Simulator.Control.momentary?/1)
+
+    [
+      "#{count} #{if count == 1, do: "position", else: "positions"}",
+      smooth && "smooth",
+      springing > 0 && "#{springing} spring back"
+    ]
+    |> Enum.filter(& &1)
+    |> Enum.join(" · ")
+  end
+
+  # Where the control sits, from its place in the vehicle (cab and part names).
+  defp lever_location(%{id: id}) do
+    id
+    |> String.split("/")
+    |> Enum.drop(-1)
+    |> Enum.take(-2)
+    |> Enum.join(" / ")
+  end
+
+  defp catalog_error_message({:wrong_simulator, _profile, _connected}),
+    do: "This train profile is for another simulator. Create a SimRail profile for this train."
+
+  defp catalog_error_message(:not_connected),
+    do: "SimRail is not connected. Start it with the TreninoBridge mod, then try again."
+
+  defp catalog_error_message(:spring_return),
+    do:
+      "This lever only has positions that spring back, so a notched hardware lever cannot hold them."
+
+  defp catalog_error_message(_reason),
+    do: "Could not set up this lever from the game. Pick it again, or reopen this step."
 
   # Step 3: Explain Calibration
   attr :myself, :any, required: true

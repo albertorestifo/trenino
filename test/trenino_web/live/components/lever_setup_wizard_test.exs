@@ -1258,4 +1258,105 @@ defmodule TreninoWeb.LeverSetupWizardTest do
       refute html =~ "Analyzing Lever"
     end
   end
+
+  describe "SimRail lever setup" do
+    alias Trenino.Simulator.Backend.SimRail
+    alias Trenino.Simulator.Control
+    alias Trenino.Simulator.Control.Position
+
+    setup do
+      {:ok, train} =
+        TrainContext.create_train(%{
+          name: "EU07",
+          simulator: :simrail,
+          identifiers: [%{identifier: "4e/eu07-#{System.unique_integer([:positive])}"}]
+        })
+
+      {:ok, element} = TrainContext.create_element(train.id, %{name: "Throttle", type: :lever})
+      {:ok, handle} = SimRail.connect(%{url: "http://127.0.0.1:31275", api_key: nil})
+      status = %ConnectionState{status: :connected, backend: SimRail, client: handle}
+
+      stub(Simulator, :get_status, fn -> status end)
+      stub(Trenino.Simulator.Connection, :get_status, fn -> status end)
+
+      throttle = %Control{
+        id: "kabina A/drive_handle",
+        kind: :lever,
+        type: "PhysicsInteractionLeverStepped",
+        path: "Physics_Input_General.drive_handle",
+        positions: for(i <- 0..3, do: %Position{index: i, value: i * 1.0, stable: i})
+      }
+
+      stub(Simulator, :controls, fn -> {:ok, [throttle]} end)
+
+      %{train: train, element: element, throttle: throttle}
+    end
+
+    test "lists the train's levers instead of the TSW browser and skips calibration", %{
+      conn: conn,
+      train: train,
+      element: element
+    } do
+      {:ok, view, _html} =
+        live(conn, "/trains/#{train.id}?lever=#{element.id}&step=find_endpoint")
+
+      html = render_async(view)
+
+      assert html =~ "Physics_Input_General.drive_handle"
+      refute html =~ "Auto-Detect Control"
+      refute html =~ "Calibration Info"
+      refute html =~ "Detect Notches"
+    end
+
+    test "a Train Sim World profile does not get the SimRail handle", %{conn: conn} do
+      {:ok, tsw_train} =
+        TrainContext.create_train(%{
+          name: "Class 323",
+          simulator: :tsw,
+          identifiers: [%{identifier: "RVM_TSW_#{System.unique_integer([:positive])}"}]
+        })
+
+      {:ok, tsw_lever} = TrainContext.create_element(tsw_train.id, %{name: "Power", type: :lever})
+
+      {:ok, view, _html} =
+        live(conn, "/trains/#{tsw_train.id}?lever=#{tsw_lever.id}&step=find_endpoint")
+
+      html = render(view)
+
+      assert has_element?(view, "#find-endpoint-needs-tsw")
+      refute html =~ "Auto-Detect Control"
+    end
+
+    test "picking a lever saves its notches from the game's notch table", %{
+      conn: conn,
+      train: train,
+      element: element,
+      throttle: throttle
+    } do
+      test_pid = self()
+
+      expect(LeverSetup, :configure_from_catalog, fn element_id, path, opts ->
+        send(test_pid, {:configured, element_id, path, opts})
+        LeverSetup.Mimic.Original.Module.configure_from_catalog(element_id, path, opts)
+      end)
+
+      {:ok, view, _html} =
+        live(conn, "/trains/#{train.id}?lever=#{element.id}&step=find_endpoint")
+
+      render_async(view)
+
+      view
+      |> element("[phx-click='use_catalog_lever'][phx-value-control-id='#{throttle.id}']")
+      |> render_click()
+
+      assert_received {:configured, element_id, "Physics_Input_General.drive_handle", opts}
+      assert element_id == element.id
+      assert opts[:control_id] == throttle.id
+
+      {:ok, config} = TrainContext.get_lever_config(element.id)
+      config = Trenino.Repo.preload(config, :notches)
+      assert length(config.notches) == 4
+      assert config.value_endpoint == "Physics_Input_General.drive_handle"
+    end
+  end
 end
