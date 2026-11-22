@@ -22,6 +22,7 @@ defmodule TreninoWeb.SettingsLive do
      |> assign(:simulator, Settings.simulator())
      |> assign(:simulator_url, Settings.simulator_url())
      |> assign(:simrail_url, Settings.simrail_url())
+     |> assign(:simrail_token_saved, simrail_token_saved?())
      |> assign(:api_key_status, api_key_status())
      |> assign(:connection_result, nil)
      |> assign(:connection_test_ref, nil)
@@ -148,24 +149,43 @@ defmodule TreninoWeb.SettingsLive do
     case url_error(url_param(simulator, params) || "") do
       nil ->
         save_simulator_settings(simulator, params)
-        SimulatorConnection.reconfigure()
-        test_ref = make_ref()
-        Process.send_after(self(), {:connection_test_timeout, test_ref}, 15_000)
 
         {:noreply,
          socket
          |> assign(:simulator, simulator)
          |> assign(:simulator_url, Settings.simulator_url())
          |> assign(:simrail_url, Settings.simrail_url())
+         |> assign(:simrail_token_saved, simrail_token_saved?())
          |> assign(:api_key_status, api_key_status())
          |> assign(:url_error, nil)
-         |> assign(:connection_result, "Settings saved. Testing connection…")
-         |> assign(:connection_test_ref, test_ref)}
+         |> test_connection("Settings saved. Testing connection…")}
 
       error ->
         {:noreply, assign(socket, :url_error, error)}
     end
   end
+
+  @impl true
+  def handle_event("remove_simrail_token", _params, socket) do
+    :ok = Settings.clear_simrail_token()
+
+    {:noreply,
+     socket
+     |> assign(:simrail_token_saved, false)
+     |> test_connection("Token removed. Testing connection…")}
+  end
+
+  defp test_connection(socket, message) do
+    SimulatorConnection.reconfigure()
+    test_ref = make_ref()
+    Process.send_after(self(), {:connection_test_timeout, test_ref}, 15_000)
+
+    socket
+    |> assign(:connection_result, message)
+    |> assign(:connection_test_ref, test_ref)
+  end
+
+  defp simrail_token_saved?, do: Settings.simrail_token() not in [nil, ""]
 
   # PubSub handlers (mirror other LiveViews)
   @impl true
@@ -358,11 +378,36 @@ defmodule TreninoWeb.SettingsLive do
                 <label class="label pb-1.5" for="simrail_token">
                   <span class="label-text">Token</span>
                 </label>
+                <div
+                  id="simrail-token-status"
+                  class="flex items-center justify-between gap-2 px-3 py-2 mb-3 text-sm bg-base-200 rounded border border-base-300"
+                >
+                  <%= if @simrail_token_saved do %>
+                    <span class="flex items-center gap-2">
+                      <.icon name="hero-key" class="w-4 h-4 shrink-0" /> A token is saved.
+                    </span>
+                    <button
+                      id="remove-simrail-token"
+                      type="button"
+                      class="btn btn-ghost btn-xs text-xs"
+                      phx-click="remove_simrail_token"
+                      data-confirm="Remove the saved token? Trenino will connect without one."
+                    >
+                      Remove token
+                    </button>
+                  <% else %>
+                    <span class="text-muted">No token saved.</span>
+                  <% end %>
+                </div>
                 <input
                   id="simrail_token"
                   type="password"
                   name="simulator[simrail_token]"
-                  placeholder="Leave blank to keep current value"
+                  placeholder={
+                    if @simrail_token_saved,
+                      do: "Leave blank to keep the saved token",
+                      else: "Leave blank when SimRail runs on this computer"
+                  }
                   class="input input-bordered w-full font-mono"
                 />
                 <div id="simrail-token-help" class="mt-1.5 text-xs text-muted">

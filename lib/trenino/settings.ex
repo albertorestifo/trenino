@@ -100,6 +100,15 @@ defmodule Trenino.Settings do
           {:ok, Setting.t()} | {:error, Ecto.Changeset.t()}
   def set_simrail_token(token) when is_binary(token), do: put_raw(@simrail_token_key, token)
 
+  @doc "Forget the TreninoBridge token, so requests are sent without one."
+  @spec clear_simrail_token() :: :ok
+  def clear_simrail_token do
+    case Repo.get(Setting, @simrail_token_key) do
+      nil -> :ok
+      %Setting{} = setting -> with {:ok, _} <- Repo.delete(setting), do: :ok
+    end
+  end
+
   @doc """
   Sentry `before_send` callback. Returns `false` to drop the event when the
   user has not opted in to error reporting; otherwise returns the event

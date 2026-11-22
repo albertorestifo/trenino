@@ -182,6 +182,11 @@ defmodule Trenino.Simulator.ConnectionBackendTest do
     Connection.reconfigure()
 
     assert_receive {:backend_disconnect, ^handle}
+
+    assert_receive {:simulator_status_changed,
+                    %ConnectionState{status: :disconnected, client: nil}},
+                   1_000
+
     assert_receive {:backend_connect, _config}, 1_000
     assert_receive {:simulator_status_changed, %ConnectionState{status: :connected}}, 1_000
     assert_receive {:backend_check, new_handle}

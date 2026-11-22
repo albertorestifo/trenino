@@ -148,8 +148,9 @@ defmodule Trenino.Simulator.Connection do
 
   @impl true
   def handle_cast(:reconfigure, %State{} = state) do
-    # Disconnect existing connection and reconnect with new config
-    new_state = release(state)
+    # Disconnect existing connection and reconnect with new config. Announce
+    # the disconnect so nobody keeps using the released handle meanwhile.
+    new_state = state |> release() |> broadcast()
     schedule_connect(500)
     {:noreply, new_state}
   end

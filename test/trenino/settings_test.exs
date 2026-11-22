@@ -163,6 +163,14 @@ defmodule Trenino.SettingsTest do
       assert "bridge-token" = Settings.simrail_token()
     end
 
+    test "the token can be cleared" do
+      assert :ok = Settings.clear_simrail_token()
+
+      {:ok, _} = Settings.set_simrail_token("bridge-token")
+      assert :ok = Settings.clear_simrail_token()
+      assert nil == Settings.simrail_token()
+    end
+
     test "do not change the Train Sim World settings" do
       {:ok, _} = Settings.set_simrail_url("http://192.168.1.20:31275")
       {:ok, _} = Settings.set_simrail_token("bridge-token")

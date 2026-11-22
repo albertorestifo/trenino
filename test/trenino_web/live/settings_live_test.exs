@@ -223,6 +223,30 @@ defmodule TreninoWeb.SettingsLiveTest do
       assert "existing" = Settings.simrail_token()
     end
 
+    test "says when no token is saved", %{conn: conn} do
+      {:ok, _} = Settings.set_simulator(:simrail)
+      {:ok, view, _html} = live(conn, ~p"/settings")
+
+      assert has_element?(view, "#simrail-token-status", "No token saved")
+      refute has_element?(view, "#remove-simrail-token")
+    end
+
+    test "a saved token can be removed without being shown", %{conn: conn} do
+      {:ok, _} = Settings.set_simulator(:simrail)
+      {:ok, _} = Settings.set_simrail_token("secret-bridge-token")
+      expect(Trenino.Simulator.Connection, :reconfigure, fn -> :ok end)
+      {:ok, view, html} = live(conn, ~p"/settings")
+
+      refute html =~ "secret-bridge-token"
+      assert has_element?(view, "#simrail-token-status", "A token is saved")
+
+      view |> element("#remove-simrail-token") |> render_click()
+
+      assert nil == Settings.simrail_token()
+      assert has_element?(view, "#simrail-token-status", "No token saved")
+      assert has_element?(view, "#simulator-connection-result", "Token removed")
+    end
+
     test "rejects a bridge URL without a scheme", %{conn: conn} do
       {:ok, _} = Settings.set_simulator(:simrail)
       {:ok, view, _html} = live(conn, ~p"/settings")
