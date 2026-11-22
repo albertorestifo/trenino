@@ -1,0 +1,38 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Trenino bridge for SimRail: a MelonLoader mod that exposes the player train's
+    physics IO (Physics_Input_General, Physics_Output_General, ...) over a local HTTP API.
+
+    Build:  dotnet build -c Release -p:SimRailDir="D:\SteamLibrary\steamapps\common\SimRail"
+    Output is copied to <SimRailDir>\Mods when DeployToGame=true (default).
+    Requires the game to have been started once with MelonLoader so that
+    MelonLoader\Il2CppAssemblies exists.
+  -->
+
+  <PropertyGroup>
+    <TargetFramework>net6.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <AssemblyName>TreninoBridge</AssemblyName>
+    <RootNamespace>TreninoBridge</RootNamespace>
+    <SimRailDir Condition="'$(SimRailDir)' == ''">D:\SteamLibrary\steamapps\common\SimRail</SimRailDir>
+    <DeployToGame Condition="'$(DeployToGame)' == ''">true</DeployToGame>
+    <CopyLocalLockFileAssemblies>false</CopyLocalLockFileAssemblies>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Reference Include="MelonLoader" HintPath="$(SimRailDir)\MelonLoader\net6\MelonLoader.dll" Private="false" />
+    <Reference Include="Il2CppInterop.Runtime" HintPath="$(SimRailDir)\MelonLoader\net6\Il2CppInterop.Runtime.dll" Private="false" />
+    <Reference Include="Il2CppInterop.Common" HintPath="$(SimRailDir)\MelonLoader\net6\Il2CppInterop.Common.dll" Private="false" />
+    <Reference Include="Il2Cppmscorlib" HintPath="$(SimRailDir)\MelonLoader\Il2CppAssemblies\Il2Cppmscorlib.dll" Private="false" />
+    <Reference Include="UnityEngine.CoreModule" HintPath="$(SimRailDir)\MelonLoader\Il2CppAssemblies\UnityEngine.CoreModule.dll" Private="false" />
+    <Reference Include="Assembly-CSharp" HintPath="$(SimRailDir)\MelonLoader\Il2CppAssemblies\Assembly-CSharp.dll" Private="false" />
+  </ItemGroup>
+
+  <Target Name="DeployToSimRail" AfterTargets="Build" Condition="'$(DeployToGame)' == 'true'">
+    <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(SimRailDir)\Mods" />
+  </Target>
+
+</Project>
