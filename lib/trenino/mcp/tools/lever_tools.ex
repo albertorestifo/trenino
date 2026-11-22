@@ -6,13 +6,19 @@ defmodule Trenino.MCP.Tools.LeverTools do
   find the simulator lever, link it, calibrate it, bind a hardware input. The
   last step, mapping the physical lever's notches, needs the user in the
   wizard; `open_lever_setup` takes them there.
+
+  On simulators that report their controls (`:control_catalog`, SimRail) the
+  levers and their notches come from the control catalogue: nothing is swept.
   """
 
+  alias Trenino.Simulator
   alias Trenino.Simulator.Connection, as: SimulatorConnection
   alias Trenino.Simulator.ConnectionState
+  alias Trenino.Simulator.Control
   alias Trenino.Simulator.ControlDetector
   alias Trenino.Simulator.LeverMetadata
   alias Trenino.Simulator.LeverMetadata.Label
+  alias Trenino.Simulator.SimRailLevers
   alias Trenino.Train, as: TrainContext
   alias Trenino.Train.{Element, LeverConfig, LeverInputBinding, LeverSetup, Notch, NotchDesign}
   alias Trenino.UINavigation
@@ -32,7 +38,9 @@ defmodule Trenino.MCP.Tools.LeverTools do
             "'Reverser', 'AutomaticBrake', 'IndependentBrake', 'DynamicBrake'), its notch " <>
             "count and the names the game shows for its positions. Pass 'match' with the " <>
             "element's name to get the best candidates first. Twin-cab trains list each " <>
-            "control twice ('_F' front, '_B' rear); use the front cab unless told otherwise.",
+            "control twice ('_F' front, '_B' rear); use the front cab unless told otherwise. " <>
+            "Simulators that report their notch tables list each cab control with a " <>
+            "control_id; several can share a control_path with different positions.",
         input_schema: %{
           type: "object",
           properties: %{
@@ -83,10 +91,19 @@ defmodule Trenino.MCP.Tools.LeverTools do
             "warn the user that the train will move and get their OK; ask them to apply the " <>
             "train brake if the train has a separate one. The lever is put back where it was " <>
             "at the end. Takes up to a minute. Read the returned warnings to the user " <>
-            "(for example a range blocked by the reverser, or a spring-loaded position).",
+            "(for example a range blocked by the reverser, or a spring-loaded position). " <>
+            "Where list_simulator_levers shows control_ids, the notches are read from the " <>
+            "control's notch table instead: nothing moves, and control_id picks the control " <>
+            "when several share the lever's control_path.",
         input_schema: %{
           type: "object",
-          properties: %{element_id: @element_id},
+          properties: %{
+            element_id: @element_id,
+            control_id: %{
+              type: "string",
+              description: "control_id from list_simulator_levers, when several share the path"
+            }
+          },
           required: ["element_id"]
         }
       },
@@ -127,44 +144,13 @@ defmodule Trenino.MCP.Tools.LeverTools do
     ]
   end
 
-  def execute("list_simulator_levers", args) do
-    with_client(fn client ->
-      case LeverMetadata.list_levers(client) do
-        {:ok, levers} -> {:ok, list_result(levers, Map.get(args, "match"))}
-        {:error, reason} -> {:error, "Simulator error: #{inspect(reason)}"}
-      end
-    end)
+  def execute(tool, args)
+      when tool in ~w(list_simulator_levers set_lever_endpoint calibrate_lever) do
+    if LeverSetup.catalog?(), do: execute_catalog(tool, args), else: execute_sweep(tool, args)
   end
 
   def execute("get_lever", %{"element_id" => element_id}) when is_integer(element_id) do
     lever_result(element_id)
-  end
-
-  def execute("set_lever_endpoint", %{"element_id" => element_id, "control_path" => path})
-      when is_integer(element_id) and is_binary(path) do
-    with_client(fn client ->
-      with {:ok, %LeverMetadata{}} <- read_lever(client, path),
-           {:ok, _config} <- LeverSetup.set_endpoint(element_id, path) do
-        lever_result(element_id)
-      else
-        {:error, reason} -> {:error, error_message(reason, element_id)}
-      end
-    end)
-  end
-
-  def execute("calibrate_lever", %{"element_id" => element_id}) when is_integer(element_id) do
-    with_client(fn client ->
-      with {:ok, config} <- fetch_config(element_id),
-           path when is_binary(path) <- LeverSetup.control_path(config),
-           {:ok, %{analysis: analysis}} <-
-             LeverSetup.calibrate(client, element_id, path),
-           {:ok, result} <- lever_result(element_id) do
-        {:ok, Map.merge(result, %{lever_type: analysis.lever_type, warnings: analysis.warnings})}
-      else
-        nil -> {:error, error_message(:no_endpoint, element_id)}
-        {:error, reason} -> {:error, error_message(reason, element_id)}
-      end
-    end)
   end
 
   def execute("bind_lever_input", %{"element_id" => element_id, "input_id" => input_id})
@@ -214,6 +200,125 @@ defmodule Trenino.MCP.Tools.LeverTools do
   end
 
   def execute(name, _args) when name in @tool_names,
+    do: {:error, "Missing or invalid arguments for #{name}; check the tool's schema."}
+
+  # --- Simulators with a control catalogue (SimRail) --------------------------
+
+  defp execute_catalog("list_simulator_levers", _args) do
+    case Simulator.controls() do
+      {:ok, controls} ->
+        {:ok, %{levers: controls |> SimRailLevers.levers() |> Enum.map(&serialize_control/1)}}
+
+      {:error, reason} ->
+        {:error, "Simulator error: #{inspect(reason)}"}
+    end
+  end
+
+  defp execute_catalog("set_lever_endpoint", %{"element_id" => element_id, "control_path" => path})
+       when is_integer(element_id) and is_binary(path) do
+    with {:ok, controls} <- Simulator.controls(),
+         :ok <- check_catalog_lever(controls, path),
+         {:ok, _config} <- LeverSetup.set_endpoint(element_id, path) do
+      lever_result(element_id)
+    else
+      {:error, reason} -> {:error, error_message(reason, element_id)}
+    end
+  end
+
+  defp execute_catalog("calibrate_lever", %{"element_id" => element_id} = args)
+       when is_integer(element_id) do
+    with {:ok, config} <- fetch_config(element_id),
+         path when is_binary(path) <- LeverSetup.control_path(config),
+         {:ok, %{analysis: analysis}} <-
+           LeverSetup.configure_from_catalog(element_id, path,
+             control_id: Map.get(args, "control_id")
+           ),
+         {:ok, result} <- lever_result(element_id) do
+      {:ok,
+       Map.merge(result, %{
+         lever_type: analysis.lever_type,
+         control_id: analysis.control.id,
+         warnings: analysis.warnings
+       })}
+    else
+      nil -> {:error, error_message(:no_endpoint, element_id)}
+      {:error, reason} -> {:error, error_message(reason, element_id)}
+    end
+  end
+
+  defp execute_catalog(name, _args),
+    do: {:error, "Missing or invalid arguments for #{name}; check the tool's schema."}
+
+  defp check_catalog_lever(controls, path) do
+    if Enum.any?(SimRailLevers.levers(controls), &(&1.path == path)),
+      do: :ok,
+      else: {:error, {:not_a_simulator_lever, path}}
+  end
+
+  defp serialize_control(%Control{} = control) do
+    %{
+      control_id: control.id,
+      control_path: control.path,
+      type: control.type,
+      actions: control.actions,
+      current_position: control.position,
+      positions: Enum.map(control.positions, &serialize_position(&1, control.positions))
+    }
+  end
+
+  defp serialize_position(%Control.Position{} = position, positions) do
+    %{
+      index: position.index,
+      name: SimRailLevers.label(position),
+      value: position.value,
+      range: if(position.smooth, do: [position.lower, position.upper]),
+      springs_back_to:
+        if(Control.momentary?(position),
+          do: Enum.find_value(positions, &(&1.index == position.stable && &1.index))
+        )
+    }
+  end
+
+  # --- Swept simulators (Train Sim World) -------------------------------------
+
+  defp execute_sweep("list_simulator_levers", args) do
+    with_client(fn client ->
+      case LeverMetadata.list_levers(client) do
+        {:ok, levers} -> {:ok, list_result(levers, Map.get(args, "match"))}
+        {:error, reason} -> {:error, "Simulator error: #{inspect(reason)}"}
+      end
+    end)
+  end
+
+  defp execute_sweep("set_lever_endpoint", %{"element_id" => element_id, "control_path" => path})
+       when is_integer(element_id) and is_binary(path) do
+    with_client(fn client ->
+      with {:ok, %LeverMetadata{}} <- read_lever(client, path),
+           {:ok, _config} <- LeverSetup.set_endpoint(element_id, path) do
+        lever_result(element_id)
+      else
+        {:error, reason} -> {:error, error_message(reason, element_id)}
+      end
+    end)
+  end
+
+  defp execute_sweep("calibrate_lever", %{"element_id" => element_id})
+       when is_integer(element_id) do
+    with_client(fn client ->
+      with {:ok, config} <- fetch_config(element_id),
+           path when is_binary(path) <- LeverSetup.control_path(config),
+           {:ok, %{analysis: analysis}} <-
+             LeverSetup.calibrate(client, element_id, path),
+           {:ok, result} <- lever_result(element_id) do
+        {:ok, Map.merge(result, %{lever_type: analysis.lever_type, warnings: analysis.warnings})}
+      else
+        nil -> {:error, error_message(:no_endpoint, element_id)}
+        {:error, reason} -> {:error, error_message(reason, element_id)}
+      end
+    end)
+  end
+
+  defp execute_sweep(name, _args),
     do: {:error, "Missing or invalid arguments for #{name}; check the tool's schema."}
 
   # ---------------------------------------------------------------------------
@@ -382,6 +487,32 @@ defmodule Trenino.MCP.Tools.LeverTools do
   defp error_message(:position_unreadable, _id),
     do: "The lever's position could not be read, so calibration did not start. Try again."
 
+  defp error_message({:no_lever, path}, _id),
+    do: "#{path} is not a lever in the loaded train. Use list_simulator_levers."
+
+  defp error_message({:unknown_control, control_id}, _id),
+    do: "No lever #{control_id} writes this lever's control_path. Use list_simulator_levers."
+
+  defp error_message({:ambiguous_control, ids}, _id),
+    do:
+      "Several controls with different positions write this control_path. Pass control_id, " <>
+        "one of: #{Enum.join(ids, ", ")}."
+
+  defp error_message(:spring_return, _id),
+    do:
+      "That control springs back to one position, so it cannot be a hardware lever. " <>
+        "Use buttons or sequences for it."
+
+  defp error_message(:no_positions, _id),
+    do: "The simulator reports no positions for that control."
+
+  defp error_message(:not_connected, _id), do: "Simulator not connected."
+
+  defp error_message({:wrong_simulator, train_simulator, connected}, _id),
+    do:
+      "This train is set up for #{simulator_name(train_simulator)}, but " <>
+        "#{simulator_name(connected)} is connected."
+
   defp error_message(%Ecto.Changeset{} = changeset, _id) do
     errors =
       Ecto.Changeset.traverse_errors(changeset, fn {msg, _opts} -> msg end)
@@ -391,4 +522,7 @@ defmodule Trenino.MCP.Tools.LeverTools do
   end
 
   defp error_message(reason, _id), do: "Lever setup failed: #{inspect(reason)}"
+
+  defp simulator_name(:tsw), do: "Train Sim World"
+  defp simulator_name(:simrail), do: "SimRail"
 end

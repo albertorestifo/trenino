@@ -1,6 +1,10 @@
 defmodule Trenino.Train.DetectionTest do
   use Trenino.DataCase, async: false
 
+  import Trenino.SimRailProfileFixtures, only: [profile: 1]
+
+  alias Trenino.SimRailProfileFixtures.CatalogBackend
+  alias Trenino.Simulator.Backend
   alias Trenino.Simulator.Client
   alias Trenino.Simulator.Connection, as: SimulatorConnection
   alias Trenino.Simulator.ConnectionState
@@ -250,7 +254,7 @@ defmodule Trenino.Train.DetectionTest do
           current_identifier: "BR_Class_66",
           polling_enabled: true,
           last_successful_contact: System.monotonic_time(:millisecond),
-          last_client: client
+          last_connection: {Backend.TSW, client}
         }
       end)
 
@@ -288,7 +292,7 @@ defmodule Trenino.Train.DetectionTest do
           current_identifier: "BR_Class_66",
           polling_enabled: true,
           last_successful_contact: System.monotonic_time(:millisecond),
-          last_client: client
+          last_connection: {Backend.TSW, client}
         }
       end)
 
@@ -323,7 +327,7 @@ defmodule Trenino.Train.DetectionTest do
           current_identifier: "BR_Class_66",
           polling_enabled: true,
           last_successful_contact: System.monotonic_time(:millisecond),
-          last_client: client
+          last_connection: {Backend.TSW, client}
         }
       end)
 
@@ -340,7 +344,7 @@ defmodule Trenino.Train.DetectionTest do
       assert_receive {:train_changed, nil}, 2_000
       assert_receive {:DOWN, ^ref, :process, ^grace_pid, _reason}
 
-      assert %State{active_train: nil, grace_client: nil, task: nil} = Detection.get_state()
+      assert %State{active_train: nil, grace_connection: nil, task: nil} = Detection.get_state()
     end
   end
 
@@ -370,8 +374,8 @@ defmodule Trenino.Train.DetectionTest do
           polling_enabled: true,
           detection_error: nil,
           last_successful_contact: System.monotonic_time(:millisecond),
-          last_client: client,
-          grace_client: nil,
+          last_connection: {Backend.TSW, client},
+          grace_connection: nil,
           grace_timer: nil
         }
       end)
@@ -400,7 +404,7 @@ defmodule Trenino.Train.DetectionTest do
       # Train should still be active (grace period)
       state = Detection.get_state()
       assert state.active_train != nil
-      assert state.grace_client != nil
+      assert state.grace_connection != nil
       assert state.polling_enabled == false
 
       # Should NOT have received train_changed nil
@@ -455,7 +459,7 @@ defmodule Trenino.Train.DetectionTest do
 
       state = Detection.get_state()
       assert state.active_train == nil
-      assert state.grace_client == nil
+      assert state.grace_connection == nil
     end
 
     test "connection recovery during grace exits grace cleanly", %{train: train} do
@@ -476,7 +480,7 @@ defmodule Trenino.Train.DetectionTest do
 
       Process.sleep(50)
       state = Detection.get_state()
-      assert state.grace_client != nil
+      assert state.grace_connection != nil
 
       # Simulate reconnection
       send(
@@ -487,7 +491,7 @@ defmodule Trenino.Train.DetectionTest do
       Process.sleep(50)
 
       state = Detection.get_state()
-      assert state.grace_client == nil
+      assert state.grace_connection == nil
       assert state.polling_enabled == true
       assert state.active_train != nil
     end
@@ -510,7 +514,7 @@ defmodule Trenino.Train.DetectionTest do
 
       Process.sleep(50)
       state1 = Detection.get_state()
-      assert state1.grace_client != nil
+      assert state1.grace_connection != nil
 
       # Send another disconnect
       send(
@@ -521,7 +525,7 @@ defmodule Trenino.Train.DetectionTest do
       Process.sleep(50)
       state2 = Detection.get_state()
       # Should still be in grace, not re-entered
-      assert state2.grace_client != nil
+      assert state2.grace_connection != nil
       assert state2.active_train != nil
     end
 
@@ -539,7 +543,7 @@ defmodule Trenino.Train.DetectionTest do
 
       state = Detection.get_state()
       assert state.active_train == nil
-      assert state.grace_client == nil
+      assert state.grace_connection == nil
     end
 
     test "sync during grace period works", %{train: train} do
@@ -560,7 +564,7 @@ defmodule Trenino.Train.DetectionTest do
 
       Process.sleep(50)
       state = Detection.get_state()
-      assert state.grace_client != nil
+      assert state.grace_connection != nil
 
       # Trigger sync while in grace period
       Detection.sync()
@@ -569,6 +573,74 @@ defmodule Trenino.Train.DetectionTest do
       # Should still have active train (sync uses grace client)
       state = Detection.get_state()
       assert state.active_train != nil
+    end
+  end
+
+  describe "SimRail" do
+    setup do
+      {:ok, simrail_eu07} =
+        TrainContext.create_train(%{
+          name: "EU07",
+          simulator: :simrail,
+          identifiers: [%{identifier: "4e/eu07"}]
+        })
+
+      {:ok, simrail_ed250} =
+        TrainContext.create_train(%{
+          name: "ED250",
+          simulator: :simrail,
+          identifiers: [%{identifier: "pendolino/ed250"}]
+        })
+
+      # A TSW profile whose identifier would also match: never picked on SimRail
+      {:ok, _tsw} =
+        TrainContext.create_train(%{
+          name: "TSW lookalike",
+          simulator: :tsw,
+          identifiers: [%{identifier: "4e/eu"}]
+        })
+
+      Detection.subscribe()
+
+      true = Process.register(self(), SimulatorConnection)
+      Mimic.allow(SimulatorConnection, self(), Process.whereis(Detection))
+      handle = profile("4e_eu07-193")
+
+      stub(SimulatorConnection, :get_status, fn ->
+        %ConnectionState{status: :connected, backend: CatalogBackend, client: handle}
+      end)
+
+      send(
+        Process.whereis(Detection),
+        {:simulator_status_changed,
+         %ConnectionState{status: :connected, backend: CatalogBackend, client: handle}}
+      )
+
+      %{eu07: simrail_eu07, ed250: simrail_ed250}
+    end
+
+    test "matches the vehicle against SimRail profiles by class prefix", %{eu07: eu07} do
+      assert_receive {:train_detected, %{identifier: "4e/eu07-193", train: %{id: id}}}
+      assert id == eu07.id
+
+      assert %State{simulator: :simrail, last_connection: {CatalogBackend, _}} =
+               Detection.get_state()
+
+      refute_received {:multiple_trains_match, _}
+    end
+
+    test "applies pushed vehicle changes", %{eu07: eu07, ed250: ed250} do
+      assert_receive {:train_changed, %{id: id}}
+      assert id == eu07.id
+
+      Detection.vehicle_changed("pendolino/ed250-018 variant")
+      assert_receive {:train_changed, %{id: id}}
+      assert id == ed250.id
+      assert Detection.get_current_identifier() == "pendolino/ed250-018 variant"
+
+      Detection.vehicle_changed(nil)
+      assert_receive {:train_changed, nil}
+      assert Detection.get_active_train() == nil
     end
   end
 end

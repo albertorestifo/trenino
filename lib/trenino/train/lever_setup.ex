@@ -4,7 +4,10 @@ defmodule Trenino.Train.LeverSetup do
   MCP lever tools so both produce the same configuration.
 
   1. `set_endpoint/2` points the lever at a simulator control.
-  2. `calibrate/3` sweeps the control and saves its notches.
+  2. Its notches are saved: `calibrate/4` sweeps the control (Train Sim
+     World), `configure_from_catalog/3` reads them from the control's notch
+     table (simulators with `:control_catalog`, SimRail). `catalog?/0` says
+     which one applies to the connected simulator.
   3. `bind_input/2` binds an analog hardware input.
   4. The user maps the physical lever's notches in the wizard (UI only).
 
@@ -16,9 +19,11 @@ defmodule Trenino.Train.LeverSetup do
   alias Trenino.Hardware
   alias Trenino.Hardware.Input
   alias Trenino.Repo
+  alias Trenino.Simulator
   alias Trenino.Simulator.Client
   alias Trenino.Simulator.LeverAnalyzer
   alias Trenino.Simulator.LeverAnalyzer.AnalysisResult
+  alias Trenino.Simulator.SimRailLevers
   alias Trenino.Train
   alias Trenino.Train.{Element, LeverConfig, LeverController, LeverInputBinding, Notch}
 
@@ -28,16 +33,34 @@ defmodule Trenino.Train.LeverSetup do
 
   @type calibration :: %{lever_config: LeverConfig.t(), analysis: AnalysisResult.t()}
 
+  @type catalog_configuration :: %{
+          lever_config: LeverConfig.t(),
+          analysis: SimRailLevers.Analysis.t()
+        }
+
   @doc "Wizard steps a deep link may open."
   @spec wizard_steps() :: [atom()]
   def wizard_steps, do: @wizard_steps
 
   @doc """
-  The simulator endpoints of the lever at `control_path`,
-  e.g. `"CurrentDrivableActor/MasterController"`.
+  Whether the connected simulator reports its levers' notch tables, so lever
+  notches come from `configure_from_catalog/3` instead of a sweep.
   """
-  @spec endpoints_for(String.t()) :: map()
-  def endpoints_for(control_path) when is_binary(control_path) do
+  @spec catalog?() :: boolean()
+  def catalog?, do: Simulator.supports?(:control_catalog)
+
+  @doc """
+  The simulator endpoints of the lever at `control_path`,
+  e.g. `"CurrentDrivableActor/MasterController"` on Train Sim World or
+  `"Physics_Input_General.main_brake"` on SimRail.
+  """
+  @spec endpoints_for(String.t(), Simulator.simulator()) :: map()
+  def endpoints_for(control_path, simulator \\ :tsw)
+
+  def endpoints_for(control_path, :simrail) when is_binary(control_path),
+    do: SimRailLevers.endpoints(control_path)
+
+  def endpoints_for(control_path, :tsw) when is_binary(control_path) do
     %{
       min_endpoint: "#{control_path}.Function.GetMinimumInputValue",
       max_endpoint: "#{control_path}.Function.GetMaximumInputValue",
@@ -60,10 +83,11 @@ defmodule Trenino.Train.LeverSetup do
   """
   @spec set_endpoint(integer(), String.t()) :: {:ok, LeverConfig.t()} | {:error, term()}
   def set_endpoint(element_id, control_path) do
-    attrs = endpoints_for(control_path)
-
     result =
-      with {:ok, %Element{type: :lever}} <- fetch_lever_element(element_id) do
+      with {:ok, %Element{type: :lever} = element} <-
+             fetch_lever_element(element_id, preload: :train) do
+        attrs = endpoints_for(control_path, element.train.simulator)
+
         case Train.get_lever_config(element_id) do
           {:ok, %LeverConfig{} = config} -> update_endpoint(config, control_path, attrs)
           {:error, :not_found} -> Train.create_lever_config(element_id, attrs)
@@ -112,6 +136,53 @@ defmodule Trenino.Train.LeverSetup do
       end
 
     reload_after(result)
+  end
+
+  @doc """
+  Saves the notches of the lever at `control_path` from the connected
+  simulator's control catalogue (`Trenino.Simulator.controls/0`), without
+  moving anything. See `Trenino.Simulator.SimRailLevers` for how a notch
+  table becomes notches, including spring-return positions.
+
+  The lever's train must be made for the connected simulator.
+
+  ## Options
+
+    - `:control_id` - which control to read when several controls write
+      `control_path` with different notch tables (one per cab, or a smooth
+      and a stepped variant); otherwise `{:error, {:ambiguous_control, ids}}`
+  """
+  @spec configure_from_catalog(integer(), String.t(), keyword()) ::
+          {:ok, catalog_configuration()} | {:error, term()}
+  def configure_from_catalog(element_id, control_path, opts \\ []) when is_binary(control_path) do
+    result =
+      with {:ok, %Element{type: :lever} = element} <-
+             fetch_lever_element(element_id, preload: :train),
+           :ok <- check_simulator(element),
+           {:ok, controls} <- Simulator.controls(),
+           {:ok, control} <-
+             SimRailLevers.find(controls, control_path, Keyword.get(opts, :control_id)),
+           {:ok, analysis} <- SimRailLevers.analyze(control),
+           {:ok, config} <-
+             save_analysis(element_id, catalog_attrs(element, control_path), analysis) do
+        {:ok, %{lever_config: config, analysis: analysis}}
+      end
+
+    reload_after(result)
+  end
+
+  defp catalog_attrs(%Element{train: train}, control_path) do
+    control_path
+    |> endpoints_for(train.simulator)
+    |> Map.put(:calibrated_at, DateTime.utc_now(:second))
+  end
+
+  defp check_simulator(%Element{train: %{simulator: simulator}}) do
+    case Simulator.current() do
+      ^simulator -> :ok
+      nil -> {:error, :not_connected}
+      connected -> {:error, {:wrong_simulator, simulator, connected}}
+    end
   end
 
   defp save_analysis(element_id, attrs, analysis) do

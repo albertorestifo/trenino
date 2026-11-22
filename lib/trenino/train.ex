@@ -89,6 +89,9 @@ defmodule Trenino.Train do
   A profile is returned only once even when more than one of its identifiers
   matches the detected ObjectClass.
 
+  With `simulator` (`:tsw` or `:simrail`), only profiles made for that
+  simulator are considered; with `nil`, profiles of every simulator are.
+
   ## Returns
 
     * `{:ok, train}` - Exactly one train matches
@@ -101,12 +104,16 @@ defmodule Trenino.Train do
       # Detected: "RVM_FSN_DB_BR423-A" -> matches
       # Detected: "RVM_OTHER_DB_BR423-B" -> matches the same profile
       # Detected: "RVM_DB_BR430" -> no match
+
+      # SimRail profile stored with "4e/eu07": every EU07 matches
+      # Detected: "4e/eu07-193" -> matches
   """
-  @spec get_train_by_identifier(String.t()) ::
+  @spec get_train_by_identifier(String.t(), Trenino.Simulator.simulator() | nil) ::
           {:ok, Train.t()} | {:error, :not_found} | {:error, {:multiple_matches, [Train.t()]}}
-  def get_train_by_identifier(detected_identifier) do
+  def get_train_by_identifier(detected_identifier, simulator \\ nil) do
     matching_trains =
       Train
+      |> for_simulator(simulator)
       |> preload(:identifiers)
       |> Repo.all()
       |> Enum.filter(fn train ->
@@ -123,14 +130,39 @@ defmodule Trenino.Train do
     end
   end
 
+  defp for_simulator(query, nil), do: query
+  defp for_simulator(query, simulator), do: where(query, [t], t.simulator == ^simulator)
+
   @doc """
   Create a new train.
+
+  Without a `simulator` attribute the train is made for the connected
+  simulator, or for Train Sim World when none is connected.
   """
   @spec create_train(map()) :: {:ok, Train.t()} | {:error, Ecto.Changeset.t()}
   def create_train(attrs \\ %{}) do
     %Train{}
-    |> Train.changeset(attrs)
+    |> Train.changeset(put_default_simulator(attrs))
     |> Repo.insert()
+  end
+
+  defp put_default_simulator(attrs) do
+    cond do
+      Map.has_key?(attrs, :simulator) or Map.has_key?(attrs, "simulator") ->
+        attrs
+
+      Enum.any?(Map.keys(attrs), &is_binary/1) ->
+        Map.put(attrs, "simulator", connected_simulator())
+
+      true ->
+        Map.put(attrs, :simulator, connected_simulator())
+    end
+  end
+
+  defp connected_simulator do
+    if Process.whereis(Trenino.Simulator.Connection),
+      do: Trenino.Simulator.current() || :tsw,
+      else: :tsw
   end
 
   @doc """
