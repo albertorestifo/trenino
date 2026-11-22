@@ -69,22 +69,47 @@ internal sealed class Server : IDisposable
             catch when (_cts.IsCancellationRequested) { return; }
             catch (Exception e) { _log.Warning($"accept failed: {e.Message}"); continue; }
 
-            if (Interlocked.Increment(ref _connections) > MaxConnections)
+            // Loopback (the local Trenino app) is never capped, so LAN clients can't
+            // starve it. Network clients share a global cap and a per-IP cap.
+            var remote = (client.Client.RemoteEndPoint as IPEndPoint)?.Address ?? IPAddress.None;
+            if (!IPAddress.IsLoopback(remote) && !TryReserve(remote))
             {
-                Interlocked.Decrement(ref _connections);
                 client.Close(); // over capacity: drop before reading anything
                 continue;
             }
             _ = Task.Run(async () =>
             {
                 try { await HandleClient(client); }
-                finally { Interlocked.Decrement(ref _connections); }
+                finally { if (!IPAddress.IsLoopback(remote)) Release(remote); }
             });
         }
     }
 
-    private const int MaxConnections = 32;
-    private int _connections;
+    private const int MaxNetworkConnections = 32;
+    private const int MaxConnectionsPerIp = 8;
+    private readonly Dictionary<IPAddress, int> _perIp = new();
+    private int _networkConnections;
+
+    private bool TryReserve(IPAddress ip)
+    {
+        lock (_perIp)
+        {
+            var current = _perIp.GetValueOrDefault(ip);
+            if (_networkConnections >= MaxNetworkConnections || current >= MaxConnectionsPerIp) return false;
+            _perIp[ip] = current + 1;
+            _networkConnections++;
+            return true;
+        }
+    }
+
+    private void Release(IPAddress ip)
+    {
+        lock (_perIp)
+        {
+            _networkConnections--;
+            if (--_perIp[ip] <= 0) _perIp.Remove(ip);
+        }
+    }
 
     private async Task HandleClient(TcpClient client)
     {
@@ -93,10 +118,11 @@ internal sealed class Server : IDisposable
         var ct = _cts.Token;
         try
         {
+            var first = true;
             while (!ct.IsCancellationRequested)
             {
                 HttpRequest? req;
-                try { req = await HttpRequest.ReadAsync(conn, ct); }
+                try { req = await HttpRequest.ReadAsync(conn, first, ct); first = false; }
                 catch (BridgeException e) { await Respond(conn, e.Status, new { error = e.Message }, false, ct); return; }
                 if (req == null) return;
 

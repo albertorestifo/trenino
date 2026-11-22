@@ -26,16 +26,17 @@ internal sealed class HttpRequest
     private const int MaxBody = 64 * 1024;
     private const int MaxHeaders = 100;
     private const int MaxHeaderBytes = 16 * 1024;
-    private static readonly TimeSpan IdleTimeout = TimeSpan.FromSeconds(60);   // keep-alive wait for the next request
-    private static readonly TimeSpan RequestTimeout = TimeSpan.FromSeconds(10); // headers + body once a request started
+    private static readonly TimeSpan FirstRequestTimeout = TimeSpan.FromSeconds(10); // new connection must start talking
+    private static readonly TimeSpan IdleTimeout = TimeSpan.FromSeconds(60);         // keep-alive wait between requests
+    private static readonly TimeSpan RequestTimeout = TimeSpan.FromSeconds(10);      // headers + body once a request started
 
     /// <summary>Reads one request; null when the client closed or idled out.</summary>
-    public static async Task<HttpRequest?> ReadAsync(Connection conn, CancellationToken ct)
+    public static async Task<HttpRequest?> ReadAsync(Connection conn, bool firstOnConnection, CancellationToken ct)
     {
         string? requestLine;
         using (var idle = CancellationTokenSource.CreateLinkedTokenSource(ct))
         {
-            idle.CancelAfter(IdleTimeout);
+            idle.CancelAfter(firstOnConnection ? FirstRequestTimeout : IdleTimeout);
             try
             {
                 requestLine = await conn.ReadLineAsync(idle.Token);

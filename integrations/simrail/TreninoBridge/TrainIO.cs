@@ -182,6 +182,8 @@ internal static class TrainIO
             path = c.Path,
             position = c.Control.ActualPosition,
             positions = Positions(c),
+            button = Button(c),
+            actions = Actions(c),
         }).ToArray();
 
         return new
@@ -203,7 +205,35 @@ internal static class TrainIO
         isFrontInTrainset = Safe(() => v.IsFrontInTrainset),
     };
 
-    internal sealed record Position(int Index, float? Value, string? Label, float? Lower, float? Upper, bool? Smooth);
+    /// <param name="Stable">
+    /// Position index the control springs back to when released. Equal to Index for
+    /// positions that hold; different for momentary ("nudge") positions, e.g. the
+    /// Traxx traction lever where 4 and 6 spring back to 5.
+    /// </param>
+    internal sealed record Position(int Index, float? Value, string? Label, int? Stable, float? Lower, float? Upper, bool? Smooth);
+
+    /// <summary>Push buttons write Pressed while held and Released otherwise.</summary>
+    internal sealed record ButtonValues(float? Pressed, float? Released, bool? Toggle);
+
+    private static ButtonValues? Button(ControlRef c)
+    {
+        var pressed = AsFloat(Prop(c.Typed, "pressedPhysicsValue"));
+        var released = AsFloat(Prop(c.Typed, "nonPressedPhysicsValue"));
+        if (pressed == null && released == null) return null;
+        return new ButtonValues(pressed, released, c.Type.Contains("Toggle") ? true : null);
+    }
+
+    /// <summary>Game input-action names bound to the control (keyboard/joystick bindings use these).</summary>
+    private static string[]? Actions(ControlRef c)
+    {
+        var names = new[] { "pressedActionName", "ActionNameIncreases", "ActionNameDecrease", "ActionName", "ActionNameToggle" }
+            .Select(n => Prop(c.Typed, n) as string)
+            .Where(s => !string.IsNullOrEmpty(s))
+            .Select(s => s!)
+            .Distinct()
+            .ToArray();
+        return names.Length > 0 ? names : null;
+    }
 
     private static List<Position> Positions(ControlRef c)
     {
@@ -216,7 +246,8 @@ internal static class TrainIO
             result.Add(new Position(
                 i++,
                 AsFloat(Prop(p, "PhysicsState")) ?? AsFloat(Prop(p, "PhysicsValue")) ?? AsFloat(Prop(p, "Value")),
-                Prop(p, "RadialMenuText") as string ?? Prop(p, "Name") as string,
+                NullIfEmpty(Prop(p, "RadialMenuText") as string ?? Prop(p, "Name") as string),
+                Prop(p, "StablePosition") switch { int s => s, float f => (int)f, _ => null },
                 AsFloat(Prop(p, "LowerBoundPhysics")),
                 AsFloat(Prop(p, "UpperBoundPhysics")),
                 Prop(p, "IsSmooth") as bool?));
@@ -340,6 +371,8 @@ internal static class TrainIO
     private static float? AsFloat(object? v) => v switch { float f => Finite(f), int i => i, double d => (float)d, _ => null };
 
     private static float? Finite(float f) => float.IsFinite(f) ? f : null;
+
+    private static string? NullIfEmpty(string? s) => string.IsNullOrEmpty(s) ? null : s;
 
     private static T? Safe<T>(Func<T> f) { try { return f(); } catch { return default; } }
 }
