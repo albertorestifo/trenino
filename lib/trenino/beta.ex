@@ -23,10 +23,13 @@ defmodule Trenino.Beta do
     # calibration, gauge bindings and their MCP tools.
     :gauges,
     # Selectors: an analog input used as a rotary switch with fixed positions.
-    :selectors
+    :selectors,
+    # SimRail support through the TreninoBridge mod: choosing SimRail as the
+    # simulator, its settings and SimRail-specific setup screens and MCP tools.
+    :simrail
   ]
 
-  @type feature :: :gauges | :selectors
+  @type feature :: :gauges | :selectors | :simrail
 
   @spec features() :: [feature()]
   def features, do: @features
