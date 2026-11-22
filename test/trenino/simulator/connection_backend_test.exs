@@ -54,8 +54,11 @@ defmodule Trenino.Simulator.ConnectionBackendTest do
     @impl true
     def set(_handle, _path, _value), do: :ok
 
+    # The app-wide Train.Detection reacts to this test's "connected" broadcasts
+    # and polls vehicle_id/0. Reporting a vehicle would make it look the train
+    # up from its own process, outside this test's DB sandbox, and crash it.
     @impl true
-    def vehicle_id(_handle), do: {:ok, "4e/eu07-193"}
+    def vehicle_id(_handle), do: {:error, :not_in_train}
   end
 
   setup :set_mimic_global
