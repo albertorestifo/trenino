@@ -45,6 +45,9 @@ config :phoenix_live_view,
 # manually with proper sandbox access.
 config :trenino, :start_simulator_connection, false
 
+# Disable Simulator.Watcher in tests; tests that need it start it themselves.
+config :trenino, :start_simulator_watcher, false
+
 # Disable LeverController GenServer in tests to avoid pubsub conflicts.
 config :trenino, :start_lever_controller, false
 

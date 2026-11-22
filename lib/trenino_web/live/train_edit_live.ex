@@ -20,8 +20,8 @@ defmodule TreninoWeb.TrainEditLive do
   alias Trenino.Hardware.ConfigurationManager
   alias Trenino.Serial.Connection
   alias Trenino.Simulator
-  alias Trenino.Simulator.Client, as: SimulatorClient
   alias Trenino.Simulator.ControlDetectionSession
+  alias Trenino.Simulator.Watcher
   alias Trenino.Train, as: TrainContext
 
   alias Trenino.Train.{
@@ -129,6 +129,7 @@ defmodule TreninoWeb.TrainEditLive do
      |> assign(:display_wizard_event, nil)
      |> assign(:sequence_manager_event, nil)
      |> assign(:value_polling_target, nil)
+     |> assign(:value_polling_endpoint, nil)
      |> assign(:scripts, [])
      |> assign(:gauge_binding_count, 0)
      |> assign(:selector_positions, %{})}
@@ -203,6 +204,7 @@ defmodule TreninoWeb.TrainEditLive do
          |> assign(:display_wizard_event, nil)
          |> assign(:sequence_manager_event, nil)
          |> assign(:value_polling_target, nil)
+         |> assign(:value_polling_endpoint, nil)
          |> assign(:scripts, scripts)
          |> assign(:gauge_binding_count, length(TrainContext.list_gauge_bindings(train.id)))
          |> assign(:selector_positions, selector_positions(train.elements))}
@@ -1053,7 +1055,7 @@ defmodule TreninoWeb.TrainEditLive do
      |> assign(:config_wizard_mode, nil)
      |> assign(:config_wizard_event, nil)
      |> assign(:button_detection_inputs, nil)
-     |> assign(:value_polling_timer, nil)}
+     |> assign(:value_polling_endpoint, nil)}
   end
 
   # Output binding wizard events
@@ -1101,82 +1103,47 @@ defmodule TreninoWeb.TrainEditLive do
      |> assign(:display_wizard_event, nil)}
   end
 
-  # Value polling for button ON/OFF detection using API subscriptions
-  # Subscription ID 999 is reserved for button value detection
-  @value_detection_subscription_id 999
-
+  # Value polling for button ON/OFF detection: the endpoint is watched through
+  # Simulator.Watcher, which delivers its value every 200 ms.
   @impl true
   def handle_info({:start_value_polling, endpoint}, socket) do
-    client = socket.assigns.nav_simulator_status.client
     cancel_value_polling(socket)
-
-    Logger.debug("[ValuePolling] Attempting to subscribe to: #{inspect(endpoint)}")
 
     # Determine polling target based on which component is active
     polling_target =
       if socket.assigns.show_config_wizard, do: :config_wizard, else: :endpoint_selector
 
-    if client && endpoint do
-      # Clean up any existing subscription and create a new one
-      SimulatorClient.unsubscribe(client, @value_detection_subscription_id)
+    if endpoint do
+      Logger.debug("[ValuePolling] Watching #{endpoint}")
+      Watcher.watch([endpoint])
 
-      case SimulatorClient.subscribe(client, endpoint, @value_detection_subscription_id) do
-        {:ok, _} ->
-          Logger.info("[ValuePolling] Subscribed to #{endpoint}")
-          # Start polling the subscription (every 200ms)
-          {:ok, timer_ref} = :timer.send_interval(200, :poll_value_subscription)
-
-          {:noreply,
-           socket
-           |> assign(:value_polling_timer, timer_ref)
-           |> assign(:value_polling_target, polling_target)}
-
-        {:error, reason} ->
-          Logger.warning("[ValuePolling] Failed to subscribe: #{inspect(reason)}")
-          {:noreply, socket}
-      end
+      {:noreply,
+       socket
+       |> assign(:value_polling_endpoint, endpoint)
+       |> assign(:value_polling_target, polling_target)}
     else
-      Logger.warning("[ValuePolling] Missing client or endpoint")
-      {:noreply, socket}
+      Logger.warning("[ValuePolling] Missing endpoint")
+      {:noreply, assign(socket, :value_polling_endpoint, nil)}
     end
   end
 
   @impl true
   def handle_info(:stop_value_polling, socket) do
-    client = socket.assigns.nav_simulator_status.client
     cancel_value_polling(socket)
-
-    # Clean up subscription
-    if client do
-      SimulatorClient.unsubscribe(client, @value_detection_subscription_id)
-    end
-
-    {:noreply, assign(socket, :value_polling_timer, nil)}
+    {:noreply, assign(socket, :value_polling_endpoint, nil)}
   end
 
   @impl true
-  def handle_info(:poll_value_subscription, socket) do
-    client = socket.assigns.nav_simulator_status.client
-    polling_target = socket.assigns[:value_polling_target] || :config_wizard
+  def handle_info({:simulator_values, values}, socket) do
+    endpoint = socket.assigns[:value_polling_endpoint]
 
-    if client do
-      case SimulatorClient.get_subscription(client, @value_detection_subscription_id) do
-        {:ok, %{"Entries" => [%{"Values" => values} | _]}} when map_size(values) > 0 ->
-          value =
-            values
-            |> Map.values()
-            |> List.first()
-            |> then(&Float.round(&1 * 1.0, 2))
+    case Map.fetch(values, endpoint || "") do
+      {:ok, value} ->
+        polling_target = socket.assigns[:value_polling_target] || :config_wizard
+        send_polled_value_to_component(polling_target, round_polled_value(value))
 
-          send_polled_value_to_component(polling_target, value)
-
-        {:ok, response} ->
-          Logger.debug("[ValuePolling] Unexpected response: #{inspect(response)}")
-          :ok
-
-        {:error, _reason} ->
-          :ok
-      end
+      :error ->
+        :ok
     end
 
     {:noreply, socket}
@@ -1560,10 +1527,12 @@ defmodule TreninoWeb.TrainEditLive do
   end
 
   defp cancel_value_polling(socket) do
-    if timer_ref = socket.assigns[:value_polling_timer] do
-      :timer.cancel(timer_ref)
-    end
+    if endpoint = socket.assigns[:value_polling_endpoint], do: Watcher.unwatch([endpoint])
+    :ok
   end
+
+  defp round_polled_value(value) when is_number(value), do: Float.round(value * 1.0, 2)
+  defp round_polled_value(value), do: value
 
   defp save_train(%{assigns: %{new_mode: true}} = socket, params) do
     case TrainContext.create_train(params) do

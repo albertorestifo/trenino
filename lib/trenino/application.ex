@@ -35,6 +35,7 @@ defmodule Trenino.Application do
       |> List.flatten()
       |> Kernel.++(
         simulator_connection_child() ++
+          simulator_watcher_child() ++
           lever_controller_child() ++
           button_controller_child() ++
           selector_controller_child() ++
@@ -73,6 +74,17 @@ defmodule Trenino.Application do
   defp simulator_connection_child do
     if Application.get_env(:trenino, :start_simulator_connection, true) do
       [Trenino.Simulator.Connection]
+    else
+      []
+    end
+  end
+
+  # Returns the Simulator.Watcher child spec only in non-test environments.
+  # In test it would poll for every process that watches values; tests that
+  # need it start it themselves.
+  defp simulator_watcher_child do
+    if Application.get_env(:trenino, :start_simulator_watcher, true) do
+      [Trenino.Simulator.Watcher]
     else
       []
     end

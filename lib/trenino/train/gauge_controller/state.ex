@@ -1,14 +1,26 @@
 defmodule Trenino.Train.GaugeController.State do
-  @moduledoc "Generation-tagged simulator subscriptions and volatile gauge diagnostics."
+  @moduledoc "Active gauge bindings, their latest samples and volatile gauge diagnostics."
+
+  @type t :: %__MODULE__{
+          train: Trenino.Train.Train.t() | nil,
+          timer: reference() | nil,
+          generation: non_neg_integer(),
+          connected: boolean(),
+          bindings: %{integer() => Trenino.Train.GaugeBinding.t()},
+          status: %{integer() => map()},
+          sent: %{integer() => %{target: integer(), at: integer()}},
+          links: %{integer() => {{:ok, String.t()} | {:error, term()}, integer()}},
+          manual: %{integer() => %{ref: reference() | nil, until: integer() | nil}},
+          last_error: term()
+        }
+
   defstruct [
     :train,
-    :client,
-    :task,
     :timer,
-    :cleanup_job,
+    # Tags the tick timer, so a tick from before a train change is ignored.
     generation: 0,
+    connected: false,
     bindings: %{},
-    subscriptions: %{},
     status: %{},
     # binding id => %{target, at}: the last target sent, so an unchanged sample is not
     # resent every poll.
@@ -17,13 +29,6 @@ defmodule Trenino.Train.GaugeController.State do
     links: %{},
     # gauge id => %{ref: monitor ref | nil, until: monotonic ms | nil}: manual control.
     manual: %{},
-    cleaning: false,
-    retry_after: %{},
-    id_base: 4000,
-    cleanup_attempts: 0,
-    last_error: nil,
-    endpoint_errors: %{}
+    last_error: nil
   ]
-
-  @type t :: %__MODULE__{}
 end

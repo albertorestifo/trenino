@@ -7,7 +7,6 @@ defmodule Trenino.Train.DisplayControllerTest do
   alias Trenino.Hardware.I2cModule
   alias Trenino.Serial.Connection
   alias Trenino.Serial.Protocol.{SetModuleBrightness, WriteSegments}
-  alias Trenino.Simulator.Client
   alias Trenino.Simulator.ConnectionState
   alias Trenino.Train.DisplayBinding
   alias Trenino.Train.DisplayController
@@ -17,15 +16,6 @@ defmodule Trenino.Train.DisplayControllerTest do
 
   setup do
     Mimic.stub(Circuits.UART, :enumerate, fn -> %{} end)
-    client = %Client{base_url: "http://localhost:31270", api_key: "test"}
-
-    Mimic.stub(Trenino.Simulator.Connection, :get_status, fn ->
-      %ConnectionState{status: :connected, client: client}
-    end)
-
-    Mimic.stub(Client, :get_subscription, fn ^client, 3000 ->
-      {:ok, %{"Entries" => [%{"NodeValid" => true, "Values" => %{"Speed" => 42.5}}]}}
-    end)
 
     Mimic.stub(Connection, :connected_devices, fn ->
       [%{port: "display-port", device_config_id: 123}]
@@ -35,6 +25,7 @@ defmodule Trenino.Train.DisplayControllerTest do
 
     binding = %DisplayBinding{
       id: 1,
+      endpoint: "Speed",
       format_string: "{value:.1f}",
       i2c_module: %I2cModule{
         i2c_address: 0x70,
@@ -44,7 +35,7 @@ defmodule Trenino.Train.DisplayControllerTest do
       }
     }
 
-    state = %State{bindings: %{1 => %{binding: binding, subscription_id: 3000, last_text: nil}}}
+    state = %State{bindings: %{1 => %{binding: binding, last_text: nil}}}
     %{state: state}
   end
 
@@ -112,7 +103,7 @@ defmodule Trenino.Train.DisplayControllerTest do
     assert poll(state).bindings[1].last_text == nil
   end
 
-  test "subscribes to a profile loaded while the simulator was disconnected" do
+  test "a profile loaded while the simulator is disconnected watches its endpoints" do
     {:ok, train} =
       Trenino.Train.create_train(%{
         name: "Reconnect",
@@ -148,19 +139,9 @@ defmodule Trenino.Train.DisplayControllerTest do
     controller = start_supervised!(DisplayController)
     Sandbox.allow(Trenino.Repo, self(), controller)
     send(controller, {:train_changed, train})
-    assert :sys.get_state(controller).bindings == %{}
-    client = %Client{base_url: "http://localhost:31270", api_key: "test"}
-    connected = %ConnectionState{status: :connected, client: client}
-    Mimic.stub(Trenino.Simulator.Connection, :get_status, fn -> connected end)
-    Mimic.stub(Client, :subscribe, fn ^client, "Speed", 3000 -> {:ok, %{}} end)
-
-    Phoenix.PubSub.broadcast(
-      Trenino.PubSub,
-      "simulator:connection",
-      {:simulator_status_changed, connected}
-    )
-
-    assert map_size(:sys.get_state(controller).bindings) == 1
+    state = :sys.get_state(controller)
+    assert map_size(state.bindings) == 1
+    assert state.endpoints == ["Speed"]
   end
 
   test "configuration replay reloads persisted address, encoding, brightness and minimum" do
@@ -203,7 +184,7 @@ defmodule Trenino.Train.DisplayControllerTest do
     refute_receive {:sent, %SetModuleBrightness{i2c_address: 0x70}}
   end
 
-  test "configuration replay drops removed modules and stops their poll timer" do
+  test "configuration replay drops removed modules and their endpoints" do
     {state, device, mod, _binding} = persisted_display()
     {:ok, _} = Trenino.Hardware.delete_i2c_module(mod)
 
@@ -213,23 +194,17 @@ defmodule Trenino.Train.DisplayControllerTest do
         state
       )
 
-    if refreshed.poll_timer, do: Process.cancel_timer(refreshed.poll_timer)
     assert refreshed.bindings == %{}
-    assert refreshed.subscriptions == %{}
-    assert refreshed.poll_timer == nil
-    assert Process.read_timer(state.poll_timer) == false
+    assert refreshed.endpoints == []
+    assert state.endpoints == ["Speed"]
   end
 
   test "a persisted nil minimum renders negative simulator values" do
     {state, _device, mod, binding} = persisted_display()
     {:ok, _} = Trenino.Hardware.update_i2c_module(mod, %{params: %{min_value: nil}})
 
-    Mimic.stub(Client, :get_subscription, fn _, 3000 ->
-      {:ok, %{"Entries" => [%{"NodeValid" => true, "Values" => %{"Speed" => -12.5}}]}}
-    end)
-
     {:noreply, state} = DisplayController.handle_cast(:reload_bindings, state)
-    assert poll(state).bindings[binding.id].last_text == "-12.5"
+    assert poll(state, -12.5).bindings[binding.id].last_text == "-12.5"
   end
 
   defp persisted_display do
@@ -263,27 +238,14 @@ defmodule Trenino.Train.DisplayControllerTest do
       [%{port: "display-port", device_config_id: device.config_id}]
     end)
 
-    Mimic.stub(Client, :subscribe, fn _, "Speed", 3000 -> {:ok, %{}} end)
-    Mimic.stub(Client, :unsubscribe, fn _, 3000 -> :ok end)
     {:noreply, state} = DisplayController.handle_info({:train_changed, train}, %State{})
     {state, device, mod, binding}
   end
 
-  test "a queued poll cannot leave a second polling timer alive", %{state: state} do
-    {:noreply, first} = DisplayController.handle_info(:poll_displays, state)
-    {:noreply, second} = DisplayController.handle_info(:poll_displays, first)
+  defp poll(state, value \\ 42.5) do
+    {:noreply, state} =
+      DisplayController.handle_info({:simulator_values, %{"Speed" => value}}, state)
 
-    try do
-      assert Process.read_timer(first.poll_timer) == false
-    after
-      Process.cancel_timer(first.poll_timer)
-      Process.cancel_timer(second.poll_timer)
-    end
-  end
-
-  defp poll(state) do
-    {:noreply, state} = DisplayController.handle_info(:poll_displays, state)
-    if state.poll_timer, do: Process.cancel_timer(state.poll_timer)
-    %{state | poll_timer: nil}
+    state
   end
 end
