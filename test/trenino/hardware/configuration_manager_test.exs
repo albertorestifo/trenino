@@ -406,6 +406,44 @@ defmodule Trenino.Hardware.ConfigurationManagerTest do
     end
   end
 
+  describe "handle_info/2 - config_timeout" do
+    setup do
+      Mimic.set_mimic_global()
+      {:ok, device} = Hardware.create_device(%{name: "Silent Device"})
+
+      {:ok, _input} =
+        Hardware.create_input(device.id, %{pin: 5, input_type: :analog, sensitivity: 5})
+
+      port = unique_port()
+      Mimic.stub(Trenino.Serial.Connection, :send_message, fn ^port, _ -> :ok end)
+      Phoenix.PubSub.subscribe(Trenino.PubSub, @config_topic)
+
+      %{device: device, port: port}
+    end
+
+    test "a device that never answers fails the apply with a warning, not an error", %{
+      device: device,
+      port: port
+    } do
+      device_id = device.id
+      assert {:ok, config_id} = ConfigurationManager.apply_configuration(port, device_id)
+
+      warnings =
+        ExUnit.CaptureLog.capture_log([level: :warning], fn ->
+          errors =
+            ExUnit.CaptureLog.capture_log([level: :error], fn ->
+              send(ConfigurationManager, {:config_timeout, config_id})
+              assert_receive {:configuration_failed, ^port, ^device_id, :timeout}
+            end)
+
+          # Logger.error is reported to Sentry; a device that doesn't answer isn't an app bug.
+          refute errors =~ "timed out"
+        end)
+
+      assert warnings =~ "Configuration #{config_id} timed out"
+    end
+  end
+
   describe "handle_info/2 - devices_updated" do
     setup do
       port = unique_port()

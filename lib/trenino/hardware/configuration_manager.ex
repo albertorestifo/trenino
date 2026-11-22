@@ -296,7 +296,9 @@ defmodule Trenino.Hardware.ConfigurationManager do
         {:noreply, state}
 
       {%{port: port, device_id: device_id}, new_in_flight} ->
-        Logger.error("Configuration #{config_id} timed out")
+        # The device never answered: a USB, cable or firmware condition the app can't fix.
+        # The UI tells the user to reconnect, so this isn't reported as an app error.
+        Logger.warning("Configuration #{config_id} timed out")
         broadcast_config_event({:configuration_failed, port, device_id, :timeout})
         {:noreply, %{state | in_flight: new_in_flight}}
     end
