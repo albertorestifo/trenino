@@ -64,6 +64,7 @@ defmodule TreninoWeb.TrainEditLive do
   defp mount_new(socket, params) do
     if connected?(socket) do
       TrainContext.subscribe()
+      Watcher.subscribe()
     end
 
     # Check for pre-filled identifier from URL query params
@@ -150,6 +151,7 @@ defmodule TreninoWeb.TrainEditLive do
         if connected?(socket) do
           TrainContext.subscribe()
           SelectorController.subscribe()
+          Watcher.subscribe()
         end
 
         changeset = Train.changeset(train, %{})
@@ -1131,6 +1133,13 @@ defmodule TreninoWeb.TrainEditLive do
   def handle_info(:stop_value_polling, socket) do
     cancel_value_polling(socket)
     {:noreply, assign(socket, :value_polling_endpoint, nil)}
+  end
+
+  # A restarted watcher forgot every watch; value detection watches again.
+  @impl true
+  def handle_info(:simulator_watcher_started, socket) do
+    if endpoint = socket.assigns[:value_polling_endpoint], do: Watcher.watch([endpoint])
+    {:noreply, socket}
   end
 
   @impl true

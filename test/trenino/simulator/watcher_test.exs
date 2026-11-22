@@ -12,10 +12,24 @@ defmodule Trenino.Simulator.WatcherTest do
     def id, do: :simrail
     def capabilities, do: [:push_values, :vehicle_events]
 
-    def watch({:test, owner}, paths, pid) do
+    # `{:test, owner, stream}`: also names `stream` as the process serving the
+    # watches. `{:failing, owner}`: watch/3 fails while the owner's
+    # `:fail_watch` flag in `:persistent_term` is set.
+    def watch({:failing, owner}, paths, pid) do
       send(owner, {:backend_watch, paths, pid})
+
+      if :persistent_term.get({__MODULE__, owner}, false),
+        do: {:error, :offline},
+        else: :ok
+    end
+
+    def watch(handle, paths, pid) do
+      send(elem(handle, 1), {:backend_watch, paths, pid})
       :ok
     end
+
+    def watch_process({:test, _owner, stream}), do: stream
+    def watch_process(_handle), do: nil
   end
 
   defp tsw_connected,
@@ -124,6 +138,31 @@ defmodule Trenino.Simulator.WatcherTest do
       assert_receive {:simulator_values, %{"A" => 1.5}}, 500
     end
 
+    test "a path that becomes unreadable is not handed to new watchers" do
+      readable = start_supervised!({Agent, fn -> true end}, id: :readable)
+
+      Mimic.stub(Simulator, :read, fn paths ->
+        if Agent.get(readable, & &1), do: {:ok, Map.new(paths, &{&1, 1})}, else: {:ok, %{}}
+      end)
+
+      pid = watcher_with(tsw_connected())
+      :ok = Watcher.watch(["A"])
+      assert_receive {:simulator_values, %{"A" => 1}}, 500
+
+      Agent.update(readable, fn _ -> false end)
+      # Wait for a poll that started after the path became unreadable.
+      wait_until(fn -> :sys.get_state(pid).values == %{} end)
+
+      owner = self()
+
+      spawn_link(fn ->
+        Watcher.watch(["A"])
+        send(owner, {:new_watcher_mailbox, Process.info(self(), :messages)})
+      end)
+
+      assert_receive {:new_watcher_mailbox, {:messages, []}}, 200
+    end
+
     test "a failed poll delivers nothing and the next one is tried" do
       counter = start_supervised!({Agent, fn -> 0 end})
 
@@ -195,6 +234,62 @@ defmodule Trenino.Simulator.WatcherTest do
       assert_receive {:backend_watch, ["A"], ^pid}, 200
       send(pid, {:simulator_status_changed, push_connected(self())})
       refute_receive {:backend_watch, _, _}, 300
+    end
+
+    test "when the process serving the push stops, the paths are pushed again" do
+      stream = spawn(fn -> Process.sleep(:infinity) end)
+
+      status = %ConnectionState{
+        status: :connected,
+        backend: PushBackend,
+        client: {:test, self(), stream}
+      }
+
+      pid = watcher_with(status)
+      :ok = Watcher.watch(["A"])
+      assert_receive {:backend_watch, ["A"], ^pid}, 200
+      assert %{watch_ref: ref} = :sys.get_state(pid)
+      assert is_reference(ref)
+
+      Process.exit(stream, :kill)
+      assert_receive {:backend_watch, ["A"], ^pid}, 1000
+    end
+
+    test "after a failed push, an emptied watch set is still sent to the backend" do
+      owner = self()
+      on_exit(fn -> :persistent_term.erase({PushBackend, owner}) end)
+      :persistent_term.put({PushBackend, owner}, true)
+
+      status = %ConnectionState{
+        status: :connected,
+        backend: PushBackend,
+        client: {:failing, owner}
+      }
+
+      pid = watcher_with(status)
+      :ok = Watcher.watch(["A"])
+      assert_receive {:backend_watch, ["A"], ^pid}, 200
+      assert %{pushed: nil} = :sys.get_state(pid)
+
+      :ok = Watcher.unwatch_all()
+      assert_receive {:backend_watch, [], ^pid}, 200
+    end
+  end
+
+  # Checks `check` up to 50 times, 20 ms apart; always ends.
+  defp wait_until(check, attempts \\ 50) do
+    cond do
+      check.() ->
+        :ok
+
+      attempts == 0 ->
+        flunk("condition not reached")
+
+      true ->
+        receive do
+        after
+          20 -> wait_until(check, attempts - 1)
+        end
     end
   end
 

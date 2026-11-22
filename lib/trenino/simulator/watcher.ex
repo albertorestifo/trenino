@@ -50,19 +50,23 @@ defmodule Trenino.Simulator.Watcher do
             handle: Backend.handle() | nil,
             mode: :push | :poll | nil,
             pushed: [Backend.path()] | nil,
+            watch_ref: reference() | nil,
             values: %{Backend.path() => Backend.value()},
             timer: reference() | nil,
             task: Task.t() | nil
           }
 
     # `mode` is nil while disconnected. `pushed` is the path list the push
-    # backend last accepted (nil: not yet, or it failed and is retried on the
-    # next tick). `values` caches the latest value of every watched path.
+    # backend last accepted (nil: unknown, because a push failed or the
+    # backend lost it; it is pushed again on the next tick). `watch_ref`
+    # monitors the process serving the push, when the backend names one.
+    # `values` caches the latest value of every watched path.
     defstruct watchers: %{},
               backend: nil,
               handle: nil,
               mode: nil,
               pushed: nil,
+              watch_ref: nil,
               values: %{},
               timer: nil,
               task: nil
@@ -166,14 +170,17 @@ defmodule Trenino.Simulator.Watcher do
     {:noreply, sync_push(%{state | values: %{}, pushed: nil})}
   end
 
-  def handle_info({ref, {:polled, result}}, %State{task: %Task{ref: ref}} = state) do
+  def handle_info({ref, {:polled, polled, result}}, %State{task: %Task{ref: ref}} = state) do
     Process.demonitor(ref, [:flush])
     state = %{state | task: nil}
 
     case result do
+      # A polled path missing from the answer can no longer be read: its old
+      # value is dropped, so it is not handed to new watchers either.
       {:ok, values} when is_map(values) ->
         values = Map.take(values, all_paths(state))
-        {:noreply, %{state | values: Map.merge(state.values, values)} |> deliver_all(values)}
+        cached = state.values |> Map.drop(polled) |> Map.merge(values)
+        {:noreply, %{state | values: cached} |> deliver_all(values)}
 
       {:error, reason} ->
         Logger.debug("[Simulator.Watcher] Poll failed: #{inspect(reason)}")
@@ -190,6 +197,14 @@ defmodule Trenino.Simulator.Watcher do
   def handle_info({:DOWN, ref, :process, _, reason}, %State{task: %Task{ref: ref}} = state) do
     Logger.warning("[Simulator.Watcher] Poll crashed: #{inspect(reason)}")
     {:noreply, %{state | task: nil}}
+  end
+
+  # The process serving the push stopped (for SimRail: its stream crashed and
+  # restarts empty), so the watched set is pushed again on the next tick, which
+  # gives its supervisor time to restart it and bounds the retries.
+  def handle_info({:DOWN, ref, :process, _, reason}, %State{watch_ref: ref} = state) do
+    Logger.warning("[Simulator.Watcher] Push watch lost: #{inspect(reason)}")
+    {:noreply, %{state | watch_ref: nil, pushed: nil, values: %{}}}
   end
 
   def handle_info({:DOWN, _ref, :process, pid, _reason}, %State{} = state) do
@@ -217,15 +232,16 @@ defmodule Trenino.Simulator.Watcher do
     mode = if :push_values in backend.capabilities(), do: :push, else: :poll
     Logger.info("[Simulator.Watcher] Watching #{inspect(backend)} by #{mode}")
 
-    state = stop_poll(state)
+    state = state |> stop_poll() |> demonitor_watch()
 
-    %{state | backend: backend, handle: handle, mode: mode, pushed: nil, values: %{}}
+    # A fresh handle watches nothing yet.
+    %{state | backend: backend, handle: handle, mode: mode, pushed: [], values: %{}}
     |> sync_push()
     |> maybe_poll()
   end
 
   defp apply_status(%State{} = state, %ConnectionState{}) do
-    state = stop_poll(state)
+    state = state |> stop_poll() |> demonitor_watch()
     %{state | backend: nil, handle: nil, mode: nil, pushed: nil, values: %{}}
   end
 
@@ -236,17 +252,7 @@ defmodule Trenino.Simulator.Watcher do
   defp sync_push(%State{mode: :push} = state) do
     paths = all_paths(state)
 
-    cond do
-      paths == state.pushed ->
-        state
-
-      # A fresh handle watches nothing yet.
-      paths == [] and is_nil(state.pushed) ->
-        %{state | pushed: []}
-
-      true ->
-        push_paths(state, paths)
-    end
+    if paths == state.pushed, do: state, else: push_paths(state, paths)
   end
 
   defp sync_push(%State{} = state), do: state
@@ -254,12 +260,33 @@ defmodule Trenino.Simulator.Watcher do
   defp push_paths(%State{} = state, paths) do
     case state.backend.watch(state.handle, paths, self()) do
       :ok ->
-        %{state | pushed: paths}
+        monitor_watch(%{state | pushed: paths})
 
       {:error, reason} ->
         Logger.warning("[Simulator.Watcher] Backend watch failed: #{inspect(reason)}")
         %{state | pushed: nil}
     end
+  end
+
+  # A push backend may name the process serving its watches with an optional
+  # `watch_process(handle) :: pid() | nil` (not part of the behaviour). If
+  # that process stops, its watches are gone and must be pushed again.
+  defp monitor_watch(%State{backend: backend, handle: handle} = state) do
+    state = demonitor_watch(state)
+
+    with true <- function_exported?(backend, :watch_process, 1),
+         pid when is_pid(pid) <- backend.watch_process(handle) do
+      %{state | watch_ref: Process.monitor(pid)}
+    else
+      _ -> state
+    end
+  end
+
+  defp demonitor_watch(%State{watch_ref: nil} = state), do: state
+
+  defp demonitor_watch(%State{watch_ref: ref} = state) do
+    Process.demonitor(ref, [:flush])
+    %{state | watch_ref: nil}
   end
 
   # Poll
@@ -272,7 +299,7 @@ defmodule Trenino.Simulator.Watcher do
       paths ->
         task =
           Task.Supervisor.async_nolink(Trenino.TaskSupervisor, fn ->
-            {:polled, Simulator.read(paths)}
+            {:polled, paths, Simulator.read(paths)}
           end)
 
         Process.send_after(self(), {:poll_timeout, task.ref}, @poll_timeout_ms)
