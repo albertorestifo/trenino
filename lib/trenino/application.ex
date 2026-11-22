@@ -21,6 +21,8 @@ defmodule Trenino.Application do
         {Registry, keys: :unique, name: Trenino.Registry},
         {Registry, keys: :unique, name: Trenino.MCP.SessionRegistry},
         {Task.Supervisor, name: Trenino.TaskSupervisor},
+        {DynamicSupervisor,
+         name: Trenino.Simulator.Backend.SimRail.StreamSupervisor, strategy: :one_for_one},
         Trenino.Serial.Connection,
         Trenino.Hardware.ConfigurationManager,
         Trenino.Hardware.Calibration.SessionSupervisor,
