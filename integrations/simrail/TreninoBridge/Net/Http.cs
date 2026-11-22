@@ -24,33 +24,58 @@ internal sealed class HttpRequest
         string.Equals(Header("upgrade"), "websocket", StringComparison.OrdinalIgnoreCase);
 
     private const int MaxBody = 64 * 1024;
+    private const int MaxHeaders = 100;
+    private const int MaxHeaderBytes = 16 * 1024;
+    private static readonly TimeSpan IdleTimeout = TimeSpan.FromSeconds(60);   // keep-alive wait for the next request
+    private static readonly TimeSpan RequestTimeout = TimeSpan.FromSeconds(10); // headers + body once a request started
 
-    /// <summary>Reads one request; null when the client closed the connection.</summary>
+    /// <summary>Reads one request; null when the client closed or idled out.</summary>
     public static async Task<HttpRequest?> ReadAsync(Connection conn, CancellationToken ct)
     {
-        var requestLine = await conn.ReadLineAsync(ct);
-        if (requestLine == null) return null;
-        if (requestLine.Length == 0) requestLine = await conn.ReadLineAsync(ct); // tolerate stray CRLF
+        string? requestLine;
+        using (var idle = CancellationTokenSource.CreateLinkedTokenSource(ct))
+        {
+            idle.CancelAfter(IdleTimeout);
+            try
+            {
+                requestLine = await conn.ReadLineAsync(idle.Token);
+                if (requestLine is { Length: 0 }) requestLine = await conn.ReadLineAsync(idle.Token); // tolerate stray CRLF
+            }
+            catch (OperationCanceledException) when (!ct.IsCancellationRequested) { return null; }
+        }
         if (requestLine == null) return null;
 
         var parts = requestLine.Split(' ');
         if (parts.Length < 3) throw new BridgeException(400, "malformed request line");
 
+        using var deadline = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        deadline.CancelAfter(RequestTimeout);
         var headers = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-        while (true)
-        {
-            var line = await conn.ReadLineAsync(ct) ?? throw new BridgeException(400, "truncated headers");
-            if (line.Length == 0) break;
-            var colon = line.IndexOf(':');
-            if (colon > 0) headers[line[..colon].Trim()] = line[(colon + 1)..].Trim();
-        }
-
         var body = Array.Empty<byte>();
-        if (headers.TryGetValue("content-length", out var lenText) && int.TryParse(lenText, out var len) && len > 0)
+        try
         {
-            if (len > MaxBody) throw new BridgeException(413, "body too large");
-            body = new byte[len];
-            await conn.ReadExactAsync(body, ct);
+            var headerBytes = requestLine.Length;
+            while (true)
+            {
+                var line = await conn.ReadLineAsync(deadline.Token) ?? throw new BridgeException(400, "truncated headers");
+                if (line.Length == 0) break;
+                headerBytes += line.Length + 2;
+                if (headers.Count >= MaxHeaders || headerBytes > MaxHeaderBytes)
+                    throw new BridgeException(431, "request headers too large");
+                var colon = line.IndexOf(':');
+                if (colon > 0) headers[line[..colon].Trim()] = line[(colon + 1)..].Trim();
+            }
+
+            if (headers.TryGetValue("content-length", out var lenText) && int.TryParse(lenText, out var len) && len > 0)
+            {
+                if (len > MaxBody) throw new BridgeException(413, "body too large");
+                body = new byte[len];
+                await conn.ReadExactAsync(body, deadline.Token);
+            }
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            throw new BridgeException(408, "request timed out");
         }
 
         var target = parts[1];
@@ -98,8 +123,11 @@ internal static class HttpResponse
         401 => "Unauthorized",
         404 => "Not Found",
         405 => "Method Not Allowed",
+        408 => "Request Timeout",
         409 => "Conflict",
         413 => "Payload Too Large",
+        431 => "Request Header Fields Too Large",
+        503 => "Service Unavailable",
         _ => status >= 500 ? "Internal Server Error" : "Error",
     };
 }

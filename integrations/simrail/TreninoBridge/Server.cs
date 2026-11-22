@@ -68,9 +68,23 @@ internal sealed class Server : IDisposable
             try { client = await _listener.AcceptTcpClientAsync(_cts.Token); }
             catch when (_cts.IsCancellationRequested) { return; }
             catch (Exception e) { _log.Warning($"accept failed: {e.Message}"); continue; }
-            _ = Task.Run(() => HandleClient(client));
+
+            if (Interlocked.Increment(ref _connections) > MaxConnections)
+            {
+                Interlocked.Decrement(ref _connections);
+                client.Close(); // over capacity: drop before reading anything
+                continue;
+            }
+            _ = Task.Run(async () =>
+            {
+                try { await HandleClient(client); }
+                finally { Interlocked.Decrement(ref _connections); }
+            });
         }
     }
+
+    private const int MaxConnections = 32;
+    private int _connections;
 
     private async Task HandleClient(TcpClient client)
     {
@@ -119,8 +133,7 @@ internal sealed class Server : IDisposable
 
     private bool Authorized(HttpRequest req, IPAddress remote)
     {
-        var fromBrowser = req.Header("origin") != null;
-        if (IPAddress.IsLoopback(remote) && !fromBrowser) return true;
+        if (IPAddress.IsLoopback(remote) && IsTrustedLocalRequest(req)) return true;
 
         var presented = req.Query.TryGetValue("token", out var q) ? q : null;
         var auth = req.Header("authorization");
@@ -128,6 +141,24 @@ internal sealed class Server : IDisposable
             presented = auth[7..].Trim();
         return presented != null &&
                CryptographicOperations.FixedTimeEquals(Encoding.UTF8.GetBytes(presented), Encoding.UTF8.GetBytes(_token));
+    }
+
+    /// <summary>
+    /// A loopback request is trusted without a token only if nothing suggests a browser:
+    /// no Origin, no cross-site Sec-Fetch-Site, and a Host that is literally a loopback
+    /// address. The Host check defeats DNS rebinding, where a malicious site's domain
+    /// resolves to 127.0.0.1 and same-origin GETs carry no Origin header.
+    /// </summary>
+    private bool IsTrustedLocalRequest(HttpRequest req)
+    {
+        if (req.Header("origin") != null) return false;
+        var fetchSite = req.Header("sec-fetch-site");
+        if (fetchSite != null && !string.Equals(fetchSite, "none", StringComparison.OrdinalIgnoreCase)) return false;
+
+        var host = req.Header("host");
+        if (host == null) return false;
+        var port = ((IPEndPoint)_listener.LocalEndpoint).Port;
+        return host == $"127.0.0.1:{port}" || host == $"localhost:{port}" || host == $"[::1]:{port}";
     }
 
     private static Task Respond(Connection conn, int status, object body, bool keepAlive, CancellationToken ct) =>
