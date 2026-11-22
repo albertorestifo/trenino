@@ -37,9 +37,7 @@ defmodule Trenino.Train.ButtonController do
   alias Trenino.Hardware.Input
   alias Trenino.Keyboard
   alias Trenino.Serial.Connection, as: SerialConnection
-  alias Trenino.Simulator.Client, as: SimulatorClient
-  alias Trenino.Simulator.Connection, as: SimulatorConnection
-  alias Trenino.Simulator.ConnectionState
+  alias Trenino.Simulator
   alias Trenino.Train
   alias Trenino.Train.ButtonInputBinding
 
@@ -634,41 +632,41 @@ defmodule Trenino.Train.ButtonController do
   end
 
   defp send_to_simulator(endpoint, value) do
-    case get_simulator_client() do
-      {:ok, client} ->
-        case SimulatorClient.set(client, endpoint, value) do
-          {:ok, _response} -> :ok
-          {:error, _reason} -> :error
-        end
-
-      :error ->
-        :skip
+    case Simulator.set(endpoint, value) do
+      :ok -> :ok
+      {:error, :not_connected} -> :skip
+      {:error, _reason} -> :error
     end
   end
 
-  # For momentary mode, we also need to set the Interacting property
-  # This tells the simulator the button is being held
+  # For momentary mode on TSW, we also need to set the Interacting property.
+  # This tells the simulator the button is being held. Other simulators take
+  # the value alone.
   defp send_to_simulator_with_interacting(endpoint, value, interacting) do
-    case get_simulator_client() do
-      {:ok, client} ->
+    case Simulator.current() do
+      nil ->
+        :skip
+
+      :tsw ->
         # Derive the Interacting endpoint from the InputValue endpoint
         interacting_endpoint = derive_interacting_endpoint(endpoint)
 
         # Set Interacting first (before setting value for press, after for release)
         if interacting do
           # Press: set Interacting=1 first, then InputValue
-          set_interacting(client, interacting_endpoint, 1)
-          send_value(client, endpoint, value)
+          send_value(interacting_endpoint, 1)
+          send_value(endpoint, value)
         else
           # Release: set InputValue first, then Interacting=0
-          send_value(client, endpoint, value)
-          set_interacting(client, interacting_endpoint, 0)
+          send_value(endpoint, value)
+          send_value(interacting_endpoint, 0)
         end
 
         :ok
 
-      :error ->
-        :skip
+      _other ->
+        send_value(endpoint, value)
+        :ok
     end
   end
 
@@ -686,27 +684,10 @@ defmodule Trenino.Train.ButtonController do
     end)
   end
 
-  defp set_interacting(client, endpoint, value) do
-    case SimulatorClient.set(client, endpoint, value) do
-      {:ok, _response} -> :ok
+  defp send_value(endpoint, value) do
+    case Simulator.set(endpoint, value) do
+      :ok -> :ok
       {:error, _reason} -> :error
-    end
-  end
-
-  defp send_value(client, endpoint, value) do
-    case SimulatorClient.set(client, endpoint, value) do
-      {:ok, _response} -> :ok
-      {:error, _reason} -> :error
-    end
-  end
-
-  defp get_simulator_client do
-    case SimulatorConnection.get_status() do
-      %ConnectionState{status: :connected, client: client} when client != nil ->
-        {:ok, client}
-
-      _ ->
-        :error
     end
   end
 
@@ -757,18 +738,15 @@ defmodule Trenino.Train.ButtonController do
     after
       0 ->
         # Send value to simulator
-        case get_simulator_client() do
-          {:ok, client} ->
-            case SimulatorClient.set(client, endpoint, value) do
-              {:ok, _} ->
-                Logger.debug("[ButtonController] Sequence command: #{endpoint} = #{value}")
+        case Simulator.set(endpoint, value) do
+          :ok ->
+            Logger.debug("[ButtonController] Sequence command: #{endpoint} = #{value}")
 
-              {:error, reason} ->
-                Logger.warning("[ButtonController] Sequence command failed: #{inspect(reason)}")
-            end
-
-          :error ->
+          {:error, :not_connected} ->
             Logger.warning("[ButtonController] Simulator not connected for sequence")
+
+          {:error, reason} ->
+            Logger.warning("[ButtonController] Sequence command failed: #{inspect(reason)}")
         end
     end
 

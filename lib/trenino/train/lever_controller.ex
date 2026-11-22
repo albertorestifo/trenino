@@ -56,7 +56,7 @@ defmodule Trenino.Train.LeverController do
   alias Trenino.Hardware.Input.Calibration
   alias Trenino.Hardware.InputNormalizer
   alias Trenino.Serial.Connection, as: SerialConnection
-  alias Trenino.Simulator.Client, as: SimulatorClient
+  alias Trenino.Simulator
   alias Trenino.Simulator.Connection, as: SimulatorConnection
   alias Trenino.Simulator.ConnectionState
   alias Trenino.Train
@@ -390,14 +390,24 @@ defmodule Trenino.Train.LeverController do
     }
   end
 
+  # The control a sweep registers. TSW sweeps the control behind
+  # `<control>.InputValue`; other simulators' paths are used as configured.
+  # Bindings load while disconnected are treated as TSW.
   defp control_path(%LeverConfig{value_endpoint: endpoint}) when is_binary(endpoint) do
+    case Simulator.current() do
+      simulator when simulator in [:tsw, nil] -> tsw_control_path(endpoint)
+      _other -> endpoint
+    end
+  end
+
+  defp control_path(%LeverConfig{}), do: nil
+
+  defp tsw_control_path(endpoint) do
     case String.split_at(endpoint, -byte_size(".InputValue")) do
       {path, ".InputValue"} -> path
       _ -> nil
     end
   end
-
-  defp control_path(%LeverConfig{}), do: nil
 
   defp apply_input_update(%State{} = state, port, pin, raw_value) do
     case resolve_simulator_value(state, port, pin, raw_value) do
@@ -519,14 +529,10 @@ defmodule Trenino.Train.LeverController do
 
   defp start_write(%State{} = state, %LeverConfig{id: id} = lever_config, sim_value) do
     task =
-      case simulator_client() do
-        {:ok, client} ->
-          Task.Supervisor.async_nolink(Trenino.TaskSupervisor, fn ->
-            {send_to_simulator(client, lever_config, sim_value), id, sim_value}
-          end)
-
-        :error ->
-          nil
+      if simulator_connected?() do
+        Task.Supervisor.async_nolink(Trenino.TaskSupervisor, fn ->
+          {send_to_simulator(lever_config, sim_value), id, sim_value}
+        end)
       end
 
     put_in(state.pending[id], {lever_config, sim_value, task})
@@ -569,7 +575,7 @@ defmodule Trenino.Train.LeverController do
     retry = Map.get(state.retries, id, %{attempts: 0, timer: nil, token: nil})
 
     with delay when is_integer(delay) <- Enum.at(@retry_delays, retry.attempts),
-         {:ok, _client} <- simulator_client() do
+         true <- simulator_connected?() do
       token = make_ref()
       timer = Process.send_after(self(), {:retry_write, id, token}, delay)
       put_in(state.retries[id], %{attempts: retry.attempts + 1, timer: timer, token: token})
@@ -615,9 +621,9 @@ defmodule Trenino.Train.LeverController do
     %{cancel_retry_timers(state) | pending: %{}, retries: %{}, last_written: %{}}
   end
 
-  defp send_to_simulator(client, %LeverConfig{value_endpoint: endpoint}, value) do
-    case SimulatorClient.set(client, endpoint, value) do
-      {:ok, _response} ->
+  defp send_to_simulator(%LeverConfig{value_endpoint: endpoint}, value) do
+    case Simulator.set(endpoint, value) do
+      :ok ->
         :ok
 
       {:error, reason} ->
@@ -627,13 +633,7 @@ defmodule Trenino.Train.LeverController do
     end
   end
 
-  defp simulator_client do
-    case SimulatorConnection.get_status() do
-      %ConnectionState{status: :connected, client: client} when client != nil ->
-        {:ok, client}
-
-      _ ->
-        :error
-    end
+  defp simulator_connected? do
+    match?({:ok, _backend, _handle}, Simulator.connected())
   end
 end

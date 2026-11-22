@@ -3,6 +3,7 @@ defmodule Trenino.Train.ButtonControllerTest do
 
   alias Trenino.Hardware
   alias Trenino.Serial.Connection.DeviceConnection
+  alias Trenino.Simulator
   alias Trenino.Train, as: TrainContext
   alias Trenino.Train.ButtonController
   alias Trenino.Train.Detection
@@ -418,6 +419,75 @@ defmodule Trenino.Train.ButtonControllerTest do
       # Controller should still be running
       state = ButtonController.get_state()
       refute Map.has_key?(state.active_buttons, element.id)
+    end
+  end
+
+  describe "momentary writes per simulator" do
+    setup :set_mimic_global
+
+    setup context do
+      start_supervised!(ButtonController)
+
+      {:ok, train} =
+        TrainContext.create_train(%{
+          name: "Test Train",
+          identifiers: [%{identifier: "test_train"}]
+        })
+
+      {:ok, element} = TrainContext.create_element(train.id, %{name: "Horn", type: :button})
+      {:ok, device} = Hardware.create_device(%{name: "Test Device"})
+
+      {:ok, input} =
+        Hardware.create_input(device.id, %{pin: 5, input_type: :button, debounce: 20})
+
+      {:ok, _binding} =
+        TrainContext.create_button_binding(element.id, input.id, %{
+          endpoint: context.endpoint,
+          mode: :momentary,
+          repeat_interval_ms: 5_000,
+          on_value: 1.0,
+          off_value: 0.0
+        })
+
+      test_pid = self()
+      stub(Simulator, :current, fn -> context.simulator end)
+
+      stub(Simulator, :set, fn path, value ->
+        send(test_pid, {:simulator_set, path, value})
+        :ok
+      end)
+
+      send(Process.whereis(ButtonController), {:train_changed, train})
+      Process.sleep(50)
+
+      :sys.replace_state(Process.whereis(ButtonController), fn state ->
+        %{state | input_lookup: Map.put(state.input_lookup, {"COM1", 5}, input.id)}
+      end)
+
+      :ok
+    end
+
+    @tag simulator: :tsw, endpoint: "CurrentDrivableActor/Horn.InputValue"
+    test "TSW sets Interacting around the value" do
+      send(Process.whereis(ButtonController), {:input_value_updated, "COM1", 5, 1})
+      assert_receive {:simulator_set, "CurrentDrivableActor/Horn.Interacting", 1}
+      assert_receive {:simulator_set, "CurrentDrivableActor/Horn.InputValue", 1.0}
+
+      send(Process.whereis(ButtonController), {:input_value_updated, "COM1", 5, 0})
+      assert_receive {:simulator_set, "CurrentDrivableActor/Horn.InputValue", +0.0}
+      assert_receive {:simulator_set, "CurrentDrivableActor/Horn.Interacting", 0}
+    end
+
+    @tag simulator: :simrail, endpoint: "Physics_Input_EN57.horn"
+    test "SimRail writes only the configured path" do
+      send(Process.whereis(ButtonController), {:input_value_updated, "COM1", 5, 1})
+      assert_receive {:simulator_set, "Physics_Input_EN57.horn", 1.0}
+
+      send(Process.whereis(ButtonController), {:input_value_updated, "COM1", 5, 0})
+      assert_receive {:simulator_set, "Physics_Input_EN57.horn", +0.0}
+
+      ButtonController.get_state()
+      refute_received {:simulator_set, "Physics_Input_EN57.Interacting", _}
     end
   end
 

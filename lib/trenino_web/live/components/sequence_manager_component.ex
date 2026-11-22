@@ -299,18 +299,8 @@ defmodule TreninoWeb.SequenceManagerComponent do
   end
 
   defp execute_test_sequence(commands) do
-    alias Trenino.Simulator.Client, as: SimulatorClient
-    alias Trenino.Simulator.Connection, as: SimulatorConnection
-    alias Trenino.Simulator.ConnectionState
-
     Enum.each(commands, fn cmd ->
-      case SimulatorConnection.get_status() do
-        %ConnectionState{status: :connected, client: client} when client != nil ->
-          SimulatorClient.set(client, cmd.endpoint, cmd.value)
-
-        _ ->
-          :ok
-      end
+      _ = Trenino.Simulator.set(cmd.endpoint, cmd.value)
 
       if cmd.delay_ms > 0 do
         Process.sleep(cmd.delay_ms)
