@@ -28,7 +28,8 @@ defmodule Trenino.Simulator.Backend.SimRail.Stream do
   @stream_path "/api/v1/stream"
   @default_backoff_ms 500
   @max_backoff_ms 10_000
-  @connect_timeout_ms 2_000
+  @connect_timeout_ms 1_000
+  @upgrade_timeout_ms 5_000
 
   defmodule State do
     @moduledoc false
@@ -42,6 +43,7 @@ defmodule Trenino.Simulator.Backend.SimRail.Stream do
             min_backoff_ms: pos_integer(),
             max_backoff_ms: pos_integer(),
             backoff_ms: pos_integer(),
+            upgrade_timeout_ms: pos_integer(),
             status: status(),
             conn: Mint.HTTP.t() | nil,
             websocket: Mint.WebSocket.t() | nil,
@@ -55,7 +57,16 @@ defmodule Trenino.Simulator.Backend.SimRail.Stream do
             next_id: pos_integer()
           }
 
-    @enforce_keys [:uri, :max_hz, :min_backoff_ms, :max_backoff_ms, :backoff_ms]
+    # Keep the bridge token out of crash reports and logs.
+    @derive {Inspect, except: [:token]}
+    @enforce_keys [
+      :uri,
+      :max_hz,
+      :min_backoff_ms,
+      :max_backoff_ms,
+      :backoff_ms,
+      :upgrade_timeout_ms
+    ]
     defstruct [
       :uri,
       :token,
@@ -63,6 +74,7 @@ defmodule Trenino.Simulator.Backend.SimRail.Stream do
       :min_backoff_ms,
       :max_backoff_ms,
       :backoff_ms,
+      :upgrade_timeout_ms,
       :conn,
       :websocket,
       :request_ref,
@@ -79,13 +91,20 @@ defmodule Trenino.Simulator.Backend.SimRail.Stream do
 
   # Client API
 
-  @doc "Replace `pid`'s watched paths, starting the stream if needed."
+  @doc """
+  Replace `pid`'s watched paths, starting the stream if needed.
+
+  Asynchronous: the stream may be busy connecting, so callers never wait
+  on it. The stream keeps its watchers only in memory; a watcher that must
+  survive a stream crash monitors `whereis/1` (or `SimRail.stream/1`) and
+  calls `watch/3` again when it goes down.
+  """
   @spec watch(SimRail.t(), [String.t()], pid()) :: :ok | {:error, term()}
   def watch(%SimRail{} = handle, paths, pid) do
     case whereis(handle.ref) do
       nil when paths == [] -> :ok
-      nil -> with {:ok, stream} <- start(handle), do: call_watch(stream, paths, pid)
-      stream -> call_watch(stream, paths, pid)
+      nil -> with {:ok, stream} <- start(handle), do: cast_watch(stream, paths, pid)
+      stream -> cast_watch(stream, paths, pid)
     end
   end
 
@@ -127,11 +146,7 @@ defmodule Trenino.Simulator.Backend.SimRail.Stream do
     end
   end
 
-  defp call_watch(stream, paths, pid) do
-    GenServer.call(stream, {:watch, pid, paths})
-  catch
-    :exit, reason -> {:error, {:stream_unavailable, reason}}
-  end
+  defp cast_watch(stream, paths, pid), do: GenServer.cast(stream, {:watch, pid, paths})
 
   # Server
 
@@ -145,7 +160,9 @@ defmodule Trenino.Simulator.Backend.SimRail.Stream do
       max_hz: handle.max_hz,
       min_backoff_ms: backoff,
       max_backoff_ms: Keyword.get(handle.stream_opts, :max_backoff_ms, @max_backoff_ms),
-      backoff_ms: backoff
+      backoff_ms: backoff,
+      upgrade_timeout_ms:
+        Keyword.get(handle.stream_opts, :upgrade_timeout_ms, @upgrade_timeout_ms)
     }
 
     send(self(), :connect)
@@ -153,14 +170,16 @@ defmodule Trenino.Simulator.Backend.SimRail.Stream do
   end
 
   @impl true
-  def handle_call({:watch, pid, paths}, _from, %State{} = state) do
-    {:reply, :ok, set_watch(state, pid, MapSet.new(paths))}
+  def handle_cast({:watch, pid, paths}, %State{} = state) do
+    {:noreply, set_watch(state, pid, MapSet.new(paths))}
   end
 
   @impl true
   def handle_info(:connect, %State{status: :disconnected} = state) do
     case open(state) do
       {:ok, conn, ref} ->
+        # A bridge that accepts the socket but never answers the upgrade.
+        Process.send_after(self(), {:upgrade_timeout, ref}, state.upgrade_timeout_ms)
         {:noreply, %{state | conn: conn, request_ref: ref, status: :upgrading}}
 
       {:error, reason} ->
@@ -170,6 +189,12 @@ defmodule Trenino.Simulator.Backend.SimRail.Stream do
   end
 
   def handle_info(:connect, %State{} = state), do: {:noreply, state}
+
+  def handle_info({:upgrade_timeout, ref}, %State{status: :upgrading, request_ref: ref} = state) do
+    {:noreply, reconnect(state, :upgrade_timeout)}
+  end
+
+  def handle_info({:upgrade_timeout, _ref}, %State{} = state), do: {:noreply, state}
 
   def handle_info({:DOWN, _ref, :process, pid, _reason}, %State{} = state) do
     {:noreply, set_watch(state, pid, MapSet.new())}
@@ -303,16 +328,12 @@ defmodule Trenino.Simulator.Backend.SimRail.Stream do
     schema = message["vehicle"]
     vehicle = {Schema.vehicle_name(schema), schema && schema["generation"]}
 
-    cond do
-      vehicle == state.vehicle ->
-        state
-
-      is_nil(state.vehicle) ->
-        broadcast_vehicle(%{state | vehicle: vehicle})
-
-      true ->
-        # Paths may not exist on the new vehicle: send fresh values.
-        %{state | vehicle: vehicle} |> broadcast_vehicle() |> subscribe_all()
+    if vehicle == state.vehicle do
+      state
+    else
+      # Watchers reset on a vehicle message and the bridge pushes only
+      # changes, so resubscribe to have the current values sent again.
+      %{state | vehicle: vehicle} |> broadcast_vehicle() |> subscribe_all()
     end
   end
 

@@ -22,7 +22,11 @@ defmodule Trenino.Simulator.Backend.SimRail do
   alias Trenino.Simulator.Backend.SimRail.{Schema, Stream}
 
   @default_max_hz 30
+  @connect_timeout_ms 1_000
+  @check_timeout_ms 2_000
 
+  # Keep the bridge token (also in the request headers) out of crash reports.
+  @derive {Inspect, except: [:api_key, :req]}
   @enforce_keys [:url, :req, :ref]
   defstruct [:url, :api_key, :req, :ref, max_hz: @default_max_hz, stream_opts: []]
 
@@ -67,7 +71,9 @@ defmodule Trenino.Simulator.Backend.SimRail do
 
   @impl true
   def check(%__MODULE__{req: req}) do
-    req |> Req.get(url: "/api/v1/status") |> handle_response()
+    req
+    |> Req.get(url: "/api/v1/status", receive_timeout: @check_timeout_ms)
+    |> handle_response()
   end
 
   @impl true
@@ -126,6 +132,16 @@ defmodule Trenino.Simulator.Backend.SimRail do
     Stream.watch(handle, paths, pid)
   end
 
+  @doc """
+  The handle's stream process (started by the first `watch/3`), or nil.
+
+  The stream keeps its watchers in memory only: after it exits (crash or
+  `disconnect/1`) nothing is pushed any more. Watchers monitor this pid and
+  call `watch/3` again when it goes down.
+  """
+  @spec stream(t()) :: pid() | nil
+  def stream(%__MODULE__{ref: ref}), do: Stream.whereis(ref)
+
   @doc "The raw vehicle schema (`GET /api/v1/vehicle`)."
   @spec vehicle(t()) :: {:ok, map()} | {:error, term()}
   def vehicle(%__MODULE__{req: req}) do
@@ -142,6 +158,7 @@ defmodule Trenino.Simulator.Backend.SimRail do
     Req.new(
       base_url: url,
       headers: auth_headers(api_key),
+      connect_options: [timeout: @connect_timeout_ms],
       receive_timeout: 5_000,
       retry: false
     )

@@ -199,6 +199,11 @@ defmodule Trenino.Simulator.Backend.SimRail.StreamTest do
     send(bridge, {:push, %{op: "vehicle", vehicle: eu07}})
     assert_receive {:simulator_vehicle, "4e/eu07-193"}, 1_000
 
+    # Watchers reset on vehicle messages: current values are requested again.
+    assert_receive {:bridge_received,
+                    %{"op" => "subscribe", "paths" => ["Physics_Input_General.*"]}},
+                   1_000
+
     # The same vehicle again is not a change.
     send(bridge, {:push, %{op: "vehicle", vehicle: eu07}})
     refute_receive {:simulator_vehicle, _}, 100
@@ -259,6 +264,42 @@ defmodule Trenino.Simulator.Backend.SimRail.StreamTest do
 
     {_bridge, request} = await_subscribe()
     assert request["paths"] == ["A.a"]
+  end
+
+  test "gives up on an upgrade the bridge never answers and reconnects" do
+    {:ok, listener} = :gen_tcp.listen(0, ip: {127, 0, 0, 1}, active: false)
+    {:ok, port} = :inet.port(listener)
+
+    {:ok, handle} =
+      SimRail.connect(%{
+        url: "http://127.0.0.1:#{port}",
+        api_key: nil,
+        stream_opts: [backoff_ms: 10, max_backoff_ms: 50, upgrade_timeout_ms: 50]
+      })
+
+    on_exit(fn -> SimRail.disconnect(handle) end)
+    :ok = SimRail.watch(handle, ["A.a"], self())
+
+    # Accept and never answer; the stream must come back with a new socket.
+    assert {:ok, first} = :gen_tcp.accept(listener, 1_000)
+    assert {:ok, second} = :gen_tcp.accept(listener, 1_000)
+    assert first != second
+  end
+
+  test "exposes the stream pid so watchers can monitor it", %{port: port} do
+    handle = connect(port)
+    refute SimRail.stream(handle)
+
+    :ok = SimRail.watch(handle, ["A.a"], self())
+    assert is_pid(SimRail.stream(handle))
+    assert SimRail.stream(handle) == Stream.whereis(handle.ref)
+  end
+
+  test "keeps the token out of the stream state's inspect output", %{port: port} do
+    handle = connect(port, "secret-token")
+    :ok = SimRail.watch(handle, ["A.a"], self())
+
+    refute handle |> SimRail.stream() |> :sys.get_state() |> inspect() =~ "secret-token"
   end
 
   test "one stream per handle, stopped by disconnect", %{port: port} do

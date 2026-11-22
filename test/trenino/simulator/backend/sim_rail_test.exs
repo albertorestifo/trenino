@@ -51,6 +51,16 @@ defmodule Trenino.Simulator.Backend.SimRailTest do
       assert {:ok, %SimRail{api_key: nil}} = SimRail.connect(%{url: @url, api_key: ""})
     end
 
+    test "connects with a short timeout so health checks fail fast" do
+      assert {:ok, %SimRail{req: req}} = SimRail.connect(%{url: @url, api_key: nil})
+      assert req.options.connect_options[:timeout] <= 2_000
+    end
+
+    test "keeps the token out of inspect output" do
+      assert {:ok, handle} = SimRail.connect(%{url: @url, api_key: "secret-token"})
+      refute inspect(handle) =~ "secret-token"
+    end
+
     test "needs a url" do
       assert SimRail.connect(%{api_key: nil}) == {:error, :needs_config}
       assert SimRail.connect(%{url: "", api_key: nil}) == {:error, :needs_config}
@@ -60,7 +70,12 @@ defmodule Trenino.Simulator.Backend.SimRailTest do
   describe "check/1" do
     test "returns the bridge status" do
       status = %{"ok" => true, "api" => "1", "bridge" => "0.2.0", "inTrain" => true}
-      expect(Req, :get, fn _req, [url: "/api/v1/status"] -> ok(status) end)
+
+      expect(Req, :get, fn _req, opts ->
+        assert opts[:url] == "/api/v1/status"
+        assert opts[:receive_timeout] <= 2_000
+        ok(status)
+      end)
 
       assert SimRail.check(handle()) == {:ok, status}
     end
