@@ -149,6 +149,31 @@ building the Trenino SimRail connector. Raw data lives next to this file:
   (`drive_handle` ×8, direction, horn, vigilance…) — treat those attributions as unreliable.
   `sweep-controls.mjs` now records such changes separately as `concurrentInputs`.
 
+## MelonLoader crash: Il2CppInterop hooks the wrong function (2026-11-22)
+
+SimRail crashed twice mid-session (`APPCRASH`, `coreclr.dll+0x1d4089`, `0xc0000005`), each
+time within a second of a trainset being handed to the train server. Both crash dumps
+(`%LOCALAPPDATA%\CrashDumps`, read with `dotnet-dump`) show the same thread:
+
+```
+IL2CPP Threadpool worker
+  GameAssembly+0x289440 -> call GameAssembly+0x289310        (generated game code)
+  Il2CppInterop ... Class_GetFieldDefaultValue_Hook.Hook()   line 33: return Original(field, out type)
+  System.ExecutionEngineException
+```
+
+No bridge code was on the stack. Il2CppInterop 1.5.1-ci.845 (MelonLoader 0.7.3) finds
+`Class::GetDefaultFieldValue` by prologue signatures and takes the first hit. On Unity
+2023.1.8 its "V Rising" signature `48 89 5C 24 08 48 89 74 24 10 57 48 83 EC 40 48 8B 41 10`
+matches 9 functions. The first, `0x289310`, takes `(this, int, float, ushort, MethodInfo*)`,
+so the 2-pointer hook clobbers its arguments every time the game calls it. The real function
+is `0x54d580`: `Field::StaticGetValueInternal` (`0x53c820`) calls it with `lea rdx,[rsp+50h]`
+(`&type`), and its body computes `(field - field->parent->fields) >> 5`. It is the only
+signature hit reachable by direct calls from the `il2cpp_field_static_get_value` export.
+It reproduces with a bare loader: upstream is
+[BepInEx/Il2CppInterop#284](https://github.com/BepInEx/Il2CppInterop/issues/284).
+`TreninoInteropGuard` (plugin) applies the reachability check before the hook is installed.
+
 ## Open questions
 
 - The EN57 and Traxx profiles were captured before the bridge reported `stable` and

@@ -18,6 +18,19 @@ train taught us. Per-train data lives in `profiles/`, `sweeps/` and `recordings/
 3. Start SimRail once so MelonLoader generates `MelonLoader\Il2CppAssemblies`.
 4. `dotnet build -c Release` in `TreninoBridge/` (net6.0) builds and copies
    `TreninoBridge.dll` into `SimRail\Mods` (the running game locks it — quit first).
+5. `dotnet build -c Release` in `TreninoInteropGuard/` copies `TreninoInteropGuard.dll`
+   into `SimRail\Plugins`. **Required.** MelonLoader's Il2CppInterop (1.5.1) hooks the wrong
+   function as `Class::GetDefaultFieldValue` on SimRail's Unity 2023.1 build: its "V Rising"
+   signature matches 9 functions and it takes the first, which is generated game code. The game
+   then dies with an `ExecutionEngineException` in `Class_GetFieldDefaultValue_Hook` on an
+   IL2CPP threadpool thread, typically when trains are handed to the train server
+   ([BepInEx/Il2CppInterop#284](https://github.com/BepInEx/Il2CppInterop/issues/284)). This
+   happens with no mods loaded at all. The guard re-checks Il2CppInterop's pick before the
+   hook is installed and swaps in the one signature hit that `il2cpp_field_static_get_value`
+   actually calls; its log line says which. It must be a plugin: by the time mods load, the
+   hook is in place. The bridge logs an error and reports `interopGuard: false` in `/status`
+   when the guard is missing. Tests: `dotnet test TreninoInteropGuard.Tests` (checks the
+   resolver against the installed `GameAssembly.dll`; rerun after a SimRail update).
 
 Settings (`SimRail\UserData\MelonPreferences.cfg`, `[TreninoBridge]`): `Port` (31275),
 `ListenOnNetwork` (true), `Token` (generated on first run, never logged).
@@ -37,7 +50,7 @@ One port serves HTTP/1.1 and a WebSocket. Values are floats addressed by **path*
 ### HTTP
 | Method | Path | Body | Returns |
 |---|---|---|---|
-| GET | `/api/v1/status` | | `{ok, api, bridge, inTrain, generation}` |
+| GET | `/api/v1/status` | | `{ok, api, bridge, inTrain, generation, interopGuard}` |
 | GET | `/api/v1/vehicle` | | schema (below); 409 when not in a train |
 | GET | `/api/v1/values?paths=a,b.*` | | `{path: value}`; all values without `paths` |
 | PUT | `/api/v1/values/{path}` | `{"value": 2}` | `{path, value, syncedControls}` |

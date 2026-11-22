@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    MelonLoader plugin that keeps Il2CppInterop from hooking the wrong function as
+    Class::GetDefaultFieldValue (BepInEx/Il2CppInterop#284), which crashed SimRail.
+
+    Build:  dotnet build -c Release -p:SimRailDir="D:\SteamLibrary\steamapps\common\SimRail"
+    Output is copied to <SimRailDir>\Plugins when DeployToGame=true (default).
+    It must live in Plugins\, not Mods\: plugins load before Il2CppInterop installs its hooks.
+  -->
+
+  <PropertyGroup>
+    <TargetFramework>net6.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <AssemblyName>TreninoInteropGuard</AssemblyName>
+    <RootNamespace>TreninoInteropGuard</RootNamespace>
+    <SimRailDir Condition="'$(SimRailDir)' == ''">D:\SteamLibrary\steamapps\common\SimRail</SimRailDir>
+    <DeployToGame Condition="'$(DeployToGame)' == ''">true</DeployToGame>
+    <CopyLocalLockFileAssemblies>false</CopyLocalLockFileAssemblies>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Reference Include="MelonLoader" HintPath="$(SimRailDir)\MelonLoader\net6\MelonLoader.dll" Private="false" />
+    <Reference Include="0Harmony" HintPath="$(SimRailDir)\MelonLoader\net6\0Harmony.dll" Private="false" />
+    <Reference Include="Iced" HintPath="$(SimRailDir)\MelonLoader\net6\Iced.dll" Private="false" />
+  </ItemGroup>
+
+  <Target Name="DeployToSimRail" AfterTargets="Build" Condition="'$(DeployToGame)' == 'true'">
+    <MakeDir Directories="$(SimRailDir)\Plugins" />
+    <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(SimRailDir)\Plugins" />
+  </Target>
+
+</Project>

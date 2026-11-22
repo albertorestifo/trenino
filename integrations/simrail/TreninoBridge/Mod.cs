@@ -19,8 +19,19 @@ public sealed class Mod : MelonMod
 
     private Server? _server;
 
+    /// <summary>
+    /// The TreninoInteropGuard plugin keeps Il2CppInterop from hooking the wrong function as
+    /// Class::GetDefaultFieldValue, which crashes SimRail mid-session (BepInEx/Il2CppInterop#284).
+    /// </summary>
+    internal static bool InteropGuardLoaded { get; private set; }
+
     public override void OnInitializeMelon()
     {
+        InteropGuardLoaded = MelonPlugin.RegisteredMelons.Any(p => p.Info.Name == "TreninoInteropGuard");
+        if (!InteropGuardLoaded)
+            LoggerInstance.Error("TreninoInteropGuard is not in SimRail\\Plugins: SimRail can crash when trains are handed over " +
+                                 "(Il2CppInterop hooks the wrong function). Install TreninoInteropGuard.dll into Plugins\\.");
+
         // Stored in <SimRail>\UserData\MelonPreferences.cfg under [TreninoBridge].
         var cat = MelonPreferences.CreateCategory("TreninoBridge");
         var port = cat.CreateEntry("Port", DefaultPort, description: "TCP port for the Trenino bridge API");
