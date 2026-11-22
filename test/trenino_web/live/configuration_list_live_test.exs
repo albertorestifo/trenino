@@ -108,6 +108,32 @@ defmodule TreninoWeb.ConfigurationListLiveTest do
           else: refute(has_element?(view, "#{row} a, #{row} button"))
       end
     end
+
+    test "names the chosen simulator and its next steps", %{conn: conn} do
+      {:ok, view, _html} = live(conn, ~p"/")
+      open_dropdown(view)
+      row = "#simulator-status-row"
+      simrail = Trenino.Simulator.Backend.SimRail
+
+      cases = [
+        {%ConnectionState{status: :connected, backend: simrail}, nil},
+        {%ConnectionState{status: :disconnected, backend: simrail}, "Start SimRail"},
+        {%ConnectionState{status: :error, backend: simrail, last_error: :timeout},
+         "SimRail did not respond"},
+        {%ConnectionState{status: :error, backend: simrail, last_error: :invalid_key},
+         "token was rejected"},
+        {%ConnectionState{status: :needs_config, backend: simrail}, "bridge URL"}
+      ]
+
+      for {state, hint} <- cases do
+        send(view.pid, {:simulator_status_changed, state})
+        render(view)
+
+        assert has_element?(view, row, "SimRail")
+        refute has_element?(view, row, "Train Sim World")
+        if hint, do: assert(has_element?(view, row, hint))
+      end
+    end
   end
 
   describe "connections summary" do
