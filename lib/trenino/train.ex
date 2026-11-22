@@ -117,9 +117,10 @@ defmodule Trenino.Train do
       |> preload(:identifiers)
       |> Repo.all()
       |> Enum.filter(fn train ->
-        Enum.any?(train.identifiers, fn identifier ->
-          String.starts_with?(detected_identifier, identifier.identifier)
-        end)
+        Enum.any?(
+          train.identifiers,
+          &identifier_matches?(train.simulator, &1.identifier, detected_identifier)
+        )
       end)
       |> Enum.map(fn train -> Repo.preload(train, elements: :lever_config) end)
 
@@ -129,6 +130,17 @@ defmodule Trenino.Train do
       trains -> {:error, {:multiple_matches, trains}}
     end
   end
+
+  # TSW identifiers are plain prefixes. A SimRail identifier names a vehicle or a
+  # class ("4e/eu07") and matches only up to a boundary, so "4e/eu07" covers
+  # "4e/eu07-193" but not "4e/eu07a-001".
+  defp identifier_matches?(:simrail, stored, detected) do
+    detected == stored or String.starts_with?(detected, stored <> "-") or
+      String.starts_with?(detected, stored <> "/")
+  end
+
+  defp identifier_matches?(_simulator, stored, detected),
+    do: String.starts_with?(detected, stored)
 
   defp for_simulator(query, nil), do: query
   defp for_simulator(query, simulator), do: where(query, [t], t.simulator == ^simulator)

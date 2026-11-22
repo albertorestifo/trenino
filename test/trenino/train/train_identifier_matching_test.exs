@@ -48,9 +48,39 @@ defmodule Trenino.Train.TrainIdentifierMatchingTest do
     assert Enum.sort(Enum.map(matches, & &1.id)) == Enum.sort([first.id, second.id])
   end
 
-  defp create_train(name, identifiers) do
+  describe "SimRail" do
+    test "a class identifier covers its vehicles, not other classes" do
+      {:ok, eu07} = create_train("EU07", ["4e/eu07"], :simrail)
+
+      assert {:ok, %{id: id}} = TrainContext.get_train_by_identifier("4e/eu07-193", :simrail)
+      assert id == eu07.id
+      assert {:ok, _} = TrainContext.get_train_by_identifier("4e/eu07", :simrail)
+
+      assert {:error, :not_found} =
+               TrainContext.get_train_by_identifier("4e/eu07a-001", :simrail)
+    end
+
+    test "a family identifier covers its classes" do
+      {:ok, family} = create_train("Pendolino", ["pendolino"], :simrail)
+
+      assert {:ok, %{id: id}} =
+               TrainContext.get_train_by_identifier("pendolino/ed250-018 variant", :simrail)
+
+      assert id == family.id
+      assert {:error, :not_found} = TrainContext.get_train_by_identifier("pendolinox/a-1")
+    end
+
+    test "only trains of the requested simulator match" do
+      {:ok, _tsw} = create_train("TSW", ["4e/eu07"], :tsw)
+      assert {:error, :not_found} = TrainContext.get_train_by_identifier("4e/eu07-1", :simrail)
+      assert {:ok, _} = TrainContext.get_train_by_identifier("4e/eu07a-1", :tsw)
+    end
+  end
+
+  defp create_train(name, identifiers, simulator \\ :tsw) do
     TrainContext.create_train(%{
       name: name,
+      simulator: simulator,
       identifiers: Enum.map(identifiers, &%{identifier: &1})
     })
   end

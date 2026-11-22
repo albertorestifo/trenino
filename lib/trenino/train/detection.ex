@@ -3,7 +3,7 @@ defmodule Trenino.Train.Detection do
   Monitors the simulator for train changes and manages the active train configuration.
 
   Responsibilities:
-  - Poll the connected simulator's vehicle id (`Trenino.Simulator.vehicle_id/0`)
+  - Poll the connected backend's vehicle id (from `Trenino.Simulator.connected/0`)
     periodically; TSW derives it from the formation, SimRail reports the
     vehicle name (`"4e/eu07-193"`)
   - Match the vehicle id to stored train configurations made for the connected
@@ -343,7 +343,9 @@ defmodule Trenino.Train.Detection do
   defp task_work(%State{}, :detect) do
     fn ->
       case connected() do
-        {:ok, backend, handle} -> {:detected, {backend, handle}, Simulator.vehicle_id()}
+        # Ask the backend just resolved, so the id and the remembered
+        # connection always come from the same simulator.
+        {:ok, backend, handle} -> {:detected, {backend, handle}, backend.vehicle_id(handle)}
         {:error, :not_connected} -> :not_connected
       end
     end

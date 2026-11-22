@@ -85,7 +85,8 @@ defmodule Trenino.Train.LeverSetup do
   def set_endpoint(element_id, control_path) do
     result =
       with {:ok, %Element{type: :lever} = element} <-
-             fetch_lever_element(element_id, preload: :train) do
+             fetch_lever_element(element_id, preload: :train),
+           :ok <- check_simulator(element) do
         attrs = endpoints_for(control_path, element.train.simulator)
 
         case Train.get_lever_config(element_id) do
@@ -128,7 +129,9 @@ defmodule Trenino.Train.LeverSetup do
     attrs = Map.put(attrs, :calibrated_at, DateTime.utc_now(:second))
 
     result =
-      with {:ok, %Element{type: :lever}} <- fetch_lever_element(element_id),
+      with {:ok, %Element{type: :lever} = element} <-
+             fetch_lever_element(element_id, preload: :train),
+           :ok <- check_sweepable(element),
            {:ok, %AnalysisResult{} = analysis} <-
              LeverAnalyzer.analyze(client, control_path, Keyword.get(opts, :analyzer, [])),
            {:ok, config} <- save_analysis(element_id, attrs, analysis) do
@@ -177,6 +180,14 @@ defmodule Trenino.Train.LeverSetup do
     |> Map.put(:calibrated_at, DateTime.utc_now(:second))
   end
 
+  # A sweep runs on a TSW client, so only Train Sim World profiles are swept.
+  defp check_sweepable(%Element{train: %{simulator: :tsw}}), do: :ok
+
+  defp check_sweepable(%Element{train: %{simulator: simulator}}),
+    do: {:error, {:wrong_simulator, simulator, :tsw}}
+
+  # The lever's train must be made for the connected simulator, so a profile
+  # never gets endpoints or notches from another simulator.
   defp check_simulator(%Element{train: %{simulator: simulator}}) do
     case Simulator.current() do
       ^simulator -> :ok
@@ -266,7 +277,7 @@ defmodule Trenino.Train.LeverSetup do
     end
   end
 
-  defp fetch_lever_element(element_id, opts \\ []) do
+  defp fetch_lever_element(element_id, opts) do
     case Train.get_element(element_id, opts) do
       {:ok, %Element{type: :lever}} = ok -> ok
       {:ok, %Element{}} -> {:error, :not_a_lever}

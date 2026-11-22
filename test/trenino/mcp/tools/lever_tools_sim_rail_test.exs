@@ -7,6 +7,7 @@ defmodule Trenino.MCP.Tools.LeverToolsSimRailTest do
 
   alias Trenino.MCP.Tools.LeverTools
   alias Trenino.SimRailProfileFixtures.CatalogBackend
+  alias Trenino.Simulator.Client
   alias Trenino.Simulator.Connection
   alias Trenino.Simulator.ConnectionState
   alias Trenino.Train, as: TrainContext
@@ -125,6 +126,26 @@ defmodule Trenino.MCP.Tools.LeverToolsSimRailTest do
       assert {:error, "This train is set up for Train Sim World, but SimRail is connected."} =
                run("calibrate_lever", %{"element_id" => element.id})
     end
+
+    test "won't link a Train Sim World train's lever to a SimRail control" do
+      element = lever_element(:tsw, "RVM_Y", "Throttle")
+
+      assert {:error, "This train is set up for Train Sim World, but SimRail is connected."} =
+               run("set_lever_endpoint", %{
+                 "element_id" => element.id,
+                 "control_path" => @throttle
+               })
+
+      assert {:error, :not_found} = TrainContext.get_lever_config(element.id)
+    end
+  end
+
+  test "a SimRail train's lever is never swept" do
+    element = lever_element(:simrail, "4e/eu07", "Throttle")
+    client = Client.new("http://localhost:31270", "key")
+
+    assert {:error, {:wrong_simulator, :simrail, :tsw}} =
+             LeverSetup.calibrate(client, element.id, "CurrentDrivableActor/Throttle")
   end
 
   test "ED250 throttle is a hybrid lever with a 0..1 range" do
