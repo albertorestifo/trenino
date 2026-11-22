@@ -163,13 +163,19 @@ defmodule Trenino.MCP.Tools.LeverToolsSimRailTest do
            ]
   end
 
-  test "ED250 cruise lever springs back, so it cannot be a lever" do
+  test "ED250 cruise lever is a lever, its spring-back positions included" do
     connect("pendolino_ed250-018_variant")
     element = lever_element(:simrail, "pendolino/ed250", "Cruise")
     link(element, "Physics_Input_General.speed_ctrl")
 
-    assert {:error, "That control springs back" <> _} =
-             run("calibrate_lever", %{"element_id" => element.id})
+    assert {:ok, _result} = run("calibrate_lever", %{"element_id" => element.id})
+
+    {:ok, config} = Trenino.Train.get_lever_config(element.id)
+    notches = config |> Trenino.Repo.preload(:notches) |> Map.fetch!(:notches)
+
+    # Positions 0, 1 and 3 spring back to position 2; all four are notches.
+    assert notches |> Enum.sort_by(& &1.index) |> Enum.map(& &1.springs_back_to) ==
+             [2, 2, nil, 2]
   end
 
   test "Traxx train brake via LeverSetup" do

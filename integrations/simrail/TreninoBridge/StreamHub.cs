@@ -100,6 +100,9 @@ internal static class StreamHub
     public static void Add(StreamSession s) { lock (Lock) Sessions.Add(s); }
     public static void Remove(StreamSession s) { lock (Lock) Sessions.Remove(s); }
 
+    /// <summary>Whether any client is connected: the lease that keeps held levers held.</summary>
+    public static bool HasSessions { get { lock (Lock) return Sessions.Count > 0; } }
+
     public static void Tick()
     {
         StreamSession[] sessions;

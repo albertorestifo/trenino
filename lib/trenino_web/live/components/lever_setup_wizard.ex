@@ -30,9 +30,10 @@ defmodule TreninoWeb.LeverSetupWizard do
   require Logger
 
   alias Trenino.Hardware
+  alias Trenino.Simulator.Control
   alias Trenino.Simulator.ControlDetector
-  alias Trenino.Simulator.SimRailLevers
   alias Trenino.Simulator.LeverMetadata
+  alias Trenino.Simulator.SimRailLevers
   alias Trenino.Train
   alias Trenino.Train.Calibration.NotchMappingSession
   alias Trenino.Train.Element
@@ -671,7 +672,7 @@ defmodule TreninoWeb.LeverSetupWizard do
     |> assign(:catalog_status, :loading)
     |> start_async(:catalog_levers, fn ->
       with {:ok, controls} <- Trenino.Simulator.controls(),
-           do: {:ok, SimRailLevers.levers(controls)}
+           do: {:ok, SimRailLevers.distinct(controls)}
     end)
   end
 
@@ -1558,7 +1559,7 @@ defmodule TreninoWeb.LeverSetupWizard do
               {position_summary(lever)}
             </span>
           </div>
-          <p class="text-xs text-muted truncate" title={lever.id}>{lever_location(lever)}</p>
+          <p class="text-xs text-muted truncate" title={lever.id}>{lever_detail(lever, @levers)}</p>
         </button>
       </div>
 
@@ -1585,7 +1586,7 @@ defmodule TreninoWeb.LeverSetupWizard do
   defp position_summary(%{positions: positions}) do
     count = length(positions)
     smooth = Enum.any?(positions, & &1.smooth)
-    springing = Enum.count(positions, &Trenino.Simulator.Control.momentary?/1)
+    springing = Enum.count(positions, &Control.momentary?/1)
 
     [
       "#{count} #{if count == 1, do: "position", else: "positions"}",
@@ -1596,13 +1597,18 @@ defmodule TreninoWeb.LeverSetupWizard do
     |> Enum.join(" · ")
   end
 
-  # Where the control sits, from its place in the vehicle (cab and part names).
-  defp lever_location(%{id: id}) do
-    id
-    |> String.split("/")
-    |> Enum.drop(-1)
-    |> Enum.take(-2)
-    |> Enum.join(" / ")
+  # "Stepped" or "Smooth", plus the cab when another listed lever has the same
+  # path and variant (cabs whose notch tables differ).
+  defp lever_detail(lever, levers) do
+    variant = SimRailLevers.variant(lever)
+
+    twins =
+      Enum.count(levers, &(&1.path == lever.path and SimRailLevers.variant(&1) == variant))
+
+    case {twins > 1, SimRailLevers.cab(lever)} do
+      {true, cab} when is_binary(cab) -> "#{variant} · #{cab}"
+      _ -> variant
+    end
   end
 
   defp catalog_error_message({:wrong_simulator, _profile, _connected}),
@@ -1611,9 +1617,8 @@ defmodule TreninoWeb.LeverSetupWizard do
   defp catalog_error_message(:not_connected),
     do: "SimRail is not connected. Start it with the TreninoBridge mod, then try again."
 
-  defp catalog_error_message(:spring_return),
-    do:
-      "This lever only has positions that spring back, so a notched hardware lever cannot hold them."
+  defp catalog_error_message(:too_few_positions),
+    do: "This control has fewer than two positions, so it is not a lever."
 
   defp catalog_error_message(_reason),
     do: "Could not set up this lever from the game. Pick it again, or reopen this step."

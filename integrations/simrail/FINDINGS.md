@@ -38,10 +38,18 @@ building the Trenino SimRail connector. Raw data lives next to this file:
   - EN57 `mainbrake_a`: `0, 1, 2, 4, 5, 5.6, 6, 7`
   - EN57 `directioncontroller_a`: index 0 = value 4 = forward, index 4 = value 0 = backward
   - Traxx `main_brake`: index 0 = value 5 … index 5 = value 0
-- **Spring-return positions** (`StablePosition` in the schema as `stable`): the Traxx
+- **Spring-back positions** (`StablePosition` in the schema as `stable`): the Traxx
   traction lever `drive_handle` has 8 positions; only 1, 3, 5, 7 hold. 0/2 spring to 1,
-  4/6 spring to 5 (a set-point controller: nudge to raise/lower traction force). A
-  hardware notched lever cannot map 1:1 onto such controls.
+  4/6 spring to 5 (a set-point controller: nudge to raise/lower traction force).
+  They are ordinary positions to Trenino: whether the physical lever springs back is up
+  to the hardware (a spring, a detent valley, or none). Each notch records
+  `springs_back_to` for the notch disk designer only. The game springs its own lever
+  back ~0.15 s after a write, so the bridge **holds** a written spring-back value
+  (re-applies it every frame) until the next write to that path, while at least one
+  client stream is connected (the lease: a crashed Trenino releases it).
+- **One handle can appear as several controls on the same path**: the same lever in
+  each cab (identical tables, listed once by `SimRailLevers.distinct/1`) and, on some
+  trains, a smooth and a stepped variant of one handle (the EU07 brakes: see below).
 - **Push buttons** write `pressedPhysicsValue` while held and `nonPressedPhysicsValue`
   otherwise (schema: `button.pressed` / `button.released`). Traxx direction is three
   buttons on one field: forward = 1, neutral = 2, backward = −1. Spring brake: release
@@ -84,10 +92,12 @@ building the Trenino SimRail connector. Raw data lives next to this file:
   lever `scnd_handle` (values 6…0, reversed).
 - Direction is a **lever** here (`direction_rq` −1 backward / 2 neutral / 1 forward — same
   values as the Traxx's three buttons, so `direction_rq` semantics are consistent).
-- **The two cabs have different brake valves on the same path**: `main_brake` is a smooth
-  notch-based FV4a in one cab (positions with value + lower/upper band, e.g. value 6 covers
-  6.5…4.5) and an 11-step lever (`8,7,6,5.25,4.5,4,3.5,3,2,1,0`) in the other. `local_brake`
-  is a continuous 1…0 smooth lever in one cab, 6 steps in the other.
+- **Each brake handle exists as a smooth and a stepped control on the same path**, in both
+  cabs (an earlier note here said the cabs differed; they don't): `main_brake` is a smooth
+  notch-based FV4a (`hamulec_zasadniczy`: positions with value + lower/upper band, e.g.
+  value 6 covers 6.5…4.5) and an 11-step variant (`hamulec_zasadniczy_step`:
+  `8,7,6,5.25,4.5,4,3.5,3,2,1,0`). `local_brake` is a continuous 1…0 smooth lever and a
+  6-step variant. The setup picker labels them "Smooth" and "Stepped".
 - While dragged with the mouse, smooth levers write **intermediate values** (0.546, 2.436,
   4.987…) and settle on the notch value — genuine analog input.
 - Manual start-up recorded (`eu07-manual-startup-*.jsonl`, driver-operated, ends moving):
@@ -135,6 +145,12 @@ building the Trenino SimRail connector. Raw data lives next to this file:
   `sweep-controls.mjs` now records such changes separately as `concurrentInputs`.
 
 ## Open questions
+
+- The EN57 and Traxx profiles were captured before the bridge reported `stable` and
+  button values; re-capture them to have spring-back data for those trains.
+- Bridge holds (0.3.0) are untested in the game: check a recording for frames where the
+  stable value leaks through during a hold (the game's return firing before our
+  re-assert), and that per-frame `SetStateFromPhysics` behaves in multiplayer.
 - How to charge the brake pipe / reset after an emergency brake via IO (Traxx).
 - Units: `velocity` (km/h?), pressures (bar), `traction_force_*` (kN?).
 - Do writes behave the same in multiplayer (physics may run server-side)?

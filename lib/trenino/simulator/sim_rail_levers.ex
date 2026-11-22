@@ -20,15 +20,19 @@ defmodule Trenino.Simulator.SimRailLevers do
     * A `smooth` position with a `lower`/`upper` band becomes a `:linear`
       notch over the band: the lever writes any value inside it (the ED250's
       0..1 throttle, a brake valve's service range).
-    * Neighbouring gates with the same value (the ED250 throttle's two `0`
-      positions) are merged: they are one detent to the hardware.
-    * **Spring-return positions** (`stable != index`) are left out and named
-      in `warnings`. A hardware notched lever holds wherever it is left, so a
-      notch on a position the cab lever springs back from would keep
-      commanding it (on the Traxx set-point controller: keep raising traction
-      force) and the game and the hardware would disagree about the lever.
-      Drive such positions with buttons or sequences instead. A control with
-      fewer than two holding notches is not a lever (`{:error, :spring_return}`).
+    * Neighbouring gates with the same value and the same behaviour (the ED250
+      throttle's two `0` positions, which both hold) are merged: they are one
+      detent to the hardware.
+    * **Spring-back positions** (`stable != index`) are notches like any other:
+      a position of the lever is a position, and whether the physical lever
+      springs back from it is up to the hardware (a spring, a detent valley,
+      or nothing). Each notch records `springs_back_to`, the notch index the
+      cab lever returns to, only so the notch disk designer and the mapping
+      wizard can shape and explain it; runtime code never reads it. While the
+      hardware stays in such a position the bridge keeps the value applied
+      (the game would spring its own lever back).
+    * A control with fewer than two notches is not a lever
+      (`{:error, :too_few_positions}`).
 
   Values are rounded to 2 places like every simulator value Trenino stores.
   """
@@ -74,6 +78,44 @@ defmodule Trenino.Simulator.SimRailLevers do
     do: true
 
   defp lever?(%Control{}), do: false
+
+  @doc """
+  The levers to offer for setup: a train has one physical lever per cab writing
+  the same path, so levers with the same path and notch table are listed once.
+  Variants with different tables stay apart: the EU07's brake handle exists as
+  a smooth and a stepped control in each cab (`variant/1`).
+  """
+  @spec distinct([Control.t()]) :: [Control.t()]
+  def distinct(controls) when is_list(controls) do
+    controls |> levers() |> Enum.uniq_by(&{&1.path, notch_table(&1)})
+  end
+
+  @doc """
+  How the control is operated: "Smooth" (dragged freely, possibly with notch
+  bands) or "Stepped" (moves notch by notch).
+  """
+  @spec variant(Control.t()) :: String.t()
+  def variant(%Control{type: type}) when is_binary(type) do
+    if String.contains?(type, "Smooth"), do: "Smooth", else: "Stepped"
+  end
+
+  def variant(%Control{}), do: "Stepped"
+
+  @doc """
+  The cab a control sits in ("Cab A"), from its place in the vehicle: SimRail
+  names cab parts `kabina A`, `kabina_4e_B`, `traxx_kabina_A`. Nil outside a cab.
+  """
+  @spec cab(Control.t()) :: String.t() | nil
+  def cab(%Control{id: id}) do
+    id
+    |> String.split("/")
+    |> Enum.find_value(fn part ->
+      case Regex.run(~r/kabina.*[_ ]([A-Z])$/i, part) do
+        [_, letter] -> "Cab " <> String.upcase(letter)
+        nil -> nil
+      end
+    end)
+  end
 
   @doc """
   The lever control writing `path`. Several controls can write the same path
@@ -122,59 +164,94 @@ defmodule Trenino.Simulator.SimRailLevers do
   end
 
   @doc "Lever configuration for `control`, see the module documentation."
-  @spec analyze(Control.t()) :: {:ok, Analysis.t()} | {:error, :no_positions | :spring_return}
+  @spec analyze(Control.t()) :: {:ok, Analysis.t()} | {:error, :no_positions | :too_few_positions}
   def analyze(%Control{positions: []}), do: {:error, :no_positions}
 
   def analyze(%Control{positions: positions} = control) do
-    {holding, springing} =
+    zones =
       positions
       |> Enum.sort_by(& &1.index)
-      |> Enum.split_with(&(not Control.momentary?(&1)))
-
-    zones = holding |> Enum.flat_map(&zone/1) |> merge_gates()
+      |> Enum.flat_map(&zone/1)
+      |> merge_gates()
 
     if length(zones) < 2 do
-      {:error, :spring_return}
+      {:error, :too_few_positions}
     else
       {:ok,
        %Analysis{
          control: control,
          lever_type: lever_type(zones),
-         suggested_notches: zones |> Enum.with_index() |> Enum.map(&notch/1),
-         warnings: spring_warnings(springing, positions)
+         suggested_notches: notches(zones)
        }}
     end
   end
 
-  # A zone is {:gate, value, label} or {:linear, low, high, label}.
+  # A zone is one notch to be: its shape, the game positions it covers and the
+  # position it springs back to (nil when it holds).
   defp zone(%Position{smooth: true, lower: lower, upper: upper} = position)
        when is_number(lower) and is_number(upper) and lower != upper do
-    [{:linear, round2(min(lower, upper)), round2(max(lower, upper)), label(position)}]
+    [
+      %{
+        shape: {:linear, round2(min(lower, upper)), round2(max(lower, upper))},
+        label: label(position),
+        positions: [position.index],
+        springs_to: springs_to(position)
+      }
+    ]
   end
 
-  defp zone(%Position{value: value} = position) when is_number(value),
-    do: [{:gate, round2(value), label(position)}]
+  defp zone(%Position{value: value} = position) when is_number(value) do
+    [
+      %{
+        shape: {:gate, round2(value)},
+        label: label(position),
+        positions: [position.index],
+        springs_to: springs_to(position)
+      }
+    ]
+  end
 
   defp zone(%Position{}), do: []
 
+  defp springs_to(%Position{} = position),
+    do: if(Control.momentary?(position), do: position.stable)
+
+  # Neighbouring gates with the same value and the same behaviour (both hold,
+  # or both spring back to the same position) are one detent.
   defp merge_gates(zones) do
     zones
     |> Enum.chunk_by(fn
-      {:gate, value, _label} -> {:gate, value}
-      linear -> linear
+      %{shape: {:gate, value}, springs_to: target} -> {:gate, value, target}
+      zone -> zone
     end)
-    |> Enum.map(&hd/1)
+    |> Enum.map(fn [first | _] = chunk ->
+      %{first | positions: Enum.flat_map(chunk, & &1.positions)}
+    end)
   end
 
   defp lever_type(zones) do
-    case zones |> Enum.map(&elem(&1, 0)) |> Enum.uniq() do
+    case zones |> Enum.map(&elem(&1.shape, 0)) |> Enum.uniq() do
       [:gate] -> :discrete
       [:linear] -> :continuous
       _ -> :hybrid
     end
   end
 
-  defp notch({{:gate, value, label}, index}) do
+  # Spring-back targets are game position indexes; notches need notch indexes.
+  defp notches(zones) do
+    notch_of =
+      for {zone, index} <- Enum.with_index(zones), position <- zone.positions, into: %{} do
+        {position, index}
+      end
+
+    zones
+    |> Enum.with_index()
+    |> Enum.map(fn {zone, index} ->
+      Map.put(notch(zone, index), :springs_back_to, zone.springs_to && notch_of[zone.springs_to])
+    end)
+  end
+
+  defp notch(%{shape: {:gate, value}, label: label}, index) do
     %{
       type: :gate,
       index: index,
@@ -187,7 +264,7 @@ defmodule Trenino.Simulator.SimRailLevers do
     }
   end
 
-  defp notch({{:linear, low, high, label}, index}) do
+  defp notch(%{shape: {:linear, low, high}, label: label}, index) do
     %{
       type: :linear,
       index: index,
@@ -200,24 +277,6 @@ defmodule Trenino.Simulator.SimRailLevers do
       description: label || "#{format(low)} – #{format(high)}"
     }
   end
-
-  defp spring_warnings([], _positions), do: []
-
-  defp spring_warnings(springing, positions) do
-    names =
-      Enum.map_join(springing, ", ", fn %Position{} = position ->
-        target = Enum.find(positions, &(&1.index == position.stable))
-        "#{position_name(position)} (springs back to #{position_name(target)})"
-      end)
-
-    [
-      "Spring-return positions are not notches, because a hardware lever would hold them: " <>
-        names <> ". Use buttons or sequences for them."
-    ]
-  end
-
-  defp position_name(nil), do: "?"
-  defp position_name(%Position{} = position), do: label(position) || format(position.value)
 
   @doc """
   A readable name for a SimRail position label such as

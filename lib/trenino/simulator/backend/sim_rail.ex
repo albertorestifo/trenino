@@ -102,12 +102,16 @@ defmodule Trenino.Simulator.Backend.SimRail do
   end
 
   @impl true
-  def set(%__MODULE__{req: req}, path, value) when is_binary(path) do
+  def set(%__MODULE__{req: req} = handle, path, value) when is_binary(path) do
     with {:ok, number} <- to_number(value),
          {:ok, _result} <-
            req
            |> Req.put(url: "/api/v1/values/" <> encode_segment(path), json: %{value: number})
            |> handle_response() do
+      # The bridge keeps a written spring-back position applied (the game would
+      # spring its own lever back) only while a client stream is connected, so a
+      # crashed Trenino can't leave a lever held. Writing keeps that stream open.
+      Stream.ensure_started(handle)
       :ok
     end
   end

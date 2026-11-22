@@ -10,6 +10,8 @@ defmodule Trenino.Simulator.Backend.SimRailTest do
 
   defp handle(api_key \\ nil) do
     {:ok, handle} = SimRail.connect(%{url: @url, api_key: api_key})
+    # Writing starts the handle's stream; don't leave it retrying after the test.
+    on_exit(fn -> SimRail.Stream.stop(handle.ref) end)
     handle
   end
 
@@ -172,6 +174,15 @@ defmodule Trenino.Simulator.Backend.SimRailTest do
     test "reports an unknown path" do
       expect(Req, :put, fn _req, _opts -> status(404) end)
       assert SimRail.set(handle(), "A.b", 1) == {:error, :invalid_path}
+    end
+
+    test "keeps the stream open, the lease the bridge holds spring-back positions on" do
+      stub(Req, :put, fn _req, _opts -> ok(%{"held" => true}) end)
+      handle = handle()
+
+      assert SimRail.watch_process(handle) == nil
+      assert SimRail.set(handle, "Physics_Input_General.drive_handle", 6) == :ok
+      assert is_pid(SimRail.watch_process(handle))
     end
   end
 

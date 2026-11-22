@@ -402,7 +402,8 @@ defmodule Trenino.Train do
           # Simulator input ranges from analyzer
           sim_input_min: notch[:input_min],
           sim_input_max: notch[:input_max],
-          description: notch[:description]
+          description: notch[:description],
+          springs_back_to: notch[:springs_back_to]
         }
 
         attrs = Map.merge(attrs, Map.get(hardware_ranges, attrs.index, %{}))

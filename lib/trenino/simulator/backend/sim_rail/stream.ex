@@ -96,7 +96,7 @@ defmodule Trenino.Simulator.Backend.SimRail.Stream do
 
   Asynchronous: the stream may be busy connecting, so callers never wait
   on it. The stream keeps its watchers only in memory; a watcher that must
-  survive a stream crash monitors `whereis/1` (or `SimRail.stream/1`) and
+  survive a stream crash monitors `whereis/1` (or `SimRail.watch_process/1`) and
   calls `watch/3` again when it goes down.
   """
   @spec watch(SimRail.t(), [String.t()], pid()) :: :ok | {:error, term()}
@@ -105,6 +105,18 @@ defmodule Trenino.Simulator.Backend.SimRail.Stream do
       nil when paths == [] -> :ok
       nil -> with {:ok, stream} <- start(handle), do: cast_watch(stream, paths, pid)
       stream -> cast_watch(stream, paths, pid)
+    end
+  end
+
+  @doc """
+  Start the handle's stream if it isn't running, without watching anything.
+  Its connection is the bridge's lease for holding spring-back positions.
+  """
+  @spec ensure_started(SimRail.t()) :: :ok | {:error, term()}
+  def ensure_started(%SimRail{} = handle) do
+    case whereis(handle.ref) do
+      nil -> with {:ok, _pid} <- start(handle), do: :ok
+      _pid -> :ok
     end
   end
 

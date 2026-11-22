@@ -13,7 +13,7 @@ namespace TreninoBridge;
 
 public sealed class Mod : MelonMod
 {
-    public const string BridgeVersion = "0.2.0";
+    public const string BridgeVersion = "0.3.0";
     private const int DefaultPort = 31275;
     private const int TswPort = 31270;
 
@@ -69,6 +69,7 @@ public sealed class Mod : MelonMod
         MainThread.Drain();
         try
         {
+            TrainIO.ApplyHolds(StreamHub.HasSessions);
             StreamHub.Tick();
         }
         catch (Exception e)

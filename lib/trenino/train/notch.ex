@@ -57,6 +57,7 @@ defmodule Trenino.Train.Notch do
           sim_input_min: float() | nil,
           sim_input_max: float() | nil,
           description: String.t() | nil,
+          springs_back_to: non_neg_integer() | nil,
           lever_config: LeverConfig.t() | Ecto.Association.NotLoaded.t(),
           inserted_at: DateTime.t() | nil,
           updated_at: DateTime.t() | nil
@@ -75,6 +76,9 @@ defmodule Trenino.Train.Notch do
     field :sim_input_min, :float
     field :sim_input_max, :float
     field :description, :string
+    # The notch index the cab lever springs back to from here, nil when it
+    # holds. For notch disk design and the mapping wizard only.
+    field :springs_back_to, :integer
 
     belongs_to :lever_config, LeverConfig
 
@@ -95,6 +99,7 @@ defmodule Trenino.Train.Notch do
       :sim_input_min,
       :sim_input_max,
       :description,
+      :springs_back_to,
       :lever_config_id
     ])
     |> round_float_fields([

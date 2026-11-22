@@ -73,39 +73,75 @@ angle ≤ 35°, concave folds limited by roller curvature (K = 189 mm/rad²), St
 - Unknowns that only a print answers: the actual spring force and lever friction (hence
   the dead band), and how holding a flank feels over time. See validation.
 
+## Principle
+
+A spring-back position is a position of the lever. Whether the physical lever springs
+back is a hardware choice (a spring, a valley on the disk, or nothing), so the software
+never refuses such positions or treats them differently at runtime. Only the notch disk
+designer and the mapping wizard know about it, through the notch's `springs_back_to`.
+
+## Corrections from review (Fable, 2026-11-23)
+
+- **Spring force is lowest at the valley floor**, where the return must finish. The
+  Standard-notch comparison holds only at equal lift: keep the floor near the Standard
+  notch's bottom lift, or make the flank steeper.
+- **The rounded bottom is not short.** With the curvature limit K = 189 mm/rad²,
+  reaching 10.6 mm/rad takes ~3.2° each side (4.3° for 14 mm/rad), a third of a 12°
+  flank. The linear part must be steeper than the average.
+- **Crests have zero slope**, so the lever can park on one between a momentary band and
+  the next gate. Make crests sharp, and end the outer band before the crest blend.
+- **Linear flanks give no cue at band boundaries** (centre/flank, or the ED250's two bands
+  on one flank). Consider a small slope step at each boundary.
+- **Even spacing breaks the recipe.** The ED250 `speed_ctrl` has 4 positions, so even
+  spacing is 38.7° per position: two bands on one flank would span 77°, ~3.7 mm/rad over
+  the 5 mm lift budget, far below the 10.6 mm/rad needed. Valleys need their own width
+  (~5–6° per band), with `spring=` carrying per-side band counts; momentary bands don't
+  count against the position limits.
+- **Grouping:** a stable notch plus the contiguous neighbours whose `springs_back_to`
+  points at it; fall back to plain gates with a warning when non-contiguous or chained.
+  A valley overrides Deep.
+- **SimRail anchors:** values are non-uniform and reversed (Traxx `main_brake` 5…0), so
+  `NotchDesign`'s input-order assumptions, `travel/1` and `gate_anchor/2` give garbage
+  anchors for catalog levers: pass `nil` anchors.
+- **Mapping wizard:** flank bands don't hold, so don't ask "move to X and release".
+  Capture the centre by releasing several times from each side (centre band = measured
+  spread plus margin), and capture each flank's far extent, then split the bands.
+- **Mapper hysteresis:** `LeverMapper` has none; ADC noise on a centre/flank boundary
+  becomes repeated nudges, which matter on rate positions. Add hysteresis there.
+
 ## Travel budget
 
 116° of travel. Traxx `drive_handle` as an example: two valleys of ~30° (±12° flanks
-plus crest room) and two gates leave ~40° for crests and gate spacing. That's comfortable,
-while Standard spacing is ~14.5° per position. The layout is free for SimRail: notches are
-discrete positions written by the bridge, not points on a continuous simulator input, so
-the TSW-style "place each gate at its simulator input" scoring isn't needed.
+plus crest room) and two gates leave ~40° for crests and gate spacing. Valleys need their
+own widths (see above), not the generator's even spacing. The layout is free for SimRail:
+notches are discrete positions written by the bridge, not points on a continuous
+simulator input, so the TSW-style "place each gate at its simulator input" scoring isn't
+needed.
 
 ## Changes
 
 1. **Generator** (private CAD project): a *Spring* feel/recipe. A valley is given by its
-   centre position and momentary positions on each side; the recipe emits linear
-   flanks, a roller-limited rounded bottom and crests, and checks pressure angle,
-   curvature, lift range and minimum flank slope (≥ the tested Standard flank). Link
-   parameter, e.g. `spring=4:3-5` (centre 4, flank positions 3 and 5), alongside
-   `deep=` / `smooth=`.
-2. **Trenino notches:** today `SimRailLevers` drops spring-back positions with a
-   warning. Keep them instead: a notch gets `momentary_to` (the index of its stable
-   notch). `NotchDesign` groups each stable notch with the momentary notches pointing at
-   it into a valley segment and emits `spring=`.
-3. **Mapping wizard:** show the valley as one centre band plus flank bands, centre band
-   wide enough for the dead band; capture the bands with the hardware as today.
-4. **Runtime:** while the hardware sits in a flank band, the momentary value must stay
-   applied. The game springs its own lever back on its own (`m_returnToStablePos`
-   ≈ 0.15 s on the Traxx), so a single write is not enough: re-send at > ~10 Hz while
-   held, or add a bridge `hold`/`release` op that re-asserts the value every frame. Some
-   momentary positions are rates (Traxx traction set-point rises while held), which a
-   continuous hold gives naturally.
+   centre position and band counts on each side; the recipe emits linear flanks, a
+   roller-limited rounded bottom and sharp crests, gives the valley its own width, and
+   checks pressure angle, curvature, lift range and minimum flank slope (≥ the tested
+   Standard flank, at the floor's lift). Link parameter alongside `deep=` / `smooth=`.
+2. **Trenino notches — done.** `SimRailLevers` keeps every position as a notch; each
+   notch records `springs_back_to` (notch index). Equal-value neighbours merge only when
+   they behave the same. Next: `NotchDesign` groups valleys and emits the recipe.
+3. **Mapping wizard:** as in the corrections above.
+4. **Runtime — done in the bridge (0.3.0), untested in game.** A write means "the lever is
+   here until the next write". When a written value is a spring-back position of a
+   control on that path, the bridge re-applies it every frame (and moves the cab lever
+   back to it) until a different value is written. Holds last only while at least one
+   client stream is connected, and clear on vehicle change. Trenino's SimRail backend
+   keeps its stream open after a write. Trenino itself sends positions on change, as for
+   any lever.
 
 ## Validation
 
-1. In the game, through the bridge: verify what holding a momentary position needs
-   (repeated writes vs a hold op) on the Traxx `drive_handle` and ED250 `speed_ctrl`.
+1. In the game, through the bridge: verify the hold (no stable-value frames leaking
+   through) on the Traxx `drive_handle` and ED250 `speed_ctrl`, and its release when
+   Trenino disconnects.
 2. Print one test disk, Traxx `drive_handle`, at the default slope: measure return from
    each flank, the dead band at the bottom, and holding effort.
 3. Tune the flank slope from that, then fix the recipe's defaults.

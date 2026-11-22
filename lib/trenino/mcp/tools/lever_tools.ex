@@ -498,10 +498,8 @@ defmodule Trenino.MCP.Tools.LeverTools do
       "Several controls with different positions write this control_path. Pass control_id, " <>
         "one of: #{Enum.join(ids, ", ")}."
 
-  defp error_message(:spring_return, _id),
-    do:
-      "That control springs back to one position, so it cannot be a hardware lever. " <>
-        "Use buttons or sequences for it."
+  defp error_message(:too_few_positions, _id),
+    do: "That control has fewer than two positions, so it is not a lever."
 
   defp error_message(:no_positions, _id),
     do: "The simulator reports no positions for that control."
