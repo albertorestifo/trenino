@@ -42,6 +42,7 @@ defmodule Trenino.Hardware.ConfigurationManager do
     @type in_flight_info :: %{
             port: String.t(),
             timer_ref: reference(),
+            apply_ref: reference(),
             device_id: integer()
           }
 
@@ -290,17 +291,19 @@ defmodule Trenino.Hardware.ConfigurationManager do
   end
 
   @impl true
-  def handle_info({:config_timeout, config_id}, %State{} = state) do
+  def handle_info({:config_timeout, config_id, apply_ref}, %State{} = state) do
+    # The apply_ref ties the timeout to the apply that started it: a timeout left over
+    # from an earlier apply of the same config_id must not fail the one now in flight.
     case Map.pop(state.in_flight, config_id) do
-      {nil, _} ->
-        {:noreply, state}
-
-      {%{port: port, device_id: device_id}, new_in_flight} ->
+      {%{apply_ref: ^apply_ref, port: port, device_id: device_id}, new_in_flight} ->
         # The device never answered: a USB, cable or firmware condition the app can't fix.
         # The UI tells the user to reconnect, so this isn't reported as an app error.
         Logger.warning("Configuration #{config_id} timed out")
         broadcast_config_event({:configuration_failed, port, device_id, :timeout})
         {:noreply, %{state | in_flight: new_in_flight}}
+
+      _stale_or_unknown ->
+        {:noreply, state}
     end
   end
 
@@ -334,12 +337,19 @@ defmodule Trenino.Hardware.ConfigurationManager do
          :ok <- validate_configuration(port, parts, gauges, outputs),
          :ok <- validate_gauge_pins(gauges, inputs, matrices, outputs),
          config_id = device.config_id,
+         # In-flight applies are keyed by config_id, so the same configuration can't be
+         # applied to a second port until the first apply finishes.
+         false <- Map.has_key?(state.in_flight, config_id),
          :ok <- send_configuration_messages(port, config_id, parts) do
-      timer_ref = Process.send_after(self(), {:config_timeout, config_id}, @config_timeout_ms)
+      apply_ref = make_ref()
+
+      timer_ref =
+        Process.send_after(self(), {:config_timeout, config_id, apply_ref}, @config_timeout_ms)
 
       in_flight_info = %{
         port: port,
         timer_ref: timer_ref,
+        apply_ref: apply_ref,
         device_id: device_id,
         fingerprint: Hardware.config_fingerprint(inputs, matrices, i2c_modules, gauges)
       }

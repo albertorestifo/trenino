@@ -554,7 +554,7 @@ defmodule TreninoWeb.ConfigurationEditLive do
          |> put_flash(:error, configuration_failure_message(:no_inputs))}
 
       {:error, reason}
-      when reason in [:firmware_update_required, :gauge_pin_conflict, :too_many_modules] ->
+      when reason in [:busy, :firmware_update_required, :gauge_pin_conflict, :too_many_modules] ->
         {:noreply,
          socket
          |> assign(:applying, false)
@@ -902,6 +902,10 @@ defmodule TreninoWeb.ConfigurationEditLive do
   def configuration_failure_message(:no_inputs),
     do:
       "This configuration is empty. Add at least one input, matrix, output, display or gauge, then apply again."
+
+  def configuration_failure_message(:busy),
+    do:
+      "This configuration is still being applied to a controller. Wait for it to finish, then apply again."
 
   def configuration_failure_message(:firmware_update_required),
     do:

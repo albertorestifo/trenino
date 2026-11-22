@@ -15,6 +15,13 @@ defmodule Trenino.Hardware.ConfigurationManagerTest do
 
   defp unique_port, do: "/dev/tty.test_#{System.unique_integer([:positive])}"
 
+  defp in_flight_apply_ref(config_id) do
+    case :sys.get_state(ConfigurationManager).in_flight[config_id] do
+      nil -> nil
+      info -> info.apply_ref
+    end
+  end
+
   describe "apply_configuration/2" do
     setup do
       {:ok, device} = Hardware.create_device(%{name: "Test Device"})
@@ -427,12 +434,13 @@ defmodule Trenino.Hardware.ConfigurationManagerTest do
     } do
       device_id = device.id
       assert {:ok, config_id} = ConfigurationManager.apply_configuration(port, device_id)
+      apply_ref = in_flight_apply_ref(config_id)
 
       warnings =
         ExUnit.CaptureLog.capture_log([level: :warning], fn ->
           errors =
             ExUnit.CaptureLog.capture_log([level: :error], fn ->
-              send(ConfigurationManager, {:config_timeout, config_id})
+              send(ConfigurationManager, {:config_timeout, config_id, apply_ref})
               assert_receive {:configuration_failed, ^port, ^device_id, :timeout}
             end)
 
@@ -441,6 +449,50 @@ defmodule Trenino.Hardware.ConfigurationManagerTest do
         end)
 
       assert warnings =~ "Configuration #{config_id} timed out"
+    end
+
+    test "a timeout left over from an earlier apply doesn't fail the current one", %{
+      device: device,
+      port: port
+    } do
+      assert {:ok, config_id} = ConfigurationManager.apply_configuration(port, device.id)
+      apply_ref = in_flight_apply_ref(config_id)
+
+      send(ConfigurationManager, {:config_timeout, config_id, make_ref()})
+      :sys.get_state(ConfigurationManager)
+      refute_received {:configuration_failed, ^port, _, :timeout}
+
+      send(
+        ConfigurationManager,
+        {:serial_message, port, %ConfigurationStored{config_id: config_id}}
+      )
+
+      assert_receive {:configuration_applied, ^port, _device, ^config_id}
+      assert in_flight_apply_ref(config_id) == nil
+      refute apply_ref == nil
+    end
+
+    test "the same configuration can't be applied to a second port while one is pending", %{
+      device: device,
+      port: port
+    } do
+      other_port = unique_port()
+      Mimic.stub(Trenino.Serial.Connection, :send_message, fn _port, _ -> :ok end)
+
+      assert {:ok, config_id} = ConfigurationManager.apply_configuration(port, device.id)
+      apply_ref = in_flight_apply_ref(config_id)
+
+      assert {:error, :busy} = ConfigurationManager.apply_configuration(other_port, device.id)
+      # The first apply is still tracked on its own port.
+      assert %{port: ^port, apply_ref: ^apply_ref} =
+               :sys.get_state(ConfigurationManager).in_flight[config_id]
+
+      send(
+        ConfigurationManager,
+        {:serial_message, port, %ConfigurationStored{config_id: config_id}}
+      )
+
+      assert_receive {:configuration_applied, ^port, _device, ^config_id}
     end
   end
 
