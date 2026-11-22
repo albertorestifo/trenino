@@ -82,5 +82,12 @@ defmodule Trenino.Simulator.Backend do
   """
   @callback watch(handle(), [path()], pid()) :: :ok | error()
 
-  @optional_callbacks controls: 1, watch: 3
+  @doc """
+  The process that pushes `watch/3` values for this handle, or nil when none
+  runs. It keeps its watched paths in memory only, so a watcher monitors it
+  and calls `watch/3` again when it goes down. Only with `:push_values`.
+  """
+  @callback watch_process(handle()) :: pid() | nil
+
+  @optional_callbacks controls: 1, watch: 3, watch_process: 1
 end

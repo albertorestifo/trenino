@@ -288,18 +288,18 @@ defmodule Trenino.Simulator.Backend.SimRail.StreamTest do
 
   test "exposes the stream pid so watchers can monitor it", %{port: port} do
     handle = connect(port)
-    refute SimRail.stream(handle)
+    refute SimRail.watch_process(handle)
 
     :ok = SimRail.watch(handle, ["A.a"], self())
-    assert is_pid(SimRail.stream(handle))
-    assert SimRail.stream(handle) == Stream.whereis(handle.ref)
+    assert is_pid(SimRail.watch_process(handle))
+    assert SimRail.watch_process(handle) == Stream.whereis(handle.ref)
   end
 
   test "keeps the token out of the stream state's inspect output", %{port: port} do
     handle = connect(port, "secret-token")
     :ok = SimRail.watch(handle, ["A.a"], self())
 
-    refute handle |> SimRail.stream() |> :sys.get_state() |> inspect() =~ "secret-token"
+    refute handle |> SimRail.watch_process() |> :sys.get_state() |> inspect() =~ "secret-token"
   end
 
   test "one stream per handle, stopped by disconnect", %{port: port} do

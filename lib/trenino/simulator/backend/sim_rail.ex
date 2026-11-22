@@ -139,8 +139,9 @@ defmodule Trenino.Simulator.Backend.SimRail do
   `disconnect/1`) nothing is pushed any more. Watchers monitor this pid and
   call `watch/3` again when it goes down.
   """
-  @spec stream(t()) :: pid() | nil
-  def stream(%__MODULE__{ref: ref}), do: Stream.whereis(ref)
+  @impl true
+  @spec watch_process(t()) :: pid() | nil
+  def watch_process(%__MODULE__{ref: ref}), do: Stream.whereis(ref)
 
   @doc "The raw vehicle schema (`GET /api/v1/vehicle`)."
   @spec vehicle(t()) :: {:ok, map()} | {:error, term()}
