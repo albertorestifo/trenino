@@ -217,7 +217,7 @@ internal sealed class Server : IDisposable
     private static object Status()
     {
         var inTrain = TrainIO.Refresh();
-        return new { ok = true, api = Version, bridge = Mod.BridgeVersion, inTrain, generation = TrainIO.Generation, holds = TrainIO.HoldCount };
+        return new { ok = true, api = Version, bridge = Mod.BridgeVersion, inTrain, generation = TrainIO.Generation };
     }
 
     private static Task<object> SetValue(string path, JsonElement body) =>

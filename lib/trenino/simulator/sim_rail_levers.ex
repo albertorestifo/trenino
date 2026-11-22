@@ -28,9 +28,10 @@ defmodule Trenino.Simulator.SimRailLevers do
       springs back from it is up to the hardware (a spring, a detent valley,
       or nothing). Each notch records `springs_back_to`, the notch index the
       cab lever returns to, only so the notch disk designer and the mapping
-      wizard can shape and explain it; runtime code never reads it. While the
-      hardware stays in such a position the bridge keeps the value applied
-      (the game would spring its own lever back).
+      wizard can shape and explain it; runtime code never reads it. A written
+      value stays until the next write (the game springs its lever back only
+      from its own keyboard/mouse interaction), so the value tracks the
+      hardware lever.
     * A control with fewer than two notches is not a lever
       (`{:error, :too_few_positions}`).
 

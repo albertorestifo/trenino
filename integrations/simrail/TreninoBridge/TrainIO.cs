@@ -106,7 +106,6 @@ internal static class TrainIO
         _controlsById = controlsById;
         _vehiclePtr = ptr;
         _generation++;
-        _holds.Clear(); // a held lever of the previous vehicle means nothing here
     }
 
     private static void Require()
@@ -148,61 +147,7 @@ internal static class TrainIO
         if (float.IsNaN(value) || float.IsInfinity(value)) throw new BridgeException(400, "value must be finite");
         f.Storage.data[f.Index] = value;
         var synced = SyncControls(f.Path, value);
-
-        // A write means "the lever is here until the next write". The game springs
-        // its own lever back from momentary positions, so those are held.
-        var held = IsSpringBackValue(f.Path, value);
-        if (held) _holds[f.Path] = value; else _holds.Remove(f.Path);
-
-        return new { path = f.Path, value = f.Storage.data[f.Index], syncedControls = synced, held };
-    }
-
-    // --- holds --------------------------------------------------------------
-
-    // Paths whose last written value is a spring-back position, with that value.
-    private static readonly Dictionary<string, float> _holds = new(StringComparer.OrdinalIgnoreCase);
-
-    public static int HoldCount => _holds.Count;
-
-    /// <summary>
-    /// Keeps held values applied every frame, as a held lever would. The game's
-    /// own return writes the stable value after ~0.15 s; this puts the held value
-    /// back and moves the cab lever to match. `leaseAlive` is false when no client
-    /// is connected: a crashed or disconnected Trenino must not leave a lever held
-    /// (on a set-point controller that would keep raising traction).
-    /// </summary>
-    public static void ApplyHolds(bool leaseAlive)
-    {
-        if (_holds.Count == 0) return;
-        if (!leaseAlive || !Refresh()) { _holds.Clear(); return; }
-
-        foreach (var (path, value) in _holds)
-        {
-            if (!_fields.TryGetValue(path, out var f)) continue;
-            var data = f.Storage.data;
-            if (f.Index < data.Length && data[f.Index] != value) data[f.Index] = value;
-
-            foreach (var c in _controls)
-            {
-                if (!string.Equals(c.Path, path, StringComparison.OrdinalIgnoreCase)) continue;
-                if (Safe(() => c.Control.CurrentPhysicsValue) != value) c.Control.SetStateFromPhysics(value);
-            }
-        }
-    }
-
-    // Whether `value` is a position some control on `path` springs back from.
-    private static bool IsSpringBackValue(string path, float value)
-    {
-        foreach (var c in _controls)
-        {
-            if (!string.Equals(c.Path, path, StringComparison.OrdinalIgnoreCase)) continue;
-            foreach (var p in Positions(c))
-            {
-                if (p.Value is float v && Math.Abs(v - value) < 1e-4f && p.Stable is int stable && stable != p.Index)
-                    return true;
-            }
-        }
-        return false;
+        return new { path = f.Path, value = f.Storage.data[f.Index], syncedControls = synced };
     }
 
     /// <summary>Moves a cab control to a position index, using the game's own notch value.</summary>

@@ -43,10 +43,15 @@ building the Trenino SimRail connector. Raw data lives next to this file:
   4/6 spring to 5 (a set-point controller: nudge to raise/lower traction force).
   They are ordinary positions to Trenino: whether the physical lever springs back is up
   to the hardware (a spring, a detent valley, or none). Each notch records
-  `springs_back_to` for the notch disk designer only. The game springs its own lever
-  back ~0.15 s after a write, so the bridge **holds** a written spring-back value
-  (re-applies it every frame) until the next write to that path, while at least one
-  client stream is connected (the lease: a crashed Trenino releases it).
+  `springs_back_to` for the notch disk designer only.
+  **A written value stays until the next write, spring-back positions included**
+  (tested 2026-11-23, Traxx `drive_handle` 0 and `speed_ctrl` 1: value and cab lever
+  position unchanged for 2 s+ with nothing re-applying them). The game springs a lever
+  back only when its own keyboard/mouse interaction is released, so the value tracks
+  the hardware lever: when the hardware springs back, Trenino writes the rest position.
+  An earlier note here claimed the game springs written values back after ~0.15 s; that
+  drift came from the driver operating the cab during the test. Bridge 0.3.0 briefly
+  "held" such values; 0.3.1 removed it.
 - **One handle can appear as several controls on the same path**: the same lever in
   each cab (identical tables, listed once by `SimRailLevers.distinct/1`) and, on some
   trains, a smooth and a stepped variant of one handle (the EU07 brakes: see below).
@@ -148,9 +153,7 @@ building the Trenino SimRail connector. Raw data lives next to this file:
 
 - The EN57 and Traxx profiles were captured before the bridge reported `stable` and
   button values; re-capture them to have spring-back data for those trains.
-- Bridge holds (0.3.0) are untested in the game: check a recording for frames where the
-  stable value leaks through during a hold (the game's return firing before our
-  re-assert), and that per-frame `SetStateFromPhysics` behaves in multiplayer.
+- Whether a written spring-back value also stays in multiplayer (tested single-player).
 - How to charge the brake pipe / reset after an emergency brake via IO (Traxx).
 - Units: `velocity` (km/h?), pressures (bar), `traction_force_*` (kN?).
 - Do writes behave the same in multiplayer (physics may run server-side)?

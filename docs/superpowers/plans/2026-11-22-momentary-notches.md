@@ -129,22 +129,19 @@ needed.
    notch records `springs_back_to` (notch index). Equal-value neighbours merge only when
    they behave the same. Next: `NotchDesign` groups valleys and emits the recipe.
 3. **Mapping wizard:** as in the corrections above.
-4. **Runtime — done in the bridge (0.3.0), untested in game.** A write means "the lever is
-   here until the next write". When a written value is a spring-back position of a
-   control on that path, the bridge re-applies it every frame (and moves the cab lever
-   back to it) until a different value is written. Holds last only while at least one
-   client stream is connected, and clear on vehicle change. Trenino's SimRail backend
-   keeps its stream open after a write. Trenino itself sends positions on change, as for
-   any lever.
+4. **Runtime — nothing needed (tested in game 2026-11-23).** A write already means "the
+   lever is here until the next write": the game springs a lever back only from its own
+   keyboard/mouse interaction, never from a written value (Traxx `drive_handle` and
+   `speed_ctrl` kept written spring-back values, cab lever included, with nothing
+   re-applying them). Trenino sends positions on change as for any lever; when the
+   hardware springs back, it sends the rest position. Rate positions act for as long as
+   the hardware sits there. (A bridge-side hold was built and removed again in 0.3.1.)
 
 ## Validation
 
-1. In the game, through the bridge: verify the hold (no stable-value frames leaking
-   through) on the Traxx `drive_handle` and ED250 `speed_ctrl`, and its release when
-   Trenino disconnects.
-2. Print one test disk, Traxx `drive_handle`, at the default slope: measure return from
+1. Print one test disk, Traxx `drive_handle`, at the default slope: measure return from
    each flank, the dead band at the bottom, and holding effort.
-3. Tune the flank slope from that, then fix the recipe's defaults.
+2. Tune the flank slope from that, then fix the recipe's defaults.
 
 ## Open questions
 

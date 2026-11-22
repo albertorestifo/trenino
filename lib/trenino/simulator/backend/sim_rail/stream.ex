@@ -108,18 +108,6 @@ defmodule Trenino.Simulator.Backend.SimRail.Stream do
     end
   end
 
-  @doc """
-  Start the handle's stream if it isn't running, without watching anything.
-  Its connection is the bridge's lease for holding spring-back positions.
-  """
-  @spec ensure_started(SimRail.t()) :: :ok | {:error, term()}
-  def ensure_started(%SimRail{} = handle) do
-    case whereis(handle.ref) do
-      nil -> with {:ok, _pid} <- start(handle), do: :ok
-      _pid -> :ok
-    end
-  end
-
   @doc "Stop the handle's stream, if running."
   @spec stop(reference()) :: :ok
   def stop(ref) do
