@@ -8,7 +8,7 @@ defmodule Trenino.Simulator.SimRailLeversTest do
   alias Trenino.Simulator.SimRailLevers
   alias Trenino.Simulator.SimRailLevers.Analysis
   alias Trenino.Train, as: TrainContext
-  alias Trenino.Train.Notch
+  alias Trenino.Train.{Notch, NotchDesign}
 
   @stepped "PhysicsInteractionLeverStepped"
   @smooth "PhysicsInteractionLeverSmooth"
@@ -287,13 +287,15 @@ defmodule Trenino.Simulator.SimRailLeversTest do
         analysis
       )
 
-    springs =
-      config
-      |> Trenino.Repo.preload(:notches, force: true)
-      |> Map.fetch!(:notches)
-      |> Enum.sort_by(& &1.index)
-      |> Enum.map(& &1.springs_back_to)
+    config = Trenino.Repo.preload(config, :notches, force: true)
+    springs = config.notches |> Enum.sort_by(& &1.index) |> Enum.map(& &1.springs_back_to)
 
     assert springs == [1, nil, 1, nil, 5, nil, 5, nil]
+
+    # The notch disk generator gets them as valleys around 2 and 6
+    assert {:ok, url} = NotchDesign.generator_link(config, "Traxx")
+    params = url |> URI.parse() |> Map.fetch!(:query) |> URI.decode_query()
+    assert params["positions"] == "8"
+    assert params["spring"] == "1>2,3>2,5>6,7>6"
   end
 end

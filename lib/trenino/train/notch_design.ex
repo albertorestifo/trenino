@@ -41,6 +41,16 @@ defmodule Trenino.Train.NotchDesign do
   positions. Disks with Deep positions stay within 9 positions unless the
   lever needs more.
 
+  ## Spring-back positions
+
+  A lever whose notches spring back to another (SimRail levers, from the
+  game's own controls) keeps one position per notch, in index order, and the
+  link lists them as `spring=P>T`. The generator turns each resting position
+  and the positions springing back to it into a valley with steep flanks, and
+  lays the disk out itself, so no layout is searched here. Only positions
+  outside the valleys can be Deep. A lever where every position springs back
+  to one has no design, and spring-back doesn't mix with linear ranges.
+
   The generator checks the design when it opens. Deep needs room: up to 9
   positions it keeps the tested depth, and closer than that the generator
   cuts it shallower (about 1.4 mm at 11 positions, 0.25 mm at 13) and says
@@ -67,13 +77,19 @@ defmodule Trenino.Train.NotchDesign do
 
   @type t :: %__MODULE__{
           name: String.t() | nil,
-          positions: [{feel(), String.t()}]
+          positions: [{feel(), String.t()}],
+          spring: [{pos_integer(), pos_integer()}]
         }
 
   @enforce_keys [:positions]
-  defstruct [:name, :positions]
+  defstruct [:name, :positions, spring: []]
 
-  @type error :: :no_notches | :too_few_positions | :too_many_positions
+  @type error ::
+          :no_notches
+          | :too_few_positions
+          | :too_many_positions
+          | :all_spring_back
+          | :spring_with_range
 
   @doc """
   Builds the design for a lever's notches. `name` becomes the disk name.
@@ -85,6 +101,13 @@ defmodule Trenino.Train.NotchDesign do
 
   def from_notches(notches, name) when is_list(notches) do
     notches = Enum.sort_by(notches, fn %Notch{index: index} -> index end)
+
+    if Enum.any?(notches, &is_integer(&1.springs_back_to)),
+      do: spring_design(notches, name),
+      else: plain_design(notches, name)
+  end
+
+  defp plain_design(notches, name) do
     travel = travel(notches)
     zero_centre = zero_centre?(notches)
 
@@ -122,6 +145,7 @@ defmodule Trenino.Train.NotchDesign do
         {"deep", Enum.join(positions_with(design, :deep), ",")},
         {"smooth", Enum.join(positions_with(design, :smooth), ",")}
       ] ++
+        spring_param(design.spring) ++
         Enum.map(design.positions, fn {_feel, label} -> {"label", label} end) ++
         if(design.name, do: [{"name", design.name}], else: [])
 
@@ -154,6 +178,70 @@ defmodule Trenino.Train.NotchDesign do
 
   def error_message(:too_many_positions),
     do: "The lever has more than #{@max_positions} notches, more than a disk can hold."
+
+  def error_message(:all_spring_back),
+    do:
+      "Every position springs back to the same one, so a notch disk can't hold it. " <>
+        "A spring-centred lever suits it better."
+
+  def error_message(:spring_with_range),
+    do: "The lever mixes spring-back positions with a linear range, which a disk can't combine."
+
+  defp spring_param([]), do: []
+
+  defp spring_param(spring),
+    do: [{"spring", Enum.map_join(spring, ",", fn {p, t} -> "#{p}>#{t}" end)}]
+
+  # One position per notch. A notch's `springs_back_to` is a notch index.
+  defp spring_design(notches, name) do
+    spring = spring_pairs(notches)
+
+    with :ok <- check_spring(notches, spring) do
+      zero_centre = zero_centre?(notches)
+      in_valley = MapSet.new(Enum.flat_map(spring, fn {p, t} -> [p, t] end))
+
+      positions =
+        for {notch, p} <- Enum.with_index(notches, 1) do
+          deep = not MapSet.member?(in_valley, p) and deep?(notch, zero_centre)
+          {if(deep, do: :deep, else: :standard), label(notch)}
+        end
+
+      {:ok, %__MODULE__{name: name, positions: positions, spring: spring}}
+    end
+  end
+
+  # 1-based {position, position it springs back to}
+  defp spring_pairs(notches) do
+    position_of = notches |> Enum.with_index(1) |> Map.new(fn {n, p} -> {n.index, p} end)
+
+    notches
+    |> Enum.with_index(1)
+    |> Enum.flat_map(fn {%Notch{springs_back_to: target}, p} ->
+      case Map.get(position_of, target) do
+        t when is_integer(t) and t != p -> [{p, t}]
+        _ -> []
+      end
+    end)
+  end
+
+  defp check_spring(notches, spring) do
+    count = length(notches)
+
+    cond do
+      Enum.any?(notches, &(&1.type == :linear)) -> {:error, :spring_with_range}
+      count > @max_positions -> {:error, :too_many_positions}
+      count < @min_positions -> {:error, :too_few_positions}
+      all_one_target?(spring, count) -> {:error, :all_spring_back}
+      true -> :ok
+    end
+  end
+
+  defp all_one_target?(spring, count) do
+    case spring |> Enum.map(&elem(&1, 1)) |> Enum.uniq() do
+      [_target] -> length(spring) == count - 1
+      _ -> false
+    end
+  end
 
   # Segments, before layout:
   #   {:notch, feel, label, anchor} - one position. `anchor` is where it

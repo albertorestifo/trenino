@@ -326,4 +326,76 @@ defmodule Trenino.Train.NotchDesignTest do
       refute NotchDesign.generator_url(design) =~ "name="
     end
   end
+
+  describe "spring-back positions" do
+    defp springing(notches, springs) do
+      Enum.map(notches, fn %Notch{index: i} = n -> %{n | springs_back_to: springs[i]} end)
+    end
+
+    # Traxx traction lever: notches 0 and 2 spring back to 1, 4 and 6 to 5
+    defp traxx do
+      0..7
+      |> Enum.map(&gate(&1, Integer.to_string(&1), &1 / 7, &1 / 7))
+      |> springing(%{0 => 1, 2 => 1, 4 => 5, 6 => 5})
+    end
+
+    test "keeps one position per notch and lists the spring-back positions" do
+      design = design!(traxx(), "Traxx")
+
+      assert NotchDesign.count(design) == 8
+      assert design.spring == [{1, 2}, {3, 2}, {5, 6}, {7, 6}]
+      assert NotchDesign.positions_with(design, :smooth) == []
+
+      query = design |> NotchDesign.generator_url() |> URI.parse() |> Map.get(:query)
+      params = URI.decode_query(query)
+      assert params["positions"] == "8"
+      assert params["spring"] == "1>2,3>2,5>6,7>6"
+      assert params["deep"] == ""
+    end
+
+    test "only positions outside the valleys can be Deep" do
+      notches =
+        [
+          gate(0, "Off", 0.0, 0.0),
+          gate(1, "1", 0.25, 0.25),
+          gate(2, "2", 0.5, 0.5),
+          gate(3, "Emergency", 1.0, 1.0)
+        ]
+        |> springing(%{0 => 1})
+
+      design = design!(notches)
+      assert design.spring == [{1, 2}]
+      assert NotchDesign.positions_with(design, :deep) == [4]
+    end
+
+    test "a lever whose positions all spring back to one has no design" do
+      notches =
+        0..3
+        |> Enum.map(&gate(&1, "", &1 / 3, &1 / 3))
+        |> springing(%{0 => 2, 1 => 2, 3 => 2})
+
+      assert NotchDesign.from_notches(notches) == {:error, :all_spring_back}
+      assert NotchDesign.error_message(:all_spring_back) =~ "springs back"
+    end
+
+    test "spring-back positions don't mix with a linear range" do
+      notches =
+        springing(
+          [
+            gate(0, "0", 0.0, 0.0),
+            gate(1, "1", 0.3, 0.3),
+            linear(2, "Power", {0, 1}, {0.5, 1.0})
+          ],
+          %{0 => 1}
+        )
+
+      assert NotchDesign.from_notches(notches) == {:error, :spring_with_range}
+    end
+
+    test "a lever without spring-back positions has no spring parameter" do
+      design = design!([gate(0, "A", 0.0, 0.0), gate(1, "B", 1.0, 1.0)])
+      assert design.spring == []
+      refute NotchDesign.generator_url(design) =~ "spring="
+    end
+  end
 end
