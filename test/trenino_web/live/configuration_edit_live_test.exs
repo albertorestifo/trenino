@@ -454,6 +454,16 @@ defmodule TreninoWeb.ConfigurationEditLiveTest do
       assert ConfigurationEditLive.configuration_failure_message(:no_inputs) =~
                "Add at least one input, matrix, output"
 
+      # A busy apply is a normal state, not an app error: it must not reach Sentry.
+      busy =
+        ExUnit.CaptureLog.capture_log([level: :error], fn ->
+          send(self(), {:msg, ConfigurationEditLive.configuration_failure_message(:busy)})
+        end)
+
+      assert busy == ""
+      assert_received {:msg, msg}
+      assert msg =~ "still being applied"
+
       firmware = ConfigurationEditLive.configuration_failure_message(:firmware_update_required)
       assert firmware =~ "3.3.0 or newer for gauges"
       refute firmware =~ "Stepper"

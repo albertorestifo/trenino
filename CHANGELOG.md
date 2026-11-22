@@ -6,6 +6,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+
+- Applying the same configuration to a second controller while the first is still being
+  applied now says to wait, instead of mixing up the two and reporting a timeout on the
+  wrong controller.
+
 ## [0.9.1] - 2026-11-21
 
 ### Changed
