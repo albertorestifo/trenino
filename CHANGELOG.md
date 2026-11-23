@@ -15,6 +15,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- Flashing firmware from the Windows app failed for every board with an unknown error,
+  because the bundled avrdude could not find its settings file. The app now passes it
+  to avrdude from where the installer puts it.
 - Applying the same configuration to a second controller while the first is still being
   applied now says to wait, instead of mixing up the two and reporting a timeout on the
   wrong controller.
