@@ -129,10 +129,6 @@ defmodule Trenino.MCP.Tools.ButtonBindingTools do
         ButtonController.reload_bindings()
         {:ok, %{button_binding: serialize(binding)}}
 
-      {:error, :destination_conflict} ->
-        {:error,
-         "This input is assigned to the virtual joystick. Remove that mapping before enabling this binding."}
-
       {:error, %Ecto.Changeset{} = changeset} ->
         {:error, format_changeset_errors(changeset)}
     end
@@ -147,10 +143,6 @@ defmodule Trenino.MCP.Tools.ButtonBindingTools do
           {:ok, updated} ->
             ButtonController.reload_bindings()
             {:ok, %{button_binding: serialize(updated)}}
-
-          {:error, :destination_conflict} ->
-            {:error,
-             "This input is assigned to the virtual joystick. Remove that mapping before enabling this binding."}
 
           {:error, %Ecto.Changeset{} = changeset} ->
             {:error, format_changeset_errors(changeset)}

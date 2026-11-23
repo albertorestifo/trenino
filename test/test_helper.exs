@@ -6,8 +6,6 @@
 # Stop the application child before installing Mimic's hardware guards.
 :ok = Supervisor.terminate_child(Trenino.Supervisor, Trenino.Serial.Connection)
 
-Code.require_file("support/fake_virtual_joystick.exs", __DIR__)
-
 Mimic.copy(Req, type_check: true)
 Mimic.copy(Trenino.Train.Identifier)
 Mimic.copy(Trenino.Train.LeverController)
@@ -29,8 +27,6 @@ Mimic.copy(Trenino.Serial.Connection)
 Mimic.copy(Trenino.Hardware)
 Mimic.copy(Trenino.Hardware.ConfigurationManager)
 Mimic.copy(Trenino.Keyboard)
-# Virtual joystick configuration tests inject their platform and system adapters
-# through application configuration so they never elevate or probe a real driver.
 
 # Build a pre-migrated template SQLite file once. Async DataCase tests
 # copy it to get an isolated per-test DB without paying the migration cost.

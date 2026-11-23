@@ -23,7 +23,6 @@ defmodule Trenino.Application do
         {Task.Supervisor, name: Trenino.TaskSupervisor},
         Trenino.Serial.Connection,
         Trenino.Hardware.ConfigurationManager,
-        virtual_joystick_manager_child(),
         Trenino.Hardware.Calibration.SessionSupervisor,
         Trenino.Firmware.UploadManager,
         Trenino.Train.Detection,
@@ -72,14 +71,6 @@ defmodule Trenino.Application do
   defp simulator_connection_child do
     if Application.get_env(:trenino, :start_simulator_connection, true) do
       [Trenino.Simulator.Connection]
-    else
-      []
-    end
-  end
-
-  defp virtual_joystick_manager_child do
-    if Application.get_env(:trenino, :start_virtual_joystick_manager, true) do
-      [Trenino.VirtualJoystick.Manager]
     else
       []
     end

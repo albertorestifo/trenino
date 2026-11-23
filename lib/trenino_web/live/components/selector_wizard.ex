@@ -96,7 +96,6 @@ defmodule TreninoWeb.SelectorWizard do
       |> assign(:offline, false)
       |> assign(:explorer_field, nil)
       |> assign(:error, nil)
-      |> assign(:conflict, false)
       |> assign(:enabled, if(binding, do: binding.enabled, else: true))
       |> assign(:initialized_for, socket.assigns.element.id)
 
@@ -316,10 +315,7 @@ defmodule TreninoWeb.SelectorWizard do
   def handle_event("toggle_enabled", params, socket),
     do: {:noreply, assign(socket, :enabled, Map.get(params, "enabled") == "true")}
 
-  def handle_event("save", _params, socket), do: {:noreply, save(socket, [])}
-
-  def handle_event("save_replacing", _params, socket),
-    do: {:noreply, save(socket, replace?: true)}
+  def handle_event("save", _params, socket), do: {:noreply, save(socket)}
 
   def handle_event("cancel", _params, socket) do
     send(self(), {:selector_wizard_cancelled, socket.assigns.element.id})
@@ -429,7 +425,7 @@ defmodule TreninoWeb.SelectorWizard do
     end
   end
 
-  defp save(socket, opts) do
+  defp save(socket) do
     attrs = %{
       "input_id" => socket.assigns.input_id,
       "enabled" => socket.assigns.enabled,
@@ -439,20 +435,13 @@ defmodule TreninoWeb.SelectorWizard do
         |> Enum.map(fn {position, index} -> position_attrs(position, index) end)
     }
 
-    case Train.save_selector(socket.assigns.element.id, attrs, opts) do
+    case Train.save_selector(socket.assigns.element.id, attrs) do
       {:ok, _binding} ->
         send(self(), {:selector_wizard_saved, socket.assigns.element.id})
         socket
 
-      {:error, :destination_conflict} ->
-        assign(socket,
-          conflict: true,
-          error:
-            "This input is mapped to the virtual joystick. Replace that mapping to use it here."
-        )
-
       {:error, %Ecto.Changeset{} = changeset} ->
-        assign(socket, conflict: false, error: describe_errors(changeset))
+        assign(socket, :error, describe_errors(changeset))
     end
   end
 
@@ -618,16 +607,6 @@ defmodule TreninoWeb.SelectorWizard do
           <div class="alert alert-soft alert-error text-sm">
             <.icon name="hero-exclamation-triangle" class="w-5 h-5" />
             <span>{@error}</span>
-            <button
-              :if={@conflict}
-              type="button"
-              id="selector-replace-mapping"
-              phx-click="save_replacing"
-              phx-target={@myself}
-              class="btn btn-sm btn-primary"
-            >
-              Replace mapping
-            </button>
           </div>
         </div>
 

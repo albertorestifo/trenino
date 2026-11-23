@@ -6,6 +6,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Removed
+
+- The Windows virtual joystick (beta) is gone: the Joystick page, its MCP
+  tools and the bundled vJoy helper files. Train bindings are unaffected. A
+  vJoy device or driver set up through an earlier release stays on the system;
+  remove it with vJoy's own tools or from Windows Settings.
+
 ### Fixed
 
 - Applying the same configuration to a second controller while the first is still being

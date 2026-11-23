@@ -83,12 +83,7 @@ defmodule Trenino.MCP.Tools.SelectorTools do
               description: "Calibrated analog input ID (required when creating)"
             },
             enabled: %{type: "boolean", description: "Whether the selector is active"},
-            positions: %{type: "array", items: @position_schema, minItems: 2, maxItems: 12},
-            replace_joystick_mapping: %{
-              type: "boolean",
-              description:
-                "Remove a virtual joystick mapping on the same input instead of failing"
-            }
+            positions: %{type: "array", items: @position_schema, minItems: 2, maxItems: 12}
           },
           required: ["element_id"]
         }
@@ -143,8 +138,7 @@ defmodule Trenino.MCP.Tools.SelectorTools do
   def execute("configure_selector", %{"element_id" => element_id} = args)
       when is_integer(element_id) do
     with {:ok, attrs} <- build_attrs(args) do
-      opts = [replace?: Map.get(args, "replace_joystick_mapping", false) == true]
-      save(element_id, attrs, opts)
+      save(element_id, attrs)
     end
   end
 
@@ -165,7 +159,7 @@ defmodule Trenino.MCP.Tools.SelectorTools do
           |> Map.merge(range)
         end)
 
-      save(element_id, %{positions: positions}, [])
+      save(element_id, %{positions: positions})
     end
   end
 
@@ -241,15 +235,10 @@ defmodule Trenino.MCP.Tools.SelectorTools do
     ])
   end
 
-  defp save(element_id, attrs, opts) do
-    case TrainContext.save_selector(element_id, attrs, opts) do
+  defp save(element_id, attrs) do
+    case TrainContext.save_selector(element_id, attrs) do
       {:ok, binding} ->
         {:ok, %{selector: serialize(binding)}}
-
-      {:error, :destination_conflict} ->
-        {:error,
-         "This input is assigned to the virtual joystick. Remove that mapping, or pass " <>
-           "replace_joystick_mapping: true to replace it."}
 
       {:error, %Ecto.Changeset{} = changeset} ->
         {:error, format_changeset_errors(changeset)}

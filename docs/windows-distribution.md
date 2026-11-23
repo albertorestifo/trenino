@@ -1,8 +1,7 @@
 # Standard Tauri distribution and updates
 
 Use Tauri's built-in installers. **Choose the NSIS `.exe` for a normal Windows
-installation**: its hooks install the Visual C++ runtime and remove the vJoy
-device Trenino created on uninstall. The WiX `.msi` does not run those prerequisite hooks; its prerequisites
+installation**: its hook installs the Visual C++ runtime. The WiX `.msi` does not run that prerequisite hook; its prerequisites
 must already be provisioned separately. The stable release workflow
 enables `desktop-updater` and merges `tauri.updater.conf.json` to generate updater
 signatures. `tauri-action` uploads signatures and `latest.json`, preferring NSIS
@@ -46,35 +45,14 @@ These are **updater authenticity signatures**, not Windows Authenticode publishe
 certificates. Windows may still show publisher/SmartScreen warnings. No paid
 signing service is configured, and no release was published during setup.
 
-## vJoy
-
-Ship `vJoyInstall.dll` beside `vJoyConfig.exe`; the helper imports it at load time.
-The runtime resolves helpers from the launcher's absolute `APP_PATH/resources`
-as well as bundled backend resources, preserving link/reparse-point checks.
-Neither installer installs the vJoy driver: joystick mode is optional, so users
-install vJoy 2.2.2.0 themselves from the link on the Virtual joystick page. The
-build still downloads the pinned, checksum-verified `vJoySetup.exe`, but only to
-extract `vJoyConfig.exe` and `vJoyInstall.dll`; the installer is not bundled.
-
-Releases up to 0.8.x installed the driver and recorded `VJoyInstalledByTrenino`
-in `HKLM\SOFTWARE\Trenino`. The uninstaller still offers to remove the driver
-while that marker is present. A Windows upgrade may run the previous
-uninstaller and clear it; users who no longer want vJoy can remove it from
-Windows Settings.
-
-The original report involved an older signed vJoy 2.1.9 driver while this app pins
-2.2.2.0. These code fixes alone do not upgrade or remove that shared system driver.
-Driver upgrade/repair needs a separate explicit decision after checking other
-applications that may depend on it.
-
 ## Verification before release
 
 - Run the full CI suite, including `cargo test --features desktop-updater` after
-  staging Windows resources and the installed-helper resolution tests.
+  staging Windows resources.
 - Build signed stable installer artifacts and inspect latest.json and signatures.
 - In a disposable Windows VM, test initial install, a real version-to-version
-  update, cancellation, bad signatures/network failures, backend shutdown, data
-  retention, and driver-present/absent/older-version cases.
+  update, cancellation, bad signatures/network failures, backend shutdown and
+  data retention.
 - Do not mistake local tests using previously installed sidecars for a full
   fresh backend release build or a real installed upgrade.
 

@@ -9,15 +9,11 @@ Get Trenino up and running in minutes.
 
 That's it. The desktop app includes everything else: the Trenino backend, avrdude for firmware flashing, and all required runtimes.
 
-Virtual joystick mode is optional and currently available only on Windows
-10/11. It needs the [vJoy 2.2.2.0 driver](https://github.com/BrunnerInnovation/vJoy/releases/tag/v2.2.2.0), which Trenino does not
-install for you.
-
 ## Installation
 
 Download the latest installer for your platform from the [Releases page](https://github.com/albertorestifo/trenino/releases):
 
-- **Windows**: Run the NSIS installer (`.exe`) or the MSI — the Visual C++ Redistributable is bundled, no separate install needed. Prefer the NSIS `.exe`: its uninstaller also removes the virtual joystick device Trenino created, which the MSI does not.
+- **Windows**: Run the NSIS installer (`.exe`) or the MSI — the Visual C++ Redistributable is bundled, no separate install needed.
 - **Linux**: Download the `.AppImage`, then mark it executable and run it:
   ```bash
   chmod +x Trenino_*.AppImage
@@ -119,70 +115,6 @@ controller firmware 3.3.0 or newer. For wiring see [Physical gauges](gauges.md).
    unit and click **Save, dial checked**. Click **Done**.
 4. Add the gauge to a train from **Trains > Gauge bindings > Add gauge binding**, choose
    the simulator value that drives it, and enable it.
-
-## Windows Virtual Joystick Mode
-
-Virtual joystick mode lets Windows games see selected Trenino controls as one
-generic DirectInput joystick. The first release exposes device 1 with these
-fixed controls:
-
-- Axes: X, Y, Z, Rx, Ry, Rz, Slider 1, and Slider 2
-- Buttons: 1 through 32
-
-Before using this mode, install the [vJoy 2.2.2.0 driver](https://github.com/BrunnerInnovation/vJoy/releases/tag/v2.2.2.0) (download
-`vJoySetup_v2.2.2.0_Win10_Win11.exe` from that release and run it). Trenino
-bundles the vJoy helper files it needs, but not the driver. If the driver is
-missing, the Virtual joystick page says so and links to the same release.
-
-It is Windows-only and does not require Train Sim World or an active train
-configuration. Each physical input has one exclusive destination: it can be a
-simulator/API or keystroke binding, or a virtual joystick control, but never
-both. Trenino asks for confirmation before replacing an existing destination.
-
-### Map and enable controls
-
-1. Connect your hardware and calibrate every analog input you want to use.
-2. Open **Virtual joystick** in the sidebar.
-3. Add a mapping, select a hardware input, and choose an unused axis or button.
-   Use **Invert** when an axis should move in the opposite direction.
-4. If the input already controls a simulator action, review and confirm the
-   replacement. Cancelling leaves the old binding unchanged.
-5. Turn on **Virtual joystick mode**, read the administrator-permission notice,
-   and accept the Windows UAC prompt.
-
-Windows requests administrator permission whenever Trenino creates or removes
-the virtual device, so both enabling and disabling can show UAC. A transition is
-complete only after Trenino confirms that Windows added or removed the device.
-
-### Verify it in Windows
-
-Press `Win+R`, run `joy.cpl`, select the vJoy device, and open **Properties**.
-Move each mapped lever and press each mapped button. The test page should show
-the corresponding axis or button. Disable the mode and refresh Game Controllers;
-device 1 should disappear completely.
-
-Closing Trenino while the mode is enabled safely centers the axes, releases the
-buttons, and relinquishes the feeder, but it deliberately leaves the device
-enumerated. Reopen Trenino to reacquire it, or explicitly disable the mode to
-remove it from Windows.
-
-### Recovery
-
-- **UAC was cancelled:** no confirmed setting is changed. Retry Enable/Disable
-  and accept the prompt when ready.
-- **Device is busy:** another feeder owns vJoy device 1. Close that application,
-  then choose **Retry**. Trenino never steals the device.
-- **Needs setup:** the saved request is enabled but the device is absent. Choose
-  **Retry** after checking the driver installation.
-- **Leftover device / Needs cleanup:** the saved mode is off but device 1 still
-  exists. Choose **Remove leftover device** and accept UAC. Trenino refuses to
-  delete a device with incompatible capabilities.
-- **Driver is missing:** install the [vJoy 2.2.2.0 driver](https://github.com/BrunnerInnovation/vJoy/releases/tag/v2.2.2.0), then
-  choose **Check installation**. If another vJoy version is installed and the
-  mode still does not work, install 2.2.2.0 over it.
-- **Device configuration is incompatible:** inspect or remove the conflicting
-  vJoy device configuration, then choose **Check configuration**. Trenino does
-  not silently replace unknown shared driver or device state.
 
 ## Next Steps
 

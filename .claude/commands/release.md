@@ -17,7 +17,6 @@ Create a release by applying a $ARGUMENTS version bump. Stop if any verification
 4. **Verify.** Run each of these:
    ```
    mix precommit
-   cargo test --manifest-path tauri/virtual_joystick/Cargo.toml
    mix hex.audit
    ```
 

@@ -382,9 +382,6 @@ defmodule Trenino.MCP.Tools.LeverTools do
   defp error_message(:position_unreadable, _id),
     do: "The lever's position could not be read, so calibration did not start. Try again."
 
-  defp error_message(:destination_conflict, _id),
-    do: "That input already drives another control. Pick a different input."
-
   defp error_message(%Ecto.Changeset{} = changeset, _id) do
     errors =
       Ecto.Changeset.traverse_errors(changeset, fn {msg, _opts} -> msg end)

@@ -8,14 +8,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 TAURI_DIR="$PROJECT_DIR/tauri/src-tauri"
 BINARIES_DIR="$TAURI_DIR/binaries"
-RESOURCES_DIR="$TAURI_DIR/resources"
 AVRDUDE_VERSION="8.1"
 AVRDUDE_WINDOWS_X64_SHA256="e4d571d81fee3387d51bfdedd0b6565e4c201e974101cac2caec7adfd6201da3"
-VJOY_VERSION="2.2.2.0"
-VJOY_RELEASE_BASE="https://github.com/BrunnerInnovation/vJoy/releases/download/v$VJOY_VERSION"
-VJOY_INSTALLER_SHA256="ef569a3105cd301b89580f18f60c66b339e95296acf2c0dfcaf4b4bbf8ab68fe"
-VJOY_SDK_SHA256="0e796b185b66819d5fbeae645f3f038ecbfbbde837d3d3f06cba82ae1db07c67"
-VJOY_LICENSE_SHA256="7f0ed151caab68bbfd1a37727c8fe75c94be45aff98a88d63bc7e46e3fb0c5e1"
 
 # Detect current platform
 detect_platform() {
@@ -91,63 +85,7 @@ else
 fi
 echo "Copied keystroke to: $BINARIES_DIR/keystroke-$PLATFORM"
 
-# Step 6: Build the persistent virtual joystick sidecar on every platform.
-# Non-Windows builds contain the sidecar's explicit unsupported-platform stub.
-echo "==> Building virtual joystick sidecar..."
-cd "$PROJECT_DIR/tauri/virtual_joystick"
-cargo build --release
-if [ "$PLATFORM" = "x86_64-pc-windows-msvc" ]; then
-    cp "target/release/virtual_joystick.exe" "$BINARIES_DIR/virtual_joystick-$PLATFORM.exe"
-else
-    cp "target/release/virtual_joystick" "$BINARIES_DIR/virtual_joystick-$PLATFORM"
-fi
-echo "Copied virtual joystick to: $BINARIES_DIR/virtual_joystick-$PLATFORM"
-
-# Step 7: Stage the pinned vJoy runtime for Windows. The release installer,
-# SDK and license are independently checksum verified before extraction. The
-# installer itself is only a source for vJoyConfig.exe and is never bundled:
-# users install the vJoy driver themselves when they want joystick mode.
-if [ "$PLATFORM" = "x86_64-pc-windows-msvc" ]; then
-    echo "==> Staging verified vJoy $VJOY_VERSION runtime..."
-    mkdir -p "$RESOURCES_DIR"
-    powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PROJECT_DIR/scripts/download-vjoy.ps1" -Version "$VJOY_VERSION-sdk" -Url "$VJOY_RELEASE_BASE/SDK.zip" -ExpectedSha256 "$VJOY_SDK_SHA256" -Destination "$RESOURCES_DIR/SDK.zip"
-    powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PROJECT_DIR/scripts/download-vjoy.ps1" -Version "$VJOY_VERSION-license" -Url "https://raw.githubusercontent.com/BrunnerInnovation/vJoy/v$VJOY_VERSION/LICENSE.txt" -ExpectedSha256 "$VJOY_LICENSE_SHA256" -Destination "$RESOURCES_DIR/vJoy-LICENSE.txt"
-
-    VJOY_STAGE=$(mktemp -d)
-    if [ -z "$VJOY_STAGE" ] || [ ! -d "$VJOY_STAGE" ]; then
-        echo "Error: could not create the vJoy staging directory"
-        exit 1
-    fi
-    trap 'if [ -n "${VJOY_STAGE:-}" ] && [ -d "$VJOY_STAGE" ]; then rm -r "$VJOY_STAGE"; fi' EXIT
-    powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$PROJECT_DIR/scripts/download-vjoy.ps1" -Version "$VJOY_VERSION" -Url "$VJOY_RELEASE_BASE/vJoySetup_v2.2.2.0_Win10_Win11.exe" -ExpectedSha256 "$VJOY_INSTALLER_SHA256" -Destination "$VJOY_STAGE/vJoySetup.exe"
-
-    mkdir -p "$VJOY_STAGE/sdk"
-    7z x -y -o"$VJOY_STAGE/sdk" "$RESOURCES_DIR/SDK.zip" >/dev/null
-    cp "$VJOY_STAGE/sdk/SDK/lib/x64/vJoyInterface.dll" "$RESOURCES_DIR/vJoyInterface.dll"
-
-    # vJoySetup.exe is an Inno Setup installer, so use its dedicated extractor.
-    # 7-Zip remains in use above for the SDK.zip archive.
-    mkdir -p "$VJOY_STAGE/installer"
-    innoextract --silent --extract --output-dir "$VJOY_STAGE/installer" "$VJOY_STAGE/vJoySetup.exe"
-    VJOY_CONFIG="$VJOY_STAGE/installer/app/x64/vJoyConfig.exe"
-    if [ ! -f "$VJOY_CONFIG" ]; then
-        echo "Error: vJoyConfig.exe was not found in the verified installer"
-        exit 1
-    fi
-    cp "$VJOY_CONFIG" "$RESOURCES_DIR/vJoyConfig.exe"
-    VJOY_INSTALL_DLL="$VJOY_STAGE/installer/app/x64/vJoyInstall.dll"
-    if [ ! -f "$VJOY_INSTALL_DLL" ]; then
-        echo "Error: vJoyInstall.dll was not found in the verified installer"
-        exit 1
-    fi
-    cp "$VJOY_INSTALL_DLL" "$RESOURCES_DIR/vJoyInstall.dll"
-    rm "$RESOURCES_DIR/SDK.zip"
-    rm -r "$VJOY_STAGE"
-    unset VJOY_STAGE
-    trap - EXIT
-fi
-
-# Step 8: Build Tauri application
+# Step 6: Build Tauri application
 echo "==> Building Tauri application..."
 # Prefer the CLI pinned in tauri/package-lock.json (npm ci in tauri/), and
 # fall back to a globally installed `cargo tauri`.

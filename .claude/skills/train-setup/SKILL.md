@@ -1,6 +1,6 @@
 ---
 name: train-setup
-description: Use when configuring a train in Trenino through its MCP tools, including elements, button or output bindings, selectors (multi-position switches), display bindings, sequences, Lua scripts, or virtual joystick mappings.
+description: Use when configuring a train in Trenino through its MCP tools, including elements, button or output bindings, selectors (multi-position switches), display bindings, sequences, or Lua scripts.
 ---
 
 # Train Setup
@@ -22,7 +22,7 @@ Tool schemas carry parameters, modes and operators. This skill covers the order 
 5. **Bind inputs.** Use `detect_hardware_input` rather than asking for IDs, one call at a time.
 6. **Bind buttons** with `create_button_binding`. Set up levers with the lever tools (see Levers below).
 7. **Configure selectors** with `configure_selector`. The input must be an analog input with `calibrated: true` in `list_device_inputs`; calibration is UI-only. List positions in the order the knob passes through them. Omit ranges for an even split, or ask the user to capture detents in the selector setup in the UI when the knob's detents are uneven. Each position has an enter and an exit action (`set_value`, `sequence`, `keystroke`, or the default `none`).
-8. **Add optional behaviour:** output bindings, I2C modules with display bindings, sequences, Lua scripts, or virtual joystick mappings.
+8. **Add optional behaviour:** output bindings, I2C modules with display bindings, sequences, or Lua scripts.
 9. **Test with the user.** After each binding, debug with `get_simulator_value` and `set_simulator_value`.
 
 ## Levers

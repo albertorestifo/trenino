@@ -27,7 +27,7 @@ defmodule Trenino.DataCase do
       import Ecto.Changeset
       import Ecto.Query
       import Trenino.DataCase
-      import Trenino.VirtualJoystickFixtures
+      import Trenino.HardwareFixtures
 
       use Mimic
     end

@@ -24,8 +24,7 @@ defmodule Trenino.MCP.ToolRegistry do
     SelectorTools,
     SequenceTools,
     SimulatorTools,
-    TrainTools,
-    VirtualJoystickTools
+    TrainTools
   }
 
   @tool_modules [
@@ -41,7 +40,6 @@ defmodule Trenino.MCP.ToolRegistry do
     ScriptTools,
     DetectionTools,
     DisplayBindingTools,
-    VirtualJoystickTools,
     GaugeTools,
     GaugeBindingTools,
     GaugeRuntimeTools,
@@ -54,8 +52,7 @@ defmodule Trenino.MCP.ToolRegistry do
     GaugeBindingTools => :gauges,
     GaugeRuntimeTools => :gauges,
     DialCalibrationTools => :gauges,
-    SelectorTools => :selectors,
-    VirtualJoystickTools => :joystick
+    SelectorTools => :selectors
   }
 
   @type tool_def :: %{

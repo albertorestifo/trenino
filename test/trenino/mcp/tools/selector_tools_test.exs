@@ -1,12 +1,11 @@
 defmodule Trenino.MCP.Tools.SelectorToolsTest do
   use Trenino.DataCase, async: true
 
-  import Trenino.VirtualJoystickFixtures
+  import Trenino.HardwareFixtures
 
   alias Trenino.MCP.ToolRegistry
   alias Trenino.MCP.Tools.SelectorTools
   alias Trenino.Train, as: TrainContext
-  alias Trenino.VirtualJoystick
 
   @endpoint "CurrentDrivableActor/Headlights.InputValue"
 
@@ -203,18 +202,6 @@ defmodule Trenino.MCP.Tools.SelectorToolsTest do
     test "requires an input when creating", %{element: element} do
       assert {:error, message} = configure(element, %{"positions" => [%{}, %{}]})
       assert message =~ "input_id can't be blank"
-    end
-
-    test "explains a virtual joystick conflict and can replace it",
-         %{element: element, input: input} do
-      {:ok, _} = VirtualJoystick.put_mapping(input.id, %{target_type: :axis, axis: :slider_1})
-      args = %{"input_id" => input.id, "positions" => [%{}, %{}]}
-
-      assert {:error, message} = configure(element, args)
-      assert message =~ "replace_joystick_mapping"
-
-      assert {:ok, _} = configure(element, Map.put(args, "replace_joystick_mapping", true))
-      assert VirtualJoystick.list_mappings() == []
     end
   end
 

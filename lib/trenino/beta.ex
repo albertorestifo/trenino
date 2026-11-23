@@ -22,13 +22,11 @@ defmodule Trenino.Beta do
     # X27 gauges such as speedometers (firmware 3.3.0): hardware gauges, dial
     # calibration, gauge bindings and their MCP tools.
     :gauges,
-    # Windows virtual joystick: the Joystick page and its MCP tools.
-    :joystick,
     # Selectors: an analog input used as a rotary switch with fixed positions.
     :selectors
   ]
 
-  @type feature :: :gauges | :joystick | :selectors
+  @type feature :: :gauges | :selectors
 
   @spec features() :: [feature()]
   def features, do: @features

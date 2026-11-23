@@ -47,7 +47,6 @@ Build your own train controls with real throttle levers, brake handles, switches
 - **Auto-detection** — automatically recognizes which train you're driving and loads the right configuration
 - **Visual control mapping** — map any hardware input to simulator controls using the built-in API explorer
 - **Rotary selectors** (beta) — turn a potentiometer into a switch with fixed positions, such as a lights selector, where each position sets its own simulator value, runs a sequence, or taps a key ([train configuration guide](docs/train-configuration.md#configuring-selectors))
-- **Windows virtual joystick** (beta) — expose selected calibrated levers and buttons as one removable DirectInput joystick with eight axes and 32 buttons, independently of Train Sim World
 - **I2C display modules** — show live simulator data (speed, brake pressure, gear position) on HT16K33 7- or 14-segment LED displays wired to your Arduino
 - **Physical gauges** (beta) — drive real X27 needle gauges from the controller (firmware 3.3.0 or newer) and bind them to live simulator data such as speed or brake pressure ([gauges guide](docs/gauges.md))
 - **Beta features** — features marked (beta) are still being tested; turn them on with "Enable beta features" on the Settings page
@@ -71,15 +70,11 @@ No controller yet? The **Notched Master Controller** is a full-size, 3D-printabl
 - **Train Sim World 6 or 7** with the External Interface API enabled (see [below](#enabling-the-tsw-api))
 - **An Arduino board** — see [Supported Hardware](#supported-hardware)
 
-Virtual joystick mode is optional and additionally requires Windows 10 or 11
-and the [vJoy 2.2.2.0 driver](https://github.com/BrunnerInnovation/vJoy/releases/tag/v2.2.2.0), which you install separately. See
-[Getting Started](docs/getting-started.md#windows-virtual-joystick-mode).
-
 ### Installation
 
 Download the latest installer for your platform from the [Releases page](https://github.com/albertorestifo/trenino/releases):
 
-- **Windows 10/11**: use the NSIS installer (`.exe`), which installs the bundled Visual C++ Redistributable and removes Trenino's virtual joystick device on uninstall. The MSI does not run these hooks; its prerequisites must be installed separately.
+- **Windows 10/11**: use the NSIS installer (`.exe`), which installs the bundled Visual C++ Redistributable. The MSI does not run this hook; its prerequisites must be installed separately.
 - **Linux**: AppImage (`.AppImage`) — download, mark as executable, and run
 
 macOS builds are not provided as pre-built releases. See the [Development Guide](docs/development.md#building-the-desktop-app) to build from source.

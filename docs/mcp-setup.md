@@ -165,7 +165,6 @@ Claude has access to dozens of tools for interacting with Trenino (the client li
 | Sequences | List, create, update, delete |
 | Scripts | List, get, create, update, delete Lua scripts |
 | Display Bindings | List, create, update, delete display bindings |
-| Virtual Joystick | Check status and installation; enable, disable, retry, clean up; list, map (axis/button), delete mappings |
 
 ## Tips
 

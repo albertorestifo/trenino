@@ -274,7 +274,7 @@ Structured inside a `fieldset` wrapper with a `label` above. The label is a smal
 
 ### Navigation
 
-Sticky top bar on `bg-base-200` with a 1px base-300 bottom border. Trenino lockup at the leading edge (see Identity). Header content is constrained to max-w-4xl (wider than the max-w-2xl page content) so it stays on one row. Navigation tabs for Devices, Trains, Joystick and Settings, then the connections button at the trailing edge.
+Sticky top bar on `bg-base-200` with a 1px base-300 bottom border. Trenino lockup at the leading edge (see Identity). Header content is constrained to max-w-4xl (wider than the max-w-2xl page content) so it stays on one row. Navigation tabs for Devices, Trains and Settings, then the connections button at the trailing edge.
 
 - **Tab style:** Inactive: base-content text, transparent background, hover reveals base-300 tint. Active: primary background, primary-content text (current state). 8px radius. No underlines, no side borders.
 - **Connections button:** base-100 background, hover reveals base-300. Status icon + label (label hidden on mobile, kept in `aria-label`). 8px radius. It rolls up devices and the simulator: Connecting while anything connects, Needs attention when a device failed or the simulator is not connected (including not set up), otherwise "N connected" or "No devices".

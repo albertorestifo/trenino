@@ -7,7 +7,6 @@ defmodule TreninoWeb.SelectorSetupTest do
   alias Trenino.Hardware.ConfigurationManager
   alias Trenino.Serial.Connection.DeviceConnection
   alias Trenino.Train, as: TrainContext
-  alias Trenino.VirtualJoystick
 
   @lights_endpoint "CurrentDrivableActor/Headlights.InputValue"
 
@@ -338,18 +337,6 @@ defmodule TreninoWeb.SelectorSetupTest do
       |> render_change(%{"positions" => %{"0" => %{"enter" => %{"kind" => "sequence"}}}})
 
       assert render(view) =~ "Lights on"
-    end
-
-    test "replaces a virtual joystick mapping on request", %{view: view, input: input} do
-      {:ok, _} = VirtualJoystick.put_mapping(input.id, %{target_type: :axis, axis: :slider_1})
-
-      view |> element("#selector-save") |> render_click()
-      assert render(view) =~ "mapped to the virtual joystick"
-
-      view |> element("#selector-replace-mapping") |> render_click()
-
-      assert render(view) =~ "Selector saved"
-      assert VirtualJoystick.list_mappings() == []
     end
 
     test "cancel closes without saving", %{view: view, element: element} do

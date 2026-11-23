@@ -1,7 +1,7 @@
 defmodule Trenino.MCP.Tools.LeverToolsTest do
   use Trenino.DataCase, async: true
 
-  import Trenino.VirtualJoystickFixtures
+  import Trenino.HardwareFixtures
 
   alias Trenino.MCP.ToolRegistry
   alias Trenino.MCP.Tools.LeverTools

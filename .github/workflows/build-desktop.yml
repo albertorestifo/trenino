@@ -148,15 +148,9 @@ jobs:
           workspaces: |
             tauri/src-tauri -> target
             tauri/keystroke -> target
-            tauri/virtual_joystick -> target
 
       - name: Build keystroke utility
         run: cargo build --release --manifest-path tauri/keystroke/Cargo.toml
-
-      # Only tauri.windows.conf.json bundles the virtual joystick sidecar.
-      - name: Build virtual joystick utility
-        if: runner.os == 'Windows'
-        run: cargo build --release --manifest-path tauri/virtual_joystick/Cargo.toml
 
       - name: Stage backend and sidecar binaries
         shell: bash
@@ -170,9 +164,6 @@ jobs:
           mkdir -p "$bin"
           cp "burrito_out/$BURRITO_BINARY" "$bin/trenino_backend-$TRIPLE$EXT"
           cp "tauri/keystroke/target/release/keystroke$EXT" "$bin/keystroke-$TRIPLE$EXT"
-          if [ "$RUNNER_OS" = "Windows" ]; then
-            cp "tauri/virtual_joystick/target/release/virtual_joystick$EXT" "$bin/virtual_joystick-$TRIPLE$EXT"
-          fi
           chmod +x "$bin"/*
           ls -la "$bin"
 
@@ -202,14 +193,12 @@ jobs:
           install -m 755 "$avrdude" "tauri/src-tauri/binaries/avrdude-$TRIPLE"
           cp "$conf" tauri/src-tauri/binaries/avrdude.conf
 
-      - name: Stage VC++ Redistributable and vJoy resources
+      - name: Stage VC++ Redistributable
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force tauri/src-tauri/resources | Out-Null
           Invoke-WebRequest -UseBasicParsing -Uri https://aka.ms/vs/17/release/vc_redist.x64.exe -OutFile tauri/src-tauri/resources/vc_redist.x64.exe
-          choco install innoextract --version 1.9 -y --no-progress
-          ./scripts/stage-vjoy-resources.ps1
 
       - name: Create placeholder for Windows-only resources
         if: runner.os == 'Linux'

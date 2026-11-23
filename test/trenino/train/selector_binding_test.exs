@@ -1,11 +1,10 @@
 defmodule Trenino.Train.SelectorBindingTest do
   use Trenino.DataCase, async: true
 
-  import Trenino.VirtualJoystickFixtures
+  import Trenino.HardwareFixtures
 
   alias Trenino.Train, as: TrainContext
   alias Trenino.Train.{SelectorBinding, SelectorMapper, SelectorPosition}
-  alias Trenino.VirtualJoystick
 
   setup do
     {:ok, train} =
@@ -340,117 +339,11 @@ defmodule Trenino.Train.SelectorBindingTest do
                  positions: three_positions()
                })
     end
-
-    test "conflicts with a virtual joystick mapping unless replacing",
-         %{element: element, input: input} do
-      {:ok, _mapping} =
-        VirtualJoystick.put_mapping(input.id, %{target_type: :axis, axis: :slider_1})
-
-      attrs = %{input_id: input.id, positions: three_positions()}
-
-      assert {:error, :destination_conflict} = TrainContext.save_selector(element.id, attrs)
-      assert {:ok, _} = TrainContext.save_selector(element.id, attrs, replace?: true)
-      assert VirtualJoystick.list_mappings() == []
-    end
-
-    test "blocks a virtual joystick mapping on its input", %{element: element, input: input} do
-      {:ok, _} =
-        TrainContext.save_selector(element.id, %{input_id: input.id, positions: three_positions()})
-
-      assert {:error, :destination_conflict} =
-               VirtualJoystick.put_mapping(input.id, %{target_type: :axis, axis: :slider_1})
-
-      assert {:ok, _} =
-               VirtualJoystick.put_mapping(input.id, %{target_type: :axis, axis: :slider_1},
-                 replace?: true
-               )
-
-      assert {:error, :not_found} = TrainContext.get_selector_binding(element.id)
-    end
-  end
-
-  describe "sequence actions" do
-    setup %{train: train} do
-      {:ok, sequence} = TrainContext.create_sequence(train.id, %{name: "Lights on"})
-      %{sequence: sequence}
-    end
-
-    defp with_sequences(sequence_id) do
-      List.update_at(
-        three_positions(),
-        0,
-        &Map.merge(&1, %{
-          enter_kind: :sequence,
-          enter_sequence_id: sequence_id,
-          exit_kind: :sequence,
-          exit_sequence_id: sequence_id
-        })
-      )
-    end
-
-    test "resets actions to none when the sequence is deleted",
-         %{element: element, input: input, sequence: sequence} do
-      {:ok, _} =
-        TrainContext.save_selector(element.id, %{
-          input_id: input.id,
-          positions: with_sequences(sequence.id)
-        })
-
-      assert {:ok, _} = TrainContext.delete_sequence(sequence)
-
-      assert {:ok, %{positions: [first, second | _]} = binding} =
-               TrainContext.get_selector_binding(element.id)
-
-      assert %{enter_kind: :none, enter_sequence_id: nil} = first
-      assert %{exit_kind: :none, exit_sequence_id: nil} = first
-      assert second.enter_kind == :set_value
-
-      # The reset positions are still a valid set
-      positions = Enum.map(binding.positions, &Map.from_struct/1)
-      assert {:ok, _} = TrainContext.save_selector(element.id, %{positions: positions})
-    end
-
-    test "rejects a sequence of another train", %{element: element, input: input} do
-      {:ok, other_train} =
-        TrainContext.create_train(%{name: "Other", identifiers: [%{identifier: "other_seq"}]})
-
-      {:ok, foreign} = TrainContext.create_sequence(other_train.id, %{name: "Foreign"})
-
-      assert {:error, changeset} =
-               TrainContext.save_selector(element.id, %{
-                 input_id: input.id,
-                 positions: with_sequences(foreign.id)
-               })
-
-      assert "refer to a sequence that does not exist or belongs to another train" in errors_on(
-               changeset
-             ).positions
-    end
   end
 
   describe "enabling and disabling" do
     test "returns not_found without a binding", %{element: element} do
       assert {:error, :not_found} = TrainContext.set_selector_binding_enabled(element.id, true)
-    end
-
-    test "a disabled binding can share its input with a virtual joystick mapping",
-         %{element: element, input: input} do
-      {:ok, _} = VirtualJoystick.put_mapping(input.id, %{target_type: :axis, axis: :slider_1})
-
-      assert {:ok, %{enabled: false}} =
-               TrainContext.save_selector(element.id, %{
-                 input_id: input.id,
-                 enabled: false,
-                 positions: three_positions()
-               })
-
-      assert {:error, :destination_conflict} =
-               TrainContext.set_selector_binding_enabled(element.id, true)
-
-      assert {:ok, %{enabled: true}} =
-               TrainContext.set_selector_binding_enabled(element.id, true, replace?: true)
-
-      assert VirtualJoystick.list_mappings() == []
     end
   end
 

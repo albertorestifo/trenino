@@ -66,11 +66,6 @@ npm-debug.log
 
 # Downloaded Windows packaging inputs (never signing keys or source files).
 /tauri/src-tauri/binaries/avrdude.conf
-/tauri/src-tauri/resources/vJoySetup.exe
-/tauri/src-tauri/resources/vJoyConfig.exe
-/tauri/src-tauri/resources/vJoyInstall.dll
-/tauri/src-tauri/resources/vJoyInterface.dll
-/tauri/src-tauri/resources/vJoy-LICENSE.txt
 
 # Firmware cache
 priv/firmware_cache

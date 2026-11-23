@@ -1,10 +1,10 @@
-defmodule Trenino.VirtualJoystickFixtures do
+defmodule Trenino.HardwareFixtures do
   @moduledoc false
 
   alias Trenino.Hardware
 
   def device_fixture(attrs \\ %{}) do
-    attrs = Enum.into(attrs, %{name: "Virtual joystick test device"})
+    attrs = Enum.into(attrs, %{name: "Test device"})
     {:ok, device} = Hardware.create_device(attrs)
     device
   end
