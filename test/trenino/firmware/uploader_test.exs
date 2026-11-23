@@ -357,6 +357,25 @@ defmodule Trenino.Firmware.UploaderTest do
     end
   end
 
+  describe "upload/4 avrdude configuration" do
+    @tag :tmp_dir
+    test "passes the bundled avrdude.conf to avrdude with -C", %{tmp_dir: dir} do
+      hex = Path.join(dir, "firmware.hex")
+      File.write!(hex, ":00000001FF\n")
+      conf = Path.join([dir, "binaries", "avrdude.conf"])
+
+      stub(Avrdude, :conf_path, fn -> {:ok, conf} end)
+
+      expect(Trenino.Firmware.AvrdudeRunner, :run, fn "/fake/avrdude", args, _cb ->
+        send(self(), {:avrdude_args, args})
+        {:ok, "avrdude done"}
+      end)
+
+      assert {:ok, _} = Uploader.upload("/dev/ttyUSB0", "uno", hex)
+      assert_received {:avrdude_args, ["-C", ^conf | _]}
+    end
+  end
+
   describe "upload/4 with missing hex file" do
     @tag :skip_without_avrdude
     test "returns error when hex file doesn't exist with environment string" do
