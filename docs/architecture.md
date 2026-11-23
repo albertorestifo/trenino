@@ -83,10 +83,11 @@ Model Context Protocol server for AI-powered configuration.
 
 - **Server** - MCP server implementation with SSE transport at `/mcp/sse`
 - **ToolRegistry** - Registry of available MCP tools organized by category
-- **Tools** - 47 tools across 10 categories:
+- **Tools** - 43 tools across 11 modules, plus 19 more in 5 modules that are only listed while their beta feature is on (see `Trenino.Beta`):
   - **SimulatorTools** - Browse endpoints, read/write simulator values
   - **TrainTools** - List trains and get configurations
-  - **ElementTools** - Manage train buttons and levers
+  - **ElementTools** - Manage train buttons, levers and selectors
+  - **LeverTools** - List simulator levers, link, calibrate and bind levers, open the Lever Setup Wizard
   - **DeviceTools** - List devices, inputs, outputs, and I2C modules; CRUD for I2C modules
   - **DetectionTools** - Interactive hardware input detection (prompts the user via a UI modal)
   - **OutputBindingTools** - CRUD operations for output bindings
@@ -94,6 +95,8 @@ Model Context Protocol server for AI-powered configuration.
   - **SequenceTools** - CRUD operations for command sequences
   - **ScriptTools** - CRUD operations for Lua scripts
   - **DisplayBindingTools** - CRUD operations for display bindings
+  - **SelectorTools** (beta: selectors) - Get, configure, split evenly and delete selectors
+  - **GaugeTools**, **GaugeBindingTools**, **GaugeRuntimeTools**, **DialCalibrationTools** (beta: gauges) - Hardware gauges, their bindings, runtime state and dial calibration
 
 ### Serial Domain (`lib/trenino/serial/`)
 
@@ -255,7 +258,7 @@ SSE (Server-Sent Events) transport implementing Model Context Protocol:
 |----------|-------------|
 | `/mcp/sse` | SSE endpoint for MCP server |
 
-Supports 37 tools across 10 categories for AI-powered train configuration. See [MCP Setup Guide](../docs/mcp-setup.md) for details.
+Supports 43 tools (62 with the beta features on) for AI-powered train configuration. See [MCP Setup Guide](../docs/mcp-setup.md) for details.
 
 ## Event Broadcasting (PubSub)
 
