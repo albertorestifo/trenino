@@ -558,6 +558,15 @@ defmodule TreninoWeb.LeverSetupWizard do
         {:error, :no_range_detected} ->
           {:noreply, put_flash(socket, :error, "No range detected. Move the lever.")}
 
+        {:error, reason}
+        when reason in [
+               :target_not_mapped,
+               :inner_not_mapped,
+               :inside_dead_zone,
+               :past_next_position
+             ] ->
+          {:noreply, put_flash(socket, :error, wall_error(socket.assigns.mapping_state, reason))}
+
         {:error, reason} ->
           Logger.error("Notch capture failed: #{inspect(reason)}")
 
@@ -1966,6 +1975,15 @@ defmodule TreninoWeb.LeverSetupWizard do
         >
           <div class="flex items-start justify-between gap-4 mb-4">
             <div class="min-w-0">
+              <p
+                :if={Enum.any?(@mapping_state.notches, &is_integer(&1[:springs_back_to]))}
+                class="text-xs text-muted"
+                data-role="mapping-stage"
+              >
+                {if is_integer(@mapping_state.current_notch[:springs_back_to]),
+                  do: "Step 2 of 2: spring-back positions",
+                  else: "Step 1 of 2: resting positions"}
+              </p>
               <h4 class="font-semibold break-words">
                 Notch {@mapping_state.current_notch_index + 1} of {length(@mapping_state.notches)}: {notch_display_name(
                   @mapping_state.current_notch,
@@ -1978,14 +1996,15 @@ defmodule TreninoWeb.LeverSetupWizard do
               <p class="text-sm text-muted mt-2">
                 {capture_instruction(
                   @mapping_state.current_notch,
-                  @mapping_state.current_notch_index
+                  @mapping_state.current_notch_index,
+                  @mapping_state.notches
                 )}
               </p>
             </div>
             <span class={[
               "badge badge-ghost shrink-0"
             ]}>
-              {if @mapping_state.current_notch.type == :gate, do: "Gate", else: "Linear"}
+              {notch_kind(@mapping_state.current_notch)}
             </span>
           </div>
 
@@ -2110,7 +2129,12 @@ defmodule TreninoWeb.LeverSetupWizard do
                   <td class="font-mono whitespace-nowrap">
                     {format_pct_range(range.min_pct, range.max_pct)}
                   </td>
-                  <td class="break-words">{end_display_name(range)}</td>
+                  <td class="break-words">
+                    {end_display_name(range)}
+                    <span :if={spring_note(@mapping_state.notches, range)} class="text-xs text-muted">
+                      ({spring_note(@mapping_state.notches, range)})
+                    </span>
+                  </td>
                   <td class="font-mono whitespace-nowrap">
                     {format_value_range(range.sim_at_min, range.sim_at_max, &format_sim/1)}
                   </td>
@@ -2195,6 +2219,15 @@ defmodule TreninoWeb.LeverSetupWizard do
   defp end_display_name(%{notch_index: index} = info),
     do: LeverVisualization.display_name(Map.get(info, :description), index)
 
+  defp capture_instruction(%{springs_back_to: target} = notch, index, notches)
+       when is_integer(target) do
+    "Push the lever from #{target_name(notches, target)} towards " <>
+      "#{notch_display_name(notch, index)} until you feel the wall, hold it there, " <>
+      "then let it spring back. Capture once it's back."
+  end
+
+  defp capture_instruction(notch, index, _notches), do: capture_instruction(notch, index)
+
   defp capture_instruction(%{type: :gate} = notch, index) do
     "Move your lever to where #{notch_display_name(notch, index)} should be, " <>
       "then wiggle it within that position."
@@ -2203,6 +2236,35 @@ defmodule TreninoWeb.LeverSetupWizard do
   defp capture_instruction(notch, index) do
     "Sweep your lever across the whole #{notch_display_name(notch, index)} range — " <>
       "either direction is fine."
+  end
+
+  defp notch_kind(%{springs_back_to: target}) when is_integer(target), do: "Springs back"
+  defp notch_kind(%{type: :gate}), do: "Gate"
+  defp notch_kind(_notch), do: "Linear"
+
+  # The display name of the notch with `index` (a notch index, not a list position).
+  defp target_name(notches, index) do
+    case Enum.find_index(notches, &(&1.index == index)) do
+      nil -> "its resting position"
+      pos -> notch_display_name(Enum.at(notches, pos), pos)
+    end
+  end
+
+  defp spring_note(notches, %{springs_back_to: target}) when is_integer(target),
+    do: "springs back to #{target_name(notches, target)}"
+
+  defp spring_note(_notches, _range), do: nil
+
+  # The message for a spring-back capture refused by SpringZones.check_wall/5.
+  defp wall_error(%{current_notch: %{springs_back_to: target}, notches: notches}, reason) do
+    target = target_name(notches, target)
+
+    case reason do
+      :target_not_mapped -> "Map #{target} first: this area starts at its edge."
+      :inner_not_mapped -> "Map the spring-back position nearer #{target} first."
+      :inside_dead_zone -> "That's inside #{target}'s dead zone. Push further, up to the wall."
+      :past_next_position -> "That reaches the next position. Stop at the wall."
+    end
   end
 
   defp format_notch_output(%{type: :gate, value: value}) when is_number(value),

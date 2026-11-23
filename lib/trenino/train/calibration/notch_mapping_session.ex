@@ -42,6 +42,7 @@ defmodule Trenino.Train.Calibration.NotchMappingSession do
   alias Trenino.Hardware.Calibration.Calculator
   alias Trenino.Hardware.Input.Calibration
   alias Trenino.Train
+  alias Trenino.Train.Calibration.SpringZones
   alias Trenino.Train.LeverConfig
   alias Trenino.Train.LeverMapper
   alias Trenino.Train.Notch
@@ -74,7 +75,10 @@ defmodule Trenino.Train.Calibration.NotchMappingSession do
   are the sim_input the mapper yields at that physical end of the range (nil if
   the mapper can't resolve that notch there, e.g. a zero-width linear capture).
   `sim_output_min`/`sim_output_max` are the notch's min_value/max_value (linear)
-  or value/value (gate), informational only.
+  or value/value (gate), informational only. For a spring-back target,
+  `min_pct`/`max_pct` include its dead zone and `core_min_pct`/`core_max_pct`
+  are the wiggled range; elsewhere they are equal. `springs_back_to` is the
+  notch index a spring-back notch returns to.
   """
   @type hardware_range :: %{
           notch_index: non_neg_integer(),
@@ -82,6 +86,9 @@ defmodule Trenino.Train.Calibration.NotchMappingSession do
           type: :gate | :linear,
           min_pct: float(),
           max_pct: float(),
+          core_min_pct: float(),
+          core_max_pct: float(),
+          springs_back_to: non_neg_integer() | nil,
           sim_at_min: float() | nil,
           sim_at_max: float() | nil,
           sim_output_min: float() | nil,
@@ -391,6 +398,8 @@ defmodule Trenino.Train.Calibration.NotchMappingSession do
           index: notch.index,
           type: notch.type,
           description: notch.description || "Notch #{notch.index}",
+          # Spring-back notches are mapped by their wall point (see SpringZones)
+          springs_back_to: notch.springs_back_to,
           # Include sim_input ranges for inversion auto-detection
           sim_input_min: notch.sim_input_min,
           sim_input_max: notch.sim_input_max,
@@ -441,7 +450,7 @@ defmodule Trenino.Train.Calibration.NotchMappingSession do
   def handle_call(:start_mapping, _from, %State{current_step: :ready} = state) do
     new_state = %{
       state
-      | current_step: {:mapping_notch, 0},
+      | current_step: {:mapping_notch, hd(SpringZones.step_order(state.notches) ++ [0])},
         is_capturing: false,
         current_samples: [],
         current_min: nil,
@@ -458,29 +467,28 @@ defmodule Trenino.Train.Calibration.NotchMappingSession do
 
   @impl true
   def handle_call(:capture_range, _from, %State{current_step: {:mapping_notch, idx}} = state) do
-    case validate_capture(state) do
-      :ok ->
-        range = %{min: state.current_min, max: state.current_max}
-        new_ranges = List.replace_at(state.captured_ranges, idx, range)
+    with :ok <- validate_capture(state),
+         range = %{min: state.current_min, max: state.current_max},
+         :ok <- validate_wall(state, idx, range) do
+      new_ranges = List.replace_at(state.captured_ranges, idx, range)
 
-        next_step = next_step_after_capture(new_ranges, idx)
+      next_step = next_step_after_capture(state.notches, new_ranges, idx)
 
-        new_state =
-          refresh_preview_cache(%{
-            state
-            | captured_ranges: new_ranges,
-              current_step: next_step,
-              is_capturing: false,
-              current_samples: [],
-              current_min: nil,
-              current_max: nil
-          })
+      new_state =
+        refresh_preview_cache(%{
+          state
+          | captured_ranges: new_ranges,
+            current_step: next_step,
+            is_capturing: false,
+            current_samples: [],
+            current_min: nil,
+            current_max: nil
+        })
 
-        broadcast_event(new_state, :step_changed)
-        {:reply, :ok, new_state}
-
-      {:error, _reason} = error ->
-        {:reply, error, state}
+      broadcast_event(new_state, :step_changed)
+      {:reply, :ok, new_state}
+    else
+      {:error, _reason} = error -> {:reply, error, state}
     end
   end
 
@@ -688,17 +696,33 @@ defmodule Trenino.Train.Calibration.NotchMappingSession do
     end
   end
 
-  # Advance to the next uncaptured notch (wrapping around, since users can jump
-  # ahead with go_to_notch); only enter preview once every notch has a range
-  defp next_step_after_capture(ranges, idx) do
-    indexed = Enum.with_index(ranges)
-    {after_current, up_to_current} = Enum.split(indexed, idx + 1)
+  # A spring-back notch is captured by its wall point, which must lie past its
+  # target's dead zone and short of the next position.
+  defp validate_wall(%State{notches: notches} = state, idx, range) do
+    if SpringZones.spring?(Enum.at(notches, idx)),
+      do: SpringZones.check_wall(notches, state.captured_ranges, state.total_travel, idx, range),
+      else: :ok
+  end
 
-    case Enum.find(after_current ++ up_to_current, fn {range, _i} -> is_nil(range) end) do
+  # Advance to the next uncaptured notch in mapping order (resting notches,
+  # then spring-back ones), wrapping around since users can jump ahead with
+  # go_to_notch; only enter preview once every notch has a range
+  defp next_step_after_capture(notches, ranges, idx) do
+    order = SpringZones.step_order(notches)
+
+    {up_to_current, after_current} =
+      Enum.split(order, (Enum.find_index(order, &(&1 == idx)) || 0) + 1)
+
+    case Enum.find(after_current ++ up_to_current, &is_nil(Enum.at(ranges, &1))) do
       nil -> :preview
-      {_range, next_idx} -> {:mapping_notch, next_idx}
+      next_idx -> {:mapping_notch, next_idx}
     end
   end
+
+  # Captures as the lever will be mapped: targets widened by their dead zone and
+  # spring-back notches turned into their areas (nil until they can be computed).
+  defp mapped_ranges(%State{} = state),
+    do: SpringZones.effective_ranges(state.notches, state.captured_ranges, state.total_travel)
 
   defp all_ranges_captured?(%State{captured_ranges: ranges}) do
     Enum.all?(ranges, &(&1 != nil))
@@ -763,8 +787,9 @@ defmodule Trenino.Train.Calibration.NotchMappingSession do
           inverted: boolean()
         }
   defp direction_fields(%State{direction_overridable: overridable} = state) do
-    detectable = direction_detectable?(state.notches, state.captured_ranges)
-    detected = detect_inversion(state.notches, state.captured_ranges)
+    ranges = mapped_ranges(state)
+    detectable = direction_detectable?(state.notches, ranges)
+    detected = detect_inversion(state.notches, ranges)
     manual = overridable and state.direction_override != nil
 
     %{
@@ -828,7 +853,7 @@ defmodule Trenino.Train.Calibration.NotchMappingSession do
       ranges =
         normalize_captured_ranges(
           state.notches,
-          state.captured_ranges,
+          mapped_ranges(state),
           state.total_travel,
           inverted
         )
@@ -966,7 +991,7 @@ defmodule Trenino.Train.Calibration.NotchMappingSession do
     ranges =
       normalize_captured_ranges(
         state.notches,
-        state.captured_ranges,
+        mapped_ranges(state),
         state.total_travel,
         inverted
       )
@@ -987,11 +1012,14 @@ defmodule Trenino.Train.Calibration.NotchMappingSession do
   end
 
   defp build_hardware_ranges(%State{} = state, %LeverConfig{} = config, index_by_id) do
+    ranges = mapped_ranges(state)
+
     config.notches
     |> Enum.map(fn %Notch{} = virtual_notch ->
       idx = Map.fetch!(index_by_id, virtual_notch.id)
       notch = Enum.at(state.notches, idx)
-      range = Enum.at(state.captured_ranges, idx)
+      range = Enum.at(ranges, idx)
+      core = SpringZones.core_range(state.notches, state.captured_ranges, idx) || range
       {sim_at_min, sim_at_max} = probe_range_ends(config, virtual_notch, idx, index_by_id)
       {output_min, output_max} = sim_outputs(notch)
 
@@ -1001,6 +1029,10 @@ defmodule Trenino.Train.Calibration.NotchMappingSession do
         type: notch.type,
         min_pct: Float.round(range.min / state.total_travel * 100, 2),
         max_pct: Float.round(range.max / state.total_travel * 100, 2),
+        # The wiggled range; min/max include a spring target's dead zone
+        core_min_pct: Float.round(core.min / state.total_travel * 100, 2),
+        core_max_pct: Float.round(core.max / state.total_travel * 100, 2),
+        springs_back_to: notch.springs_back_to,
         sim_at_min: sim_at_min,
         sim_at_max: sim_at_max,
         sim_output_min: output_min,

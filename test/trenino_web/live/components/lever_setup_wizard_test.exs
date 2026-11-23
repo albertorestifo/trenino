@@ -973,6 +973,45 @@ defmodule TreninoWeb.LeverSetupWizardTest do
                "Move your lever to where Gate at output -11 should be, then wiggle it within that position."
     end
 
+    test "a spring-back notch asks for the wall and names where it springs back to" do
+      notches = [
+        Map.put(Enum.at(@notches, 0), :springs_back_to, nil),
+        Map.merge(Enum.at(@notches, 2), %{index: 1, springs_back_to: 0, description: "Shunt"}),
+        Map.put(Enum.at(@notches, 1), :index, 2)
+      ]
+
+      spring_range = Map.put(range(1, 5.0, 20.0, 0.5, 0.5), :springs_back_to, 0)
+
+      preview = %{
+        forward_preview()
+        | hardware_ranges: [range(0, 0.0, 5.0, 0.0, 0.0), spring_range]
+      }
+
+      html =
+        render_step(
+          mapping_state(
+            notches: notches,
+            current_notch: Enum.at(notches, 1),
+            preview: preview
+          )
+        )
+
+      assert html =~ "Step 2 of 2: spring-back positions"
+      assert html =~ "Springs back"
+
+      assert html =~
+               "Push the lever from Idle towards Shunt until you feel the wall, hold it there, " <>
+                 "then let it spring back. Capture once it&#39;s back."
+
+      assert html =~ ~s(data-zone="spring")
+    end
+
+    test "a lever without spring-back notches shows no mapping steps" do
+      html = render_step(mapping_state(preview: forward_preview()))
+      refute html =~ "Step 1 of 2"
+      refute html =~ ~s(data-zone="spring")
+    end
+
     test "simulator bar is captioned and labelled with notch names, not MIN/MAX" do
       html = render_step(mapping_state(preview: forward_preview()))
 
