@@ -69,23 +69,49 @@ defmodule Trenino.Firmware.Avrdude do
   @doc """
   Returns the path to avrdude.conf if available.
 
+  Checks the Tauri bundle first, then priv/bin. avrdude 8.x only finds its
+  configuration on its own next to its executable, and Tauri installs the
+  bundled `binaries/avrdude.conf` resource under the resource directory, not
+  next to the sidecar, so without `-C` avrdude runs with no programmers.
+
   Returns `{:ok, path}` or `{:error, :not_found}`.
   """
   @spec conf_path() :: {:ok, String.t()} | {:error, :not_found}
-  def conf_path do
-    paths = [
-      # Tauri resources location (next to main executable)
-      tauri_resource_path("avrdude.conf"),
-      # Bundled in priv/bin
-      Application.app_dir(:trenino, Path.join(["priv", "bin", "avrdude.conf"])),
-      # Dev location
-      Path.join([:code.priv_dir(:trenino), "bin", "avrdude.conf"])
-    ]
+  def conf_path, do: conf_path(System.get_env("APP_PATH"))
 
-    case Enum.find(paths, &(is_binary(&1) and File.exists?(&1))) do
+  @doc false
+  @spec conf_path(String.t() | nil) :: {:ok, String.t()} | {:error, :not_found}
+  def conf_path(app_path) do
+    paths =
+      tauri_conf_paths(app_path) ++
+        [
+          # Bundled in priv/bin
+          Application.app_dir(:trenino, Path.join(["priv", "bin", "avrdude.conf"])),
+          # Dev location
+          Path.join([:code.priv_dir(:trenino), "bin", "avrdude.conf"])
+        ]
+
+    case Enum.find(paths, &File.regular?/1) do
       nil -> {:error, :not_found}
       path -> {:ok, path}
     end
+  end
+
+  # Where Tauri puts the `binaries/avrdude.conf` resource relative to the
+  # directory of the main executable (APP_PATH). Resources keep their relative
+  # path under the resource directory: the install directory on Windows,
+  # Contents/Resources on macOS and /usr/lib/<productName> on Linux packages.
+  defp tauri_conf_paths(nil), do: []
+  defp tauri_conf_paths(""), do: []
+
+  defp tauri_conf_paths(app_path) do
+    [
+      Path.join([app_path, "binaries", "avrdude.conf"]),
+      Path.join([app_path, "..", "Resources", "binaries", "avrdude.conf"]),
+      Path.join([app_path, "..", "lib", "trenino", "binaries", "avrdude.conf"]),
+      Path.join(app_path, "avrdude.conf")
+    ]
+    |> Enum.map(&Path.expand/1)
   end
 
   # Check for avrdude in Tauri sidecar location
@@ -101,14 +127,6 @@ defmodule Trenino.Firmware.Avrdude do
       app_path ->
         path = Path.join(app_path, binary_name)
         if File.exists?(path), do: path, else: nil
-    end
-  end
-
-  # Get a resource file path from Tauri bundle
-  defp tauri_resource_path(filename) do
-    case System.get_env("APP_PATH") do
-      nil -> nil
-      app_path -> Path.join(app_path, filename)
     end
   end
 
