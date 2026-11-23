@@ -69,10 +69,10 @@ defmodule Trenino.Firmware.Avrdude do
   @doc """
   Returns the path to avrdude.conf if available.
 
-  Checks the Tauri bundle first, then priv/bin. avrdude 8.x only finds its
-  configuration on its own next to its executable, and Tauri installs the
-  bundled `binaries/avrdude.conf` resource under the resource directory, not
-  next to the sidecar, so without `-C` avrdude runs with no programmers.
+  Checks the Tauri bundle first, then priv/bin. On its own, avrdude 8.x only
+  looks next to its executable and in `../etc`, while Tauri installs the
+  bundled `binaries/avrdude.conf` resource under the resource directory, so
+  without `-C` avrdude runs with no programmers.
 
   Returns `{:ok, path}` or `{:error, :not_found}`.
   """
@@ -100,7 +100,8 @@ defmodule Trenino.Firmware.Avrdude do
   # Where Tauri puts the `binaries/avrdude.conf` resource relative to the
   # directory of the main executable (APP_PATH). Resources keep their relative
   # path under the resource directory: the install directory on Windows,
-  # Contents/Resources on macOS and /usr/lib/<productName> on Linux packages.
+  # Contents/Resources on macOS and /usr/lib/<productName> on Linux packages
+  # ("trenino" is the productName in tauri/src-tauri/tauri.conf.json).
   defp tauri_conf_paths(nil), do: []
   defp tauri_conf_paths(""), do: []
 

@@ -150,8 +150,9 @@ pub fn run() {
             };
 
             // Resolve the directory containing this executable. The Elixir backend
-            // uses APP_PATH to locate bundled sidecars (avrdude, keystroke) that
-            // Tauri places next to the main executable in the installation directory.
+            // uses APP_PATH to locate bundled sidecars (avrdude, keystroke), which
+            // Tauri places next to the main executable, and resources such as
+            // avrdude.conf, which it places under the resource directory.
             let app_dir = std::env::current_exe()
                 .ok()
                 .and_then(|p| p.parent().map(|d| d.to_string_lossy().into_owned()))
