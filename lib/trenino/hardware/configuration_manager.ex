@@ -273,15 +273,25 @@ defmodule Trenino.Hardware.ConfigurationManager do
     {:noreply, state}
   end
 
+  # An I2C module (display or angle sensor) that did not answer when the configuration
+  # started. Broadcast every time, because a sensor missing at connect is still missing;
+  # `after_apply?` tells listeners whether it follows an Apply on this port.
   @impl true
   def handle_info(
-        {:serial_message, _port, %ModuleError{i2c_address: addr, error_code: code}},
+        {:serial_message, port, %ModuleError{i2c_address: addr, error_code: code}},
         %State{} = state
       ) do
     Logger.warning(
       "ModuleError: I2C module at #{I2cModule.format_i2c_address(addr)} failed init (error_code=#{code})"
     )
 
+    after_apply? =
+      case Map.fetch(state.applied_at, port) do
+        {:ok, at} -> now_ms() - at <= @module_error_window_ms
+        :error -> false
+      end
+
+    broadcast_config_event({:i2c_module_failed, port, addr, after_apply?})
     {:noreply, state}
   end
 
@@ -362,8 +372,8 @@ defmodule Trenino.Hardware.ConfigurationManager do
     end
   end
 
-  # MT6701 inputs need firmware 3.4.0 (module type 8). Gauges are configure parts, but they
-  # need firmware 3.3.0 (module type 7); older
+  # Angle-sensor inputs need the firmware their chip names (3.4.0 for the MT6701, module
+  # type 8). Gauges are configure parts, but they need firmware 3.3.0 (module type 7); older
   # firmware rejects the whole configuration. The empty Configure packet sent for an
   # outputs-only configuration (outputs need no device-side parts, but the device must
   # still learn the config_id) needs firmware 3.1.0.
@@ -372,9 +382,21 @@ defmodule Trenino.Hardware.ConfigurationManager do
        do: {:error, :too_many_modules}
 
   defp validate_configuration(port, parts, gauges, outputs) do
-    if Enum.any?(parts, &match?({:input, %Input{sensor: :mt6701}}, &1)),
-      do: validate_firmware_floor(port, Hardware.mt6701_firmware_version()),
-      else: validate_configuration_floor(port, parts, gauges, outputs)
+    case angle_sensor_firmware(parts) do
+      nil -> validate_configuration_floor(port, parts, gauges, outputs)
+      floor -> validate_firmware_floor(port, floor)
+    end
+  end
+
+  # The highest firmware any angle sensor in the parts needs (all are above the gauge floor).
+  defp angle_sensor_firmware(parts) do
+    parts
+    |> Enum.flat_map(fn
+      {:input, %Input{} = input} -> List.wrap(Input.angle_sensor(input))
+      _ -> []
+    end)
+    |> Enum.map(& &1.firmware)
+    |> Enum.max_by(&Version.parse!/1, Version, fn -> nil end)
   end
 
   defp validate_configuration_floor(port, parts, gauges, outputs) do
@@ -410,13 +432,9 @@ defmodule Trenino.Hardware.ConfigurationManager do
   defp validate_firmware_floor(port, floor) do
     conn = Enum.find(Connection.connected_devices(), &(&1.port == port))
 
-    with %{device_version: version} when is_binary(version) <- conn,
-         {:ok, parsed} <- Version.parse(version),
-         true <- Version.compare(parsed, floor) != :lt and parsed.pre == [] do
-      :ok
-    else
-      _ -> {:error, :firmware_update_required}
-    end
+    if Hardware.firmware_at_least?(conn && conn.device_version, floor),
+      do: :ok,
+      else: {:error, :firmware_update_required}
   end
 
   defp send_configuration_messages(port, config_id, []) do

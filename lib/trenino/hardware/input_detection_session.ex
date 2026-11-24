@@ -11,7 +11,8 @@ defmodule Trenino.Hardware.InputDetectionSession do
 
   Detection thresholds:
   - Button: any value change (0→1 or 1→0)
-  - Analog: value changes by more than 50 raw ADC units
+  - Analog: value changes by more than 50 raw ADC units, or by more than
+    3° (measured the short way round the circle) for a magnetic angle sensor
 
   ## Usage
 
@@ -30,9 +31,11 @@ defmodule Trenino.Hardware.InputDetectionSession do
   require Logger
 
   alias Trenino.Hardware
+  alias Trenino.Hardware.{AngleSensor, Input}
   alias Trenino.Serial.Connection
 
   @analog_threshold 50
+  @angle_threshold_degrees 3
   @default_timeout_ms 60_000
   @input_values_topic "hardware:input_values"
   @test_port "test_port"
@@ -53,6 +56,7 @@ defmodule Trenino.Hardware.InputDetectionSession do
             callback_pid: pid(),
             input_type: :button | :analog | :any,
             pin_lookup: %{{String.t(), integer()} => input_info()},
+            angle_sensors: %{{String.t(), integer()} => AngleSensor.t()},
             baselines: %{{String.t(), integer()} => integer()},
             timeout_timer: reference() | nil
           }
@@ -62,7 +66,8 @@ defmodule Trenino.Hardware.InputDetectionSession do
       :input_type,
       :pin_lookup,
       :baselines,
-      :timeout_timer
+      :timeout_timer,
+      angle_sensors: %{}
     ]
   end
 
@@ -101,7 +106,7 @@ defmodule Trenino.Hardware.InputDetectionSession do
     timeout_ms = Keyword.get(opts, :timeout_ms, @default_timeout_ms)
 
     connected = Connection.connected_devices()
-    pin_lookup = build_pin_lookup(connected)
+    {pin_lookup, angle_sensors} = build_pin_lookup(connected)
 
     subscribe_to_ports(connected)
 
@@ -111,6 +116,7 @@ defmodule Trenino.Hardware.InputDetectionSession do
       callback_pid: callback_pid,
       input_type: input_type,
       pin_lookup: pin_lookup,
+      angle_sensors: angle_sensors,
       baselines: %{},
       timeout_timer: timeout_timer
     }
@@ -164,7 +170,9 @@ defmodule Trenino.Hardware.InputDetectionSession do
         {:noreply, %{state | baselines: Map.put(state.baselines, key, value)}}
 
       baseline ->
-        if significant_change?(input_info.input_type, state.input_type, baseline, value) do
+        spec = Map.get(state.angle_sensors, key)
+
+        if significant_change?(input_info.input_type, state.input_type, baseline, value, spec) do
           detection = build_detection(input_info, value)
           Logger.info("[InputDetectionSession] Detected input: #{inspect(detection)}")
           send(state.callback_pid, {:input_detected, detection})
@@ -175,20 +183,30 @@ defmodule Trenino.Hardware.InputDetectionSession do
     end
   end
 
-  defp significant_change?(input_type, filter, baseline, value) do
-    type_matches?(input_type, filter) and value_changed?(input_type, baseline, value)
+  defp significant_change?(input_type, filter, baseline, value, spec) do
+    type_matches?(input_type, filter) and value_changed?(input_type, baseline, value, spec)
   end
 
   defp type_matches?(_input_type, :any), do: true
   defp type_matches?(input_type, filter), do: input_type == filter
 
-  defp value_changed?(:button, baseline, value), do: value != baseline
-  defp value_changed?(:analog, baseline, value), do: abs(value - baseline) > @analog_threshold
+  defp value_changed?(:button, baseline, value, _spec), do: value != baseline
+
+  defp value_changed?(:analog, baseline, value, nil),
+    do: abs(value - baseline) > @analog_threshold
+
+  # 3° on a 14-bit sensor is about 137 counts; 50 would be 1°, and a raw difference
+  # would read a wrap from 16383 to 0 as a full turn.
+  defp value_changed?(:analog, baseline, value, %AngleSensor{} = spec) do
+    delta = AngleSensor.shortest_delta(baseline, value, AngleSensor.counts_per_turn(spec))
+    abs(delta) > AngleSensor.counts(spec, @angle_threshold_degrees)
+  end
 
   defp build_detection(input_info, value) do
     Map.put(input_info, :value, value)
   end
 
+  # The pin lookup, and the angle-sensor spec for each `{port, pin}` read by one.
   defp build_pin_lookup(connected) do
     devices = Hardware.list_configurations(preload: [:inputs])
 
@@ -198,7 +216,7 @@ defmodule Trenino.Hardware.InputDetectionSession do
         {device_conn.device_config_id, device_conn.port}
       end)
 
-    Enum.reduce(devices, %{}, fn device, acc ->
+    Enum.reduce(devices, {%{}, %{}}, fn device, acc ->
       ports_for_device = ports_for_device(device.config_id, config_id_to_port)
 
       Enum.reduce(device.inputs, acc, fn input, inner_acc ->
@@ -226,8 +244,12 @@ defmodule Trenino.Hardware.InputDetectionSession do
       device_name: device.name
     }
 
-    Enum.reduce(ports, acc, fn port, port_acc ->
-      Map.put(port_acc, {port, input.pin}, input_info)
+    spec = Input.angle_sensor(input)
+
+    Enum.reduce(ports, acc, fn port, {lookup, angle_sensors} ->
+      key = {port, input.pin}
+      angle_sensors = if spec, do: Map.put(angle_sensors, key, spec), else: angle_sensors
+      {Map.put(lookup, key, input_info), angle_sensors}
     end)
   end
 

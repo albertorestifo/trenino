@@ -14,6 +14,15 @@ defmodule Trenino.Hardware.Calibration.Session do
   4. Advance through steps with `advance_step/1`
   5. Session broadcasts result and terminates
 
+  ## Circular sensors
+
+  With `circular: true` (magnetic angle sensors) the session follows the lever as one
+  unwrapped position from the first reading of the min step to the last of the max
+  step, so the sensor's 0/max point can lie anywhere in the travel. These sensors only
+  send when the angle moves or every ~2 s, so a hold step needs one fresh reading rather
+  than 10 readings with 3 distinct values; each end is the median of the readings held
+  there. The `:ready` step waits for a first reading, which shows the sensor answers.
+
   ## Events
 
   The session broadcasts events to `hardware:calibration:{input_id}`:
@@ -28,6 +37,7 @@ defmodule Trenino.Hardware.Calibration.Session do
   use GenServer
 
   alias Trenino.Hardware
+  alias Trenino.Hardware.AngleSensor
   alias Trenino.Hardware.Calibration.Analyzer
   alias Trenino.Hardware.Input.Calibration
 
@@ -47,7 +57,11 @@ defmodule Trenino.Hardware.Calibration.Session do
             port: String.t(),
             pin: integer(),
             max_hardware_value: integer(),
+            circular: boolean(),
             current_step: step(),
+            current_value: integer() | nil,
+            last_raw: integer() | nil,
+            position: integer() | nil,
             min_samples: [integer()],
             sweep_samples: [integer()],
             max_samples: [integer()],
@@ -59,7 +73,11 @@ defmodule Trenino.Hardware.Calibration.Session do
       :port,
       :pin,
       :max_hardware_value,
+      circular: false,
       current_step: :ready,
+      current_value: nil,
+      last_raw: nil,
+      position: nil,
       min_samples: [],
       sweep_samples: [],
       max_samples: [],
@@ -78,6 +96,7 @@ defmodule Trenino.Hardware.Calibration.Session do
     * `:port` - Required. The serial port of the device.
     * `:pin` - Required. The pin number of the input.
     * `:max_hardware_value` - Optional. Hardware max value (default: 1023).
+    * `:circular` - Optional. Calibrate as a circular angle sensor (default: false).
   """
   @spec start_link(keyword()) :: GenServer.on_start()
   def start_link(opts) do
@@ -135,6 +154,7 @@ defmodule Trenino.Hardware.Calibration.Session do
     port = Keyword.fetch!(opts, :port)
     pin = Keyword.fetch!(opts, :pin)
     max_hardware_value = Keyword.get(opts, :max_hardware_value, 1023)
+    circular = Keyword.get(opts, :circular, false)
 
     Logger.debug("Calibration session starting for input #{input_id}, port #{port}, pin #{pin}")
 
@@ -145,7 +165,8 @@ defmodule Trenino.Hardware.Calibration.Session do
       input_id: input_id,
       port: port,
       pin: pin,
-      max_hardware_value: max_hardware_value
+      max_hardware_value: max_hardware_value,
+      circular: circular
     }
 
     broadcast_event(state, :session_started)
@@ -223,27 +244,55 @@ defmodule Trenino.Hardware.Calibration.Session do
 
   # Private helpers
 
-  defp collect_sample(%State{current_step: :collecting_min} = state, value) do
-    %{state | min_samples: [value | state.min_samples]}
+  # Circular sensors keep unwrapped positions in the min and max samples; ADC inputs keep
+  # raw values. Sweep samples are raw in both (circular only counts them).
+  defp collect_sample(%State{} = state, value) do
+    state = %{state | current_value: value}
+
+    if state.current_step in [:collecting_min, :sweeping, :collecting_max] do
+      state |> track_position(value) |> store_sample(value)
+    else
+      state
+    end
   end
 
-  defp collect_sample(%State{current_step: :sweeping} = state, value) do
+  defp track_position(%State{circular: true, last_raw: nil} = state, value),
+    do: %{state | last_raw: value, position: value}
+
+  defp track_position(%State{circular: true} = state, value) do
+    n = state.max_hardware_value + 1
+    delta = AngleSensor.shortest_delta(state.last_raw, value, n)
+    %{state | last_raw: value, position: state.position + delta}
+  end
+
+  defp track_position(%State{} = state, _value), do: state
+
+  defp store_sample(%State{current_step: :collecting_min} = state, value) do
+    %{state | min_samples: [held_value(state, value) | state.min_samples]}
+  end
+
+  defp store_sample(%State{current_step: :sweeping} = state, value) do
     %{state | sweep_samples: [value | state.sweep_samples]}
   end
 
-  defp collect_sample(%State{current_step: :collecting_max} = state, value) do
-    %{state | max_samples: [value | state.max_samples]}
+  defp store_sample(%State{current_step: :collecting_max} = state, value) do
+    %{state | max_samples: [held_value(state, value) | state.max_samples]}
   end
 
-  defp collect_sample(%State{} = state, _value), do: state
+  defp held_value(%State{circular: true, position: position}, _value), do: position
+  defp held_value(%State{}, value), do: value
 
   defp validate_and_advance(%State{current_step: :ready} = state) do
-    Logger.debug("Advancing from :ready to :collecting_min")
-    {:ok, %{state | current_step: :collecting_min}}
+    if can_advance?(state) do
+      Logger.debug("Advancing from :ready to :collecting_min")
+      {:ok, %{state | current_step: :collecting_min}}
+    else
+      {:error, :no_reading}
+    end
   end
 
   defp validate_and_advance(%State{current_step: :collecting_min} = state) do
-    if valid_samples?(state.min_samples) do
+    if valid_samples?(state, state.min_samples) do
       {:ok, %{state | current_step: :sweeping}}
     else
       {:error, :insufficient_samples}
@@ -259,7 +308,7 @@ defmodule Trenino.Hardware.Calibration.Session do
   end
 
   defp validate_and_advance(%State{current_step: :collecting_max} = state) do
-    if valid_samples?(state.max_samples) do
+    if valid_samples?(state, state.max_samples) do
       {:ok, %{state | current_step: :analyzing}}
     else
       {:error, :insufficient_samples}
@@ -270,9 +319,25 @@ defmodule Trenino.Hardware.Calibration.Session do
     {:error, :invalid_step}
   end
 
-  defp valid_samples?(samples) do
+  # A held angle sensor may send one reading in 2 s; one fresh reading shows it is there.
+  defp valid_samples?(%State{circular: true}, samples), do: samples != []
+
+  defp valid_samples?(%State{}, samples) do
     length(samples) >= @min_sample_count and
       length(Enum.uniq(samples)) >= @min_unique_samples
+  end
+
+  defp analyze_and_save_calibration(%State{circular: true} = state) do
+    with {:ok, attrs} <-
+           Analyzer.circular_calibration(
+             state.min_samples,
+             state.max_samples,
+             state.max_hardware_value + 1
+           ) do
+      attrs = Map.merge(attrs, %{max_hardware_value: state.max_hardware_value, circular: true})
+
+      Hardware.save_calibration(state.input_id, attrs)
+    end
   end
 
   defp analyze_and_save_calibration(%State{} = state) do
@@ -317,7 +382,9 @@ defmodule Trenino.Hardware.Calibration.Session do
     %{
       input_id: state.input_id,
       pin: state.pin,
+      circular: state.circular,
       current_step: state.current_step,
+      current_value: state.current_value,
       min_sample_count: length(state.min_samples),
       min_unique_count: length(Enum.uniq(state.min_samples)),
       sweep_sample_count: length(state.sweep_samples),
@@ -328,18 +395,21 @@ defmodule Trenino.Hardware.Calibration.Session do
     }
   end
 
+  defp can_advance?(%State{current_step: :ready, circular: true} = state),
+    do: state.current_value != nil
+
   defp can_advance?(%State{current_step: :ready}), do: true
 
-  defp can_advance?(%State{current_step: :collecting_min, min_samples: samples}) do
-    valid_samples?(samples)
+  defp can_advance?(%State{current_step: :collecting_min, min_samples: samples} = state) do
+    valid_samples?(state, samples)
   end
 
   defp can_advance?(%State{current_step: :sweeping, sweep_samples: samples}) do
     length(samples) >= @min_sample_count
   end
 
-  defp can_advance?(%State{current_step: :collecting_max, max_samples: samples}) do
-    valid_samples?(samples)
+  defp can_advance?(%State{current_step: :collecting_max, max_samples: samples} = state) do
+    valid_samples?(state, samples)
   end
 
   defp can_advance?(%State{}), do: false

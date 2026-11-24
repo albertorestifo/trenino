@@ -8,12 +8,31 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- MT6701 magnetic angle sensors over I2C (controller firmware 3.4.0). Pick
+  **MT6701 magnetic sensor (I2C)** as an analog input's sensor and choose its address:
+  0x06, or 0x46 for a second board on the same cable. The inputs list shows the live
+  angle, and **Not responding** when the sensor doesn't answer. Calibration shows the live
+  angle, needs only one reading per end, and handles the sensor's 0°/360° point anywhere
+  in the travel, including readings that jitter across it at either end.
+
 - SimRail (beta): connect to SimRail through the TreninoBridge mod, with its URL and an
   optional token for when SimRail runs on another computer.
 - Settings now lists each simulator with its own connection page.
 - SimRail setup assistant (beta, with its own toggle under beta features): finds SimRail,
   checks MelonLoader and its settings, installs the TreninoBridge mod that now ships with
   the desktop app, and connects.
+
+### Changed
+
+- The calibration wizard says which end becomes 0% and 100%, and shows the live reading
+  on every step.
+- "Firmware update required" now names both versions: 3.3.0 for gauges, 3.4.0 for
+  magnetic sensors.
+- Changing an input's sensor or I2C address clears its calibration.
+
+### Fixed
+
+- An I2C display that didn't answer after Apply was only logged. It now shows a message.
 
 ## [0.9.2] - 2026-11-24
 

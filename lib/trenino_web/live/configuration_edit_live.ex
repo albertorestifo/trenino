@@ -16,10 +16,14 @@ defmodule TreninoWeb.ConfigurationEditLive do
   import TreninoWeb.ConfigurationEditLive.Sections
 
   alias Trenino.Hardware
+  alias Trenino.Hardware.AngleSensor
   alias Trenino.Hardware.Calibration.Session
   alias Trenino.Hardware.{ConfigId, Device, HT16K33, Input, Matrix, Output}
   alias Trenino.Serial.Connection
+  alias TreninoWeb.ConfigurationEditLive.SensorHealth
   alias TreninoWeb.MatrixTestWizard
+
+  @sensor_check_ms 1_000
 
   @impl true
   def mount(%{"config_id" => "new"}, _session, socket) do
@@ -131,7 +135,8 @@ defmodule TreninoWeb.ConfigurationEditLive do
      |> assign(:i2c_modules, [])
      |> assign(:gauges, [])
      |> assign(:i2c_modal_open, false)
-     |> assign(:i2c_modal_module, nil)}
+     |> assign(:i2c_modal_module, nil)
+     |> assign_sensor_health()}
   end
 
   defp mount_existing(socket, config_id) do
@@ -180,7 +185,8 @@ defmodule TreninoWeb.ConfigurationEditLive do
          |> assign(:i2c_modules, i2c_modules)
          |> assign(:gauges, Hardware.list_gauges(device.id))
          |> assign(:i2c_modal_open, false)
-         |> assign(:i2c_modal_module, nil)}
+         |> assign(:i2c_modal_module, nil)
+         |> assign_sensor_health()}
 
       {:error, :not_found} ->
         {:ok,
@@ -209,8 +215,31 @@ defmodule TreninoWeb.ConfigurationEditLive do
       Phoenix.PubSub.subscribe(Trenino.PubSub, "train:gauges:configuration")
       active_port = find_active_port(config_id)
       if active_port, do: Hardware.subscribe_input_values(active_port)
+      Process.send_after(self(), :check_sensors, @sensor_check_ms)
     end
   end
+
+  # Angle sensors are watched from now: each gets the full silence window first.
+  defp assign_sensor_health(socket) do
+    socket
+    |> assign(:sensor_health, SensorHealth.new(now_ms()))
+    |> assign(:unresponsive_pins, MapSet.new())
+  end
+
+  defp refresh_unresponsive(%{assigns: %{active_port: nil}} = socket),
+    do: assign(socket, :unresponsive_pins, MapSet.new())
+
+  defp refresh_unresponsive(socket) do
+    pins = for input <- socket.assigns.inputs, Input.angle_sensor?(input), do: input.pin
+
+    assign(
+      socket,
+      :unresponsive_pins,
+      SensorHealth.unresponsive(socket.assigns.sensor_health, pins, now_ms())
+    )
+  end
+
+  defp now_ms, do: System.monotonic_time(:millisecond)
 
   # Nav component events
   @impl true
@@ -288,6 +317,8 @@ defmodule TreninoWeb.ConfigurationEditLive do
 
   @impl true
   def handle_event("validate_input", %{"input" => params}, socket) do
+    params = default_sensor_address(params, socket.assigns.inputs)
+
     changeset =
       %Input{}
       |> Input.changeset(Map.put(params, "device_id", socket.assigns.device.id))
@@ -766,6 +797,43 @@ defmodule TreninoWeb.ConfigurationEditLive do
 
   # Private helpers for input creation
 
+  # Picking a magnetic sensor fills in the first address no other sensor here uses.
+  defp default_sensor_address(%{"sensor" => sensor} = params, inputs) do
+    with %AngleSensor{} = spec <- AngleSensor.get(sensor),
+         blank when blank in [nil, ""] <- params["i2c_address"],
+         address when is_integer(address) <- first_free_address(spec, inputs) do
+      Map.put(params, "i2c_address", Integer.to_string(address))
+    else
+      _ -> params
+    end
+  end
+
+  defp default_sensor_address(params, _inputs), do: params
+
+  defp first_free_address(spec, inputs) do
+    used = for %Input{i2c_address: address} when is_integer(address) <- inputs, do: address
+    Enum.find(AngleSensor.addresses(spec), &(&1 not in used))
+  end
+
+  # The connected controller's firmware can't read magnetic sensors yet.
+  @doc false
+  @spec angle_sensor_firmware_warning(String.t() | nil) :: String.t() | nil
+  def angle_sensor_firmware_warning(nil), do: nil
+
+  def angle_sensor_firmware_warning(port) do
+    floor = AngleSensor.firmware_version()
+
+    case Enum.find(Connection.connected_devices(), &(&1.port == port)) do
+      %{device_version: version} when is_binary(version) ->
+        unless Hardware.firmware_at_least?(version, floor),
+          do:
+            "This controller has firmware #{version}. Magnetic sensors need #{floor} or newer: update it before applying."
+
+      _ ->
+        nil
+    end
+  end
+
   defp add_regular_input(socket, params) do
     case Hardware.create_input(socket.assigns.device.id, params) do
       {:ok, _input} ->
@@ -874,6 +942,14 @@ defmodule TreninoWeb.ConfigurationEditLive do
       else: errors
   end
 
+  defp calibration_failure_message(:range_too_small),
+    do:
+      "The lever moved less than 5°. Check that the magnet turns with the shaft, then calibrate again."
+
+  defp calibration_failure_message(:range_too_large),
+    do:
+      "The sensor turned almost a full circle, so the two ends can't be told apart. Check that the lever stops at both ends, then calibrate again."
+
   defp calibration_failure_message(reason) do
     Logger.error("Calibration failed: #{inspect(reason)}")
 
@@ -909,7 +985,7 @@ defmodule TreninoWeb.ConfigurationEditLive do
 
   def configuration_failure_message(:firmware_update_required),
     do:
-      "This configuration needs newer controller firmware (#{Hardware.gauge_firmware_version()} or newer for gauges). Update the firmware, then apply again."
+      "This configuration needs newer controller firmware: #{Hardware.gauge_firmware_version()} or newer for gauges, #{AngleSensor.firmware_version()} or newer for magnetic sensors. Update the firmware, then apply again."
 
   def configuration_failure_message(reason) do
     Logger.error("Configuration apply failed: #{inspect(reason)}")
@@ -982,6 +1058,7 @@ defmodule TreninoWeb.ConfigurationEditLive do
      |> assign(:new_mode, false)
      |> assign(:active_port, port)
      |> assign(:applying, false)
+     |> assign_sensor_health()
      |> put_flash(:info, "Configuration applied")}
   end
 
@@ -997,7 +1074,12 @@ defmodule TreninoWeb.ConfigurationEditLive do
   @impl true
   def handle_info({:input_value_updated, _port, pin, value}, socket) do
     new_values = Map.put(socket.assigns.input_values, pin, value)
-    socket = assign(socket, :input_values, new_values)
+
+    socket =
+      socket
+      |> assign(:input_values, new_values)
+      |> update(:sensor_health, &SensorHealth.seen(&1, pin, now_ms()))
+      |> update(:unresponsive_pins, &MapSet.delete(&1, pin))
 
     # Track tested buttons for matrix (virtual pins >= 128) when pressed
     socket =
@@ -1033,7 +1115,10 @@ defmodule TreninoWeb.ConfigurationEditLive do
       if active_port != socket.assigns.active_port do
         if active_port do
           Hardware.subscribe_input_values(active_port)
-          assign(socket, :active_port, active_port)
+
+          socket
+          |> assign(:active_port, active_port)
+          |> assign_sensor_health()
         else
           socket
           |> assign(:active_port, nil)
@@ -1107,7 +1192,63 @@ defmodule TreninoWeb.ConfigurationEditLive do
     end
   end
 
+  def handle_info(:check_sensors, socket) do
+    Process.send_after(self(), :check_sensors, @sensor_check_ms)
+    {:noreply, refresh_unresponsive(socket)}
+  end
+
+  # An I2C sensor or display on this page's controller did not answer when the
+  # configuration started. The badge shows for every report; the flash only right after
+  # an Apply, since the firmware repeats boot-time errors at every connect.
+  def handle_info({:i2c_module_failed, port, address, after_apply?}, socket) do
+    if port == socket.assigns[:active_port] do
+      sensor =
+        Enum.find(
+          socket.assigns.inputs,
+          &(Input.angle_sensor?(&1) and &1.i2c_address == address)
+        )
+
+      {:noreply,
+       socket
+       |> mark_sensor_failed(sensor)
+       |> maybe_flash_module_failure(after_apply?, sensor, address)}
+    else
+      {:noreply, socket}
+    end
+  end
+
   def handle_info(_msg, socket), do: {:noreply, socket}
+
+  defp mark_sensor_failed(socket, nil), do: socket
+
+  defp mark_sensor_failed(socket, %Input{pin: pin}) do
+    socket
+    |> update(:sensor_health, &SensorHealth.failed(&1, pin))
+    |> refresh_unresponsive()
+  end
+
+  defp maybe_flash_module_failure(socket, false, _sensor, _address), do: socket
+
+  defp maybe_flash_module_failure(socket, true, sensor, address),
+    do: put_flash(socket, :error, module_failure_message(sensor, address))
+
+  @doc false
+  @spec module_failure_message(Input.t() | nil, integer()) :: String.t()
+  def module_failure_message(%Input{} = sensor, address) do
+    second_board =
+      if address == 0x46,
+        do: " A second board must be set to 0x46 with the setup sketch first.",
+        else: ""
+
+    "The #{Input.location_label(sensor)} did not answer. Check its 4-wire cable " <>
+      "(5V, GND, SDA, SCL).#{second_board} It is retried on its own, so the warning " <>
+      "clears once the sensor answers."
+  end
+
+  def module_failure_message(nil, address) do
+    "The I2C display at #{AngleSensor.format_address(address)} did not answer. " <>
+      "Check its wiring and address, then apply again."
+  end
 
   # The gauge section shows whether gauges can be moved now (connected, firmware, applied).
   # `:applied` tells an open calibration panel the gauge just re-zeroed.
@@ -1180,6 +1321,7 @@ defmodule TreninoWeb.ConfigurationEditLive do
             inputs={@inputs}
             input_values={@input_values}
             active_port={@active_port}
+            unresponsive_pins={@unresponsive_pins}
           />
 
           <.matrices_section matrices={@matrices} active_port={@active_port} />
@@ -1219,7 +1361,11 @@ defmodule TreninoWeb.ConfigurationEditLive do
       </div>
     </main>
 
-    <.add_input_modal :if={@modal_open} form={@form} />
+    <.add_input_modal
+      :if={@modal_open}
+      form={@form}
+      firmware_warning={angle_sensor_firmware_warning(@active_port)}
+    />
 
     <.add_matrix_modal
       :if={@matrix_modal_open}

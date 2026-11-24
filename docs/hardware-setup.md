@@ -39,6 +39,7 @@ Other microcontrollers with USB serial and ADC inputs may work if you flash the 
 | Type | Description | Use Case |
 |------|-------------|----------|
 | Analog | 10-bit ADC (0-1023) | Potentiometers, throttle levers |
+| Analog, MT6701 sensor | 14-bit magnetic angle over I2C (0-16383 per turn), firmware 3.4.0 | Levers with a magnet on the shaft |
 | Digital | On/Off state | Buttons, momentary switches, toggle switches |
 | Matrix | Grid of digital inputs via row/column GPIO pins | Button matrices, arcade panels |
 
@@ -105,6 +106,54 @@ Once your device is connected and configuration is ready:
 
 The device stores the `config_id` and begins streaming input values.
 
+## Magnetic Angle Sensors (MT6701)
+
+An analog input can be read by an MT6701 magnetic angle sensor over I2C instead of an
+analog pin. It reports the magnet's angle at 14 bits (about 0.02° per count), and needs
+controller firmware **3.4.0** or newer. The SimRail gate-lever sensor board in the
+`train-lever` repository is built around it.
+
+### Wiring and addresses
+
+- Connect the sensor board's I2C connector to the controller's 5V, GND, SDA and SCL.
+- Every MT6701 answers at **0x06** from the factory.
+- Two sensors can share one cable. Before plugging the second board into the chain,
+  set it to **0x46** with the MT6701 setup sketch (`addr46`, then `burn`). The chip has
+  no address pin, so this is the only way to tell two of them apart.
+- I2C displays (HT16K33, 0x70-0x77) can share the same bus.
+
+### Adding the input
+
+1. Click **Add input** and keep **Analog** as the type.
+2. Pick **MT6701 magnetic sensor (I2C)** as the sensor.
+3. Pick the address. The form picks the first one this configuration doesn't use yet.
+   If the connected controller's firmware is too old, the form says so.
+4. Apply the configuration.
+
+The inputs list shows the sensor as `I2C 0x06` and its live angle. With two sensors,
+move one lever and watch which angle changes.
+
+If a sensor doesn't answer, its row shows **Not responding**: right after Apply when the
+controller reports it missing, or when no reading has arrived for 5 seconds. The
+controller keeps retrying, so the badge clears by itself once the cable or address is
+fixed.
+
+### Calibrating
+
+Calibration works as for other levers, with two differences:
+
+- The first step shows the live angle. Move the lever end to end before pressing Start:
+  the angle should change smoothly. If it stays still or jumps, check the magnet and the
+  gap.
+- Holding a position needs one fresh reading, not a run of samples: a magnetic sensor
+  at rest only sends every 2 seconds.
+
+The sensor's 0°/360° point can be anywhere in the lever's travel: Trenino follows the
+lever round the circle, so there is no need to align the magnet. A calibration fails if
+the lever turned the magnet less than 5° (the magnet slips on the shaft) or more than
+330° (the two ends can't be told apart). Changing an input's sensor or address clears
+its calibration.
+
 ## I2C Display Modules
 
 I2C display modules let you show live simulator data — speed, brake pressure, gear position — on physical LED displays attached to your Arduino. Trenino supports **HT16K33**-based displays, which are common on 7-segment and 14-segment Adafruit backpacks.
@@ -151,7 +200,8 @@ Once a module is configured, set up a **display binding** in your train configur
 
 ## Calibrating Inputs
 
-Calibration maps raw ADC values to normalized 0.0-1.0 range.
+Calibration maps raw values to the normalized 0.0-1.0 range. For magnetic angle sensors,
+see [Calibrating](#calibrating) under Magnetic Angle Sensors.
 
 ### Starting Calibration
 
@@ -204,7 +254,15 @@ After calibration, you'll see:
 
 1. Ensure device is connected
 2. Check device isn't locked by another configuration
-3. Verify firmware supports the protocol version
+3. Verify firmware supports the protocol version (3.3.0 for gauges, 3.4.0 for magnetic
+   sensors)
+
+### Magnetic Sensor Not Responding
+
+1. Check the 4-wire cable (5V, GND, SDA, SCL) and that SDA and SCL aren't swapped
+2. With two sensors, check that the second board was set to 0x46 with the setup sketch,
+   and that the input uses that address
+3. Run the setup sketch's live readout to check the sensor on its own
 
 ## Hardware Protocol Reference
 

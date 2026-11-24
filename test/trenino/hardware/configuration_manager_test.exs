@@ -241,6 +241,34 @@ defmodule Trenino.Hardware.ConfigurationManagerTest do
       assert_receive {:gauge_start_failed, ^port}
     end
 
+    test "an I2C module error is broadcast every time, flagged when it follows an Apply", %{
+      device: device,
+      port: port
+    } do
+      Mimic.stub(Trenino.Serial.Connection, :connected_devices, fn ->
+        [%{port: port, device_version: "3.4.0"}]
+      end)
+
+      Mimic.stub(Trenino.Serial.Connection, :send_message, fn ^port, _ -> :ok end)
+      Phoenix.PubSub.subscribe(Trenino.PubSub, @config_topic)
+      module_error = %Trenino.Serial.Protocol.ModuleError{i2c_address: 0x46, error_code: 0}
+
+      send(ConfigurationManager, {:serial_message, port, module_error})
+      assert_receive {:i2c_module_failed, ^port, 0x46, false}
+
+      assert {:ok, config_id} = ConfigurationManager.apply_configuration(port, device.id)
+
+      send(
+        ConfigurationManager,
+        {:serial_message, port, %ConfigurationStored{config_id: config_id}}
+      )
+
+      assert_receive {:configuration_applied, ^port, _device, ^config_id}
+
+      send(ConfigurationManager, {:serial_message, port, module_error})
+      assert_receive {:i2c_module_failed, ^port, 0x46, true}
+    end
+
     test "refuses more modules than the firmware stores", %{device: device, port: port} do
       Mimic.stub(Trenino.Serial.Connection, :connected_devices, fn ->
         [%{port: port, device_version: "3.3.0"}]

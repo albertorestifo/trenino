@@ -19,6 +19,11 @@ defmodule Trenino.Hardware.Calibration.Calculator do
   2. **Inverted (no rollover)**: raw decreases, normalized = min - raw
   3. **Rollover (not inverted)**: raw increases and wraps 1023→0
   4. **Inverted with rollover**: raw decreases and wraps 0→1023
+  5. **Circular** (`circular: true`, magnetic angle sensors): raw is a position on a
+     circle of `max_hardware_value + 1` counts. The distance from min is measured round
+     the circle in the travel direction, so the travel may cross 0 anywhere. A reading
+     outside the travel clamps to the nearer end, measured round the circle. Ignores
+     `has_rollover`.
   """
 
   alias Trenino.Hardware.Input.Calibration
@@ -29,6 +34,19 @@ defmodule Trenino.Hardware.Calibration.Calculator do
   Returns an integer from 0 to total_travel.
   """
   @spec normalize(integer(), Calibration.t()) :: integer()
+  def normalize(raw, %Calibration{circular: true} = cal) do
+    n = cal.max_hardware_value + 1
+    travel = total_travel(cal)
+    d = Integer.mod(direction(cal) * (raw - cal.min_value), n)
+
+    cond do
+      d <= travel -> d
+      # Past the max end by (d - travel), or short of the min end by (n - d).
+      d - travel < n - d -> travel
+      true -> 0
+    end
+  end
+
   def normalize(raw, %Calibration{} = cal) do
     raw
     |> distance_from_min(cal)
@@ -39,6 +57,10 @@ defmodule Trenino.Hardware.Calibration.Calculator do
   Returns the total travel range for a calibration.
   """
   @spec total_travel(Calibration.t()) :: integer()
+  def total_travel(%Calibration{circular: true} = cal) do
+    Integer.mod(direction(cal) * (cal.max_value - cal.min_value), cal.max_hardware_value + 1)
+  end
+
   def total_travel(%Calibration{is_inverted: false, has_rollover: false} = cal) do
     cal.max_value - cal.min_value
   end
@@ -124,6 +146,9 @@ defmodule Trenino.Hardware.Calibration.Calculator do
         end
     end
   end
+
+  defp direction(%Calibration{is_inverted: true}), do: -1
+  defp direction(%Calibration{}), do: 1
 
   defp clamp(value, min, max) do
     value

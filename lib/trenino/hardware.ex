@@ -31,11 +31,20 @@ defmodule Trenino.Hardware do
 
   @max_gauges_per_device 4
   @gauge_firmware "3.3.0"
-  @mt6701_firmware "3.4.0"
 
-  @doc "Lowest firmware version that reads MT6701 sensors over I2C."
-  @spec mt6701_firmware_version() :: String.t()
-  def mt6701_firmware_version, do: @mt6701_firmware
+  @doc """
+  True when a firmware version string (as the device reports it) is a release at or
+  above `floor`. Pre-releases and unparsable versions are not.
+  """
+  @spec firmware_at_least?(String.t() | nil, String.t()) :: boolean()
+  def firmware_at_least?(version, floor) when is_binary(version) do
+    case Version.parse(version) do
+      {:ok, parsed} -> Version.compare(parsed, floor) != :lt and parsed.pre == []
+      :error -> false
+    end
+  end
+
+  def firmware_at_least?(_version, _floor), do: false
 
   @doc "Most gauges one device accepts in a configuration (firmware limit)."
   @spec max_gauges_per_device() :: pos_integer()
@@ -767,9 +776,18 @@ defmodule Trenino.Hardware do
   """
   @spec update_input(Input.t(), map()) :: {:ok, Input.t()} | {:error, Ecto.Changeset.t()}
   def update_input(%Input{} = input, attrs) do
-    input
-    |> Input.changeset(attrs)
-    |> Repo.update()
+    changeset = Input.changeset(input, attrs)
+
+    if Ecto.Changeset.changed?(changeset, :sensor) or
+         Ecto.Changeset.changed?(changeset, :i2c_address) do
+      # A calibration is in the old sensor's raw units: it would map the new one wrongly.
+      Repo.transact(fn ->
+        from(c in Calibration, where: c.input_id == ^input.id) |> Repo.delete_all()
+        Repo.update(changeset)
+      end)
+    else
+      Repo.update(changeset)
+    end
   end
 
   @doc """
@@ -1136,6 +1154,9 @@ defmodule Trenino.Hardware do
     * `:max_hardware_value` - Optional. Hardware max value (default: the input's sensor
       range, 1023 for the ADC and 16383 for an MT6701).
 
+  An angle-sensor input is calibrated as a circle (`circular: true`), so its lever may
+  cross the sensor's 0/max point anywhere.
+
   Returns `{:ok, pid}` on success.
   """
   @spec start_calibration_session(Input.t(), String.t(), keyword()) ::
@@ -1144,6 +1165,7 @@ defmodule Trenino.Hardware do
     session_opts =
       opts
       |> Keyword.put_new(:max_hardware_value, Input.max_raw_value(input))
+      |> Keyword.put_new(:circular, Input.angle_sensor?(input))
       |> Keyword.merge(
         input_id: input.id,
         port: port,

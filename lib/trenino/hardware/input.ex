@@ -5,10 +5,10 @@ defmodule Trenino.Hardware.Input do
   ## Input Types
 
   - `:analog` - Analog input (e.g., potentiometer, lever). Requires sensitivity.
-    Read by the Arduino ADC (`sensor: :adc`, 0-1023) or by an MT6701 magnetic angle
-    sensor over I2C (`sensor: :mt6701`, 0-16383, firmware 3.4.0). An MT6701 input has an
-    `i2c_address` (0x06 or 0x46) and its `pin` is the report pin the device uses for it
-    (see `mt6701_report_pin/1`), not a physical pin.
+    Read by the Arduino ADC (`sensor: :adc`, 0-1023) or by a magnetic angle sensor over
+    I2C (see `Trenino.Hardware.AngleSensor`; `sensor: :mt6701` is 0-16383, firmware
+    3.4.0). An angle-sensor input has an `i2c_address` and its `pin` is the report pin the
+    device uses for it (`AngleSensor.report_pin/2`), not a physical pin.
   - `:button` - Button input. Can be physical (pin 0-127) or virtual (pin 128-255).
 
   ## Virtual Buttons
@@ -26,6 +26,7 @@ defmodule Trenino.Hardware.Input do
   use Ecto.Schema
   import Ecto.Changeset
 
+  alias Trenino.Hardware.AngleSensor
   alias Trenino.Hardware.Device
   alias Trenino.Hardware.Input.Calibration
   alias Trenino.Hardware.Matrix
@@ -91,9 +92,9 @@ defmodule Trenino.Hardware.Input do
     |> unique_pin_constraint()
   end
 
-  # An MT6701's pin follows from its address, so a clash is reported on the address.
+  # An angle sensor's pin follows from its address, so a clash is reported on the address.
   defp unique_pin_constraint(changeset) do
-    if get_field(changeset, :sensor) == :mt6701 do
+    if AngleSensor.angle_sensor?(get_field(changeset, :sensor)) do
       unique_constraint(changeset, [:device_id, :pin],
         error_key: :i2c_address,
         message: "is already used by another sensor on this device"
@@ -120,47 +121,66 @@ defmodule Trenino.Hardware.Input do
     end
   end
 
-  @mt6701_report_pins %{0x06 => 240, 0x46 => 241}
+  @doc "The angle sensor spec for an input, or `nil` for an ADC input."
+  @spec angle_sensor(t()) :: AngleSensor.t() | nil
+  def angle_sensor(%__MODULE__{sensor: sensor}), do: AngleSensor.get(sensor)
 
-  @doc """
-  I2C addresses an MT6701 can answer at: 0x06 (factory) and 0x46 (saved in its EEPROM).
-  """
-  @spec mt6701_addresses() :: [integer()]
-  def mt6701_addresses, do: Map.keys(@mt6701_report_pins) |> Enum.sort()
-
-  @doc """
-  The pin an MT6701 input reports under. The device sends the sensor's readings with this
-  pin, so it must not clash with physical pins (0-127) or matrix buttons (128-191).
-  """
-  @spec mt6701_report_pin(integer()) :: integer() | nil
-  def mt6701_report_pin(address), do: Map.get(@mt6701_report_pins, address)
+  @doc "True when the input is read by a magnetic angle sensor over I2C."
+  @spec angle_sensor?(t()) :: boolean()
+  def angle_sensor?(%__MODULE__{sensor: sensor}), do: AngleSensor.angle_sensor?(sensor)
 
   @doc "Highest raw value the input's sensor reports."
   @spec max_raw_value(t()) :: pos_integer()
-  def max_raw_value(%__MODULE__{sensor: :mt6701}), do: 16_383
-  def max_raw_value(%__MODULE__{}), do: 1023
-
-  # An MT6701 is an analog input on I2C: its address picks the report pin.
-  defp validate_sensor(changeset) do
-    case {get_field(changeset, :sensor), get_field(changeset, :input_type)} do
-      {:mt6701, :analog} ->
-        changeset
-        |> validate_required([:i2c_address])
-        |> validate_inclusion(:i2c_address, mt6701_addresses(),
-          message: "must be 0x06 or 0x46"
-        )
-        |> put_mt6701_pin()
-
-      {:mt6701, _} ->
-        add_error(changeset, :sensor, "MT6701 is only for analog inputs")
-
-      _ ->
-        put_change(changeset, :i2c_address, nil)
+  def max_raw_value(%__MODULE__{} = input) do
+    case angle_sensor(input) do
+      %AngleSensor{max_raw: max_raw} -> max_raw
+      nil -> 1023
     end
   end
 
-  defp put_mt6701_pin(changeset) do
-    case mt6701_report_pin(get_field(changeset, :i2c_address)) do
+  @doc """
+  Where the input is wired, for labels: `"MT6701 at 0x06"` or `"Pin 3"`.
+  """
+  @spec location_label(t()) :: String.t()
+  def location_label(%__MODULE__{i2c_address: address} = input) do
+    case angle_sensor(input) do
+      %AngleSensor{name: name} when is_integer(address) ->
+        "#{name} at #{AngleSensor.format_address(address)}"
+
+      _ ->
+        "Pin #{input.pin}"
+    end
+  end
+
+  # An angle sensor is an analog input on I2C: its address picks the report pin.
+  defp validate_sensor(changeset) do
+    sensor = get_field(changeset, :sensor)
+
+    case {AngleSensor.get(sensor), get_field(changeset, :input_type)} do
+      {nil, _} ->
+        put_change(changeset, :i2c_address, nil)
+
+      {%AngleSensor{} = spec, :analog} ->
+        changeset
+        |> validate_required([:i2c_address], message: "choose an address")
+        |> validate_inclusion(:i2c_address, AngleSensor.addresses(spec),
+          message: "must be #{address_list(spec)}"
+        )
+        |> put_report_pin(spec)
+
+      {%AngleSensor{name: name}, _} ->
+        add_error(changeset, :sensor, "#{name} is only for analog inputs")
+    end
+  end
+
+  defp address_list(spec) do
+    spec
+    |> AngleSensor.addresses()
+    |> Enum.map_join(" or ", &AngleSensor.format_address/1)
+  end
+
+  defp put_report_pin(changeset, spec) do
+    case AngleSensor.report_pin(spec, get_field(changeset, :i2c_address)) do
       nil -> changeset
       pin -> put_change(changeset, :pin, pin)
     end
@@ -168,9 +188,9 @@ defmodule Trenino.Hardware.Input do
 
   # Virtual buttons (with matrix_id) use pins 128-255
   # Physical inputs use pins 0-127
-  # An MT6701's report pin (240/241) is set from its address, not by the user.
+  # An angle sensor's report pin (240-247) is set from its address, not by the user.
   defp validate_pin_range(changeset) do
-    if get_field(changeset, :sensor) == :mt6701,
+    if AngleSensor.angle_sensor?(get_field(changeset, :sensor)),
       do: changeset,
       else: validate_physical_or_virtual_pin(changeset)
   end

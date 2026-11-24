@@ -23,7 +23,9 @@ defmodule TreninoWeb.CalibrationWizard do
   require Logger
 
   alias Trenino.Hardware
+  alias Trenino.Hardware.AngleSensor
   alias Trenino.Hardware.Calibration.Session
+  alias Trenino.Hardware.Input
 
   @impl true
   def mount(socket) do
@@ -79,6 +81,14 @@ defmodule TreninoWeb.CalibrationWizard do
       {:error, :insufficient_sweep_samples} ->
         {:noreply, put_flash(socket, :error, "Need more movement. Sweep through the full range.")}
 
+      {:error, :no_reading} ->
+        {:noreply,
+         put_flash(
+           socket,
+           :error,
+           "No reading from the sensor yet. Move the lever, and check the sensor's cable."
+         )}
+
       {:error, reason} ->
         Logger.error("Calibration step could not advance: #{inspect(reason)}")
 
@@ -116,6 +126,7 @@ defmodule TreninoWeb.CalibrationWizard do
 
           <.step_content
             session_state={@session_state}
+            input={@input}
             myself={@myself}
           />
         </div>
@@ -134,7 +145,7 @@ defmodule TreninoWeb.CalibrationWizard do
     <div class="flex items-center justify-between mb-6">
       <div>
         <h2 class="text-xl font-semibold">Calibrate Input</h2>
-        <p class="text-sm text-muted">Pin {@input.pin}</p>
+        <p class="text-sm text-muted">{Input.location_label(@input)}</p>
       </div>
       <button
         phx-click="cancel"
@@ -210,12 +221,13 @@ defmodule TreninoWeb.CalibrationWizard do
   end
 
   attr :session_state, :map, required: true
+  attr :input, :map, required: true
   attr :myself, :any, required: true
 
   defp step_content(assigns) do
     ~H"""
     <div class="space-y-6">
-      <.ready_step :if={@session_state.current_step == :ready} />
+      <.ready_step :if={@session_state.current_step == :ready} state={@session_state} />
       <.collecting_min_step
         :if={@session_state.current_step == :collecting_min}
         state={@session_state}
@@ -228,6 +240,12 @@ defmodule TreninoWeb.CalibrationWizard do
       <.analyzing_step :if={@session_state.current_step == :analyzing} />
       <.complete_step :if={@session_state.current_step == :complete} state={@session_state} />
 
+      <.live_reading
+        :if={@session_state.current_step in [:ready, :collecting_min, :sweeping, :collecting_max]}
+        value={@session_state.current_value}
+        input={@input}
+      />
+
       <.action_buttons
         :if={@session_state.current_step not in [:analyzing, :complete]}
         session_state={@session_state}
@@ -237,6 +255,8 @@ defmodule TreninoWeb.CalibrationWizard do
     """
   end
 
+  attr :state, :map, required: true
+
   defp ready_step(assigns) do
     ~H"""
     <div class="text-center">
@@ -244,10 +264,15 @@ defmodule TreninoWeb.CalibrationWizard do
         <.icon name="hero-play" class="w-8 h-8 text-base-content" />
       </div>
       <h3 class="text-xl font-semibold mb-2">Ready to Calibrate</h3>
-      <p class="text-muted mb-4">
-        Move the input to its <strong>minimum</strong>
-        position, then press <strong>Start</strong>
-        to begin collecting samples.
+      <p :if={@state.circular} class="text-muted mb-4">
+        First check the sensor: move the lever end to end. The angle below should change
+        smoothly. If it stays still or jumps, check the magnet and the gap.
+        Then move the lever to the end you want as <strong>0%</strong>
+        and press <strong>Start</strong>.
+      </p>
+      <p :if={!@state.circular} class="text-muted mb-4">
+        Move the input to the end you want as <strong>0%</strong>, then press
+        <strong>Start</strong> to begin collecting samples.
       </p>
     </div>
     """
@@ -263,10 +288,12 @@ defmodule TreninoWeb.CalibrationWizard do
       </div>
       <h3 class="text-xl font-semibold mb-2">Set Minimum Position</h3>
       <p class="text-muted mb-4">
-        Move the input to its <strong>minimum</strong> position and hold it steady.
+        Hold the input at the end you want as <strong>0%</strong>.
       </p>
 
+      <.held_reading :if={@state.circular} ready={@state.min_sample_count > 0} />
       <.sample_counter
+        :if={!@state.circular}
         count={@state.min_sample_count}
         unique={@state.min_unique_count}
         min_required={10}
@@ -286,7 +313,7 @@ defmodule TreninoWeb.CalibrationWizard do
       </div>
       <h3 class="text-xl font-semibold mb-2">Sweep Through Range</h3>
       <p class="text-muted mb-4">
-        Slowly move the input from <strong>minimum</strong> to <strong>maximum</strong> position.
+        Slowly move the input to the <strong>other end</strong>.
       </p>
 
       <div class="bg-base-100 rounded-lg p-4">
@@ -307,10 +334,12 @@ defmodule TreninoWeb.CalibrationWizard do
       </div>
       <h3 class="text-xl font-semibold mb-2">Set Maximum Position</h3>
       <p class="text-muted mb-4">
-        Move the input to its <strong>maximum</strong> position and hold it steady.
+        Hold the input at the other end, the one you want as <strong>100%</strong>.
       </p>
 
+      <.held_reading :if={@state.circular} ready={@state.max_sample_count > 0} />
       <.sample_counter
+        :if={!@state.circular}
         count={@state.max_sample_count}
         unique={@state.max_unique_count}
         min_required={10}
@@ -353,6 +382,43 @@ defmodule TreninoWeb.CalibrationWizard do
           {error_message(@state.result)}
         </p>
       </div>
+    </div>
+    """
+  end
+
+  attr :ready, :boolean, required: true
+
+  # An angle sensor at rest may send one reading in 2 s: one fresh reading is enough.
+  defp held_reading(assigns) do
+    ~H"""
+    <div class="bg-base-100 rounded-lg p-4 flex items-center justify-center gap-2">
+      <span :if={!@ready} class="loading loading-spinner loading-sm"></span>
+      <span :if={!@ready} class="text-sm text-muted">Reading sensor…</span>
+      <.icon :if={@ready} name="hero-check" class="w-4 h-4 text-success" />
+      <span :if={@ready} class="text-sm">Position read</span>
+    </div>
+    """
+  end
+
+  attr :value, :integer, default: nil
+  attr :input, :map, required: true
+
+  # The live raw reading, and for an angle sensor its angle, so the user sees the
+  # sensor respond before and while calibrating.
+  defp live_reading(assigns) do
+    assigns = assign(assigns, :spec, Input.angle_sensor(assigns.input))
+
+    ~H"""
+    <div class="text-center text-sm" aria-live="polite">
+      <span :if={is_nil(@value)} class="text-muted">
+        <span :if={@spec}>Waiting for the sensor…</span>
+        <span :if={!@spec}>Waiting for a reading…</span>
+      </span>
+      <span :if={@value} class="font-mono tabular-nums">
+        <span class="text-muted">Raw</span>
+        {@value}
+        <span :if={@spec}>· {AngleSensor.format_degrees(@spec, @value)}</span>
+      </span>
     </div>
     """
   end

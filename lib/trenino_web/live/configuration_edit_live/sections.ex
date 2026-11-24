@@ -11,7 +11,7 @@ defmodule TreninoWeb.ConfigurationEditLive.Sections do
   import TreninoWeb.SharedComponents
 
   alias Trenino.Hardware
-  alias Trenino.Hardware.{I2cModule, Input, Matrix, Output}
+  alias Trenino.Hardware.{AngleSensor, I2cModule, Input, InputNormalizer, Matrix, Output}
 
   attr :device, :map, required: true
   attr :device_form, :map, required: true
@@ -110,6 +110,7 @@ defmodule TreninoWeb.ConfigurationEditLive.Sections do
   attr :inputs, :list, required: true
   attr :input_values, :map, required: true
   attr :active_port, :string, default: nil
+  attr :unresponsive_pins, :any, default: MapSet.new()
 
   def inputs_section(assigns) do
     ~H"""
@@ -125,7 +126,12 @@ defmodule TreninoWeb.ConfigurationEditLive.Sections do
       <:actions>
         <.section_action id="add-input" label="Add input" on_click="open_add_input_modal" />
       </:actions>
-      <.inputs_table inputs={@inputs} input_values={@input_values} active_port={@active_port} />
+      <.inputs_table
+        inputs={@inputs}
+        input_values={@input_values}
+        active_port={@active_port}
+        unresponsive_pins={@unresponsive_pins}
+      />
     </.config_section>
     """
   end
@@ -133,6 +139,7 @@ defmodule TreninoWeb.ConfigurationEditLive.Sections do
   attr :inputs, :list, required: true
   attr :input_values, :map, required: true
   attr :active_port, :string, default: nil
+  attr :unresponsive_pins, :any, default: MapSet.new()
 
   defp inputs_table(assigns) do
     ~H"""
@@ -151,17 +158,17 @@ defmodule TreninoWeb.ConfigurationEditLive.Sections do
         <tbody>
           <tr :for={input <- @inputs} class="hover:bg-base-200/50">
             <td class="text-center font-mono">
-              <span :if={input.sensor == :mt6701} title="MT6701 on I2C">
-                I2C {I2cModule.format_i2c_address(input.i2c_address)}
+              <span :if={Input.angle_sensor?(input)} title={Input.location_label(input)}>
+                I2C {AngleSensor.format_address(input.i2c_address)}
               </span>
-              <span :if={input.sensor != :mt6701}>{input.pin}</span>
+              <span :if={!Input.angle_sensor?(input)}>{input.pin}</span>
             </td>
             <td>
               <input
                 type="text"
                 value={input.name || ""}
                 placeholder="Unnamed"
-                aria-label={"Name for input on pin #{input.pin}"}
+                aria-label={"Name for input #{input_place(input)}"}
                 phx-blur="update_input_name"
                 phx-value-id={input.id}
                 class="input input-ghost input-xs w-full max-w-32 placeholder:text-muted"
@@ -170,6 +177,9 @@ defmodule TreninoWeb.ConfigurationEditLive.Sections do
             <td>
               <span class="badge badge-ghost badge-sm capitalize">
                 {input.input_type}
+              </span>
+              <span :if={Input.angle_sensor?(input)} class="text-xs text-muted ml-1">
+                {Input.angle_sensor(input).name}
               </span>
             </td>
             <td>
@@ -181,7 +191,7 @@ defmodule TreninoWeb.ConfigurationEditLive.Sections do
                 max="10"
                 step="1"
                 value={input.sensitivity}
-                aria-label={"Sensitivity (1-10) for input on pin #{input.pin}"}
+                aria-label={"Sensitivity (1-10) for input #{input_place(input)}"}
                 phx-blur="update_input_sensitivity"
                 phx-value-id={input.id}
                 class="input input-ghost input-xs w-16 font-mono"
@@ -189,11 +199,21 @@ defmodule TreninoWeb.ConfigurationEditLive.Sections do
               <span :if={input.input_type != :analog} class="text-muted" aria-hidden="true">—</span>
             </td>
             <td class="min-w-24">
+              <span
+                :if={@active_port != nil && MapSet.member?(@unresponsive_pins, input.pin)}
+                id={"input-not-responding-#{input.id}"}
+                class="badge badge-soft badge-warning badge-xs"
+                title="No reading from this sensor. Check its cable and address."
+              >
+                Not responding
+              </span>
               <.input_value
+                :if={!(@active_port != nil && MapSet.member?(@unresponsive_pins, input.pin))}
                 raw_value={Map.get(@input_values, input.pin)}
                 calibration={input.calibration}
                 active={@active_port != nil}
                 input_type={input.input_type}
+                angle_sensor={Input.angle_sensor(input)}
               />
             </td>
             <td>
@@ -308,6 +328,41 @@ defmodule TreninoWeb.ConfigurationEditLive.Sections do
   attr :calibration, :map, default: nil
   attr :active, :boolean, required: true
   attr :input_type, :atom, default: :analog
+  attr :angle_sensor, :any, default: nil, doc: "The input's AngleSensor spec, if any"
+
+  defp input_value(%{angle_sensor: %AngleSensor{}} = assigns) do
+    calibration = loaded_calibration(assigns.calibration)
+
+    percent =
+      if assigns.raw_value && calibration do
+        case InputNormalizer.normalize(assigns.raw_value, calibration) do
+          {:ok, fraction} -> round(fraction * 100)
+          {:error, _} -> nil
+        end
+      end
+
+    assigns =
+      assigns
+      |> assign(:calibration, calibration)
+      |> assign(:percent, percent)
+
+    ~H"""
+    <span :if={!@active} class="text-muted text-sm">
+      <.icon name="hero-lock-closed" class="w-3 h-3 inline mr-1" /> N/A
+    </span>
+    <span :if={@active && is_nil(@raw_value)} class="text-muted">&mdash;</span>
+    <span :if={@active && !is_nil(@raw_value)} class="font-mono tabular-nums">
+      <span class="text-muted text-xs" title={"Raw #{@raw_value}"}>
+        {AngleSensor.format_degrees(@angle_sensor, @raw_value)}
+      </span>
+      <span :if={@percent} class="text-muted text-xs">/</span>
+      <span :if={@percent}>{@percent}%</span>
+      <span :if={is_nil(@calibration)} class="text-muted text-xs ml-1">
+        (uncalibrated)
+      </span>
+    </span>
+    """
+  end
 
   defp input_value(assigns) do
     calibration = loaded_calibration(assigns.calibration)
@@ -581,7 +636,15 @@ defmodule TreninoWeb.ConfigurationEditLive.Sections do
     """
   end
 
-  defp input_name(%Input{} = input), do: input.name || "input on pin #{input.pin}"
+  defp input_name(%Input{} = input), do: input.name || "input #{input_place(input)}"
+
+  # "on pin 3", or "MT6701 at 0x06" for an angle sensor.
+  defp input_place(%Input{} = input) do
+    if Input.angle_sensor?(input),
+      do: Input.location_label(input),
+      else: "on pin #{input.pin}"
+  end
+
   defp matrix_name(%Matrix{} = matrix), do: matrix.name || "unnamed matrix"
   defp output_name(%Output{} = output), do: output.name || "output on pin #{output.pin}"
 

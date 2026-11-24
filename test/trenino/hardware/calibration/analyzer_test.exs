@@ -102,4 +102,72 @@ defmodule Trenino.Hardware.Calibration.AnalyzerTest do
       assert result == 98
     end
   end
+
+  describe "circular_calibration/3" do
+    @n 16_384
+
+    test "a plain travel" do
+      assert {:ok, result} = Analyzer.circular_calibration([4000, 4001, 3999], [9000, 9002], @n)
+
+      assert result == %{
+               min_value: 4000,
+               max_value: 9001,
+               is_inverted: false,
+               has_rollover: false
+             }
+    end
+
+    test "unwrapped positions past the top wrap back into range and flag the rollover" do
+      # The lever went from 15000 up through 16383 to 2000 (unwrapped 18384).
+      assert {:ok, result} = Analyzer.circular_calibration([15_000], [18_384], @n)
+
+      assert result == %{
+               min_value: 15_000,
+               max_value: 2000,
+               is_inverted: false,
+               has_rollover: true
+             }
+    end
+
+    test "a min end held right on the wrap point" do
+      # Held readings 16382, 16383, 0, 1 unwrap to 16382..16385.
+      assert {:ok, result} =
+               Analyzer.circular_calibration([16_382, 16_383, 16_384, 16_385], [20_000], @n)
+
+      assert result.min_value == 16_383
+      assert result.max_value == 20_000 - @n
+      refute result.is_inverted
+    end
+
+    test "inverted travel below zero" do
+      # From 1000 down through 0 to 14000 (unwrapped -2384).
+      assert {:ok, result} = Analyzer.circular_calibration([1000], [-2384], @n)
+
+      assert result == %{
+               min_value: 1000,
+               max_value: 14_000,
+               is_inverted: true,
+               has_rollover: true
+             }
+    end
+
+    test "travel near half a turn keeps its direction" do
+      assert {:ok, %{is_inverted: false}} = Analyzer.circular_calibration([0], [8300], @n)
+      assert {:ok, %{is_inverted: true}} = Analyzer.circular_calibration([0], [-8300], @n)
+    end
+
+    test "one glitch in a hold does not move the end" do
+      assert {:ok, %{min_value: 4000}} =
+               Analyzer.circular_calibration([4000, 4000, 12_000, 4001, 3999], [9000], @n)
+    end
+
+    test "refuses a travel under 5 degrees" do
+      assert {:error, :range_too_small} = Analyzer.circular_calibration([4000], [4200], @n)
+    end
+
+    test "refuses a travel close to a full turn, or more" do
+      assert {:error, :range_too_large} = Analyzer.circular_calibration([0], [15_500], @n)
+      assert {:error, :range_too_large} = Analyzer.circular_calibration([0], [20_000], @n)
+    end
+  end
 end

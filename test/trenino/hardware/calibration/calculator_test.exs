@@ -267,4 +267,76 @@ defmodule Trenino.Hardware.Calibration.CalculatorTest do
       assert Calculator.total_travel(calibration) == 839
     end
   end
+
+  describe "circular calibrations (magnetic angle sensors)" do
+    defp circular(min, max, inverted) do
+      %Calibration{
+        min_value: min,
+        max_value: max,
+        is_inverted: inverted,
+        has_rollover: false,
+        circular: true,
+        max_hardware_value: 16_383
+      }
+    end
+
+    test "travel in the middle of the circle" do
+      cal = circular(4000, 9000, false)
+
+      assert Calculator.total_travel(cal) == 5000
+      assert Calculator.normalize(4000, cal) == 0
+      assert Calculator.normalize(6500, cal) == 2500
+      assert Calculator.normalize(9000, cal) == 5000
+    end
+
+    test "travel across the 16383/0 point" do
+      cal = circular(15_000, 2000, false)
+
+      assert Calculator.total_travel(cal) == 3384
+      assert Calculator.normalize(15_000, cal) == 0
+      assert Calculator.normalize(16_383, cal) == 1383
+      assert Calculator.normalize(0, cal) == 1384
+      assert Calculator.normalize(2000, cal) == 3384
+    end
+
+    test "inverted travel across the 16383/0 point" do
+      cal = circular(1000, 14_000, true)
+
+      assert Calculator.total_travel(cal) == 3384
+      assert Calculator.normalize(1000, cal) == 0
+      assert Calculator.normalize(0, cal) == 1000
+      assert Calculator.normalize(16_383, cal) == 1001
+      assert Calculator.normalize(14_000, cal) == 3384
+    end
+
+    test "jitter across 0 at the min end stays at 0, not at full travel" do
+      # The lever rests at raw 2; noise reads 16381.
+      cal = circular(2, 5000, false)
+
+      assert Calculator.normalize(16_381, cal) == 0
+      assert Calculator.normalize(0, cal) == 0
+      assert Calculator.normalize(5010, cal) == 4998
+    end
+
+    test "jitter across 0 at the max end stays at full travel" do
+      cal = circular(11_000, 16_382, false)
+
+      assert Calculator.normalize(1, cal) == 5382
+      assert Calculator.normalize(10_990, cal) == 0
+    end
+
+    test "readings outside the travel clamp to the nearer end round the circle" do
+      cal = circular(4000, 9000, false)
+
+      # 1000 past max vs 6384 short of min.
+      assert Calculator.normalize(10_000, cal) == 5000
+      # 1000 short of min vs 6384 past max.
+      assert Calculator.normalize(3000, cal) == 0
+    end
+
+    test "has_rollover is ignored" do
+      assert Calculator.total_travel(%{circular(15_000, 2000, false) | has_rollover: true}) ==
+               3384
+    end
+  end
 end

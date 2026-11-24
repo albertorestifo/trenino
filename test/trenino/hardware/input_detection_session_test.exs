@@ -166,6 +166,55 @@ defmodule Trenino.Hardware.InputDetectionSessionTest do
     end
   end
 
+  describe "magnetic angle sensor detection" do
+    setup do
+      {:ok, device} = Hardware.create_device(%{name: "Angle Device"})
+
+      {:ok, sensor} =
+        Hardware.create_input(device.id, %{
+          input_type: :analog,
+          sensor: :mt6701,
+          i2c_address: 0x06,
+          sensitivity: 5
+        })
+
+      {:ok, pid} = InputDetectionSession.start(self(), input_type: :analog, timeout_ms: 5_000)
+
+      on_exit(fn ->
+        try do
+          InputDetectionSession.stop(pid)
+        catch
+          :exit, _ -> :ok
+        end
+      end)
+
+      %{sensor: sensor}
+    end
+
+    test "ignores a move under 3 degrees, which is more than 50 counts", %{sensor: sensor} do
+      broadcast_input(@test_port, sensor.pin, 8000)
+      broadcast_input(@test_port, sensor.pin, 8120)
+
+      refute_receive {:input_detected, _}, 200
+    end
+
+    test "ignores jitter across the 16383/0 point", %{sensor: sensor} do
+      broadcast_input(@test_port, sensor.pin, 16_380)
+      broadcast_input(@test_port, sensor.pin, 3)
+
+      refute_receive {:input_detected, _}, 200
+    end
+
+    test "detects a move over 3 degrees, also across 0", %{sensor: sensor} do
+      broadcast_input(@test_port, sensor.pin, 16_300)
+      broadcast_input(@test_port, sensor.pin, 100)
+
+      assert_receive {:input_detected, detection}, 1_000
+      assert detection.pin == sensor.pin
+      assert detection.value == 100
+    end
+  end
+
   describe "any input type detection" do
     setup do
       {:ok, device} = Hardware.create_device(%{name: "Test Device"})

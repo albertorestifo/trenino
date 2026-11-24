@@ -8,9 +8,13 @@ defmodule TreninoWeb.ConfigurationEditLive.Modals do
 
   use TreninoWeb, :html
 
-  alias Trenino.Hardware.Matrix
+  alias Trenino.Hardware.{AngleSensor, Matrix}
 
   attr :form, :map, required: true
+
+  attr :firmware_warning, :string,
+    default: nil,
+    doc: "Shown under a magnetic sensor when the connected controller's firmware is too old"
 
   def add_input_modal(assigns) do
     ~H"""
@@ -46,29 +50,31 @@ defmodule TreninoWeb.ConfigurationEditLive.Modals do
                 label="Sensor"
                 field={@form[:sensor]}
                 type="select"
-                options={[
-                  {"Arduino analog pin (10-bit)", :adc},
-                  {"MT6701 magnetic sensor on I2C (14-bit, firmware 3.4.0)", :mt6701}
-                ]}
+                options={sensor_options()}
                 class="select select-bordered w-full"
               />
             </div>
 
-            <div :if={mt6701?(@form)}>
+            <div :if={angle_sensor(@form)}>
               <.input
                 label="I2C address"
                 field={@form[:i2c_address]}
                 type="select"
                 prompt="Choose an address"
-                options={[{"0x06 (factory setting)", 0x06}, {"0x46 (second sensor)", 0x46}]}
+                options={address_options(angle_sensor(@form))}
                 class="select select-bordered w-full"
               />
-              <p class="text-xs text-muted mt-1">
-                Wire the sensor to SDA and SCL. Two sensors can share the bus once one is set to 0x46.
+              <p class="text-xs text-muted mt-1">{chain_help(angle_sensor(@form))}</p>
+              <p
+                :if={@firmware_warning}
+                id="input-firmware-warning"
+                class="text-xs text-warning mt-1"
+              >
+                {@firmware_warning}
               </p>
             </div>
 
-            <div :if={!mt6701?(@form)}>
+            <div :if={!angle_sensor(@form)}>
               <.input
                 label="Pin number"
                 field={@form[:pin]}
@@ -118,9 +124,30 @@ defmodule TreninoWeb.ConfigurationEditLive.Modals do
     """
   end
 
-  defp mt6701?(form) do
-    form[:input_type].value in [:analog, "analog"] and form[:sensor].value in [:mt6701, "mt6701"]
+  # The AngleSensor spec the form has picked, or nil for the ADC and for buttons.
+  defp angle_sensor(form) do
+    if form[:input_type].value in [:analog, "analog"],
+      do: AngleSensor.get(form[:sensor].value)
   end
+
+  defp sensor_options do
+    [{"Potentiometer on an analog pin", :adc}] ++
+      Enum.map(AngleSensor.ids() |> Enum.sort(), fn id ->
+        {"#{AngleSensor.get(id).name} magnetic sensor (I2C)", id}
+      end)
+  end
+
+  defp chain_help(%AngleSensor{name: name} = spec) do
+    [first, second | _] =
+      spec |> AngleSensor.addresses() |> Enum.map(&AngleSensor.format_address/1)
+
+    "Connect the board to SDA and SCL. Every #{name} ships at #{first}. To use two, set " <>
+      "the second board to #{second} with the setup sketch before plugging it into the " <>
+      "chain. To tell them apart, move a lever and watch its angle in the inputs list."
+  end
+
+  defp address_options(%AngleSensor{addresses: addresses}),
+    do: Enum.map(addresses, &{&1.label, &1.address})
 
   attr :matrix_row_pins_input, :string, required: true
   attr :matrix_col_pins_input, :string, required: true

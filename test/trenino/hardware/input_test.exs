@@ -62,6 +62,57 @@ defmodule Trenino.Hardware.InputTest do
     end
   end
 
+  describe "location_label/1" do
+    test "names the sensor and address, or the pin" do
+      assert Input.location_label(%Input{sensor: :mt6701, i2c_address: 0x46, pin: 241}) ==
+               "MT6701 at 0x46"
+
+      assert Input.location_label(%Input{sensor: :adc, pin: 14}) == "Pin 14"
+    end
+  end
+
+  describe "update_input/2 and calibrations" do
+    setup do
+      {:ok, device} = Trenino.Hardware.create_device(%{name: "Swap"})
+
+      {:ok, input} =
+        Trenino.Hardware.create_input(device.id, %{
+          input_type: :analog,
+          pin: 14,
+          sensitivity: 5
+        })
+
+      {:ok, _} =
+        Trenino.Hardware.save_calibration(input.id, %{
+          min_value: 10,
+          max_value: 900,
+          max_hardware_value: 1023,
+          is_inverted: false,
+          has_rollover: false
+        })
+
+      %{input: input}
+    end
+
+    test "switching the sensor drops the calibration made in the old sensor's units", %{
+      input: input
+    } do
+      {:ok, updated} = Trenino.Hardware.update_input(input, %{sensor: :mt6701, i2c_address: 0x06})
+
+      assert updated.pin == 240
+
+      assert {:ok, %{calibration: nil}} =
+               Trenino.Hardware.get_input(input.id, preload: [:calibration])
+    end
+
+    test "renaming keeps the calibration", %{input: input} do
+      {:ok, _} = Trenino.Hardware.update_input(input, %{name: "Throttle"})
+
+      assert {:ok, %{calibration: %{}}} =
+               Trenino.Hardware.get_input(input.id, preload: [:calibration])
+    end
+  end
+
   describe "max_raw_value/1" do
     test "is 10-bit for the ADC and 14-bit for an MT6701" do
       assert Input.max_raw_value(%Input{sensor: :adc}) == 1023
