@@ -362,7 +362,8 @@ defmodule Trenino.Hardware.ConfigurationManager do
     end
   end
 
-  # Gauges are configure parts, but they need firmware 3.3.0 (module type 7); older
+  # MT6701 inputs need firmware 3.4.0 (module type 8). Gauges are configure parts, but they
+  # need firmware 3.3.0 (module type 7); older
   # firmware rejects the whole configuration. The empty Configure packet sent for an
   # outputs-only configuration (outputs need no device-side parts, but the device must
   # still learn the config_id) needs firmware 3.1.0.
@@ -371,6 +372,12 @@ defmodule Trenino.Hardware.ConfigurationManager do
        do: {:error, :too_many_modules}
 
   defp validate_configuration(port, parts, gauges, outputs) do
+    if Enum.any?(parts, &match?({:input, %Input{sensor: :mt6701}}, &1)),
+      do: validate_firmware_floor(port, Hardware.mt6701_firmware_version()),
+      else: validate_configuration_floor(port, parts, gauges, outputs)
+  end
+
+  defp validate_configuration_floor(port, parts, gauges, outputs) do
     case {gauges, parts, outputs} do
       {[], [], []} -> {:error, :no_inputs}
       {[], [], _outputs} -> validate_firmware_floor(port, "3.1.0")
@@ -447,6 +454,23 @@ defmodule Trenino.Hardware.ConfigurationManager do
     i2c_parts = Enum.map(i2c_modules, &{:i2c_module, &1})
     gauge_parts = Enum.map(gauges, &{:gauge, &1})
     input_parts ++ matrix_parts ++ i2c_parts ++ gauge_parts
+  end
+
+  defp build_configure_message(
+         config_id,
+         total_parts,
+         part_number,
+         {:input, %Input{input_type: :analog, sensor: :mt6701} = input}
+       ) do
+    %Configure{
+      config_id: config_id,
+      total_parts: total_parts,
+      part_number: part_number,
+      input_type: :mt6701,
+      i2c_address: input.i2c_address,
+      pin: input.pin,
+      sensitivity: input.sensitivity
+    }
   end
 
   defp build_configure_message(

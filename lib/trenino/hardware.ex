@@ -31,6 +31,11 @@ defmodule Trenino.Hardware do
 
   @max_gauges_per_device 4
   @gauge_firmware "3.3.0"
+  @mt6701_firmware "3.4.0"
+
+  @doc "Lowest firmware version that reads MT6701 sensors over I2C."
+  @spec mt6701_firmware_version() :: String.t()
+  def mt6701_firmware_version, do: @mt6701_firmware
 
   @doc "Most gauges one device accepts in a configuration (firmware limit)."
   @spec max_gauges_per_device() :: pos_integer()
@@ -599,7 +604,7 @@ defmodule Trenino.Hardware do
   @spec config_fingerprint(list(), list(), list(), [Gauge.t()]) :: String.t()
   def config_fingerprint(inputs, matrices, i2c_modules, gauges) do
     term = {
-      inputs |> Enum.map(&{&1.pin, &1.input_type, &1.sensitivity, &1.debounce}) |> Enum.sort(),
+      inputs |> Enum.map(&input_wire_config/1) |> Enum.sort(),
       matrices |> Enum.map(&matrix_pins/1) |> Enum.sort(),
       i2c_modules |> Enum.map(&i2c_wire_config/1) |> Enum.sort(),
       gauges
@@ -610,6 +615,14 @@ defmodule Trenino.Hardware do
     :crypto.hash(:sha256, :erlang.term_to_binary(term, [:deterministic]))
     |> Base.encode16(case: :lower)
   end
+
+  # ADC inputs keep their original shape so existing fingerprints don't change.
+  defp input_wire_config(%{sensor: :mt6701} = input) do
+    {input.pin, input.input_type, input.sensitivity, input.debounce, :mt6701, input.i2c_address}
+  end
+
+  defp input_wire_config(input),
+    do: {input.pin, input.input_type, input.sensitivity, input.debounce}
 
   # Mirrors ConfigurationManager.build_configure_message/4: only these reach the device.
   # The other display params (orientation, dot, alignment, min value) are applied in software.
@@ -1120,7 +1133,8 @@ defmodule Trenino.Hardware do
 
   ## Options
 
-    * `:max_hardware_value` - Optional. Hardware max value (default: 1023).
+    * `:max_hardware_value` - Optional. Hardware max value (default: the input's sensor
+      range, 1023 for the ADC and 16383 for an MT6701).
 
   Returns `{:ok, pid}` on success.
   """
@@ -1128,7 +1142,9 @@ defmodule Trenino.Hardware do
           {:ok, pid()} | {:error, term()}
   def start_calibration_session(%Input{} = input, port, opts \\ []) do
     session_opts =
-      Keyword.merge(opts,
+      opts
+      |> Keyword.put_new(:max_hardware_value, Input.max_raw_value(input))
+      |> Keyword.merge(
         input_id: input.id,
         port: port,
         pin: input.pin

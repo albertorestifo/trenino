@@ -139,6 +139,8 @@ defmodule Trenino.MCP.Tools.DeviceTools do
              name: i.name,
              pin: i.pin,
              input_type: i.input_type,
+             sensor: i.sensor,
+             i2c_address: i.i2c_address,
              calibrated: match?(%Calibration{}, i.calibration)
            }
          end)

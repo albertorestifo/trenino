@@ -39,6 +39,25 @@ defmodule Trenino.Hardware.ConfigFingerprintTest do
     refute base == fingerprint([%{display() | i2c_address: 0x71}])
   end
 
+  test "ADC inputs keep their pre-MT6701 fingerprint; an MT6701 address changes it" do
+    adc = %Trenino.Hardware.Input{pin: 14, input_type: :analog, sensitivity: 5, sensor: :adc}
+    term = {[{14, :analog, 5, nil}], [], [], []}
+    bytes = :erlang.term_to_binary(term, [:deterministic])
+    expected = :crypto.hash(:sha256, bytes) |> Base.encode16(case: :lower)
+    assert Hardware.config_fingerprint([adc], [], [], []) == expected
+
+    mt = %Trenino.Hardware.Input{
+      pin: 240,
+      input_type: :analog,
+      sensitivity: 5,
+      sensor: :mt6701,
+      i2c_address: 0x06
+    }
+
+    refute Hardware.config_fingerprint([mt], [], [], []) ==
+             Hardware.config_fingerprint([%{mt | i2c_address: 0x46}], [], [], [])
+  end
+
   test "fingerprint is stable across VMs: term_to_binary is deterministic" do
     term = {[], [], [{:ht16k33, 0x70, 8, 4}], []}
     bytes = :erlang.term_to_binary(term, [:deterministic])

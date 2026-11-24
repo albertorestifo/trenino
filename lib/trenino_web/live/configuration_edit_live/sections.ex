@@ -150,7 +150,12 @@ defmodule TreninoWeb.ConfigurationEditLive.Sections do
         </thead>
         <tbody>
           <tr :for={input <- @inputs} class="hover:bg-base-200/50">
-            <td class="text-center font-mono">{input.pin}</td>
+            <td class="text-center font-mono">
+              <span :if={input.sensor == :mt6701} title="MT6701 on I2C">
+                I2C {I2cModule.format_i2c_address(input.i2c_address)}
+              </span>
+              <span :if={input.sensor != :mt6701}>{input.pin}</span>
+            </td>
             <td>
               <input
                 type="text"

@@ -17,6 +17,38 @@ defmodule Trenino.Serial.Protocol.ConfigureTest do
     end
   end
 
+  describe "MT6701 (0x08)" do
+    test "encodes and decodes the 3-byte payload" do
+      msg = %Configure{
+        config_id: 7,
+        total_parts: 2,
+        part_number: 1,
+        input_type: :mt6701,
+        i2c_address: 0x46,
+        pin: 241,
+        sensitivity: 6
+      }
+
+      assert {:ok, <<0x02, 7::little-32, 2, 1, 0x08, 0x46, 241, 6>> = bin} = Configure.encode(msg)
+      <<0x02, body::binary>> = bin
+      assert {:ok, ^msg} = Configure.decode_body(body)
+    end
+
+    test "refuses an out-of-range field" do
+      msg = %Configure{
+        config_id: 7,
+        total_parts: 1,
+        part_number: 0,
+        input_type: :mt6701,
+        i2c_address: 0x46,
+        pin: 241,
+        sensitivity: 11
+      }
+
+      assert {:error, :invalid_mt6701_configuration} = Configure.encode(msg)
+    end
+  end
+
   describe "encode/1 - button" do
     test "encodes correctly" do
       msg = %Configure{
