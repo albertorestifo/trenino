@@ -6,11 +6,9 @@
 
     Build:  dotnet build -c Release -p:SimRailDir="D:\SteamLibrary\steamapps\common\SimRail"
     Output is copied to <SimRailDir>\Mods when DeployToGame=true (default).
-    Requires the game to have been started once with MelonLoader so that
-    MelonLoader\Il2CppAssemblies exists.
-
-    Without a MelonLoader install, MelonLoader and Il2CppInterop come from NuGet
-    (see ../nuget.config); GameRefsDir must still point at the generated game assemblies.
+    The game's own types are looked up at runtime (Game.cs), so the build needs no assemblies
+    generated from SimRail. Without a MelonLoader install (CI), MelonLoader and Il2CppInterop
+    come from NuGet (see ../nuget.config).
   -->
 
   <PropertyGroup>
@@ -22,7 +20,6 @@
     <SimRailDir Condition="'$(SimRailDir)' == ''">D:\SteamLibrary\steamapps\common\SimRail</SimRailDir>
     <DeployToGame Condition="'$(DeployToGame)' == ''">true</DeployToGame>
     <MelonLoaderDir>$(SimRailDir)\MelonLoader\net6</MelonLoaderDir>
-    <GameRefsDir Condition="'$(GameRefsDir)' == ''">$(SimRailDir)\MelonLoader\Il2CppAssemblies</GameRefsDir>
     <!-- Without a MelonLoader install, compile against the same MelonLoader release from NuGet. -->
     <UseMelonLoaderPackage Condition="!Exists('$(MelonLoaderDir)\MelonLoader.dll')">true</UseMelonLoaderPackage>
     <CopyLocalLockFileAssemblies>false</CopyLocalLockFileAssemblies>
@@ -37,12 +34,6 @@
 
   <ItemGroup Condition="'$(UseMelonLoaderPackage)' == 'true'">
     <PackageReference Include="LavaGang.MelonLoader" Version="0.7.3" ExcludeAssets="runtime" PrivateAssets="all" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <Reference Include="Il2Cppmscorlib" HintPath="$(GameRefsDir)\Il2Cppmscorlib.dll" Private="false" />
-    <Reference Include="UnityEngine.CoreModule" HintPath="$(GameRefsDir)\UnityEngine.CoreModule.dll" Private="false" />
-    <Reference Include="Assembly-CSharp" HintPath="$(GameRefsDir)\Assembly-CSharp.dll" Private="false" />
   </ItemGroup>
 
   <Target Name="DeployToSimRail" AfterTargets="Build" Condition="'$(DeployToGame)' == 'true'">

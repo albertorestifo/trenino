@@ -3,9 +3,9 @@ name: SimRail mods
 # Builds the MelonLoader assemblies Trenino installs into SimRail and uploads them as the
 # `simrail-mods` artifact, laid out like the SimRail folder (Mods/, Plugins/), which
 # build-desktop.yml bundles into the desktop app.
-#   - TreninoInteropGuard.dll (Plugins/): needs only MelonLoader, from NuGet.
-#   - TreninoBridge.dll (Mods/): compiles against assemblies MelonLoader generates from the
-#     game, so it is not built here yet; the artifact carries an empty placeholder.
+#   - TreninoBridge.dll (Mods/) and TreninoInteropGuard.dll (Plugins/). Both build from
+#     NuGet (MelonLoader, Il2CppInterop) alone: the bridge finds the game's types at runtime,
+#     so no assemblies generated from SimRail are needed.
 on:
   pull_request:
     paths:
@@ -43,6 +43,9 @@ jobs:
       - name: Build TreninoInteropGuard
         run: dotnet build TreninoInteropGuard -c Release -p:DeployToGame=false -o "$RUNNER_TEMP/out/guard"
 
+      - name: Build TreninoBridge
+        run: dotnet build TreninoBridge -c Release -p:DeployToGame=false -o "$RUNNER_TEMP/out/bridge"
+
       # GameAssembly tests skip without SimRail; the signature matcher tests still run.
       - name: Test TreninoInteropGuard
         run: dotnet test TreninoInteropGuard.Tests -c Release
@@ -54,10 +57,7 @@ jobs:
           stage="$RUNNER_TEMP/simrail-mods"
           mkdir -p "$stage/Mods" "$stage/Plugins"
           cp "$RUNNER_TEMP/out/guard/TreninoInteropGuard.dll" "$stage/Plugins/"
-          # TreninoBridge compiles against assemblies generated from the game, which CI
-          # does not have yet: an empty placeholder keeps the bundle layout, and the app
-          # reports the mod as not bundled.
-          : > "$stage/Mods/TreninoBridge.dll"
+          cp "$RUNNER_TEMP/out/bridge/TreninoBridge.dll" "$stage/Mods/"
           bridge=$(sed -n 's/.*BridgeVersion = "\(.*\)";.*/\1/p' TreninoBridge/Mod.cs)
           guard=$(sed -n 's/.*GuardVersion = "\(.*\)";.*/\1/p' TreninoInteropGuard/Plugin.cs)
           printf '{"bridge": "%s", "guard": "%s", "commit": "%s"}\n' "$bridge" "$guard" "$GITHUB_SHA" > "$stage/manifest.json"

@@ -3,10 +3,8 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
-using Il2Cpp;
-using Il2CppAssets.Scripts.Cabin.InputSystemControllers;
 using Il2CppInterop.Runtime.InteropTypes;
-using UnityEngine;
+using Il2CppInterop.Runtime.InteropTypes.Arrays;
 using TreninoBridge.Net;
 
 namespace TreninoBridge;
@@ -22,15 +20,19 @@ namespace TreninoBridge;
 /// ioFieldName "Group@field" and keep their own position state.
 ///
 /// Everything here must run on the Unity main thread.
+///
+/// Game objects are <c>dynamic</c>: the game's types are found at runtime (see <see cref="Game"/>),
+/// so the bridge builds without SimRail's generated assemblies.
 /// </summary>
 internal static class TrainIO
 {
-    internal readonly record struct FieldRef(IOClassBase Storage, int Index, string Path);
+    /// <param name="Storage">An IOClassBase wrapper.</param>
+    internal readonly record struct FieldRef(Il2CppObjectBase Storage, int Index, string Path);
 
     internal sealed class ControlRef
     {
         public string Id { get; init; } = null!;
-        public PhysicsInteractionInput_Base Control { get; init; } = null!;
+        public dynamic Control { get; init; } = null!;              // PhysicsInteractionInput_Base wrapper
         public object Typed { get; init; } = null!;        // wrapper of the concrete Il2Cpp type
         public string Type { get; init; } = null!;
         public string? Path { get; init; }                  // bound IO path, if any
@@ -49,8 +51,8 @@ internal static class TrainIO
     /// <summary>Re-indexes when the player vehicle changed. Returns false when not in a train.</summary>
     public static bool Refresh()
     {
-        var vehicle = RailStock.PlayerVehicle;
-        var ptr = vehicle == null ? IntPtr.Zero : vehicle.Pointer;
+        var vehicle = Game.PlayerVehicle();
+        IntPtr ptr = vehicle == null ? IntPtr.Zero : ((Il2CppObjectBase)vehicle).Pointer;
         if (ptr == _vehiclePtr) return ptr != IntPtr.Zero;
 
         if (vehicle == null)
@@ -64,17 +66,19 @@ internal static class TrainIO
         // serving a partial index under this vehicle's pointer.
         var fields = new Dictionary<string, FieldRef>(StringComparer.OrdinalIgnoreCase);
         var fieldList = new List<FieldRef>();
-        var list = vehicle.IOStorageList;
-        if (list?.storages != null)
+        dynamic? list = vehicle.IOStorageList;
+        if (Game.IsAlive(list))
         {
-            foreach (var storage in list.storages)
+            foreach (var item in Game.Enumerate((object?)list.storages))
             {
-                if (storage == null) continue;
+                if (item is not Il2CppObjectBase storage || !Game.IsAlive(storage)) continue;
                 var group = GroupName(storage);
-                var names = storage.GetNames();
-                for (var i = 0; i < names.Length; i++)
+                dynamic names = ((dynamic)storage).GetNames();
+                int count = names.Length;
+                for (var i = 0; i < count; i++)
                 {
-                    var f = new FieldRef(storage, i, group + "." + names[i]);
+                    string name = names[i];
+                    var f = new FieldRef(storage, i, group + "." + name);
                     fields[f.Path] = f;
                     fieldList.Add(f);
                 }
@@ -83,12 +87,13 @@ internal static class TrainIO
 
         var controls = new List<ControlRef>();
         var controlsById = new Dictionary<string, ControlRef>(StringComparer.Ordinal);
-        foreach (var control in vehicle.GetComponentsInChildren<PhysicsInteractionInput_Base>(true))
+        foreach (var item in Game.Controls((object)vehicle))
         {
-            var id = UniqueId(controlsById, HierarchyPath(control.transform, vehicle.transform));
-            var typeName = control.GetIl2CppType().Name;
-            var path = ControlPath(fields, control);
-            var c = new ControlRef { Id = id, Control = control, Typed = Wrap(control, typeName), Type = typeName, Path = path };
+            dynamic control = item;
+            string id = UniqueId(controlsById, HierarchyPath(control.transform, vehicle.transform));
+            string typeName = control.GetIl2CppType().Name;
+            string? path = ControlPath(fields, (object)control);
+            var c = new ControlRef { Id = id, Control = control, Typed = Wrap((object)control, typeName), Type = typeName, Path = path };
             controls.Add(c);
             controlsById[id] = c;
         }
@@ -120,11 +125,11 @@ internal static class TrainIO
     {
         var result = new Dictionary<string, float>(_fieldList.Count, StringComparer.OrdinalIgnoreCase);
         if (!Refresh()) return result;
-        IOClassBase? last = null;
-        Il2CppInterop.Runtime.InteropTypes.Arrays.Il2CppStructArray<float>? data = null;
+        Il2CppObjectBase? last = null;
+        Il2CppStructArray<float>? data = null;
         foreach (var f in _fieldList)
         {
-            if (!ReferenceEquals(f.Storage, last)) { data = f.Storage.data; last = f.Storage; }
+            if (!ReferenceEquals(f.Storage, last)) { data = Data(f.Storage); last = f.Storage; }
             // Non-finite floats would serialize as "NaN"/"Infinity" strings: leave them out.
             if (data != null && f.Index < data.Length && float.IsFinite(data[f.Index])) result[f.Path] = data[f.Index];
         }
@@ -145,9 +150,10 @@ internal static class TrainIO
         Require();
         if (!_fields.TryGetValue(path, out var f)) throw new BridgeException(404, $"unknown path '{path}'");
         if (float.IsNaN(value) || float.IsInfinity(value)) throw new BridgeException(400, "value must be finite");
-        f.Storage.data[f.Index] = value;
+        var data = Data(f.Storage) ?? throw new BridgeException(500, $"no data for '{path}'");
+        data[f.Index] = value;
         var synced = SyncControls(f.Path, value);
-        return new { path = f.Path, value = f.Storage.data[f.Index], syncedControls = synced };
+        return new { path = f.Path, value = data[f.Index], syncedControls = synced };
     }
 
     /// <summary>Moves a cab control to a position index, using the game's own notch value.</summary>
@@ -188,7 +194,7 @@ internal static class TrainIO
     public static object Vehicle()
     {
         Require();
-        var vehicle = RailStock.PlayerVehicle!;
+        object vehicle = (object?)Game.PlayerVehicle() ?? throw new BridgeException(409, "not in a train");
         var groups = _fieldList
             .GroupBy(f => f.Path[..f.Path.IndexOf('.')])
             .Select(g => new { name = g.Key, kind = GroupKind(g.Key), fields = g.Select(f => f.Path[(f.Path.IndexOf('.') + 1)..]).ToArray() })
@@ -215,15 +221,19 @@ internal static class TrainIO
         };
     }
 
-    private static object Identity(Vehicle v) => new
+    private static object Identity(object vehicle)
     {
-        name = Safe(() => v.VehicleName),
-        type = Safe(() => v.type.ToString()),
-        objectName = Safe(() => v.gameObject.name),
-        vehicleNumber = Safe(() => v.vehicleNumber),
-        numberInTrainset = Safe(() => v.numberInTrainset),
-        isFrontInTrainset = Safe(() => v.IsFrontInTrainset),
-    };
+        dynamic v = vehicle;
+        return new
+        {
+            name = Safe(() => (string?)v.VehicleName),
+            type = Safe(() => (string?)v.type.ToString()),
+            objectName = Safe(() => (string?)v.gameObject.name),
+            vehicleNumber = Safe(() => (object?)v.vehicleNumber),
+            numberInTrainset = Safe(() => (object?)v.numberInTrainset),
+            isFrontInTrainset = Safe(() => (object?)v.IsFrontInTrainset),
+        };
+    }
 
     /// <param name="Stable">
     /// Position index the control springs back to when released. Equal to Index for
@@ -289,7 +299,7 @@ internal static class TrainIO
             {
                 id = c.Id,
                 type = c.Type,
-                ioFieldName = Safe(() => c.Control.ioFieldName),
+                ioFieldName = Safe(() => (string?)c.Control.ioFieldName),
                 props = Primitives(c.Typed, includePositions: true),
             }).ToArray(),
         };
@@ -298,7 +308,7 @@ internal static class TrainIO
     private static Dictionary<string, object?> Primitives(object obj, bool includePositions)
     {
         var result = new Dictionary<string, object?>();
-        for (var t = obj.GetType(); t != null && t != typeof(Il2CppObjectBase) && t != typeof(MonoBehaviour); t = t.BaseType)
+        for (var t = obj.GetType(); t != null && t != typeof(Il2CppObjectBase) && t.Name != "MonoBehaviour"; t = t.BaseType)
         {
             foreach (var p in t.GetProperties(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly))
             {
@@ -312,8 +322,9 @@ internal static class TrainIO
                     case double d: result[p.Name] = double.IsFinite(d) ? d : null; break;
                     case int or bool or string or long or short or byte: result[p.Name] = value; break;
                     case Enum e: result[p.Name] = e.ToString(); break;
-                    case Vector2 v2: result[p.Name] = new[] { Finite(v2.x), Finite(v2.y) }; break;
-                    case Vector3 v3: result[p.Name] = new[] { Finite(v3.x), Finite(v3.y), Finite(v3.z) }; break;
+                    case ValueType when Game.VectorComponents(value) is { } vector:
+                        result[p.Name] = vector.Select(Finite).ToArray();
+                        break;
                     case IEnumerable items when includePositions && p.Name == "Positions":
                         var list = new List<object>();
                         foreach (var item in items) if (item != null) list.Add(Primitives(item, includePositions: false));
@@ -327,7 +338,11 @@ internal static class TrainIO
 
     // --- helpers ----------------------------------------------------------
 
-    public static string GroupName(IOClassBase storage) => storage.GetIl2CppType().Name;
+    public static string GroupName(Il2CppObjectBase storage) => (string)((dynamic)storage).GetIl2CppType().Name;
+
+    // IOClassBase.data: the group's values, parallel to GetNames().
+    private static Il2CppStructArray<float>? Data(Il2CppObjectBase storage) =>
+        (Il2CppStructArray<float>?)((dynamic)storage).data;
 
     private static string GroupKind(string group) =>
         group.StartsWith("Physics_Input", StringComparison.Ordinal) ? "input" :
@@ -343,19 +358,22 @@ internal static class TrainIO
         _ => "other",
     };
 
-    private static string? ControlPath(Dictionary<string, FieldRef> fields, PhysicsInteractionInput_Base control)
+    private static string? ControlPath(Dictionary<string, FieldRef> fields, object controlObj)
     {
-        var name = Safe(() => control.ioFieldName);
+        dynamic control = controlObj;
+        string? name = Safe(() => (string?)control.ioFieldName);
         if (string.IsNullOrEmpty(name)) return null;
         var at = name.IndexOf('@');
         var path = at >= 0 ? name[..at] + "." + name[(at + 1)..] : name;
         return fields.TryGetValue(path, out var f) ? f.Path : null;
     }
 
-    private static string HierarchyPath(Transform t, Transform root)
+    private static string HierarchyPath(dynamic t, dynamic root)
     {
         var parts = new List<string>();
-        for (var cur = t; cur != null && cur.Pointer != root.Pointer; cur = cur.parent) parts.Add(cur.name);
+        IntPtr rootPtr = ((Il2CppObjectBase)root).Pointer;
+        for (dynamic? cur = t; Game.IsAlive(cur) && ((Il2CppObjectBase)cur).Pointer != rootPtr; cur = cur.parent)
+            parts.Add((string)cur.name);
         parts.Reverse();
         return string.Join("/", parts);
     }
@@ -369,16 +387,19 @@ internal static class TrainIO
     private static readonly Dictionary<string, Type?> WrapperTypes = new(StringComparer.Ordinal);
 
     /// <summary>GetComponentsInChildren returns base wrappers; re-wrap as the concrete type to see its fields.</summary>
-    private static object Wrap(PhysicsInteractionInput_Base control, string il2CppTypeName)
+    private static object Wrap(object control, string il2CppTypeName)
     {
+        var baseType = Game.ControlBase;
         if (!WrapperTypes.TryGetValue(il2CppTypeName, out var type))
         {
-            type = typeof(PhysicsInteractionInput_Base).Assembly.GetTypes()
-                .FirstOrDefault(t => t.Name == il2CppTypeName && typeof(PhysicsInteractionInput_Base).IsAssignableFrom(t));
+            Type[] all;
+            try { all = baseType.Assembly.GetTypes(); }
+            catch (ReflectionTypeLoadException e) { all = e.Types.Where(t => t != null).ToArray()!; }
+            type = all.FirstOrDefault(t => t.Name == il2CppTypeName && baseType.IsAssignableFrom(t));
             WrapperTypes[il2CppTypeName] = type;
         }
         if (type == null) return control;
-        try { return Activator.CreateInstance(type, control.Pointer) ?? control; }
+        try { return Activator.CreateInstance(type, ((Il2CppObjectBase)control).Pointer) ?? control; }
         catch { return control; }
     }
 

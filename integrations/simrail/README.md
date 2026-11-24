@@ -16,7 +16,7 @@ train taught us. Per-train data lives in `profiles/`, `sweeps/` and `recordings/
      game binary; if switching versions, delete `MelonLoader\Dependencies\Il2CppAssemblyGenerator\Cpp2IL`
      and `Config.cfg` there so it re-downloads)
 3. Start SimRail once so MelonLoader generates `MelonLoader\Il2CppAssemblies`.
-4. `dotnet build -c Release` in `TreninoBridge/` (net6.0) builds and copies
+4. `dotnet build -c Release` in `TreninoBridge/` (net6.0, no game assemblies needed) builds and copies
    `TreninoBridge.dll` into `SimRail\Mods` (the running game locks it — quit first).
 5. `dotnet build -c Release` in `TreninoInteropGuard/` copies `TreninoInteropGuard.dll`
    into `SimRail\Plugins`. **Required.** MelonLoader's Il2CppInterop (1.5.1) hooks the wrong
@@ -38,8 +38,10 @@ train taught us. Per-train data lives in `profiles/`, `sweeps/` and `recordings/
 comes from NuGet, see `nuget.config`) and uploads them as the `simrail-mods` artifact, laid
 out like the game folder (`Mods/`, `Plugins/`, `manifest.json`). `build-desktop.yml` bundles
 that artifact as the `resources/simrail` Tauri resources, and the SimRail setup in Trenino
-(beta) copies them into the game. TreninoBridge itself still needs the game's generated
-assemblies to compile, so CI currently bundles an empty placeholder for it.
+(beta) copies them into the game. TreninoBridge does not compile against the assemblies
+MelonLoader generates from SimRail: `Game.cs` finds the game's types by name at runtime and
+the bridge uses them through `dynamic`, so a renamed game type shows up as an API error
+naming it rather than as a build error.
 
 Settings (`SimRail\UserData\MelonPreferences.cfg`, `[TreninoBridge]`): `Port` (31275),
 `ListenOnNetwork` (true), `Token` (generated on first run, never logged).
