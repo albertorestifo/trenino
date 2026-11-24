@@ -114,7 +114,9 @@ defmodule Trenino.Serial.Connection.ScanTest do
       # The running sketch on the same board is still connected.
       Agent.update(ports, &Map.put(&1, "COM3", %{vendor_id: 0x2341, product_id: 0x8037}))
 
-      assert_receive {:opened, "COM3"}, 1_000
+      # The first scan runs 1s after Connection starts. Both ports are seen
+      # by the scan that opens COM3, and by the later ones.
+      assert_receive {:opened, "COM3"}, 3_000
       refute_receive {:opened, "COM4"}, 500
     end
 
