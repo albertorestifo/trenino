@@ -41,7 +41,34 @@ defmodule TreninoWeb.ConfigurationEditLive.Modals do
               />
             </div>
 
-            <div>
+            <div :if={@form[:input_type].value in [:analog, "analog"]}>
+              <.input
+                label="Sensor"
+                field={@form[:sensor]}
+                type="select"
+                options={[
+                  {"Arduino analog pin (10-bit)", :adc},
+                  {"MT6701 magnetic sensor on I2C (14-bit, firmware 3.4.0)", :mt6701}
+                ]}
+                class="select select-bordered w-full"
+              />
+            </div>
+
+            <div :if={mt6701?(@form)}>
+              <.input
+                label="I2C address"
+                field={@form[:i2c_address]}
+                type="select"
+                prompt="Choose an address"
+                options={[{"0x06 (factory setting)", 0x06}, {"0x46 (second sensor)", 0x46}]}
+                class="select select-bordered w-full"
+              />
+              <p class="text-xs text-muted mt-1">
+                Wire the sensor to SDA and SCL. Two sensors can share the bus once one is set to 0x46.
+              </p>
+            </div>
+
+            <div :if={!mt6701?(@form)}>
               <.input
                 label="Pin number"
                 field={@form[:pin]}
@@ -89,6 +116,10 @@ defmodule TreninoWeb.ConfigurationEditLive.Modals do
       </div>
     </div>
     """
+  end
+
+  defp mt6701?(form) do
+    form[:input_type].value in [:analog, "analog"] and form[:sensor].value in [:mt6701, "mt6701"]
   end
 
   attr :matrix_row_pins_input, :string, required: true

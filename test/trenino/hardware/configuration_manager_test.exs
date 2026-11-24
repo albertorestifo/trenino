@@ -256,6 +256,67 @@ defmodule Trenino.Hardware.ConfigurationManagerTest do
     end
   end
 
+  describe "MT6701 inputs" do
+    setup do
+      Mimic.set_mimic_global()
+      Mimic.stub(Circuits.UART, :enumerate, fn -> %{} end)
+      {:ok, device} = Hardware.create_device(%{name: "Gate lever"})
+
+      {:ok, input} =
+        Hardware.create_input(device.id, %{
+          input_type: :analog,
+          sensor: :mt6701,
+          i2c_address: 0x46,
+          sensitivity: 6
+        })
+
+      %{device: device, input: input, port: unique_port()}
+    end
+
+    test "sends an MT6701 part with the address and report pin", %{
+      device: device,
+      port: port
+    } do
+      test_pid = self()
+
+      Mimic.stub(Trenino.Serial.Connection, :connected_devices, fn ->
+        [%{port: port, device_version: "3.4.0"}]
+      end)
+
+      Mimic.stub(Trenino.Serial.Connection, :send_message, fn ^port, message ->
+        send(test_pid, {:configuration_message, message})
+        :ok
+      end)
+
+      assert {:ok, config_id} = ConfigurationManager.apply_configuration(port, device.id)
+
+      assert_receive {:configuration_message,
+                      %Trenino.Serial.Protocol.Configure{
+                        config_id: ^config_id,
+                        total_parts: 1,
+                        part_number: 0,
+                        input_type: :mt6701,
+                        i2c_address: 0x46,
+                        pin: 241,
+                        sensitivity: 6
+                      }}
+
+      send(
+        ConfigurationManager,
+        {:serial_message, port, %ConfigurationStored{config_id: config_id}}
+      )
+    end
+
+    test "refuses MT6701 inputs on firmware below 3.4", %{device: device, port: port} do
+      Mimic.stub(Trenino.Serial.Connection, :connected_devices, fn ->
+        [%{port: port, device_version: "3.3.2"}]
+      end)
+
+      assert {:error, :firmware_update_required} =
+               ConfigurationManager.apply_configuration(port, device.id)
+    end
+  end
+
   describe "outputs-only configuration" do
     setup do
       Mimic.set_mimic_global()

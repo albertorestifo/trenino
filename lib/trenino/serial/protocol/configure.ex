@@ -12,6 +12,8 @@ defmodule Trenino.Serial.Protocol.Configure do
     [driver:u8][pins:u8[4]][travel:u16 LE][max_speed:u16 LE][acceleration:u16 LE][flags:u8]
     driver 0 = VID6606 (pins STEP, DIR, RESET_N or 0xFF, 0xFF), 1 = direct (X27 contacts 1-4);
     flags bit 0 reverses the direction.
+  - MT6701 payload (0x08, firmware >= 3.4.0), exactly 3 bytes:
+    [i2c_address:u8][pin:u8][sensitivity:u8]; `pin` is the report pin of its InputValue messages
   - Note: type IDs 0x03 (BLDC), 0x05 and 0x06 (I2C input chips) are reserved
   """
 
@@ -19,7 +21,7 @@ defmodule Trenino.Serial.Protocol.Configure do
 
   @behaviour Message
 
-  @type input_type :: :analog | :button | :matrix | :ht16k33 | :gauge | :empty
+  @type input_type :: :analog | :button | :matrix | :ht16k33 | :gauge | :mt6701 | :empty
 
   @type gauge_driver :: :vid6606 | :direct
 
@@ -165,6 +167,24 @@ defmodule Trenino.Serial.Protocol.Configure do
 
   def encode(%__MODULE__{input_type: :gauge}), do: {:error, :invalid_gauge_configuration}
 
+  # Encode - MT6701 over I2C (input_type = 0x08)
+  def encode(%__MODULE__{
+        config_id: config_id,
+        total_parts: total_parts,
+        part_number: part_number,
+        input_type: :mt6701,
+        i2c_address: i2c_address,
+        pin: pin,
+        sensitivity: sensitivity
+      })
+      when i2c_address in 0..0x7F and pin in 0..255 and sensitivity in 0..10 do
+    {:ok,
+     <<0x02, config_id::little-32-unsigned, total_parts::8-unsigned, part_number::8-unsigned,
+       0x08, i2c_address::8, pin::8, sensitivity::8>>}
+  end
+
+  def encode(%__MODULE__{input_type: :mt6701}), do: {:error, :invalid_mt6701_configuration}
+
   # Decode body - Analog (input_type = 0x00)
   @impl Message
   def decode_body(<<id::little-32, 0, 0, 255>>),
@@ -248,6 +268,23 @@ defmodule Trenino.Serial.Protocol.Configure do
        max_speed: max_speed,
        acceleration: acceleration,
        reverse: flags == 1
+     }}
+  end
+
+  # Decode body - MT6701 (input_type = 0x08), exact 3-byte payload
+  def decode_body(
+        <<config_id::little-32-unsigned, total_parts::8-unsigned, part_number::8-unsigned, 0x08,
+          i2c_address::8, pin::8, sensitivity::8>>
+      ) do
+    {:ok,
+     %__MODULE__{
+       config_id: config_id,
+       total_parts: total_parts,
+       part_number: part_number,
+       input_type: :mt6701,
+       i2c_address: i2c_address,
+       pin: pin,
+       sensitivity: sensitivity
      }}
   end
 
