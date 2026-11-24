@@ -332,6 +332,14 @@ defmodule Trenino.Hardware.Calibration.Session do
       length(Enum.uniq(samples)) >= @min_unique_samples
   end
 
+  # The end is where the lever was when the user pressed Next: the readings in the last
+  # 500 ms before the newest one. A user who presses Next while still moving
+  # into place would otherwise pull the median toward the middle of the travel. A
+  # sensor at rest sends once in 2 s, so that is often a single reading.
+  defp settled_positions([{newest, _} | _] = samples) do
+    for {at, position} <- samples, newest - at <= @settle_ms, do: position
+  end
+
   defp analyze_and_save_calibration(%State{circular: true} = state) do
     with {:ok, attrs} <-
            Analyzer.circular_calibration(
@@ -343,14 +351,6 @@ defmodule Trenino.Hardware.Calibration.Session do
 
       Hardware.save_calibration(state.input_id, attrs)
     end
-  end
-
-  # The end is where the lever was when the user pressed Next: the readings in the last
-  # 500 ms before the newest one. A user who presses Next while still moving
-  # into place would otherwise pull the median toward the middle of the travel. A
-  # sensor at rest sends once in 2 s, so that is often a single reading.
-  defp settled_positions([{newest, _} | _] = samples) do
-    for {at, position} <- samples, newest - at <= @settle_ms, do: position
   end
 
   defp analyze_and_save_calibration(%State{} = state) do
