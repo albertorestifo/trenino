@@ -47,33 +47,75 @@ defmodule TreninoWeb.BetaFeaturesTest do
   end
 
   describe "settings page with beta features off" do
-    test "offers only Train Sim World", %{conn: conn} do
+    test "lists only Train Sim World", %{conn: conn} do
       {:ok, view, _} = live(conn, ~p"/settings")
 
-      refute has_element?(view, "#simulator_choice")
-      refute has_element?(view, "#simrail-settings")
-      assert has_element?(view, "#simulator_url")
-      assert has_element?(view, "#simulator_api_key")
+      assert has_element?(view, "#simulator-tsw")
+      refute has_element?(view, "#simulator-simrail")
     end
 
-    test "shows the Train Sim World fields even when SimRail was chosen", %{conn: conn} do
+    test "shows Train Sim World as in use even when SimRail was chosen", %{conn: conn} do
       {:ok, _} = Settings.set_simulator(:simrail)
       {:ok, view, _} = live(conn, ~p"/settings")
 
-      refute has_element?(view, "#simrail-settings")
-      assert has_element?(view, "#simulator_url")
+      assert has_element?(view, "#simulator-tsw", "In use")
+    end
+
+    test "the SimRail page sends you to Train Sim World", %{conn: conn} do
+      assert {:error, {:live_redirect, %{to: "/settings/simulators/tsw"}}} =
+               live(conn, ~p"/settings/simulators/simrail")
     end
 
     test "saving connects to Train Sim World", %{conn: conn} do
       {:ok, _} = Settings.set_simulator(:simrail)
       expect(Trenino.Simulator.Connection, :reconfigure, fn -> :ok end)
-      {:ok, view, _} = live(conn, ~p"/settings")
+      {:ok, view, _} = live(conn, ~p"/settings/simulators/tsw")
 
       view
       |> form("#simulator-form", simulator: %{url: "http://localhost:31270", api_key: ""})
       |> render_submit()
 
       assert :tsw = Settings.simulator()
+    end
+
+    test "hides the SimRail setup assistant toggle", %{conn: conn} do
+      {:ok, view, _} = live(conn, ~p"/settings")
+
+      refute has_element?(view, "#simrail-onboarding-option")
+    end
+  end
+
+  describe "SimRail setup assistant (opt-in)" do
+    setup do
+      {:ok, _} = Settings.set_beta_features(:enabled)
+      :ok
+    end
+
+    test "is off until its own toggle is on", %{conn: conn} do
+      {:ok, view, _} = live(conn, ~p"/settings/simulators/simrail")
+      refute has_element?(view, "#open-simrail-setup")
+
+      assert {:error, {:live_redirect, %{to: "/settings/simulators/simrail"}}} =
+               live(conn, ~p"/settings/simulators/simrail/setup")
+    end
+
+    test "its toggle turns it on", %{conn: conn} do
+      {:ok, view, _} = live(conn, ~p"/settings")
+      refute has_element?(view, "input[data-testid='simrail-onboarding-toggle'][checked]")
+
+      view |> element("input[data-testid='simrail-onboarding-toggle']") |> render_click()
+      assert Settings.beta_feature?(:simrail_onboarding)
+
+      {:ok, view, _} = live(conn, ~p"/settings/simulators/simrail")
+      assert has_element?(view, "#open-simrail-setup")
+      assert {:ok, _view, _html} = live(conn, ~p"/settings/simulators/simrail/setup")
+    end
+
+    test "stays off while beta features are off", %{conn: conn} do
+      {:ok, _} = Settings.set_beta_feature(:simrail_onboarding, :enabled)
+      {:ok, _} = Settings.set_beta_features(:disabled)
+
+      assert {:error, {:live_redirect, _}} = live(conn, ~p"/settings/simulators/simrail/setup")
     end
   end
 

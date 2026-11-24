@@ -19,6 +19,9 @@ defmodule Trenino.Settings do
   @beta_features_key "beta_features"
   @beta_features_values [:enabled, :disabled]
 
+  @beta_feature_key_prefix "beta_feature."
+  @opt_in_beta_features [:simrail_onboarding]
+
   @simulator_url_key "simulator_url"
   @simulator_api_key_key "simulator_api_key"
   @default_simulator_url "http://localhost:31270"
@@ -29,6 +32,8 @@ defmodule Trenino.Settings do
   @simrail_url_key "simrail_url"
   @simrail_token_key "simrail_token"
   @default_simrail_url "http://127.0.0.1:31275"
+
+  @simrail_game_dir_key "simrail_game_dir"
 
   @spec error_reporting?() :: boolean()
   def error_reporting?, do: get_atom(@error_reporting_key, @error_reporting_values) == :enabled
@@ -50,6 +55,20 @@ defmodule Trenino.Settings do
   def set_beta_features(value) when value in @beta_features_values do
     put_raw(@beta_features_key, Atom.to_string(value))
   end
+
+  @doc "Whether an opt-in beta feature's own toggle is on (see `Trenino.Beta`)."
+  @spec beta_feature?(atom()) :: boolean()
+  def beta_feature?(feature) when feature in @opt_in_beta_features,
+    do: get_atom(beta_feature_key(feature), @beta_features_values) == :enabled
+
+  @spec set_beta_feature(atom(), :enabled | :disabled) ::
+          {:ok, Setting.t()} | {:error, Ecto.Changeset.t()}
+  def set_beta_feature(feature, value)
+      when feature in @opt_in_beta_features and value in @beta_features_values do
+    put_raw(beta_feature_key(feature), Atom.to_string(value))
+  end
+
+  defp beta_feature_key(feature), do: @beta_feature_key_prefix <> Atom.to_string(feature)
 
   @spec simulator_url() :: String.t()
   def simulator_url, do: get_raw(@simulator_url_key) || @default_simulator_url
@@ -99,6 +118,14 @@ defmodule Trenino.Settings do
   @spec set_simrail_token(String.t()) ::
           {:ok, Setting.t()} | {:error, Ecto.Changeset.t()}
   def set_simrail_token(token) when is_binary(token), do: put_raw(@simrail_token_key, token)
+
+  @doc "The SimRail install folder chosen in the SimRail setup, or nil."
+  @spec simrail_game_dir() :: String.t() | nil
+  def simrail_game_dir, do: get_raw(@simrail_game_dir_key)
+
+  @spec set_simrail_game_dir(String.t()) ::
+          {:ok, Setting.t()} | {:error, Ecto.Changeset.t()}
+  def set_simrail_game_dir(dir) when is_binary(dir), do: put_raw(@simrail_game_dir_key, dir)
 
   @doc "Forget the TreninoBridge token, so requests are sent without one."
   @spec clear_simrail_token() :: :ok

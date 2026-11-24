@@ -45,6 +45,7 @@ defmodule TreninoWeb.NavHook do
      |> assign(:beta_gauges, Beta.enabled?(:gauges))
      |> assign(:beta_selectors, Beta.enabled?(:selectors))
      |> assign(:beta_simrail, Beta.enabled?(:simrail))
+     |> assign(:beta_simrail_onboarding, Beta.enabled?(:simrail_onboarding))
      |> attach_hook(:nav_path_tracker, :handle_params, &handle_params/3)
      |> attach_hook(:nav_firmware_events, :handle_event, &handle_event/3)
      |> attach_hook(:nav_firmware_info, :handle_info, &handle_info/2)}

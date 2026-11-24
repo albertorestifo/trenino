@@ -321,12 +321,13 @@ defmodule TreninoWeb.NavComponents do
     >
       <.icon name="hero-exclamation-triangle" class="w-5 h-5" />
       <span>{@message} {@sim.hint}</span>
-      <.simulator_action action={@sim.action} />
+      <.simulator_action action={@sim.action} simulator={@sim.id} />
     </div>
     """
   end
 
   attr :action, :atom, required: true
+  attr :simulator, :atom, required: true, doc: "the simulator whose settings page to open"
 
   defp simulator_action(assigns) do
     ~H"""
@@ -337,7 +338,11 @@ defmodule TreninoWeb.NavComponents do
     >
       <.icon name="hero-arrow-path" class="w-4 h-4" /> Retry
     </button>
-    <.link :if={@action == :settings} navigate={~p"/settings"} class="btn btn-ghost btn-xs">
+    <.link
+      :if={@action == :settings}
+      navigate={~p"/settings/simulators/#{@simulator}"}
+      class="btn btn-ghost btn-xs"
+    >
       Open Settings
     </.link>
     """
@@ -407,7 +412,7 @@ defmodule TreninoWeb.NavComponents do
       <section id="simulator-status-row" class="px-4 py-3 border-b border-base-300">
         <div class="flex items-center justify-between gap-2">
           <span class="text-sm font-medium">{@sim.name}</span>
-          <.simulator_action action={@sim.action} />
+          <.simulator_action action={@sim.action} simulator={@sim.id} />
         </div>
         <.status_indicator kind={@sim.kind} label={@sim.label} class="mt-1 text-xs" />
         <p :if={@sim.hint} class="mt-1 text-xs text-muted">{@sim.hint}</p>
@@ -539,6 +544,7 @@ defmodule TreninoWeb.NavComponents do
 
   # Name, status, next step and recovery action for the simulator row and notice.
   @spec simulator_state(map()) :: %{
+          id: atom(),
           name: String.t(),
           kind: atom(),
           label: String.t(),
@@ -548,7 +554,7 @@ defmodule TreninoWeb.NavComponents do
   defp simulator_state(simulator_status) do
     simulator = simulator_id(simulator_status)
     state = simulator_status_state(simulator, simulator_status)
-    Map.put(state, :name, simulator_name(simulator))
+    Map.merge(state, %{id: simulator, name: simulator_name(simulator)})
   end
 
   defp simulator_status_state(simulator, simulator_status) do
