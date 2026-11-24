@@ -91,4 +91,44 @@ defmodule Trenino.Serial.Connection.ScanTest do
     second = await_status(@port, :failed)
     assert second.failures == 2
   end
+
+  describe "ports avrdude needs" do
+    setup do
+      test_pid = self()
+
+      stub(Circuits.UART, :open, fn _pid, port, _opts ->
+        send(test_pid, {:opened, port})
+        :ok
+      end)
+
+      stub(Discovery, :discover, fn _pid ->
+        {:ok, %IdentityResponse{request_id: 1, version: "3.2.1", config_id: 7}}
+      end)
+
+      :ok
+    end
+
+    test "never opens an ATmega32U4 bootloader port", %{ports: ports} do
+      # Arduino Micro bootloader, as circuits_uart enumerates it on Windows.
+      Agent.update(ports, &Map.put(&1, "COM4", %{vendor_id: 0x2341, product_id: 0x0037}))
+      # The running sketch on the same board is still connected.
+      Agent.update(ports, &Map.put(&1, "COM3", %{vendor_id: 0x2341, product_id: 0x8037}))
+
+      # The first scan runs 1s after Connection starts. Both ports are seen
+      # by the scan that opens COM3, and by the later ones.
+      assert_receive {:opened, "COM3"}, 3_000
+      refute_receive {:opened, "COM4"}, 500
+    end
+
+    test "opens no new port while an upload runs, and does once it ends", %{ports: ports} do
+      assert {:ok, token} = Connection.request_upload_access("COM3")
+
+      # The board re-enumerates under a new port during the upload.
+      plug_in(ports, "COM4")
+      refute_receive {:opened, "COM4"}, 500
+
+      assert :ok = Connection.release_upload_access("COM3", token)
+      assert_receive {:opened, "COM4"}, 1_000
+    end
+  end
 end

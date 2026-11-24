@@ -39,6 +39,20 @@ defmodule Trenino.Serial.Connection do
     ~r/TONE/i
   ]
 
+  # USB IDs of the Caterina bootloaders on the ATmega32U4 boards we flash
+  # (Leonardo, Micro, SparkFun Pro Micro 5V and 3.3V). The bootloader only
+  # lives for ~8 seconds and speaks avr109, not our protocol: opening it for
+  # discovery holds the port (exclusively on Windows) and writes our
+  # handshake into the bootloader, so avrdude cannot flash it.
+  @bootloader_usb_ids [
+    {0x2341, 0x0036},
+    {0x2341, 0x0037},
+    {0x2A03, 0x0036},
+    {0x2A03, 0x0037},
+    {0x1B4F, 0x9203},
+    {0x1B4F, 0x9205}
+  ]
+
   @pubsub_topic "device_updates"
   @serial_messages_topic "serial:messages"
 
@@ -595,7 +609,12 @@ defmodule Trenino.Serial.Connection do
     case list_ports() do
       {:ok, ports} ->
         if state.enumerate_failing?, do: Logger.info("Serial port enumeration recovered")
-        connect_eligible_ports(Map.keys(ports), state)
+
+        ports
+        |> Enum.reject(fn {_port, info} -> bootloader_port?(info) end)
+        |> Enum.map(fn {port, _info} -> port end)
+        |> connect_eligible_ports(state)
+
         %State{state | enumerate_failing?: false}
 
       {:error, error} ->
@@ -625,8 +644,12 @@ defmodule Trenino.Serial.Connection do
     Enum.each(eligible_ports, &GenServer.cast(__MODULE__, {:connect, &1}))
   end
 
+  # While an upload runs, no new port is opened: the board re-enumerates (on
+  # Windows under a new COM port) and avrdude must be the only one talking to
+  # it until the upload ends. The port is rediscovered after the upload.
   defp should_connect?(port, state) do
     not ignored_port?(port) and
+      not upload_in_progress?(state) and
       case State.get(state, port) do
         # Not tracked, should connect
         nil -> true
@@ -634,6 +657,11 @@ defmodule Trenino.Serial.Connection do
         conn -> DeviceConnection.should_retry?(conn)
       end
   end
+
+  defp bootloader_port?(%{vendor_id: vendor_id, product_id: product_id}),
+    do: {vendor_id, product_id} in @bootloader_usb_ids
+
+  defp bootloader_port?(_info), do: false
 
   defp find_port_by_pid(%State{ports: ports}, pid) do
     case Enum.find(ports, fn {_port, conn} -> conn.pid == pid end) do

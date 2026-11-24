@@ -14,7 +14,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   angle, and **Not responding** when the sensor doesn't answer. Calibration shows the live
   angle, needs only one reading per end, and handles the sensor's 0°/360° point anywhere
   in the travel, including readings that jitter across it at either end.
-
 - SimRail (beta): connect to SimRail through the TreninoBridge mod, with its URL and an
   optional token for when SimRail runs on another computer.
 - Settings now lists each simulator with its own connection page.
@@ -33,6 +32,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Fixed
 
 - An I2C display that didn't answer after Apply was only logged. It now shows a message.
+- Flashing a Leonardo, Micro or Pro Micro could fail with "Bootloader not responding",
+  mostly on Windows. Trenino no longer opens the board's bootloader port, or any new
+  port, while a flash runs, so avrdude has the bootloader to itself. Trenino also waits
+  for the bootloader's port to settle before flashing, and up to 10 seconds for it to
+  appear while Windows sets up its driver.
 
 ## [0.9.2] - 2026-11-24
 

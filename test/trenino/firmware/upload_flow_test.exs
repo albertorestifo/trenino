@@ -142,8 +142,11 @@ defmodule Trenino.Firmware.UploadFlowTest do
         {:ok, AvrdudeFixtures.successful_upload()}
       end)
 
-      assert {:ok, %{duration_ms: _, output: _}} =
+      assert {:ok, %{duration_ms: duration_ms, output: _}} =
                Uploader.upload("COM5", "micro", hex_file)
+
+      # avrdude waits for the new port to settle before opening it.
+      assert duration_ms >= 500
     end
 
     test "waits for the original port to drop and re-enumerate (macOS/Linux scenario)", %{
