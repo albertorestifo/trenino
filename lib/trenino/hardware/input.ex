@@ -168,15 +168,19 @@ defmodule Trenino.Hardware.Input do
 
   # Virtual buttons (with matrix_id) use pins 128-255
   # Physical inputs use pins 0-127
+  # An MT6701's report pin (240/241) is set from its address, not by the user.
   defp validate_pin_range(changeset) do
+    if get_field(changeset, :sensor) == :mt6701,
+      do: changeset,
+      else: validate_physical_or_virtual_pin(changeset)
+  end
+
+  defp validate_physical_or_virtual_pin(changeset) do
     matrix_id = get_field(changeset, :matrix_id)
     pin = get_field(changeset, :pin)
 
     cond do
       is_nil(pin) ->
-        changeset
-
-      get_field(changeset, :sensor) == :mt6701 ->
         changeset
 
       # Virtual button (has matrix_id) - must be 128-255
