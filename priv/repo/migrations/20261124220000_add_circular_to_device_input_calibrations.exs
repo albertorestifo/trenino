@@ -16,7 +16,7 @@ defmodule Trenino.Repo.Migrations.AddCircularToDeviceInputCalibrations do
       UPDATE device_input_calibrations SET circular = 1
       WHERE input_id IN (SELECT id FROM device_inputs WHERE sensor <> 'adc')
       """,
-      ""
+      "SELECT 1"
     )
   end
 end

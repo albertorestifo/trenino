@@ -118,8 +118,10 @@ controller firmware **3.4.0** or newer. The SimRail gate-lever sensor board in t
 - Connect the sensor board's I2C connector to the controller's 5V, GND, SDA and SCL.
 - Every MT6701 answers at **0x06** from the factory.
 - Two sensors can share one cable. Before plugging the second board into the chain,
-  set it to **0x46** with the MT6701 setup sketch (`addr46`, then `burn`). The chip has
-  no address pin, so this is the only way to tell two of them apart.
+  set it to **0x46** with the MT6701 setup sketch (`addr46`, then `burn`). The sketch is in
+  the train-lever repository, at
+  [`docs/electronics/simrail-gate-lever-sensor/firmware/mt6701_setup`](https://github.com/albertorestifo/train-lever/tree/main/docs/electronics/simrail-gate-lever-sensor/firmware/mt6701_setup).
+  The chip has no address pin, so this is the only way to tell two of them apart.
 - I2C displays (HT16K33, 0x70-0x77) can share the same bus.
 
 ### Adding the input

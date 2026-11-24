@@ -410,10 +410,8 @@ defmodule TreninoWeb.CalibrationWizard do
 
     ~H"""
     <div class="text-center text-sm" aria-live="polite">
-      <span :if={is_nil(@value)} class="text-muted">
-        <span :if={@spec}>Waiting for the sensor…</span>
-        <span :if={!@spec}>Waiting for a reading…</span>
-      </span>
+      <%!-- A potentiometer only sends when it moves, so only a sensor waits visibly. --%>
+      <span :if={is_nil(@value) && @spec} class="text-muted">Waiting for the sensor…</span>
       <span :if={@value} class="font-mono tabular-nums">
         <span class="text-muted">Raw</span>
         {@value}
@@ -497,6 +495,12 @@ defmodule TreninoWeb.CalibrationWizard do
 
   @doc "Human-readable text for a failed calibration result."
   @spec error_message({:error, term()}) :: String.t()
+  def error_message({:error, :range_too_small}),
+    do: "The lever moved less than 5°. Check that the magnet turns with the shaft."
+
+  def error_message({:error, :range_too_large}),
+    do: "The sensor turned almost a full circle, so the two ends can't be told apart."
+
   def error_message({:error, reason}) when is_atom(reason) do
     summary =
       reason

@@ -46,6 +46,14 @@ defmodule Trenino.Hardware.AngleSensorTest do
     assert AngleSensor.shortest_delta(200, 100, 16_384) == -100
   end
 
+  test "a half-turn step and its way back cancel" do
+    there = AngleSensor.shortest_delta(100, 8292, 16_384)
+    back = AngleSensor.shortest_delta(8292, 100, 16_384)
+
+    assert abs(there) == 8192
+    assert there + back == 0
+  end
+
   test "firmware_version is the lowest any sensor needs" do
     assert AngleSensor.firmware_version() == "3.4.0"
   end

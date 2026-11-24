@@ -142,7 +142,8 @@ defmodule TreninoWeb.ConfigurationEditLive.Modals do
       spec |> AngleSensor.addresses() |> Enum.map(&AngleSensor.format_address/1)
 
     "Connect the board to SDA and SCL. Every #{name} ships at #{first}. To use two, set " <>
-      "the second board to #{second} with the setup sketch before plugging it into the " <>
+      "the second board to #{second} with the MT6701 setup sketch (in the train-lever " <>
+      "repository) before plugging it into the " <>
       "chain. To tell them apart, move a lever and watch its angle in the inputs list."
   end
 

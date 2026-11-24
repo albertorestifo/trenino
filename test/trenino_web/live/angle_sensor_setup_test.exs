@@ -97,7 +97,7 @@ defmodule TreninoWeb.AngleSensorSetupTest do
     send(view.pid, {:i2c_module_failed, @port, 0x46, true})
     assert has_element?(view, "#input-not-responding-#{input.id}", "Not responding")
     assert render(view) =~ "The MT6701 at 0x46 did not answer"
-    assert render(view) =~ "set to 0x46 with the setup sketch"
+    assert render(view) =~ "set to 0x46 first with the MT6701 setup sketch"
 
     send(view.pid, {:input_value_updated, @port, input.pin, 4096})
     refute has_element?(view, "#input-not-responding-#{input.id}")
@@ -117,6 +117,26 @@ defmodule TreninoWeb.AngleSensorSetupTest do
     send(view.pid, {:devices_updated, [connected(device.config_id)]})
     send(view.pid, {:i2c_module_failed, "/dev/other", 0x06, true})
 
+    refute has_element?(view, "#input-not-responding-#{input.id}")
+  end
+
+  test "a sensor added since the last Apply is not flagged", %{conn: conn, device: device} do
+    fingerprint = Hardware.config_fingerprint([], [], [], [])
+    {:ok, _} = Hardware.confirm_configuration(device.id, device.config_id, fingerprint)
+
+    {:ok, input} =
+      Hardware.create_input(device.id, %{
+        input_type: :analog,
+        sensor: :mt6701,
+        i2c_address: 0x06,
+        sensitivity: 5
+      })
+
+    {:ok, view, _} = live(conn, ~p"/configurations/#{device.config_id}")
+    send(view.pid, {:devices_updated, [connected(device.config_id)]})
+    send(view.pid, {:i2c_module_failed, @port, 0x06, false})
+
+    assert has_element?(view, "#apply-needed-banner")
     refute has_element?(view, "#input-not-responding-#{input.id}")
   end
 end

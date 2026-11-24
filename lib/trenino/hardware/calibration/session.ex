@@ -46,6 +46,7 @@ defmodule Trenino.Hardware.Calibration.Session do
   @calibration_topic "hardware:calibration"
   @min_sample_count 10
   @min_unique_samples 3
+  @settle_ms 500
 
   defmodule State do
     @moduledoc false
@@ -279,7 +280,11 @@ defmodule Trenino.Hardware.Calibration.Session do
     %{state | max_samples: [held_value(state, value) | state.max_samples]}
   end
 
-  defp held_value(%State{circular: true, position: position}, _value), do: position
+  # A circular hold keeps `{monotonic ms, position}`: only the readings that settled before
+  # Next count for the end (see `settled_positions/1`).
+  defp held_value(%State{circular: true, position: position}, _value),
+    do: {System.monotonic_time(:millisecond), position}
+
   defp held_value(%State{}, value), do: value
 
   defp validate_and_advance(%State{current_step: :ready} = state) do
@@ -330,14 +335,22 @@ defmodule Trenino.Hardware.Calibration.Session do
   defp analyze_and_save_calibration(%State{circular: true} = state) do
     with {:ok, attrs} <-
            Analyzer.circular_calibration(
-             state.min_samples,
-             state.max_samples,
+             settled_positions(state.min_samples),
+             settled_positions(state.max_samples),
              state.max_hardware_value + 1
            ) do
       attrs = Map.merge(attrs, %{max_hardware_value: state.max_hardware_value, circular: true})
 
       Hardware.save_calibration(state.input_id, attrs)
     end
+  end
+
+  # The end is where the lever was when the user pressed Next: the readings in the last
+  # 500 ms before the newest one. A user who presses Next while still moving
+  # into place would otherwise pull the median toward the middle of the travel. A
+  # sensor at rest sends once in 2 s, so that is often a single reading.
+  defp settled_positions([{newest, _} | _] = samples) do
+    for {at, position} <- samples, newest - at <= @settle_ms, do: position
   end
 
   defp analyze_and_save_calibration(%State{} = state) do

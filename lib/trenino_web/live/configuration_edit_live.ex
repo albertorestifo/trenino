@@ -100,6 +100,7 @@ defmodule TreninoWeb.ConfigurationEditLive do
   defp mount_new(socket) do
     if connected?(socket) do
       Hardware.subscribe_configuration()
+      Process.send_after(self(), :check_sensors, @sensor_check_ms)
     end
 
     {:ok, device} = Hardware.create_device(%{name: "New Configuration"})
@@ -230,13 +231,18 @@ defmodule TreninoWeb.ConfigurationEditLive do
     do: assign(socket, :unresponsive_pins, MapSet.new())
 
   defp refresh_unresponsive(socket) do
-    pins = for input <- socket.assigns.inputs, Input.angle_sensor?(input), do: input.pin
+    # A sensor added since the last Apply isn't on the device yet: it can't answer.
+    if config_status(socket.assigns) == :unapplied do
+      assign(socket, :unresponsive_pins, MapSet.new())
+    else
+      pins = for input <- socket.assigns.inputs, Input.angle_sensor?(input), do: input.pin
 
-    assign(
-      socket,
-      :unresponsive_pins,
-      SensorHealth.unresponsive(socket.assigns.sensor_health, pins, now_ms())
-    )
+      assign(
+        socket,
+        :unresponsive_pins,
+        SensorHealth.unresponsive(socket.assigns.sensor_health, pins, now_ms())
+      )
+    end
   end
 
   defp now_ms, do: System.monotonic_time(:millisecond)
@@ -1237,7 +1243,8 @@ defmodule TreninoWeb.ConfigurationEditLive do
   def module_failure_message(%Input{} = sensor, address) do
     second_board =
       if address == 0x46,
-        do: " A second board must be set to 0x46 with the setup sketch first.",
+        do:
+          " A second board must be set to 0x46 first with the MT6701 setup sketch (in the train-lever repository).",
         else: ""
 
     "The #{Input.location_label(sensor)} did not answer. Check its 4-wire cable " <>
