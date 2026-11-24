@@ -15,6 +15,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   checks MelonLoader and its settings, installs the TreninoBridge mod that now ships with
   the desktop app, and connects.
 
+### Fixed
+
+- Flashing a Leonardo, Micro or Pro Micro could fail with "Bootloader not responding",
+  mostly on Windows. Trenino no longer opens the board's bootloader port, or any new
+  port, while a flash runs, so avrdude has the bootloader to itself. Trenino also waits
+  for the bootloader's port to settle before flashing, and up to 10 seconds for it to
+  appear while Windows sets up its driver.
+
 ## [0.9.2] - 2026-11-24
 
 ### Removed
