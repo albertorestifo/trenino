@@ -26,12 +26,19 @@ defmodule Trenino.Firmware.Uploader do
 
   @bootloader_initial_wait_ms 100
   @bootloader_poll_interval_ms 100
-  @bootloader_poll_deadline_ms 5_000
+  # Windows installs the bootloader's driver the first time it appears, which
+  # can take several seconds. The Arduino IDE waits up to 10 seconds too.
+  @bootloader_poll_deadline_ms 10_000
   # The board takes ~500ms to drop off USB after the touch. Until then the
   # original port is still the running sketch, not the bootloader, so it is
   # only accepted once it has disappeared and come back, or after this grace
   # period for boards that are already in the bootloader and never reset.
   @bootloader_reset_grace_ms 2_000
+  # A port can be listed before its driver accepts connections (Windows lists
+  # the bootloader's COM port before usbser is ready, macOS reports "Resource
+  # busy"). avrdude then gets no answer from the bootloader. The Arduino IDE
+  # waits 250ms after the port appears; the bootloader stays up for 8 seconds.
+  @bootloader_port_settle_ms 500
 
   @doc """
   Returns alternate baud rates to try for a programmer when the initial
@@ -289,11 +296,11 @@ defmodule Trenino.Firmware.Uploader do
 
     cond do
       new_ports != [] ->
-        pick_new_port(new_ports, original_port)
+        new_ports |> pick_new_port(original_port) |> settle_port()
 
       original_present? and seen_gone? ->
         Logger.info("Bootloader re-enumerated on #{original_port}")
-        {:ok, original_port}
+        settle_port({:ok, original_port})
 
       original_present? and elapsed_ms >= @bootloader_reset_grace_ms ->
         Logger.info("Original port #{original_port} never reset, using it")
@@ -329,6 +336,11 @@ defmodule Trenino.Firmware.Uploader do
     new_port = Enum.max(new_ports)
     Logger.info("Multiple new ports appeared, using #{new_port}")
     {:ok, new_port}
+  end
+
+  defp settle_port({:ok, _port} = result) do
+    Process.sleep(@bootloader_port_settle_ms)
+    result
   end
 
   defp get_available_ports do
