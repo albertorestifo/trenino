@@ -151,6 +151,9 @@ jobs:
           if ($LASTEXITCODE -eq 0) { throw "An incorrect avrdude checksum unexpectedly succeeded" }
           if (Test-Path -LiteralPath "$env:RUNNER_TEMP\avrdude-test\avrdude-fixture.exe") { throw "A failed avrdude download created the executable" }
           if (Test-Path -LiteralPath "$env:RUNNER_TEMP\avrdude-test\avrdude.conf") { throw "A failed avrdude download created the configuration" }
+          # The expected failure above leaves LASTEXITCODE at 1, and the runner's
+          # pwsh wrapper exits with it, so clear it once the checks have passed.
+          $global:LASTEXITCODE = 0
 
       - name: Build Burrito and Tauri package
         env:
