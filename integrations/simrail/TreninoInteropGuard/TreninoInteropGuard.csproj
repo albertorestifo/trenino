@@ -7,6 +7,9 @@
     Build:  dotnet build -c Release -p:SimRailDir="D:\SteamLibrary\steamapps\common\SimRail"
     Output is copied to <SimRailDir>\Plugins when DeployToGame=true (default).
     It must live in Plugins\, not Mods\: plugins load before Il2CppInterop installs its hooks.
+
+    CI (no SimRail install): dotnet build -c Release -p:DeployToGame=false
+    MelonLoader, HarmonyX and Iced then come from NuGet (see ../nuget.config).
   -->
 
   <PropertyGroup>
@@ -17,14 +20,21 @@
     <RootNamespace>TreninoInteropGuard</RootNamespace>
     <SimRailDir Condition="'$(SimRailDir)' == ''">D:\SteamLibrary\steamapps\common\SimRail</SimRailDir>
     <DeployToGame Condition="'$(DeployToGame)' == ''">true</DeployToGame>
+    <MelonLoaderDir>$(SimRailDir)\MelonLoader\net6</MelonLoaderDir>
+    <UseMelonLoaderPackage Condition="!Exists('$(MelonLoaderDir)\MelonLoader.dll')">true</UseMelonLoaderPackage>
     <CopyLocalLockFileAssemblies>false</CopyLocalLockFileAssemblies>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
   </PropertyGroup>
 
-  <ItemGroup>
-    <Reference Include="MelonLoader" HintPath="$(SimRailDir)\MelonLoader\net6\MelonLoader.dll" Private="false" />
-    <Reference Include="0Harmony" HintPath="$(SimRailDir)\MelonLoader\net6\0Harmony.dll" Private="false" />
-    <Reference Include="Iced" HintPath="$(SimRailDir)\MelonLoader\net6\Iced.dll" Private="false" />
+  <ItemGroup Condition="'$(UseMelonLoaderPackage)' != 'true'">
+    <Reference Include="MelonLoader" HintPath="$(MelonLoaderDir)\MelonLoader.dll" Private="false" />
+    <Reference Include="0Harmony" HintPath="$(MelonLoaderDir)\0Harmony.dll" Private="false" />
+    <Reference Include="Iced" HintPath="$(MelonLoaderDir)\Iced.dll" Private="false" />
+  </ItemGroup>
+
+  <!-- LavaGang.MelonLoader brings HarmonyX (0Harmony) and Iced at the versions MelonLoader ships. -->
+  <ItemGroup Condition="'$(UseMelonLoaderPackage)' == 'true'">
+    <PackageReference Include="LavaGang.MelonLoader" Version="0.7.3" ExcludeAssets="runtime" PrivateAssets="all" />
   </ItemGroup>
 
   <Target Name="DeployToSimRail" AfterTargets="Build" Condition="'$(DeployToGame)' == 'true'">

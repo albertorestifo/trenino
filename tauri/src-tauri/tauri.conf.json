@@ -30,7 +30,10 @@
     ],
     "resources": [
       "binaries/avrdude.conf",
-      "resources/vc_redist.x64.exe"
+      "resources/vc_redist.x64.exe",
+      "resources/simrail/manifest.json",
+      "resources/simrail/Mods/TreninoBridge.dll",
+      "resources/simrail/Plugins/TreninoInteropGuard.dll"
     ],
     "windows": {
       "nsis": {

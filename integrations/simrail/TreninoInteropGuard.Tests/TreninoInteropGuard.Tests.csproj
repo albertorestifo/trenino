@@ -17,7 +17,14 @@
 
   <ItemGroup>
     <ProjectReference Include="..\TreninoInteropGuard\TreninoInteropGuard.csproj" Properties="DeployToGame=false" />
+  </ItemGroup>
+
+  <!-- The game's Iced when SimRail is installed, else the same version from NuGet (CI). -->
+  <ItemGroup Condition="Exists('$(SimRailDir)\MelonLoader\net6\Iced.dll')">
     <Reference Include="Iced" HintPath="$(SimRailDir)\MelonLoader\net6\Iced.dll" Private="true" />
+  </ItemGroup>
+  <ItemGroup Condition="!Exists('$(SimRailDir)\MelonLoader\net6\Iced.dll')">
+    <PackageReference Include="Iced" Version="1.21.0" />
   </ItemGroup>
 
   <ItemGroup>

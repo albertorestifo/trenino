@@ -8,6 +8,9 @@
     Output is copied to <SimRailDir>\Mods when DeployToGame=true (default).
     Requires the game to have been started once with MelonLoader so that
     MelonLoader\Il2CppAssemblies exists.
+
+    Without a MelonLoader install, MelonLoader and Il2CppInterop come from NuGet
+    (see ../nuget.config); GameRefsDir must still point at the generated game assemblies.
   -->
 
   <PropertyGroup>
@@ -18,17 +21,28 @@
     <RootNamespace>TreninoBridge</RootNamespace>
     <SimRailDir Condition="'$(SimRailDir)' == ''">D:\SteamLibrary\steamapps\common\SimRail</SimRailDir>
     <DeployToGame Condition="'$(DeployToGame)' == ''">true</DeployToGame>
+    <MelonLoaderDir>$(SimRailDir)\MelonLoader\net6</MelonLoaderDir>
+    <GameRefsDir Condition="'$(GameRefsDir)' == ''">$(SimRailDir)\MelonLoader\Il2CppAssemblies</GameRefsDir>
+    <!-- Without a MelonLoader install, compile against the same MelonLoader release from NuGet. -->
+    <UseMelonLoaderPackage Condition="!Exists('$(MelonLoaderDir)\MelonLoader.dll')">true</UseMelonLoaderPackage>
     <CopyLocalLockFileAssemblies>false</CopyLocalLockFileAssemblies>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
   </PropertyGroup>
 
+  <ItemGroup Condition="'$(UseMelonLoaderPackage)' != 'true'">
+    <Reference Include="MelonLoader" HintPath="$(MelonLoaderDir)\MelonLoader.dll" Private="false" />
+    <Reference Include="Il2CppInterop.Runtime" HintPath="$(MelonLoaderDir)\Il2CppInterop.Runtime.dll" Private="false" />
+    <Reference Include="Il2CppInterop.Common" HintPath="$(MelonLoaderDir)\Il2CppInterop.Common.dll" Private="false" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(UseMelonLoaderPackage)' == 'true'">
+    <PackageReference Include="LavaGang.MelonLoader" Version="0.7.3" ExcludeAssets="runtime" PrivateAssets="all" />
+  </ItemGroup>
+
   <ItemGroup>
-    <Reference Include="MelonLoader" HintPath="$(SimRailDir)\MelonLoader\net6\MelonLoader.dll" Private="false" />
-    <Reference Include="Il2CppInterop.Runtime" HintPath="$(SimRailDir)\MelonLoader\net6\Il2CppInterop.Runtime.dll" Private="false" />
-    <Reference Include="Il2CppInterop.Common" HintPath="$(SimRailDir)\MelonLoader\net6\Il2CppInterop.Common.dll" Private="false" />
-    <Reference Include="Il2Cppmscorlib" HintPath="$(SimRailDir)\MelonLoader\Il2CppAssemblies\Il2Cppmscorlib.dll" Private="false" />
-    <Reference Include="UnityEngine.CoreModule" HintPath="$(SimRailDir)\MelonLoader\Il2CppAssemblies\UnityEngine.CoreModule.dll" Private="false" />
-    <Reference Include="Assembly-CSharp" HintPath="$(SimRailDir)\MelonLoader\Il2CppAssemblies\Assembly-CSharp.dll" Private="false" />
+    <Reference Include="Il2Cppmscorlib" HintPath="$(GameRefsDir)\Il2Cppmscorlib.dll" Private="false" />
+    <Reference Include="UnityEngine.CoreModule" HintPath="$(GameRefsDir)\UnityEngine.CoreModule.dll" Private="false" />
+    <Reference Include="Assembly-CSharp" HintPath="$(GameRefsDir)\Assembly-CSharp.dll" Private="false" />
   </ItemGroup>
 
   <Target Name="DeployToSimRail" AfterTargets="Build" Condition="'$(DeployToGame)' == 'true'">

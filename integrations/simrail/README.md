@@ -32,6 +32,15 @@ train taught us. Per-train data lives in `profiles/`, `sweeps/` and `recordings/
    when the guard is missing. Tests: `dotnet test TreninoInteropGuard.Tests` (checks the
    resolver against the installed `GameAssembly.dll`; rerun after a SimRail update).
 
+### Building in CI and bundling
+
+`.github/workflows/simrail-mods.yml` builds the mods without a SimRail install (MelonLoader
+comes from NuGet, see `nuget.config`) and uploads them as the `simrail-mods` artifact, laid
+out like the game folder (`Mods/`, `Plugins/`, `manifest.json`). `build-desktop.yml` bundles
+that artifact as the `resources/simrail` Tauri resources, and the SimRail setup in Trenino
+(beta) copies them into the game. TreninoBridge itself still needs the game's generated
+assemblies to compile, so CI currently bundles an empty placeholder for it.
+
 Settings (`SimRail\UserData\MelonPreferences.cfg`, `[TreninoBridge]`): `Port` (31275),
 `ListenOnNetwork` (true), `Token` (generated on first run, never logged).
 

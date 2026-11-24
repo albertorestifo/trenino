@@ -1,0 +1,73 @@
+name: SimRail mods
+
+# Builds the MelonLoader assemblies Trenino installs into SimRail and uploads them as the
+# `simrail-mods` artifact, laid out like the SimRail folder (Mods/, Plugins/), which
+# build-desktop.yml bundles into the desktop app.
+#   - TreninoInteropGuard.dll (Plugins/): needs only MelonLoader, from NuGet.
+#   - TreninoBridge.dll (Mods/): compiles against assemblies MelonLoader generates from the
+#     game, so it is not built here yet; the artifact carries an empty placeholder.
+on:
+  pull_request:
+    paths:
+      - 'integrations/simrail/**'
+      - '.github/workflows/simrail-mods.yml'
+  push:
+    branches: [master]
+    paths:
+      - 'integrations/simrail/**'
+      - '.github/workflows/simrail-mods.yml'
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build SimRail mods
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: integrations/simrail
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            6.0.x
+            9.0.x
+
+      - name: Build TreninoInteropGuard
+        run: dotnet build TreninoInteropGuard -c Release -p:DeployToGame=false -o "$RUNNER_TEMP/out/guard"
+
+      # GameAssembly tests skip without SimRail; the signature matcher tests still run.
+      - name: Test TreninoInteropGuard
+        run: dotnet test TreninoInteropGuard.Tests -c Release
+
+      # The layout mirrors the SimRail folder, so the app copies Mods\ and Plugins\ as they are.
+      - name: Stage the mods
+        run: |
+          set -euo pipefail
+          stage="$RUNNER_TEMP/simrail-mods"
+          mkdir -p "$stage/Mods" "$stage/Plugins"
+          cp "$RUNNER_TEMP/out/guard/TreninoInteropGuard.dll" "$stage/Plugins/"
+          # TreninoBridge compiles against assemblies generated from the game, which CI
+          # does not have yet: an empty placeholder keeps the bundle layout, and the app
+          # reports the mod as not bundled.
+          : > "$stage/Mods/TreninoBridge.dll"
+          bridge=$(sed -n 's/.*BridgeVersion = "\(.*\)";.*/\1/p' TreninoBridge/Mod.cs)
+          guard=$(sed -n 's/.*GuardVersion = "\(.*\)";.*/\1/p' TreninoInteropGuard/Plugin.cs)
+          printf '{"bridge": "%s", "guard": "%s", "commit": "%s"}\n' "$bridge" "$guard" "$GITHUB_SHA" > "$stage/manifest.json"
+          find "$stage" -type f | sort
+          cat "$stage/manifest.json"
+
+      - name: Upload the mods
+        uses: actions/upload-artifact@v7
+        with:
+          name: simrail-mods
+          path: ${{ runner.temp }}/simrail-mods
+          if-no-files-found: error
+          retention-days: 7

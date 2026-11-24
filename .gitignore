@@ -63,6 +63,7 @@ npm-debug.log
 
 # VC++ Redistributable (downloaded in CI)
 /tauri/src-tauri/resources/vc_redist.x64.exe
+/tauri/src-tauri/resources/simrail/
 
 # Downloaded Windows packaging inputs (never signing keys or source files).
 /tauri/src-tauri/binaries/avrdude.conf
