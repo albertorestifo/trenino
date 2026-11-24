@@ -183,7 +183,8 @@ defmodule Trenino.Simulator.LeverAnalyzer do
           required(:description) => String.t(),
           optional(:value) => float(),
           optional(:min_value) => float(),
-          optional(:max_value) => float()
+          optional(:max_value) => float(),
+          optional(:springs_back_to) => non_neg_integer() | nil
         }
 
   @doc """

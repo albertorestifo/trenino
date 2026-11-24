@@ -3,8 +3,14 @@ defmodule Trenino.Train.Train do
   Schema for train configurations.
 
   Each train represents a simulator vehicle identified by one or more equivalent
-  ObjectClass prefixes. A train can have multiple elements (levers, buttons, etc.)
+  vehicle id prefixes (TSW: ObjectClass, SimRail: vehicle name such as
+  `"4e/eu07"`). A train can have multiple elements (levers, buttons, etc.)
   that map to simulator API endpoints.
+
+  `simulator` says which simulator the profile is for. It belongs to the
+  train rather than to each identifier because the elements' endpoints are
+  paths in that simulator's own format, so a profile can never serve two
+  simulators.
   """
 
   use Ecto.Schema
@@ -12,10 +18,13 @@ defmodule Trenino.Train.Train do
 
   alias Trenino.Train.{Element, TrainIdentifier}
 
+  @simulators [:tsw, :simrail]
+
   @type t :: %__MODULE__{
           id: integer() | nil,
           name: String.t() | nil,
           description: String.t() | nil,
+          simulator: Trenino.Simulator.simulator(),
           identifiers: [TrainIdentifier.t()] | Ecto.Association.NotLoaded.t(),
           elements: [Element.t()] | Ecto.Association.NotLoaded.t(),
           inserted_at: DateTime.t() | nil,
@@ -25,6 +34,7 @@ defmodule Trenino.Train.Train do
   schema "trains" do
     field :name, :string
     field :description, :string
+    field :simulator, Ecto.Enum, values: @simulators, default: :tsw
     has_many :elements, Element
     has_many :gauge_bindings, Trenino.Train.GaugeBinding
     has_many :identifiers, TrainIdentifier, on_replace: :delete
@@ -35,8 +45,8 @@ defmodule Trenino.Train.Train do
   @spec changeset(t(), map()) :: Ecto.Changeset.t()
   def changeset(%__MODULE__{} = train, attrs) do
     train
-    |> cast(attrs, [:name, :description])
-    |> validate_required([:name])
+    |> cast(attrs, [:name, :description, :simulator])
+    |> validate_required([:name, :simulator])
     |> cast_assoc(:identifiers,
       with: &TrainIdentifier.changeset/2,
       sort_param: :identifiers_sort,

@@ -2,6 +2,9 @@ defmodule Trenino.Train.GaugeController do
   @moduledoc """
   Fresh simulator samples drive the gauges of the active train's enabled bindings.
 
+  Samples come from `Trenino.Simulator.Watcher`, which delivers every watched endpoint
+  that has a value every 200 ms.
+
   Gauge commands are fire-and-forget (`SetGaugePosition`), so the controller re-sends an
   unchanged target every 2 seconds as a backstop, and at once after the device stores a
   configuration or reconnects: both re-zero every gauge, which forgets its position.
@@ -12,23 +15,18 @@ defmodule Trenino.Train.GaugeController do
   tool), train samples for it are not sent. See `hold_manual/2`.
   """
   use GenServer
-  require Logger
   alias Trenino.Hardware
   alias Trenino.Hardware.ConfigurationManager
   alias Trenino.Serial.Connection, as: SerialConnection
-  alias Trenino.Simulator.Client
   alias Trenino.Simulator.Connection, as: SimulatorConnection
   alias Trenino.Simulator.ConnectionState
+  alias Trenino.Simulator.Watcher
   alias Trenino.Train
   alias Trenino.Train.GaugeController.State
   alias Trenino.Train.GaugeMapper
 
-  # The simulator rejects deleting an absent subscription; cleanup's goal is already met.
-  @no_such_subscription "dtg.comm.NoSuchSubscription"
-  # After this many failed cleanup attempts the old subscription IDs are abandoned and
-  # never reused: polling resumes on a fresh ID range instead of stalling forever.
-  @max_cleanup_attempts 3
-  @id_block 1000
+  # Stale samples and expired manual holds are checked this often.
+  @tick_ms 200
   # An unchanged target is not re-sent on every sample. It is re-sent after a configuration
   # is applied, the device list changes or manual control ends, and at least this often
   # as a backstop for the fire-and-forget command.
@@ -46,9 +44,9 @@ defmodule Trenino.Train.GaugeController do
   @doc """
   Controller state and per-binding runtime for a train: `nil` when that train is not active.
 
-  The `controller` map holds the train, simulator connection, cleaning flag, retry count and
-  last error. `bindings` maps binding id to its latest sample, converted value, target,
-  stale flag and failure.
+  The `controller` map holds the train, whether the simulator is connected, the endpoints
+  being watched and the last sample error. `bindings` maps binding id to its latest sample,
+  converted value, target, stale flag and failure.
   """
   def runtime(id) do
     if Process.whereis(__MODULE__), do: GenServer.call(__MODULE__, {:runtime, id}), else: nil
@@ -95,19 +93,21 @@ defmodule Trenino.Train.GaugeController do
 
   @impl true
   def init(_opts) do
-    # Trap exits so a supervisor shutdown runs terminate/2 (stops the poll task); simulator
-    # subscriptions left behind are cleared on the next start.
-    Process.flag(:trap_exit, true)
     Train.subscribe()
     SimulatorConnection.subscribe()
     SerialConnection.subscribe()
     ConfigurationManager.subscribe_configuration()
+    Watcher.subscribe()
     Phoenix.PubSub.subscribe(Trenino.PubSub, "train:gauges:configuration")
     {:ok, %State{}, {:continue, :initial}}
   end
 
   @impl true
-  def handle_continue(:initial, s), do: {:noreply, activate(s, Train.get_active_train())}
+  def handle_continue(:initial, s) do
+    s = %{s | connected: connected?(SimulatorConnection.get_status())}
+    {:noreply, activate(s, Train.get_active_train())}
+  end
+
   @impl true
   def handle_call({:snapshot, id}, _, s),
     do: {:reply, if(s.train && s.train.id == id, do: s.status, else: %{}), s}
@@ -156,56 +156,38 @@ defmodule Trenino.Train.GaugeController do
   def handle_info({:configuration_applied, _port, _device, _config_id}, s),
     do: {:noreply, relink(s)}
 
-  def handle_info({:simulator_status_changed, %ConnectionState{}}, s),
-    do: {:noreply, activate(s, s.train)}
+  # Samples from before a connect or disconnect say nothing about the simulator now.
+  def handle_info({:simulator_status_changed, %ConnectionState{} = status}, s) do
+    case connected?(status) do
+      connected when connected == s.connected ->
+        {:noreply, s}
 
-  def handle_info({:poll, generation}, %State{generation: generation} = s) do
-    s = expire_samples(s)
-    s = if s.task || s.cleaning, do: s, else: start_poll(s)
-    {:noreply, %{s | timer: Process.send_after(self(), {:poll, generation}, 200)}}
+      connected ->
+        {:noreply, %{s | connected: connected, status: %{}, sent: %{}, links: %{}}}
+    end
   end
 
-  def handle_info(
-        {ref, {generation, result}},
-        %State{task: %{ref: ref}, generation: generation} = s
-      ) do
-    Process.demonitor(ref, [:flush])
-    {:noreply, apply_poll(%{s | task: nil}, result)}
+  def handle_info(:simulator_watcher_started, s) do
+    Watcher.watch(endpoints(s.bindings))
+    {:noreply, s}
   end
 
-  def handle_info({ref, :cleanup_complete}, %State{task: %{ref: ref}, cleaning: true} = s) do
-    Process.demonitor(ref, [:flush])
-    if s.timer, do: Process.cancel_timer(s.timer)
+  def handle_info({:simulator_values, values}, %State{train: %{}} = s) when is_map(values) do
+    s =
+      Enum.reduce(s.bindings, s, fn {id, binding}, acc ->
+        case Map.fetch(values, binding.endpoint) do
+          {:ok, value} -> apply_sample(acc, id, binding, value)
+          :error -> acc
+        end
+      end)
 
-    {:noreply, finish_cleanup(%{s | last_error: nil})}
+    {:noreply, s}
   end
 
-  def handle_info({ref, {:cleanup_failed, error}}, %State{task: %{ref: ref}, cleaning: true} = s) do
-    Process.demonitor(ref, [:flush])
-    {:noreply, failed_cleanup(s, {:cleanup_failed, error})}
+  def handle_info({:tick, generation}, %State{generation: generation} = s) do
+    s = s |> expire_manual() |> expire_samples()
+    {:noreply, %{s | timer: Process.send_after(self(), {:tick, generation}, @tick_ms)}}
   end
-
-  def handle_info({:cleanup_timeout, ref}, %State{task: %{ref: ref}, cleaning: true} = s) do
-    Task.shutdown(s.task, :brutal_kill)
-    {:noreply, failed_cleanup(s, :cleanup_timeout)}
-  end
-
-  def handle_info({:retry_cleanup, token}, %State{cleanup_job: %{token: token}, task: nil} = s),
-    do: {:noreply, run_cleanup(s)}
-
-  def handle_info({:poll_timeout, ref}, %State{task: %{ref: ref}, cleaning: false} = s) do
-    Task.shutdown(s.task, :brutal_kill)
-    {:noreply, cleanup(%{s | task: nil, last_error: :poll_timeout})}
-  end
-
-  def handle_info(
-        {:DOWN, ref, :process, _, reason},
-        %State{task: %{ref: ref}, cleaning: true} = s
-      ),
-      do: {:noreply, failed_cleanup(s, {:cleanup_crashed, reason})}
-
-  def handle_info({:DOWN, ref, :process, _, reason}, %State{task: %{ref: ref}} = s),
-    do: {:noreply, cleanup(%{s | task: nil, last_error: {:poll_crashed, reason}})}
 
   def handle_info({:DOWN, ref, :process, _, _}, s) do
     case Enum.find(s.manual, fn {_, hold} -> hold.ref == ref end) do
@@ -219,7 +201,6 @@ defmodule Trenino.Train.GaugeController do
   @impl true
   def terminate(_, s) do
     if s.timer, do: Process.cancel_timer(s.timer)
-    if s.task, do: Task.shutdown(s.task, :brutal_kill)
   end
 
   defp relink(s), do: %{s | links: %{}, sent: %{}}
@@ -249,23 +230,28 @@ defmodule Trenino.Train.GaugeController do
     %{s | sent: sent}
   end
 
-  @doc "Resolve exactly one valid numeric sample, or an explicitly selected value key."
-  def sample({:ok, %{"Entries" => [%{"NodeValid" => true, "Values" => values}]}}, key)
-      when is_map(values) do
+  @doc """
+  Resolve exactly one numeric sample from a watched value, or an explicitly selected
+  value key when the endpoint returns several values (a map).
+  """
+  def sample(value, _key) when is_number(value), do: {:ok, value}
+
+  def sample(values, key) when is_map(values) do
     value = if is_binary(key) and key != "", do: Map.get(values, key), else: single_value(values)
     if is_number(value), do: {:ok, value}, else: {:error, :invalid_or_ambiguous_sample}
   end
 
-  def sample(_, _), do: {:error, :invalid_node}
+  def sample(_, _), do: {:error, :invalid_or_ambiguous_sample}
+
   defp single_value(values) when map_size(values) == 1, do: values |> Map.values() |> hd()
   defp single_value(_), do: nil
 
-  # A reload with the same simulator and endpoints keeps healthy subscriptions;
-  # only bindings that disappeared are made inactive.
-  defp reload(%State{train: %{}, cleaning: false} = s) do
+  # A reload with the same endpoints keeps the latest samples; only bindings that
+  # disappeared are made inactive.
+  defp reload(%State{train: %{}} = s) do
     bindings = load_bindings(s.train)
 
-    if current_client() == s.client and endpoints(bindings) == endpoints(s.bindings) do
+    if endpoints(bindings) == endpoints(s.bindings) do
       %{
         s
         | bindings: bindings,
@@ -285,12 +271,8 @@ defmodule Trenino.Train.GaugeController do
   defp load_bindings(train),
     do: Map.new(Train.list_enabled_gauge_bindings(train.id), &{&1.id, &1})
 
-  defp current_client do
-    case SimulatorConnection.get_status() do
-      %ConnectionState{status: :connected, client: client} -> client
-      _ -> nil
-    end
-  end
+  defp connected?(%ConnectionState{status: :connected, client: client}), do: not is_nil(client)
+  defp connected?(_status), do: false
 
   defp endpoints(bindings) do
     bindings
@@ -298,232 +280,30 @@ defmodule Trenino.Train.GaugeController do
     |> Enum.map(& &1.endpoint)
     |> Enum.uniq()
     |> Enum.sort()
-    |> Enum.take(1000)
   end
 
   defp activate(s, train) do
-    s = cleanup(s)
+    if s.timer, do: Process.cancel_timer(s.timer)
+    Watcher.unwatch_all()
     generation = s.generation + 1
-    client = current_client()
     bindings = load_bindings(train)
+    Watcher.watch(endpoints(bindings))
 
     %{
       s
       | train: train,
-        client: client,
         bindings: bindings,
-        subscriptions: %{},
         status: %{},
         sent: %{},
         links: %{},
+        last_error: nil,
         generation: generation,
-        retry_after: %{},
-        endpoint_errors: %{},
-        timer: Process.send_after(self(), {:poll, generation}, 0)
+        timer: if(train, do: Process.send_after(self(), {:tick, generation}, @tick_ms))
     }
   end
 
-  defp cleanup(%State{cleaning: true} = s) do
-    if s.timer, do: Process.cancel_timer(s.timer)
-    s
-  end
-
-  defp cleanup(s) do
-    if s.timer, do: Process.cancel_timer(s.timer)
-    if s.task, do: Task.shutdown(s.task, :brutal_kill)
-
-    if s.client do
-      ids = s.bindings |> endpoints() |> Enum.with_index(s.id_base) |> Enum.map(&elem(&1, 1))
-
-      run_cleanup(%{
-        s
-        | task: nil,
-          cleaning: true,
-          cleanup_attempts: 0,
-          subscriptions: %{},
-          cleanup_job: %{client: s.client, ids: ids, token: make_ref()}
-      })
-    else
-      %{s | task: nil, cleaning: false, cleanup_job: nil}
-    end
-  end
-
-  defp run_cleanup(s) do
-    job = s.cleanup_job
-
-    task =
-      Task.Supervisor.async_nolink(Trenino.TaskSupervisor, fn ->
-        unsubscribe_all(job)
-      end)
-
-    Process.send_after(self(), {:cleanup_timeout, task.ref}, 5000)
-    %{s | task: task, cleaning: true}
-  end
-
-  defp unsubscribe_all(job) do
-    Enum.reduce_while(job.ids, :cleanup_complete, fn id, _ ->
-      case Client.unsubscribe(job.client, id) do
-        {:ok, _} ->
-          {:cont, :cleanup_complete}
-
-        {:error, {:http_error, 400, %{"errorCode" => @no_such_subscription}}} ->
-          {:cont, :cleanup_complete}
-
-        error ->
-          {:halt, {:cleanup_failed, error}}
-      end
-    end)
-  end
-
-  defp failed_cleanup(s, error) do
-    attempts = s.cleanup_attempts + 1
-    s = %{s | task: nil, cleanup_attempts: attempts, last_error: error}
-
-    if attempts >= @max_cleanup_attempts do
-      abandon_cleanup(s)
-    else
-      Process.send_after(self(), {:retry_cleanup, s.cleanup_job.token}, 1000)
-      s
-    end
-  end
-
-  # The old subscriptions may still exist, so their IDs are skipped, never reused.
-  defp abandon_cleanup(s), do: finish_cleanup(%{s | id_base: s.id_base + @id_block})
-
-  defp finish_cleanup(s) do
-    if s.timer, do: Process.cancel_timer(s.timer)
-
-    %{
-      s
-      | task: nil,
-        cleaning: false,
-        cleanup_job: nil,
-        cleanup_attempts: 0,
-        timer: Process.send_after(self(), {:poll, s.generation}, 0)
-    }
-  end
-
-  defp start_poll(%State{client: nil} = s), do: s
-  defp start_poll(%State{bindings: bindings} = s) when map_size(bindings) == 0, do: s
-
-  defp start_poll(s) do
-    generation = s.generation
-    task = Task.Supervisor.async_nolink(Trenino.TaskSupervisor, fn -> {generation, fetch(s)} end)
-    Process.send_after(self(), {:poll_timeout, task.ref}, 5000)
-    %{s | task: task}
-  end
-
-  defp fetch(s) do
-    {subs, values, retries, errors} =
-      s.bindings
-      |> endpoints()
-      |> Enum.with_index(s.id_base)
-      |> Enum.reduce({s.subscriptions, %{}, s.retry_after, %{}}, fn {endpoint, id}, acc ->
-        fetch_endpoint(s.client, endpoint, id, acc)
-      end)
-
-    %{subscriptions: subs, values: values, retries: retries, errors: errors}
-  end
-
-  defp fetch_endpoint(client, endpoint, id, {subs, values, retries, errors}) do
-    case ensure_subscription(client, endpoint, id, subs, retries) do
-      {:ok, subs, retries} ->
-        response = Client.get_subscription(client, id)
-        {subs, retries} = evict_failed(response, endpoint, subs, retries)
-
-        {subs, Map.put(values, endpoint, response), retries,
-         poll_error(errors, endpoint, response)}
-
-      {:error, retries, reason} ->
-        {subs, values, retries, Map.put(errors, endpoint, reason)}
-    end
-  end
-
-  # A failed GET may mean the simulator forgot the subscription (e.g. it restarted), so
-  # the endpoint is dropped and resubscribed under the usual backoff.
-  defp evict_failed({:error, reason}, endpoint, subs, retries) do
-    retry = Map.get(retries, endpoint, %{delay: 1000})
-
-    {Map.delete(subs, endpoint),
-     Map.put(retries, endpoint, %{
-       after: now() + retry.delay,
-       delay: min(5000, retry.delay * 2),
-       reason: {:poll_failed, reason}
-     })}
-  end
-
-  defp evict_failed(_response, _endpoint, subs, retries), do: {subs, retries}
-
-  defp poll_error(errors, endpoint, {:error, reason}),
-    do: Map.put(errors, endpoint, {:poll_failed, reason})
-
-  defp poll_error(errors, _endpoint, _response), do: errors
-
-  defp ensure_subscription(client, endpoint, id, subs, retries) do
-    retry = Map.get(retries, endpoint, %{after: now(), delay: 1000})
-
-    cond do
-      Map.has_key?(subs, endpoint) ->
-        {:ok, subs, retries}
-
-      retry.after > now() ->
-        {:error, retries, Map.get(retry, :reason)}
-
-      true ->
-        clear_stale_subscription(client, id)
-
-        case Client.subscribe(client, endpoint, id) do
-          {:ok, _} ->
-            {:ok, Map.put(subs, endpoint, id), Map.delete(retries, endpoint)}
-
-          error ->
-            reason = {:subscribe_failed, error}
-
-            {:error,
-             Map.put(retries, endpoint, %{
-               after: now() + retry.delay,
-               delay: min(5000, retry.delay * 2),
-               reason: reason
-             }), reason}
-        end
-    end
-  end
-
-  # The ID counter restarts at 4000 with the app, so a subscription from a previous run
-  # may still hold this ID; subscribing onto it would append paths and break sampling.
-  # A missing subscription is the normal case. Other failures surface through subscribe.
-  defp clear_stale_subscription(client, id) do
-    case Client.unsubscribe(client, id) do
-      {:ok, _} ->
-        :ok
-
-      {:error, {:http_error, 400, %{"errorCode" => @no_such_subscription}}} ->
-        :ok
-
-      error ->
-        Logger.debug("[GaugeController] Could not clear subscription #{id}: #{inspect(error)}")
-    end
-  end
-
-  defp apply_poll(s, result) do
-    s = %{
-      s
-      | subscriptions: result.subscriptions,
-        retry_after: result.retries,
-        endpoint_errors: result.errors,
-        last_error: first_error(result.errors)
-    }
-
-    Enum.reduce(s.bindings, s, fn {id, binding}, acc ->
-      apply_sample(acc, id, binding, Map.get(result.values, binding.endpoint))
-    end)
-  end
-
-  defp first_error(errors) when map_size(errors) == 0, do: nil
-  defp first_error(errors), do: errors |> Enum.sort() |> hd() |> elem(1)
-
-  defp apply_sample(s, id, b, response) do
-    with {:ok, raw} <- sample(response, b.value_key),
+  defp apply_sample(s, id, b, value) do
+    with {:ok, raw} <- sample(value, b.value_key),
          {:ok, mapped} <- GaugeMapper.map(b, raw, b.gauge) do
       {s, result} = send_target(s, id, b, mapped.target)
 
@@ -541,10 +321,10 @@ defmodule Trenino.Train.GaugeController do
       error ->
         status =
           Map.merge(Map.get(s.status, id, %{received_at: now(), inactive: false}), %{
-            failure: Map.get(s.endpoint_errors, b.endpoint, error)
+            failure: error
           })
 
-        publish(s, id, status)
+        publish(%{s | last_error: error}, id, status)
     end
   end
 
@@ -617,11 +397,9 @@ defmodule Trenino.Train.GaugeController do
     %{
       controller: %{
         train_id: s.train.id,
-        simulator_connected: s.client != nil,
-        cleaning: s.cleaning,
-        cleanup_attempts: s.cleanup_attempts,
+        simulator_connected: s.connected,
         last_error: s.last_error,
-        subscribed_endpoints: s.subscriptions |> Map.keys() |> Enum.sort()
+        watched_endpoints: endpoints(s.bindings)
       },
       bindings: s.status
     }

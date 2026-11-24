@@ -1461,4 +1461,100 @@ defmodule Trenino.Train.Calibration.NotchMappingSessionTest do
       0 -> :ok
     end
   end
+
+  describe "spring-back notches" do
+    # Traxx-like: 0 and 2 spring back to 1, 3 holds. Sim inputs ascend with the index.
+    defp spring_fixtures(_context) do
+      context = create_fixtures(%{})
+
+      {:ok, lever_config} =
+        Train.save_notches(context.lever_config, [
+          %{type: :gate, value: 0.0, sim_input_min: 0.0, sim_input_max: 0.1, springs_back_to: 1},
+          %{type: :gate, value: 1.0, sim_input_min: 0.3, sim_input_max: 0.4},
+          %{type: :gate, value: 2.0, sim_input_min: 0.6, sim_input_max: 0.7, springs_back_to: 1},
+          %{type: :gate, value: 3.0, sim_input_min: 0.9, sim_input_max: 1.0}
+        ])
+
+      %{context | lever_config: lever_config}
+    end
+
+    setup [:spring_fixtures]
+
+    # Feeds raw readings, waits for them through a call, then captures.
+    defp capture(pid, raws) do
+      :ok = NotchMappingSession.start_capturing(pid)
+      for raw <- raws, do: send(pid, {:input_value_updated, "/dev/test", 5, raw})
+      _ = NotchMappingSession.get_state(pid)
+      NotchMappingSession.capture_range(pid)
+    end
+
+    defp step(pid), do: NotchMappingSession.get_public_state(pid).current_step
+
+    test "resting positions are mapped first, then spring positions by their wall", context do
+      pid = start_session(context)
+      assert :ok = NotchMappingSession.start_mapping(pid)
+      assert step(pid) == {:mapping_notch, 1}
+      assert :ok = capture(pid, [295, 300, 305])
+      assert step(pid) == {:mapping_notch, 3}
+      assert :ok = capture(pid, [695, 700, 705])
+      assert step(pid) == {:mapping_notch, 0}
+      # Pushed down to the wall and released back to 1.
+      assert :ok = capture(pid, [300, 220, 150, 240, 300])
+      assert step(pid) == {:mapping_notch, 2}
+      assert :ok = capture(pid, [300, 380, 450, 300])
+      assert step(pid) == :preview
+
+      ranges = NotchMappingSession.get_public_state(pid).preview.hardware_ranges
+      by_index = Map.new(ranges, &{&1.notch_index, &1})
+      # 1 is widened by the 3% dead zone on both sides; 0 and 2 meet its edges.
+      assert_in_delta by_index[1].min_pct, by_index[1].core_min_pct - 3, 0.01
+      assert_in_delta by_index[1].max_pct, by_index[1].core_max_pct + 3, 0.01
+      assert by_index[0].max_pct == by_index[1].min_pct
+      assert by_index[2].min_pct == by_index[1].max_pct
+      assert by_index[2].springs_back_to == 1
+      assert by_index[3].min_pct == by_index[3].core_min_pct
+
+      Sandbox.allow(Trenino.Repo, self(), pid)
+      assert :ok = NotchMappingSession.save_mapping(pid)
+      {:ok, saved} = Train.get_lever_config(context.element.id)
+      [n0, n1, n2, n3] = Enum.sort_by(saved.notches, & &1.index)
+      assert n0.input_max == n1.input_min
+      assert n2.input_min == n1.input_max
+      core = (by_index[1].core_max_pct - by_index[1].core_min_pct) / 100
+      # Saved bounds are rounded to 2 decimals
+      assert_in_delta n1.input_max - n1.input_min, core + 0.06, 0.011
+      assert n2.input_max < n3.input_min
+      assert n0.input_min < n1.input_min
+    end
+
+    test "a spring position before its target, or past the next position, is refused", context do
+      pid = start_session(context)
+      assert :ok = NotchMappingSession.start_mapping(pid)
+      assert :ok = NotchMappingSession.go_to_notch(pid, 2)
+      assert {:error, :target_not_mapped} = capture(pid, [300, 450, 300])
+
+      assert :ok = NotchMappingSession.go_to_notch(pid, 1)
+      assert :ok = capture(pid, [295, 305])
+      assert :ok = NotchMappingSession.go_to_notch(pid, 3)
+      assert :ok = capture(pid, [695, 705])
+      assert :ok = NotchMappingSession.go_to_notch(pid, 2)
+      assert {:error, :inside_dead_zone} = capture(pid, [300, 310, 300])
+      assert {:error, :past_next_position} = capture(pid, [300, 720, 300])
+      assert step(pid) == {:mapping_notch, 2}
+    end
+
+    test "a lever without spring positions keeps its notch order", context do
+      {:ok, plain} =
+        Train.save_notches(context.lever_config, [
+          %{type: :gate, value: 0.0},
+          %{type: :gate, value: 1.0}
+        ])
+
+      pid = start_session(%{context | lever_config: plain})
+      assert :ok = NotchMappingSession.start_mapping(pid)
+      assert step(pid) == {:mapping_notch, 0}
+      assert :ok = capture(pid, [200, 210])
+      assert step(pid) == {:mapping_notch, 1}
+    end
+  end
 end

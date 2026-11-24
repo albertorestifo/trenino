@@ -1,0 +1,2410 @@
+{
+ "vehicle": {
+  "name": "traxx/e186-134",
+  "type": "Locomotive",
+  "objectName": "7b9c9ec2-f216-48c5-b24b-c4b8dc8213c7",
+  "vehicleNumber": 8,
+  "numberInTrainset": 1,
+  "isFrontInTrainset": true
+ },
+ "settleMs": 1200,
+ "noisy": [
+  "Physics_Output_General.time_seconds",
+  "Physics_Output_TRAXX_E186.combustion_coolant_temperature",
+  "Physics_Output_TRAXX_E186.simulation_timestamp"
+ ],
+ "initialState": {
+  "Physics_Input_General.drive_handle": 3,
+  "Physics_Input_General.drive_handle_pressed": 0,
+  "Physics_Input_General.scnd_handle": 0,
+  "Physics_Input_General.speed_ctrl": 0,
+  "Physics_Input_General.speed_ctrl_pressed": 0,
+  "Physics_Input_General.main_brake": 3,
+  "Physics_Input_General.local_brake": 0,
+  "Physics_Input_General.third_brake": 0,
+  "Physics_Input_General.emergency_brake_button": 0,
+  "Physics_Input_General.security_system_button": 0,
+  "Physics_Input_General.spring_brake_rq": 1,
+  "Physics_Input_General.spring_brake_valve": 0,
+  "Physics_Input_General.main_switch": 0,
+  "Physics_Input_General.direction_rq": 0,
+  "Physics_Input_General.battery_rq": 0,
+  "Physics_Input_General.battery_rq_off": 0,
+  "Physics_Input_General.pantograph_front_rq": 0,
+  "Physics_Input_General.pantograph_back_rq": 0,
+  "Physics_Input_General.pantograph_set_rq": 0,
+  "Physics_Input_General.pantograph_set": 0,
+  "Physics_Input_General.emergency_supply_button": 0,
+  "Physics_Input_General.horn_signal": 0,
+  "Physics_Input_General.active_cab": 0,
+  "Physics_Input_General.light_pos": 0,
+  "Physics_Input_General.brake_releaser": 0,
+  "Physics_Input_General.unlock_brake_pipe": 0,
+  "Physics_Input_General.assimilation_button": 0,
+  "Physics_Input_General.lights_power": 1,
+  "Physics_Input_General.washer": 0,
+  "Physics_Input_General.wiper": 0,
+  "Physics_Input_General.cablight": -1,
+  "Physics_Input_General.pulpitlight": 0,
+  "Physics_Input_General.instrumentlight": 0,
+  "Physics_Input_General.sanding_button": 0,
+  "Physics_Input_General.shunting_handle": 0,
+  "Physics_Input_General.RadioStop": 0,
+  "Physics_Input_General.radiostop_rq": 0,
+  "Physics_Input_General.radiostop_test_rq": 0,
+  "Physics_Input_General.radio_channel_set": 0,
+  "Physics_Input_General.radio_enable_set": -1,
+  "Physics_Input_General.radio_selective_call": 0,
+  "Physics_Input_General.radio_button": 0,
+  "Physics_Input_General.radio_noise": 0,
+  "Physics_Input_General.radio_volume_set": 0,
+  "Physics_Input_General.reset_crash": 0,
+  "Physics_Input_General.error_code_ack": 0,
+  "Physics_Input_General.error_code_rq": 0,
+  "Physics_Input_General.emergency_brake_button_flag": -255,
+  "Physics_Input_General.nope": 0,
+  "Physics_Input_General.radio_channel_change": 0,
+  "Physics_Input_General.headlight_individual": 0,
+  "Physics_Input_General.endsignal_individual": 0,
+  "Physics_Input_General.traction_voltage_rq": 0,
+  "Physics_Input_General.failure_request": 0,
+  "Physics_Input_General.failure_state_check": 0,
+  "Physics_Input_General.friction_factor_simple_rq": 1,
+  "Physics_Input_General.traindata_train_number_rq": 0,
+  "Physics_Input_General.traindata_driver_number_rq": 0,
+  "Physics_Input_General.traindata_train_length_rq": 0,
+  "Physics_Input_General.traindata_train_mass_rq": 0,
+  "Physics_Input_General.traindata_speed_rq": 0,
+  "Physics_Input_General.traindata_braking_factor_rq": 0,
+  "Physics_Input_General.traindata_brake_type_rq": 0,
+  "Physics_Input_General.selective_door_select": 0,
+  "Physics_Input_General.selective_door_request": 0,
+  "Physics_Input_General.cablightB": 0,
+  "Physics_Input_General.cablight_intensity": 0,
+  "Physics_Input_General.pulpitlight_intensity": 0,
+  "Physics_Input_General.instrumentlight_intensity": 0,
+  "Physics_Input_General.emergency_pantographs": 0,
+  "Physics_Input_General.etcs2023_release_brake": 0,
+  "Physics_Input_General.etcs2023_service_brake": 0,
+  "Physics_Input_General.etcs2023_emergency_brake": 0,
+  "Physics_Input_General.etcs2023_shunting_ok": 0,
+  "Physics_Input_General.etcs2023_shunting_reject": 0,
+  "Physics_Input_General.etcs2023_ues_rq": 0,
+  "Physics_Input_General.etcs2023_rma_rq": 0,
+  "Physics_Input_General.etcs2023_text_message": 0,
+  "Physics_Input_General.etcs2023_isolation_rq": 0,
+  "Physics_Input_General.etcs2023_reset_all": 0,
+  "Physics_Input_General.etcs2023_ack_button": 0,
+  "Physics_Input_General.etcs2023_force_os_rq": 0,
+  "Physics_Input_General.passengers_multipler_rq": -1,
+  "Physics_Input_General.wire_ice_rq": 0,
+  "Physics_Input_General.rt_speaker_pull_rq": 0,
+  "Physics_Input_General.rt_speaker_press_rq": 0,
+  "Physics_Input_General.change_cabin": 0,
+  "Physics_Input_General.try_connect_driver_coupler": 0,
+  "Physics_Input_General.try_disconnect_driver_coupler": 0,
+  "Physics_Input_General.radmor_splitter_on": 0,
+  "Physics_Input_General.radmor_splitter_cab": 0,
+  "Physics_Input_General.radmor_adapter_on": 0,
+  "Physics_Input_General.window_electric_heating": 0,
+  "Physics_Input_General.window_airflow_heating": 0,
+  "Physics_Input_TRAXX_E186.brakeregime_set": 2,
+  "Physics_Input_TRAXX_E186.airtight_test_rq": 0,
+  "Physics_Input_TRAXX_E186.ed_enable_rq": 0,
+  "Physics_Input_TRAXX_E186.abs_enable_rq": 0,
+  "Physics_Input_TRAXX_E186.tcu1_enable_rq": 0,
+  "Physics_Input_TRAXX_E186.tcu2_enable_rq": 0,
+  "Physics_Input_TRAXX_E186.motor1_enable_rq": 0,
+  "Physics_Input_TRAXX_E186.motor2_enable_rq": 0,
+  "Physics_Input_TRAXX_E186.motor3_enable_rq": 0,
+  "Physics_Input_TRAXX_E186.motor4_enable_rq": 0,
+  "Physics_Input_TRAXX_E186.power_limit_rq": 0,
+  "Physics_Input_TRAXX_E186.unk1": 0,
+  "Physics_Input_TRAXX_E186.radio_toggle": 0,
+  "Physics_Input_TRAXX_E186.radiobutton": 0,
+  "Physics_Input_TRAXX_E186.fault_brakepipeleak_rq": 0,
+  "Physics_Input_TRAXX_E186.fault_opencircuitbreaker_rq": 0,
+  "Physics_Input_TRAXX_E186.fault_voltageloss_rq": 0,
+  "Physics_Input_TRAXX_E186.fault_nospeed_rq": 0,
+  "Physics_Input_TRAXX_E186.fault_nohorn_rq": 0,
+  "Physics_Input_TRAXX_E186.activation_handle": 0,
+  "Physics_Input_TRAXX_E186.display1_F1": 0,
+  "Physics_Input_TRAXX_E186.display1_F2": 0,
+  "Physics_Input_TRAXX_E186.display1_F3": 0,
+  "Physics_Input_TRAXX_E186.display1_F4": 0,
+  "Physics_Input_TRAXX_E186.display1_F5": 0,
+  "Physics_Input_TRAXX_E186.display1_F6": 0,
+  "Physics_Input_TRAXX_E186.display1_F7": 0,
+  "Physics_Input_TRAXX_E186.display1_F8": 0,
+  "Physics_Input_TRAXX_E186.display1_F9": 0,
+  "Physics_Input_TRAXX_E186.display1_F0": 0,
+  "Physics_Input_TRAXX_E186.display1_display_aus": 0,
+  "Physics_Input_TRAXX_E186.display1_lang": 0,
+  "Physics_Input_TRAXX_E186.display1_info": 0,
+  "Physics_Input_TRAXX_E186.display1_storung": 0,
+  "Physics_Input_TRAXX_E186.display1_v0": 0,
+  "Physics_Input_TRAXX_E186.display1_v1": 0,
+  "Physics_Input_TRAXX_E186.display1_helligkeit": 0,
+  "Physics_Input_TRAXX_E186.display1_invers": 0,
+  "Physics_Input_TRAXX_E186.display1_ud": 0,
+  "Physics_Input_TRAXX_E186.display1_c": 0,
+  "Physics_Input_TRAXX_E186.display1_up": 0,
+  "Physics_Input_TRAXX_E186.display1_down": 0,
+  "Physics_Input_TRAXX_E186.display1_enter": 0,
+  "Physics_Input_TRAXX_E186.display1_dot": 0,
+  "Physics_Input_TRAXX_E186.electric_bus_button": 0,
+  "Physics_Input_TRAXX_E186.lzb_alerter": 0,
+  "Physics_Input_TRAXX_E186.light_front_flag": 0,
+  "Physics_Input_TRAXX_E186.light_back_flag": 0,
+  "Physics_Input_TRAXX_E186.pantograph_auto_mode": 0,
+  "Physics_Input_TRAXX_E186.local_brake_linear_request": 0,
+  "Physics_Input_TRAXX_E186.sifa_pedal": 0,
+  "Physics_Input_TRAXX_E186.traction_forbidden": 0,
+  "Physics_Input_TRAXX_E186.lzb_free": 0,
+  "Physics_Input_TRAXX_E186.lzb_command": 0,
+  "Physics_Input_TRAXX_E186.service_lights_rq": 0,
+  "Physics_Input_TRAXX_E186.service_supplement_rq": 0,
+  "Physics_Input_TRAXX_E186.service_pantograph_rq": 0,
+  "Physics_Input_TRAXX_E186.service_compressor_rq": 0,
+  "Physics_Input_TRAXX_E186.service_asj_rq": 0,
+  "Physics_Input_TRAXX_E186.service_ep_rq": 0,
+  "Physics_Input_TRAXX_E186.service_pg_rq": 0,
+  "Physics_Input_TRAXX_E186.service_ww1_rq": 0,
+  "Physics_Input_TRAXX_E186.service_ww2_rq": 0,
+  "Physics_Input_TRAXX_E186.main_brake_cut_off_rq": 0,
+  "Physics_Input_TRAXX_E186.ed_toggle_rq": 0,
+  "Physics_Input_TRAXX_E186.display4_invers": 0,
+  "Physics_Input_TRAXX_E186.disable_shp": 0,
+  "Physics_Input_TRAXX_E186.disable_sifa": 0,
+  "Physics_Input_TRAXX_E186.engineroom_light": 0,
+  "Physics_Input_TRAXX_E186.sanding_cutoff_rq": 0,
+  "Physics_Input_TRAXX_E186.bogie1_brake_cutoff_rq": 0,
+  "Physics_Input_TRAXX_E186.bogie2_brake_cutoff_rq": 0,
+  "Physics_Input_TRAXX_E186.distributor_valve_disable_rq": 0,
+  "Physics_Input_TRAXX_E186.webasto_timer_button": 0,
+  "Physics_Input_TRAXX_E186.webasto_program_button": 0,
+  "Physics_Input_TRAXX_E186.webasto_heating_button": 0,
+  "Physics_Input_TRAXX_E186.webasto_left_button": 0,
+  "Physics_Input_TRAXX_E186.webasto_right_button": 0,
+  "Physics_Input_TRAXX_E186.sifa_disable_rq": 0,
+  "Physics_Input_TRAXX_E186.diesel_engine_disable_rq": 0,
+  "Physics_Input_TRAXX_E186.ra_shp_disable_rq": 0,
+  "Physics_Output_General.error_code": 0,
+  "Physics_Output_General.quit": 0,
+  "Physics_Output_General.radio_on_lamp": 0,
+  "Physics_Output_General.cablight": 0,
+  "Physics_Output_General.instrumentlight": 0,
+  "Physics_Output_General.pulpitlight": 0,
+  "Physics_Output_General.failure_request_ack": 0,
+  "Physics_Output_General.failure_state": 0,
+  "Physics_Output_General.failure_exist": 0,
+  "Physics_Output_General.failure_broadcast": 0,
+  "Physics_Output_General.traction_voltage": 3500,
+  "Physics_Output_General.date_day": 11,
+  "Physics_Output_General.date_month": 8,
+  "Physics_Output_General.date_year": 2024,
+  "Physics_Output_General.time_hours": 14,
+  "Physics_Output_General.time_minutes": 22,
+  "Physics_Output_General.time_seconds": 25,
+  "Physics_Output_General.friction_force_status": 1,
+  "Physics_Output_General.traindata_train_number": 0,
+  "Physics_Output_General.traindata_driver_number": 0,
+  "Physics_Output_General.traindata_train_length": 0,
+  "Physics_Output_General.traindata_train_mass": 0,
+  "Physics_Output_General.traindata_speed": 0,
+  "Physics_Output_General.traindata_braking_factor": 0,
+  "Physics_Output_General.traindata_brake_type": 0,
+  "Physics_Output_General.current_pantograph_set": 0,
+  "Physics_Output_General.speed_ctrl_status": 0,
+  "Physics_Output_General.speed_ctrl_value": 0,
+  "Physics_Output_General.cablightB": 0,
+  "Physics_Output_General.etcs2023_level": 5,
+  "Physics_Output_General.etcs2023_mode": 8,
+  "Physics_Output_General.etcs2023_rbc_fault": 0,
+  "Physics_Output_General.etcs2023_balise_fault": 0,
+  "Physics_Output_General.etcs2023_shunting_request": 0,
+  "Physics_Output_General.etcs2023_ack_request": 0,
+  "Physics_Output_General.etcs2023_ack_light": 0,
+  "Physics_Output_General.etcs2023_cab_active": 0,
+  "Physics_Output_General.etcs2023_can_be_os_mode_forced": 0,
+  "Physics_Output_General.weather_temp": 22,
+  "Physics_Output_General.weather_humidity": 34,
+  "Physics_Output_General.passengers_multipler": 1,
+  "Physics_Output_General.passengers_counter": 80,
+  "Physics_Output_General.radio_active": 0,
+  "Physics_Output_General.radio_channel": 5,
+  "Physics_Output_General.wire_ice_level": 0,
+  "Physics_Output_General.rt_speaker_pulled": 0,
+  "Physics_Output_General.rt_speaker_pressed": 0,
+  "Physics_Output_General.security_system_etcs_disabled": 0,
+  "Physics_Output_General.security_system_ca_disabled": 0,
+  "Physics_Output_General.security_system_shp_disabled": 0,
+  "Physics_Output_General.security_system_sifa_disabled": 0,
+  "Physics_Output_General.aksel_next_station": 0,
+  "Physics_Output_General.aksel_next_station_distance": 0,
+  "Physics_Output_General.aksel_next_station_char_at": 0,
+  "Physics_Output_General.can_change_cabin": 1,
+  "Physics_Output_General.next_asdek_distance": -1,
+  "Physics_Output_General.another_trainset_distance": -1,
+  "Physics_Output_General.driver_coupler_can_be_coupled": -1,
+  "Physics_Output_General.driver_coupler_can_be_decoupled": -1,
+  "Physics_Output_General.actual_cabin": 1,
+  "Physics_Output_General.radmor_adapter_on": 0,
+  "Physics_Output_General.radmor_adapter_24v": 0,
+  "Physics_Output_General.speedCtrlValueForGui": 0,
+  "Physics_Output_General.mirrors_disabled": 0,
+  "Physics_Output_General.mirrors_left_open": 0,
+  "Physics_Output_General.mirrors_right_open": 0,
+  "Physics_Output_TRAXX_E186.door": 0,
+  "Physics_Output_TRAXX_E186.alerter": 0,
+  "Physics_Output_TRAXX_E186.shp": 0,
+  "Physics_Output_TRAXX_E186.ed_brake_active": -2,
+  "Physics_Output_TRAXX_E186.ed_brake_status": 0,
+  "Physics_Output_TRAXX_E186.motor1_actual_power_pct": 0,
+  "Physics_Output_TRAXX_E186.motor1_temperature": 0,
+  "Physics_Output_TRAXX_E186.motor1_slip": 0,
+  "Physics_Output_TRAXX_E186.motor1_isactive": 0,
+  "Physics_Output_TRAXX_E186.motor2_actual_power_pct": 0,
+  "Physics_Output_TRAXX_E186.motor2_temperature": 0,
+  "Physics_Output_TRAXX_E186.motor2_slip": 0,
+  "Physics_Output_TRAXX_E186.motor2_isactive": 0,
+  "Physics_Output_TRAXX_E186.motor3_actual_power_pct": 0,
+  "Physics_Output_TRAXX_E186.motor3_temperature": 0,
+  "Physics_Output_TRAXX_E186.motor3_slip": 0,
+  "Physics_Output_TRAXX_E186.motor3_isactive": 0,
+  "Physics_Output_TRAXX_E186.motor4_actual_power_pct": 0,
+  "Physics_Output_TRAXX_E186.motor4_temperature": 0,
+  "Physics_Output_TRAXX_E186.motor4_slip": 0,
+  "Physics_Output_TRAXX_E186.motor4_isactive": 0,
+  "Physics_Output_TRAXX_E186.motor5_actual_power_pct": 0,
+  "Physics_Output_TRAXX_E186.motor5_temperature": 0,
+  "Physics_Output_TRAXX_E186.motor5_slip": 0,
+  "Physics_Output_TRAXX_E186.motor5_isactive": 0,
+  "Physics_Output_TRAXX_E186.motor6_actual_power_pct": 0,
+  "Physics_Output_TRAXX_E186.motor6_temperature": 0,
+  "Physics_Output_TRAXX_E186.motor6_slip": 0,
+  "Physics_Output_TRAXX_E186.motor6_isactive": 0,
+  "Physics_Output_TRAXX_E186.tcu1_status": 0,
+  "Physics_Output_TRAXX_E186.tcu2_status": 0,
+  "Physics_Output_TRAXX_E186.drive_direction": 0,
+  "Physics_Output_TRAXX_E186.direction_forward": 0,
+  "Physics_Output_TRAXX_E186.direction_neutral": 0,
+  "Physics_Output_TRAXX_E186.direction_reverse": 0,
+  "Physics_Output_TRAXX_E186.main_circuit_breaker_status": 0,
+  "Physics_Output_TRAXX_E186.velocity": 0,
+  "Physics_Output_TRAXX_E186.odometer": 0,
+  "Physics_Output_TRAXX_E186.simulation_timestamp": 4.363128e+23,
+  "Physics_Output_TRAXX_E186.supply_current": 0,
+  "Physics_Output_TRAXX_E186.supply_voltage": 0,
+  "Physics_Output_TRAXX_E186.pipe_pressure": 5.6911766e-8,
+  "Physics_Output_TRAXX_E186.pneumatic_brake_status": 1,
+  "Physics_Output_TRAXX_E186.can_status": 0,
+  "Physics_Output_TRAXX_E186.motor_fan_status": 0,
+  "Physics_Output_TRAXX_E186.bcu_status": 0,
+  "Physics_Output_TRAXX_E186.tdr_status": 0,
+  "Physics_Output_TRAXX_E186.bearing_temperature": 0,
+  "Physics_Output_TRAXX_E186.traction_pct_handle": 0,
+  "Physics_Output_TRAXX_E186.traction_pct_set": 0,
+  "Physics_Output_TRAXX_E186.traction_pct_actual": 0,
+  "Physics_Output_TRAXX_E186.traction_force_handle": 0,
+  "Physics_Output_TRAXX_E186.traction_force_set": 0,
+  "Physics_Output_TRAXX_E186.traction_force_actual": 0,
+  "Physics_Output_TRAXX_E186.fire_suppression_status": 1,
+  "Physics_Output_TRAXX_E186.lv_status": 0,
+  "Physics_Output_TRAXX_E186.compressor1_status": 0,
+  "Physics_Output_TRAXX_E186.compressor2_status": 0,
+  "Physics_Output_TRAXX_E186.pantograph_compressor_status": 0,
+  "Physics_Output_TRAXX_E186.inverter1_status": 0,
+  "Physics_Output_TRAXX_E186.inverter2_status": 0,
+  "Physics_Output_TRAXX_E186.battery_status": -1,
+  "Physics_Output_TRAXX_E186.ac_status": 0,
+  "Physics_Output_TRAXX_E186.brake_resistor_cooling_status": 0,
+  "Physics_Output_TRAXX_E186.springbrake_active": 0,
+  "Physics_Output_TRAXX_E186.abs_status": 0,
+  "Physics_Output_TRAXX_E186.brake_system_status": 0,
+  "Physics_Output_TRAXX_E186.hvac_active": 0,
+  "Physics_Output_TRAXX_E186.silent_mode_active": 0,
+  "Physics_Output_TRAXX_E186.solo_drive_active": -1,
+  "Physics_Output_TRAXX_E186.traction_mode": 1,
+  "Physics_Output_TRAXX_E186.cab": 0,
+  "Physics_Output_TRAXX_E186.pantograph_front": 0,
+  "Physics_Output_TRAXX_E186.pantograph_rear": 0,
+  "Physics_Output_TRAXX_E186.brake_mode": 2,
+  "Physics_Output_TRAXX_E186.front_lighting": 0,
+  "Physics_Output_TRAXX_E186.control_pressure": 3.4001098,
+  "Physics_Output_TRAXX_E186.brakecyl1_pressure": 2.9262345,
+  "Physics_Output_TRAXX_E186.brakecyl2_pressure": 2.9262345,
+  "Physics_Output_TRAXX_E186.pantograph_front_status": 8,
+  "Physics_Output_TRAXX_E186.pantograph_rear_status": 8,
+  "Physics_Output_TRAXX_E186.pantograph_control_status": 4,
+  "Physics_Output_TRAXX_E186.current_pantograph_auto_mode": 0,
+  "Physics_Output_TRAXX_E186.combustion_engine_active": 0,
+  "Physics_Output_TRAXX_E186.sag_status": 0,
+  "Physics_Output_TRAXX_E186.rectifier_fan_active": 0,
+  "Physics_Output_TRAXX_E186.combustion_engine_rpm": 0,
+  "Physics_Output_TRAXX_E186.combustion_preheat_active": 0,
+  "Physics_Output_TRAXX_E186.combustion_ready_for_start": 0,
+  "Physics_Output_TRAXX_E186.combustion_start_status": 0,
+  "Physics_Output_TRAXX_E186.battery_voltage": 87.25,
+  "Physics_Output_TRAXX_E186.charger1_voltage": 0,
+  "Physics_Output_TRAXX_E186.charger2_voltage": 0,
+  "Physics_Output_TRAXX_E186.battery_current": 0,
+  "Physics_Output_TRAXX_E186.charger1_current": 0,
+  "Physics_Output_TRAXX_E186.charger2_current": 0,
+  "Physics_Output_TRAXX_E186.combustion_power_reduction": 0,
+  "Physics_Output_TRAXX_E186.combustion_total_engine_hours": 0,
+  "Physics_Output_TRAXX_E186.combustion_total_fuel_consumption": 0,
+  "Physics_Output_TRAXX_E186.combustion_spn": 0,
+  "Physics_Output_TRAXX_E186.combustion_fmi": 0,
+  "Physics_Output_TRAXX_E186.combustion_occurence_count": 0,
+  "Physics_Output_TRAXX_E186.combustion_coolant_temperature": 6.6388235,
+  "Physics_Output_TRAXX_E186.combustion_intake_temperature": 0,
+  "Physics_Output_TRAXX_E186.combustion_fuel_rate": 0,
+  "Physics_Output_TRAXX_E186.combustion_boost_pressure": 0,
+  "Physics_Output_TRAXX_E186.combustion_oil_pressure": 0,
+  "Physics_Output_TRAXX_E186.oil_level_pct": 0.85,
+  "Physics_Output_TRAXX_E186.def_level_pct": 1,
+  "Physics_Output_TRAXX_E186.fuel_level_pct": 0.35,
+  "Physics_Output_TRAXX_E186.fire_suppression_sensors": 0,
+  "Physics_Output_TRAXX_E186.abs_disabled": 0,
+  "Physics_Output_TRAXX_E186.measure_distance_remaining": -2000,
+  "Physics_Output_TRAXX_E186.simulation_status": 1,
+  "Physics_Output_TRAXX_E186.airtight_test": 0,
+  "Physics_Output_TRAXX_E186.airtight_test_start_press": -1,
+  "Physics_Output_TRAXX_E186.airtight_test_final_press": -1,
+  "Physics_Output_TRAXX_E186.airtight_test_progress": 0,
+  "Physics_Output_TRAXX_E186.radiostop_active": 0,
+  "Physics_Output_TRAXX_E186.always_pantograph_fake": 0,
+  "Physics_Output_TRAXX_E186.lzb_active": 0,
+  "Physics_Output_TRAXX_E186.instrumentlight": 0,
+  "Physics_Output_TRAXX_E186.cablight": 0,
+  "Physics_Output_TRAXX_E186.pulpitlight": 0,
+  "Physics_Output_TRAXX_E186.supply_pressure": 0,
+  "Physics_Output_TRAXX_E186.total_motors_current": 0,
+  "Physics_Output_TRAXX_E186.psms_active_flags": 0,
+  "Physics_Output_TRAXX_E186.current_power_limit": 0,
+  "Physics_Output_TRAXX_E186.current_front_lights_active": 0,
+  "Physics_Output_TRAXX_E186.current_rear_lights_active": 0,
+  "Physics_Output_TRAXX_E186.pantograph_press": 0,
+  "Physics_Output_TRAXX_E186.electric_bus_work": 0,
+  "Physics_Output_TRAXX_E186.actual_light_switch_pos": 0,
+  "Physics_Output_TRAXX_E186.actual_activation_handle_pos": 0,
+  "Physics_Output_TRAXX_E186.main_tank_pressure": 7.858056,
+  "Physics_Output_TRAXX_E186.service_lights": 1,
+  "Physics_Output_TRAXX_E186.service_supplement": 1,
+  "Physics_Output_TRAXX_E186.service_pantograph": 0,
+  "Physics_Output_TRAXX_E186.service_compressor": 3,
+  "Physics_Output_TRAXX_E186.service_asj": 0,
+  "Physics_Output_TRAXX_E186.service_ep": 0,
+  "Physics_Output_TRAXX_E186.service_pg": 1,
+  "Physics_Output_TRAXX_E186.service_ww1": 1,
+  "Physics_Output_TRAXX_E186.service_ww2": 1,
+  "Physics_Output_TRAXX_E186.drive_handle_pos": 3,
+  "Physics_Output_TRAXX_E186.main_brake_cut_off": 0,
+  "Physics_Output_TRAXX_E186.engineroom_light": 0,
+  "Physics_Output_TRAXX_E186.coolant_heating": 0
+ },
+ "results": [
+  {
+   "path": "Physics_Input_General.emergency_brake_button_flag",
+   "controlId": "traxx_chasis/Chassis/INTERIOR/traxx_kabina_A/sciany/bt-ackerman/bt-ackerman",
+   "type": "PhysicsInteractionButtonToggle",
+   "kind": "button",
+   "original": -255,
+   "positions": [],
+   "steps": [
+    {
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {}
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_General.assimilation_button",
+   "controlId": "traxx_chasis/Chassis/INTERIOR/traxx_kabina_A/sciany/bt-asymilacja_hamulca/bt-asymilacja_hamulca",
+   "type": "PhysicsInteractionButtonContinous",
+   "kind": "button",
+   "original": 0,
+   "positions": [],
+   "steps": [
+    {
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {}
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_General.nope",
+   "controlId": "traxx_chasis/Chassis/INTERIOR/traxx_kabina_A/sciany/bt-automatyczna_stabilizacja_cisnienia/bt-automatyczna_stabilizacja_cisnienia",
+   "type": "PhysicsInteractionButtonContinous",
+   "kind": "button",
+   "original": 0,
+   "positions": [],
+   "steps": [
+    {
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {}
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_General.direction_rq",
+   "controlId": "traxx_chasis/Chassis/INTERIOR/traxx_kabina_A/sciany/bt-backward/bt-backward",
+   "type": "PhysicsInteractionButtonContinous",
+   "kind": "button",
+   "original": 0,
+   "positions": [],
+   "steps": [
+    {
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {}
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_General.security_system_button",
+   "controlId": "traxx_chasis/Chassis/INTERIOR/traxx_kabina_A/sciany/bt-czuwak_left/bt-czuwak_left",
+   "type": "PhysicsInteractionButtonContinous",
+   "kind": "button",
+   "original": 0,
+   "positions": [],
+   "steps": [
+    {
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {}
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_General.spring_brake_rq",
+   "controlId": "traxx_chasis/Chassis/INTERIOR/traxx_kabina_A/sciany/bt-luzowanie_ham_postojowego/bt-luzowanie_ham_postojowego",
+   "type": "PhysicsInteractionButtonContinous",
+   "kind": "button",
+   "original": 1,
+   "positions": [],
+   "steps": [
+    {
+     "value": 0,
+     "ok": true,
+     "readback": 0,
+     "changes": {}
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_TRAXX_E186.lzb_command",
+   "controlId": "traxx_chasis/Chassis/INTERIOR/traxx_kabina_A/sciany/bt-polecenie_LZB/bt-polecenie_LZB",
+   "type": "PhysicsInteractionButtonContinous",
+   "kind": "button",
+   "original": 0,
+   "positions": [],
+   "steps": [
+    {
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {}
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_General.washer",
+   "controlId": "traxx_chasis/Chassis/INTERIOR/traxx_kabina_A/sciany/bt-spryskiwacz/bt-spryskiwacz",
+   "type": "PhysicsInteractionButtonContinous",
+   "kind": "button",
+   "original": 0,
+   "positions": [],
+   "steps": [
+    {
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {}
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_General.cablight",
+   "controlId": "traxx_chasis/Chassis/INTERIOR/traxx_kabina_A/sciany/bt-swiatlo_kabina1/bt-swiatlo_kabina1",
+   "type": "PhysicsInteractionButtonContinous",
+   "kind": "button",
+   "original": -1,
+   "positions": [],
+   "steps": [
+    {
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {
+      "Physics_Output_General.cablight": [
+       0,
+       1
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_TRAXX_E186.engineroom_light",
+   "controlId": "traxx_chasis/Chassis/INTERIOR/traxx_kabina_A/sciany/bt-swiatlo_maszynownia/bt-swiatlo_maszynownia",
+   "type": "PhysicsInteractionButtonContinous",
+   "kind": "button",
+   "original": 0,
+   "positions": [],
+   "steps": [
+    {
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {}
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_TRAXX_E186.electric_bus_button",
+   "controlId": "traxx_chasis/Chassis/INTERIOR/traxx_kabina_A/sciany/bt-szyna_ogrzewania/bt-szyna_ogrzewania",
+   "type": "PhysicsInteractionButtonContinous",
+   "kind": "button",
+   "original": 0,
+   "positions": [],
+   "steps": [
+    {
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {}
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_General.local_brake",
+   "controlId": "traxx_chasis/Chassis/INTERIOR/traxx_kabina_A/sciany/hamulec_dodatkowy/hamulec_dodatkowy",
+   "type": "PhysicsInteractionLeverStepped",
+   "kind": "lever",
+   "original": 0,
+   "positions": [
+    {
+     "index": 0,
+     "value": 4,
+     "label": ""
+    },
+    {
+     "index": 1,
+     "value": 3,
+     "label": ""
+    },
+    {
+     "index": 2,
+     "value": 2,
+     "label": ""
+    },
+    {
+     "index": 3,
+     "value": 1,
+     "label": ""
+    },
+    {
+     "index": 4,
+     "value": 0,
+     "label": ""
+    }
+   ],
+   "steps": [
+    {
+     "position": 0,
+     "value": 4,
+     "ok": true,
+     "readback": 4,
+     "changes": {
+      "Physics_Output_TRAXX_E186.main_tank_pressure": [
+       7.858,
+       7.856
+      ]
+     }
+    },
+    {
+     "position": 1,
+     "value": 3,
+     "ok": true,
+     "readback": 3,
+     "changes": {
+      "Physics_Output_TRAXX_E186.brakecyl1_pressure": [
+       2.926,
+       3.923
+      ],
+      "Physics_Output_TRAXX_E186.brakecyl2_pressure": [
+       2.926,
+       3.923
+      ],
+      "Physics_Output_TRAXX_E186.main_tank_pressure": [
+       7.856,
+       7.816
+      ]
+     }
+    },
+    {
+     "position": 2,
+     "value": 2,
+     "ok": true,
+     "readback": 2,
+     "changes": {
+      "Physics_Output_TRAXX_E186.brakecyl1_pressure": [
+       3.923,
+       4.015
+      ],
+      "Physics_Output_TRAXX_E186.brakecyl2_pressure": [
+       3.923,
+       4.015
+      ],
+      "Physics_Output_TRAXX_E186.main_tank_pressure": [
+       7.816,
+       7.746
+      ]
+     }
+    },
+    {
+     "position": 3,
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {
+      "Physics_Output_TRAXX_E186.brakecyl1_pressure": [
+       4.015,
+       3.068
+      ],
+      "Physics_Output_TRAXX_E186.brakecyl2_pressure": [
+       4.015,
+       3.068
+      ],
+      "Physics_Output_TRAXX_E186.main_tank_pressure": [
+       7.746,
+       7.737
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_General.main_brake",
+   "controlId": "traxx_chasis/Chassis/INTERIOR/traxx_kabina_A/sciany/hamulec_zasadniczy/hamulec_zasadniczy",
+   "type": "PhysicsInteractionLeverStepped",
+   "kind": "lever",
+   "original": 3,
+   "positions": [
+    {
+     "index": 0,
+     "value": 5,
+     "label": ""
+    },
+    {
+     "index": 1,
+     "value": 4,
+     "label": ""
+    },
+    {
+     "index": 2,
+     "value": 3,
+     "label": ""
+    },
+    {
+     "index": 3,
+     "value": 2,
+     "label": ""
+    },
+    {
+     "index": 4,
+     "value": 1,
+     "label": ""
+    },
+    {
+     "index": 5,
+     "value": 0,
+     "label": ""
+    }
+   ],
+   "steps": [
+    {
+     "position": 0,
+     "value": 5,
+     "ok": true,
+     "readback": 5,
+     "changes": {
+      "Physics_Output_General.can_change_cabin": [
+       1,
+       0
+      ],
+      "Physics_Output_TRAXX_E186.brakecyl1_pressure": [
+       2.967,
+       2.945
+      ],
+      "Physics_Output_TRAXX_E186.brakecyl2_pressure": [
+       2.967,
+       2.945
+      ]
+     }
+    },
+    {
+     "position": 1,
+     "value": 4,
+     "ok": true,
+     "readback": 4,
+     "changes": {
+      "Physics_Output_TRAXX_E186.brakecyl1_pressure": [
+       2.945,
+       2.93
+      ],
+      "Physics_Output_TRAXX_E186.brakecyl2_pressure": [
+       2.945,
+       2.93
+      ]
+     }
+    },
+    {
+     "position": 3,
+     "value": 2,
+     "ok": true,
+     "readback": 2,
+     "changes": {
+      "Physics_Output_General.can_change_cabin": [
+       0,
+       1
+      ],
+      "Physics_Output_TRAXX_E186.brakecyl1_pressure": [
+       2.93,
+       2.927
+      ],
+      "Physics_Output_TRAXX_E186.brakecyl2_pressure": [
+       2.93,
+       2.927
+      ]
+     }
+    },
+    {
+     "position": 4,
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {
+      "Physics_Output_General.time_minutes": [
+       22,
+       23
+      ]
+     }
+    },
+    {
+     "position": 5,
+     "value": 0,
+     "ok": true,
+     "readback": 0,
+     "changes": {}
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_TRAXX_E186.ed_toggle_rq",
+   "controlId": "traxx_chasis/Chassis/INTERIOR/traxx_kabina_A/sciany/hamulec_zasadniczy/hamulec_zasadniczy/bt-elektrodynamiczny/bt-elektrodynamiczny",
+   "type": "PhysicsInteractionButtonContinous",
+   "kind": "button",
+   "original": 0,
+   "positions": [],
+   "steps": [
+    {
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {}
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_General.shunting_handle",
+   "controlId": "traxx_chasis/Chassis/INTERIOR/traxx_kabina_A/sciany/nastawnik_bok_left/nastawnik_bok_left",
+   "type": "PhysicsInteractionSwitchStepped",
+   "kind": "switch",
+   "original": 0,
+   "positions": [
+    {
+     "index": 0,
+     "value": -1
+    },
+    {
+     "index": 1,
+     "value": 0
+    },
+    {
+     "index": 2,
+     "value": 1
+    },
+    {
+     "index": 3,
+     "value": 2
+    },
+    {
+     "index": 4,
+     "value": 3
+    }
+   ],
+   "steps": [
+    {
+     "position": 0,
+     "value": -1,
+     "ok": true,
+     "readback": -1,
+     "changes": {}
+    },
+    {
+     "position": 2,
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {}
+    },
+    {
+     "position": 3,
+     "value": 2,
+     "ok": true,
+     "readback": 2,
+     "changes": {}
+    },
+    {
+     "position": 4,
+     "value": 3,
+     "ok": true,
+     "readback": 3,
+     "changes": {}
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_General.drive_handle",
+   "controlId": "traxx_chasis/Chassis/INTERIOR/traxx_kabina_A/sciany/nastawnik_jazdy/nastawnik_jazdy",
+   "type": "PhysicsInteractionLeverStepped",
+   "kind": "lever",
+   "original": 3,
+   "positions": [
+    {
+     "index": 0,
+     "value": 0,
+     "label": ""
+    },
+    {
+     "index": 1,
+     "value": 1,
+     "label": ""
+    },
+    {
+     "index": 2,
+     "value": 2,
+     "label": ""
+    },
+    {
+     "index": 3,
+     "value": 3,
+     "label": ""
+    },
+    {
+     "index": 4,
+     "value": 4,
+     "label": ""
+    },
+    {
+     "index": 5,
+     "value": 5,
+     "label": ""
+    },
+    {
+     "index": 6,
+     "value": 6,
+     "label": ""
+    },
+    {
+     "index": 7,
+     "value": 7,
+     "label": ""
+    }
+   ],
+   "steps": [
+    {
+     "position": 0,
+     "value": 0,
+     "ok": true,
+     "readback": 0,
+     "changes": {}
+    },
+    {
+     "position": 1,
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {}
+    },
+    {
+     "position": 2,
+     "value": 2,
+     "ok": true,
+     "readback": 2,
+     "changes": {}
+    },
+    {
+     "position": 4,
+     "value": 4,
+     "ok": true,
+     "readback": 4,
+     "changes": {}
+    },
+    {
+     "position": 5,
+     "value": 5,
+     "ok": true,
+     "readback": 5,
+     "changes": {}
+    },
+    {
+     "position": 6,
+     "value": 6,
+     "ok": true,
+     "readback": 6,
+     "changes": {}
+    },
+    {
+     "position": 7,
+     "value": 7,
+     "ok": true,
+     "readback": 7,
+     "changes": {}
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_General.drive_handle_pressed",
+   "controlId": "traxx_chasis/Chassis/INTERIOR/traxx_kabina_A/sciany/nastawnik_jazdy/nastawnik_jazdy/nastawnik_jazdy (1)",
+   "type": "PhysicsInteractionButtonContinous",
+   "kind": "button",
+   "original": 0,
+   "positions": [],
+   "steps": [
+    {
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {}
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_General.speed_ctrl",
+   "controlId": "traxx_chasis/Chassis/INTERIOR/traxx_kabina_A/sciany/nastawnik_predkosci/nastawnik_predkosci",
+   "type": "PhysicsInteractionLeverStepped",
+   "kind": "lever",
+   "original": 0,
+   "positions": [
+    {
+     "index": 0,
+     "value": 0,
+     "label": ""
+    },
+    {
+     "index": 1,
+     "value": 1,
+     "label": ""
+    },
+    {
+     "index": 2,
+     "value": 2,
+     "label": ""
+    },
+    {
+     "index": 3,
+     "value": 3,
+     "label": ""
+    },
+    {
+     "index": 4,
+     "value": 4,
+     "label": ""
+    }
+   ],
+   "steps": [
+    {
+     "position": 1,
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {
+      "Physics_Output_General.speed_ctrl_status": [
+       0,
+       1
+      ]
+     }
+    },
+    {
+     "position": 2,
+     "value": 2,
+     "ok": true,
+     "readback": 2,
+     "changes": {}
+    },
+    {
+     "position": 3,
+     "value": 3,
+     "ok": true,
+     "readback": 3,
+     "changes": {
+      "Physics_Output_General.speedCtrlValueForGui": [
+       0,
+       10
+      ]
+     }
+    },
+    {
+     "position": 4,
+     "value": 4,
+     "ok": true,
+     "readback": 4,
+     "changes": {
+      "Physics_Output_General.speed_ctrl_value": [
+       0,
+       140
+      ],
+      "Physics_Output_General.speedCtrlValueForGui": [
+       10,
+       140
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_General.horn_signal",
+   "controlId": "traxx_chasis/Chassis/INTERIOR/traxx_kabina_A/sciany/pedal_syrena/pedal_syrena",
+   "type": "PhysicsInteractionButtonContinous",
+   "kind": "button",
+   "original": 0,
+   "positions": [],
+   "steps": [
+    {
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {}
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_General.radiostop_rq",
+   "controlId": "traxx_chasis/Chassis/INTERIOR/traxx_kabina_A/sciany/radiotelefon_eads/klawisz_polaczenie_alarmowe/klawisz_polaczenie_alarmowe",
+   "type": "PhysicsInteractionButtonToggle",
+   "kind": "button",
+   "original": 0,
+   "positions": [],
+   "steps": [
+    {
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {}
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_TRAXX_E186.display4_invers",
+   "controlId": "traxx_chasis/Chassis/INTERIOR/traxx_kabina_A/sciany/radiotelefon_eads/klawisz_12/klawisz_12",
+   "type": "PhysicsInteractionButtonToggle",
+   "kind": "button",
+   "original": 0,
+   "positions": [],
+   "steps": [
+    {
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {}
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_General.radio_volume_set",
+   "controlId": "traxx_chasis/Chassis/INTERIOR/traxx_kabina_A/sciany/radiotelefon_eads/klawisz_11/klawisz_11",
+   "type": "PhysicsInteractionButtonToggle",
+   "kind": "button",
+   "original": 0,
+   "positions": [],
+   "steps": [
+    {
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {}
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_TRAXX_E186.radio_toggle",
+   "controlId": "traxx_chasis/Chassis/INTERIOR/traxx_kabina_A/sciany/radiotelefon_eads/klawisz_reset/klawisz_reset",
+   "type": "PhysicsInteractionButtonContinous",
+   "kind": "button",
+   "original": 0,
+   "positions": [],
+   "steps": [
+    {
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {}
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_General.radio_channel_change",
+   "controlId": "traxx_chasis/Chassis/INTERIOR/traxx_kabina_A/sciany/radiotelefon_eads/klawisz_up/klawisz_up",
+   "type": "PhysicsInteractionButtonToggle",
+   "kind": "button",
+   "original": 0,
+   "positions": [],
+   "steps": [
+    {
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {}
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_General.radio_selective_call",
+   "controlId": "traxx_chasis/Chassis/INTERIOR/traxx_kabina_A/sciany/radiotelefon_eads/klawisz_3/klawisz_3",
+   "type": "PhysicsInteractionButtonToggle",
+   "kind": "button",
+   "original": 0,
+   "positions": [],
+   "steps": [
+    {
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {}
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_General.radio_channel_set",
+   "controlId": "traxx_chasis/Chassis/INTERIOR/traxx_kabina_A/sciany/radiotelefon_eads/RadialAndKeys",
+   "type": "PhysicsNonInteractionWriteFromKeyOrRadial",
+   "kind": "other",
+   "original": 0,
+   "positions": [],
+   "steps": [
+    {
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {
+      "Physics_Output_General.radio_channel": [
+       5,
+       1
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_TRAXX_E186.activation_handle",
+   "controlId": "traxx_chasis/Chassis/INTERIOR/traxx_kabina_A/sciany/sw-aktywacja/sw-aktywacja",
+   "type": "PhysicsInteractionSwitchStepped",
+   "kind": "switch",
+   "original": 0,
+   "positions": [
+    {
+     "index": 0,
+     "value": 0
+    },
+    {
+     "index": 1,
+     "value": 1
+    },
+    {
+     "index": 2,
+     "value": 2
+    }
+   ],
+   "steps": [
+    {
+     "position": 1,
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {
+      "Physics_Output_General.security_system_etcs_disabled": [
+       0,
+       1
+      ],
+      "Physics_Output_TRAXX_E186.direction_neutral": [
+       0,
+       1
+      ],
+      "Physics_Output_TRAXX_E186.lv_status": [
+       0,
+       1
+      ],
+      "Physics_Output_TRAXX_E186.battery_status": [
+       -1,
+       1
+      ],
+      "Physics_Output_TRAXX_E186.springbrake_active": [
+       0,
+       1
+      ],
+      "Physics_Output_TRAXX_E186.abs_status": [
+       0,
+       1
+      ],
+      "Physics_Output_TRAXX_E186.brake_mode": [
+       2,
+       3
+      ],
+      "Physics_Output_TRAXX_E186.brakecyl1_pressure": [
+       2.927,
+       3.775
+      ],
+      "Physics_Output_TRAXX_E186.brakecyl2_pressure": [
+       2.927,
+       3.775
+      ],
+      "Physics_Output_TRAXX_E186.battery_current": [
+       0,
+       -2.323
+      ],
+      "Physics_Output_TRAXX_E186.psms_active_flags": [
+       0,
+       48
+      ],
+      "Physics_Output_TRAXX_E186.electric_bus_work": [
+       0,
+       1
+      ],
+      "Physics_Output_TRAXX_E186.actual_activation_handle_pos": [
+       0,
+       1
+      ],
+      "Physics_Output_TRAXX_E186.main_tank_pressure": [
+       7.737,
+       7.674
+      ],
+      "Physics_Output_TRAXX_E186.engineroom_light": [
+       0,
+       1
+      ]
+     }
+    },
+    {
+     "position": 2,
+     "value": 2,
+     "ok": true,
+     "readback": 2,
+     "changes": {
+      "Physics_Input_General.active_cab": [
+       0,
+       1
+      ],
+      "Physics_Output_General.etcs2023_cab_active": [
+       0,
+       1
+      ],
+      "Physics_Output_General.radio_active": [
+       0,
+       1
+      ],
+      "Physics_Output_General.can_change_cabin": [
+       1,
+       0
+      ],
+      "Physics_Output_TRAXX_E186.shp": [
+       0,
+       1
+      ],
+      "Physics_Output_TRAXX_E186.cab": [
+       0,
+       1
+      ],
+      "Physics_Output_TRAXX_E186.front_lighting": [
+       0,
+       111
+      ],
+      "Physics_Output_TRAXX_E186.brakecyl1_pressure": [
+       3.775,
+       3.772
+      ],
+      "Physics_Output_TRAXX_E186.brakecyl2_pressure": [
+       3.775,
+       3.772
+      ],
+      "Physics_Output_TRAXX_E186.battery_current": [
+       -2.323,
+       -2.316
+      ],
+      "Physics_Output_TRAXX_E186.actual_activation_handle_pos": [
+       1,
+       2
+      ],
+      "Physics_Output_TRAXX_E186.main_tank_pressure": [
+       7.674,
+       7.642
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_TRAXX_E186.lzb_alerter",
+   "controlId": "traxx_chasis/Chassis/INTERIOR/traxx_kabina_A/sciany/sw-czujnosc_LZB_lewy/sw-czujnosc_LZB_lewy",
+   "type": "PhysicsInteractionSwitchStepped",
+   "kind": "switch",
+   "original": 0,
+   "positions": [
+    {
+     "index": 0,
+     "value": 1
+    },
+    {
+     "index": 1,
+     "value": 0
+    },
+    {
+     "index": 2,
+     "value": 1
+    }
+   ],
+   "steps": [
+    {
+     "position": 0,
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {
+      "Physics_Output_TRAXX_E186.brakecyl1_pressure": [
+       3.234,
+       2.995
+      ],
+      "Physics_Output_TRAXX_E186.brakecyl2_pressure": [
+       3.234,
+       2.995
+      ]
+     }
+    },
+    {
+     "position": 2,
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {
+      "Physics_Output_TRAXX_E186.brakecyl1_pressure": [
+       2.995,
+       2.965
+      ],
+      "Physics_Output_TRAXX_E186.brakecyl2_pressure": [
+       2.995,
+       2.965
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_General.brake_releaser",
+   "controlId": "traxx_chasis/Chassis/INTERIOR/traxx_kabina_A/sciany/sw-luzowanie_hamulca_zespolonego/sw-luzowanie_hamulca_zespolonego",
+   "type": "PhysicsInteractionSwitchStepped",
+   "kind": "switch",
+   "original": 0,
+   "positions": [
+    {
+     "index": 0,
+     "value": 1
+    },
+    {
+     "index": 1,
+     "value": 0
+    },
+    {
+     "index": 2,
+     "value": 1
+    }
+   ],
+   "steps": [
+    {
+     "position": 0,
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {
+      "Physics_Output_TRAXX_E186.pneumatic_brake_status": [
+       1,
+       0
+      ],
+      "Physics_Output_TRAXX_E186.brakecyl1_pressure": [
+       2.953,
+       2.171
+      ],
+      "Physics_Output_TRAXX_E186.brakecyl2_pressure": [
+       2.953,
+       2.171
+      ],
+      "Physics_Output_TRAXX_E186.airtight_test": [
+       0,
+       -1
+      ]
+     }
+    },
+    {
+     "position": 2,
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {
+      "Physics_Output_TRAXX_E186.brakecyl1_pressure": [
+       2.171,
+       1.559
+      ],
+      "Physics_Output_TRAXX_E186.brakecyl2_pressure": [
+       2.171,
+       1.559
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_General.instrumentlight",
+   "controlId": "traxx_chasis/Chassis/INTERIOR/traxx_kabina_A/sciany/sw-oswietlenie_instrumentow/sw-oswietlenie_instrumentow",
+   "type": "PhysicsInteractionSwitchStepped",
+   "kind": "switch",
+   "original": 0,
+   "positions": [
+    {
+     "index": 0,
+     "value": 1
+    },
+    {
+     "index": 1,
+     "value": -1
+    },
+    {
+     "index": 2,
+     "value": 1
+    }
+   ],
+   "steps": [
+    {
+     "position": 0,
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {
+      "Physics_Output_TRAXX_E186.brakecyl1_pressure": [
+       2.724,
+       2.926
+      ],
+      "Physics_Output_TRAXX_E186.brakecyl2_pressure": [
+       2.724,
+       2.926
+      ],
+      "Physics_Output_TRAXX_E186.main_tank_pressure": [
+       7.597,
+       7.518
+      ]
+     }
+    },
+    {
+     "position": 1,
+     "value": -1,
+     "ok": true,
+     "readback": -1,
+     "changes": {
+      "Physics_Output_TRAXX_E186.brakecyl1_pressure": [
+       2.926,
+       2.917
+      ],
+      "Physics_Output_TRAXX_E186.brakecyl2_pressure": [
+       2.926,
+       2.917
+      ],
+      "Physics_Output_TRAXX_E186.main_tank_pressure": [
+       7.518,
+       7.499
+      ]
+     }
+    },
+    {
+     "position": 2,
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {
+      "Physics_Output_TRAXX_E186.brakecyl1_pressure": [
+       2.917,
+       2.924
+      ],
+      "Physics_Output_TRAXX_E186.brakecyl2_pressure": [
+       2.917,
+       2.924
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_General.pantograph_set_rq",
+   "controlId": "traxx_chasis/Chassis/INTERIOR/traxx_kabina_A/sciany/sw-pantografy/sw-pantografy",
+   "type": "PhysicsInteractionSwitchStepped",
+   "kind": "switch",
+   "original": 0,
+   "positions": [
+    {
+     "index": 0,
+     "value": -1
+    },
+    {
+     "index": 1,
+     "value": 0
+    },
+    {
+     "index": 2,
+     "value": 1
+    }
+   ],
+   "steps": [
+    {
+     "position": 0,
+     "value": -1,
+     "ok": true,
+     "readback": -1,
+     "changes": {}
+    },
+    {
+     "position": 2,
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {}
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_General.sanding_button",
+   "controlId": "traxx_chasis/Chassis/INTERIOR/traxx_kabina_A/sciany/sw-piaskowanie/sw-piaskowanie",
+   "type": "PhysicsInteractionSwitchStepped",
+   "kind": "switch",
+   "original": 0,
+   "positions": [
+    {
+     "index": 0,
+     "value": 1
+    },
+    {
+     "index": 1,
+     "value": 0
+    },
+    {
+     "index": 2,
+     "value": -1
+    }
+   ],
+   "steps": [
+    {
+     "position": 0,
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {}
+    },
+    {
+     "position": 2,
+     "value": -1,
+     "ok": true,
+     "readback": -1,
+     "changes": {}
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_General.light_pos",
+   "controlId": "traxx_chasis/Chassis/INTERIOR/traxx_kabina_A/sciany/sw-programator_swiatel/sw-programator_swiatel",
+   "type": "PhysicsInteractionSwitchStepped",
+   "kind": "switch",
+   "original": 0,
+   "positions": [
+    {
+     "index": 0,
+     "value": 0
+    },
+    {
+     "index": 1,
+     "value": 1
+    },
+    {
+     "index": 2,
+     "value": 2
+    },
+    {
+     "index": 3,
+     "value": 3
+    },
+    {
+     "index": 4,
+     "value": 4
+    },
+    {
+     "index": 5,
+     "value": 5
+    },
+    {
+     "index": 6,
+     "value": 6
+    },
+    {
+     "index": 7,
+     "value": 7
+    },
+    {
+     "index": 8,
+     "value": 8
+    },
+    {
+     "index": 9,
+     "value": 9
+    },
+    {
+     "index": 10,
+     "value": 10
+    },
+    {
+     "index": 11,
+     "value": 11
+    }
+   ],
+   "steps": [
+    {
+     "position": 1,
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {
+      "Physics_Output_TRAXX_E186.actual_light_switch_pos": [
+       0,
+       1
+      ]
+     }
+    },
+    {
+     "position": 2,
+     "value": 2,
+     "ok": true,
+     "readback": 2,
+     "changes": {
+      "Physics_Output_TRAXX_E186.actual_light_switch_pos": [
+       1,
+       2
+      ]
+     }
+    },
+    {
+     "position": 3,
+     "value": 3,
+     "ok": true,
+     "readback": 3,
+     "changes": {
+      "Physics_Output_TRAXX_E186.actual_light_switch_pos": [
+       2,
+       3
+      ]
+     }
+    },
+    {
+     "position": 4,
+     "value": 4,
+     "ok": true,
+     "readback": 4,
+     "changes": {
+      "Physics_Output_TRAXX_E186.actual_light_switch_pos": [
+       3,
+       4
+      ]
+     }
+    },
+    {
+     "position": 5,
+     "value": 5,
+     "ok": true,
+     "readback": 5,
+     "changes": {
+      "Physics_Output_TRAXX_E186.actual_light_switch_pos": [
+       4,
+       5
+      ]
+     }
+    },
+    {
+     "position": 6,
+     "value": 6,
+     "ok": true,
+     "readback": 6,
+     "changes": {
+      "Physics_Output_TRAXX_E186.actual_light_switch_pos": [
+       5,
+       6
+      ]
+     }
+    },
+    {
+     "position": 7,
+     "value": 7,
+     "ok": true,
+     "readback": 7,
+     "changes": {
+      "Physics_Output_TRAXX_E186.actual_light_switch_pos": [
+       6,
+       7
+      ]
+     }
+    },
+    {
+     "position": 8,
+     "value": 8,
+     "ok": true,
+     "readback": 8,
+     "changes": {
+      "Physics_Output_TRAXX_E186.actual_light_switch_pos": [
+       7,
+       8
+      ]
+     }
+    },
+    {
+     "position": 9,
+     "value": 9,
+     "ok": true,
+     "readback": 9,
+     "changes": {
+      "Physics_Output_TRAXX_E186.actual_light_switch_pos": [
+       8,
+       9
+      ]
+     }
+    },
+    {
+     "position": 10,
+     "value": 10,
+     "ok": true,
+     "readback": 10,
+     "changes": {
+      "Physics_Output_TRAXX_E186.actual_light_switch_pos": [
+       9,
+       10
+      ]
+     }
+    },
+    {
+     "position": 11,
+     "value": 11,
+     "ok": true,
+     "readback": 11,
+     "changes": {
+      "Physics_Output_TRAXX_E186.actual_light_switch_pos": [
+       10,
+       11
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_General.lights_power",
+   "controlId": "traxx_chasis/Chassis/INTERIOR/traxx_kabina_A/sciany/sw-swiatla/sw-swiatla",
+   "type": "PhysicsInteractionSwitchStepped",
+   "kind": "switch",
+   "original": 1,
+   "positions": [
+    {
+     "index": 0,
+     "value": 1
+    },
+    {
+     "index": 1,
+     "value": 2
+    },
+    {
+     "index": 2,
+     "value": 3
+    },
+    {
+     "index": 3,
+     "value": 4
+    }
+   ],
+   "steps": [
+    {
+     "position": 1,
+     "value": 2,
+     "ok": true,
+     "readback": 2,
+     "changes": {}
+    },
+    {
+     "position": 2,
+     "value": 3,
+     "ok": true,
+     "readback": 3,
+     "changes": {}
+    },
+    {
+     "position": 3,
+     "value": 4,
+     "ok": true,
+     "readback": 4,
+     "changes": {}
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_TRAXX_E186.lzb_free",
+   "controlId": "traxx_chasis/Chassis/INTERIOR/traxx_kabina_A/sciany/sw-uwolnienie_LZB/sw-uwolnienie_LZB",
+   "type": "PhysicsInteractionSwitchStepped",
+   "kind": "switch",
+   "original": 0,
+   "positions": [
+    {
+     "index": 0,
+     "value": 1
+    },
+    {
+     "index": 1,
+     "value": 0
+    },
+    {
+     "index": 2,
+     "value": 1
+    }
+   ],
+   "steps": [
+    {
+     "position": 0,
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {}
+    },
+    {
+     "position": 2,
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {}
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_General.wiper",
+   "controlId": "traxx_chasis/Chassis/INTERIOR/traxx_kabina_A/sciany/sw-wycieraczki/sw-wycieraczki",
+   "type": "PhysicsInteractionSwitchStepped",
+   "kind": "switch",
+   "original": 0,
+   "positions": [
+    {
+     "index": 0,
+     "value": 0
+    },
+    {
+     "index": 1,
+     "value": 1
+    },
+    {
+     "index": 2,
+     "value": 2
+    },
+    {
+     "index": 3,
+     "value": 3
+    }
+   ],
+   "steps": [
+    {
+     "position": 1,
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {}
+    },
+    {
+     "position": 2,
+     "value": 2,
+     "ok": true,
+     "readback": 2,
+     "changes": {}
+    },
+    {
+     "position": 3,
+     "value": 3,
+     "ok": true,
+     "readback": 3,
+     "changes": {}
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_General.main_switch",
+   "controlId": "traxx_chasis/Chassis/INTERIOR/traxx_kabina_A/sciany/sw-wylacznik_glowny/sw-wylacznik_glowny",
+   "type": "PhysicsInteractionSwitchStepped",
+   "kind": "switch",
+   "original": 0,
+   "positions": [
+    {
+     "index": 0,
+     "value": -1
+    },
+    {
+     "index": 1,
+     "value": 0
+    },
+    {
+     "index": 2,
+     "value": 1
+    }
+   ],
+   "steps": [
+    {
+     "position": 0,
+     "value": -1,
+     "ok": true,
+     "readback": -1,
+     "changes": {}
+    },
+    {
+     "position": 2,
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {}
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_TRAXX_E186.display1_display_aus",
+   "controlId": "traxx_chasis/Chassis/INTERIOR/traxx_kabina_A/sciany/wyswietlacz/ekran_lewy/display_aus/display_aus",
+   "type": "PhysicsInteractionButtonToggle",
+   "kind": "button",
+   "original": 0,
+   "positions": [],
+   "steps": [
+    {
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {}
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_TRAXX_E186.display1_lang",
+   "controlId": "traxx_chasis/Chassis/INTERIOR/traxx_kabina_A/sciany/wyswietlacz/ekran_lewy/lang/lang",
+   "type": "PhysicsInteractionButtonToggle",
+   "kind": "button",
+   "original": 0,
+   "positions": [],
+   "steps": [
+    {
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {}
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_TRAXX_E186.display1_info",
+   "controlId": "traxx_chasis/Chassis/INTERIOR/traxx_kabina_A/sciany/wyswietlacz/ekran_lewy/info/info",
+   "type": "PhysicsInteractionButtonToggle",
+   "kind": "button",
+   "original": 0,
+   "positions": [],
+   "steps": [
+    {
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {}
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_TRAXX_E186.display1_storung",
+   "controlId": "traxx_chasis/Chassis/INTERIOR/traxx_kabina_A/sciany/wyswietlacz/ekran_lewy/storung/storung",
+   "type": "PhysicsInteractionButtonToggle",
+   "kind": "button",
+   "original": 0,
+   "positions": [],
+   "steps": [
+    {
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {}
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_TRAXX_E186.display1_v0",
+   "controlId": "traxx_chasis/Chassis/INTERIOR/traxx_kabina_A/sciany/wyswietlacz/ekran_lewy/v>0/v>0",
+   "type": "PhysicsInteractionButtonToggle",
+   "kind": "button",
+   "original": 0,
+   "positions": [],
+   "steps": [
+    {
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {}
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_TRAXX_E186.display1_v1",
+   "controlId": "traxx_chasis/Chassis/INTERIOR/traxx_kabina_A/sciany/wyswietlacz/ekran_lewy/v=0/v=0",
+   "type": "PhysicsInteractionButtonToggle",
+   "kind": "button",
+   "original": 0,
+   "positions": [],
+   "steps": [
+    {
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {}
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_TRAXX_E186.display1_helligkeit",
+   "controlId": "traxx_chasis/Chassis/INTERIOR/traxx_kabina_A/sciany/wyswietlacz/ekran_lewy/helligkeit/helligkeit",
+   "type": "PhysicsInteractionButtonToggle",
+   "kind": "button",
+   "original": 0,
+   "positions": [],
+   "steps": [
+    {
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {}
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_TRAXX_E186.display1_invers",
+   "controlId": "traxx_chasis/Chassis/INTERIOR/traxx_kabina_A/sciany/wyswietlacz/ekran_lewy/invers/invers",
+   "type": "PhysicsInteractionButtonToggle",
+   "kind": "button",
+   "original": 0,
+   "positions": [],
+   "steps": [
+    {
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {}
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_TRAXX_E186.display1_ud",
+   "controlId": "traxx_chasis/Chassis/INTERIOR/traxx_kabina_A/sciany/wyswietlacz/ekran_lewy/ud/ud",
+   "type": "PhysicsInteractionButtonToggle",
+   "kind": "button",
+   "original": 0,
+   "positions": [],
+   "steps": [
+    {
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {}
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_TRAXX_E186.display1_c",
+   "controlId": "traxx_chasis/Chassis/INTERIOR/traxx_kabina_A/sciany/wyswietlacz/ekran_lewy/c/c",
+   "type": "PhysicsInteractionButtonToggle",
+   "kind": "button",
+   "original": 0,
+   "positions": [],
+   "steps": [
+    {
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {}
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_TRAXX_E186.display1_up",
+   "controlId": "traxx_chasis/Chassis/INTERIOR/traxx_kabina_A/sciany/wyswietlacz/ekran_lewy/up/up",
+   "type": "PhysicsInteractionButtonToggle",
+   "kind": "button",
+   "original": 0,
+   "positions": [],
+   "steps": [
+    {
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {}
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_TRAXX_E186.display1_down",
+   "controlId": "traxx_chasis/Chassis/INTERIOR/traxx_kabina_A/sciany/wyswietlacz/ekran_lewy/down/down",
+   "type": "PhysicsInteractionButtonToggle",
+   "kind": "button",
+   "original": 0,
+   "positions": [],
+   "steps": [
+    {
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {}
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_TRAXX_E186.display1_enter",
+   "controlId": "traxx_chasis/Chassis/INTERIOR/traxx_kabina_A/sciany/wyswietlacz/ekran_lewy/enter/enter",
+   "type": "PhysicsInteractionButtonToggle",
+   "kind": "button",
+   "original": 0,
+   "positions": [],
+   "steps": [
+    {
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {
+      "Physics_Output_General.time_minutes": [
+       24,
+       25
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_TRAXX_E186.display1_dot",
+   "controlId": "traxx_chasis/Chassis/INTERIOR/traxx_kabina_A/sciany/wyswietlacz/ekran_lewy/dot/dot",
+   "type": "PhysicsInteractionButtonToggle",
+   "kind": "button",
+   "original": 0,
+   "positions": [],
+   "steps": [
+    {
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {}
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_TRAXX_E186.display1_F1",
+   "controlId": "traxx_chasis/Chassis/INTERIOR/traxx_kabina_A/sciany/wyswietlacz/ekran_lewy/F1/F1",
+   "type": "PhysicsInteractionButtonToggle",
+   "kind": "button",
+   "original": 0,
+   "positions": [],
+   "steps": [
+    {
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {}
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_TRAXX_E186.display1_F2",
+   "controlId": "traxx_chasis/Chassis/INTERIOR/traxx_kabina_A/sciany/wyswietlacz/ekran_lewy/F2/F2",
+   "type": "PhysicsInteractionButtonToggle",
+   "kind": "button",
+   "original": 0,
+   "positions": [],
+   "steps": [
+    {
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {}
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_TRAXX_E186.display1_F3",
+   "controlId": "traxx_chasis/Chassis/INTERIOR/traxx_kabina_A/sciany/wyswietlacz/ekran_lewy/F3/F3",
+   "type": "PhysicsInteractionButtonToggle",
+   "kind": "button",
+   "original": 0,
+   "positions": [],
+   "steps": [
+    {
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {}
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_TRAXX_E186.display1_F4",
+   "controlId": "traxx_chasis/Chassis/INTERIOR/traxx_kabina_A/sciany/wyswietlacz/ekran_lewy/F4/F4",
+   "type": "PhysicsInteractionButtonToggle",
+   "kind": "button",
+   "original": 0,
+   "positions": [],
+   "steps": [
+    {
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {}
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_TRAXX_E186.display1_F5",
+   "controlId": "traxx_chasis/Chassis/INTERIOR/traxx_kabina_A/sciany/wyswietlacz/ekran_lewy/F5/F5",
+   "type": "PhysicsInteractionButtonToggle",
+   "kind": "button",
+   "original": 0,
+   "positions": [],
+   "steps": [
+    {
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {}
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_TRAXX_E186.display1_F6",
+   "controlId": "traxx_chasis/Chassis/INTERIOR/traxx_kabina_A/sciany/wyswietlacz/ekran_lewy/F6/F6",
+   "type": "PhysicsInteractionButtonToggle",
+   "kind": "button",
+   "original": 0,
+   "positions": [],
+   "steps": [
+    {
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {}
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_TRAXX_E186.display1_F7",
+   "controlId": "traxx_chasis/Chassis/INTERIOR/traxx_kabina_A/sciany/wyswietlacz/ekran_lewy/F7/F7",
+   "type": "PhysicsInteractionButtonToggle",
+   "kind": "button",
+   "original": 0,
+   "positions": [],
+   "steps": [
+    {
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {}
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_TRAXX_E186.display1_F8",
+   "controlId": "traxx_chasis/Chassis/INTERIOR/traxx_kabina_A/sciany/wyswietlacz/ekran_lewy/F8/F8",
+   "type": "PhysicsInteractionButtonToggle",
+   "kind": "button",
+   "original": 0,
+   "positions": [],
+   "steps": [
+    {
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {}
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_TRAXX_E186.display1_F9",
+   "controlId": "traxx_chasis/Chassis/INTERIOR/traxx_kabina_A/sciany/wyswietlacz/ekran_lewy/F9/F9",
+   "type": "PhysicsInteractionButtonToggle",
+   "kind": "button",
+   "original": 0,
+   "positions": [],
+   "steps": [
+    {
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {}
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_TRAXX_E186.display1_F0",
+   "controlId": "traxx_chasis/Chassis/INTERIOR/traxx_kabina_A/sciany/wyswietlacz/ekran_lewy/F0/F0",
+   "type": "PhysicsInteractionButtonToggle",
+   "kind": "button",
+   "original": 0,
+   "positions": [],
+   "steps": [
+    {
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {}
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_General.cablightB",
+   "controlId": "traxx_chasis/Chassis/INTERIOR/traxx_kabina_B/sciany/bt-swiatlo_kabina1/bt-swiatlo_kabina1",
+   "type": "PhysicsInteractionButtonContinous",
+   "kind": "button",
+   "original": 0,
+   "positions": [],
+   "steps": [
+    {
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {
+      "Physics_Output_General.cablightB": [
+       0,
+       1
+      ]
+     }
+    }
+   ]
+  }
+ ]
+}

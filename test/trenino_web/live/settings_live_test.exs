@@ -15,54 +15,6 @@ defmodule TreninoWeb.SettingsLiveTest do
     :ok
   end
 
-  test "save and test connection reports the actual connection outcome", %{conn: conn} do
-    expect(Trenino.Simulator.Connection, :reconfigure, fn -> :ok end)
-    {:ok, view, _} = live(conn, ~p"/settings")
-    assert has_element?(view, "button[type='submit']", "Save and test connection")
-
-    view
-    |> form("#simulator-form", simulator: %{url: "http://localhost:31270", api_key: "test"})
-    |> render_submit()
-
-    assert has_element?(
-             view,
-             "#simulator-connection-result[role='status']",
-             "Settings saved. Testing connection"
-           )
-
-    send(
-      view.pid,
-      {:simulator_status_changed,
-       %Trenino.Simulator.ConnectionState{status: :error, last_error: :invalid_key}}
-    )
-
-    assert has_element?(view, "#simulator-connection-result", "API key was rejected")
-
-    send(
-      view.pid,
-      {:simulator_status_changed, %Trenino.Simulator.ConnectionState{status: :connected}}
-    )
-
-    assert has_element?(view, "#simulator-connection-result", "Connected to Train Sim World")
-  end
-
-  test "non-Windows key instructions explain copying from the simulator PC", %{conn: conn} do
-    stub(Trenino.Settings.Simulator, :windows?, fn -> false end)
-    {:ok, view, _} = live(conn, ~p"/settings")
-    assert has_element?(view, "#api-key-help", "On the Windows PC running Train Sim World")
-    assert has_element?(view, "#api-key-help", "CommAPIKey.txt")
-  end
-
-  test "Windows key instructions describe local automatic discovery", %{conn: conn} do
-    stub(Trenino.Settings.Simulator, :windows?, fn -> true end)
-    stub(Trenino.Settings.Simulator, :read_from_file, fn -> {:ok, "found-key"} end)
-    {:ok, view, _} = live(conn, ~p"/settings")
-    assert has_element?(view, "#api-key-help", "Trenino checks")
-    assert has_element?(view, "#api-key-help", "TrainSimWorld7")
-    assert has_element?(view, "#api-key-help", "TrainSimWorld6")
-    refute has_element?(view, "#api-key-help", "copy the key")
-  end
-
   describe "mount/3" do
     test "renders the Settings page", %{conn: conn} do
       {:ok, _view, html} = live(conn, ~p"/settings")
@@ -111,50 +63,27 @@ defmodule TreninoWeb.SettingsLiveTest do
     end
   end
 
-  describe "simulator section" do
-    test "renders the URL field", %{conn: conn} do
-      {:ok, _} = Settings.set_simulator_url("http://192.168.1.42:31270")
-      {:ok, _view, html} = live(conn, ~p"/settings")
-
-      assert html =~ "Simulator Connection"
-      assert html =~ "http://192.168.1.42:31270"
-    end
-
-    test "saves a new URL on submit", %{conn: conn} do
+  describe "simulators" do
+    test "lists Train Sim World and SimRail with links to their pages", %{conn: conn} do
       {:ok, view, _html} = live(conn, ~p"/settings")
 
-      view
-      |> form("[data-testid='simulator-form']",
-        simulator: %{url: "http://10.0.0.1:31270", api_key: ""}
-      )
-      |> render_submit()
-
-      assert "http://10.0.0.1:31270" = Settings.simulator_url()
+      assert has_element?(view, "#simulator-tsw a[href='/settings/simulators/tsw']")
+      assert has_element?(view, "#simulator-simrail a[href='/settings/simulators/simrail']")
     end
 
-    test "saves an api key override when provided", %{conn: conn} do
+    test "marks the simulator Trenino connects to", %{conn: conn} do
+      {:ok, _} = Settings.set_simulator(:simrail)
       {:ok, view, _html} = live(conn, ~p"/settings")
 
-      view
-      |> form("[data-testid='simulator-form']",
-        simulator: %{url: "http://localhost:31270", api_key: "my-override"}
+      assert has_element?(view, "#simulator-simrail", "In use")
+      assert has_element?(view, "#simulator-tsw", "Not in use")
+
+      send(
+        view.pid,
+        {:simulator_status_changed, %Trenino.Simulator.ConnectionState{status: :connected}}
       )
-      |> render_submit()
 
-      assert {:ok, "my-override"} = Settings.api_key()
-    end
-
-    test "leaves api key untouched when override field is blank", %{conn: conn} do
-      {:ok, _} = Settings.set_api_key("existing")
-      {:ok, view, _html} = live(conn, ~p"/settings")
-
-      view
-      |> form("[data-testid='simulator-form']",
-        simulator: %{url: "http://localhost:31270", api_key: ""}
-      )
-      |> render_submit()
-
-      assert {:ok, "existing"} = Settings.api_key()
+      assert has_element?(view, "#simulator-simrail", "Connected")
     end
   end
 

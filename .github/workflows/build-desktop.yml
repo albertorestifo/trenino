@@ -32,8 +32,14 @@ env:
   SENTRY_ENVIRONMENT: ${{ inputs.channel == 'release' && 'production' || 'nightly' }}
 
 jobs:
+  # TreninoBridge and TreninoInteropGuard, which the SimRail setup installs into the game.
+  simrail-mods:
+    name: SimRail mods
+    uses: ./.github/workflows/simrail-mods.yml
+
   build:
     name: Build (${{ matrix.target }})
+    needs: [simrail-mods]
     # SENTRY_DSN is stored as a secret of the Release environment, not the repository.
     environment: Release
     runs-on: ${{ matrix.os }}
@@ -199,6 +205,12 @@ jobs:
         run: |
           New-Item -ItemType Directory -Force tauri/src-tauri/resources | Out-Null
           Invoke-WebRequest -UseBasicParsing -Uri https://aka.ms/vs/17/release/vc_redist.x64.exe -OutFile tauri/src-tauri/resources/vc_redist.x64.exe
+
+      - name: Stage SimRail mods
+        uses: actions/download-artifact@v7
+        with:
+          name: simrail-mods
+          path: tauri/src-tauri/resources/simrail
 
       - name: Create placeholder for Windows-only resources
         if: runner.os == 'Linux'

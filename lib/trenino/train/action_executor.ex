@@ -13,9 +13,7 @@ defmodule Trenino.Train.ActionExecutor do
   require Logger
 
   alias Trenino.Keyboard
-  alias Trenino.Simulator.Client, as: SimulatorClient
-  alias Trenino.Simulator.Connection, as: SimulatorConnection
-  alias Trenino.Simulator.ConnectionState
+  alias Trenino.Simulator
   alias Trenino.Train.Action
 
   @type result :: :ok | {:error, term()}
@@ -121,10 +119,10 @@ defmodule Trenino.Train.ActionExecutor do
   end
 
   defp set_value(endpoint, value) when is_binary(endpoint) and is_number(value) do
-    with {:ok, client} <- simulator_client(),
-         {:ok, _response} <- SimulatorClient.set(client, endpoint, value) do
-      :ok
-    else
+    case Simulator.set(endpoint, value) do
+      :ok ->
+        :ok
+
       {:error, reason} = error ->
         Logger.warning("[ActionExecutor] Failed to set #{endpoint}=#{value}: #{inspect(reason)}")
         error
@@ -134,12 +132,5 @@ defmodule Trenino.Train.ActionExecutor do
   defp set_value(endpoint, value) do
     Logger.warning("[ActionExecutor] Skipping invalid command #{inspect({endpoint, value})}")
     {:error, :invalid_command}
-  end
-
-  defp simulator_client do
-    case SimulatorConnection.get_status() do
-      %ConnectionState{status: :connected, client: client} when client != nil -> {:ok, client}
-      _ -> {:error, :not_connected}
-    end
   end
 end

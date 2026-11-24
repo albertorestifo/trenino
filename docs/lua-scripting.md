@@ -35,7 +35,7 @@ When `on_change` is called, it receives an `event` table with:
 |-------|------|-------------|
 | `event.source` | string | What triggered the script (see below) |
 | `event.value` | number/string/nil | Current value of the trigger endpoint |
-| `event.data` | table/nil | Full data from the subscription response |
+| `event.data` | table/nil | All values, when the trigger endpoint returns several (e.g. a function with several outputs); otherwise nil |
 
 ### Event Sources
 

@@ -13,7 +13,8 @@ defmodule Trenino.Simulator.ConnectionTest do
   @api_key "test-api-key"
 
   setup do
-    # Stub Settings to return a valid URL and API key
+    # Stub Settings to choose TSW with a valid URL and API key
+    stub(Settings, :simulator, fn -> :tsw end)
     stub(Settings, :simulator_url, fn -> @url end)
     stub(Settings, :api_key, fn -> {:ok, @api_key} end)
 

@@ -1,6 +1,7 @@
 defmodule TreninoWeb.SettingsLive do
   @moduledoc """
-  Settings page. Exposes the error reporting preference and simulator connection settings.
+  Settings page: error reporting, beta features and the list of simulators,
+  each with its own connection page (`TreninoWeb.SimulatorSettingsLive`).
   """
 
   use TreninoWeb, :live_view
@@ -8,7 +9,6 @@ defmodule TreninoWeb.SettingsLive do
   alias Trenino.Beta
   alias Trenino.Serial.Connection
   alias Trenino.Settings
-  alias Trenino.Settings.Simulator, as: SimulatorSettings
   alias Trenino.Simulator.Connection, as: SimulatorConnection
 
   @impl true
@@ -19,32 +19,8 @@ defmodule TreninoWeb.SettingsLive do
      |> assign(:error_reporting_enabled, Settings.error_reporting?())
      |> assign(:beta_configurable, Beta.configurable?())
      |> assign(:beta_features_enabled, Settings.beta_features?())
-     |> assign(:simulator_url, Settings.simulator_url())
-     |> assign(:api_key_status, api_key_status())
-     |> assign(:connection_result, nil)
-     |> assign(:connection_test_ref, nil)
-     |> assign(:url_error, nil)}
-  end
-
-  defp api_key_status do
-    if SimulatorSettings.windows?() do
-      case SimulatorSettings.read_from_file() do
-        {:ok, _key} -> :found_in_file
-        {:error, _} -> :missing
-      end
-    else
-      :unsupported_platform
-    end
-  end
-
-  defp url_error(""), do: "URL is required"
-
-  defp url_error(url) do
-    if String.starts_with?(url, ["http://", "https://"]) do
-      nil
-    else
-      "URL must start with http:// or https://"
-    end
+     |> assign(:simrail_onboarding_enabled, Settings.beta_feature?(:simrail_onboarding))
+     |> assign(:simulator, Settings.simulator())}
   end
 
   # Nav events (mirror other LiveViews)
@@ -83,45 +59,36 @@ defmodule TreninoWeb.SettingsLive do
     {:noreply, assign(socket, :error_reporting_enabled, new_value == :enabled)}
   end
 
+  # Beta assigns come from NavHook on mount; refresh them so the page reflects
+  # the toggles right away.
   @impl true
   def handle_event("toggle_beta_features", _params, socket) do
     new_value = if socket.assigns.beta_features_enabled, do: :disabled, else: :enabled
     {:ok, _} = Settings.set_beta_features(new_value)
-    {:noreply, assign(socket, :beta_features_enabled, new_value == :enabled)}
+
+    {:noreply,
+     socket
+     |> assign(:beta_features_enabled, new_value == :enabled)
+     |> refresh_beta_assigns()}
   end
 
   @impl true
-  def handle_event("validate_simulator", %{"simulator" => %{"url" => url}}, socket) do
-    {:noreply, assign(socket, :url_error, url_error(url))}
+  def handle_event("toggle_simrail_onboarding", _params, socket) do
+    new_value = if socket.assigns.simrail_onboarding_enabled, do: :disabled, else: :enabled
+    {:ok, _} = Settings.set_beta_feature(:simrail_onboarding, new_value)
+
+    {:noreply,
+     socket
+     |> assign(:simrail_onboarding_enabled, new_value == :enabled)
+     |> refresh_beta_assigns()}
   end
 
-  @impl true
-  def handle_event("save_simulator", %{"simulator" => params}, socket) do
-    %{"url" => url, "api_key" => api_key} = params
-
-    case url_error(url) do
-      nil ->
-        {:ok, _} = Settings.set_simulator_url(url)
-
-        if api_key != "" do
-          {:ok, _} = Settings.set_api_key(api_key)
-        end
-
-        SimulatorConnection.reconfigure()
-        test_ref = make_ref()
-        Process.send_after(self(), {:connection_test_timeout, test_ref}, 15_000)
-
-        {:noreply,
-         socket
-         |> assign(:simulator_url, Settings.simulator_url())
-         |> assign(:api_key_status, api_key_status())
-         |> assign(:url_error, nil)
-         |> assign(:connection_result, "Settings saved. Testing connection…")
-         |> assign(:connection_test_ref, test_ref)}
-
-      error ->
-        {:noreply, assign(socket, :url_error, error)}
-    end
+  defp refresh_beta_assigns(socket) do
+    socket
+    |> assign(:beta_gauges, Beta.enabled?(:gauges))
+    |> assign(:beta_selectors, Beta.enabled?(:selectors))
+    |> assign(:beta_simrail, Beta.enabled?(:simrail))
+    |> assign(:beta_simrail_onboarding, Beta.enabled?(:simrail_onboarding))
   end
 
   # PubSub handlers (mirror other LiveViews)
@@ -132,50 +99,28 @@ defmodule TreninoWeb.SettingsLive do
 
   @impl true
   def handle_info({:simulator_status_changed, status}, socket) do
-    socket = assign(socket, :nav_simulator_status, status)
-
-    if socket.assigns.connection_result do
-      {:noreply,
-       socket
-       |> assign(:connection_result, connection_feedback(status))
-       |> assign(
-         :connection_test_ref,
-         if(status.status == :connecting, do: socket.assigns.connection_test_ref)
-       )}
-    else
-      {:noreply, socket}
-    end
-  end
-
-  def handle_info(
-        {:connection_test_timeout, ref},
-        %{assigns: %{connection_test_ref: ref}} = socket
-      ) do
     {:noreply,
      socket
-     |> assign(:connection_test_ref, nil)
-     |> assign(
-       :connection_result,
-       "Settings saved. No connection result received. Check that Train Sim World is running with its API enabled, then try again."
-     )}
+     |> assign(:nav_simulator_status, status)
+     |> assign(:simulator, Settings.simulator())}
   end
 
   @impl true
   def handle_info(_msg, socket), do: {:noreply, socket}
 
-  defp connection_feedback(%{status: :connected}), do: "Connected to Train Sim World."
-  defp connection_feedback(%{status: :connecting}), do: "Settings saved. Testing connection…"
+  # With the SimRail beta off Trenino offers only Train Sim World.
+  defp simulators(true = _beta_simrail) do
+    simulators(false) ++ [%{id: :simrail, name: "SimRail", beta: true}]
+  end
 
-  defp connection_feedback(%{status: :error, last_error: :invalid_key}),
-    do:
-      "Settings saved. The API key was rejected. Copy the key from Train Sim World and try again."
+  defp simulators(false = _beta_simrail), do: [%{id: :tsw, name: "Train Sim World", beta: false}]
 
-  defp connection_feedback(%{status: :needs_config}),
-    do: "Settings saved. Add an API key from Train Sim World, then test the connection again."
+  defp active_simulator(simulator, beta_simrail), do: if(beta_simrail, do: simulator, else: :tsw)
 
-  defp connection_feedback(_status),
-    do:
-      "Settings saved. Could not connect to Train Sim World. Check the URL, start the game with its API enabled, and try again."
+  defp status_label(%{status: :connected}), do: {:ok, "Connected"}
+  defp status_label(%{status: :connecting}), do: {:busy, "Connecting"}
+  defp status_label(%{status: :error}), do: {:error, "Failed"}
+  defp status_label(_status), do: {:warn, "Not connected"}
 
   @impl true
   def render(assigns) do
@@ -223,7 +168,8 @@ defmodule TreninoWeb.SettingsLive do
               <div class="font-medium">Enable beta features</div>
               <div class="text-sm text-muted mt-1">
                 Try features that are still being tested: X27 gauges such as speedometers
-                (controller firmware 3.3.0 or newer) and selectors that use a potentiometer as a rotary switch. They may change or have rough edges.
+                (controller firmware 3.3.0 or newer), selectors that use a potentiometer as a rotary switch,
+                and SimRail through the TreninoBridge mod. They may change or have rough edges.
               </div>
             </div>
             <input
@@ -234,6 +180,26 @@ defmodule TreninoWeb.SettingsLive do
               checked={@beta_features_enabled}
             />
           </label>
+          <label
+            :if={@beta_configurable and @beta_features_enabled}
+            id="simrail-onboarding-option"
+            class="flex items-start justify-between gap-6 cursor-pointer mt-6 pl-4 border-l-2 border-base-300"
+          >
+            <div>
+              <div class="font-medium">SimRail setup assistant</div>
+              <div class="text-sm text-muted mt-1">
+                A guided setup that installs the TreninoBridge mod into SimRail and connects
+                to it. Earlier in testing than the other beta features.
+              </div>
+            </div>
+            <input
+              type="checkbox"
+              class="toggle toggle-primary mt-0.5 shrink-0"
+              data-testid="simrail-onboarding-toggle"
+              phx-click="toggle_simrail_onboarding"
+              checked={@simrail_onboarding_enabled}
+            />
+          </label>
           <p :if={!@beta_configurable} class="text-sm text-muted">
             Beta features are always on in this build.
           </p>
@@ -241,99 +207,38 @@ defmodule TreninoWeb.SettingsLive do
 
         <div class="border-t border-base-300 my-10"></div>
 
-        <section>
-          <h2 class="text-xl font-semibold mb-5">Simulator Connection</h2>
-          <.form
-            id="simulator-form"
-            for={%{}}
-            as={:simulator}
-            phx-submit="save_simulator"
-            phx-change="validate_simulator"
-            data-testid="simulator-form"
-          >
-            <div class="mb-5">
-              <label class="label pb-1.5" for="simulator_url">
-                <span class="label-text">URL</span>
-              </label>
-              <input
-                id="simulator_url"
-                type="text"
-                name="simulator[url]"
-                value={@simulator_url}
-                placeholder="http://192.168.1.x:31270"
-                class={[
-                  "input input-bordered w-full font-mono",
-                  @url_error && "input-error"
-                ]}
-              />
-              <div :if={@url_error} class="flex items-center gap-1.5 mt-1.5 text-xs text-error">
-                <.icon name="hero-exclamation-circle" class="w-3.5 h-3.5 shrink-0" />
-                {@url_error}
-              </div>
-            </div>
-
-            <div class="mb-6">
-              <label class="label pb-1.5" for="simulator_api_key">
-                <span class="label-text">API Key</span>
-              </label>
-              <%= case @api_key_status do %>
-                <% :found_in_file -> %>
-                  <div class="flex items-center gap-2 px-3 py-2 mb-3 text-sm bg-base-200 rounded border border-base-300">
-                    <.icon name="hero-check-circle" class="w-4 h-4 text-success shrink-0" />
-                    <span>
-                      Found in your Train Sim World folder, updated automatically.
-                    </span>
+        <section id="simulators">
+          <h2 class="text-xl font-semibold mb-2">Simulator Connection</h2>
+          <p class="text-sm text-muted mb-5">
+            Trenino connects to one simulator at a time. Open a simulator to change how
+            Trenino reaches it.
+          </p>
+          <ul class="divide-y divide-base-300 border border-base-300 rounded">
+            <li :for={sim <- simulators(@beta_simrail)} id={"simulator-#{sim.id}"}>
+              <.link
+                navigate={~p"/settings/simulators/#{sim.id}"}
+                class="flex items-center justify-between gap-4 px-4 py-3 hover:bg-base-200 transition-colors"
+              >
+                <div>
+                  <div class="font-medium flex items-center gap-2">
+                    {sim.name}
+                    <span :if={sim.beta} class="badge badge-sm">Beta</span>
                   </div>
-                <% :missing -> %>
-                  <div class="alert alert-soft alert-warning px-3 py-2 mb-3 text-sm">
-                    <.icon name="hero-exclamation-triangle" class="w-4 h-4 shrink-0" />
-                    <span>
-                      Not found in your Train Sim World folder. Enter a key below.
-                    </span>
+                  <div class="text-xs text-muted mt-1">
+                    <%= if active_simulator(@simulator, @beta_simrail) == sim.id do %>
+                      <.status_indicator
+                        kind={elem(status_label(@nav_simulator_status), 0)}
+                        label={"In use · " <> elem(status_label(@nav_simulator_status), 1)}
+                      />
+                    <% else %>
+                      Not in use
+                    <% end %>
                   </div>
-                <% :unsupported_platform -> %>
-                  <div class="alert alert-soft alert-info px-3 py-2 mb-3 text-sm">
-                    <.icon name="hero-information-circle" class="w-4 h-4 shrink-0" />
-                    <span>Auto-detection is only available on Windows. Enter a key below.</span>
-                  </div>
-              <% end %>
-              <input
-                id="simulator_api_key"
-                type="password"
-                name="simulator[api_key]"
-                placeholder="Leave blank to keep current value"
-                class="input input-bordered w-full font-mono"
-              />
-              <div id="api-key-help" class="mt-1.5 text-xs text-muted">
-                <%= if @api_key_status == :unsupported_platform do %>
-                  On the Windows PC running Train Sim World, copy the key from
-                  <span class="font-mono break-all">Documents\My Games\TrainSimWorld7\Saved\Config\CommAPIKey.txt</span>
-                  (or <span class="font-mono">TrainSimWorld6</span>) and paste it here.
-                <% else %>
-                  Trenino checks <span class="font-mono">TrainSimWorld7</span>
-                  first, then <span class="font-mono">TrainSimWorld6</span>, under
-                  <span class="font-mono break-all">Documents\My Games</span>
-                  for <span class="font-mono break-all">Saved\Config\CommAPIKey.txt</span>.
-                  A key entered here overrides the detected key.
-                <% end %>
-              </div>
-            </div>
-
-            <p
-              :if={@connection_result}
-              id="simulator-connection-result"
-              role="status"
-              aria-live="polite"
-              class="mb-4 text-sm"
-            >
-              {@connection_result}
-            </p>
-            <div class="flex justify-end">
-              <button type="submit" class="btn btn-primary" phx-disable-with="Saving and testing...">
-                Save and test connection
-              </button>
-            </div>
-          </.form>
+                </div>
+                <.icon name="hero-chevron-right" class="w-4 h-4 text-muted shrink-0" />
+              </.link>
+            </li>
+          </ul>
         </section>
       </div>
     </main>

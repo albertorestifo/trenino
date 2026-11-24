@@ -1,0 +1,43 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Trenino bridge for SimRail: a MelonLoader mod that exposes the player train's
+    physics IO (Physics_Input_General, Physics_Output_General, ...) over a local HTTP API.
+
+    Build:  dotnet build -c Release -p:SimRailDir="D:\SteamLibrary\steamapps\common\SimRail"
+    Output is copied to <SimRailDir>\Mods when DeployToGame=true (default).
+    The game's own types are looked up at runtime (Game.cs), so the build needs no assemblies
+    generated from SimRail. Without a MelonLoader install (CI), MelonLoader and Il2CppInterop
+    come from NuGet (see ../nuget.config).
+  -->
+
+  <PropertyGroup>
+    <TargetFramework>net6.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <AssemblyName>TreninoBridge</AssemblyName>
+    <RootNamespace>TreninoBridge</RootNamespace>
+    <SimRailDir Condition="'$(SimRailDir)' == ''">D:\SteamLibrary\steamapps\common\SimRail</SimRailDir>
+    <DeployToGame Condition="'$(DeployToGame)' == ''">true</DeployToGame>
+    <MelonLoaderDir>$(SimRailDir)\MelonLoader\net6</MelonLoaderDir>
+    <!-- Without a MelonLoader install, compile against the same MelonLoader release from NuGet. -->
+    <UseMelonLoaderPackage Condition="!Exists('$(MelonLoaderDir)\MelonLoader.dll')">true</UseMelonLoaderPackage>
+    <CopyLocalLockFileAssemblies>false</CopyLocalLockFileAssemblies>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+  </PropertyGroup>
+
+  <ItemGroup Condition="'$(UseMelonLoaderPackage)' != 'true'">
+    <Reference Include="MelonLoader" HintPath="$(MelonLoaderDir)\MelonLoader.dll" Private="false" />
+    <Reference Include="Il2CppInterop.Runtime" HintPath="$(MelonLoaderDir)\Il2CppInterop.Runtime.dll" Private="false" />
+    <Reference Include="Il2CppInterop.Common" HintPath="$(MelonLoaderDir)\Il2CppInterop.Common.dll" Private="false" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(UseMelonLoaderPackage)' == 'true'">
+    <PackageReference Include="LavaGang.MelonLoader" Version="0.7.3" ExcludeAssets="runtime" PrivateAssets="all" />
+  </ItemGroup>
+
+  <Target Name="DeployToSimRail" AfterTargets="Build" Condition="'$(DeployToGame)' == 'true'">
+    <Copy SourceFiles="$(TargetPath)" DestinationFolder="$(SimRailDir)\Mods" />
+  </Target>
+
+</Project>

@@ -299,7 +299,7 @@ defmodule TreninoWeb.NavComponents do
   end
 
   @doc """
-  Inline notice for pages that need Train Sim World, shown while it is not connected
+  Inline notice for pages that need the simulator, shown while it is not connected
   (hidden while a connection attempt is still running).
 
   The nav connections dropdown carries the simulator status everywhere; only pages whose
@@ -321,12 +321,13 @@ defmodule TreninoWeb.NavComponents do
     >
       <.icon name="hero-exclamation-triangle" class="w-5 h-5" />
       <span>{@message} {@sim.hint}</span>
-      <.simulator_action action={@sim.action} />
+      <.simulator_action action={@sim.action} simulator={@sim.id} />
     </div>
     """
   end
 
   attr :action, :atom, required: true
+  attr :simulator, :atom, required: true, doc: "the simulator whose settings page to open"
 
   defp simulator_action(assigns) do
     ~H"""
@@ -337,7 +338,11 @@ defmodule TreninoWeb.NavComponents do
     >
       <.icon name="hero-arrow-path" class="w-4 h-4" /> Retry
     </button>
-    <.link :if={@action == :settings} navigate={~p"/settings"} class="btn btn-ghost btn-xs">
+    <.link
+      :if={@action == :settings}
+      navigate={~p"/settings/simulators/#{@simulator}"}
+      class="btn btn-ghost btn-xs"
+    >
       Open Settings
     </.link>
     """
@@ -406,8 +411,8 @@ defmodule TreninoWeb.NavComponents do
     >
       <section id="simulator-status-row" class="px-4 py-3 border-b border-base-300">
         <div class="flex items-center justify-between gap-2">
-          <span class="text-sm font-medium">Train Sim World</span>
-          <.simulator_action action={@sim.action} />
+          <span class="text-sm font-medium">{@sim.name}</span>
+          <.simulator_action action={@sim.action} simulator={@sim.id} />
         </div>
         <.status_indicator kind={@sim.kind} label={@sim.label} class="mt-1 text-xs" />
         <p :if={@sim.hint} class="mt-1 text-xs text-muted">{@sim.hint}</p>
@@ -537,14 +542,22 @@ defmodule TreninoWeb.NavComponents do
     Enum.count(devices, &(&1.status == :connected))
   end
 
-  # Status, next step and recovery action for the simulator row and notice.
+  # Name, status, next step and recovery action for the simulator row and notice.
   @spec simulator_state(map()) :: %{
+          id: atom(),
+          name: String.t(),
           kind: atom(),
           label: String.t(),
           hint: String.t() | nil,
           action: :retry | :settings | nil
         }
   defp simulator_state(simulator_status) do
+    simulator = simulator_id(simulator_status)
+    state = simulator_status_state(simulator, simulator_status)
+    Map.merge(state, %{id: simulator, name: simulator_name(simulator)})
+  end
+
+  defp simulator_status_state(simulator, simulator_status) do
     case {simulator_status.status, Map.get(simulator_status, :last_error)} do
       {:connected, _} ->
         %{kind: :ok, label: "Connected", hint: nil, action: nil}
@@ -556,33 +569,45 @@ defmodule TreninoWeb.NavComponents do
         %{
           kind: :warn,
           label: "Needs attention",
-          hint: "Add your Train Sim World API key in Settings.",
+          hint: needs_config_hint(simulator),
           action: :settings
         }
 
       {:error, :invalid_key} ->
-        %{
-          kind: :error,
-          label: "Failed",
-          hint: "The API key was rejected. Check it in Settings.",
-          action: :settings
-        }
+        %{kind: :error, label: "Failed", hint: rejected_hint(simulator), action: :settings}
 
       {:error, _} ->
-        %{
-          kind: :error,
-          label: "Failed",
-          hint: "Train Sim World did not respond. Start the game, then retry.",
-          action: :retry
-        }
+        %{kind: :error, label: "Failed", hint: no_response_hint(simulator), action: :retry}
 
       {_disconnected, _} ->
         %{
           kind: :warn,
           label: "Needs attention",
-          hint: "Start Train Sim World, then retry.",
+          hint: "Start #{simulator_name(simulator)}, then retry.",
           action: :retry
         }
     end
   end
+
+  # The simulator Trenino connects to: the connection carries the chosen backend.
+  defp simulator_id(simulator_status) do
+    case Map.get(simulator_status, :backend) do
+      backend when is_atom(backend) and not is_nil(backend) -> backend.id()
+      _ -> :tsw
+    end
+  end
+
+  defp simulator_name(:simrail), do: "SimRail"
+  defp simulator_name(_tsw), do: "Train Sim World"
+
+  defp needs_config_hint(:simrail), do: "Set the SimRail bridge URL in Settings."
+  defp needs_config_hint(_tsw), do: "Add your Train Sim World API key in Settings."
+
+  defp rejected_hint(:simrail), do: "The bridge token was rejected. Check it in Settings."
+  defp rejected_hint(_tsw), do: "The API key was rejected. Check it in Settings."
+
+  defp no_response_hint(:simrail),
+    do: "SimRail did not respond. Start it with the TreninoBridge mod, then retry."
+
+  defp no_response_hint(_tsw), do: "Train Sim World did not respond. Start the game, then retry."
 end

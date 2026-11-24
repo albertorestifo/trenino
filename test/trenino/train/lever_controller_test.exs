@@ -426,6 +426,40 @@ defmodule Trenino.Train.LeverControllerTest do
     end
   end
 
+  describe "SimRail levers" do
+    @simrail_endpoint "Physics_Input_EN57.maincontroller_a"
+
+    setup do
+      test_pid = self()
+      Mimic.stub(Trenino.Simulator, :current, fn -> :simrail end)
+      Mimic.stub(Trenino.Simulator, :connected, fn -> {:ok, SimRailBackend, :handle} end)
+
+      Mimic.stub(Trenino.Simulator, :set, fn path, value ->
+        send(test_pid, {:simulator_set, path, value})
+        :ok
+      end)
+
+      :ok
+    end
+
+    setup context, do: bind_throttle(Map.put(context, :endpoint, @simrail_endpoint))
+
+    test "writes the configured path", context do
+      send_input(context, 500)
+      assert_receive {:simulator_set, @simrail_endpoint, 0.5}, 1_000
+    end
+
+    test "a sweep of the configured path holds the lever", context do
+      sweep = start_sweep(@simrail_endpoint)
+
+      send_input(context, 500)
+      LeverController.get_state()
+      refute_receive {:simulator_set, _, _}, 100
+
+      finish_sweep(sweep)
+    end
+  end
+
   describe "rebinding" do
     setup :bind_throttle
 
@@ -504,7 +538,7 @@ defmodule Trenino.Train.LeverControllerTest do
     end
   end
 
-  defp bind_throttle(%{test: test}) do
+  defp bind_throttle(%{test: test} = context) do
     {:ok, train} =
       TrainContext.create_train(%{
         name: "Latency Train",
@@ -517,7 +551,7 @@ defmodule Trenino.Train.LeverControllerTest do
       TrainContext.create_lever_config(element.id, %{
         min_endpoint: "CurrentDrivableActor/Throttle(Lever).Min",
         max_endpoint: "CurrentDrivableActor/Throttle(Lever).Max",
-        value_endpoint: @endpoint,
+        value_endpoint: Map.get(context, :endpoint, @endpoint),
         lever_type: :continuous
       })
 

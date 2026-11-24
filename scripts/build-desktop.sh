@@ -85,7 +85,25 @@ else
 fi
 echo "Copied keystroke to: $BINARIES_DIR/keystroke-$PLATFORM"
 
-# Step 6: Build Tauri application
+# Step 6: Stage the SimRail mods the app installs into the game. CI builds them in
+# .github/workflows/simrail-mods.yml; point SIMRAIL_MODS_DIR at that artifact (or at
+# your own build with Mods/ and Plugins/) to bundle them. Without it the bundle gets
+# empty placeholders, and the SimRail setup reports the mods as missing.
+SIMRAIL_RESOURCES="$TAURI_DIR/resources/simrail"
+if [ -n "${SIMRAIL_MODS_DIR:-}" ]; then
+    echo "==> Staging SimRail mods from $SIMRAIL_MODS_DIR..."
+    mkdir -p "$SIMRAIL_RESOURCES"
+    cp -R "$SIMRAIL_MODS_DIR"/. "$SIMRAIL_RESOURCES"/
+fi
+mkdir -p "$SIMRAIL_RESOURCES/Mods" "$SIMRAIL_RESOURCES/Plugins"
+for placeholder in manifest.json Mods/TreninoBridge.dll Plugins/TreninoInteropGuard.dll; do
+    if [ ! -e "$SIMRAIL_RESOURCES/$placeholder" ]; then
+        echo "Warning: $placeholder not staged; bundling an empty placeholder"
+        : > "$SIMRAIL_RESOURCES/$placeholder"
+    fi
+done
+
+# Step 7: Build Tauri application
 echo "==> Building Tauri application..."
 # Prefer the CLI pinned in tauri/package-lock.json (npm ci in tauri/), and
 # fall back to a globally installed `cargo tauri`.

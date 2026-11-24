@@ -6,6 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Added
+
+- SimRail (beta): connect to SimRail through the TreninoBridge mod, with its URL and an
+  optional token for when SimRail runs on another computer.
+- Settings now lists each simulator with its own connection page.
+- SimRail setup assistant (beta, with its own toggle under beta features): finds SimRail,
+  checks MelonLoader and its settings, installs the TreninoBridge mod that now ships with
+  the desktop app, and connects.
+
 ## [0.9.2] - 2026-11-24
 
 ### Removed

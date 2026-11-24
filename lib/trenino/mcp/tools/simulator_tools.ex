@@ -1,11 +1,12 @@
 defmodule Trenino.MCP.Tools.SimulatorTools do
   @moduledoc """
-  MCP tools for browsing and interacting with the Train Sim World simulator API.
+  MCP tools for reading and writing simulator values. Browsing the API tree
+  (`list_simulator_endpoints`) is Train Sim World only.
   """
 
+  alias Trenino.Simulator
+  alias Trenino.Simulator.Backend
   alias Trenino.Simulator.Client, as: SimulatorClient
-  alias Trenino.Simulator.Connection, as: SimulatorConnection
-  alias Trenino.Simulator.ConnectionState
 
   def tools do
     [
@@ -77,40 +78,42 @@ defmodule Trenino.MCP.Tools.SimulatorTools do
   def execute("list_simulator_endpoints", args) do
     path = Map.get(args, "path")
 
-    with_client(fn client ->
-      case SimulatorClient.list(client, path) do
-        {:ok, data} -> {:ok, data}
-        {:error, reason} -> {:error, "Simulator error: #{inspect(reason)}"}
-      end
-    end)
+    case Simulator.connected() do
+      {:ok, Backend.TSW, client} ->
+        case SimulatorClient.list(client, path) do
+          {:ok, data} -> {:ok, data}
+          {:error, reason} -> {:error, "Simulator error: #{inspect(reason)}"}
+        end
+
+      {:ok, backend, _handle} ->
+        {:error,
+         "Browsing endpoints is only available for Train Sim World " <>
+           "(connected simulator: #{backend.id()})."}
+
+      {:error, :not_connected} ->
+        not_connected()
+    end
   end
 
   def execute("get_simulator_value", %{"path" => path}) do
-    with_client(fn client ->
-      case SimulatorClient.get(client, path) do
-        {:ok, data} -> {:ok, data}
-        {:error, reason} -> {:error, "Simulator error: #{inspect(reason)}"}
-      end
-    end)
+    case Simulator.get(path) do
+      {:ok, value} -> {:ok, %{"path" => path, "value" => value}}
+      error -> simulator_error(error)
+    end
   end
 
   def execute("set_simulator_value", %{"path" => path, "value" => value}) do
-    with_client(fn client ->
-      case SimulatorClient.set(client, path, value) do
-        {:ok, data} -> {:ok, data}
-        {:error, reason} -> {:error, "Simulator error: #{inspect(reason)}"}
-      end
-    end)
+    case Simulator.set(path, value) do
+      :ok -> {:ok, %{"path" => path, "value" => value}}
+      error -> simulator_error(error)
+    end
   end
 
-  defp with_client(fun) do
-    case SimulatorConnection.get_status() do
-      %ConnectionState{status: :connected, client: client} when client != nil ->
-        fun.(client)
+  defp simulator_error({:error, :not_connected}), do: not_connected()
+  defp simulator_error({:error, reason}), do: {:error, "Simulator error: #{inspect(reason)}"}
 
-      _ ->
-        {:error,
-         "Simulator not connected. Ensure Train Sim World is running with External Interface enabled."}
-    end
+  defp not_connected do
+    {:error,
+     "Simulator not connected. Ensure the simulator is running and Trenino is connected to it."}
   end
 end

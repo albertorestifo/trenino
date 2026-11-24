@@ -27,7 +27,21 @@ defmodule Trenino.BetaTest do
       refute Enum.any?(Beta.features(), &Beta.enabled?/1)
 
       {:ok, _} = Settings.set_beta_features(:enabled)
-      assert Enum.all?(Beta.features(), &Beta.enabled?/1)
+      assert Enum.all?(Beta.features() -- Beta.opt_in_features(), &Beta.enabled?/1)
+      refute Enum.any?(Beta.opt_in_features(), &Beta.enabled?/1)
+    end
+
+    test "opt-in features need their own toggle and the beta features toggle" do
+      Application.put_env(:trenino, :beta_features, :setting)
+
+      {:ok, _} = Settings.set_beta_feature(:simrail_onboarding, :enabled)
+      refute Beta.enabled?(:simrail_onboarding)
+
+      {:ok, _} = Settings.set_beta_features(:enabled)
+      assert Beta.enabled?(:simrail_onboarding)
+
+      {:ok, _} = Settings.set_beta_feature(:simrail_onboarding, :disabled)
+      refute Beta.enabled?(:simrail_onboarding)
     end
   end
 

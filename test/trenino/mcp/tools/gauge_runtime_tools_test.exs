@@ -2,7 +2,8 @@ defmodule Trenino.MCP.Tools.GaugeRuntimeToolsTest do
   use Trenino.DataCase, async: false
   alias Trenino.{Hardware, Train}
   alias Trenino.MCP.Tools.GaugeRuntimeTools
-  alias Trenino.Simulator.{Client, ConnectionState}
+  alias Trenino.Simulator
+  alias Trenino.Simulator.{Client, ConnectionState, Watcher}
   alias Trenino.Train.GaugeController
   setup :set_mimic_global
 
@@ -13,12 +14,7 @@ defmodule Trenino.MCP.Tools.GaugeRuntimeToolsTest do
       %ConnectionState{status: :connected, client: client}
     end)
 
-    Mimic.stub(Client, :subscribe, fn _, _, _ -> {:ok, %{}} end)
-    Mimic.stub(Client, :unsubscribe, fn _, _ -> {:ok, %{}} end)
-
-    Mimic.stub(Client, :get_subscription, fn _, _ ->
-      {:error, {:http_error, 500, %{"x" => 1}}}
-    end)
+    Mimic.stub(Simulator, :read, fn paths -> {:ok, Map.new(paths, &{&1, 50})} end)
 
     Mimic.stub(Hardware, :gauge_link, fn _ -> {:error, :device_not_connected} end)
 
@@ -47,9 +43,11 @@ defmodule Trenino.MCP.Tools.GaugeRuntimeToolsTest do
   end
 
   test "result is JSON-encodable even with failures", %{train: train, binding: b} do
+    start_supervised!(Watcher)
+    GaugeController.subscribe(train.id)
     pid = start_supervised!(GaugeController)
     send(pid, {:train_changed, train})
-    Process.sleep(150)
+    assert_receive {:gauge_binding_updated, _, %{failure: :device_not_connected}}, 1000
 
     assert {:ok, result} =
              GaugeRuntimeTools.execute("get_gauge_runtime", %{"train_id" => train.id})

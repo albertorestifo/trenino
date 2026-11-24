@@ -4,13 +4,9 @@ defmodule Trenino.Train.ScriptRunner do
 
   This GenServer:
   - Subscribes to train detection events to know which train is active
-  - Creates API subscriptions for each script's trigger endpoints
-  - Polls subscription values every 200ms
+  - Watches each script's trigger endpoints through `Trenino.Simulator.Watcher`
   - Detects value changes and calls `on_change(event)` in the script's Lua VM
   - Handles side effects: API calls, output commands, scheduling
-
-  Uses subscription ID range 2000-2999 to avoid conflicts with
-  OutputController (1000-1999) and other subscription users.
   """
 
   use GenServer
@@ -21,15 +17,12 @@ defmodule Trenino.Train.ScriptRunner do
   alias Trenino.Hardware.HT16K33
   alias Trenino.Hardware.I2cModule
   alias Trenino.Hardware.Output
-  alias Trenino.Simulator.Client, as: SimulatorClient
-  alias Trenino.Simulator.Connection, as: SimulatorConnection
-  alias Trenino.Simulator.ConnectionState
+  alias Trenino.Simulator
+  alias Trenino.Simulator.Watcher
   alias Trenino.Train
   alias Trenino.Train.Script
   alias Trenino.Train.ScriptEngine
 
-  @poll_interval_ms 200
-  @subscription_id_base 2000
   @execution_timeout_ms 200
 
   defmodule ScriptState do
@@ -58,9 +51,7 @@ defmodule Trenino.Train.ScriptRunner do
     @type t :: %__MODULE__{
             active_train: Train.Train.t() | nil,
             scripts: %{integer() => ScriptState.t()},
-            subscriptions: %{String.t() => integer()},
             endpoint_to_scripts: %{String.t() => [integer()]},
-            poll_timer: reference() | nil,
             outputs: %{integer() => Output.t()},
             i2c_modules: [I2cModule.t()] | nil
           }
@@ -69,9 +60,7 @@ defmodule Trenino.Train.ScriptRunner do
     # first use and dropped when a configuration is applied or the scripts reload.
     defstruct active_train: nil,
               scripts: %{},
-              subscriptions: %{},
               endpoint_to_scripts: %{},
-              poll_timer: nil,
               outputs: %{},
               i2c_modules: nil
   end
@@ -114,6 +103,7 @@ defmodule Trenino.Train.ScriptRunner do
   def init(:ok) do
     Train.subscribe()
     ConfigurationManager.subscribe_configuration()
+    Watcher.subscribe()
 
     state = %State{}
 
@@ -178,9 +168,19 @@ defmodule Trenino.Train.ScriptRunner do
   def handle_info({:configuration_applied, _port, _device, _config_id}, %State{} = state),
     do: {:noreply, forget_hardware(state)}
 
-  def handle_info(:poll_subscriptions, %State{} = state) do
-    state = poll_and_execute(state)
-    {:noreply, schedule_poll(state)}
+  def handle_info(:simulator_watcher_started, %State{} = state) do
+    Watcher.watch(Map.keys(state.endpoint_to_scripts))
+    {:noreply, state}
+  end
+
+  def handle_info({:simulator_values, values}, %State{} = state) when is_map(values) do
+    state =
+      Enum.reduce(values, state, fn {endpoint, raw}, acc ->
+        {value, data} = event_value(raw)
+        check_and_fire(acc, endpoint, value, data)
+      end)
+
+    {:noreply, state}
   end
 
   def handle_info({:scheduled_run, script_id}, %State{} = state) do
@@ -206,24 +206,22 @@ defmodule Trenino.Train.ScriptRunner do
 
     if Enum.empty?(scripts) do
       Logger.info("[ScriptRunner] No scripts for train #{train.name}")
-      %{state | active_train: train, scripts: %{}, subscriptions: %{}, endpoint_to_scripts: %{}}
+      %{state | active_train: train, scripts: %{}, endpoint_to_scripts: %{}}
     else
       script_states = compile_scripts(scripts)
-      {subscriptions, endpoint_to_scripts} = setup_subscriptions(scripts)
-
-      state = %{
-        state
-        | active_train: train,
-          scripts: script_states,
-          subscriptions: subscriptions,
-          endpoint_to_scripts: endpoint_to_scripts
-      }
+      endpoint_to_scripts = endpoint_to_scripts(scripts)
+      Watcher.watch(Map.keys(endpoint_to_scripts))
 
       Logger.info(
         "[ScriptRunner] Loaded #{map_size(script_states)} scripts for train #{train.name}"
       )
 
-      schedule_poll(state)
+      %{
+        state
+        | active_train: train,
+          scripts: script_states,
+          endpoint_to_scripts: endpoint_to_scripts
+      }
     end
   end
 
@@ -243,96 +241,35 @@ defmodule Trenino.Train.ScriptRunner do
     end)
   end
 
-  defp setup_subscriptions(scripts) do
-    # Collect all unique trigger endpoints and map them to script IDs
-    endpoint_to_scripts =
-      scripts
-      |> Enum.flat_map(fn %Script{} = script ->
-        Enum.map(script.triggers, &{&1, script.id})
-      end)
-      |> Enum.group_by(&elem(&1, 0), &elem(&1, 1))
-
-    # Create simulator subscriptions for each unique endpoint
-    subscriptions =
-      case get_simulator_client() do
-        {:ok, client} ->
-          subscribe_to_endpoints(client, Map.keys(endpoint_to_scripts))
-
-        :error ->
-          Logger.warning("[ScriptRunner] Simulator not connected, cannot set up subscriptions")
-          %{}
-      end
-
-    {subscriptions, endpoint_to_scripts}
-  end
-
-  defp subscribe_to_endpoints(client, endpoints) do
-    endpoints
-    |> Enum.with_index()
-    |> Map.new(fn {endpoint, index} ->
-      sub_id = @subscription_id_base + index
-      subscribe_single(client, endpoint, sub_id)
-      {endpoint, sub_id}
+  # Every unique trigger endpoint, mapped to the scripts it triggers.
+  defp endpoint_to_scripts(scripts) do
+    scripts
+    |> Enum.flat_map(fn %Script{} = script ->
+      Enum.map(script.triggers, &{&1, script.id})
     end)
+    |> Enum.group_by(&elem(&1, 0), &elem(&1, 1))
   end
 
-  defp subscribe_single(client, endpoint, sub_id) do
-    case SimulatorClient.subscribe(client, endpoint, sub_id) do
-      {:ok, _} ->
-        Logger.debug("[ScriptRunner] Subscribed to #{endpoint} (sub_id: #{sub_id})")
-
-      {:error, reason} ->
-        Logger.warning("[ScriptRunner] Failed to subscribe to #{endpoint}: #{inspect(reason)}")
+  # An endpoint returning several values (a map) triggers with the first as `value`
+  # and all of them as `data`.
+  defp event_value(values) when is_map(values) do
+    case Map.values(values) do
+      [value | _] -> {value, values}
+      [] -> {nil, values}
     end
   end
 
-  defp poll_and_execute(%State{subscriptions: subs} = state) when map_size(subs) == 0, do: state
+  defp event_value(value), do: {value, nil}
 
-  defp poll_and_execute(%State{} = state) do
-    case get_simulator_client() do
-      {:ok, client} ->
-        Enum.reduce(state.subscriptions, state, fn {endpoint, sub_id}, acc ->
-          poll_endpoint(client, endpoint, sub_id, acc)
-        end)
-
-      :error ->
-        state
-    end
-  end
-
-  defp poll_endpoint(client, endpoint, sub_id, %State{} = state) do
-    case SimulatorClient.get_subscription(client, sub_id) do
-      {:ok, %{"Entries" => entries}} when is_list(entries) and entries != [] ->
-        value = extract_subscription_value(entries)
-        check_and_fire(state, endpoint, value, entries)
-
-      _ ->
-        state
-    end
-  end
-
-  defp extract_subscription_value(entries) do
-    case entries do
-      [%{"Values" => values} | _] when is_map(values) ->
-        case Map.values(values) do
-          [value | _] -> value
-          _ -> nil
-        end
-
-      _ ->
-        nil
-    end
-  end
-
-  defp check_and_fire(%State{} = state, endpoint, value, entries) do
+  defp check_and_fire(%State{} = state, endpoint, value, data) do
     script_ids = Map.get(state.endpoint_to_scripts, endpoint, [])
 
     Enum.reduce(script_ids, state, fn script_id, acc ->
-      maybe_fire_script(acc, script_id, endpoint, value, entries)
+      maybe_fire_script(acc, script_id, endpoint, value, data)
     end)
   end
 
-  defp maybe_fire_script(%State{} = state, script_id, endpoint, value, entries) do
+  defp maybe_fire_script(%State{} = state, script_id, endpoint, value, data) do
     case Map.get(state.scripts, script_id) do
       nil ->
         state
@@ -344,7 +281,7 @@ defmodule Trenino.Train.ScriptRunner do
         last = Map.get(last_values, endpoint)
 
         if last != value do
-          fire_script(state, script_id, script_state, endpoint, value, entries)
+          fire_script(state, script_id, script_state, endpoint, value, data)
         else
           state
         end
@@ -357,7 +294,7 @@ defmodule Trenino.Train.ScriptRunner do
          %ScriptState{} = script_state,
          endpoint,
          value,
-         entries
+         data
        ) do
     script_state = %{
       script_state
@@ -369,17 +306,10 @@ defmodule Trenino.Train.ScriptRunner do
     event = %{
       "source" => endpoint,
       "value" => value,
-      "data" => build_data(entries)
+      "data" => data
     }
 
     execute_script(state, script_id, script_state, event)
-  end
-
-  defp build_data(entries) do
-    case entries do
-      [%{"Values" => values} | _] -> values
-      _ -> nil
-    end
   end
 
   defp execute_script(%State{} = state, _script_id, %ScriptState{lua: nil}, _event) do
@@ -442,15 +372,9 @@ defmodule Trenino.Train.ScriptRunner do
   end
 
   defp process_effect(_state, _script_id, %ScriptState{} = script_state, {:api_set, path, value}) do
-    case get_simulator_client() do
-      {:ok, client} ->
-        case SimulatorClient.set(client, path, value) do
-          {:ok, _} -> :ok
-          {:error, reason} -> Logger.warning("[ScriptRunner] api.set failed: #{inspect(reason)}")
-        end
-
-      :error ->
-        Logger.warning("[ScriptRunner] Simulator not connected for api.set")
+    case Simulator.set(path, value) do
+      :ok -> :ok
+      {:error, reason} -> Logger.warning("[ScriptRunner] api.set failed: #{inspect(reason)}")
     end
 
     script_state
@@ -521,45 +445,16 @@ defmodule Trenino.Train.ScriptRunner do
     %{script_state | log: log}
   end
 
-  defp schedule_poll(%State{poll_timer: old_timer} = state) do
-    if old_timer, do: Process.cancel_timer(old_timer)
-    timer = Process.send_after(self(), :poll_subscriptions, @poll_interval_ms)
-    %{state | poll_timer: timer}
-  end
-
   defp cleanup(%State{} = state) do
-    # Cancel poll timer
-    if state.poll_timer, do: Process.cancel_timer(state.poll_timer)
-
-    # Cancel all scheduled timers
     Enum.each(state.scripts, fn {_id, %ScriptState{scheduled_timer: timer}} ->
       if timer, do: Process.cancel_timer(timer)
     end)
 
-    # Unsubscribe from simulator
-    case get_simulator_client() do
-      {:ok, client} ->
-        Enum.each(state.subscriptions, fn {_endpoint, sub_id} ->
-          SimulatorClient.unsubscribe(client, sub_id)
-        end)
+    Watcher.unwatch_all()
 
-      :error ->
-        :ok
-    end
-
-    %{state | scripts: %{}, subscriptions: %{}, endpoint_to_scripts: %{}, poll_timer: nil}
+    %{state | scripts: %{}, endpoint_to_scripts: %{}}
     |> forget_hardware()
   end
 
   defp forget_hardware(%State{} = state), do: %{state | outputs: %{}, i2c_modules: nil}
-
-  defp get_simulator_client do
-    case SimulatorConnection.get_status() do
-      %ConnectionState{status: :connected, client: client} when client != nil ->
-        {:ok, client}
-
-      _ ->
-        :error
-    end
-  end
 end

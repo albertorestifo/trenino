@@ -1,10 +1,10 @@
 defmodule Trenino.Train.Identifier do
   @moduledoc """
-  Generates train identifiers from formation ObjectClass values.
-
-  The identifier is the common prefix among all ObjectClass values
-  in the current formation, providing a stable way to identify
-  specific train types across sessions.
+  Train identifiers: Train Sim World derives them from the formation's
+  ObjectClass values (`derive_from_formation/1`, called by the TSW backend);
+  SimRail reports vehicle names such as `"4e/eu07-193"`. Stored identifiers
+  match detected ones by prefix, so `class_prefix/1` gives the SimRail
+  identifier that covers a whole class.
   """
 
   alias Trenino.Simulator.Client
@@ -83,9 +83,50 @@ defmodule Trenino.Train.Identifier do
 
       iex> extract_train_name("unknown_format")
       ""
+
+      iex> extract_train_name("4e/eu07-193")
+      "EU07"
   """
   @spec extract_train_name(String.t()) :: String.t()
   def extract_train_name(identifier) when is_binary(identifier) do
+    if String.contains?(identifier, "/"),
+      do: simrail_train_name(identifier),
+      else: tsw_train_name(identifier)
+  end
+
+  @doc """
+  The class part of a SimRail vehicle id: the vehicle number and variant
+  are dropped, so one train profile covers every vehicle of the class.
+  Train Sim World identifiers are returned unchanged.
+
+  ## Examples
+
+      iex> class_prefix("4e/eu07-193")
+      "4e/eu07"
+
+      iex> class_prefix("pendolino/ed250-018 variant")
+      "pendolino/ed250"
+
+      iex> class_prefix("RVM_FSN_DB_BR430_ETW4")
+      "RVM_FSN_DB_BR430_ETW4"
+  """
+  @spec class_prefix(String.t()) :: String.t()
+  def class_prefix(identifier) when is_binary(identifier) do
+    if String.contains?(identifier, "/"),
+      do: String.replace(identifier, ~r/-\d+.*$/, ""),
+      else: identifier
+  end
+
+  # SimRail: "<family>/<model>-<number>[ variant]" -> "EU07"
+  defp simrail_train_name(identifier) do
+    identifier
+    |> class_prefix()
+    |> String.split("/")
+    |> List.last()
+    |> String.upcase()
+  end
+
+  defp tsw_train_name(identifier) do
     # Strip optional _C suffix and split by underscores
     parts =
       identifier

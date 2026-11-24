@@ -1,0 +1,3165 @@
+{
+ "vehicle": {
+  "name": "4e/eu07-193",
+  "type": "Locomotive",
+  "objectName": "cde40972-b160-4d56-9730-1c1e63a5804e",
+  "vehicleNumber": 9,
+  "numberInTrainset": 1,
+  "isFrontInTrainset": true
+ },
+ "settleMs": 1200,
+ "noisy": [
+  "Physics_Output_General.time_seconds"
+ ],
+ "initialState": {
+  "Physics_Input_General.drive_handle": 0,
+  "Physics_Input_General.drive_handle_pressed": 0,
+  "Physics_Input_General.scnd_handle": 0,
+  "Physics_Input_General.speed_ctrl": 0,
+  "Physics_Input_General.speed_ctrl_pressed": 0,
+  "Physics_Input_General.main_brake": 0,
+  "Physics_Input_General.local_brake": 0,
+  "Physics_Input_General.third_brake": 0,
+  "Physics_Input_General.emergency_brake_button": 0,
+  "Physics_Input_General.security_system_button": 0,
+  "Physics_Input_General.spring_brake_rq": 0,
+  "Physics_Input_General.spring_brake_valve": 0,
+  "Physics_Input_General.main_switch": 0,
+  "Physics_Input_General.direction_rq": 2,
+  "Physics_Input_General.battery_rq": 0,
+  "Physics_Input_General.battery_rq_off": 0,
+  "Physics_Input_General.pantograph_front_rq": -1,
+  "Physics_Input_General.pantograph_back_rq": -1,
+  "Physics_Input_General.pantograph_set_rq": 0,
+  "Physics_Input_General.pantograph_set": 0,
+  "Physics_Input_General.emergency_supply_button": 0,
+  "Physics_Input_General.horn_signal": 0,
+  "Physics_Input_General.active_cab": 0,
+  "Physics_Input_General.light_pos": 0,
+  "Physics_Input_General.brake_releaser": 0,
+  "Physics_Input_General.unlock_brake_pipe": 0,
+  "Physics_Input_General.assimilation_button": 0,
+  "Physics_Input_General.lights_power": 1,
+  "Physics_Input_General.washer": 0,
+  "Physics_Input_General.wiper": 0,
+  "Physics_Input_General.cablight": 0,
+  "Physics_Input_General.pulpitlight": 0,
+  "Physics_Input_General.instrumentlight": 0,
+  "Physics_Input_General.sanding_button": 0,
+  "Physics_Input_General.shunting_handle": 0,
+  "Physics_Input_General.RadioStop": 0,
+  "Physics_Input_General.radiostop_rq": 0,
+  "Physics_Input_General.radiostop_test_rq": 0,
+  "Physics_Input_General.radio_channel_set": 5,
+  "Physics_Input_General.radio_enable_set": -1,
+  "Physics_Input_General.radio_selective_call": 0,
+  "Physics_Input_General.radio_button": 0,
+  "Physics_Input_General.radio_noise": -1,
+  "Physics_Input_General.radio_volume_set": 1,
+  "Physics_Input_General.reset_crash": 0,
+  "Physics_Input_General.error_code_ack": 0,
+  "Physics_Input_General.error_code_rq": 0,
+  "Physics_Input_General.emergency_brake_button_flag": 0,
+  "Physics_Input_General.nope": 0,
+  "Physics_Input_General.radio_channel_change": 0,
+  "Physics_Input_General.headlight_individual": 0,
+  "Physics_Input_General.endsignal_individual": 0,
+  "Physics_Input_General.traction_voltage_rq": 0,
+  "Physics_Input_General.failure_request": 0,
+  "Physics_Input_General.failure_state_check": 0,
+  "Physics_Input_General.friction_factor_simple_rq": 1,
+  "Physics_Input_General.traindata_train_number_rq": 0,
+  "Physics_Input_General.traindata_driver_number_rq": 0,
+  "Physics_Input_General.traindata_train_length_rq": 0,
+  "Physics_Input_General.traindata_train_mass_rq": 0,
+  "Physics_Input_General.traindata_speed_rq": 0,
+  "Physics_Input_General.traindata_braking_factor_rq": 0,
+  "Physics_Input_General.traindata_brake_type_rq": 0,
+  "Physics_Input_General.selective_door_select": 0,
+  "Physics_Input_General.selective_door_request": 0,
+  "Physics_Input_General.cablightB": 0,
+  "Physics_Input_General.cablight_intensity": 1,
+  "Physics_Input_General.pulpitlight_intensity": 1,
+  "Physics_Input_General.instrumentlight_intensity": 1,
+  "Physics_Input_General.emergency_pantographs": 0,
+  "Physics_Input_General.etcs2023_release_brake": 0,
+  "Physics_Input_General.etcs2023_service_brake": 0,
+  "Physics_Input_General.etcs2023_emergency_brake": 0,
+  "Physics_Input_General.etcs2023_shunting_ok": 0,
+  "Physics_Input_General.etcs2023_shunting_reject": 0,
+  "Physics_Input_General.etcs2023_ues_rq": 0,
+  "Physics_Input_General.etcs2023_rma_rq": 0,
+  "Physics_Input_General.etcs2023_text_message": 0,
+  "Physics_Input_General.etcs2023_isolation_rq": 0,
+  "Physics_Input_General.etcs2023_reset_all": 0,
+  "Physics_Input_General.etcs2023_ack_button": 0,
+  "Physics_Input_General.etcs2023_force_os_rq": 0,
+  "Physics_Input_General.passengers_multipler_rq": -1,
+  "Physics_Input_General.wire_ice_rq": 0,
+  "Physics_Input_General.rt_speaker_pull_rq": 0,
+  "Physics_Input_General.rt_speaker_press_rq": 0,
+  "Physics_Input_General.change_cabin": 0,
+  "Physics_Input_General.try_connect_driver_coupler": 0,
+  "Physics_Input_General.try_disconnect_driver_coupler": 0,
+  "Physics_Input_General.radmor_splitter_on": -1,
+  "Physics_Input_General.radmor_splitter_cab": 1,
+  "Physics_Input_General.radmor_adapter_on": -1,
+  "Physics_Input_General.window_electric_heating": 0,
+  "Physics_Input_General.window_airflow_heating": 0,
+  "Physics_Output_General.error_code": 0,
+  "Physics_Output_General.quit": 0,
+  "Physics_Output_General.radio_on_lamp": 0,
+  "Physics_Output_General.cablight": 0,
+  "Physics_Output_General.instrumentlight": 0,
+  "Physics_Output_General.pulpitlight": 0,
+  "Physics_Output_General.failure_request_ack": 0,
+  "Physics_Output_General.failure_state": 0,
+  "Physics_Output_General.failure_exist": 0,
+  "Physics_Output_General.failure_broadcast": 0,
+  "Physics_Output_General.traction_voltage": 3500,
+  "Physics_Output_General.date_day": 9,
+  "Physics_Output_General.date_month": 7,
+  "Physics_Output_General.date_year": 2024,
+  "Physics_Output_General.time_hours": 13,
+  "Physics_Output_General.time_minutes": 51,
+  "Physics_Output_General.time_seconds": 5,
+  "Physics_Output_General.friction_force_status": 1,
+  "Physics_Output_General.traindata_train_number": 0,
+  "Physics_Output_General.traindata_driver_number": 0,
+  "Physics_Output_General.traindata_train_length": 0,
+  "Physics_Output_General.traindata_train_mass": 0,
+  "Physics_Output_General.traindata_speed": 0,
+  "Physics_Output_General.traindata_braking_factor": 0,
+  "Physics_Output_General.traindata_brake_type": 0,
+  "Physics_Output_General.current_pantograph_set": 0,
+  "Physics_Output_General.speed_ctrl_status": 0,
+  "Physics_Output_General.speed_ctrl_value": 0,
+  "Physics_Output_General.cablightB": 0,
+  "Physics_Output_General.etcs2023_level": 5,
+  "Physics_Output_General.etcs2023_mode": 8,
+  "Physics_Output_General.etcs2023_rbc_fault": 0,
+  "Physics_Output_General.etcs2023_balise_fault": 0,
+  "Physics_Output_General.etcs2023_shunting_request": 0,
+  "Physics_Output_General.etcs2023_ack_request": 0,
+  "Physics_Output_General.etcs2023_ack_light": 0,
+  "Physics_Output_General.etcs2023_cab_active": 0,
+  "Physics_Output_General.etcs2023_can_be_os_mode_forced": 0,
+  "Physics_Output_General.weather_temp": 28,
+  "Physics_Output_General.weather_humidity": 31,
+  "Physics_Output_General.passengers_multipler": 1,
+  "Physics_Output_General.passengers_counter": 0,
+  "Physics_Output_General.radio_active": 0,
+  "Physics_Output_General.radio_channel": 0,
+  "Physics_Output_General.wire_ice_level": 0,
+  "Physics_Output_General.rt_speaker_pulled": 0,
+  "Physics_Output_General.rt_speaker_pressed": 0,
+  "Physics_Output_General.security_system_etcs_disabled": 0,
+  "Physics_Output_General.security_system_ca_disabled": 0,
+  "Physics_Output_General.security_system_shp_disabled": 0,
+  "Physics_Output_General.security_system_sifa_disabled": 0,
+  "Physics_Output_General.aksel_next_station": 0,
+  "Physics_Output_General.aksel_next_station_distance": 0,
+  "Physics_Output_General.aksel_next_station_char_at": 0,
+  "Physics_Output_General.can_change_cabin": 1,
+  "Physics_Output_General.next_asdek_distance": -1,
+  "Physics_Output_General.another_trainset_distance": -1,
+  "Physics_Output_General.driver_coupler_can_be_coupled": -1,
+  "Physics_Output_General.driver_coupler_can_be_decoupled": -1,
+  "Physics_Output_General.actual_cabin": 1,
+  "Physics_Output_General.radmor_adapter_on": 0,
+  "Physics_Output_General.radmor_adapter_24v": 0,
+  "Physics_Output_General.speedCtrlValueForGui": 0,
+  "Physics_Output_General.mirrors_disabled": 0,
+  "Physics_Output_General.mirrors_left_open": 0,
+  "Physics_Output_General.mirrors_right_open": 0,
+  "Physics_Input_EU07.converter_rq": 0,
+  "Physics_Input_EU07.compressor_rq": 0,
+  "Physics_Input_EU07.smallcompressor_rq": 0,
+  "Physics_Input_EU07.pantographssmallsupply_rq": 0,
+  "Physics_Input_EU07.heating_rq": 0,
+  "Physics_Input_EU07.highcurrent_rq": 0,
+  "Physics_Input_EU07.unlockovldmotors_rq": 0,
+  "Physics_Input_EU07.unlockovldconverters_rq": 0,
+  "Physics_Input_EU07.unlockovldcompressors_rq": 0,
+  "Physics_Input_EU07.shuntingcompensation_rq": 0,
+  "Physics_Input_EU07.antislippingbrake_rq": 0,
+  "Physics_Input_EU07.unlockandrelease_rq": 0,
+  "Physics_Input_EU07.opencontactors_rq": 0,
+  "Physics_Input_EU07.door_open": 0,
+  "Physics_Input_EU07.fault_brakepipeleak_rq": 0,
+  "Physics_Input_EU07.fault_opencircuitbreaker_rq": 0,
+  "Physics_Input_EU07.fault_voltageloss_rq": 0,
+  "Physics_Input_EU07.fault_nospeed_rq": 0,
+  "Physics_Input_EU07.fault_nohorn_rq": 0,
+  "Physics_Input_EU07.wiper1": 0,
+  "Physics_Input_EU07.wiper2": 0,
+  "Physics_Input_EU07.wiper3": 0,
+  "Physics_Input_EU07.wiper4": 0,
+  "Physics_Input_EU07.manualbrake1": 1,
+  "Physics_Input_EU07.manualbrake2": 0,
+  "Physics_Input_EU07.brakeregime": 0,
+  "Physics_Input_EU07.headlight_individual_fr": -2,
+  "Physics_Input_EU07.headlight_individual_ft": -16,
+  "Physics_Input_EU07.headlight_individual_fl": -128,
+  "Physics_Input_EU07.headlight_individual_rr": -1024,
+  "Physics_Input_EU07.headlight_individual_rt": -8192,
+  "Physics_Input_EU07.headlight_individual_rl": -65536,
+  "Physics_Input_EU07.endsignal_individual_fr": -2,
+  "Physics_Input_EU07.endsignal_individual_ft": -16,
+  "Physics_Input_EU07.endsignal_individual_fl": -128,
+  "Physics_Input_EU07.endsignal_individual_rr": -1024,
+  "Physics_Input_EU07.endsignal_individual_rt": -8192,
+  "Physics_Input_EU07.endsignal_individual_rl": -65536,
+  "Physics_Input_EU07.shp_intensity": 1,
+  "Physics_Input_EU07.ca_intensity": 1,
+  "Physics_Input_EU07.signallights1_intensity": 1,
+  "Physics_Input_EU07.signallights2_intensity": 1,
+  "Physics_Input_EU07.driven_mode_passive": -1,
+  "Physics_Input_EU07.cablight1A": 0,
+  "Physics_Input_EU07.cablight1B": 0,
+  "Physics_Input_EU07.sanding_fuse": 1,
+  "Physics_Input_EU07.external_battery_charging": 0,
+  "Physics_Input_EU07.dim_right_headlight": 0,
+  "Physics_Input_EU07.main_brake_adjustment": 0,
+  "Physics_Output_EU07.alerter": 0,
+  "Physics_Output_EU07.shp": 0,
+  "Physics_Output_EU07.alerter_state": 0,
+  "Physics_Output_EU07.shp_state": 0,
+  "Physics_Output_EU07.motor12_status": 1,
+  "Physics_Output_EU07.motor34_status": 1,
+  "Physics_Output_EU07.drive_direction": 0,
+  "Physics_Output_EU07.main_circuit_breaker_status": 0,
+  "Physics_Output_EU07.velocity": 0,
+  "Physics_Output_EU07.odometer": 0,
+  "Physics_Output_EU07.simulation_timestamp": 0,
+  "Physics_Output_EU07.supply_current": 0,
+  "Physics_Output_EU07.supply_voltage": 0,
+  "Physics_Output_EU07.pipe_pressure": 0.00007803118,
+  "Physics_Output_EU07.brakecyl1_pressure": 4.1407413,
+  "Physics_Output_EU07.brakecyl2_pressure": 4.1407413,
+  "Physics_Output_EU07.control_pressure": 1.7880686e-7,
+  "Physics_Output_EU07.supply_pressure": 3.077061,
+  "Physics_Output_EU07.compressor1_status": 0,
+  "Physics_Output_EU07.compressor2_status": 0,
+  "Physics_Output_EU07.pantograph_compressor_status": 0,
+  "Physics_Output_EU07.battery_status": -1,
+  "Physics_Output_EU07.cab": 0,
+  "Physics_Output_EU07.pantograph_front": 0,
+  "Physics_Output_EU07.pantograph_rear": 0,
+  "Physics_Output_EU07.brake_mode": 2,
+  "Physics_Output_EU07.front_lighting": 0,
+  "Physics_Output_EU07.activecab_front_lighting": 0,
+  "Physics_Output_EU07.pantograph_front_status": 8,
+  "Physics_Output_EU07.pantograph_rear_status": 8,
+  "Physics_Output_EU07.pantograph_control_status": 4,
+  "Physics_Output_EU07.battery_voltage": 0,
+  "Physics_Output_EU07.charger1_voltage": 0,
+  "Physics_Output_EU07.charger2_voltage": 0,
+  "Physics_Output_EU07.battery_current": 0,
+  "Physics_Output_EU07.charger1_current": 0,
+  "Physics_Output_EU07.charger2_current": 0,
+  "Physics_Output_EU07.securyty_system_sound": 0,
+  "Physics_Output_EU07.radiostop_sound": 0,
+  "Physics_Output_EU07.radiostop_active": 0,
+  "Physics_Output_EU07.simulation_status": 1,
+  "Physics_Output_EU07.motor12_current": 0.0061035156,
+  "Physics_Output_EU07.motor34_current": 0.0061035156,
+  "Physics_Output_EU07.tachometer_speed": 0,
+  "Physics_Output_EU07.circuit_breaker_lamp": 0,
+  "Physics_Output_EU07.resistors_lamp": 0,
+  "Physics_Output_EU07.line_contactors_lamp": 0,
+  "Physics_Output_EU07.heating_lamp": 0,
+  "Physics_Output_EU07.slipping_lamp": 0,
+  "Physics_Output_EU07.high_current_lamp": 0,
+  "Physics_Output_EU07.ventilators_lamp": 0,
+  "Physics_Output_EU07.overload_motors_lamp": 0,
+  "Physics_Output_EU07.overload_converters_lamp": 0,
+  "Physics_Output_EU07.overload_compressors_lamp": 0,
+  "Physics_Output_EU07.ground_relay_lamp": 0,
+  "Physics_Output_EU07.manualbrake1_indicator": 15.000001,
+  "Physics_Output_EU07.manualbrake2_indicator": 0,
+  "Physics_Output_EU07.cablight1A": 0,
+  "Physics_Output_EU07.cablight1B": 0,
+  "Physics_Output_EU07.haslercoil1a": 0,
+  "Physics_Output_EU07.haslercoil1b": 0,
+  "Physics_Output_EU07.haslercoil2a": 0,
+  "Physics_Output_EU07.haslercoil2b": 0,
+  "Physics_Output_EU07.haslercoil3": 0,
+  "Physics_Output_EU07.haslerspeed": 0,
+  "Physics_Output_EU07.lights_intensity_lamps": 1,
+  "Physics_Output_EU07.lights_intensity_controls": 1,
+  "Physics_Output_EU07.lights_intensity_ca": 1,
+  "Physics_Output_EU07.lights_intensity_shp": 1
+ },
+ "results": [
+  {
+   "path": "Physics_Input_General.scnd_handle",
+   "controlId": "Chassis/ChassisOdwrotnie/ChassisBujanie/INTERIOR/kabina_4e_A/bocznik/bocznik",
+   "type": "PhysicsInteractionLeverStepped",
+   "kind": "lever",
+   "original": 0,
+   "positions": [
+    {
+     "index": 0,
+     "value": 6,
+     "stable": 0
+    },
+    {
+     "index": 1,
+     "value": 5,
+     "stable": 1
+    },
+    {
+     "index": 2,
+     "value": 4,
+     "stable": 2
+    },
+    {
+     "index": 3,
+     "value": 3,
+     "stable": 3
+    },
+    {
+     "index": 4,
+     "value": 2,
+     "stable": 4
+    },
+    {
+     "index": 5,
+     "value": 1,
+     "stable": 5
+    },
+    {
+     "index": 6,
+     "value": 0,
+     "stable": 6
+    }
+   ],
+   "steps": [
+    {
+     "position": 0,
+     "value": 6,
+     "ok": true,
+     "readback": 6,
+     "changes": {}
+    },
+    {
+     "position": 1,
+     "value": 5,
+     "ok": true,
+     "readback": 5,
+     "changes": {}
+    },
+    {
+     "position": 2,
+     "value": 4,
+     "ok": true,
+     "readback": 4,
+     "changes": {}
+    },
+    {
+     "position": 3,
+     "value": 3,
+     "ok": true,
+     "readback": 3,
+     "changes": {}
+    },
+    {
+     "position": 4,
+     "value": 2,
+     "ok": true,
+     "readback": 2,
+     "changes": {}
+    },
+    {
+     "position": 5,
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {}
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_General.security_system_button",
+   "controlId": "Chassis/ChassisOdwrotnie/ChassisBujanie/INTERIOR/kabina_4e_A/bt-czuwak/bt-czuwak",
+   "type": "PhysicsInteractionButtonContinous",
+   "kind": "button",
+   "original": 0,
+   "positions": [],
+   "steps": [
+    {
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {}
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_EU07.unlockovldconverters_rq",
+   "controlId": "Chassis/ChassisOdwrotnie/ChassisBujanie/INTERIOR/kabina_4e_A/bt-odblok_nadm_przetw_orzew/bt-odblok_nadm_przetw_orzew",
+   "type": "PhysicsInteractionButtonContinous",
+   "kind": "button",
+   "original": 0,
+   "positions": [],
+   "steps": [
+    {
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {}
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_EU07.unlockovldmotors_rq",
+   "controlId": "Chassis/ChassisOdwrotnie/ChassisBujanie/INTERIOR/kabina_4e_A/bt-odblok_nadm_silnikow/bt-odblok_nadm_silnikow",
+   "type": "PhysicsInteractionButtonContinous",
+   "kind": "button",
+   "original": 0,
+   "positions": [],
+   "steps": [
+    {
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {}
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_EU07.unlockovldcompressors_rq",
+   "controlId": "Chassis/ChassisOdwrotnie/ChassisBujanie/INTERIOR/kabina_4e_A/bt-odblok_nadm_sprezarek/bt-odblok_nadm_sprezarek",
+   "type": "PhysicsInteractionButtonContinous",
+   "kind": "button",
+   "original": 0,
+   "positions": [],
+   "steps": [
+    {
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {}
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_EU07.unlockandrelease_rq",
+   "controlId": "Chassis/ChassisOdwrotnie/ChassisBujanie/INTERIOR/kabina_4e_A/bt-odluzniacz/bt-odluzniacz",
+   "type": "PhysicsInteractionButtonContinous",
+   "kind": "button",
+   "original": 0,
+   "positions": [],
+   "steps": [
+    {
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {}
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_EU07.antislippingbrake_rq",
+   "controlId": "Chassis/ChassisOdwrotnie/ChassisBujanie/INTERIOR/kabina_4e_A/bt-poslizg/bt-poslizg",
+   "type": "PhysicsInteractionButtonContinous",
+   "kind": "button",
+   "original": 0,
+   "positions": [],
+   "steps": [
+    {
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {}
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_General.nope",
+   "controlId": "Chassis/ChassisOdwrotnie/ChassisBujanie/INTERIOR/kabina_4e_A/bt-rezerwa/bt-rezerwa",
+   "type": "PhysicsInteractionButtonContinous",
+   "kind": "button",
+   "original": 0,
+   "positions": [],
+   "steps": [
+    {
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {}
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_General.washer",
+   "controlId": "Chassis/ChassisOdwrotnie/ChassisBujanie/INTERIOR/kabina_4e_A/bt-spryskiwacz_lewy/bt-spryskiwacz_lewy",
+   "type": "PhysicsInteractionButtonContinous",
+   "kind": "button",
+   "original": 0,
+   "positions": [],
+   "steps": [
+    {
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {}
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_EU07.opencontactors_rq",
+   "controlId": "Chassis/ChassisOdwrotnie/ChassisBujanie/INTERIOR/kabina_4e_A/bt-styczniki_liniowe/bt-styczniki_liniowe",
+   "type": "PhysicsInteractionButtonContinous",
+   "kind": "button",
+   "original": 0,
+   "positions": [],
+   "steps": [
+    {
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {}
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_General.main_switch",
+   "controlId": "Chassis/ChassisOdwrotnie/ChassisBujanie/INTERIOR/kabina_4e_A/bt-wyl_WS/bt-wyl_WS",
+   "type": "PhysicsInteractionButtonContinous",
+   "kind": "button",
+   "original": 0,
+   "positions": [],
+   "steps": [
+    {
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {}
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_EU07.manualbrake1",
+   "controlId": "Chassis/ChassisOdwrotnie/ChassisBujanie/INTERIOR/kabina_4e_A/kolo_recznego/kolo_recznego",
+   "type": "PhysicsInteractionAnimatorToggle",
+   "kind": "other",
+   "original": 1,
+   "positions": [],
+   "steps": [
+    {
+     "value": 0,
+     "ok": true,
+     "readback": 0,
+     "changes": {
+      "Physics_Output_EU07.manualbrake1_indicator": [
+       15,
+       0
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_General.drive_handle",
+   "controlId": "Chassis/ChassisOdwrotnie/ChassisBujanie/INTERIOR/kabina_4e_A/nastawnik/nastawnik",
+   "type": "PhysicsInteractionLeverStepped",
+   "kind": "lever",
+   "original": 0,
+   "positions": [
+    {
+     "index": 0,
+     "value": 0,
+     "stable": 0
+    },
+    {
+     "index": 1,
+     "value": 1,
+     "stable": 1
+    },
+    {
+     "index": 2,
+     "value": 2,
+     "stable": 2
+    },
+    {
+     "index": 3,
+     "value": 3,
+     "stable": 3
+    },
+    {
+     "index": 4,
+     "value": 4,
+     "stable": 4
+    },
+    {
+     "index": 5,
+     "value": 5,
+     "stable": 5
+    },
+    {
+     "index": 6,
+     "value": 6,
+     "stable": 6
+    },
+    {
+     "index": 7,
+     "value": 7,
+     "stable": 7
+    },
+    {
+     "index": 8,
+     "value": 8,
+     "stable": 8
+    },
+    {
+     "index": 9,
+     "value": 9,
+     "stable": 9
+    },
+    {
+     "index": 10,
+     "value": 10,
+     "stable": 10
+    },
+    {
+     "index": 11,
+     "value": 11,
+     "stable": 11
+    },
+    {
+     "index": 12,
+     "value": 12,
+     "stable": 12
+    },
+    {
+     "index": 13,
+     "value": 13,
+     "stable": 13
+    },
+    {
+     "index": 14,
+     "value": 14,
+     "stable": 14
+    },
+    {
+     "index": 15,
+     "value": 15,
+     "stable": 15
+    },
+    {
+     "index": 16,
+     "value": 16,
+     "stable": 16
+    },
+    {
+     "index": 17,
+     "value": 17,
+     "stable": 17
+    },
+    {
+     "index": 18,
+     "value": 18,
+     "stable": 18
+    },
+    {
+     "index": 19,
+     "value": 19,
+     "stable": 19
+    },
+    {
+     "index": 20,
+     "value": 20,
+     "stable": 20
+    },
+    {
+     "index": 21,
+     "value": 21,
+     "stable": 21
+    },
+    {
+     "index": 22,
+     "value": 22,
+     "stable": 22
+    },
+    {
+     "index": 23,
+     "value": 23,
+     "stable": 23
+    },
+    {
+     "index": 24,
+     "value": 24,
+     "stable": 24
+    },
+    {
+     "index": 25,
+     "value": 25,
+     "stable": 25
+    },
+    {
+     "index": 26,
+     "value": 26,
+     "stable": 26
+    },
+    {
+     "index": 27,
+     "value": 27,
+     "stable": 27
+    },
+    {
+     "index": 28,
+     "value": 28,
+     "stable": 28
+    },
+    {
+     "index": 29,
+     "value": 29,
+     "stable": 29
+    },
+    {
+     "index": 30,
+     "value": 30,
+     "stable": 30
+    },
+    {
+     "index": 31,
+     "value": 31,
+     "stable": 31
+    },
+    {
+     "index": 32,
+     "value": 32,
+     "stable": 32
+    },
+    {
+     "index": 33,
+     "value": 33,
+     "stable": 33
+    },
+    {
+     "index": 34,
+     "value": 34,
+     "stable": 34
+    },
+    {
+     "index": 35,
+     "value": 35,
+     "stable": 35
+    },
+    {
+     "index": 36,
+     "value": 36,
+     "stable": 36
+    },
+    {
+     "index": 37,
+     "value": 37,
+     "stable": 37
+    },
+    {
+     "index": 38,
+     "value": 38,
+     "stable": 38
+    },
+    {
+     "index": 39,
+     "value": 39,
+     "stable": 39
+    },
+    {
+     "index": 40,
+     "value": 40,
+     "stable": 40
+    },
+    {
+     "index": 41,
+     "value": 41,
+     "stable": 41
+    },
+    {
+     "index": 42,
+     "value": 42,
+     "stable": 42
+    },
+    {
+     "index": 43,
+     "value": 43,
+     "stable": 43
+    }
+   ],
+   "steps": [
+    {
+     "position": 1,
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {
+      "Physics_Output_General.can_change_cabin": [
+       1,
+       0
+      ]
+     }
+    },
+    {
+     "position": 2,
+     "value": 2,
+     "ok": true,
+     "readback": 2,
+     "changes": {}
+    },
+    {
+     "position": 3,
+     "value": 3,
+     "ok": true,
+     "readback": 3,
+     "changes": {}
+    },
+    {
+     "position": 4,
+     "value": 4,
+     "ok": true,
+     "readback": 4,
+     "changes": {}
+    },
+    {
+     "position": 5,
+     "value": 5,
+     "ok": true,
+     "readback": 5,
+     "changes": {}
+    },
+    {
+     "position": 6,
+     "value": 6,
+     "ok": true,
+     "readback": 6,
+     "changes": {}
+    },
+    {
+     "position": 7,
+     "value": 7,
+     "ok": true,
+     "readback": 7,
+     "changes": {}
+    },
+    {
+     "position": 8,
+     "value": 8,
+     "ok": true,
+     "readback": 8,
+     "changes": {}
+    },
+    {
+     "position": 9,
+     "value": 9,
+     "ok": true,
+     "readback": 9,
+     "changes": {}
+    },
+    {
+     "position": 10,
+     "value": 10,
+     "ok": true,
+     "readback": 10,
+     "changes": {}
+    },
+    {
+     "position": 11,
+     "value": 11,
+     "ok": true,
+     "readback": 11,
+     "changes": {}
+    },
+    {
+     "position": 12,
+     "value": 12,
+     "ok": true,
+     "readback": 12,
+     "changes": {}
+    },
+    {
+     "position": 13,
+     "value": 13,
+     "ok": true,
+     "readback": 13,
+     "changes": {}
+    },
+    {
+     "position": 14,
+     "value": 14,
+     "ok": true,
+     "readback": 14,
+     "changes": {}
+    },
+    {
+     "position": 15,
+     "value": 15,
+     "ok": true,
+     "readback": 15,
+     "changes": {}
+    },
+    {
+     "position": 16,
+     "value": 16,
+     "ok": true,
+     "readback": 16,
+     "changes": {}
+    },
+    {
+     "position": 17,
+     "value": 17,
+     "ok": true,
+     "readback": 17,
+     "changes": {}
+    },
+    {
+     "position": 18,
+     "value": 18,
+     "ok": true,
+     "readback": 18,
+     "changes": {}
+    },
+    {
+     "position": 19,
+     "value": 19,
+     "ok": true,
+     "readback": 19,
+     "changes": {
+      "Physics_Output_General.time_minutes": [
+       51,
+       52
+      ]
+     }
+    },
+    {
+     "position": 20,
+     "value": 20,
+     "ok": true,
+     "readback": 20,
+     "changes": {}
+    },
+    {
+     "position": 21,
+     "value": 21,
+     "ok": true,
+     "readback": 21,
+     "changes": {}
+    },
+    {
+     "position": 22,
+     "value": 22,
+     "ok": true,
+     "readback": 22,
+     "changes": {}
+    },
+    {
+     "position": 23,
+     "value": 23,
+     "ok": true,
+     "readback": 23,
+     "changes": {}
+    },
+    {
+     "position": 24,
+     "value": 24,
+     "ok": true,
+     "readback": 24,
+     "changes": {}
+    },
+    {
+     "position": 25,
+     "value": 25,
+     "ok": true,
+     "readback": 25,
+     "changes": {}
+    },
+    {
+     "position": 26,
+     "value": 26,
+     "ok": true,
+     "readback": 26,
+     "changes": {}
+    },
+    {
+     "position": 27,
+     "value": 27,
+     "ok": true,
+     "readback": 27,
+     "changes": {}
+    },
+    {
+     "position": 28,
+     "value": 28,
+     "ok": true,
+     "readback": 28,
+     "changes": {}
+    },
+    {
+     "position": 29,
+     "value": 29,
+     "ok": true,
+     "readback": 29,
+     "changes": {}
+    },
+    {
+     "position": 30,
+     "value": 30,
+     "ok": true,
+     "readback": 30,
+     "changes": {}
+    },
+    {
+     "position": 31,
+     "value": 31,
+     "ok": true,
+     "readback": 31,
+     "changes": {}
+    },
+    {
+     "position": 32,
+     "value": 32,
+     "ok": true,
+     "readback": 32,
+     "changes": {}
+    },
+    {
+     "position": 33,
+     "value": 33,
+     "ok": true,
+     "readback": 33,
+     "changes": {}
+    },
+    {
+     "position": 34,
+     "value": 34,
+     "ok": true,
+     "readback": 34,
+     "changes": {}
+    },
+    {
+     "position": 35,
+     "value": 35,
+     "ok": true,
+     "readback": 35,
+     "changes": {}
+    },
+    {
+     "position": 36,
+     "value": 36,
+     "ok": true,
+     "readback": 36,
+     "changes": {}
+    },
+    {
+     "position": 37,
+     "value": 37,
+     "ok": true,
+     "readback": 37,
+     "changes": {}
+    },
+    {
+     "position": 38,
+     "value": 38,
+     "ok": true,
+     "readback": 38,
+     "changes": {}
+    },
+    {
+     "position": 39,
+     "value": 39,
+     "ok": true,
+     "readback": 39,
+     "changes": {}
+    },
+    {
+     "position": 40,
+     "value": 40,
+     "ok": true,
+     "readback": 40,
+     "changes": {}
+    },
+    {
+     "position": 41,
+     "value": 41,
+     "ok": true,
+     "readback": 41,
+     "changes": {}
+    },
+    {
+     "position": 42,
+     "value": 42,
+     "ok": true,
+     "readback": 42,
+     "changes": {}
+    },
+    {
+     "position": 43,
+     "value": 43,
+     "ok": true,
+     "readback": 43,
+     "changes": {}
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_General.direction_rq",
+   "controlId": "Chassis/ChassisOdwrotnie/ChassisBujanie/INTERIOR/kabina_4e_A/nawrotnik/nawrotnik",
+   "type": "PhysicsInteractionLeverStepped",
+   "kind": "lever",
+   "original": 2,
+   "positions": [
+    {
+     "index": 0,
+     "value": -1,
+     "label": "Train/Drive_direction/Drive_direction_backward",
+     "stable": 0
+    },
+    {
+     "index": 1,
+     "value": 2,
+     "label": "Train/Drive_direction/Drive_direction_neutral",
+     "stable": 1
+    },
+    {
+     "index": 2,
+     "value": 1,
+     "label": "Train/Drive_direction/Drive_direction_forward",
+     "stable": 2
+    }
+   ],
+   "steps": [
+    {
+     "position": 0,
+     "value": -1,
+     "label": "Train/Drive_direction/Drive_direction_backward",
+     "ok": true,
+     "readback": -1,
+     "changes": {
+      "Physics_Output_General.can_change_cabin": [
+       1,
+       0
+      ],
+      "Physics_Output_EU07.drive_direction": [
+       0,
+       -1
+      ]
+     }
+    },
+    {
+     "position": 2,
+     "value": 1,
+     "label": "Train/Drive_direction/Drive_direction_forward",
+     "ok": true,
+     "readback": 1,
+     "changes": {
+      "Physics_Output_EU07.drive_direction": [
+       -1,
+       1
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_General.sanding_button",
+   "controlId": "Chassis/ChassisOdwrotnie/ChassisBujanie/INTERIOR/kabina_4e_A/pedal_piasecznica/pedal_piasecznica",
+   "type": "PhysicsInteractionButtonContinous",
+   "kind": "button",
+   "original": 0,
+   "positions": [],
+   "steps": [
+    {
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {}
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_EU07.shuntingcompensation_rq",
+   "controlId": "Chassis/ChassisOdwrotnie/ChassisBujanie/INTERIOR/kabina_4e_A/sw-dostosowanie_nacisku_kol/sw-dostosowanie_nacisku_kol",
+   "type": "PhysicsInteractionSwitchStepped",
+   "kind": "switch",
+   "original": 0,
+   "positions": [
+    {
+     "index": 0,
+     "value": -1,
+     "stable": 0
+    },
+    {
+     "index": 1,
+     "value": 1,
+     "stable": 1
+    }
+   ],
+   "steps": [
+    {
+     "position": 0,
+     "value": -1,
+     "ok": true,
+     "readback": -1,
+     "changes": {}
+    },
+    {
+     "position": 1,
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {}
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_EU07.endsignal_individual_fl",
+   "controlId": "Chassis/ChassisOdwrotnie/ChassisBujanie/INTERIOR/kabina_4e_A/sw-koncowka_lewa/sw-koncowka_lewa",
+   "type": "PhysicsInteractionSwitchStepped",
+   "kind": "switch",
+   "original": -128,
+   "positions": [
+    {
+     "index": 0,
+     "value": -128,
+     "stable": 0
+    },
+    {
+     "index": 1,
+     "value": 128,
+     "stable": 1
+    }
+   ],
+   "steps": [
+    {
+     "position": 1,
+     "value": 128,
+     "ok": true,
+     "readback": 128,
+     "changes": {}
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_EU07.endsignal_individual_fr",
+   "controlId": "Chassis/ChassisOdwrotnie/ChassisBujanie/INTERIOR/kabina_4e_A/sw-koncowka_prawa/sw-koncowka_prawa",
+   "type": "PhysicsInteractionSwitchStepped",
+   "kind": "switch",
+   "original": -2,
+   "positions": [
+    {
+     "index": 0,
+     "value": -2,
+     "stable": 0
+    },
+    {
+     "index": 1,
+     "value": 2,
+     "stable": 1
+    }
+   ],
+   "steps": [
+    {
+     "position": 1,
+     "value": 2,
+     "ok": true,
+     "readback": 2,
+     "changes": {}
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_EU07.external_battery_charging",
+   "controlId": "Chassis/ChassisOdwrotnie/ChassisBujanie/INTERIOR/kabina_4e_A/sw-ladowanie_zew/sw-ladowanie_zew",
+   "type": "PhysicsInteractionSwitchStepped",
+   "kind": "switch",
+   "original": 0,
+   "positions": [
+    {
+     "index": 0,
+     "value": -1,
+     "stable": 0
+    },
+    {
+     "index": 1,
+     "value": 1,
+     "stable": 1
+    }
+   ],
+   "steps": [
+    {
+     "position": 0,
+     "value": -1,
+     "ok": true,
+     "readback": -1,
+     "changes": {}
+    },
+    {
+     "position": 1,
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {}
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_EU07.brakeregime",
+   "controlId": "Chassis/ChassisOdwrotnie/ChassisBujanie/INTERIOR/kabina_4e_A/sw-nastawa_hamulca/sw-nastawa_hamulca",
+   "type": "PhysicsInteractionSwitchStepped",
+   "kind": "switch",
+   "original": 0,
+   "positions": [
+    {
+     "index": 0,
+     "value": 2,
+     "stable": 0
+    },
+    {
+     "index": 1,
+     "value": 1,
+     "stable": 1
+    },
+    {
+     "index": 2,
+     "value": 0,
+     "stable": 2
+    }
+   ],
+   "steps": [
+    {
+     "position": 0,
+     "value": 2,
+     "ok": true,
+     "readback": 2,
+     "changes": {}
+    },
+    {
+     "position": 1,
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {}
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_EU07.heating_rq",
+   "controlId": "Chassis/ChassisOdwrotnie/ChassisBujanie/INTERIOR/kabina_4e_A/sw-ogrzewanie_pociagu/sw-ogrzewanie_pociagu",
+   "type": "PhysicsInteractionSwitchStepped",
+   "kind": "switch",
+   "original": 0,
+   "positions": [
+    {
+     "index": 0,
+     "value": -1,
+     "stable": 0
+    },
+    {
+     "index": 1,
+     "value": 1,
+     "stable": 1
+    }
+   ],
+   "steps": [
+    {
+     "position": 0,
+     "value": -1,
+     "ok": true,
+     "readback": -1,
+     "changes": {}
+    },
+    {
+     "position": 1,
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {}
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_General.cablight",
+   "controlId": "Chassis/ChassisOdwrotnie/ChassisBujanie/INTERIOR/kabina_4e_A/sw-oswietlenie_kabin/sw-oswietlenie_kabin",
+   "type": "PhysicsInteractionSwitchStepped",
+   "kind": "switch",
+   "original": 0,
+   "positions": [
+    {
+     "index": 0,
+     "value": -1,
+     "stable": 0
+    },
+    {
+     "index": 1,
+     "value": 1,
+     "stable": 1
+    }
+   ],
+   "steps": [
+    {
+     "position": 0,
+     "value": -1,
+     "ok": true,
+     "readback": -1,
+     "changes": {}
+    },
+    {
+     "position": 1,
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {}
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_General.instrumentlight",
+   "controlId": "Chassis/ChassisOdwrotnie/ChassisBujanie/INTERIOR/kabina_4e_A/sw-oswietlenie_miernikow/sw-oswietlenie_miernikow",
+   "type": "PhysicsInteractionSwitchStepped",
+   "kind": "switch",
+   "original": 0,
+   "positions": [
+    {
+     "index": 0,
+     "value": -1,
+     "stable": 0
+    },
+    {
+     "index": 1,
+     "value": 1,
+     "stable": 1
+    }
+   ],
+   "steps": [
+    {
+     "position": 0,
+     "value": -1,
+     "ok": true,
+     "readback": -1,
+     "changes": {}
+    },
+    {
+     "position": 1,
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {}
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_EU07.cablight1A",
+   "controlId": "Chassis/ChassisOdwrotnie/ChassisBujanie/INTERIOR/kabina_4e_A/sw-oswietlenie_ogolne/sw-oswietlenie_ogolne",
+   "type": "PhysicsInteractionSwitchStepped",
+   "kind": "switch",
+   "original": 0,
+   "positions": [
+    {
+     "index": 0,
+     "value": -1,
+     "stable": 0
+    },
+    {
+     "index": 1,
+     "value": 1,
+     "stable": 1
+    }
+   ],
+   "steps": [
+    {
+     "position": 0,
+     "value": -1,
+     "ok": true,
+     "readback": -1,
+     "changes": {}
+    },
+    {
+     "position": 1,
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {}
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_General.pantograph_front_rq",
+   "controlId": "Chassis/ChassisOdwrotnie/ChassisBujanie/INTERIOR/kabina_4e_A/sw-pantograf1/sw-pantograf1",
+   "type": "PhysicsInteractionSwitchStepped",
+   "kind": "switch",
+   "original": -1,
+   "positions": [
+    {
+     "index": 0,
+     "value": -1,
+     "stable": 0
+    },
+    {
+     "index": 1,
+     "value": 1,
+     "stable": 1
+    }
+   ],
+   "steps": [
+    {
+     "position": 1,
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {}
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_General.pantograph_back_rq",
+   "controlId": "Chassis/ChassisOdwrotnie/ChassisBujanie/INTERIOR/kabina_4e_A/sw-pantograf2/sw-pantograf2",
+   "type": "PhysicsInteractionSwitchStepped",
+   "kind": "switch",
+   "original": -1,
+   "positions": [
+    {
+     "index": 0,
+     "value": -1,
+     "stable": 0
+    },
+    {
+     "index": 1,
+     "value": 1,
+     "stable": 1
+    }
+   ],
+   "steps": [
+    {
+     "position": 1,
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {}
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_EU07.sanding_fuse",
+   "controlId": "Chassis/ChassisOdwrotnie/ChassisBujanie/INTERIOR/kabina_4e_A/sw-piaskowanie/sw-piaskowanie",
+   "type": "PhysicsInteractionSwitchStepped",
+   "kind": "switch",
+   "original": 1,
+   "positions": [
+    {
+     "index": 0,
+     "value": -1,
+     "stable": 0
+    },
+    {
+     "index": 1,
+     "value": 1,
+     "stable": 1
+    }
+   ],
+   "steps": [
+    {
+     "position": 0,
+     "value": -1,
+     "ok": true,
+     "readback": -1,
+     "changes": {}
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_EU07.converter_rq",
+   "controlId": "Chassis/ChassisOdwrotnie/ChassisBujanie/INTERIOR/kabina_4e_A/sw-przetwornica/sw-przetwornica",
+   "type": "PhysicsInteractionSwitchStepped",
+   "kind": "switch",
+   "original": 0,
+   "positions": [
+    {
+     "index": 0,
+     "value": -1,
+     "stable": 0
+    },
+    {
+     "index": 1,
+     "value": 1,
+     "stable": 1
+    }
+   ],
+   "steps": [
+    {
+     "position": 0,
+     "value": -1,
+     "ok": true,
+     "readback": -1,
+     "changes": {}
+    },
+    {
+     "position": 1,
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {}
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_EU07.ca_intensity",
+   "controlId": "Chassis/ChassisOdwrotnie/ChassisBujanie/INTERIOR/kabina_4e_A/sw-przyciemnienie_czuwaka/sw-przyciemnienie_czuwaka",
+   "type": "PhysicsInteractionSwitchStepped",
+   "kind": "switch",
+   "original": 1,
+   "positions": [
+    {
+     "index": 0,
+     "value": 1,
+     "stable": 0
+    },
+    {
+     "index": 1,
+     "value": 0.6,
+     "stable": 1
+    }
+   ],
+   "steps": [
+    {
+     "position": 1,
+     "value": 0.6,
+     "ok": true,
+     "readback": 0.6,
+     "changes": {
+      "Physics_Output_EU07.lights_intensity_ca": [
+       1,
+       0.6
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_EU07.signallights1_intensity",
+   "controlId": "Chassis/ChassisOdwrotnie/ChassisBujanie/INTERIOR/kabina_4e_A/sw-przyciemnienie_lampek_syg1/sw-przyciemnienie_lampek_syg1",
+   "type": "PhysicsInteractionSwitchStepped",
+   "kind": "switch",
+   "original": 1,
+   "positions": [
+    {
+     "index": 0,
+     "value": 1,
+     "stable": 0
+    },
+    {
+     "index": 1,
+     "value": 0.6,
+     "stable": 1
+    }
+   ],
+   "steps": [
+    {
+     "position": 1,
+     "value": 0.6,
+     "ok": true,
+     "readback": 0.6,
+     "changes": {
+      "Physics_Output_EU07.lights_intensity_lamps": [
+       1,
+       0.6
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_EU07.signallights2_intensity",
+   "controlId": "Chassis/ChassisOdwrotnie/ChassisBujanie/INTERIOR/kabina_4e_A/sw-przyciemnienie_lampek_syg2/sw-przyciemnienie_lampek_syg2",
+   "type": "PhysicsInteractionSwitchStepped",
+   "kind": "switch",
+   "original": 1,
+   "positions": [
+    {
+     "index": 0,
+     "value": 1,
+     "stable": 0
+    },
+    {
+     "index": 1,
+     "value": 0.6,
+     "stable": 1
+    }
+   ],
+   "steps": [
+    {
+     "position": 1,
+     "value": 0.6,
+     "ok": true,
+     "readback": 0.6,
+     "changes": {}
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_General.instrumentlight_intensity",
+   "controlId": "Chassis/ChassisOdwrotnie/ChassisBujanie/INTERIOR/kabina_4e_A/sw-przyciemnienie_miernikow/sw-przyciemnienie_miernikow",
+   "type": "PhysicsInteractionSwitchStepped",
+   "kind": "switch",
+   "original": 1,
+   "positions": [
+    {
+     "index": 0,
+     "value": 1,
+     "stable": 0
+    },
+    {
+     "index": 1,
+     "value": 0.6,
+     "stable": 1
+    }
+   ],
+   "steps": [
+    {
+     "position": 1,
+     "value": 0.6,
+     "ok": true,
+     "readback": 0.6,
+     "changes": {
+      "Physics_Output_EU07.lights_intensity_controls": [
+       1,
+       0.6
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_General.cablight_intensity",
+   "controlId": "Chassis/ChassisOdwrotnie/ChassisBujanie/INTERIOR/kabina_4e_A/sw-przyciemnienie_osw_kabin/sw-przyciemnienie_osw_kabin",
+   "type": "PhysicsInteractionSwitchStepped",
+   "kind": "switch",
+   "original": 1,
+   "positions": [
+    {
+     "index": 0,
+     "value": 1,
+     "stable": 0
+    },
+    {
+     "index": 1,
+     "value": 0.2,
+     "stable": 1
+    }
+   ],
+   "steps": [
+    {
+     "position": 1,
+     "value": 0.2,
+     "ok": true,
+     "readback": 0.2,
+     "changes": {}
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_General.lights_power",
+   "controlId": "Chassis/ChassisOdwrotnie/ChassisBujanie/INTERIOR/kabina_4e_A/sw-przyciemnienie_reflektorow/sw-przyciemnienie_reflektorow",
+   "type": "PhysicsInteractionSwitchStepped",
+   "kind": "switch",
+   "original": 1,
+   "positions": [
+    {
+     "index": 0,
+     "value": 0,
+     "stable": 0
+    },
+    {
+     "index": 1,
+     "value": 1,
+     "stable": 1
+    }
+   ],
+   "steps": [
+    {
+     "position": 0,
+     "value": 0,
+     "ok": true,
+     "readback": 0,
+     "changes": {}
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_EU07.shp_intensity",
+   "controlId": "Chassis/ChassisOdwrotnie/ChassisBujanie/INTERIOR/kabina_4e_A/sw-przyciemnienie_shp/sw-przyciemnienie_shp",
+   "type": "PhysicsInteractionSwitchStepped",
+   "kind": "switch",
+   "original": 1,
+   "positions": [
+    {
+     "index": 0,
+     "value": 1,
+     "stable": 0
+    },
+    {
+     "index": 1,
+     "value": 0.6,
+     "stable": 1
+    }
+   ],
+   "steps": [
+    {
+     "position": 1,
+     "value": 0.6,
+     "ok": true,
+     "readback": 0.6,
+     "changes": {
+      "Physics_Output_EU07.lights_intensity_shp": [
+       1,
+       0.6
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_EU07.headlight_individual_ft",
+   "controlId": "Chassis/ChassisOdwrotnie/ChassisBujanie/INTERIOR/kabina_4e_A/sw-reflektor_gorny/sw-reflektor_gorny",
+   "type": "PhysicsInteractionSwitchStepped",
+   "kind": "switch",
+   "original": -16,
+   "positions": [
+    {
+     "index": 0,
+     "value": -16,
+     "stable": 0
+    },
+    {
+     "index": 1,
+     "value": 16,
+     "stable": 1
+    }
+   ],
+   "steps": [
+    {
+     "position": 1,
+     "value": 16,
+     "ok": true,
+     "readback": 16,
+     "changes": {}
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_EU07.headlight_individual_fl",
+   "controlId": "Chassis/ChassisOdwrotnie/ChassisBujanie/INTERIOR/kabina_4e_A/sw-reflektor_lewy/sw-reflektor_lewy",
+   "type": "PhysicsInteractionSwitchStepped",
+   "kind": "switch",
+   "original": -128,
+   "positions": [
+    {
+     "index": 0,
+     "value": -128,
+     "stable": 0
+    },
+    {
+     "index": 1,
+     "value": 128,
+     "stable": 1
+    }
+   ],
+   "steps": [
+    {
+     "position": 1,
+     "value": 128,
+     "ok": true,
+     "readback": 128,
+     "changes": {}
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_EU07.headlight_individual_fr",
+   "controlId": "Chassis/ChassisOdwrotnie/ChassisBujanie/INTERIOR/kabina_4e_A/sw-reflektor_prawy/sw-reflektor_prawy",
+   "type": "PhysicsInteractionSwitchStepped",
+   "kind": "switch",
+   "original": -2,
+   "positions": [
+    {
+     "index": 0,
+     "value": -2,
+     "stable": 0
+    },
+    {
+     "index": 1,
+     "value": 2,
+     "stable": 1
+    }
+   ],
+   "steps": [
+    {
+     "position": 1,
+     "value": 2,
+     "ok": true,
+     "readback": 2,
+     "changes": {}
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_General.active_cab",
+   "controlId": "Chassis/ChassisOdwrotnie/ChassisBujanie/INTERIOR/kabina_4e_A/sw-rozrzad/sw-rozrzad",
+   "type": "PhysicsInteractionSwitchStepped",
+   "kind": "switch",
+   "original": 0,
+   "positions": [
+    {
+     "index": 0,
+     "value": 0,
+     "stable": 0
+    },
+    {
+     "index": 1,
+     "value": 1,
+     "stable": 1
+    }
+   ],
+   "steps": [
+    {
+     "position": 1,
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {
+      "Physics_Output_General.etcs2023_cab_active": [
+       0,
+       1
+      ],
+      "Physics_Output_General.can_change_cabin": [
+       1,
+       0
+      ],
+      "Physics_Output_EU07.cab": [
+       0,
+       1
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_EU07.compressor_rq",
+   "controlId": "Chassis/ChassisOdwrotnie/ChassisBujanie/INTERIOR/kabina_4e_A/sw-sprezarka/sw-sprezarka",
+   "type": "PhysicsInteractionSwitchStepped",
+   "kind": "switch",
+   "original": 0,
+   "positions": [
+    {
+     "index": 0,
+     "value": -1,
+     "stable": 0
+    },
+    {
+     "index": 1,
+     "value": 1,
+     "stable": 1
+    }
+   ],
+   "steps": [
+    {
+     "position": 0,
+     "value": -1,
+     "ok": true,
+     "readback": -1,
+     "changes": {}
+    },
+    {
+     "position": 1,
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {}
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_EU07.wiper2",
+   "controlId": "Chassis/ChassisOdwrotnie/ChassisBujanie/INTERIOR/kabina_4e_A/sw-wycieraczka_lewa/sw-wycieraczka_lewa",
+   "type": "PhysicsInteractionSwitchStepped",
+   "kind": "switch",
+   "original": 0,
+   "positions": [
+    {
+     "index": 0,
+     "value": 0,
+     "stable": 0
+    },
+    {
+     "index": 1,
+     "value": 1,
+     "stable": 1
+    },
+    {
+     "index": 2,
+     "value": 2,
+     "stable": 2
+    },
+    {
+     "index": 3,
+     "value": 3,
+     "stable": 3
+    }
+   ],
+   "steps": [
+    {
+     "position": 1,
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {}
+    },
+    {
+     "position": 2,
+     "value": 2,
+     "ok": true,
+     "readback": 2,
+     "changes": {}
+    },
+    {
+     "position": 3,
+     "value": 3,
+     "ok": true,
+     "readback": 3,
+     "changes": {}
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_EU07.wiper1",
+   "controlId": "Chassis/ChassisOdwrotnie/ChassisBujanie/INTERIOR/kabina_4e_A/sw-wycieraczka_prawa/sw-wycieraczka_prawa",
+   "type": "PhysicsInteractionSwitchStepped",
+   "kind": "switch",
+   "original": 0,
+   "positions": [
+    {
+     "index": 0,
+     "value": 0,
+     "stable": 0
+    },
+    {
+     "index": 1,
+     "value": 1,
+     "stable": 1
+    },
+    {
+     "index": 2,
+     "value": 2,
+     "stable": 2
+    },
+    {
+     "index": 3,
+     "value": 3,
+     "stable": 3
+    }
+   ],
+   "steps": [
+    {
+     "position": 1,
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {}
+    },
+    {
+     "position": 2,
+     "value": 2,
+     "ok": true,
+     "readback": 2,
+     "changes": {}
+    },
+    {
+     "position": 3,
+     "value": 3,
+     "ok": true,
+     "readback": 3,
+     "changes": {}
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_EU07.highcurrent_rq",
+   "controlId": "Chassis/ChassisOdwrotnie/ChassisBujanie/INTERIOR/kabina_4e_A/sw-zakres_pradu/sw-zakres_pradu",
+   "type": "PhysicsInteractionSwitchStepped",
+   "kind": "switch",
+   "original": 0,
+   "positions": [
+    {
+     "index": 0,
+     "value": -1,
+     "stable": 0
+    },
+    {
+     "index": 1,
+     "value": 1,
+     "stable": 1
+    }
+   ],
+   "steps": [
+    {
+     "position": 0,
+     "value": -1,
+     "ok": true,
+     "readback": -1,
+     "changes": {}
+    },
+    {
+     "position": 1,
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {}
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_General.horn_signal",
+   "controlId": "Chassis/ChassisOdwrotnie/ChassisBujanie/INTERIOR/kabina_4e_A/sw_syrena_mech/sw_syrena_mech",
+   "type": "PhysicsInteractionSwitchStepped",
+   "kind": "switch",
+   "original": 0,
+   "positions": [
+    {
+     "index": 0,
+     "value": 1,
+     "stable": 1
+    },
+    {
+     "index": 1,
+     "value": 0,
+     "stable": 1
+    },
+    {
+     "index": 2,
+     "value": 2,
+     "stable": 1
+    }
+   ],
+   "steps": [
+    {
+     "position": 0,
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {}
+    },
+    {
+     "position": 2,
+     "value": 2,
+     "ok": true,
+     "readback": 2,
+     "changes": {}
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_EU07.driven_mode_passive",
+   "controlId": "Chassis/ChassisOdwrotnie/ChassisBujanie/INTERIOR/kabina_4e_A/szafki_czuwaka/sw-jazda_ciagniona/sw-jazda_ciagniona",
+   "type": "PhysicsInteractionSwitchStepped",
+   "kind": "switch",
+   "original": -1,
+   "positions": [
+    {
+     "index": 0,
+     "value": 1,
+     "stable": 0
+    },
+    {
+     "index": 1,
+     "value": -1,
+     "stable": 1
+    }
+   ],
+   "steps": [
+    {
+     "position": 0,
+     "value": 1,
+     "ok": false,
+     "error": "System.NullReferenceException: Object reference not set to an instance of an object.\n--- BEGIN IL2CPP STACK TRACE ---\nSystem.NullReferenceException: Object reference not set to an instance of an object.\r\n  at Assets.Scripts.Cabin.InputSystemControllers.PhysicsInteractionSwitchStepped.SetStateFromPhysics (System.Single state) [0x00000] in <00000000000000000000000000000000>:0 \n--- END IL2CPP STACK TRACE ---\n",
+     "readback": 1,
+     "changes": {}
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_General.battery_rq",
+   "controlId": "Chassis/ChassisOdwrotnie/ChassisBujanie/INTERIOR/kabina_4e_A/wylacznik/sw-bateria/sw-bateria",
+   "type": "PhysicsInteractionSwitchStepped",
+   "kind": "switch",
+   "original": 0,
+   "positions": [
+    {
+     "index": 0,
+     "value": -1,
+     "stable": 0
+    },
+    {
+     "index": 1,
+     "value": 1,
+     "stable": 1
+    }
+   ],
+   "steps": [
+    {
+     "position": 0,
+     "value": -1,
+     "ok": true,
+     "readback": -1,
+     "changes": {}
+    },
+    {
+     "position": 1,
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {}
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_General.main_brake",
+   "controlId": "Chassis/ChassisOdwrotnie/ChassisBujanie/INTERIOR/kabina_4e_A/kran_fv4a/hamulec_zasadniczy/hamulec_zasadniczy",
+   "type": "PhysicsInteractionLeverSmoothNotchBased",
+   "kind": "lever",
+   "original": 0,
+   "positions": [
+    {
+     "index": 0,
+     "value": 8,
+     "lower": 8,
+     "upper": 8
+    },
+    {
+     "index": 1,
+     "value": 7,
+     "lower": 7.5,
+     "upper": 6.5
+    },
+    {
+     "index": 2,
+     "value": 6,
+     "lower": 6.5,
+     "upper": 4.5
+    },
+    {
+     "index": 3,
+     "value": 3,
+     "lower": 4.5,
+     "upper": 2.5
+    },
+    {
+     "index": 4,
+     "value": 2,
+     "lower": 2.5,
+     "upper": 1.5
+    },
+    {
+     "index": 5,
+     "value": 1,
+     "lower": 1.5,
+     "upper": 0.5
+    },
+    {
+     "index": 6,
+     "value": 0,
+     "lower": 0,
+     "upper": 0
+    }
+   ],
+   "steps": [
+    {
+     "position": 0,
+     "value": 8,
+     "ok": false,
+     "error": "System.NullReferenceException: Object reference not set to an instance of an object.\n--- BEGIN IL2CPP STACK TRACE ---\nSystem.NullReferenceException: Object reference not set to an instance of an object.\r\n  at Assets.Scripts.Cabin.InputSystemControllers.PhysicsInteractionLeverStepped.SetStateFromPhysics (System.Single state) [0x00000] in <00000000000000000000000000000000>:0 \n--- END IL2CPP STACK TRACE ---\n",
+     "readback": 8,
+     "changes": {
+      "Physics_Output_General.can_change_cabin": [
+       1,
+       0
+      ]
+     }
+    },
+    {
+     "position": 1,
+     "value": 7,
+     "ok": false,
+     "error": "System.NullReferenceException: Object reference not set to an instance of an object.\n--- BEGIN IL2CPP STACK TRACE ---\nSystem.NullReferenceException: Object reference not set to an instance of an object.\r\n  at Assets.Scripts.Cabin.InputSystemControllers.PhysicsInteractionLeverStepped.SetStateFromPhysics (System.Single state) [0x00000] in <00000000000000000000000000000000>:0 \n--- END IL2CPP STACK TRACE ---\n",
+     "readback": 7,
+     "changes": {}
+    },
+    {
+     "position": 2,
+     "value": 6,
+     "ok": false,
+     "error": "System.NullReferenceException: Object reference not set to an instance of an object.\n--- BEGIN IL2CPP STACK TRACE ---\nSystem.NullReferenceException: Object reference not set to an instance of an object.\r\n  at Assets.Scripts.Cabin.InputSystemControllers.PhysicsInteractionLeverStepped.SetStateFromPhysics (System.Single state) [0x00000] in <00000000000000000000000000000000>:0 \n--- END IL2CPP STACK TRACE ---\n",
+     "readback": 6,
+     "changes": {}
+    },
+    {
+     "position": 3,
+     "value": 3,
+     "ok": false,
+     "error": "System.NullReferenceException: Object reference not set to an instance of an object.\n--- BEGIN IL2CPP STACK TRACE ---\nSystem.NullReferenceException: Object reference not set to an instance of an object.\r\n  at Assets.Scripts.Cabin.InputSystemControllers.PhysicsInteractionLeverStepped.SetStateFromPhysics (System.Single state) [0x00000] in <00000000000000000000000000000000>:0 \n--- END IL2CPP STACK TRACE ---\n",
+     "readback": 3,
+     "changes": {}
+    },
+    {
+     "position": 4,
+     "value": 2,
+     "ok": false,
+     "error": "System.NullReferenceException: Object reference not set to an instance of an object.\n--- BEGIN IL2CPP STACK TRACE ---\nSystem.NullReferenceException: Object reference not set to an instance of an object.\r\n  at Assets.Scripts.Cabin.InputSystemControllers.PhysicsInteractionLeverStepped.SetStateFromPhysics (System.Single state) [0x00000] in <00000000000000000000000000000000>:0 \n--- END IL2CPP STACK TRACE ---\n",
+     "readback": 2,
+     "changes": {
+      "Physics_Output_General.time_minutes": [
+       53,
+       54
+      ]
+     }
+    },
+    {
+     "position": 5,
+     "value": 1,
+     "ok": false,
+     "error": "System.NullReferenceException: Object reference not set to an instance of an object.\n--- BEGIN IL2CPP STACK TRACE ---\nSystem.NullReferenceException: Object reference not set to an instance of an object.\r\n  at Assets.Scripts.Cabin.InputSystemControllers.PhysicsInteractionLeverStepped.SetStateFromPhysics (System.Single state) [0x00000] in <00000000000000000000000000000000>:0 \n--- END IL2CPP STACK TRACE ---\n",
+     "readback": 1,
+     "changes": {}
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_General.local_brake",
+   "controlId": "Chassis/ChassisOdwrotnie/ChassisBujanie/INTERIOR/kabina_4e_A/kran_fd1/fd1_raczka/fd1_raczka",
+   "type": "PhysicsInteractionLeverSmooth",
+   "kind": "lever",
+   "original": 0,
+   "positions": [
+    {
+     "index": 0,
+     "value": 1,
+     "lower": 1,
+     "upper": 0.5,
+     "smooth": true
+    },
+    {
+     "index": 1,
+     "value": 0,
+     "lower": 0.5,
+     "upper": 0,
+     "smooth": true
+    }
+   ],
+   "steps": [
+    {
+     "position": 0,
+     "value": 1,
+     "ok": false,
+     "error": "System.NullReferenceException: Object reference not set to an instance of an object.\n--- BEGIN IL2CPP STACK TRACE ---\nSystem.NullReferenceException: Object reference not set to an instance of an object.\r\n  at Assets.Scripts.Cabin.InputSystemControllers.PhysicsInteractionLeverStepped.SetStateFromPhysics (System.Single state) [0x00000] in <00000000000000000000000000000000>:0 \n--- END IL2CPP STACK TRACE ---\n",
+     "readback": 1,
+     "changes": {
+      "Physics_Output_General.can_change_cabin": [
+       1,
+       0
+      ],
+      "Physics_Output_EU07.brakecyl1_pressure": [
+       4.141,
+       4.3
+      ],
+      "Physics_Output_EU07.brakecyl2_pressure": [
+       4.141,
+       4.3
+      ],
+      "Physics_Output_EU07.supply_pressure": [
+       3.077,
+       3.086
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_General.radiostop_rq",
+   "controlId": "Chassis/ChassisOdwrotnie/ChassisBujanie/INTERIOR/kabina_4e_A/radmor/radiostop/radiostop",
+   "type": "PhysicsInteractionButtonToggle",
+   "kind": "button",
+   "original": 0,
+   "positions": [],
+   "steps": [
+    {
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {
+      "Physics_Output_EU07.supply_pressure": [
+       3.096,
+       3.11
+      ],
+      "Physics_Output_EU07.radiostop_sound": [
+       0,
+       1
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_General.radio_volume_set",
+   "controlId": "Chassis/ChassisOdwrotnie/ChassisBujanie/INTERIOR/kabina_4e_A/radmor/swr-glosnosc/swr-glosnosc",
+   "type": "PhysicsInteractionSwitchStepped",
+   "kind": "switch",
+   "original": 1,
+   "positions": [
+    {
+     "index": 0,
+     "value": 1,
+     "stable": 0
+    },
+    {
+     "index": 1,
+     "value": 0.84,
+     "stable": 1
+    },
+    {
+     "index": 2,
+     "value": 0.68,
+     "stable": 2
+    },
+    {
+     "index": 3,
+     "value": 0.52,
+     "stable": 3
+    },
+    {
+     "index": 4,
+     "value": 0.36,
+     "stable": 4
+    },
+    {
+     "index": 5,
+     "value": 0.2,
+     "stable": 5
+    }
+   ],
+   "steps": [
+    {
+     "position": 1,
+     "value": 0.84,
+     "ok": true,
+     "readback": 0.84,
+     "changes": {
+      "Physics_Output_EU07.supply_pressure": [
+       3.119,
+       3.132
+      ]
+     }
+    },
+    {
+     "position": 2,
+     "value": 0.68,
+     "ok": true,
+     "readback": 0.68,
+     "changes": {
+      "Physics_Output_EU07.supply_pressure": [
+       3.132,
+       3.145
+      ]
+     }
+    },
+    {
+     "position": 3,
+     "value": 0.52,
+     "ok": true,
+     "readback": 0.52,
+     "changes": {
+      "Physics_Output_EU07.supply_pressure": [
+       3.145,
+       3.156
+      ]
+     }
+    },
+    {
+     "position": 4,
+     "value": 0.36,
+     "ok": true,
+     "readback": 0.36,
+     "changes": {
+      "Physics_Output_EU07.supply_pressure": [
+       3.156,
+       3.168
+      ]
+     }
+    },
+    {
+     "position": 5,
+     "value": 0.2,
+     "ok": true,
+     "readback": 0.2,
+     "changes": {
+      "Physics_Output_EU07.supply_pressure": [
+       3.168,
+       3.178
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_General.radio_channel_set",
+   "controlId": "Chassis/ChassisOdwrotnie/ChassisBujanie/INTERIOR/kabina_4e_A/radmor/swr-kanal/swr-kanal",
+   "type": "PhysicsInteractionSwitchStepped",
+   "kind": "switch",
+   "original": 5,
+   "positions": [
+    {
+     "index": 0,
+     "value": 1,
+     "stable": 0
+    },
+    {
+     "index": 1,
+     "value": 2,
+     "stable": 1
+    },
+    {
+     "index": 2,
+     "value": 3,
+     "stable": 2
+    },
+    {
+     "index": 3,
+     "value": 4,
+     "stable": 3
+    },
+    {
+     "index": 4,
+     "value": 5,
+     "stable": 4
+    },
+    {
+     "index": 5,
+     "value": 6,
+     "stable": 5
+    },
+    {
+     "index": 6,
+     "value": 7,
+     "stable": 6
+    },
+    {
+     "index": 7,
+     "value": 8,
+     "stable": 7
+    },
+    {
+     "index": 8,
+     "value": 9,
+     "stable": 8
+    },
+    {
+     "index": 9,
+     "value": 10,
+     "stable": 9
+    }
+   ],
+   "steps": [
+    {
+     "position": 0,
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {
+      "Physics_Output_EU07.supply_pressure": [
+       3.185,
+       3.195
+      ]
+     }
+    },
+    {
+     "position": 1,
+     "value": 2,
+     "ok": true,
+     "readback": 2,
+     "changes": {
+      "Physics_Output_EU07.supply_pressure": [
+       3.195,
+       3.203
+      ]
+     }
+    },
+    {
+     "position": 2,
+     "value": 3,
+     "ok": true,
+     "readback": 3,
+     "changes": {
+      "Physics_Output_EU07.supply_pressure": [
+       3.203,
+       3.212
+      ]
+     }
+    },
+    {
+     "position": 3,
+     "value": 4,
+     "ok": true,
+     "readback": 4,
+     "changes": {
+      "Physics_Output_EU07.supply_pressure": [
+       3.212,
+       3.22
+      ]
+     }
+    },
+    {
+     "position": 5,
+     "value": 6,
+     "ok": true,
+     "readback": 6,
+     "changes": {
+      "Physics_Output_EU07.supply_pressure": [
+       3.22,
+       3.227
+      ]
+     }
+    },
+    {
+     "position": 6,
+     "value": 7,
+     "ok": true,
+     "readback": 7,
+     "changes": {
+      "Physics_Output_EU07.supply_pressure": [
+       3.227,
+       3.233
+      ]
+     }
+    },
+    {
+     "position": 7,
+     "value": 8,
+     "ok": true,
+     "readback": 8,
+     "changes": {
+      "Physics_Output_EU07.supply_pressure": [
+       3.233,
+       3.239
+      ]
+     }
+    },
+    {
+     "position": 8,
+     "value": 9,
+     "ok": true,
+     "readback": 9,
+     "changes": {
+      "Physics_Output_EU07.supply_pressure": [
+       3.239,
+       3.244
+      ]
+     }
+    },
+    {
+     "position": 9,
+     "value": 10,
+     "ok": true,
+     "readback": 10,
+     "changes": {
+      "Physics_Output_EU07.supply_pressure": [
+       3.244,
+       3.249
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_General.radio_noise",
+   "controlId": "Chassis/ChassisOdwrotnie/ChassisBujanie/INTERIOR/kabina_4e_A/radmor/swr-szum/swr-szum",
+   "type": "PhysicsInteractionButtonToggle",
+   "kind": "button",
+   "original": -1,
+   "positions": [],
+   "steps": [
+    {
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {
+      "Physics_Output_EU07.supply_pressure": [
+       3.252,
+       3.256
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_General.radio_enable_set",
+   "controlId": "Chassis/ChassisOdwrotnie/ChassisBujanie/INTERIOR/kabina_4e_A/radmor/swr-wl/swr-wl",
+   "type": "PhysicsInteractionButtonToggle",
+   "kind": "button",
+   "original": -1,
+   "positions": [],
+   "steps": [
+    {
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {
+      "Physics_Output_EU07.supply_pressure": [
+       3.258,
+       3.26
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_General.radio_selective_call",
+   "controlId": "Chassis/ChassisOdwrotnie/ChassisBujanie/INTERIOR/kabina_4e_A/radmor/swr-wywolanie1/swr-wywolanie1",
+   "type": "PhysicsInteractionButtonToggle",
+   "kind": "button",
+   "original": 0,
+   "positions": [],
+   "steps": [
+    {
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {
+      "Physics_Output_EU07.supply_pressure": [
+       3.261,
+       3.262
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_General.radmor_splitter_cab",
+   "controlId": "Chassis/ChassisOdwrotnie/ChassisBujanie/INTERIOR/kabina_4e_A/radmor_zasilacz/radmor-zasilacz/swr-kabina.002/swr-kabina.001",
+   "type": "PhysicsInteractionSwitchStepped",
+   "kind": "switch",
+   "original": 1,
+   "positions": [
+    {
+     "index": 0,
+     "value": 1,
+     "stable": 0
+    },
+    {
+     "index": 1,
+     "value": -1,
+     "stable": 1
+    }
+   ],
+   "steps": [
+    {
+     "position": 1,
+     "value": -1,
+     "ok": true,
+     "readback": -1,
+     "changes": {}
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_General.radmor_adapter_on",
+   "controlId": "Chassis/ChassisOdwrotnie/ChassisBujanie/INTERIOR/kabina_4e_A/radmor_zasilacz/radmor-zasilacz/swr-wl.005/swr-wl.004",
+   "type": "PhysicsInteractionSwitchStepped",
+   "kind": "switch",
+   "original": -1,
+   "positions": [
+    {
+     "index": 0,
+     "value": -1,
+     "stable": 0
+    },
+    {
+     "index": 1,
+     "value": 1,
+     "stable": 1
+    }
+   ],
+   "steps": [
+    {
+     "position": 1,
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {}
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_General.radmor_splitter_on",
+   "controlId": "Chassis/ChassisOdwrotnie/ChassisBujanie/INTERIOR/kabina_4e_A/radmor_zasilacz/radmor-zasilacz/swr-wl.006/swr-wl.003",
+   "type": "PhysicsInteractionSwitchStepped",
+   "kind": "switch",
+   "original": -1,
+   "positions": [
+    {
+     "index": 0,
+     "value": -1,
+     "stable": 0
+    },
+    {
+     "index": 1,
+     "value": 1,
+     "stable": 1
+    },
+    {
+     "index": 2,
+     "value": -1,
+     "stable": 2
+    },
+    {
+     "index": 3,
+     "value": 1,
+     "stable": 3
+    }
+   ],
+   "steps": [
+    {
+     "position": 1,
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {}
+    },
+    {
+     "position": 3,
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {}
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_EU07.endsignal_individual_rl",
+   "controlId": "Chassis/ChassisOdwrotnie/ChassisBujanie/INTERIOR/kabina_4e_B/sw-koncowka_lewa/sw-koncowka_lewa",
+   "type": "PhysicsInteractionSwitchStepped",
+   "kind": "switch",
+   "original": -65536,
+   "positions": [
+    {
+     "index": 0,
+     "value": -65536,
+     "stable": 0
+    },
+    {
+     "index": 1,
+     "value": 65536,
+     "stable": 1
+    }
+   ],
+   "steps": [
+    {
+     "position": 1,
+     "value": 65536,
+     "ok": true,
+     "readback": 65536,
+     "changes": {}
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_EU07.endsignal_individual_rr",
+   "controlId": "Chassis/ChassisOdwrotnie/ChassisBujanie/INTERIOR/kabina_4e_B/sw-koncowka_prawa/sw-koncowka_prawa",
+   "type": "PhysicsInteractionSwitchStepped",
+   "kind": "switch",
+   "original": -1024,
+   "positions": [
+    {
+     "index": 0,
+     "value": -1024,
+     "stable": 0
+    },
+    {
+     "index": 1,
+     "value": 1024,
+     "stable": 1
+    }
+   ],
+   "steps": [
+    {
+     "position": 1,
+     "value": 1024,
+     "ok": true,
+     "readback": 1024,
+     "changes": {}
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_General.cablightB",
+   "controlId": "Chassis/ChassisOdwrotnie/ChassisBujanie/INTERIOR/kabina_4e_B/sw-oswietlenie_kabin/sw-oswietlenie_kabin",
+   "type": "PhysicsInteractionSwitchStepped",
+   "kind": "switch",
+   "original": 0,
+   "positions": [
+    {
+     "index": 0,
+     "value": -1,
+     "stable": 0
+    },
+    {
+     "index": 1,
+     "value": 1,
+     "stable": 1
+    }
+   ],
+   "steps": [
+    {
+     "position": 0,
+     "value": -1,
+     "ok": true,
+     "readback": -1,
+     "changes": {}
+    },
+    {
+     "position": 1,
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {}
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_EU07.cablight1B",
+   "controlId": "Chassis/ChassisOdwrotnie/ChassisBujanie/INTERIOR/kabina_4e_B/sw-oswietlenie_ogolne/sw-oswietlenie_ogolne",
+   "type": "PhysicsInteractionSwitchStepped",
+   "kind": "switch",
+   "original": 0,
+   "positions": [
+    {
+     "index": 0,
+     "value": -1,
+     "stable": 0
+    },
+    {
+     "index": 1,
+     "value": 1,
+     "stable": 1
+    }
+   ],
+   "steps": [
+    {
+     "position": 0,
+     "value": -1,
+     "ok": true,
+     "readback": -1,
+     "changes": {}
+    },
+    {
+     "position": 1,
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {}
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_EU07.headlight_individual_rt",
+   "controlId": "Chassis/ChassisOdwrotnie/ChassisBujanie/INTERIOR/kabina_4e_B/sw-reflektor_gorny/sw-reflektor_gorny",
+   "type": "PhysicsInteractionSwitchStepped",
+   "kind": "switch",
+   "original": -8192,
+   "positions": [
+    {
+     "index": 0,
+     "value": -8192,
+     "stable": 0
+    },
+    {
+     "index": 1,
+     "value": 8192,
+     "stable": 1
+    }
+   ],
+   "steps": [
+    {
+     "position": 1,
+     "value": 8192,
+     "ok": true,
+     "readback": 8192,
+     "changes": {}
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_EU07.headlight_individual_rl",
+   "controlId": "Chassis/ChassisOdwrotnie/ChassisBujanie/INTERIOR/kabina_4e_B/sw-reflektor_lewy/sw-reflektor_lewy",
+   "type": "PhysicsInteractionSwitchStepped",
+   "kind": "switch",
+   "original": -65536,
+   "positions": [
+    {
+     "index": 0,
+     "value": -65536,
+     "stable": 0
+    },
+    {
+     "index": 1,
+     "value": 65536,
+     "stable": 1
+    }
+   ],
+   "steps": [
+    {
+     "position": 1,
+     "value": 65536,
+     "ok": true,
+     "readback": 65536,
+     "changes": {}
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_EU07.headlight_individual_rr",
+   "controlId": "Chassis/ChassisOdwrotnie/ChassisBujanie/INTERIOR/kabina_4e_B/sw-reflektor_prawy/sw-reflektor_prawy",
+   "type": "PhysicsInteractionSwitchStepped",
+   "kind": "switch",
+   "original": -1024,
+   "positions": [
+    {
+     "index": 0,
+     "value": -1024,
+     "stable": 0
+    },
+    {
+     "index": 1,
+     "value": 1024,
+     "stable": 1
+    }
+   ],
+   "steps": [
+    {
+     "position": 1,
+     "value": 1024,
+     "ok": true,
+     "readback": 1024,
+     "changes": {}
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_EU07.wiper4",
+   "controlId": "Chassis/ChassisOdwrotnie/ChassisBujanie/INTERIOR/kabina_4e_B/sw-wycieraczka_lewa/sw-wycieraczka_lewa",
+   "type": "PhysicsInteractionSwitchStepped",
+   "kind": "switch",
+   "original": 0,
+   "positions": [
+    {
+     "index": 0,
+     "value": 0,
+     "stable": 0
+    },
+    {
+     "index": 1,
+     "value": 1,
+     "stable": 1
+    },
+    {
+     "index": 2,
+     "value": 2,
+     "stable": 2
+    },
+    {
+     "index": 3,
+     "value": 3,
+     "stable": 3
+    }
+   ],
+   "steps": [
+    {
+     "position": 1,
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {}
+    },
+    {
+     "position": 2,
+     "value": 2,
+     "ok": true,
+     "readback": 2,
+     "changes": {}
+    },
+    {
+     "position": 3,
+     "value": 3,
+     "ok": true,
+     "readback": 3,
+     "changes": {}
+    }
+   ]
+  },
+  {
+   "path": "Physics_Input_EU07.wiper3",
+   "controlId": "Chassis/ChassisOdwrotnie/ChassisBujanie/INTERIOR/kabina_4e_B/sw-wycieraczka_prawa/sw-wycieraczka_prawa",
+   "type": "PhysicsInteractionSwitchStepped",
+   "kind": "switch",
+   "original": 0,
+   "positions": [
+    {
+     "index": 0,
+     "value": 0,
+     "stable": 0
+    },
+    {
+     "index": 1,
+     "value": 1,
+     "stable": 1
+    },
+    {
+     "index": 2,
+     "value": 2,
+     "stable": 2
+    },
+    {
+     "index": 3,
+     "value": 3,
+     "stable": 3
+    }
+   ],
+   "steps": [
+    {
+     "position": 1,
+     "value": 1,
+     "ok": true,
+     "readback": 1,
+     "changes": {}
+    },
+    {
+     "position": 2,
+     "value": 2,
+     "ok": true,
+     "readback": 2,
+     "changes": {
+      "Physics_Output_General.time_minutes": [
+       54,
+       55
+      ]
+     }
+    },
+    {
+     "position": 3,
+     "value": 3,
+     "ok": true,
+     "readback": 3,
+     "changes": {}
+    }
+   ]
+  }
+ ]
+}

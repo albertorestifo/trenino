@@ -1,7 +1,14 @@
 defmodule Trenino.MCP.Tools.SimulatorToolsTest do
   use Trenino.DataCase, async: true
 
+  defmodule SimRailStub do
+    @moduledoc false
+    def id, do: :simrail
+  end
+
   alias Trenino.MCP.Tools.SimulatorTools
+  alias Trenino.MCP.Tools.SimulatorToolsTest.SimRailStub
+  alias Trenino.Simulator
   alias Trenino.Simulator.Client
   alias Trenino.Simulator.Connection
   alias Trenino.Simulator.ConnectionState
@@ -10,7 +17,7 @@ defmodule Trenino.MCP.Tools.SimulatorToolsTest do
     client = Client.new("http://localhost:1234", "test-key")
 
     stub(Connection, :get_status, fn ->
-      %ConnectionState{status: :connected, client: client}
+      %ConnectionState{status: :connected, backend: Simulator.Backend.TSW, client: client}
     end)
 
     client
@@ -54,6 +61,16 @@ defmodule Trenino.MCP.Tools.SimulatorToolsTest do
                })
     end
 
+    test "returns error for simulators other than TSW" do
+      stub(Connection, :get_status, fn ->
+        %ConnectionState{status: :connected, backend: SimRailStub, client: :handle}
+      end)
+
+      assert {:error, message} = SimulatorTools.execute("list_simulator_endpoints", %{})
+      assert message =~ "only available for Train Sim World"
+      assert message =~ "simrail"
+    end
+
     test "returns error on simulator failure" do
       client = stub_connected_simulator()
 
@@ -76,15 +93,31 @@ defmodule Trenino.MCP.Tools.SimulatorToolsTest do
       assert message =~ "Simulator not connected"
     end
 
-    test "gets a value" do
+    test "gets a value through the simulator facade" do
+      expect(Simulator, :get, fn "Speed.Value" -> {:ok, 55.0} end)
+
+      assert {:ok, %{"path" => "Speed.Value", "value" => 55.0}} =
+               SimulatorTools.execute("get_simulator_value", %{"path" => "Speed.Value"})
+    end
+
+    test "unwraps a TSW response" do
       client = stub_connected_simulator()
 
       expect(Client, :get, fn ^client, "Speed.Value" ->
-        {:ok, %{"value" => 55.0}}
+        {:ok, %{"Values" => %{"Value" => 55.0}}}
       end)
 
       assert {:ok, %{"value" => 55.0}} =
                SimulatorTools.execute("get_simulator_value", %{"path" => "Speed.Value"})
+    end
+
+    test "returns error on simulator failure" do
+      expect(Simulator, :get, fn "Speed.Value" -> {:error, :timeout} end)
+
+      assert {:error, message} =
+               SimulatorTools.execute("get_simulator_value", %{"path" => "Speed.Value"})
+
+      assert message =~ "Simulator error"
     end
   end
 
@@ -101,17 +134,27 @@ defmodule Trenino.MCP.Tools.SimulatorToolsTest do
       assert message =~ "Simulator not connected"
     end
 
-    test "sets a value" do
+    test "sets a TSW value" do
       client = stub_connected_simulator()
 
       expect(Client, :set, fn ^client, "Horn.InputValue", 1.0 ->
         {:ok, %{"ok" => true}}
       end)
 
-      assert {:ok, _} =
+      assert {:ok, %{"path" => "Horn.InputValue", "value" => 1.0}} =
                SimulatorTools.execute("set_simulator_value", %{
                  "path" => "Horn.InputValue",
                  "value" => 1.0
+               })
+    end
+
+    test "writes SimRail paths as given" do
+      expect(Simulator, :set, fn "Physics_Input_EN57.maincontroller_a", 3 -> :ok end)
+
+      assert {:ok, _} =
+               SimulatorTools.execute("set_simulator_value", %{
+                 "path" => "Physics_Input_EN57.maincontroller_a",
+                 "value" => 3
                })
     end
   end

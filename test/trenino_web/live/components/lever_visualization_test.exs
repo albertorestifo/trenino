@@ -66,6 +66,45 @@ defmodule TreninoWeb.LeverVisualizationTest do
       assert html =~ "left: 48.5%; width: 3.0%;"
       assert html =~ "Notch 4: 50–50% of travel"
     end
+
+    test "draws a resting position's dead zone around its core and hatches spring areas" do
+      base = %{
+        description: nil,
+        type: :gate,
+        sim_at_min: 0.5,
+        sim_at_max: 0.5,
+        sim_output_min: 1.0,
+        sim_output_max: 1.0
+      }
+
+      resting =
+        Map.merge(base, %{
+          notch_index: 1,
+          min_pct: 10.0,
+          max_pct: 20.0,
+          core_min_pct: 13.0,
+          core_max_pct: 17.0,
+          springs_back_to: nil
+        })
+
+      spring =
+        Map.merge(base, %{
+          notch_index: 2,
+          min_pct: 20.0,
+          max_pct: 35.0,
+          core_min_pct: 20.0,
+          core_max_pct: 35.0,
+          springs_back_to: 1
+        })
+
+      html = render_strip(%{empty_preview() | hardware_ranges: [resting, spring]})
+
+      assert html =~ ~s(data-zone="dead-zone")
+      # Core 13–17% inside 10–20%: starts 30% in and fills 40%.
+      assert html =~ "left: 30.0%; width: 40.0%;"
+      assert html =~ ~s(data-zone="spring")
+      assert html =~ "Notch 3: 20–35% of travel, springs back"
+    end
   end
 
   describe "hardware_strip/1 direction controls" do

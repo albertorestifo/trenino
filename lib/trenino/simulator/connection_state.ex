@@ -1,11 +1,14 @@
 defmodule Trenino.Simulator.ConnectionState do
   @moduledoc """
-  Represents the state of a TSW API connection.
+  Represents the state of a simulator connection.
 
-  This struct tracks the current connection status, any errors,
-  and the API client instance when connected.
+  This struct tracks the current connection status, any errors, the
+  simulator backend (`Trenino.Simulator.Backend` implementation) and its
+  handle when connected. The handle lives in `client` for historical
+  reasons: for the TSW backend it is a `%Trenino.Simulator.Client{}`.
   """
 
+  alias Trenino.Simulator.Backend
   alias Trenino.Simulator.Client
 
   @type status :: :disconnected | :connecting | :connected | :error | :needs_config
@@ -13,7 +16,8 @@ defmodule Trenino.Simulator.ConnectionState do
 
   @type t :: %__MODULE__{
           status: status(),
-          client: Client.t() | nil,
+          backend: module(),
+          client: Backend.handle() | nil,
           last_error: error_reason() | nil,
           last_check: DateTime.t() | nil,
           info: map() | nil,
@@ -21,6 +25,7 @@ defmodule Trenino.Simulator.ConnectionState do
         }
 
   defstruct status: :needs_config,
+            backend: Backend.TSW,
             client: nil,
             last_error: nil,
             last_check: nil,
@@ -38,7 +43,15 @@ defmodule Trenino.Simulator.ConnectionState do
   """
   @spec mark_connecting(t(), Client.t()) :: t()
   def mark_connecting(%__MODULE__{} = state, %Client{} = client) do
-    %{state | status: :connecting, client: client, last_error: nil}
+    mark_connecting(state, Backend.TSW, client)
+  end
+
+  @doc """
+  Mark the connection as connecting with a backend and its handle.
+  """
+  @spec mark_connecting(t(), module(), Backend.handle()) :: t()
+  def mark_connecting(%__MODULE__{} = state, backend, handle) when is_atom(backend) do
+    %{state | status: :connecting, backend: backend, client: handle, last_error: nil}
   end
 
   @doc """

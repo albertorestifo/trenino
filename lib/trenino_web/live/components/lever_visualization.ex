@@ -244,18 +244,30 @@ defmodule TreninoWeb.LeverVisualization do
       <div class="relative h-10 mx-4">
         <div class="absolute top-1/2 left-0 right-0 h-2 -translate-y-1/2 bg-base-300 rounded-full" />
 
+        <%!-- A spring-back area is hatched; a resting position's dead zone is
+             the lighter band around its solid core. --%>
         <div
           :for={segment <- @segments}
           class={[
             "absolute top-1/2 -translate-y-1/2 rounded",
             segment.type == :gate && "h-4",
             segment.type != :gate && "h-2",
-            segment.notch_index == @current_notch_index && "bg-primary",
-            segment.notch_index != @current_notch_index && "bg-success"
+            segment_fill(segment, segment.notch_index == @current_notch_index)
           ]}
           style={"left: #{segment.left}%; width: #{segment.width}%;"}
           title={segment.label}
-        />
+          data-zone={segment_zone(segment)}
+        >
+          <div
+            :if={segment.core}
+            class={[
+              "absolute inset-y-0 rounded",
+              segment.notch_index == @current_notch_index && "bg-primary",
+              segment.notch_index != @current_notch_index && "bg-success"
+            ]}
+            style={"left: #{segment.core.left}%; width: #{segment.core.width}%;"}
+          />
+        </div>
 
         <div
           :if={@live_pct}
@@ -370,15 +382,46 @@ defmodule TreninoWeb.LeverVisualization do
         {min_pct, width}
       end
 
+    spring = is_integer(Map.get(range, :springs_back_to))
+
     %{
       notch_index: range.notch_index,
       type: range.type,
       left: Float.round(left / 1, 2),
       width: Float.round(width / 1, 2),
+      spring: spring,
+      core: dead_zone_core(range, left, width),
       label:
-        "#{display_name(range.description, range.notch_index)}: #{round(min_pct)}–#{round(max_pct)}% of travel"
+        "#{display_name(range.description, range.notch_index)}: #{round(min_pct)}–#{round(max_pct)}% of travel" <>
+          if(spring, do: ", springs back", else: "")
     }
   end
+
+  # The wiggled range inside a resting position widened by its dead zone, as a
+  # share of the segment; nil when there is no dead zone.
+  defp dead_zone_core(%{core_min_pct: core_min, core_max_pct: core_max} = range, left, width)
+       when width > 0 and (core_min != range.min_pct or core_max != range.max_pct) do
+    core_left = (clamp_pct(core_min) - left) / width * 100
+    core_width = max((clamp_pct(core_max) - clamp_pct(core_min)) / width * 100, 8.0)
+    %{left: Float.round(max(core_left, 0.0), 2), width: Float.round(min(core_width, 100.0), 2)}
+  end
+
+  defp dead_zone_core(_range, _left, _width), do: nil
+
+  defp segment_zone(%{spring: true}), do: "spring"
+  defp segment_zone(%{core: %{}}), do: "dead-zone"
+  defp segment_zone(_segment), do: "notch"
+
+  defp segment_fill(%{spring: true}, true),
+    do: "bg-[repeating-linear-gradient(135deg,var(--color-primary)_0_3px,transparent_3px_6px)]"
+
+  defp segment_fill(%{spring: true}, false),
+    do: "bg-[repeating-linear-gradient(135deg,var(--color-success)_0_3px,transparent_3px_6px)]"
+
+  defp segment_fill(%{core: %{}}, true), do: "bg-primary/30"
+  defp segment_fill(%{core: %{}}, false), do: "bg-success/30"
+  defp segment_fill(_segment, true), do: "bg-primary"
+  defp segment_fill(_segment, false), do: "bg-success"
 
   defp live_percent(value, total) when is_number(value) and is_number(total) and total > 0 do
     Float.round(clamp_pct(value / total * 100.0), 2)
