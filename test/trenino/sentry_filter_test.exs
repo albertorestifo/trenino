@@ -95,6 +95,32 @@ defmodule Trenino.SentryFilterTest do
              )
     end
 
+    test "keeps a ThousandIsland connection stopping with another socket error" do
+      for reason <- ["closed", "etimedout"] do
+        report = String.replace(@connection_abort_report, "econnaborted", reason)
+
+        refute SentryFilter.drop?(
+                 event(message: %Message{formatted: report}, extra: %{crash_reason: ":#{reason}"})
+               )
+      end
+    end
+
+    test "keeps an :econnaborted crash from a ThousandIsland acceptor" do
+      report =
+        String.replace(
+          @connection_abort_report,
+          "{:thousand_island, :connection,",
+          "{:thousand_island, :acceptor,"
+        )
+
+      refute SentryFilter.drop?(
+               event(
+                 message: %Message{formatted: report},
+                 extra: %{crash_reason: ":econnaborted"}
+               )
+             )
+    end
+
     test "keeps an :econnaborted crash that is not a ThousandIsland connection" do
       refute SentryFilter.drop?(
                event(
@@ -111,13 +137,6 @@ defmodule Trenino.SentryFilterTest do
       exception = %Bandit.TransportError{message: "Unrecoverable error: closed", error: :closed}
 
       assert SentryFilter.drop?(Event.transform_exception(exception, []))
-    end
-
-    test "drops it when only the serialised exception is present" do
-      exception = %Bandit.TransportError{message: "Unrecoverable error: closed", error: :closed}
-      event = %{Event.transform_exception(exception, []) | original_exception: nil}
-
-      assert SentryFilter.drop?(event)
     end
 
     test "keeps a Bandit.TransportError that is not a client closure" do

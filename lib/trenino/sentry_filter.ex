@@ -8,13 +8,12 @@ defmodule Trenino.SentryFilter do
   """
 
   alias Sentry.Event
-  alias Sentry.Interfaces.Exception, as: ExceptionInterface
   alias Sentry.Interfaces.Message
 
-  # Socket errors that mean the client (the desktop webview or a browser tab)
+  # Sentry runs before_send on the full event, so `original_exception` holds the
+  # raised struct. Socket errors that mean the client (the desktop webview or a browser tab)
   # went away mid-request. Same list Bandit uses for its `:log_client_closures`.
   @client_closure_errors [:closed, :enotconn, :einval, :econnaborted, :econnreset]
-  @client_closure_values Enum.map(@client_closure_errors, &"Unrecoverable error: #{&1}")
 
   # A ThousandIsland connection process stops with the raw reason of a
   # `{:tcp_error, socket, reason}` message. Only an abortive close by the peer.
@@ -62,17 +61,6 @@ defmodule Trenino.SentryFilter do
 
   defp client_closed_transport?(%Event{original_exception: %Bandit.TransportError{error: error}}),
     do: error in @client_closure_errors
-
-  defp client_closed_transport?(%Event{original_exception: nil, exception: exceptions})
-       when is_list(exceptions) do
-    Enum.any?(exceptions, fn
-      %ExceptionInterface{type: "Bandit.TransportError", value: value} ->
-        value in @client_closure_values
-
-      _other ->
-        false
-    end)
-  end
 
   defp client_closed_transport?(_event), do: false
 
