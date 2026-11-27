@@ -179,7 +179,7 @@ defmodule Trenino.Train.OutputController do
 
   defp update_bindings_with_value(state, binding_entries, value) do
     Enum.reduce(binding_entries, state, fn {id, info}, acc ->
-      new_state = evaluate_condition(info.binding, value)
+      new_state = condition_met?(info.binding, value)
 
       if new_state != info.current_state do
         Logger.debug(
@@ -196,46 +196,60 @@ defmodule Trenino.Train.OutputController do
     end)
   end
 
+  @doc """
+  Whether a binding's condition holds for a simulator value: the LED is on when it does.
+
+  Numeric operators compare numbers. `:eq_true` and `:eq_false` take booleans, and also
+  numbers for simulators without booleans (SimRail), where a positive number is true.
+  Any other pairing is false.
+  """
+  @spec condition_met?(OutputBinding.t(), term()) :: boolean()
   # Numeric operators
-  defp evaluate_condition(%OutputBinding{operator: :gt, value_a: threshold}, value)
-       when is_number(value) do
+  def condition_met?(%OutputBinding{operator: :gt, value_a: threshold}, value)
+      when is_number(value) do
     value > threshold
   end
 
-  defp evaluate_condition(%OutputBinding{operator: :gte, value_a: threshold}, value)
-       when is_number(value) do
+  def condition_met?(%OutputBinding{operator: :gte, value_a: threshold}, value)
+      when is_number(value) do
     value >= threshold
   end
 
-  defp evaluate_condition(%OutputBinding{operator: :lt, value_a: threshold}, value)
-       when is_number(value) do
+  def condition_met?(%OutputBinding{operator: :lt, value_a: threshold}, value)
+      when is_number(value) do
     value < threshold
   end
 
-  defp evaluate_condition(%OutputBinding{operator: :lte, value_a: threshold}, value)
-       when is_number(value) do
+  def condition_met?(%OutputBinding{operator: :lte, value_a: threshold}, value)
+      when is_number(value) do
     value <= threshold
   end
 
-  defp evaluate_condition(
-         %OutputBinding{operator: :between, value_a: min, value_b: max},
-         value
-       )
-       when is_number(value) do
+  def condition_met?(
+        %OutputBinding{operator: :between, value_a: min, value_b: max},
+        value
+      )
+      when is_number(value) do
     value >= min and value <= max
   end
 
-  # Boolean operators
-  defp evaluate_condition(%OutputBinding{operator: :eq_true}, value) when is_boolean(value) do
-    value == true
+  # Boolean operators. SimRail sends lamps and flags as numbers, usually 0/1 with
+  # negative rest values such as -1, so a number counts as true when it is positive.
+  def condition_met?(%OutputBinding{operator: :eq_true}, value)
+      when is_boolean(value) or is_number(value) do
+    truthy?(value)
   end
 
-  defp evaluate_condition(%OutputBinding{operator: :eq_false}, value) when is_boolean(value) do
-    value == false
+  def condition_met?(%OutputBinding{operator: :eq_false}, value)
+      when is_boolean(value) or is_number(value) do
+    not truthy?(value)
   end
 
   # Fallback for type mismatches (e.g., boolean value with numeric operator)
-  defp evaluate_condition(_binding, _value), do: false
+  def condition_met?(_binding, _value), do: false
+
+  defp truthy?(value) when is_boolean(value), do: value
+  defp truthy?(value) when is_number(value), do: value > 0
 
   defp set_output_state(%OutputBinding{output: output}, state) do
     port = ConfigurationManager.config_id_to_port(output.device.config_id)
