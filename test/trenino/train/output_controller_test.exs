@@ -12,7 +12,7 @@ defmodule Trenino.Train.OutputControllerTest do
 
   alias Trenino.Hardware
   alias Trenino.Train, as: TrainContext
-  alias Trenino.Train.OutputBinding
+  alias Trenino.Train.OutputController
 
   describe "evaluate_condition/2 logic" do
     # Tests the condition evaluation logic by verifying the expected boolean
@@ -255,13 +255,34 @@ defmodule Trenino.Train.OutputControllerTest do
       assert evaluate_condition(binding, true) == false
     end
 
-    test "boolean operators return false for non-boolean values", %{train: train, output: output} do
+    test "eq_true treats positive numbers as true (SimRail lamps are 0/1)", %{
+      train: train,
+      output: output
+    } do
       binding = create_binding_boolean(train, output, :eq_true)
 
-      # Numeric values should not match boolean operators
-      assert evaluate_condition(binding, 1) == false
-      assert evaluate_condition(binding, 0) == false
+      assert evaluate_condition(binding, 1.0) == true
+      assert evaluate_condition(binding, 1) == true
+      assert evaluate_condition(binding, 0.0) == false
+      assert evaluate_condition(binding, -1.0) == false
+    end
+
+    test "eq_false treats zero and negative numbers as false", %{train: train, output: output} do
+      binding = create_binding_boolean(train, output, :eq_false)
+
+      assert evaluate_condition(binding, 0.0) == true
+      assert evaluate_condition(binding, -1.0) == true
       assert evaluate_condition(binding, 1.0) == false
+    end
+
+    test "boolean operators return false for non-boolean, non-numeric values", %{
+      train: train,
+      output: output
+    } do
+      binding = create_binding_boolean(train, output, :eq_true)
+
+      assert evaluate_condition(binding, "1") == false
+      assert evaluate_condition(binding, nil) == false
     end
 
     test "numeric operators return false for boolean values", %{train: train, output: output} do
@@ -320,45 +341,5 @@ defmodule Trenino.Train.OutputControllerTest do
     binding_with_preloads
   end
 
-  # Reimplements the private evaluate_condition logic for testing
-  # This ensures our tests match the expected behavior
-  defp evaluate_condition(%OutputBinding{operator: :gt, value_a: threshold}, value)
-       when is_number(value) do
-    value > threshold
-  end
-
-  defp evaluate_condition(%OutputBinding{operator: :gte, value_a: threshold}, value)
-       when is_number(value) do
-    value >= threshold
-  end
-
-  defp evaluate_condition(%OutputBinding{operator: :lt, value_a: threshold}, value)
-       when is_number(value) do
-    value < threshold
-  end
-
-  defp evaluate_condition(%OutputBinding{operator: :lte, value_a: threshold}, value)
-       when is_number(value) do
-    value <= threshold
-  end
-
-  defp evaluate_condition(
-         %OutputBinding{operator: :between, value_a: min, value_b: max},
-         value
-       )
-       when is_number(value) do
-    value >= min and value <= max
-  end
-
-  # Boolean operators
-  defp evaluate_condition(%OutputBinding{operator: :eq_true}, value) when is_boolean(value) do
-    value == true
-  end
-
-  defp evaluate_condition(%OutputBinding{operator: :eq_false}, value) when is_boolean(value) do
-    value == false
-  end
-
-  # Fallback for type mismatches
-  defp evaluate_condition(_binding, _value), do: false
+  defp evaluate_condition(binding, value), do: OutputController.condition_met?(binding, value)
 end

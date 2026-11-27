@@ -633,8 +633,12 @@ defmodule TreninoWeb.OutputBindingWizard do
     """
   end
 
-  defp condition_preview(:eq_true, _, _), do: "LED turns ON when value is true"
-  defp condition_preview(:eq_false, _, _), do: "LED turns ON when value is false"
+  defp condition_preview(:eq_true, _, _),
+    do: "LED turns ON when value is true (or a number above 0)"
+
+  defp condition_preview(:eq_false, _, _),
+    do: "LED turns ON when value is false (or a number of 0 or less)"
+
   defp condition_preview(:gt, value_a, _), do: "LED turns ON when value > #{value_a}"
   defp condition_preview(:gte, value_a, _), do: "LED turns ON when value >= #{value_a}"
   defp condition_preview(:lt, value_a, _), do: "LED turns ON when value < #{value_a}"

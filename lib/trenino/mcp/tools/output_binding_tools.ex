@@ -30,7 +30,8 @@ defmodule Trenino.MCP.Tools.OutputBindingTools do
           "Create an output binding that controls a hardware output (LED) based on a simulator endpoint value. " <>
             "Use list_simulator_endpoints to find endpoints and list_hardware_outputs to find available outputs. " <>
             "Operators: 'gt' (>), 'gte' (>=), 'lt' (<), 'lte' (<=), 'between' (range), " <>
-            "'eq_true' (boolean true), 'eq_false' (boolean false).",
+            "'eq_true' (true, or a number above 0), 'eq_false' (false, or a number of 0 or less). " <>
+            "SimRail lamps are 0/1 numbers: use 'eq_true'.",
         input_schema: %{
           type: "object",
           properties: %{

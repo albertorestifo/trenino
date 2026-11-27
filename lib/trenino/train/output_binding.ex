@@ -15,8 +15,9 @@ defmodule Trenino.Train.OutputBinding do
   - `:between` - Between two values inclusive (value_a <= value <= value_b)
 
   Boolean operators:
-  - `:eq_true` - Value equals true (LED on when true)
-  - `:eq_false` - Value equals false (LED on when false)
+  - `:eq_true` - Value equals true (LED on when true). A number counts as true when it
+    is above 0, since SimRail sends lamps and flags as 0/1 numbers.
+  - `:eq_false` - Value equals false (LED on when false, or a number of 0 or less)
 
   ## Output Types
 
