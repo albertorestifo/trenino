@@ -207,7 +207,7 @@ jobs:
           Invoke-WebRequest -UseBasicParsing -Uri https://aka.ms/vs/17/release/vc_redist.x64.exe -OutFile tauri/src-tauri/resources/vc_redist.x64.exe
 
       - name: Stage SimRail mods
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: simrail-mods
           path: tauri/src-tauri/resources/simrail
