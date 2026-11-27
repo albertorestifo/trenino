@@ -17,7 +17,7 @@ defmodule Trenino.MCP.Tools.GaugeBindingTools do
         %{
           name: name,
           description:
-            "Train gauge binding: which simulator value drives a gauge. Disabled by default; enabling requires the gauge's dial to be calibrated and reviewed (see get_dial_calibration / update_dial_calibration: the dial belongs to the gauge, not the train). input_unit is what the simulator reports (raw/mps/kmh/mph); raw only fits a raw dial. Preview never moves. When the value goes stale the needle holds where it is. Select a verified endpoint and value key; never guess units.",
+            "Train gauge binding: which simulator value drives a gauge. Disabled by default; enabling requires the gauge's dial to be calibrated and reviewed (see get_dial_calibration / update_dial_calibration: the dial belongs to the gauge, not the train). input_unit is what the simulator reports (raw/mps/kmh/mph/bar/kpa/psi); speeds convert to speeds and pressures to pressures, raw only fits a raw dial. Preview never moves. When the value goes stale the needle holds where it is. Select a verified endpoint and value key; never guess units.",
           input_schema: %{type: "object", required: required, properties: properties()}
         }
       end

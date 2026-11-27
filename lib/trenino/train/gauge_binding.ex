@@ -7,6 +7,7 @@ defmodule Trenino.Train.GaugeBinding do
   use Ecto.Schema
   import Ecto.Changeset
   alias Trenino.Hardware.{DialCalibration, Gauge}
+  alias Trenino.Train.GaugeUnit
   @type t :: %__MODULE__{}
   schema "train_gauge_bindings" do
     belongs_to :train, Trenino.Train.Train
@@ -14,7 +15,7 @@ defmodule Trenino.Train.GaugeBinding do
     field :name, :string
     field :endpoint, :string
     field :value_key, :string
-    field :input_unit, Ecto.Enum, values: [:raw, :mps, :kmh, :mph], default: :raw
+    field :input_unit, Ecto.Enum, values: GaugeUnit.units(), default: :raw
     field :multiplier, :float, default: 1.0
     field :offset, :float, default: 0.0
     field :absolute_value, :boolean, default: false
@@ -80,16 +81,22 @@ defmodule Trenino.Train.GaugeBinding do
   end
 
   defp validate_units(cs, %DialCalibration{output_unit: output}) do
-    units = [get_field(cs, :input_unit), output]
+    input = get_field(cs, :input_unit)
 
-    if :raw in units and units != [:raw, :raw],
-      do:
+    cond do
+      GaugeUnit.convertible?(input, output) ->
+        cs
+
+      :raw in [input, output] ->
         add_error(
           cs,
           :input_unit,
           "raw input only converts to a raw dial; this gauge dial is in #{output}"
-        ),
-      else: cs
+        )
+
+      true ->
+        add_error(cs, :input_unit, "#{input} does not convert to this gauge dial's #{output}")
+    end
   end
 
   defp validate_units(cs, nil), do: cs
