@@ -8,7 +8,9 @@ defmodule Trenino.MCP.Tools.SimulatorToolsTest do
 
   alias Trenino.MCP.Tools.SimulatorTools
   alias Trenino.MCP.Tools.SimulatorToolsTest.SimRailStub
+  alias Trenino.SimRailFixtures
   alias Trenino.Simulator
+  alias Trenino.Simulator.Backend.SimRail
   alias Trenino.Simulator.Client
   alias Trenino.Simulator.Connection
   alias Trenino.Simulator.ConnectionState
@@ -61,14 +63,40 @@ defmodule Trenino.MCP.Tools.SimulatorToolsTest do
                })
     end
 
-    test "returns error for simulators other than TSW" do
+    test "browses SimRail groups and fields" do
+      {:ok, handle} = SimRail.connect(%{url: "http://127.0.0.1:31275", api_key: nil})
+      schema = SimRailFixtures.schema("4e_eu07-193")
+
+      stub(Connection, :get_status, fn ->
+        %ConnectionState{status: :connected, backend: SimRail, client: handle}
+      end)
+
+      stub(Req, :get, fn
+        _req, [url: "/api/v1/vehicle"] ->
+          {:ok, Req.Response.new(status: 200, body: schema)}
+
+        _req, [url: "/api/v1/values", params: [paths: "Physics_Output_EU07.*"]] ->
+          {:ok, Req.Response.new(status: 200, body: %{"Physics_Output_EU07.velocity" => 12.5})}
+      end)
+
+      assert {:ok, %{"Nodes" => nodes}} = SimulatorTools.execute("list_simulator_endpoints", %{})
+      assert %{"Name" => "Physics_Output_EU07"} in nodes
+
+      assert {:ok, %{"Endpoints" => endpoints}} =
+               SimulatorTools.execute("list_simulator_endpoints", %{
+                 "path" => "Physics_Output_EU07"
+               })
+
+      assert %{"Name" => "velocity", "Value" => 12.5, "Writable" => false} in endpoints
+    end
+
+    test "returns error for simulators that can't be browsed" do
       stub(Connection, :get_status, fn ->
         %ConnectionState{status: :connected, backend: SimRailStub, client: :handle}
       end)
 
       assert {:error, message} = SimulatorTools.execute("list_simulator_endpoints", %{})
-      assert message =~ "only available for Train Sim World"
-      assert message =~ "simrail"
+      assert message =~ "not available for simrail"
     end
 
     test "returns error on simulator failure" do
