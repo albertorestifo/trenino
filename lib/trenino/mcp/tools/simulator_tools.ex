@@ -1,12 +1,11 @@
 defmodule Trenino.MCP.Tools.SimulatorTools do
   @moduledoc """
-  MCP tools for reading and writing simulator values. Browsing the API tree
-  (`list_simulator_endpoints`) is Train Sim World only.
+  MCP tools for reading and writing simulator values, and browsing them
+  (`list_simulator_endpoints`, see `Trenino.Simulator.Browse`).
   """
 
   alias Trenino.Simulator
-  alias Trenino.Simulator.Backend
-  alias Trenino.Simulator.Client, as: SimulatorClient
+  alias Trenino.Simulator.Browse
 
   def tools do
     [
@@ -18,7 +17,10 @@ defmodule Trenino.MCP.Tools.SimulatorTools do
             "and 'Endpoints' are leaf values on the current node (e.g. 'Property.IsPlayer', 'Function.CanOperateDoors', 'InputValue'). " <>
             "To read an endpoint value, use get_simulator_value with the node path joined to the endpoint name using '.' (dot), " <>
             "e.g. 'CurrentDrivableActor.Function.CanOperateDoors' or 'CurrentDrivableActor/AWS.Function.IsWarningSound'. " <>
-            "Use with no path to see the root, then drill into children.",
+            "Use with no path to see the root, then drill into children. " <>
+            "SimRail: the root Nodes are the player train's IO groups (Physics_Output_* are what the simulation reports, " <>
+            "e.g. velocity, pipe_pressure, lamps as 0/1; Physics_Input_* are cab inputs); browse a group by its name " <>
+            "to get its fields with their current 'Value'. A SimRail path is 'Group.field', e.g. 'Physics_Output_EU07.velocity'.",
         input_schema: %{
           type: "object",
           properties: %{
@@ -76,22 +78,9 @@ defmodule Trenino.MCP.Tools.SimulatorTools do
   end
 
   def execute("list_simulator_endpoints", args) do
-    path = Map.get(args, "path")
-
     case Simulator.connected() do
-      {:ok, Backend.TSW, client} ->
-        case SimulatorClient.list(client, path) do
-          {:ok, data} -> {:ok, data}
-          {:error, reason} -> {:error, "Simulator error: #{inspect(reason)}"}
-        end
-
-      {:ok, backend, _handle} ->
-        {:error,
-         "Browsing endpoints is only available for Train Sim World " <>
-           "(connected simulator: #{backend.id()})."}
-
-      {:error, :not_connected} ->
-        not_connected()
+      {:ok, backend, handle} -> browse(backend, handle, Map.get(args, "path"))
+      {:error, :not_connected} -> not_connected()
     end
   end
 
@@ -106,6 +95,16 @@ defmodule Trenino.MCP.Tools.SimulatorTools do
     case Simulator.set(path, value) do
       :ok -> {:ok, %{"path" => path, "value" => value}}
       error -> simulator_error(error)
+    end
+  end
+
+  defp browse(backend, handle, path) do
+    with true <- Browse.supported?(handle),
+         {:ok, data} <- Browse.list(handle, path) do
+      {:ok, data}
+    else
+      false -> {:error, "Browsing endpoints is not available for #{backend.id()}."}
+      {:error, reason} -> {:error, "Simulator error: #{inspect(reason)}"}
     end
   end
 

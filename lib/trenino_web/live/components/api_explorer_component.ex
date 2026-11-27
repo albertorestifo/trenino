@@ -1,9 +1,11 @@
 defmodule TreninoWeb.ApiExplorerComponent do
   @moduledoc """
-  LiveComponent for browsing the TSW simulator API.
+  LiveComponent for browsing the connected simulator's values.
 
   Provides hierarchical navigation through the simulator's API tree,
   allowing users to browse, search, preview values, and select paths.
+  For Train Sim World that is its API tree; for SimRail the player train's IO
+  groups and their fields (see `Trenino.Simulator.Browse`).
 
   ## Usage
 
@@ -27,10 +29,13 @@ defmodule TreninoWeb.ApiExplorerComponent do
 
   require Logger
 
+  alias Trenino.Simulator.Backend.SimRail
+  alias Trenino.Simulator.Browse
   alias Trenino.Simulator.Client
 
   @impl true
-  def update(%{client: %Client{} = client, field: field} = assigns, socket) do
+  def update(%{client: client, field: field} = assigns, socket)
+      when is_struct(client, Client) or is_struct(client, SimRail) do
     # Mode determines detection behavior: :lever, :button, or nil (auto-detect both)
     mode = Map.get(assigns, :mode)
 
@@ -67,7 +72,7 @@ defmodule TreninoWeb.ApiExplorerComponent do
 
     full_path = build_full_path(path, node, :endpoint)
 
-    case Client.get(client, full_path) do
+    case Browse.get(client, full_path) do
       {:ok, response} ->
         {:noreply,
          socket
@@ -88,7 +93,7 @@ defmodule TreninoWeb.ApiExplorerComponent do
 
     socket = socket |> assign(:loading, true) |> assign(:error, nil)
 
-    case Client.list(client, full_path) do
+    case Browse.list(client, full_path) do
       {:ok, response} ->
         handle_navigation_response(socket, client, new_path, full_path, response)
 
@@ -114,9 +119,9 @@ defmodule TreninoWeb.ApiExplorerComponent do
     # Fetch nodes at this path
     result =
       if new_path == [] do
-        Client.list(client)
+        Browse.list(client)
       else
-        Client.list(client, Enum.join(new_path, "/"))
+        Browse.list(client, Enum.join(new_path, "/"))
       end
 
     case result do
@@ -178,7 +183,7 @@ defmodule TreninoWeb.ApiExplorerComponent do
     item_type = String.to_existing_atom(type)
     full_path = build_full_path(path, node, item_type)
 
-    case Client.get(client, full_path) do
+    case Browse.get(client, full_path) do
       {:ok, response} ->
         {:noreply, assign(socket, :preview, %{path: full_path, value: response})}
 
@@ -267,7 +272,7 @@ defmodule TreninoWeb.ApiExplorerComponent do
   end
 
   defp handle_navigation_error(socket, client, full_path) do
-    case Client.get(client, full_path) do
+    case Browse.get(client, full_path) do
       {:ok, response} ->
         {:noreply,
          socket
@@ -498,6 +503,12 @@ defmodule TreninoWeb.ApiExplorerComponent do
                   >
                     {if item.writable, do: "RW", else: "RO"}
                   </span>
+                  <span
+                    :if={is_number(Map.get(item, :value))}
+                    class="ml-auto font-mono text-xs text-muted"
+                  >
+                    {Float.round(item.value * 1.0, 2)}
+                  </span>
                 </button>
                 <button
                   type="button"
@@ -551,7 +562,7 @@ defmodule TreninoWeb.ApiExplorerComponent do
   # Private functions
 
   defp initialize_explorer(socket) do
-    case Client.list(socket.assigns.client) do
+    case Browse.list(socket.assigns.client) do
       {:ok, response} ->
         # Extract both Nodes and Endpoints
         nodes = Map.get(response, "Nodes", [])
@@ -591,7 +602,7 @@ defmodule TreninoWeb.ApiExplorerComponent do
 
   defp handle_leaf_node(socket, client, new_path, full_path) do
     preview =
-      case Client.get(client, full_path) do
+      case Browse.get(client, full_path) do
         {:ok, value_response} -> %{path: full_path, value: value_response}
         {:error, _reason} -> nil
       end
@@ -621,7 +632,9 @@ defmodule TreninoWeb.ApiExplorerComponent do
       %{
         name: Map.get(endpoint, "Name", ""),
         type: :endpoint,
-        writable: Map.get(endpoint, "Writable", false)
+        writable: Map.get(endpoint, "Writable", false),
+        # Only SimRail listings carry the current value.
+        value: Map.get(endpoint, "Value")
       }
     end)
   end
@@ -680,18 +693,18 @@ defmodule TreninoWeb.ApiExplorerComponent do
   defp api_error_message(:read, path, reason) do
     Logger.warning("API explorer could not read #{path}: #{inspect(reason)}")
 
-    "This value could not be read from the simulator. Check that Train Sim World is running, then select it again."
+    "This value could not be read from the simulator. Check that the simulator is running, then select it again."
   end
 
   defp api_error_message(:navigate, reason) do
     Logger.warning("API explorer could not open node: #{inspect(reason)}")
-    "This folder could not be opened. Check that Train Sim World is running, then try again."
+    "This folder could not be opened. Check that the simulator is running, then try again."
   end
 
   defp api_error_message(:load, reason) do
     Logger.warning("API explorer could not load the root nodes: #{inspect(reason)}")
 
-    "The simulator API could not be loaded. Check that Train Sim World is running, then close and reopen this window."
+    "The simulator API could not be loaded. Check that the simulator is running, then close and reopen this window."
   end
 
   defp format_preview(value) when is_map(value) do
@@ -713,6 +726,8 @@ defmodule TreninoWeb.ApiExplorerComponent do
   # Button endpoint detection
   # When in :button mode, any node with a writable InputValue endpoint is a valid button
   # We also fetch min/max values if available to suggest on/off values
+  # SimRail has no TSW-style control nodes to detect.
+  defp detect_button_endpoints(_endpoint_items, _node_path, _mode, %SimRail{}), do: nil
   defp detect_button_endpoints(_endpoint_items, _node_path, :lever, _client), do: nil
   defp detect_button_endpoints(_endpoint_items, _node_path, :none, _client), do: nil
 
@@ -749,7 +764,7 @@ defmodule TreninoWeb.ApiExplorerComponent do
   end
 
   defp fetch_endpoint_value(client, path) do
-    case Client.get(client, path) do
+    case Browse.get(client, path) do
       {:ok, value} when is_number(value) -> Float.round(value / 1, 2)
       {:ok, %{"value" => value}} when is_number(value) -> Float.round(value / 1, 2)
       _ -> nil
