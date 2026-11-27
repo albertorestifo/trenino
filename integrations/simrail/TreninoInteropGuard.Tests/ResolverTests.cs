@@ -64,7 +64,7 @@ public class SimRailGameAssemblyTests
     private static uint RealGetDefaultFieldValue(PeImage image)
     {
         var reachable = ReachableTargets(image, image.Export(AnchorExport)!.Value);
-        return Assert.Single(Scan(image, VRising).Where(reachable.Contains));
+        return Assert.Single(Scan(image, VRising), reachable.Contains);
     }
 
     [Fact]
