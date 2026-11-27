@@ -53,6 +53,19 @@ defmodule Trenino.Train.GaugeBindingTest do
     assert changeset(attrs(%{input_unit: :mps}), gauge(mph)).valid?
   end
 
+  test "pressures convert to pressure dials only" do
+    bar = %DialCalibration{valid: true, reviewed: true, output_unit: :bar}
+    mph = %DialCalibration{valid: true, reviewed: true, output_unit: :mph}
+
+    assert changeset(attrs(%{input_unit: :bar}), gauge(bar)).valid?
+    assert changeset(attrs(%{input_unit: :psi}), gauge(bar)).valid?
+
+    cs = changeset(attrs(%{input_unit: :bar}), gauge(mph))
+    refute cs.valid?
+    assert {"bar does not convert to this gauge dial's mph", _} = cs.errors[:input_unit]
+    refute changeset(attrs(%{input_unit: :kmh}), gauge(bar)).valid?
+  end
+
   test "an unknown gauge is rejected" do
     cs = changeset(attrs(), nil)
     refute cs.valid?

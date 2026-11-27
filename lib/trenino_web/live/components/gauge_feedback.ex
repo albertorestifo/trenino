@@ -7,7 +7,10 @@ defmodule TreninoWeb.GaugeFeedback do
     {"Raw (no conversion)", :raw},
     {"m/s", :mps},
     {"km/h", :kmh},
-    {"mph", :mph}
+    {"mph", :mph},
+    {"bar", :bar},
+    {"kPa", :kpa},
+    {"psi", :psi}
   ]
 
   @doc "Unit choices shared by the gauge forms: `{label, unit}`."

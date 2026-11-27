@@ -6,13 +6,14 @@ defmodule Trenino.MCP.Tools.DialCalibrationTools do
   alias Trenino.Hardware
   alias Trenino.Hardware.DialCalibration
   alias Trenino.MCP.Tools.GaugeSerialization, as: Serialization
+  alias Trenino.Train.GaugeUnit
 
   def tools do
     [
       %{
         name: "get_dial_calibration",
         description:
-          "Dial calibration of a gauge (shared by every train gauge binding on it): output_unit (raw/mps/kmh/mph, what the printed dial shows), points (dial value -> position in steps from the end stop), valid and reviewed. Returns calibration: null when none is recorded. Read-only.",
+          "Dial calibration of a gauge (shared by every train gauge binding on it): output_unit (raw/mps/kmh/mph/bar/kpa/psi, what the printed dial shows), points (dial value -> position in steps from the end stop), valid and reviewed. Returns calibration: null when none is recorded. Read-only.",
         input_schema: %{
           type: "object",
           required: ["gauge_id"],
@@ -28,7 +29,7 @@ defmodule Trenino.MCP.Tools.DialCalibrationTools do
           required: ["gauge_id"],
           properties: %{
             gauge_id: %{type: "integer"},
-            output_unit: %{type: "string", enum: ["raw", "mps", "kmh", "mph"]},
+            output_unit: %{type: "string", enum: Enum.map(GaugeUnit.units(), &Atom.to_string/1)},
             reviewed: %{type: "boolean"},
             points: %{
               type: "array",

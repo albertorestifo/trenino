@@ -1,7 +1,7 @@
 defmodule Trenino.Train.GaugeMapper do
   @moduledoc "Pure conversion and piecewise interpolation; never sends physical commands."
   alias Trenino.Hardware.{DialCalibration, Gauge}
-  alias Trenino.Train.GaugeBinding
+  alias Trenino.Train.{GaugeBinding, GaugeUnit}
   @type mapping :: %{value: float(), target: integer(), clamped: boolean()}
   @spec map(GaugeBinding.t(), term(), Gauge.t()) :: {:ok, mapping()} | {:error, atom()}
   def map(%GaugeBinding{} = b, raw, %Gauge{} = g) do
@@ -36,25 +36,7 @@ defmodule Trenino.Train.GaugeMapper do
   def dial_target(_, _, _), do: {:error, :invalid_sample_or_units}
 
   @spec convert(term(), atom(), atom()) :: {:ok, float()} | {:error, atom()}
-  def convert(n, unit, unit) when is_number(n) and unit in [:mps, :kmh, :mph], do: {:ok, n * 1.0}
-
-  def convert(n, from, to)
-      when is_number(n) and from in [:mps, :kmh, :mph] and to in [:mps, :kmh, :mph] do
-    {:ok, n * factor(from) / factor(to)}
-  rescue
-    ArithmeticError -> {:error, :non_finite_sample}
-  end
-
-  def convert(n, :raw, :raw) when is_number(n) do
-    {:ok, n * 1.0}
-  rescue
-    ArithmeticError -> {:error, :non_finite_sample}
-  end
-
-  def convert(_, _, _), do: {:error, :invalid_sample_or_units}
-  defp factor(:mps), do: 1.0
-  defp factor(:kmh), do: 1 / 3.6
-  defp factor(:mph), do: 0.44704
+  defdelegate convert(value, from, to), to: GaugeUnit
 
   defp transform(v, b) when is_number(b.multiplier) and is_number(b.offset) do
     value = if b.absolute_value, do: abs(v), else: v

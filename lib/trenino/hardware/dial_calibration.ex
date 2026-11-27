@@ -12,7 +12,7 @@ defmodule Trenino.Hardware.DialCalibration do
   alias Trenino.Hardware.{DialPoint, Gauge}
 
   @type t :: %__MODULE__{}
-  @units [:raw, :mps, :kmh, :mph]
+  @units Trenino.Train.GaugeUnit.units()
 
   schema "hardware_dial_calibrations" do
     belongs_to :gauge, Gauge

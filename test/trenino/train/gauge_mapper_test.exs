@@ -44,8 +44,25 @@ defmodule Trenino.Train.GaugeMapperTest do
     assert {:error, _} = GaugeMapper.convert(3, :raw, :mph)
   end
 
+  test "pressure units convert among themselves, never to speeds" do
+    assert {:ok, 5.0} = GaugeMapper.convert(5, :bar, :bar)
+    assert {:ok, 500.0} = GaugeMapper.convert(5, :bar, :kpa)
+    assert {:ok, psi} = GaugeMapper.convert(5, :bar, :psi)
+    assert Float.round(psi, 2) == 72.52
+    assert {:ok, bar} = GaugeMapper.convert(72.5189, :psi, :bar)
+    assert Float.round(bar, 2) == 5.0
+    assert {:error, _} = GaugeMapper.convert(5, :bar, :kmh)
+    assert {:error, _} = GaugeMapper.convert(5, :raw, :bar)
+
+    points = [%DialPoint{value: 0.0, position: 0}, %DialPoint{value: 10.0, position: 3000}]
+    b = %{gauge_binding() | input_unit: :bar}
+
+    assert {:ok, %{target: 1500, value: 5.0}} =
+             GaugeMapper.map(b, 5.0, gauge(output_unit: :bar, points: points))
+  end
+
   test "same-unit conversion is the identity so boundary samples stay exact" do
-    for unit <- [:mps, :kmh, :mph], n <- [29, 3, 29.0, 0.1, 123.456] do
+    for unit <- [:mps, :kmh, :mph, :bar, :kpa, :psi], n <- [29, 3, 29.0, 0.1, 123.456] do
       assert {:ok, n * 1.0} == GaugeMapper.convert(n, unit, unit)
     end
 
