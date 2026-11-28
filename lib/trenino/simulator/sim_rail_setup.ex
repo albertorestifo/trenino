@@ -239,7 +239,8 @@ defmodule Trenino.Simulator.SimRailSetup do
   end
 
   defp loader_content_state(content) do
-    values = Enum.map(@loader_settings, fn {key, value} -> {current_value(content, key), value} end)
+    values =
+      Enum.map(@loader_settings, fn {key, value} -> {current_value(content, key), value} end)
 
     cond do
       Enum.any?(values, fn {current, _} -> is_nil(current) end) -> :missing_keys

@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+## [0.9.3] - 2026-11-28
+
 ### Added
 
 - MT6701 magnetic angle sensors over I2C (controller firmware 3.4.0). Pick
@@ -20,6 +22,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - SimRail setup assistant (beta, with its own toggle under beta features): finds SimRail,
   checks MelonLoader and its settings, installs the TreninoBridge mod that now ships with
   the desktop app, and connects.
+- SimRail (beta): the API explorer and the `list_simulator_endpoints` MCP tool now list
+  SimRail's values, so SimRail lamps, gauges and displays can be bound from the wizards.
+- Pressure gauges can be calibrated in bar, kPa or psi. Units convert within their
+  family only: speed to speed, pressure to pressure.
+- Spring-back lever positions: the lever wizard maps resting positions first, then
+  captures each spring-back position by pushing the lever to the notch disk's wall. The
+  "Your lever" strip shows spring areas and the dead zone around each resting position.
+- The notch disk generator link now includes spring-back positions, so the generated
+  disk gets valleys for them.
 
 ### Changed
 
@@ -31,12 +42,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Fixed
 
+- LEDs bound with "equals true" or "equals false" now work with values the simulator
+  sends as numbers: anything above 0 counts as true.
+- Clients disconnecting from the local web server are no longer reported as errors.
 - An I2C display that didn't answer after Apply was only logged. It now shows a message.
 - Flashing a Leonardo, Micro or Pro Micro could fail with "Bootloader not responding",
   mostly on Windows. Trenino no longer opens the board's bootloader port, or any new
   port, while a flash runs, so avrdude has the bootloader to itself. Trenino also waits
   for the bootloader's port to settle before flashing, and up to 10 seconds for it to
   appear while Windows sets up its driver.
+
+### Security
+
+- Updated db_connection to 2.10.3 for CVE-2026-133555.
 
 ## [0.9.2] - 2026-11-24
 

@@ -271,8 +271,8 @@ defmodule TreninoWeb.CalibrationWizard do
         and press <strong>Start</strong>.
       </p>
       <p :if={!@state.circular} class="text-muted mb-4">
-        Move the input to the end you want as <strong>0%</strong>, then press
-        <strong>Start</strong> to begin collecting samples.
+        Move the input to the end you want as <strong>0%</strong>, then press <strong>Start</strong>
+        to begin collecting samples.
       </p>
     </div>
     """

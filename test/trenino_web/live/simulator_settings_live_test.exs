@@ -213,7 +213,11 @@ defmodule TreninoWeb.SimulatorSettingsLiveTest do
       stub(Trenino.Simulator.Connection, :reconfigure, fn -> :ok end)
       {:ok, view, _html} = live(conn, ~p"/settings/simulators/tsw")
 
-      assert has_element?(view, "#active-simulator-note", "Saving here switches to Train Sim World")
+      assert has_element?(
+               view,
+               "#active-simulator-note",
+               "Saving here switches to Train Sim World"
+             )
 
       view
       |> form("#simulator-form", simulator: %{url: "http://localhost:31270", api_key: ""})

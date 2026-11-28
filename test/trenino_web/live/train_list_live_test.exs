@@ -11,6 +11,7 @@ defmodule TreninoWeb.TrainListLiveTest do
 
     send(view.pid, {:simulator_status_changed, %ConnectionState{status: :needs_config}})
     render(view)
+
     assert has_element?(
              view,
              "#simulator-notice a[href='/settings/simulators/tsw']",

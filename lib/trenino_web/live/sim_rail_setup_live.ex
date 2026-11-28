@@ -134,7 +134,11 @@ defmodule TreninoWeb.SimRailSetupLive do
     case SimRailSetup.detect_game_dir() do
       nil ->
         {:noreply,
-         assign(socket, :dir_error, "SimRail was not found in your Steam libraries. Enter its folder.")}
+         assign(
+           socket,
+           :dir_error,
+           "SimRail was not found in your Steam libraries. Enter its folder."
+         )}
 
       dir ->
         {:ok, _} = Settings.set_simrail_game_dir(dir)
@@ -200,7 +204,8 @@ defmodule TreninoWeb.SimRailSetupLive do
   def handle_info(_msg, socket), do: {:noreply, socket}
 
   defp loader_error(:missing_file),
-    do: "MelonLoader has not created its settings yet. Start SimRail once, quit it, then check again."
+    do:
+      "MelonLoader has not created its settings yet. Start SimRail once, quit it, then check again."
 
   defp loader_error(:missing_keys),
     do:
@@ -209,7 +214,8 @@ defmodule TreninoWeb.SimRailSetupLive do
   defp loader_error(reason), do: "Could not update Loader.cfg: #{inspect(reason)}"
 
   defp install_error({:copy_failed, file, reason}) when reason in [:eacces, :ebusy, :eperm],
-    do: "Could not write #{file}. Quit SimRail (Windows locks the mod while the game runs), then try again."
+    do:
+      "Could not write #{file}. Quit SimRail (Windows locks the mod while the game runs), then try again."
 
   defp install_error({:copy_failed, file, reason}),
     do: "Could not write #{file}: #{inspect(reason)}"
@@ -221,7 +227,10 @@ defmodule TreninoWeb.SimRailSetupLive do
     do: {:connected, info || %{}}
 
   defp connection(%{backend: SimRailBackend, status: :connecting}), do: :connecting
-  defp connection(%{backend: SimRailBackend, status: :error, last_error: :invalid_key}), do: :rejected
+
+  defp connection(%{backend: SimRailBackend, status: :error, last_error: :invalid_key}),
+    do: :rejected
+
   defp connection(%{backend: SimRailBackend}), do: :waiting
   defp connection(_status), do: :waiting
 
@@ -275,13 +284,23 @@ defmodule TreninoWeb.SimRailSetupLive do
           </p>
         </header>
 
-        <div :if={@action_error} id="setup-error" role="alert" class="alert alert-soft alert-error mb-6 text-sm">
+        <div
+          :if={@action_error}
+          id="setup-error"
+          role="alert"
+          class="alert alert-soft alert-error mb-6 text-sm"
+        >
           <.icon name="hero-exclamation-circle" class="w-5 h-5 shrink-0" />
           <span>{@action_error}</span>
         </div>
 
         <ol id="simrail-setup-steps">
-          <.setup_step id="step-folder" number={1} title="Find SimRail" state={step_state(:folder, @current)}>
+          <.setup_step
+            id="step-folder"
+            number={1}
+            title="Find SimRail"
+            state={step_state(:folder, @current)}
+          >
             <p>Choose the folder that has <span class="font-mono">SimRail.exe</span>.</p>
             <.form for={%{}} as={:folder} id="folder-form" phx-submit="save_folder" class="flex gap-2">
               <input
@@ -294,11 +313,20 @@ defmodule TreninoWeb.SimRailSetupLive do
               />
               <button type="submit" class="btn btn-primary">Use folder</button>
             </.form>
-            <div :if={@dir_error} id="folder-error" class="flex items-center gap-1.5 text-xs text-error">
+            <div
+              :if={@dir_error}
+              id="folder-error"
+              class="flex items-center gap-1.5 text-xs text-error"
+            >
               <.icon name="hero-exclamation-circle" class="w-3.5 h-3.5 shrink-0" />
               {@dir_error}
             </div>
-            <button id="detect-folder" type="button" class="btn btn-ghost btn-sm" phx-click="detect_folder">
+            <button
+              id="detect-folder"
+              type="button"
+              class="btn btn-ghost btn-sm"
+              phx-click="detect_folder"
+            >
               Find it in my Steam libraries
             </button>
             <:done>
@@ -315,8 +343,7 @@ defmodule TreninoWeb.SimRailSetupLive do
           >
             <p>
               TreninoBridge runs on MelonLoader 0.7.3 or newer. Download the official installer,
-              choose <span class="font-mono">SimRail.exe</span>
-              in the folder above and install.
+              choose <span class="font-mono">SimRail.exe</span> in the folder above and install.
             </p>
             <div class="flex gap-2">
               <a href={@melonloader_url} target="_blank" rel="noopener" class="btn btn-sm btn-primary">
@@ -347,7 +374,12 @@ defmodule TreninoWeb.SimRailSetupLive do
               <ul class="font-mono text-xs bg-base-200 rounded px-3 py-2 space-y-1">
                 <li :for={{key, value} <- SimRailSetup.loader_settings()}>{key} = "{value}"</li>
               </ul>
-              <button id="configure-loader" type="button" class="btn btn-sm btn-primary" phx-click="configure_loader">
+              <button
+                id="configure-loader"
+                type="button"
+                class="btn btn-sm btn-primary"
+                phx-click="configure_loader"
+              >
                 Apply settings
               </button>
             <% end %>
@@ -362,11 +394,16 @@ defmodule TreninoWeb.SimRailSetupLive do
           >
             <%= if @bundle do %>
               <p>
-                Trenino copies TreninoBridge<span :if={@bundle.bridge_version}> {@bundle.bridge_version}</span>
+                Trenino copies TreninoBridge<span :if={@bundle.bridge_version}>{@bundle.bridge_version}</span>
                 into <span class="font-mono">Mods</span>
                 and TreninoInteropGuard into <span class="font-mono">Plugins</span>. Quit SimRail first.
               </p>
-              <button id="install-mods" type="button" class="btn btn-sm btn-primary" phx-click="install_mods">
+              <button
+                id="install-mods"
+                type="button"
+                class="btn btn-sm btn-primary"
+                phx-click="install_mods"
+              >
                 <%= if @status && (@status.bridge == :outdated or @status.guard == :outdated) do %>
                   Update TreninoBridge
                 <% else %>
@@ -376,15 +413,19 @@ defmodule TreninoWeb.SimRailSetupLive do
             <% else %>
               <p id="mods-not-bundled">
                 This build of Trenino does not include TreninoBridge. Install a release build of
-                Trenino, or build the mod yourself (see
-                <span class="font-mono">integrations/simrail/README.md</span>), then check again.
+                Trenino, or build the mod yourself (see <span class="font-mono">integrations/simrail/README.md</span>), then check again.
               </p>
               <button type="button" class="btn btn-sm btn-ghost" phx-click="check_again">Check again</button>
             <% end %>
             <:done>TreninoBridge and TreninoInteropGuard are installed.</:done>
           </.setup_step>
 
-          <.setup_step id="step-connect" number={5} title="Connect" state={step_state(:connect, @current)}>
+          <.setup_step
+            id="step-connect"
+            number={5}
+            title="Connect"
+            state={step_state(:connect, @current)}
+          >
             <%= case @connect_requested && connection(@nav_simulator_status) do %>
               <% {:connected, info} -> %>
                 <p id="simrail-connected" class="flex items-center gap-2">
@@ -398,8 +439,10 @@ defmodule TreninoWeb.SimRailSetupLive do
                 <.link navigate={~p"/trains"} class="btn btn-sm btn-primary">Set up a train</.link>
               <% :rejected -> %>
                 <p>
-                  The bridge rejected the connection. Check the bridge URL and token on the
-                  <.link navigate={~p"/settings/simulators/simrail"} class="link">SimRail connection page</.link>.
+                  The bridge rejected the connection. Check the bridge URL and token on the <.link
+                    navigate={~p"/settings/simulators/simrail"}
+                    class="link"
+                  >SimRail connection page</.link>.
                 </p>
               <% :connecting -> %>
                 <p>Connecting to SimRail…</p>
@@ -408,7 +451,12 @@ defmodule TreninoWeb.SimRailSetupLive do
                   Start SimRail. The first start with MelonLoader takes several minutes while it
                   prepares the game; later starts are quick. Once you are in the main menu, connect.
                 </p>
-                <button id="connect-simrail" type="button" class="btn btn-sm btn-primary" phx-click="connect">
+                <button
+                  id="connect-simrail"
+                  type="button"
+                  class="btn btn-sm btn-primary"
+                  phx-click="connect"
+                >
                   Connect to SimRail
                 </button>
                 <p :if={@connect_requested} class="text-muted">
